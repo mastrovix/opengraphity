@@ -1,0 +1,57 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/opengraphity_local
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: opengraphity
+      RABBITMQ_DEFAULT_PASS: opengraphity_local
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: opengraphity
+      MINIO_ROOT_PASSWORD: opengraphity_local
+    volumes:
+      - minio_data:/data
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  redis_data:
+  rabbitmq_data:
+  minio_data:
+  grafana_data:
