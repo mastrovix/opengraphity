@@ -53,8 +53,8 @@ function mapUser(props: Props) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>): Promise<T> {
-  const session = getSession()
+async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
+  const session = getSession(undefined, write ? 'WRITE' : 'READ')
   try {
     return await fn(session)
   } finally {
@@ -145,7 +145,7 @@ async function createIncident(
     const row = rows[0]
     if (!row) throw new Error('Failed to create incident')
     return mapIncident(row.props)
-  })
+  }, true)
 
   // Link affected CIs
   if (input.affectedCIIds?.length) {
@@ -157,7 +157,7 @@ async function createIncident(
           MERGE (i)-[:AFFECTED_BY]->(ci)
         `, { id, tenantId: ctx.tenantId, ciId })
       }
-    })
+    }, true)
   }
 
   // Publish domain event
@@ -212,7 +212,7 @@ async function updateIncident(
     const row = rows[0]
     if (!row) throw new Error('Incident not found')
     return mapIncident(row.props)
-  })
+  }, true)
 }
 
 async function resolveIncident(
@@ -236,7 +236,7 @@ async function resolveIncident(
     const row = rows[0]
     if (!row) throw new Error('Incident not found')
     return mapIncident(row.props)
-  })
+  }, true)
 
   const event: DomainEvent<IncidentResolvedPayload> = {
     id:             uuidv4(),
@@ -272,7 +272,7 @@ async function assignIncident(
     const row = rows[0]
     if (!row) throw new Error('Incident or User not found')
     return mapIncident(row.props)
-  })
+  }, true)
 }
 
 // ── Field resolvers ──────────────────────────────────────────────────────────
