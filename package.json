@@ -9,6 +9,9 @@
     "lint": "pnpm --recursive lint",
     "neo4j:init": "pnpm --filter @opengraphity/neo4j init"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "isolated-vm", "msgpackr-extract"]
+  },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
