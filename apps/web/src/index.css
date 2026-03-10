@@ -1,0 +1,123 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap');
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* ── Design System ─────────────────────────────────── */
+  --background:    #f8f9fc;
+  --surface:       #ffffff;
+  --surface-2:     #f1f3f9;
+  --border:        #e2e6f0;
+  --border-strong: #c8cfe0;
+  --text-primary:  #0f1629;
+  --text-secondary:#4a5468;
+  --text-muted:    #8892a4;
+  --accent:        #4f46e5;
+  --accent-hover:  #4338ca;
+  --accent-light:  #eef2ff;
+  --success:       #059669;
+  --success-light: #ecfdf5;
+  --warning:       #d97706;
+  --warning-light: #fffbeb;
+  --danger:        #dc2626;
+  --danger-light:  #fef2f2;
+  --info:          #0284c7;
+  --info-light:    #f0f9ff;
+  --sidebar-width:     240px;
+  --sidebar-collapsed: 56px;
+  --topbar-height:     56px;
+
+  /* ── shadcn variable overrides ─────────────────────── */
+  --background-shadcn: var(--background);
+  --foreground:        var(--text-primary);
+  --card:              var(--surface);
+  --card-foreground:   var(--text-primary);
+  --popover:           var(--surface);
+  --popover-foreground:var(--text-primary);
+  --primary:           var(--accent);
+  --primary-foreground:#ffffff;
+  --secondary:         var(--surface-2);
+  --secondary-foreground: var(--text-secondary);
+  --muted:             var(--surface-2);
+  --muted-foreground:  var(--text-muted);
+  --destructive:       var(--danger);
+  --border-ui:         var(--border);
+  --input:             var(--border);
+  --ring:              var(--accent);
+  --radius:            0.5rem;
+}
+
+@theme inline {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, monospace;
+
+  /* Design System Colors for Tailwind classes */
+  --color-background:    var(--background);
+  --color-surface:       var(--surface);
+  --color-surface-2:     var(--surface-2);
+  --color-border:        var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary:  var(--text-primary);
+  --color-text-secondary:var(--text-secondary);
+  --color-text-muted:    var(--text-muted);
+  --color-accent:        var(--accent);
+  --color-accent-hover:  var(--accent-hover);
+  --color-accent-light:  var(--accent-light);
+  --color-success:       var(--success);
+  --color-success-light: var(--success-light);
+  --color-warning:       var(--warning);
+  --color-warning-light: var(--warning-light);
+  --color-danger:        var(--danger);
+  --color-danger-light:  var(--danger-light);
+  --color-info:          var(--info);
+  --color-info-light:    var(--info-light);
+
+  /* shadcn compat */
+  --color-foreground:          var(--text-primary);
+  --color-card:                var(--surface);
+  --color-card-foreground:     var(--text-primary);
+  --color-popover:             var(--surface);
+  --color-popover-foreground:  var(--text-primary);
+  --color-primary:             var(--accent);
+  --color-primary-foreground:  #ffffff;
+  --color-secondary:           var(--surface-2);
+  --color-secondary-foreground:var(--text-secondary);
+  --color-muted:               var(--surface-2);
+  --color-muted-foreground:    var(--text-muted);
+  --color-destructive:         var(--danger);
+  --color-input:               var(--border);
+  --color-ring:                var(--accent);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--text-primary);
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  input, textarea, select {
+    font-family: inherit;
+    font-size: 14px;
+  }
+}
+
+/* ── Utility classes ───────────────────────────────────── */
+.font-mono {
+  font-family: 'DM Mono', ui-monospace, monospace;
+}
