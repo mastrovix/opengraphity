@@ -13,6 +13,7 @@ import { CreateIncidentPage } from '@/pages/incidents/CreateIncidentPage'
 import { ProblemListPage } from '@/pages/problems/ProblemListPage'
 import { ChangeListPage } from '@/pages/changes/ChangeListPage'
 import { CreateChangePage } from '@/pages/changes/CreateChangePage'
+import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
 import { RequestListPage } from '@/pages/requests/RequestListPage'
 import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestPage'
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
@@ -66,6 +67,7 @@ const router = createBrowserRouter([
       { path: 'problems',          element: <ProblemListPage />,         errorElement: <RouteError /> },
       { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
       { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },
+      { path: 'changes/:id',       element: <ChangeDetailPage />,        errorElement: <RouteError /> },
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
       { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
       { path: 'cmdb',              element: <CMDBPage />,                errorElement: <RouteError /> },

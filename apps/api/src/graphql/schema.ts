@@ -35,6 +35,7 @@ export const typeDefs = `#graphql
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
     incidentAvailableTransitions(incidentId: ID!): [WorkflowTransition!]!
     workflowDefinition(entityType: String!): WorkflowDefinition
+    workflowDefinitions(entityType: String): [WorkflowDefinition!]!
   }
 
   type AuthPayload {
@@ -69,6 +70,25 @@ export const typeDefs = `#graphql
     rejectChange(id: ID!, reason: String!): Change!
     deployChange(id: ID!): Change!
     failChange(id: ID!, reason: String!): Change!
+    addAffectedCIToChange(changeId: ID!, ciId: ID!): Change!
+    removeAffectedCIFromChange(changeId: ID!, ciId: ID!, reason: String!): Change!
+    addChangeComment(changeId: ID!, text: String!): ChangeComment!
+    saveDeploySteps(changeId: ID!, steps: [CreateDeployStepInput!]!): Change!
+    saveChangeValidation(changeId: ID!, scheduledStart: String!, scheduledEnd: String!): Change!
+    updateAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): AssessmentTask!
+    completeAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): AssessmentTask!
+    rejectAssessmentTask(taskId: ID!, reason: String!): AssessmentTask!
+    assignDeployStepToTeam(stepId: ID!, teamId: ID!): DeployStep!
+    assignDeployStepToUser(stepId: ID!, userId: ID!): DeployStep!
+    assignDeployStepValidationTeam(stepId: ID!, teamId: ID!): DeployStep!
+    assignDeployStepValidationUser(stepId: ID!, userId: ID!): DeployStep!
+    updateDeployStepStatus(stepId: ID!, status: String!, notes: String, skipReason: String): DeployStep!
+    updateDeployStepValidation(stepId: ID!, status: String!, notes: String): DeployStep!
+    executeChangeTransition(instanceId: ID!, toStep: String!, notes: String): TransitionResult!
+    completeChangeValidation(changeId: ID!, notes: String): ChangeValidation!
+    failChangeValidation(changeId: ID!): ChangeValidation!
+    assignAssessmentTaskTeam(taskId: ID!, teamId: ID!): AssessmentTask!
+    assignAssessmentTaskUser(taskId: ID!, userId: ID!): AssessmentTask!
 
     # Service Requests
     createServiceRequest(input: CreateServiceRequestInput!): ServiceRequest!
@@ -154,20 +174,93 @@ export const typeDefs = `#graphql
   }
 
   type Change {
-    id: ID!
-    tenantId: String!
-    title: String!
-    description: String
-    type: String!
-    risk: String!
-    status: String!
-    windowStart: String!
-    windowEnd: String!
+    id:             ID!
+    tenantId:       String!
+    title:          String!
+    description:    String
+    type:           String!
+    priority:       String!
+    status:         String!
+    rollbackPlan:   String!
+    scheduledStart: String
+    scheduledEnd:   String
+    implementedAt:  String
+    createdAt:      String!
+    updatedAt:      String!
+    assignedTeam:       Team
+    assignee:           User
+    affectedCIs:        [ConfigurationItem!]!
+    relatedIncidents:   [Incident!]!
+    deploySteps:        [DeployStep!]!
+    assessmentTasks:    [AssessmentTask!]!
+    validation:         ChangeValidation
+    workflowInstance:   WorkflowInstance
+    availableTransitions: [WorkflowTransition!]!
+    workflowHistory:    [WorkflowStepExecution!]!
+    createdBy:          User
+    comments:           [ChangeComment!]!
+  }
+
+  type ChangeComment {
+    id:        ID!
+    changeId:  String!
+    text:      String!
+    type:      String!
+    createdBy: User
     createdAt: String!
-    updatedAt: String!
-    impactedCIs: [ConfigurationItem!]!
-    relatedProblem: Problem
-    causedIncidents: [Incident!]!
+  }
+
+  type DeployStep {
+    id:               ID!
+    changeId:         String!
+    order:            Int!
+    title:            String!
+    description:      String
+    status:           String!
+    scheduledStart:   String!
+    durationDays:     Int!
+    scheduledEnd:     String!
+    hasValidation:    Boolean!
+    validationStart:  String
+    validationEnd:    String
+    validationStatus: String
+    validationNotes:  String
+    skipReason:       String
+    notes:            String
+    completedAt:      String
+    createdAt:        String!
+    assignedTeam:     Team
+    assignee:         User
+    validationTeam:   Team
+    validationUser:   User
+  }
+
+  type AssessmentTask {
+    id:                ID!
+    changeId:          String!
+    status:            String!
+    riskLevel:         String
+    impactDescription: String
+    mitigation:        String
+    notes:             String
+    completedAt:       String
+    createdAt:         String!
+    ci:                ConfigurationItem
+    assignedTeam:      Team
+    assignee:          User
+  }
+
+  type ChangeValidation {
+    id:             ID!
+    changeId:       String!
+    type:           String!
+    scheduledStart: String!
+    scheduledEnd:   String!
+    status:         String!
+    notes:          String
+    completedAt:    String
+    assignedTeam:   Team
+    assignee:       User
   }
 
   type ServiceRequest {
@@ -262,13 +355,35 @@ export const typeDefs = `#graphql
   }
 
   input CreateChangeInput {
-    title: String!
-    description: String
-    type: String!
-    risk: String!
-    windowStart: String!
-    windowEnd: String!
-    impactedCIIds: [ID!]
+    title:              String!
+    description:        String
+    type:               String!
+    priority:           String!
+    rollbackPlan:       String!
+    affectedCIIds:      [ID!]
+    relatedIncidentIds: [ID!]
+  }
+
+  input CreateDeployStepInput {
+    order:            Int!
+    title:            String!
+    description:      String
+    scheduledStart:   String!
+    durationDays:     Int!
+    hasValidation:    Boolean!
+    validationStart:  String
+    validationEnd:    String
+    assignedTeamId:   ID
+    validationTeamId: ID
+  }
+
+  input UpdateAssessmentTaskInput {
+    riskLevel:         String!
+    impactDescription: String!
+    mitigation:        String
+    notes:             String
+    assignedTeamId:    ID
+    assignedUserId:    ID
   }
 
   input UpdateServiceRequestInput {

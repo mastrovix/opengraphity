@@ -68,15 +68,15 @@ export const GET_PROBLEMS = gql`
 `
 
 export const GET_CHANGES = gql`
-  query GetChanges($status: String, $limit: Int, $offset: Int) {
-    changes(status: $status, limit: $limit, offset: $offset) {
-      id
-      title
-      type
-      risk
-      status
-      windowStart
-      windowEnd
+  query GetChanges($status: String, $type: String) {
+    changes(status: $status, type: $type, limit: 50, offset: 0) {
+      id title type priority status
+      scheduledStart scheduledEnd
+      createdAt updatedAt
+      assignedTeam { id name }
+      assignee { id name }
+      affectedCIs { id name type }
+      workflowInstance { id currentStep status }
     }
   }
 `
@@ -147,9 +147,65 @@ export const GET_CI_DETAIL = gql`
   }
 `
 
+export const GET_CHANGE = gql`
+  query GetChange($id: ID!) {
+    change(id: $id) {
+      id title description type priority status
+      rollbackPlan scheduledStart scheduledEnd
+      implementedAt createdAt updatedAt
+      assignedTeam { id name }
+      assignee { id name email }
+      createdBy { id name email }
+      affectedCIs { id name type status environment }
+      relatedIncidents { id title status severity }
+      workflowInstance { id currentStep status }
+      availableTransitions { toStep label requiresInput inputField condition }
+      workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
+      deploySteps {
+        id order title description status
+        scheduledStart durationDays scheduledEnd
+        hasValidation validationStart validationEnd
+        validationStatus validationNotes
+        skipReason notes completedAt
+        assignedTeam { id name }
+        assignee { id name }
+        validationTeam { id name }
+        validationUser { id name }
+      }
+      assessmentTasks {
+        id status riskLevel impactDescription mitigation notes completedAt
+        ci { id name type environment owner { id name } supportGroup { id name } }
+        assignedTeam { id name }
+        assignee { id name }
+      }
+      validation {
+        id type scheduledStart scheduledEnd status notes completedAt
+        assignedTeam { id name }
+        assignee { id name }
+      }
+      comments {
+        id text type createdAt
+        createdBy { id name }
+      }
+    }
+  }
+`
+
 export const GET_WORKFLOW_DEFINITION = gql`
   query GetWorkflowDefinition($entityType: String!) {
     workflowDefinition(entityType: $entityType) {
+      id name entityType version active
+      steps { id name label type enterActions exitActions }
+      transitions {
+        id fromStepName toStepName trigger label requiresInput inputField condition
+      }
+    }
+  }
+`
+
+export const GET_WORKFLOW_DEFINITIONS = gql`
+  query GetWorkflowDefinitions($entityType: String) {
+    workflowDefinitions(entityType: $entityType) {
       id name entityType version active
       steps { id name label type enterActions exitActions }
       transitions {
@@ -179,7 +235,7 @@ export const GET_DASHBOARD_STATS = gql`
     openProblems: problems(status: "open", limit: 1000) {
       id
     }
-    pendingChanges: changes(status: "pending_approval", limit: 1000) {
+    pendingChanges: changes(limit: 1000) {
       id
     }
     openRequests: serviceRequests(status: "open", limit: 1000) {

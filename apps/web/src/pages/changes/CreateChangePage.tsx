@@ -1,253 +1,226 @@
 import { useState } from 'react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation } from '@apollo/client/react'
-import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_CHANGES } from '@/graphql/queries'
+import { GET_INCIDENTS, GET_CIS_SEARCH } from '@/graphql/queries'
 
-// ── Shared styles ─────────────────────────────────────────────────────────────
+interface CI { id: string; name: string; type: string; environment: string; status: string }
+interface Incident { id: string; title: string; status: string; severity: string }
 
-const inputBase: React.CSSProperties = {
-  width:           '100%',
-  padding:         '10px 14px',
-  border:          '1px solid #e2e6f0',
-  borderRadius:    6,
-  fontSize:        14,
-  color:           '#0f1629',
-  outline:         'none',
-  backgroundColor: '#ffffff',
-  boxSizing:       'border-box',
-  transition:      'border-color 150ms, box-shadow 150ms',
+const TYPE_NOTES: Record<string, string> = {
+  standard:  'Verrà approvato automaticamente.',
+  normal:    'Richiederà approvazione CAB.',
+  emergency: 'Richiederà approvazione fast-track — solo admin/operator.',
 }
 
-const selectBase: React.CSSProperties = {
-  ...inputBase,
-  appearance:         'none',
-  backgroundImage:    `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat:   'no-repeat',
-  backgroundPosition: 'right 12px center',
-  paddingRight:       36,
-  cursor:             'pointer',
+const labelStyle: React.CSSProperties = {
+  fontSize: 12, fontWeight: 700, color: '#8892a4',
+  textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, display: 'block',
 }
-
-function focusHandlers(hasError: boolean) {
-  return {
-    onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = '#4f46e5'
-      e.currentTarget.style.boxShadow   = '0 0 0 3px #eef2ff'
-    },
-    onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = hasError ? '#dc2626' : '#e2e6f0'
-      e.currentTarget.style.boxShadow   = 'none'
-    },
-  }
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', border: '1px solid #e2e6f0', borderRadius: 7,
+  fontSize: 13, color: '#0f1629', outline: 'none', backgroundColor: '#fafafa',
+  boxSizing: 'border-box',
 }
-
-const RISK_DOT: Record<string, string> = {
-  high:   '#dc2626',
-  medium: '#d97706',
-  low:    '#059669',
+const textareaStyle: React.CSSProperties = {
+  ...inputStyle, resize: 'vertical', minHeight: 80, fontFamily: 'inherit',
 }
-
-const TYPE_DOT: Record<string, string> = {
-  emergency: '#dc2626',
-  normal:    '#0284c7',
-  standard:  '#8892a4',
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export function CreateChangePage() {
   const navigate = useNavigate()
 
-  const [form, setForm] = useState({
-    title:       '',
-    description: '',
-    type:        'normal',
-    risk:        'medium',
-    windowStart: '',
-    windowEnd:   '',
+  const [title, setTitle]             = useState('')
+  const [type, setType]               = useState('normal')
+  const [priority, setPriority]       = useState('medium')
+  const [description, setDescription] = useState('')
+  const [rollbackPlan, setRollback]   = useState('')
+  const [ciSearch, setCiSearch]       = useState('')
+  const [selectedCIs, setSelectedCIs] = useState<CI[]>([])
+  const [selectedIncidents, setSelectedIncidents] = useState<Incident[]>([])
+
+  const { data: cisData } = useQuery<{ configurationItems: CI[] }>(GET_CIS_SEARCH, {
+    variables: { search: ciSearch || null },
+    skip: ciSearch.length < 2,
   })
-  const [submitted, setSubmitted] = useState(false)
+  const { data: incData } = useQuery<{ incidents: Incident[] }>(GET_INCIDENTS)
 
-  const set = (key: string, val: string) => setForm((f) => ({ ...f, [key]: val }))
-
-  const titleError = submitted && !form.title.trim() ? 'This field is required' : ''
-
-  const [createChange, { loading }] = useMutation(CREATE_CHANGE, {
-    refetchQueries: [{ query: GET_CHANGES }],
-    onCompleted: () => { toast.success('Change request submitted'); navigate('/changes') },
-    onError:     (err) => toast.error(err.message),
+  const [createChange, { loading }] = useMutation<{
+    createChange: { id: string; title: string; type: string; status: string; workflowInstance: { id: string; currentStep: string } | null }
+  }>(CREATE_CHANGE, {
+    onCompleted: (data) => {
+      toast.success('Change creato')
+      navigate(`/changes/${data.createChange.id}`)
+    },
+    onError: (e) => toast.error(e.message),
   })
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const valid = title.trim().length > 0 && rollbackPlan.trim().length >= 20
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setSubmitted(true)
-    if (!form.title.trim()) return
-    await createChange({
+    if (!valid) return
+    createChange({
       variables: {
         input: {
-          title:       form.title.trim(),
-          description: form.description || undefined,
-          type:        form.type,
-          risk:        form.risk,
-          windowStart: form.windowStart ? new Date(form.windowStart).toISOString() : undefined,
-          windowEnd:   form.windowEnd   ? new Date(form.windowEnd).toISOString()   : undefined,
+          title:              title.trim(),
+          description:        description.trim() || null,
+          type,
+          priority,
+          rollbackPlan:       rollbackPlan.trim(),
+          affectedCIIds:      selectedCIs.map((c) => c.id),
+          relatedIncidentIds: selectedIncidents.map((i) => i.id),
         },
       },
     })
   }
 
+  const availableCIs = (cisData?.configurationItems ?? []).filter((ci) => !selectedCIs.find((s) => s.id === ci.id))
+  const availableIncidents = (incData?.incidents ?? []).filter((i) => !selectedIncidents.find((s) => s.id === i.id))
+
   return (
-    <div style={{ maxWidth: 680, margin: '0 auto', paddingTop: 32 }}>
-
-      {/* Back link */}
-      <button
-        onClick={() => navigate('/changes')}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#8892a4', marginBottom: 32, padding: 0 }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#4f46e5' }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#8892a4' }}
-      >
-        <ArrowLeft size={14} />
-        Back to changes
-      </button>
-
-      {/* Page header */}
-      <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f1629', letterSpacing: '-0.02em', margin: 0 }}>
-          New Change Request
-        </h1>
-        <p style={{ fontSize: 14, color: '#8892a4', marginTop: 6, marginBottom: 0 }}>
-          Submit a change for review and approval
-        </p>
+    <div style={{ maxWidth: 680, margin: '0 auto' }}>
+      <div style={{ marginBottom: 24 }}>
+        <button
+          onClick={() => navigate('/changes')}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4f46e5', fontSize: 13, padding: 0, marginBottom: 12 }}
+        >
+          ← Torna ai Changes
+        </button>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: 0 }}>Nuovo Change</h1>
       </div>
 
-      {/* Form card */}
-      <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 12, padding: 32 }}>
-        <form onSubmit={handleSubmit} noValidate>
+      <form onSubmit={handleSubmit}>
+        <div style={{ backgroundColor: '#fff', border: '1px solid #e2e6f0', borderRadius: 10, padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
 
           {/* Title */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
-              Title <span style={{ color: '#dc2626' }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => { set('title', e.target.value); if (submitted) setSubmitted(false) }}
-              placeholder="Brief description of the change"
-              style={{ ...inputBase, borderColor: titleError ? '#dc2626' : '#e2e6f0' }}
-              {...focusHandlers(!!titleError)}
-            />
-            {titleError && (
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#dc2626' }}>{titleError}</p>
-            )}
+          <div>
+            <label style={labelStyle}>Titolo *</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} placeholder="Es. Aggiornamento certificati SSL" required />
           </div>
 
-          {/* Type + Risk in grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-
-            {/* Type */}
+          {/* Type + Priority */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
-                Type <span style={{ color: '#dc2626' }}>*</span>
-              </label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: TYPE_DOT[form.type] ?? '#8892a4', pointerEvents: 'none', zIndex: 1 }} />
-                <select value={form.type} onChange={(e) => set('type', e.target.value)} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
-                  <option value="standard">Standard</option>
-                  <option value="normal">Normal</option>
-                  <option value="emergency">Emergency</option>
-                </select>
-              </div>
+              <label style={labelStyle}>Tipo *</label>
+              <select value={type} onChange={(e) => setType(e.target.value)} style={inputStyle}>
+                <option value="standard">Standard</option>
+                <option value="normal">Normal</option>
+                <option value="emergency">Emergency</option>
+              </select>
             </div>
-
-            {/* Risk */}
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
-                Risk <span style={{ color: '#dc2626' }}>*</span>
-              </label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: RISK_DOT[form.risk] ?? '#8892a4', pointerEvents: 'none', zIndex: 1 }} />
-                <select value={form.risk} onChange={(e) => set('risk', e.target.value)} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
+              <label style={labelStyle}>Priorità *</label>
+              <select value={priority} onChange={(e) => setPriority(e.target.value)} style={inputStyle}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
             </div>
-
           </div>
 
-          {/* Intervention window */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
-              Intervention Window
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div>
-                <p style={{ fontSize: 12, color: '#8892a4', margin: '0 0 4px' }}>From</p>
-                <input
-                  type="datetime-local"
-                  value={form.windowStart}
-                  onChange={(e) => set('windowStart', e.target.value)}
-                  style={inputBase}
-                  {...focusHandlers(false)}
-                />
-              </div>
-              <div>
-                <p style={{ fontSize: 12, color: '#8892a4', margin: '0 0 4px' }}>To</p>
-                <input
-                  type="datetime-local"
-                  value={form.windowEnd}
-                  onChange={(e) => set('windowEnd', e.target.value)}
-                  style={inputBase}
-                  {...focusHandlers(false)}
-                />
-              </div>
-            </div>
+          {/* Type note */}
+          <div style={{ backgroundColor: '#f8f9fc', border: '1px solid #e2e6f0', borderRadius: 7, padding: '10px 14px', fontSize: 13, color: '#4a5468' }}>
+            ℹ️ {TYPE_NOTES[type]}
           </div>
 
           {/* Description */}
-          <div style={{ marginBottom: 0 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
-              Description
-            </label>
-            <textarea
-              value={form.description}
-              onChange={(e) => set('description', e.target.value)}
-              placeholder="Describe the change, its scope and expected impact…"
-              rows={4}
-              style={{ ...inputBase, minHeight: 120, resize: 'vertical' }}
-              {...focusHandlers(false)}
-            />
+          <div>
+            <label style={labelStyle}>Descrizione</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} style={textareaStyle} placeholder="Descrizione opzionale…" />
           </div>
 
-          {/* Footer */}
-          <div style={{ borderTop: '1px solid #f1f3f9', marginTop: 32, paddingTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-            <button
-              type="button"
-              onClick={() => navigate('/changes')}
-              style={{ padding: '8px 20px', border: '1px solid #e2e6f0', backgroundColor: '#ffffff', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', color: '#4a5468' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#ffffff' }}
+          {/* Rollback Plan */}
+          <div>
+            <label style={labelStyle}>Piano di Rollback * <span style={{ color: '#8892a4', fontWeight: 400, textTransform: 'none' }}>(min. 20 caratteri)</span></label>
+            <textarea
+              value={rollbackPlan}
+              onChange={(e) => setRollback(e.target.value)}
+              style={{ ...textareaStyle, minHeight: 100, borderColor: rollbackPlan.length > 0 && rollbackPlan.length < 20 ? '#ef4444' : '#e2e6f0' }}
+              placeholder="Descrivi i passi per ripristinare il sistema allo stato precedente…"
+            />
+            {rollbackPlan.length > 0 && rollbackPlan.length < 20 && (
+              <span style={{ fontSize: 12, color: '#ef4444', marginTop: 4, display: 'block' }}>Almeno 20 caratteri richiesti ({rollbackPlan.length}/20)</span>
+            )}
+          </div>
+
+          {/* CI Affected */}
+          <div>
+            <label style={labelStyle}>CI Impattati</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {selectedCIs.map((ci) => (
+                <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 500 }}>
+                  {ci.name} <span style={{ opacity: 0.7, fontSize: 10 }}>({ci.type})</span>
+                  <button type="button" onClick={() => setSelectedCIs((s) => s.filter((x) => x.id !== ci.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 0, lineHeight: 1, fontSize: 14 }}>×</button>
+                </span>
+              ))}
+            </div>
+            <input
+              value={ciSearch}
+              onChange={(e) => setCiSearch(e.target.value)}
+              style={inputStyle}
+              placeholder="Cerca CI per nome…"
+            />
+            {availableCIs.length > 0 && (
+              <div style={{ border: '1px solid #e2e6f0', borderRadius: 7, marginTop: 4, backgroundColor: '#fff', maxHeight: 180, overflowY: 'auto' }}>
+                {availableCIs.map((ci) => (
+                  <div
+                    key={ci.id}
+                    onClick={() => { setSelectedCIs((s) => [...s, ci]); setCiSearch('') }}
+                    style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f3f8', fontSize: 13 }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#f8f9fc' }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '' }}
+                  >
+                    <span style={{ fontWeight: 500 }}>{ci.name}</span>
+                    <span style={{ color: '#8892a4', fontSize: 11, marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Related Incidents */}
+          <div>
+            <label style={labelStyle}>Incident Correlati</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {selectedIncidents.map((inc) => (
+                <span key={inc.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#fef2f2', color: '#dc2626', padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 500 }}>
+                  {inc.title.slice(0, 30)}{inc.title.length > 30 ? '…' : ''}
+                  <button type="button" onClick={() => setSelectedIncidents((s) => s.filter((x) => x.id !== inc.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 0, lineHeight: 1, fontSize: 14 }}>×</button>
+                </span>
+              ))}
+            </div>
+            <select
+              onChange={(e) => {
+                const inc = availableIncidents.find((i) => i.id === e.target.value)
+                if (inc) { setSelectedIncidents((s) => [...s, inc]); e.target.value = '' }
+              }}
+              style={inputStyle}
+              defaultValue=""
             >
-              Cancel
-            </button>
+              <option value="" disabled>Seleziona incident da collegare…</option>
+              {availableIncidents.map((inc) => (
+                <option key={inc.id} value={inc.id}>{inc.title}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Submit */}
+          <div style={{ display: 'flex', gap: 12, paddingTop: 4 }}>
             <button
               type="submit"
-              disabled={loading}
-              style={{ padding: '8px 20px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}
-              onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = '#4338ca' }}
-              onMouseLeave={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = '#4f46e5' }}
+              disabled={!valid || loading}
+              style={{ flex: 1, padding: '10px 0', backgroundColor: valid && !loading ? '#4f46e5' : '#e2e6f0', color: valid && !loading ? '#fff' : '#8892a4', border: 'none', borderRadius: 7, fontSize: 14, fontWeight: 600, cursor: valid && !loading ? 'pointer' : 'not-allowed' }}
             >
-              {loading ? 'Submitting…' : 'Submit Change'}
+              {loading ? 'Creazione…' : 'Crea Change'}
+            </button>
+            <button type="button" onClick={() => navigate('/changes')} style={{ padding: '10px 20px', backgroundColor: '#fff', color: '#4a5468', border: '1px solid #e2e6f0', borderRadius: 7, fontSize: 14, cursor: 'pointer' }}>
+              Annulla
             </button>
           </div>
-
-        </form>
-      </div>
+        </div>
+      </form>
     </div>
   )
 }

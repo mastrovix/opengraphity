@@ -19,6 +19,7 @@ export class WorkflowEngine {
     tenantId: string,
     entityId: string,
     entityType: string,
+    definitionId?: string,
   ): Promise<WorkflowInstance> {
     const instanceId = uuidv4()
     const execId     = uuidv4()
@@ -32,10 +33,11 @@ export class WorkflowEngine {
           entity_type: $entityType,
           active:      true
         })
+        WHERE $definitionId IS NULL OR wd.id = $definitionId
         MATCH (wd)-[:HAS_STEP]->(startStep:WorkflowStep {type: 'start'})
         RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName
         LIMIT 1
-      `, { tenantId, entityType })
+      `, { tenantId, entityType, definitionId: definitionId ?? null })
 
       if (defResult.records.length === 0) {
         throw new Error(`No active workflow definition for "${entityType}" in tenant "${tenantId}"`)

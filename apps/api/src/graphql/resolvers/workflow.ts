@@ -155,6 +155,70 @@ async function workflowDefinition(
   })
 }
 
+async function workflowDefinitions(
+  _: unknown,
+  { entityType }: { entityType?: string | null },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const defResult = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, active: true})
+        WHERE $entityType IS NULL OR wd.entity_type = $entityType
+        MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+        RETURN wd, collect(s) AS steps
+      `, { tenantId: ctx.tenantId, entityType: entityType ?? null }),
+    )
+    if (!defResult.records.length) return []
+
+    const results = []
+    for (const record of defResult.records) {
+      const wd    = record.get('wd').properties    as Record<string, unknown>
+      const steps = record.get('steps') as Array<{ properties: Record<string, unknown> }>
+
+      const trResult = await session.executeRead((tx) =>
+        tx.run(`
+          MATCH (wd:WorkflowDefinition {id: $defId})
+          MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
+          RETURN from.name AS fromStep, to.name AS toStep,
+                 tr.id AS id, tr.trigger AS trigger, tr.label AS label,
+                 tr.requires_input AS requiresInput,
+                 tr.input_field AS inputField,
+                 tr.condition AS condition
+        `, { defId: wd['id'] }),
+      )
+
+      results.push({
+        id:         wd['id']          as string,
+        name:       wd['name']        as string,
+        entityType: wd['entity_type'] as string,
+        version:    wd['version']     as number,
+        active:     wd['active']      as boolean,
+        steps: steps.map((s) => ({
+          id:           s.properties['id']             as string,
+          name:         s.properties['name']           as string,
+          label:        s.properties['label']          as string,
+          type:         s.properties['type']           as string,
+          enterActions: (s.properties['enter_actions'] ?? null) as string | null,
+          exitActions:  (s.properties['exit_actions']  ?? null) as string | null,
+        })),
+        transitions: trResult.records.map((r) => ({
+          id:            r.get('id')            as string,
+          fromStepName:  r.get('fromStep')      as string,
+          toStepName:    r.get('toStep')        as string,
+          trigger:       r.get('trigger')       as string,
+          label:         r.get('label')         as string,
+          requiresInput: r.get('requiresInput') as boolean,
+          inputField:    (r.get('inputField')   ?? null) as string | null,
+          condition:     (r.get('condition')    ?? null) as string | null,
+        })),
+      })
+    }
+
+    return results
+  })
+}
+
 // ── Mutation resolvers ────────────────────────────────────────────────────────
 
 async function updateWorkflowStep(
@@ -314,6 +378,7 @@ export const workflowResolvers = {
     incidentAvailableTransitions,
     incidentWorkflowHistory,
     workflowDefinition,
+    workflowDefinitions,
   },
   Mutation: {
     updateWorkflowStep,

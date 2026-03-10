@@ -11,7 +11,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "seed:change": "tsx src/seed-change-runner.ts"
   },
   "dependencies": {
     "@opengraphity/neo4j": "workspace:*",

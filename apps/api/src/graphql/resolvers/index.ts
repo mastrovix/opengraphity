@@ -75,6 +75,11 @@ export const resolvers = {
     ...teamResolvers.ConfigurationItem,
   },
   Problem:             problemResolvers.Problem,
-  Change:              changeResolvers.Change,
+  Change: {
+    ...changeResolvers.Change,
+  },
+  DeployStep:     {},
+  AssessmentTask: {},
+  ChangeValidation: {},
   ServiceRequest:      serviceRequestResolvers.ServiceRequest,
 }

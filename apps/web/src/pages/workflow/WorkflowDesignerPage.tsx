@@ -18,7 +18,7 @@ import {
   ConnectionMode,
 } from '@xyflow/react'
 import type { NodeProps, EdgeProps, Node, Edge } from '@xyflow/react'
-import { GET_WORKFLOW_DEFINITION } from '@/graphql/queries'
+import { GET_WORKFLOW_DEFINITIONS } from '@/graphql/queries'
 import { UPDATE_WORKFLOW_STEP, UPDATE_WORKFLOW_TRANSITION } from '@/graphql/mutations'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -53,28 +53,67 @@ interface WorkflowDefinition {
   transitions: WFTransition[]
 }
 
-type StepNodeData = { step: WFStep }
+type WorkflowKey = 'incident' | 'standard' | 'normal' | 'emergency'
+type StepNodeData = { step: WFStep; accentColor: string }
 type EdgeNodeData  = { transition: WFTransition; color: string }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Workflow Colors ────────────────────────────────────────────────────────────
 
-const STEP_POSITIONS: Record<string, { x: number; y: number }> = {
-  new:         { x: 0,    y: 280 },  // riga centrale
-  assigned:    { x: 280,  y: 280 },  // riga centrale
-  in_progress: { x: 560,  y: 280 },  // riga centrale
-  escalated:   { x: 840,  y: 0   },  // sopra
-  pending:     { x: 560,  y: 560 },  // sotto
-  resolved:    { x: 1120, y: 280 },  // riga centrale
-  closed:      { x: 1400, y: 280 },  // riga centrale
+const WORKFLOW_COLORS: Record<WorkflowKey, string> = {
+  incident:  '#4F46E5',
+  standard:  '#059669',
+  normal:    '#7C3AED',
+  emergency: '#D97706',
 }
 
-const BACK_TRANSITIONS = new Set([
-  'pending→in_progress',
-  'escalated→in_progress',
-  'resolved→in_progress',
-])
+// ── Per-workflow positions ─────────────────────────────────────────────────────
 
-const EDGE_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
+const INCIDENT_POSITIONS: Record<string, { x: number; y: number }> = {
+  new:         { x: 0,    y: 280 },
+  assigned:    { x: 280,  y: 280 },
+  in_progress: { x: 560,  y: 280 },
+  escalated:   { x: 840,  y: 0   },
+  pending:     { x: 560,  y: 560 },
+  resolved:    { x: 1120, y: 280 },
+  closed:      { x: 1400, y: 280 },
+}
+
+const STANDARD_POSITIONS: Record<string, { x: number; y: number }> = {
+  draft:      { x: 0,    y: 280 },
+  approved:   { x: 280,  y: 280 },
+  scheduled:  { x: 560,  y: 280 },
+  validation: { x: 840,  y: 280 },
+  deployment: { x: 1120, y: 280 },
+  completed:  { x: 1400, y: 280 },
+  failed:     { x: 1120, y: 560 },
+}
+
+const NORMAL_POSITIONS: Record<string, { x: number; y: number }> = {
+  draft:        { x: 0,    y: 280 },
+  assessment:   { x: 280,  y: 280 },
+  cab_approval: { x: 560,  y: 280 },
+  scheduled:    { x: 840,  y: 280 },
+  validation:   { x: 1120, y: 280 },
+  deployment:   { x: 1400, y: 280 },
+  completed:    { x: 1680, y: 280 },
+  failed:       { x: 1400, y: 560 },
+  rejected:     { x: 560,  y: 560 },
+}
+
+const EMERGENCY_POSITIONS: Record<string, { x: number; y: number }> = {
+  draft:               { x: 0,    y: 280 },
+  emergency_approval:  { x: 280,  y: 280 },
+  validation:          { x: 560,  y: 280 },
+  deployment:          { x: 840,  y: 280 },
+  completed:           { x: 1120, y: 280 },
+  failed:              { x: 840,  y: 560 },
+  post_review:         { x: 1120, y: 560 },
+  rejected:            { x: 280,  y: 560 },
+}
+
+// ── Per-workflow edge handles ──────────────────────────────────────────────────
+
+const INCIDENT_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
   'new→assigned':                     { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
   'assigned→in_progress':             { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
   'resolved→closed':                  { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
@@ -88,6 +127,52 @@ const EDGE_HANDLES: Record<string, { sourceHandle: string; targetHandle: string 
   'resolved→in_progress':             { sourceHandle: 'src-left',   targetHandle: 'tgt-right'  },
 }
 
+const STANDARD_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
+  'draft→approved':        { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'approved→scheduled':    { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'scheduled→validation':  { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'validation→deployment': { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'deployment→completed':  { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'deployment→failed':     { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'  },
+}
+
+const NORMAL_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
+  'draft→assessment':         { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'assessment→cab_approval':  { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'assessment→rejected':      { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'    },
+  'cab_approval→scheduled':   { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'cab_approval→rejected':    { sourceHandle: 'src-bottom', targetHandle: 'tgt-left'   },
+  'scheduled→validation':     { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'validation→deployment':    { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'deployment→completed':     { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'deployment→failed':        { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'    },
+  'rejected→draft':           { sourceHandle: 'src-left',   targetHandle: 'tgt-bottom' },
+}
+
+const EMERGENCY_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
+  'draft→emergency_approval':      { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'emergency_approval→validation': { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'emergency_approval→rejected':   { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'  },
+  'validation→deployment':         { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'deployment→completed':          { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'deployment→failed':             { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'  },
+  'failed→post_review':            { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
+  'rejected→draft':                { sourceHandle: 'src-left',   targetHandle: 'tgt-bottom' },
+}
+
+// ── Per-workflow back transitions (dashed) ────────────────────────────────────
+
+const INCIDENT_BACK = new Set(['pending→in_progress', 'escalated→in_progress', 'resolved→in_progress'])
+const CHANGE_BACK   = new Set(['rejected→draft'])
+
+// ── Step node visual ──────────────────────────────────────────────────────────
+
+const STEP_BG: Record<string, string> = {
+  start:    '#ECFDF5',
+  end:      '#F9FAFB',
+  standard: '#FFFFFF',
+}
+
 const TRIGGER_COLOR: Record<string, string> = {
   manual:     '#4F46E5',
   automatic:  '#059669',
@@ -95,57 +180,43 @@ const TRIGGER_COLOR: Record<string, string> = {
   timer:      '#D97706',
 }
 
-const STEP_BORDER: Record<string, string> = {
-  start:    '#059669',
-  end:      '#6B7280',
-  standard: '#4F46E5',
-}
-const STEP_BG: Record<string, string> = {
-  start:    '#ECFDF5',
-  end:      '#F9FAFB',
-  standard: '#FFFFFF',
-}
-
-
 // ── Custom Node ───────────────────────────────────────────────────────────────
 
 const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: NodeProps) {
-  const { step } = data as StepNodeData
+  const { step, accentColor } = data as StepNodeData
   const [hovered, setHovered] = useState(false)
-  const border = STEP_BORDER[step.type] ?? '#4F46E5'
-  const bg     = STEP_BG[step.type]     ?? '#FFFFFF'
+  const bg = STEP_BG[step.type] ?? '#FFFFFF'
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        width:        160,
-        minHeight:    80,
-        padding:      12,
-        borderRadius: 10,
-        border:       `2px solid ${selected ? border : hovered ? border : border + '88'}`,
+        width:           160,
+        minHeight:       80,
+        padding:         12,
+        borderRadius:    10,
+        border:          `2px solid ${selected ? accentColor : hovered ? accentColor : accentColor + '88'}`,
         backgroundColor: bg,
-        boxShadow:    selected ? `0 0 0 3px ${border}33` : '0 2px 8px rgba(0,0,0,0.08)',
-        position:     'relative',
-        transition:   'box-shadow 0.15s, border-color 0.15s',
-        cursor:       'default',
+        boxShadow:       selected ? `0 0 0 3px ${accentColor}33` : '0 2px 8px rgba(0,0,0,0.08)',
+        position:        'relative',
+        transition:      'box-shadow 0.15s, border-color 0.15s',
+        cursor:          'default',
       }}
     >
-      <Handle type="target" position={Position.Top}    id="tgt-top"    style={{ background: '#4F46E5', width: 8, height: 8 }} isConnectable={true} />
-      <Handle type="target" position={Position.Bottom} id="tgt-bottom" style={{ background: '#4F46E5', width: 8, height: 8 }} isConnectable={true} />
-      <Handle type="target" position={Position.Left}   id="tgt-left"   style={{ background: '#4F46E5', width: 8, height: 8 }} isConnectable={true} />
-      <Handle type="target" position={Position.Right}  id="tgt-right"  style={{ background: '#4F46E5', width: 8, height: 8 }} isConnectable={true} />
+      <Handle type="target" position={Position.Top}    id="tgt-top"    style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
+      <Handle type="target" position={Position.Bottom} id="tgt-bottom" style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
+      <Handle type="target" position={Position.Left}   id="tgt-left"   style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
+      <Handle type="target" position={Position.Right}  id="tgt-right"  style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
 
-      {/* Type badge */}
       <div style={{
         display:         'inline-block',
         fontSize:        9,
         fontWeight:      700,
         letterSpacing:   '0.07em',
         textTransform:   'uppercase',
-        color:           border,
-        backgroundColor: bg === '#FFFFFF' ? `${border}15` : `${border}22`,
+        color:           accentColor,
+        backgroundColor: bg === '#FFFFFF' ? `${accentColor}15` : `${accentColor}22`,
         padding:         '1px 6px',
         borderRadius:    4,
         marginBottom:    6,
@@ -153,27 +224,24 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         {step.type === 'start' ? 'START' : step.type === 'end' ? 'END' : step.name.replace(/_/g, ' ')}
       </div>
 
-      {/* Label */}
       <div style={{ fontSize: 13, fontWeight: 700, color: '#0f1629', lineHeight: 1.3, marginBottom: 4 }}>
         {step.label}
       </div>
 
-      {/* Name */}
       <div style={{ fontSize: 10, color: '#8892a4', fontFamily: 'monospace' }}>
         {step.name}
       </div>
 
-      {/* Edit icon */}
       {(hovered || selected) && (
-        <div style={{ position: 'absolute', top: 6, right: 6, color: border, opacity: 0.7 }}>
+        <div style={{ position: 'absolute', top: 6, right: 6, color: accentColor, opacity: 0.7 }}>
           <Pencil size={12} />
         </div>
       )}
 
-      <Handle type="source" position={Position.Top}    id="src-top"    style={{ background: '#4F46E5', width: 8, height: 8 }} isConnectable={true} />
-      <Handle type="source" position={Position.Bottom} id="src-bottom" style={{ background: '#4F46E5', width: 8, height: 8 }} isConnectable={true} />
-      <Handle type="source" position={Position.Left}   id="src-left"   style={{ background: '#4F46E5', width: 8, height: 8 }} isConnectable={true} />
-      <Handle type="source" position={Position.Right}  id="src-right"  style={{ background: '#4F46E5', width: 8, height: 8 }} isConnectable={true} />
+      <Handle type="source" position={Position.Top}    id="src-top"    style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
+      <Handle type="source" position={Position.Bottom} id="src-bottom" style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
+      <Handle type="source" position={Position.Left}   id="src-left"   style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
+      <Handle type="source" position={Position.Right}  id="src-right"  style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
     </div>
   )
 })
@@ -273,11 +341,7 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
       <PanelHeader title="Modifica Step" onClose={onClose} />
 
       <PanelField label="Label">
-        <input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          style={inputStyle}
-        />
+        <input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
       </PanelField>
 
       <PanelField label="Name">
@@ -361,11 +425,7 @@ function EdgePanel({ transition, definitionId, onClose, onSaved }: EdgePanelProp
 
       {requiresInput && (
         <PanelField label="Input Field">
-          <select
-            value={inputField}
-            onChange={(e) => setInputField(e.target.value)}
-            style={inputStyle}
-          >
+          <select value={inputField} onChange={(e) => setInputField(e.target.value)} style={inputStyle}>
             <option value="">— nessuno —</option>
             <option value="rootCause">rootCause</option>
             <option value="notes">notes</option>
@@ -385,7 +445,7 @@ function EdgePanel({ transition, definitionId, onClose, onSaved }: EdgePanelProp
           padding:         '2px 8px',
           borderRadius:    4,
           backgroundColor: `${TRIGGER_COLOR[transition.trigger] ?? '#8892a4'}18`,
-          color:           TRIGGER_COLOR[transition.trigger]  ?? '#8892a4',
+          color:           TRIGGER_COLOR[transition.trigger] ?? '#8892a4',
           fontSize:        11,
           fontWeight:      600,
         }}>
@@ -394,15 +454,7 @@ function EdgePanel({ transition, definitionId, onClose, onSaved }: EdgePanelProp
       </PanelField>
 
       <button
-        onClick={() => save({
-          variables: {
-            definitionId,
-            transitionId: transition.id,
-            label,
-            requiresInput,
-            inputField: inputField || null,
-          },
-        })}
+        onClick={() => save({ variables: { definitionId, transitionId: transition.id, label, requiresInput, inputField: inputField || null } })}
         disabled={loading || unchanged}
         style={saveButtonStyle(loading || unchanged)}
       >
@@ -489,13 +541,43 @@ function ActionBadge({ type }: { type: string }) {
   )
 }
 
+// ── Selector labels ───────────────────────────────────────────────────────────
+
+const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
+  incident:  'Incident',
+  standard:  'Standard Change',
+  normal:    'Normal Change',
+  emergency: 'Emergency Change',
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function WorkflowDesignerPage() {
-  const { data, loading } = useQuery<{ workflowDefinition: WorkflowDefinition | null }>(
-    GET_WORKFLOW_DEFINITION,
-    { variables: { entityType: 'incident' } },
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowKey>('incident')
+
+  const entityType = selectedWorkflow === 'incident' ? 'incident' : 'change'
+
+  const { data, loading } = useQuery<{ workflowDefinitions: WorkflowDefinition[] }>(
+    GET_WORKFLOW_DEFINITIONS,
+    { variables: { entityType } },
   )
+
+  console.log('selectedWorkflow:', selectedWorkflow)
+  console.log('entityType:', entityType)
+  console.log('data:', data)
+  console.log('definitions:', data?.workflowDefinitions)
+
+  const workflowName = selectedWorkflow === 'incident' ? null
+    : selectedWorkflow === 'standard' ? 'Standard'
+    : selectedWorkflow === 'normal'   ? 'Normal'
+    : 'Emergency'
+
+  const def = data?.workflowDefinitions?.find((d) =>
+    workflowName ? d.name.includes(workflowName) : true,
+  ) ?? null
+
+  console.log('workflowName:', workflowName)
+  console.log('definition found:', def)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -504,11 +586,23 @@ export function WorkflowDesignerPage() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hasChanges,     setHasChanges]     = useState(false)
 
-  const def = data?.workflowDefinition
-
-  // ── Build nodes / edges from definition ─────────────────────────────────
+  // ── Build nodes / edges from definition ───────────────────────────────────
   useEffect(() => {
     if (!def) return
+
+    const positions = selectedWorkflow === 'incident' ? INCIDENT_POSITIONS
+      : selectedWorkflow === 'standard' ? STANDARD_POSITIONS
+      : selectedWorkflow === 'normal'   ? NORMAL_POSITIONS
+      : EMERGENCY_POSITIONS
+
+    const edgeHandles = selectedWorkflow === 'incident' ? INCIDENT_HANDLES
+      : selectedWorkflow === 'standard' ? STANDARD_HANDLES
+      : selectedWorkflow === 'normal'   ? NORMAL_HANDLES
+      : EMERGENCY_HANDLES
+
+    const backTransitions = selectedWorkflow === 'incident' ? INCIDENT_BACK : CHANGE_BACK
+
+    const accentColor = WORKFLOW_COLORS[selectedWorkflow]
 
     const stepById: Record<string, string> = {}
     def.steps.forEach((s) => { stepById[s.name] = s.id })
@@ -516,16 +610,16 @@ export function WorkflowDesignerPage() {
     const newNodes: Node[] = def.steps.map((step, index) => ({
       id:       step.id,
       type:     'workflowStep',
-      position: STEP_POSITIONS[step.name] ?? { x: index * 220, y: 200 },
-      data:     { step } satisfies StepNodeData,
+      position: positions[step.name] ?? { x: index * 220, y: 200 },
+      data:     { step, accentColor } satisfies StepNodeData,
     }))
 
     const newEdges: Edge[] = def.transitions.map((tr) => {
-      const edgeColor  = TRIGGER_COLOR[tr.trigger] ?? '#4F46E5'
+      const edgeColor  = TRIGGER_COLOR[tr.trigger] ?? accentColor
       const baseKey    = `${tr.fromStepName}→${tr.toStepName}`
       const triggerKey = `${tr.fromStepName}→${tr.toStepName}→${tr.trigger}`
-      const isBack     = BACK_TRANSITIONS.has(baseKey)
-      const handles    = EDGE_HANDLES[triggerKey] ?? EDGE_HANDLES[baseKey] ?? { sourceHandle: 'src-right', targetHandle: 'tgt-left' }
+      const isBack     = backTransitions.has(baseKey)
+      const handles    = edgeHandles[triggerKey] ?? edgeHandles[baseKey] ?? { sourceHandle: 'src-right', targetHandle: 'tgt-left' }
 
       if (isBack) {
         return {
@@ -562,13 +656,14 @@ export function WorkflowDesignerPage() {
 
     setNodes(newNodes)
     setEdges(newEdges)
-  }, [def, setNodes, setEdges])
+    setSelectedNodeId(null)
+    setSelectedEdgeId(null)
+  }, [def, selectedWorkflow, setNodes, setEdges])
 
   // ── Click handlers ────────────────────────────────────────────────────────
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id)
     setSelectedEdgeId(null)
-    // deselect edge visually
     setEdges((es) => es.map((e) => ({ ...e, selected: false })))
   }, [setEdges])
 
@@ -589,13 +684,15 @@ export function WorkflowDesignerPage() {
   const selectedStep = selectedNode ? (selectedNode.data as StepNodeData).step : null
   const selectedTr   = selectedEdge ? (selectedEdge.data as EdgeNodeData).transition : null
 
-  // ── Save callbacks (update local state optimistically) ────────────────────
+  const accentColor = WORKFLOW_COLORS[selectedWorkflow]
+
+  // ── Save callbacks ────────────────────────────────────────────────────────
   function onStepSaved(updated: Partial<WFStep>) {
     if (!selectedStep) return
     setNodes((ns) =>
       ns.map((n) =>
         n.id === selectedNodeId
-          ? { ...n, data: { step: { ...(n.data as StepNodeData).step, ...updated } } }
+          ? { ...n, data: { step: { ...(n.data as StepNodeData).step, ...updated }, accentColor } }
           : n,
       ),
     )
@@ -629,12 +726,36 @@ export function WorkflowDesignerPage() {
         flexShrink:      0,
       }}>
         <div>
-          <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 2 }}>
-            Impostazioni &rsaquo; Workflow &rsaquo; Incident
+          <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 6 }}>
+            Impostazioni &rsaquo; Workflow Designer
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 style={{ fontSize: 18, fontWeight: 700, color: '#0f1629', margin: 0 }}>
-              Workflow Designer — Incident Management
+
+          {/* Workflow selector */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+            {(['incident', 'standard', 'normal', 'emergency'] as WorkflowKey[]).map((wf) => (
+              <button
+                key={wf}
+                onClick={() => { setSelectedWorkflow(wf); setHasChanges(false) }}
+                style={{
+                  padding:         '5px 12px',
+                  borderRadius:    6,
+                  border:          `1.5px solid ${selectedWorkflow === wf ? WORKFLOW_COLORS[wf] : '#e2e6f0'}`,
+                  backgroundColor: selectedWorkflow === wf ? `${WORKFLOW_COLORS[wf]}15` : 'transparent',
+                  color:           selectedWorkflow === wf ? WORKFLOW_COLORS[wf] : '#8892a4',
+                  fontSize:        12,
+                  fontWeight:      600,
+                  cursor:          'pointer',
+                  transition:      'all 0.15s',
+                }}
+              >
+                {WORKFLOW_LABELS[wf]}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+            <h1 style={{ fontSize: 16, fontWeight: 700, color: '#0f1629', margin: 0 }}>
+              {WORKFLOW_LABELS[selectedWorkflow]}
             </h1>
             {def && (
               <span style={{
@@ -642,19 +763,20 @@ export function WorkflowDesignerPage() {
                 fontWeight:      600,
                 padding:         '2px 8px',
                 borderRadius:    100,
-                backgroundColor: '#ecfdf5',
-                color:           '#059669',
+                backgroundColor: `${accentColor}15`,
+                color:           accentColor,
               }}>
                 v{def.version} · Attivo
               </span>
             )}
           </div>
         </div>
+
         <button
           disabled={!hasChanges}
           style={{
             padding:         '8px 18px',
-            backgroundColor: hasChanges ? '#4f46e5' : '#e2e6f0',
+            backgroundColor: hasChanges ? accentColor : '#e2e6f0',
             color:           hasChanges ? '#ffffff' : '#8892a4',
             border:          'none',
             borderRadius:    7,
@@ -695,7 +817,7 @@ export function WorkflowDesignerPage() {
             maxZoom={2}
             edgesFocusable={true}
             edgesReconnectable={true}
-            connectionLineStyle={{ stroke: '#4F46E5', strokeWidth: 2 }}
+            connectionLineStyle={{ stroke: accentColor, strokeWidth: 2 }}
             isValidConnection={() => true}
             connectionMode={ConnectionMode.Loose}
             onReconnect={(oldEdge, newConnection) => {
@@ -729,12 +851,7 @@ export function WorkflowDesignerPage() {
 
         {/* Side Panel */}
         {(selectedStep || selectedTr) && (
-          <div style={{
-            position:  'absolute',
-            top:       16,
-            right:     16,
-            zIndex:    10,
-          }}>
+          <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
             {selectedStep && def && (
               <StepPanel
                 step={selectedStep}
