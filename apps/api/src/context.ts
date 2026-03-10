@@ -22,6 +22,14 @@ export function buildContext(req: express.Request): GraphQLContext {
   const auth = req.headers.authorization
 
   if (!auth?.startsWith('Bearer ')) {
+    // Allow unauthenticated access for the login mutation
+    const body = req.body as { query?: string; operationName?: string }
+    const isLogin =
+      body?.operationName === 'Login' ||
+      (typeof body?.query === 'string' && /\blogin\s*\(/.test(body.query))
+    if (isLogin) {
+      return { tenantId: '', userId: '', userEmail: '', role: 'viewer' }
+    }
     throw new Error('Unauthorized')
   }
 

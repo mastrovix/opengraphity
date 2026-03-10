@@ -16,13 +16,23 @@ function mapCI(props: Props) {
     environment: props['environment'] as string,
     createdAt:   props['created_at']  as string,
     updatedAt:   props['updated_at']  as string,
+    // optional technical fields
+    ipAddress:   (props['ip_address']  ?? null) as string | null,
+    expiryDate:  (props['expiry_date'] ?? null) as string | null,
+    location:    (props['location']    ?? null) as string | null,
+    vendor:      (props['vendor']      ?? null) as string | null,
+    version:     (props['version']     ?? null) as string | null,
+    port:        (props['port']        ?? null) as number | null,
+    url:         (props['url']         ?? null) as string | null,
+    region:      (props['region']      ?? null) as string | null,
+    notes:       (props['notes']       ?? null) as string | null,
     dependencies: [],
     dependents:   [],
   }
 }
 
-async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>): Promise<T> {
-  const session = getSession()
+async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
+  const session = getSession(undefined, write ? 'WRITE' : 'READ')
   try {
     return await fn(session)
   } finally {
@@ -34,21 +44,23 @@ async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<
 
 async function configurationItems(
   _: unknown,
-  args: { type?: string; limit?: number; offset?: number },
+  args: { type?: string; search?: string; limit?: number; offset?: number },
   ctx: GraphQLContext,
 ) {
-  const { type, limit = 20, offset = 0 } = args
+  const { type, search, limit = 100, offset = 0 } = args
   return withSession(async (session) => {
     const cypher = `
       MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WHERE ($type IS NULL OR ci.type = $type)
+        AND ($search IS NULL OR toLower(ci.name) CONTAINS toLower($search))
       WITH ci ORDER BY ci.name
       SKIP toInteger($offset) LIMIT toInteger($limit)
       RETURN properties(ci) as props
     `
     const rows = await runQuery<{ props: Props }>(session, cypher, {
       tenantId: ctx.tenantId,
-      type: type ?? null,
+      type:     type   ?? null,
+      search:   search ?? null,
       offset,
       limit,
     })
@@ -124,7 +136,7 @@ async function createConfigurationItem(
     const row = rows[0]
     if (!row) throw new Error('Failed to create ConfigurationItem')
     return mapCI(row.props)
-  })
+  }, true)
 
   const event: DomainEvent<{ id: string; type: string; tenant_id: string }> = {
     id:             uuidv4(),
@@ -170,7 +182,65 @@ async function updateConfigurationItem(
     const row = rows[0]
     if (!row) throw new Error('ConfigurationItem not found')
     return mapCI(row.props)
-  })
+  }, true)
+}
+
+async function updateCIFields(
+  _: unknown,
+  args: {
+    id: string
+    input: {
+      name?: string; status?: string; environment?: string
+      ipAddress?: string; location?: string; vendor?: string; version?: string
+      port?: number; url?: string; region?: string; expiryDate?: string; notes?: string
+    }
+  },
+  ctx: GraphQLContext,
+) {
+  const { id, input } = args
+  const now = new Date().toISOString()
+
+  return withSession(async (session) => {
+    const cypher = `
+      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})
+      SET ci += {
+        name:        coalesce($name,       ci.name),
+        status:      coalesce($status,     ci.status),
+        environment: coalesce($environment, ci.environment),
+        ip_address:  coalesce($ipAddress,  ci.ip_address),
+        location:    coalesce($location,   ci.location),
+        vendor:      coalesce($vendor,     ci.vendor),
+        version:     coalesce($version,    ci.version),
+        port:        coalesce($port,       ci.port),
+        url:         coalesce($url,        ci.url),
+        region:      coalesce($region,     ci.region),
+        expiry_date: coalesce($expiryDate, ci.expiry_date),
+        notes:       coalesce($notes,      ci.notes),
+        updated_at:  $now
+      }
+      RETURN properties(ci) as props
+    `
+    const rows = await runQuery<{ props: Props }>(session, cypher, {
+      id,
+      tenantId:    ctx.tenantId,
+      name:        input.name        ?? null,
+      status:      input.status      ?? null,
+      environment: input.environment ?? null,
+      ipAddress:   input.ipAddress   ?? null,
+      location:    input.location    ?? null,
+      vendor:      input.vendor      ?? null,
+      version:     input.version     ?? null,
+      port:        input.port        ?? null,
+      url:         input.url         ?? null,
+      region:      input.region      ?? null,
+      expiryDate:  input.expiryDate  ?? null,
+      notes:       input.notes       ?? null,
+      now,
+    })
+    const row = rows[0]
+    if (!row) throw new Error('ConfigurationItem not found')
+    return mapCI(row.props)
+  }, true)
 }
 
 async function addCIDependency(
@@ -191,7 +261,7 @@ async function addCIDependency(
       fromId: args.fromId, toId: args.toId, type: args.type,
       tenantId: ctx.tenantId, now,
     })
-  })
+  }, true)
 
   const event: DomainEvent<{ from_id: string; to_id: string; type: string }> = {
     id:             uuidv4(),
@@ -243,13 +313,50 @@ async function ciDependents(
   })
 }
 
+async function ciDependenciesWithType(
+  parent: { id: string; tenantId: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const cypher = `
+      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})-[r]->(d:ConfigurationItem)
+      RETURN properties(d) as props, type(r) as relationType
+    `
+    const rows = await runQuery<{ props: Props; relationType: string }>(session, cypher, {
+      id: parent.id, tenantId: ctx.tenantId,
+    })
+    return rows.map((r) => ({ ci: mapCI(r.props), relationType: r.relationType }))
+  })
+}
+
+async function ciDependentsWithType(
+  parent: { id: string; tenantId: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const cypher = `
+      MATCH (d:ConfigurationItem)-[r]->(ci:ConfigurationItem {id: $id})
+      WHERE ci.tenant_id = $tenantId
+      RETURN properties(d) as props, type(r) as relationType
+    `
+    const rows = await runQuery<{ props: Props; relationType: string }>(session, cypher, {
+      id: parent.id, tenantId: ctx.tenantId,
+    })
+    return rows.map((r) => ({ ci: mapCI(r.props), relationType: r.relationType }))
+  })
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const cmdbResolvers = {
   Query:   { configurationItems, configurationItem, blastRadius },
-  Mutation: { createConfigurationItem, updateConfigurationItem, addCIDependency },
+  Mutation: { createConfigurationItem, updateConfigurationItem, updateCIFields, addCIDependency },
   ConfigurationItem: {
-    dependencies: ciDependencies,
-    dependents:   ciDependents,
+    dependencies:         ciDependencies,
+    dependents:           ciDependents,
+    dependenciesWithType: ciDependenciesWithType,
+    dependentsWithType:   ciDependentsWithType,
   },
 }

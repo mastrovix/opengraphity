@@ -18,20 +18,44 @@ export const typeDefs = `#graphql
     serviceRequest(id: ID!): ServiceRequest
 
     # CMDB
-    configurationItems(type: String, limit: Int, offset: Int): [ConfigurationItem!]!
+    configurationItems(type: String, search: String, limit: Int, offset: Int): [ConfigurationItem!]!
     configurationItem(id: ID!): ConfigurationItem
     blastRadius(ciId: ID!, depth: Int): [ConfigurationItem!]!
 
+    # Teams
+    teams: [Team!]!
+    team(id: ID!): Team
+
     # Users
     me: User
+    users: [User!]!
+
+    # Workflow
+    incidentWorkflow(incidentId: ID!): WorkflowInstance
+    incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
+    incidentAvailableTransitions(incidentId: ID!): [WorkflowTransition!]!
+    workflowDefinition(entityType: String!): WorkflowDefinition
+  }
+
+  type AuthPayload {
+    token:     String!
+    expiresAt: String!
+    user:      User!
   }
 
   type Mutation {
+    # Auth
+    login(email: String!, password: String!): AuthPayload!
+
     # Incidents
     createIncident(input: CreateIncidentInput!): Incident!
     updateIncident(id: ID!, input: UpdateIncidentInput!): Incident!
     resolveIncident(id: ID!, rootCause: String): Incident!
-    assignIncident(id: ID!, userId: ID!): Incident!
+    assignIncidentToTeam(id: ID!, teamId: ID!): Incident!
+    assignIncidentToUser(id: ID!, userId: ID!): Incident!
+    addIncidentComment(id: ID!, text: String!): Comment!
+    addAffectedCI(incidentId: ID!, ciId: ID!): Incident!
+    removeAffectedCI(incidentId: ID!, ciId: ID!): Incident!
 
     # Problems
     createProblem(input: CreateProblemInput!): Problem!
@@ -54,7 +78,34 @@ export const typeDefs = `#graphql
     # CMDB
     createConfigurationItem(input: CreateCIInput!): ConfigurationItem!
     updateConfigurationItem(id: ID!, input: UpdateCIInput!): ConfigurationItem!
+    updateCIFields(id: ID!, input: UpdateCIFieldsInput!): ConfigurationItem!
     addCIDependency(fromId: ID!, toId: ID!, type: String!): Boolean!
+
+    # Workflow
+    updateWorkflowStep(
+      definitionId: ID!
+      stepName:     String!
+      label:        String!
+    ): WorkflowStep!
+
+    updateWorkflowTransition(
+      definitionId:  ID!
+      transitionId:  ID!
+      label:         String!
+      requiresInput: Boolean!
+      inputField:    String
+    ): WorkflowTransitionDef!
+
+    executeWorkflowTransition(
+      instanceId: ID!
+      toStep: String!
+      notes: String
+    ): TransitionResult!
+
+    # Teams
+    createTeam(input: CreateTeamInput!): Team!
+    assignCIOwner(ciId: ID!, teamId: ID!): ConfigurationItem!
+    assignCISupportGroup(ciId: ID!, teamId: ID!): ConfigurationItem!
   }
 
   type Incident {
@@ -67,9 +118,23 @@ export const typeDefs = `#graphql
     createdAt: String!
     updatedAt: String!
     resolvedAt: String
+    rootCause: String
     assignee: User
+    assignedTeam: Team
     affectedCIs: [ConfigurationItem!]!
     causedByProblem: Problem
+    workflowInstance:     WorkflowInstance
+    workflowHistory:      [WorkflowStepExecution!]!
+    availableTransitions: [WorkflowTransition!]!
+    comments:             [Comment!]!
+  }
+
+  type Comment {
+    id:        ID!
+    text:      String!
+    author:    User
+    createdAt: String!
+    updatedAt: String!
   }
 
   type Problem {
@@ -120,6 +185,19 @@ export const typeDefs = `#graphql
     assignee: User
   }
 
+  type Team {
+    id: ID!
+    tenantId: String!
+    name: String!
+    description: String
+    createdAt: String!
+  }
+
+  type CIRelation {
+    ci: ConfigurationItem!
+    relationType: String!
+  }
+
   type ConfigurationItem {
     id: ID!
     tenantId: String!
@@ -131,6 +209,19 @@ export const typeDefs = `#graphql
     updatedAt: String!
     dependencies: [ConfigurationItem!]!
     dependents: [ConfigurationItem!]!
+    dependenciesWithType: [CIRelation!]!
+    dependentsWithType: [CIRelation!]!
+    owner: Team
+    supportGroup: Team
+    ipAddress: String
+    location: String
+    vendor: String
+    version: String
+    port: Int
+    url: String
+    region: String
+    expiryDate: String
+    notes: String
   }
 
   type User {
@@ -139,6 +230,7 @@ export const typeDefs = `#graphql
     email: String!
     name: String!
     role: String!
+    teamId: String
   }
 
   input CreateIncidentInput {
@@ -205,5 +297,90 @@ export const typeDefs = `#graphql
     name: String
     status: String
     environment: String
+  }
+
+  input UpdateCIFieldsInput {
+    name: String
+    status: String
+    environment: String
+    ipAddress: String
+    location: String
+    vendor: String
+    version: String
+    port: Int
+    url: String
+    region: String
+    expiryDate: String
+    notes: String
+  }
+
+  # ── Workflow types ─────────────────────────────────────────────────────────
+
+  type WorkflowInstance {
+    id:          ID!
+    currentStep: String!
+    status:      String!
+    createdAt:   String!
+    updatedAt:   String!
+  }
+
+  type WorkflowTransition {
+    toStep:        String!
+    label:         String!
+    requiresInput: Boolean!
+    inputField:    String
+    condition:     String
+  }
+
+  type WorkflowStepExecution {
+    id:          ID!
+    stepName:    String!
+    enteredAt:   String!
+    exitedAt:    String
+    durationMs:  Int
+    triggeredBy: String!
+    triggerType: String!
+    notes:       String
+  }
+
+  type TransitionResult {
+    success:  Boolean!
+    error:    String
+    instance: WorkflowInstance
+  }
+
+  type WorkflowStep {
+    id:           ID!
+    name:         String!
+    label:        String!
+    type:         String!
+    enterActions: String
+    exitActions:  String
+  }
+
+  type WorkflowTransitionDef {
+    id:            ID!
+    fromStepName:  String!
+    toStepName:    String!
+    trigger:       String!
+    label:         String!
+    requiresInput: Boolean!
+    inputField:    String
+    condition:     String
+  }
+
+  type WorkflowDefinition {
+    id:          ID!
+    name:        String!
+    entityType:  String!
+    version:     Int!
+    active:      Boolean!
+    steps:       [WorkflowStep!]!
+    transitions: [WorkflowTransitionDef!]!
+  }
+
+  input CreateTeamInput {
+    name: String!
+    description: String
   }
 `

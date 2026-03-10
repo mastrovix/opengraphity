@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
+import { workflowEngine } from '@opengraphity/workflow'
 import type { DomainEvent, IncidentCreatedPayload, IncidentResolvedPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 
@@ -19,10 +20,13 @@ function mapIncident(props: Props) {
     createdAt:       props['created_at']  as string,
     updatedAt:       props['updated_at']  as string,
     resolvedAt:      props['resolved_at'] as string | undefined,
+    rootCause:       (props['root_cause'] ?? null) as string | null,
     // Populated by field resolvers
     assignee:        null,
+    assignedTeam:    null,
     affectedCIs:     [],
     causedByProblem: null,
+    comments:        [],
   }
 }
 
@@ -160,6 +164,11 @@ async function createIncident(
     }, true)
   }
 
+  // Inizializza istanza workflow
+  await withSession(async (session) => {
+    await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident')
+  }, true)
+
   // Publish domain event
   const event: DomainEvent<IncidentCreatedPayload> = {
     id:             uuidv4(),
@@ -252,30 +261,199 @@ async function resolveIncident(
   return resolved
 }
 
-async function assignIncident(
+async function assignIncidentToTeam(
+  _: unknown,
+  args: { id: string; teamId: string },
+  ctx: GraphQLContext,
+) {
+  if (!args.teamId || !args.teamId.trim()) throw new Error('teamId è obbligatorio')
+  const now = new Date().toISOString()
+
+  return withSession(async (session) => {
+    await session.executeWrite((tx) => tx.run(`
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      OPTIONAL MATCH (i)-[old:ASSIGNED_TO_TEAM]->()
+      DELETE old
+      WITH i
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      CREATE (i)-[:ASSIGNED_TO_TEAM]->(t)
+      SET i.updated_at = $now
+    `, { id: args.id, teamId: args.teamId, tenantId: ctx.tenantId, now }))
+
+    const wiResult = await session.executeRead((tx) => tx.run(`
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      WHERE wi.current_step = 'new'
+      RETURN wi.id AS instanceId
+    `, { id: args.id, tenantId: ctx.tenantId }))
+
+    if (wiResult.records.length > 0) {
+      const instanceId = wiResult.records[0]!.get('instanceId') as string
+      await workflowEngine.transition(
+        session,
+        { instanceId, toStepName: 'assigned', triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato al team ${args.teamId}` },
+        { userId: ctx.userId },
+      )
+    }
+
+    const result = await session.executeRead((tx) => tx.run(
+      `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
+      { id: args.id, tenantId: ctx.tenantId },
+    ))
+    const row = result.records[0]
+    if (!row) throw new Error('Incident not found')
+    return mapIncident(row.get('props') as Props)
+  }, true)
+}
+
+async function assignIncidentToUser(
   _: unknown,
   args: { id: string; userId: string },
   ctx: GraphQLContext,
 ) {
+  if (!args.userId || !args.userId.trim()) throw new Error('userId è obbligatorio')
+  const now = new Date().toISOString()
+
+  return withSession(async (session) => {
+    await session.executeWrite((tx) => tx.run(`
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()
+      DELETE old
+      WITH i
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      CREATE (i)-[:ASSIGNED_TO]->(u)
+      SET i.updated_at = $now
+    `, { id: args.id, userId: args.userId, tenantId: ctx.tenantId, now }))
+
+    const wiResult = await session.executeRead((tx) => tx.run(`
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      WHERE wi.current_step = 'assigned'
+      RETURN wi.id AS instanceId
+    `, { id: args.id, tenantId: ctx.tenantId }))
+
+    if (wiResult.records.length > 0) {
+      const instanceId = wiResult.records[0]!.get('instanceId') as string
+      await workflowEngine.transition(
+        session,
+        { instanceId, toStepName: 'in_progress', triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Preso in carico da user ${args.userId}` },
+        { userId: ctx.userId },
+      )
+    }
+
+    const result = await session.executeRead((tx) => tx.run(
+      `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
+      { id: args.id, tenantId: ctx.tenantId },
+    ))
+    const row = result.records[0]
+    if (!row) throw new Error('Incident not found')
+    return mapIncident(row.get('props') as Props)
+  }, true)
+}
+
+async function addAffectedCI(
+  _: unknown,
+  args: { incidentId: string; ciId: string },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    await session.executeWrite((tx) => tx.run(`
+      MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      MERGE (i)-[:AFFECTED_BY]->(ci)
+      SET i.updated_at = $now
+    `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
+    const r = await session.executeRead((tx) => tx.run(
+      `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
+      { id: args.incidentId, tenantId: ctx.tenantId },
+    ))
+    const row = r.records[0]
+    if (!row) throw new Error('Incident not found')
+    return mapIncident(row.get('props') as Props)
+  }, true)
+}
+
+async function removeAffectedCI(
+  _: unknown,
+  args: { incidentId: string; ciId: string },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    await session.executeWrite((tx) => tx.run(`
+      MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+            -[r:AFFECTED_BY]->(ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      DELETE r
+      SET i.updated_at = $now
+    `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
+    const r = await session.executeRead((tx) => tx.run(
+      `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
+      { id: args.incidentId, tenantId: ctx.tenantId },
+    ))
+    const row = r.records[0]
+    if (!row) throw new Error('Incident not found')
+    return mapIncident(row.get('props') as Props)
+  }, true)
+}
+
+async function addIncidentComment(
+  _: unknown,
+  args: { id: string; text: string },
+  ctx: GraphQLContext,
+) {
+  const commentId = uuidv4()
+  const now       = new Date().toISOString()
+
   return withSession(async (session) => {
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
       MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      MERGE (i)-[:ASSIGNED_TO]->(u)
-      RETURN properties(i) as props
+      CREATE (c:Comment {
+        id:         $commentId,
+        tenant_id:  $tenantId,
+        text:       $text,
+        author_id:  $userId,
+        created_at: $now,
+        updated_at: $now
+      })
+      CREATE (i)-[:HAS_COMMENT]->(c)
+      RETURN properties(c) AS cProps, properties(u) AS uProps
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id:       args.id,
-      tenantId: ctx.tenantId,
-      userId:   args.userId,
+    const rows = await runQuery<{ cProps: Props; uProps: Props }>(session, cypher, {
+      id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, commentId, text: args.text, now,
     })
     const row = rows[0]
-    if (!row) throw new Error('Incident or User not found')
-    return mapIncident(row.props)
+    if (!row) throw new Error('Incident not found')
+    return {
+      id:        row.cProps['id']         as string,
+      text:      row.cProps['text']       as string,
+      createdAt: row.cProps['created_at'] as string,
+      updatedAt: row.cProps['updated_at'] as string,
+      author:    mapUser(row.uProps),
+    }
   }, true)
 }
 
 // ── Field resolvers ──────────────────────────────────────────────────────────
+
+async function incidentAssignedTeam(
+  parent: { id: string; tenantId: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const result = await session.executeRead((tx) => tx.run(`
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(t:Team)
+      RETURN t
+    `, { id: parent.id, tenantId: ctx.tenantId }))
+    if (!result.records.length) return null
+    const t = result.records[0]!.get('t').properties as Record<string, unknown>
+    return {
+      id:          t['id']          as string,
+      tenantId:    t['tenant_id']   as string,
+      name:        t['name']        as string,
+      description: (t['description'] ?? null) as string | null,
+      createdAt:   t['created_at']  as string,
+    }
+  })
+}
 
 async function incidentAssignee(
   parent: { id: string; tenantId: string },
@@ -311,6 +489,31 @@ async function incidentAffectedCIs(
   })
 }
 
+async function incidentComments(
+  parent: { id: string; tenantId: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const cypher = `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_COMMENT]->(c:Comment)
+      OPTIONAL MATCH (u:User {id: c.author_id, tenant_id: $tenantId})
+      RETURN properties(c) AS cProps, properties(u) AS uProps
+      ORDER BY c.created_at ASC
+    `
+    const rows = await runQuery<{ cProps: Props; uProps: Props | null }>(session, cypher, {
+      id: parent.id, tenantId: ctx.tenantId,
+    })
+    return rows.map((r) => ({
+      id:        r.cProps['id']         as string,
+      text:      r.cProps['text']       as string,
+      createdAt: r.cProps['created_at'] as string,
+      updatedAt: r.cProps['updated_at'] as string,
+      author:    r.uProps ? mapUser(r.uProps) : null,
+    }))
+  })
+}
+
 async function incidentCausedByProblem(
   parent: { id: string; tenantId: string },
   _: unknown,
@@ -340,10 +543,12 @@ async function incidentCausedByProblem(
 
 export const incidentResolvers = {
   Query: { incidents, incident },
-  Mutation: { createIncident, updateIncident, resolveIncident, assignIncident },
+  Mutation: { createIncident, updateIncident, resolveIncident, assignIncidentToTeam, assignIncidentToUser, addIncidentComment, addAffectedCI, removeAffectedCI },
   Incident: {
     assignee:        incidentAssignee,
+    assignedTeam:    incidentAssignedTeam,
     affectedCIs:     incidentAffectedCIs,
     causedByProblem: incidentCausedByProblem,
+    comments:        incidentComments,
   },
 }
