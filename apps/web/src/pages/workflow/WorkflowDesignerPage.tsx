@@ -562,11 +562,6 @@ export function WorkflowDesignerPage() {
     { variables: { entityType } },
   )
 
-  console.log('selectedWorkflow:', selectedWorkflow)
-  console.log('entityType:', entityType)
-  console.log('data:', data)
-  console.log('definitions:', data?.workflowDefinitions)
-
   const workflowName = selectedWorkflow === 'incident' ? null
     : selectedWorkflow === 'standard' ? 'Standard'
     : selectedWorkflow === 'normal'   ? 'Normal'
@@ -575,9 +570,6 @@ export function WorkflowDesignerPage() {
   const def = data?.workflowDefinitions?.find((d) =>
     workflowName ? d.name.includes(workflowName) : true,
   ) ?? null
-
-  console.log('workflowName:', workflowName)
-  console.log('definition found:', def)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])

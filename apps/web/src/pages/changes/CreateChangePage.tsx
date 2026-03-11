@@ -1,9 +1,11 @@
-import { useState } from 'react'
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useState, useEffect } from 'react'
+import { useMutation, useQuery, useLazyQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_INCIDENTS, GET_CIS_SEARCH } from '@/graphql/queries'
+import { GET_INCIDENTS, GET_CIS_SEARCH, GET_CHANGE_IMPACT } from '@/graphql/queries'
+import { ImpactPanel } from '@/components/ImpactPanel'
+import type { ImpactAnalysis } from '@/components/ImpactPanel'
 
 interface CI { id: string; name: string; type: string; environment: string; status: string }
 interface Incident { id: string; title: string; status: string; severity: string }
@@ -38,6 +40,14 @@ export function CreateChangePage() {
   const [ciSearch, setCiSearch]       = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CI[]>([])
   const [selectedIncidents, setSelectedIncidents] = useState<Incident[]>([])
+
+  const [getImpact, { data: impactData }] = useLazyQuery<{ changeImpactAnalysis: ImpactAnalysis }>(GET_CHANGE_IMPACT)
+
+  useEffect(() => {
+    if (selectedCIs.length >= 1) {
+      getImpact({ variables: { ciIds: selectedCIs.map((c) => c.id) } })
+    }
+  }, [selectedCIs, getImpact])
 
   const { data: cisData } = useQuery<{ configurationItems: CI[] }>(GET_CIS_SEARCH, {
     variables: { search: ciSearch || null },
@@ -179,6 +189,14 @@ export function CreateChangePage() {
               </div>
             )}
           </div>
+
+          {/* Impact Analysis Preview */}
+          {impactData?.changeImpactAnalysis && (
+            <div>
+              <label style={labelStyle}>Impact Analysis</label>
+              <ImpactPanel analysis={impactData.changeImpactAnalysis} compact={true} />
+            </div>
+          )}
 
           {/* Related Incidents */}
           <div>

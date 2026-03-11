@@ -12,6 +12,7 @@ export const typeDefs = `#graphql
     # Changes
     changes(status: String, type: String, limit: Int, offset: Int): [Change!]!
     change(id: ID!): Change
+    changeImpactAnalysis(ciIds: [ID!]!): ImpactAnalysis!
 
     # Service Requests
     serviceRequests(status: String, priority: String, limit: Int, offset: Int): [ServiceRequest!]!
@@ -199,6 +200,54 @@ export const typeDefs = `#graphql
     workflowHistory:    [WorkflowStepExecution!]!
     createdBy:          User
     comments:           [ChangeComment!]!
+    impactAnalysis:     ImpactAnalysis
+  }
+
+  type ImpactAnalysis {
+    riskScore:     Int!
+    riskLevel:     String!
+    blastRadius:   [ImpactCI!]!
+    openIncidents: [ImpactIncident!]!
+    recentChanges: [ImpactChange!]!
+    breakdown:     ImpactBreakdown!
+  }
+
+  type ImpactCI {
+    id:          String!
+    name:        String!
+    type:        String!
+    environment: String!
+    distance:    Int!
+  }
+
+  type ImpactIncident {
+    id:        String!
+    title:     String!
+    severity:  String!
+    status:    String!
+    ciName:    String!
+    ciId:      String!
+    createdAt: String!
+    isOpen:    Boolean!
+  }
+
+  type ImpactChange {
+    id:        String!
+    title:     String!
+    type:      String!
+    status:    String!
+    ciName:    String!
+    ciId:      String!
+    createdAt: String!
+  }
+
+  type ImpactBreakdown {
+    productionCIs:  Int!
+    blastRadiusCIs: Int!
+    openIncidents:  Int!
+    failedChanges:  Int!
+    ongoingChanges: Int!
+    scoreDetails:   String!
   }
 
   type ChangeComment {

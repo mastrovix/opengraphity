@@ -187,6 +187,25 @@ export const GET_CHANGE = gql`
         id text type createdAt
         createdBy { id name }
       }
+      impactAnalysis {
+        riskScore riskLevel
+        breakdown { productionCIs blastRadiusCIs openIncidents failedChanges ongoingChanges scoreDetails }
+        blastRadius { id name type environment distance }
+        openIncidents { id title severity status ciName ciId createdAt isOpen }
+        recentChanges { id title type status ciName ciId createdAt }
+      }
+    }
+  }
+`
+
+export const GET_CHANGE_IMPACT = gql`
+  query GetChangeImpact($ciIds: [ID!]!) {
+    changeImpactAnalysis(ciIds: $ciIds) {
+      riskScore riskLevel
+      breakdown { productionCIs blastRadiusCIs openIncidents failedChanges ongoingChanges scoreDetails }
+      blastRadius { id name type environment distance }
+      openIncidents { id title severity status ciName ciId createdAt isOpen }
+      recentChanges { id title type status ciName ciId createdAt }
     }
   }
 `

@@ -1543,10 +1543,189 @@ async function changeComments(parent: { id: string }, _: unknown, ctx: GraphQLCo
   })
 }
 
+// ── Impact Analysis ───────────────────────────────────────────────────────────
+
+type Session = ReturnType<typeof getSession>
+
+async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: string[]) {
+  // 1. Blast radius
+  const blastResult = await session.executeRead((tx) => tx.run(`
+    UNWIND $ciIds AS ciId
+    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
+    MATCH (ci)<-[:DEPENDS_ON|HOSTED_ON*1..5]-(impacted:ConfigurationItem)
+    WHERE impacted.tenant_id = $tenantId
+    AND NOT impacted.id IN $ciIds
+    WITH DISTINCT impacted,
+      MIN(length(shortestPath(
+        (impacted)-[:DEPENDS_ON|HOSTED_ON*1..5]->(ci)
+      ))) AS dist
+    RETURN impacted.id AS id, impacted.name AS name,
+           impacted.type AS type,
+           impacted.environment AS environment,
+           dist AS distance
+    ORDER BY dist ASC, impacted.environment DESC
+  `, { ciIds, tenantId }))
+
+  const blastRadius = blastResult.records.map((r) => ({
+    id:          r.get('id') as string,
+    name:        r.get('name') as string,
+    type:        r.get('type') as string,
+    environment: (r.get('environment') ?? 'unknown') as string,
+    distance:    (r.get('distance') as { toNumber(): number } | null)?.toNumber() ?? 1,
+  }))
+
+  // 2a. Open incidents (any date)
+  const openResult = await session.executeRead((tx) => tx.run(`
+    UNWIND $ciIds AS ciId
+    MATCH (i:Incident {tenant_id: $tenantId})
+          -[:AFFECTED_BY]->(ci:ConfigurationItem {id: ciId})
+    WHERE NOT i.status IN ['resolved', 'closed']
+    RETURN DISTINCT i.id AS id, i.title AS title,
+           i.severity AS severity, i.status AS status,
+           ci.name AS ciName, ci.id AS ciId,
+           i.created_at AS createdAt, true AS isOpen
+    ORDER BY i.created_at DESC
+  `, { ciIds, tenantId }))
+
+  // 2b. Recently resolved incidents (last 30 days)
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const recentIncResult = await session.executeRead((tx) => tx.run(`
+    UNWIND $ciIds AS ciId
+    MATCH (i:Incident {tenant_id: $tenantId})
+          -[:AFFECTED_BY]->(ci:ConfigurationItem {id: ciId})
+    WHERE i.created_at >= $since
+    AND i.status IN ['resolved', 'closed']
+    RETURN DISTINCT i.id AS id, i.title AS title,
+           i.severity AS severity, i.status AS status,
+           ci.name AS ciName, ci.id AS ciId,
+           i.created_at AS createdAt, false AS isOpen
+    ORDER BY i.created_at DESC
+  `, { ciIds, tenantId, since: since30 }))
+
+  const openIncidents = [
+    ...openResult.records,
+    ...recentIncResult.records,
+  ].map((r) => ({
+    id:        r.get('id') as string,
+    title:     r.get('title') as string,
+    severity:  (r.get('severity') ?? 'medium') as string,
+    status:    r.get('status') as string,
+    ciName:    r.get('ciName') as string,
+    ciId:      r.get('ciId') as string,
+    createdAt: r.get('createdAt') as string,
+    isOpen:    r.get('isOpen') as boolean,
+  }))
+
+  const openIncidentsCount = openResult.records.length
+
+  // 3. Recent changes on same CIs (last 60 days)
+  const since60 = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+  const changeResult = await session.executeRead((tx) => tx.run(`
+    UNWIND $ciIds AS ciId
+    MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci:ConfigurationItem {id: ciId})
+    WHERE c.created_at >= $since
+    AND c.status <> 'draft'
+    RETURN c.id AS id, c.title AS title,
+           c.type AS type, c.status AS status,
+           ci.name AS ciName, ci.id AS ciId,
+           c.created_at AS createdAt
+    ORDER BY c.created_at DESC
+    LIMIT 20
+  `, { ciIds, tenantId, since: since60 }))
+
+  const recentChanges = changeResult.records.map((r) => ({
+    id:        r.get('id') as string,
+    title:     r.get('title') as string,
+    type:      r.get('type') as string,
+    status:    r.get('status') as string,
+    ciName:    r.get('ciName') as string,
+    ciId:      r.get('ciId') as string,
+    createdAt: r.get('createdAt') as string,
+  }))
+
+  // 4. Environments of affected CIs
+  const ciResult = await session.executeRead((tx) => tx.run(`
+    UNWIND $ciIds AS ciId
+    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
+    RETURN ci.environment AS env
+  `, { ciIds, tenantId }))
+
+  const affectedEnvs = ciResult.records.map((r) => r.get('env') as string)
+
+  // 5. Risk score
+  const productionCIs  = affectedEnvs.filter((e) => e === 'production').length
+  const blastRadiusCIs = blastRadius.length
+  const failedChanges  = recentChanges.filter((c) => c.status === 'failed').length
+  const ongoingChanges    = recentChanges.filter((c) => !['completed', 'failed', 'rejected', 'draft'].includes(c.status)).length
+
+  let score = 0
+  const details: string[] = []
+
+  const prodScore = productionCIs * 20
+  if (prodScore > 0) { score += prodScore; details.push(`+${prodScore} (${productionCIs} CI in production)`) }
+
+  const blastScore = Math.min(blastRadiusCIs * 10, 40)
+  if (blastScore > 0) { score += blastScore; details.push(`+${blastScore} (${blastRadiusCIs} CI nel blast radius)`) }
+
+  const incidentScore = openIncidentsCount * 15
+  if (incidentScore > 0) { score += incidentScore; details.push(`+${incidentScore} (${openIncidentsCount} incident aperti)`) }
+
+  const failedScore = failedChanges * 10
+  if (failedScore > 0) { score += failedScore; details.push(`+${failedScore} (${failedChanges} change falliti di recente)`) }
+
+  const ongoingScore = ongoingChanges * 5
+  if (ongoingScore > 0) { score += ongoingScore; details.push(`+${ongoingScore} (${ongoingChanges} change in corso)`) }
+
+  const riskLevel =
+    score >= 76 ? 'critical' :
+    score >= 51 ? 'high' :
+    score >= 26 ? 'medium' : 'low'
+
+  return {
+    riskScore: score,
+    riskLevel,
+    blastRadius,
+    openIncidents,
+    recentChanges,
+    breakdown: {
+      productionCIs,
+      blastRadiusCIs,
+      openIncidents: openIncidentsCount,
+      failedChanges,
+      ongoingChanges,
+      scoreDetails: details.length > 0 ? details.join(' | ') : 'Nessun fattore di rischio rilevato',
+    },
+  }
+}
+
+async function changeImpactAnalysisQuery(
+  _: unknown,
+  { ciIds }: { ciIds: string[] },
+  ctx: GraphQLContext,
+) {
+  return withSession((session) => computeImpactAnalysis(session, ctx.tenantId, ciIds))
+}
+
+async function changeImpactAnalysisField(
+  parent: { id: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const r = await session.executeRead((tx) => tx.run(`
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci:ConfigurationItem)
+      RETURN ci.id AS ciId
+    `, { id: parent.id, tenantId: ctx.tenantId }))
+    const ciIds = r.records.map((rec) => rec.get('ciId') as string)
+    if (ciIds.length === 0) return null
+    return computeImpactAnalysis(session, ctx.tenantId, ciIds)
+  })
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const changeResolvers = {
-  Query: { changes, change },
+  Query: { changes, change, changeImpactAnalysis: changeImpactAnalysisQuery },
   Mutation: {
     createChange, approveChange, rejectChange, deployChange, failChange,
     addAffectedCIToChange, removeAffectedCIFromChange, addChangeComment,
@@ -1571,5 +1750,6 @@ export const changeResolvers = {
     workflowHistory:      changeWorkflowHistory,
     createdBy:            changeCreatedBy,
     comments:             changeComments,
+    impactAnalysis:       changeImpactAnalysisField,
   },
 }

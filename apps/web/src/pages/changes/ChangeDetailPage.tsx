@@ -25,6 +25,8 @@ import {
   ASSIGN_DEPLOY_STEP_VALIDATION_TEAM,
   ASSIGN_DEPLOY_STEP_VALIDATION_USER,
 } from '@/graphql/mutations'
+import { ImpactPanel } from '@/components/ImpactPanel'
+import type { ImpactAnalysis } from '@/components/ImpactPanel'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -73,6 +75,7 @@ interface Change {
   assessmentTasks: AssessmentTask[]
   validation: ChangeValidation | null
   comments: ChangeComment[]
+  impactAnalysis: ImpactAnalysis | null
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
@@ -420,6 +423,13 @@ export function ChangeDetailPage() {
               <p style={{ fontSize: 13, color: '#0f1629', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{change.rollbackPlan || '—'}</p>
             </div>
           </div>
+
+          {/* Impact Analysis */}
+          {change.impactAnalysis && change.affectedCIs.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <ImpactPanel analysis={change.impactAnalysis} compact={false} />
+            </div>
+          )}
 
           {/* CI Impattati */}
           <div style={cardStyle}>
