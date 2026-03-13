@@ -309,7 +309,7 @@ async function executeWorkflowTransition(
       { userId: ctx.userId },
     )
 
-    if (result.success && toStep === 'escalated') {
+    if (result.success && (toStep === 'escalated' || toStep === 'resolved')) {
       const wiResult = await session.executeRead((tx) =>
         tx.run(`
           MATCH (wi:WorkflowInstance {id: $instanceId})
@@ -317,30 +317,34 @@ async function executeWorkflowTransition(
           MATCH (i:Incident {id: wi.entity_id, tenant_id: wi.tenant_id})
           OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci:ConfigurationItem)
           OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
+          OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
           RETURN i.id AS id, i.title AS title, i.severity AS severity, i.status AS status,
                  wi.tenant_id AS tenantId,
-                 collect(ci.name)[0] AS ciName, u.name AS assignedTo
+                 collect(DISTINCT ci.name)[0] AS ciName,
+                 u.name AS assignedTo, t.name AS teamName
         `, { instanceId }),
       )
       if (wiResult.records.length > 0) {
-        const r = wiResult.records[0]
-        const escalatedEvent: DomainEvent<IncidentEventPayload> = {
+        const r        = wiResult.records[0]
+        const tenantId = r.get('tenantId') as string
+        const payload: IncidentEventPayload = {
+          id:         r.get('id')                                                    as string,
+          title:      r.get('title')                                                 as string,
+          severity:   r.get('severity')                                              as string,
+          status:     toStep,
+          ciName:     (r.get('ciName')    ?? '—')                                   as string,
+          assignedTo: ((r.get('assignedTo') ?? r.get('teamName') ?? '—') as string),
+        }
+        const domainEvent: DomainEvent<IncidentEventPayload> = {
           id:             uuidv4(),
-          type:           'incident.escalated',
-          tenant_id:      r.get('tenantId') as string,
+          type:           toStep === 'escalated' ? 'incident.escalated' : 'incident.resolved',
+          tenant_id:      tenantId,
           timestamp:      new Date().toISOString(),
           correlation_id: uuidv4(),
           actor_id:       ctx.userId,
-          payload: {
-            id:         r.get('id')         as string,
-            title:      r.get('title')      as string,
-            severity:   r.get('severity')   as string,
-            status:     'escalated',
-            ciName:     (r.get('ciName')    ?? '—') as string,
-            assignedTo: (r.get('assignedTo') ?? '—') as string,
-          },
+          payload,
         }
-        await publish(escalatedEvent)
+        await publish(domainEvent)
       }
     }
 

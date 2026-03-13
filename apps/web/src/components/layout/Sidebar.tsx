@@ -8,6 +8,7 @@ import {
   Server,
   GitBranch,
   Bell,
+  User,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { to: '/cmdb',                   label: 'CMDB',       icon: Server },
   { to: '/workflow/incident',      label: 'Workflow',   icon: GitBranch },
   { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
+  { to: '/settings/profile',       label: 'Profilo',    icon: User },
 ]
 
 interface SidebarProps {

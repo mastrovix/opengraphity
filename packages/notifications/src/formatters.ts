@@ -19,36 +19,53 @@ const SEV_EMOJI: Record<string, string> = {
   critical: '🔴', high: '🟠', medium: '🟡', low: '🟢',
 }
 
+const STATUS_LABEL: Record<NotificationEvent, string> = {
+  assigned:       '👤 Assegnato',
+  escalation:     '⚠️ Escalato',
+  resolved:       '✅ Risolto',
+  sla_breach:     '⏱ SLA Breach',
+  change_approved:'✅ Change Approvata',
+  change_failed:  '❌ Change Fallita',
+}
+
 const APP_URL = process.env['APP_URL'] ?? 'http://localhost:5173'
 
 export function formatSlackIncident(event: NotificationEvent, incident: IncidentData): SlackBlock[] {
-  const emoji = SEV_EMOJI[incident.severity] ?? '⚪'
-  const desc = incident.description
-    ? incident.description.slice(0, 150) + (incident.description.length > 150 ? '…' : '')
-    : '_Nessuna descrizione_'
+  const emoji      = SEV_EMOJI[incident.severity] ?? '⚪'
+  const ciName     = incident.ciNames?.[0] ?? '—'
+  const assignedTo = incident.assigneeName ?? '—'
+  const sevLabel   = (incident.severity ?? '—').toUpperCase()
 
   const blocks: SlackBlock[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `${emoji} ${incident.title}`, emoji: true },
+      text: { type: 'plain_text', text: `${emoji} ${incident.title}` },
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: desc },
-    },
-    {
-      type: 'section',
-      fields: [
-        { type: 'mrkdwn', text: `*Severity:*\n${(incident.severity ?? '—').toUpperCase()}` },
-        { type: 'mrkdwn', text: `*Status:*\n${incident.status ?? '—'}` },
-        { type: 'mrkdwn', text: `*CI Affected:*\n${incident.ciNames?.join(', ') ?? '—'}` },
-        { type: 'mrkdwn', text: `*Assegnato a:*\n${incident.assigneeName ?? '—'}` },
-      ],
+      text: {
+        type: 'mrkdwn',
+        text: [
+          `*Severity:* ${sevLabel}`,
+          `*Status:* ${incident.status ?? '—'}`,
+          `*CI Affected:* ${ciName}`,
+          `*Assegnato a:* ${assignedTo}`,
+        ].join('\n'),
+      },
+      accessory: {
+        type: 'button',
+        text: { type: 'plain_text', text: 'Apri →' },
+        url: `${APP_URL}/incidents/${incident.id}`,
+        action_id: 'open_incident',
+      },
     },
     {
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `ID: \`${incident.id}\` · ${new Date().toLocaleString('it-IT')}` },
+        {
+          type: 'mrkdwn',
+          text: `${STATUS_LABEL[event]}  ·  ${new Date().toLocaleString('it-IT')}`,
+        },
       ],
     },
   ]
@@ -58,21 +75,16 @@ export function formatSlackIncident(event: NotificationEvent, incident: Incident
       type: 'actions',
       elements: [
         {
-          type: 'button', text: { type: 'plain_text', text: '✅ Assegna a me', emoji: true },
-          value: JSON.stringify({ action: 'assign_me', incidentId: incident.id, tenantId: incident.tenantId }),
+          type: 'button',
+          text: { type: 'plain_text', text: 'Assegna a me' },
           action_id: 'assign_me',
+          value: JSON.stringify({ action: 'assign_me', incidentId: incident.id, tenantId: incident.tenantId }),
         },
         {
-          type: 'button', text: { type: 'plain_text', text: '🔺 Escalate', emoji: true },
-          style: 'danger',
-          value: JSON.stringify({ action: 'escalate', incidentId: incident.id, tenantId: incident.tenantId }),
-          action_id: 'escalate',
-        },
-        {
-          type: 'button', text: { type: 'plain_text', text: '✔ Risolvi', emoji: true },
-          style: 'primary',
-          value: JSON.stringify({ action: 'resolve', incidentId: incident.id, tenantId: incident.tenantId }),
+          type: 'button',
+          text: { type: 'plain_text', text: 'Risolvi' },
           action_id: 'resolve',
+          value: JSON.stringify({ action: 'resolve', incidentId: incident.id, tenantId: incident.tenantId }),
         },
       ],
     })

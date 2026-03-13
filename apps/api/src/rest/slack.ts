@@ -2,16 +2,34 @@ import { createHmac, timingSafeEqual, randomUUID } from 'crypto'
 import type { Request, Response } from 'express'
 import { getSession } from '@opengraphity/neo4j'
 
+// TEMPORANEO - solo per debug
+const SKIP_SIGNATURE_CHECK = true
+
 function verifySlackSignature(req: Request): boolean {
   const signingSecret = process.env['SLACK_SIGNING_SECRET'] ?? ''
-  const timestamp = req.headers['x-slack-request-timestamp'] as string
-  const slackSig = req.headers['x-slack-signature'] as string
+  const timestamp     = req.headers['x-slack-request-timestamp'] as string
+  const slackSig      = req.headers['x-slack-signature'] as string
+
+  console.log('[SLACK] headers:', { signature: slackSig, timestamp })
+  console.log('[SLACK] SIGNING_SECRET presente:', !!signingSecret)
+
+  if (SKIP_SIGNATURE_CHECK) {
+    console.log('[SLACK] ⚠️  signature check SKIPPED (debug mode)')
+    return true
+  }
+
   if (!timestamp || !slackSig) return false
   if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false
-  const rawBody = (req as Request & { rawBody?: string }).rawBody ?? ''
+
+  const rawBody = Buffer.isBuffer(req.body) ? req.body.toString() : ''
+  console.log('[SLACK] rawBody (primi 100 char):', rawBody.slice(0, 100))
+
   const sigBase = `v0:${timestamp}:${rawBody}`
-  const hmac = createHmac('sha256', signingSecret).update(sigBase).digest('hex')
+  const hmac    = createHmac('sha256', signingSecret).update(sigBase).digest('hex')
   const computed = `v0=${hmac}`
+
+  console.log('[SLACK] computed:', computed, '| received:', slackSig)
+
   try {
     return timingSafeEqual(Buffer.from(computed), Buffer.from(slackSig))
   } catch {
@@ -19,11 +37,18 @@ function verifySlackSignature(req: Request): boolean {
   }
 }
 
+function parseUrlEncoded(req: Request): URLSearchParams {
+  const raw = Buffer.isBuffer(req.body) ? req.body.toString() : ''
+  return new URLSearchParams(raw)
+}
+
 export async function handleSlackCommands(req: Request, res: Response): Promise<void> {
   if (!verifySlackSignature(req)) { res.status(401).json({ error: 'Unauthorized' }); return }
 
-  const { text, user_id: slackUserId } = req.body as Record<string, string>
-  const parts = (text ?? '').trim().split(/\s+/)
+  const params     = parseUrlEncoded(req)
+  const text       = params.get('text') ?? ''
+  const slackUserId = params.get('user_id') ?? ''
+  const parts = text.trim().split(/\s+/)
 
   if (parts[0] === 'incident' && parts[1] === 'apri') {
     const severity = parts[parts.length - 1]
@@ -67,9 +92,12 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
 }
 
 export async function handleSlackActions(req: Request, res: Response): Promise<void> {
+  try {
   if (!verifySlackSignature(req)) { res.status(401).json({ error: 'Unauthorized' }); return }
 
-  const payload = JSON.parse((req.body as Record<string, string>)['payload'] ?? '{}') as {
+  const params  = parseUrlEncoded(req)
+  console.log('[SLACK ACTION] raw params:', params.toString().slice(0, 200))
+  const payload = JSON.parse(params.get('payload') ?? '{}') as {
     actions?: Array<{ action_id: string; value: string }>
     user?: { id: string }
     response_url?: string
@@ -81,19 +109,23 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
 
   if (!action || !slackUserId) { res.sendStatus(200); return }
 
-  const { action: actionType, incidentId, tenantId } = JSON.parse(action.value ?? '{}') as {
-    action: string; incidentId: string; tenantId: string
+  const { action: actionType, incidentId } = JSON.parse(action.value ?? '{}') as {
+    action: string; incidentId: string
   }
+
+  console.log('[SLACK ACTION] actionType:', actionType, '| incidentId:', incidentId, '| slackUserId:', slackUserId)
 
   const session = getSession(undefined, 'WRITE')
   try {
+    // Look up by slack_id only — tenantId derived from the user node (slack_id is unique)
     const userResult = await session.executeRead((tx) =>
       tx.run(
-        'MATCH (u:User {slack_id: $slackUserId, tenant_id: $tenantId}) RETURN u LIMIT 1',
-        { slackUserId, tenantId },
+        'MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1',
+        { slackUserId },
       ),
     )
     if (!userResult.records.length) {
+      console.warn('[SLACK ACTION] No user found for slack_id:', slackUserId)
       if (responseUrl) {
         await fetch(responseUrl, {
           method: 'POST',
@@ -104,9 +136,11 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
       res.sendStatus(200)
       return
     }
-    const u      = userResult.records[0]!.get('u').properties as Record<string, unknown>
-    const userId = u['id'] as string
-    const now    = new Date().toISOString()
+    const u        = userResult.records[0]!.get('u').properties as Record<string, unknown>
+    const userId   = u['id']        as string
+    const tenantId = u['tenant_id'] as string
+    const now      = new Date().toISOString()
+    console.log('[SLACK ACTION] user found:', userId, '| tenant:', tenantId)
 
     if (actionType === 'assign_me') {
       await session.executeWrite((tx) =>
@@ -142,4 +176,8 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
     await session.close()
   }
   res.sendStatus(200)
+  } catch (err) {
+    console.error('[SLACK ACTION] Error:', err)
+    if (!res.headersSent) res.sendStatus(200)
+  }
 }

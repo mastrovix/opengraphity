@@ -30,6 +30,17 @@ app.use(cors({
 
 app.use(express.json())
 
+// ── Slack routes — express.raw() per-route, dopo express.json() ───────────────
+
+app.post('/api/slack/commands',
+  express.raw({ type: '*/*' }),
+  (req: Request, res: Response) => void handleSlackCommands(req, res),
+)
+app.post('/api/slack/actions',
+  express.raw({ type: '*/*' }),
+  (req: Request, res: Response) => void handleSlackActions(req, res),
+)
+
 app.use(rateLimit({
   windowMs: 15 * 60 * 1_000, // 15 minutes
   max:      100,
@@ -41,14 +52,6 @@ app.use(rateLimit({
 
 app.use('/',    healthRouter)
 app.use('/api', sseRouter)
-
-// Slack routes — raw body capture for signature verification
-app.use('/api/slack', express.raw({ type: 'application/x-www-form-urlencoded' }), (req: Request, _res: Response, next: NextFunction) => {
-  (req as Request & { rawBody?: string }).rawBody = (req.body as Buffer).toString()
-  next()
-})
-app.post('/api/slack/commands', express.urlencoded({ extended: true }), (req: Request, res: Response) => void handleSlackCommands(req, res))
-app.post('/api/slack/actions',  express.urlencoded({ extended: true }), (req: Request, res: Response) => void handleSlackActions(req, res))
 
 // ── Apollo Server ─────────────────────────────────────────────────────────────
 
