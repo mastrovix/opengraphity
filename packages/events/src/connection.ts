@@ -12,6 +12,7 @@ function backoffMs(attempt: number): number {
 
 let _model: ChannelModel | null = null
 let _connectPromise: Promise<ChannelModel> | null = null
+let _closing = false
 
 async function connect(attempt = 1): Promise<ChannelModel> {
   console.log(`[rabbitmq] Connecting to ${RABBITMQ_URL} (attempt ${attempt}/${MAX_ATTEMPTS})`)
@@ -24,9 +25,10 @@ async function connect(attempt = 1): Promise<ChannelModel> {
     })
 
     model.on('close', () => {
-      console.warn('[rabbitmq] Connection closed — scheduling reconnect...')
       _model = null
       _connectPromise = null
+      if (_closing) return
+      console.warn('[rabbitmq] Connection closed — scheduling reconnect...')
       setTimeout(() => {
         getConnection().catch((err: unknown) => {
           console.error('[rabbitmq] Reconnect failed:', err)
@@ -70,6 +72,7 @@ export async function getConnection(): Promise<ChannelModel> {
 
 export async function closeConnection(): Promise<void> {
   if (_model) {
+    _closing = true
     await _model.close()
     _model = null
     _connectPromise = null

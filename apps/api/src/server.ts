@@ -1,4 +1,4 @@
-import express, { type Application } from 'express'
+import express, { type Application, type Request, type Response, type NextFunction } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import { rateLimit } from 'express-rate-limit'
@@ -9,6 +9,7 @@ import { resolvers } from './graphql/resolvers/index.js'
 import { buildContext, type GraphQLContext } from './context.js'
 import { healthRouter } from './rest/health.js'
 import { sseRouter } from './rest/sse.js'
+import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import http from 'http'
 
 const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
@@ -40,6 +41,14 @@ app.use(rateLimit({
 
 app.use('/',    healthRouter)
 app.use('/api', sseRouter)
+
+// Slack routes — raw body capture for signature verification
+app.use('/api/slack', express.raw({ type: 'application/x-www-form-urlencoded' }), (req: Request, _res: Response, next: NextFunction) => {
+  (req as Request & { rawBody?: string }).rawBody = (req.body as Buffer).toString()
+  next()
+})
+app.post('/api/slack/commands', express.urlencoded({ extended: true }), (req: Request, res: Response) => void handleSlackCommands(req, res))
+app.post('/api/slack/actions',  express.urlencoded({ extended: true }), (req: Request, res: Response) => void handleSlackActions(req, res))
 
 // ── Apollo Server ─────────────────────────────────────────────────────────────
 

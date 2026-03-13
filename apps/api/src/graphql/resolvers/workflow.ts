@@ -1,5 +1,9 @@
 import { getSession } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
+import { publish } from '@opengraphity/events'
+import { v4 as uuidv4 } from 'uuid'
+import type { DomainEvent } from '@opengraphity/types'
+import type { IncidentEventPayload } from './incident.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Session = ReturnType<typeof getSession>
@@ -304,6 +308,42 @@ async function executeWorkflowTransition(
       },
       { userId: ctx.userId },
     )
+
+    if (result.success && toStep === 'escalated') {
+      const wiResult = await session.executeRead((tx) =>
+        tx.run(`
+          MATCH (wi:WorkflowInstance {id: $instanceId})
+          WHERE wi.entity_type = 'incident'
+          MATCH (i:Incident {id: wi.entity_id, tenant_id: wi.tenant_id})
+          OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci:ConfigurationItem)
+          OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
+          RETURN i.id AS id, i.title AS title, i.severity AS severity, i.status AS status,
+                 wi.tenant_id AS tenantId,
+                 collect(ci.name)[0] AS ciName, u.name AS assignedTo
+        `, { instanceId }),
+      )
+      if (wiResult.records.length > 0) {
+        const r = wiResult.records[0]
+        const escalatedEvent: DomainEvent<IncidentEventPayload> = {
+          id:             uuidv4(),
+          type:           'incident.escalated',
+          tenant_id:      r.get('tenantId') as string,
+          timestamp:      new Date().toISOString(),
+          correlation_id: uuidv4(),
+          actor_id:       ctx.userId,
+          payload: {
+            id:         r.get('id')         as string,
+            title:      r.get('title')      as string,
+            severity:   r.get('severity')   as string,
+            status:     'escalated',
+            ciName:     (r.get('ciName')    ?? '—') as string,
+            assignedTo: (r.get('assignedTo') ?? '—') as string,
+          },
+        }
+        await publish(escalatedEvent)
+      }
+    }
+
     return {
       success:  result.success,
       error:    result.error ?? null,

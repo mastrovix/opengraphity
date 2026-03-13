@@ -7,18 +7,20 @@ import {
   Inbox,
   Server,
   GitBranch,
+  Bell,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { to: '/dashboard',         label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/incidents',         label: 'Incidents', icon: AlertCircle },
-  { to: '/problems',          label: 'Problems',  icon: Bug },
-  { to: '/changes',           label: 'Changes',   icon: GitPullRequest },
-  { to: '/requests',          label: 'Requests',  icon: Inbox },
-  { to: '/cmdb',              label: 'CMDB',      icon: Server },
-  { to: '/workflow/incident', label: 'Workflow',  icon: GitBranch },
+  { to: '/dashboard',              label: 'Dashboard',  icon: LayoutDashboard },
+  { to: '/incidents',              label: 'Incidents',  icon: AlertCircle },
+  { to: '/problems',               label: 'Problems',   icon: Bug },
+  { to: '/changes',                label: 'Changes',    icon: GitPullRequest },
+  { to: '/requests',               label: 'Requests',   icon: Inbox },
+  { to: '/cmdb',                   label: 'CMDB',       icon: Server },
+  { to: '/workflow/incident',      label: 'Workflow',   icon: GitBranch },
+  { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
 ]
 
 interface SidebarProps {

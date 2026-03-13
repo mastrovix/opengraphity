@@ -31,6 +31,9 @@ export const typeDefs = `#graphql
     me: User
     users: [User!]!
 
+    # Notification Channels
+    notificationChannels: [NotificationChannel!]!
+
     # Workflow
     incidentWorkflow(incidentId: ID!): WorkflowInstance
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
@@ -127,6 +130,15 @@ export const typeDefs = `#graphql
     createTeam(input: CreateTeamInput!): Team!
     assignCIOwner(ciId: ID!, teamId: ID!): ConfigurationItem!
     assignCISupportGroup(ciId: ID!, teamId: ID!): ConfigurationItem!
+
+    # Notification Channels
+    createNotificationChannel(input: CreateNotificationChannelInput!): NotificationChannel!
+    updateNotificationChannel(id: ID!, input: CreateNotificationChannelInput!): NotificationChannel!
+    deleteNotificationChannel(id: ID!): Boolean!
+    testNotificationChannel(id: ID!): Boolean!
+
+    # Slack account linking
+    linkSlackAccount(slackId: String!): User!
   }
 
   type Incident {
@@ -373,6 +385,26 @@ export const typeDefs = `#graphql
     name: String!
     role: String!
     teamId: String
+    slackId: String
+  }
+
+  type NotificationChannel {
+    id: ID!
+    platform: String!
+    name: String!
+    webhookUrl: String
+    channelId: String
+    eventTypes: [String!]!
+    active: Boolean!
+    createdAt: String!
+  }
+
+  input CreateNotificationChannelInput {
+    platform: String!
+    name: String!
+    webhookUrl: String
+    channelId: String
+    eventTypes: [String!]!
   }
 
   input CreateIncidentInput {

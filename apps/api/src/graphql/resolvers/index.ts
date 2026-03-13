@@ -6,6 +6,7 @@ import { changeResolvers } from './change.js'
 import { serviceRequestResolvers } from './service_request.js'
 import { teamResolvers } from './team.js'
 import { workflowResolvers } from './workflow.js'
+import { notificationChannelResolvers } from './notificationChannel.js'
 import type { GraphQLContext } from '../../context.js'
 
 // ── me + users stubs ──────────────────────────────────────────────────────────
@@ -54,6 +55,7 @@ export const resolvers = {
     ...serviceRequestResolvers.Query,
     ...teamResolvers.Query,
     ...workflowResolvers.Query,
+    ...notificationChannelResolvers.Query,
     ...meStub,
   },
   Mutation: {
@@ -65,6 +67,7 @@ export const resolvers = {
     ...serviceRequestResolvers.Mutation,
     ...teamResolvers.Mutation,
     ...workflowResolvers.Mutation,
+    ...notificationChannelResolvers.Mutation,
   },
   Incident: {
     ...incidentResolvers.Incident,

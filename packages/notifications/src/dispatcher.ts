@@ -4,6 +4,7 @@ import type { DomainEvent } from '@opengraphity/types'
 import type {
   IncidentCreatedPayload,
   IncidentResolvedPayload,
+  IncidentEscalatedPayload,
   ChangeApprovedPayload,
   ChangeRejectedPayload,
   SLAWarningPayload,
@@ -13,6 +14,13 @@ import type {
 import { Message } from 'amqplib'
 import { sseManager, InAppNotification } from './sse.js'
 import { sendTeamsCard, TeamsCard } from './teams.js'
+import { dispatchIncidentNotification } from './consumer.js'
+import type { IncidentData } from './formatters.js'
+
+interface EnrichedIncidentPayload {
+  id: string; title: string; severity: string; status: string
+  ciName?: string; assignedTo?: string; resolved_at?: string
+}
 
 type SeverityLevel = InAppNotification['severity']
 
@@ -61,6 +69,38 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
               { name: 'Incident ID', value: p.id },
             ],
           }
+        }
+        break
+      }
+
+      case 'incident.assigned': {
+        const p = event.payload as EnrichedIncidentPayload
+        notification = {
+          id: randomUUID(),
+          type: event.type,
+          title: 'Incident Assegnato',
+          message: `${p.title} — assegnato a ${p.assignedTo !== '—' ? p.assignedTo : 'team'}`,
+          severity: 'info',
+          entity_id: p.id,
+          entity_type: 'incident',
+          timestamp: event.timestamp,
+          read: false,
+        }
+        break
+      }
+
+      case 'incident.escalated': {
+        const p = event.payload as EnrichedIncidentPayload
+        notification = {
+          id: randomUUID(),
+          type: event.type,
+          title: 'Incident Escalato',
+          message: `${p.title} — escalation in corso`,
+          severity: 'warning',
+          entity_id: p.id,
+          entity_type: 'incident',
+          timestamp: event.timestamp,
+          read: false,
         }
         break
       }
@@ -183,6 +223,48 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     if (teamsCard) {
       await sendTeamsCard(teamsCard)
     }
+
+    // ── Slack/Teams channel notifications ────────────────────────────────────
+    await this.dispatchToChannels(event)
+  }
+
+  private async dispatchToChannels(event: DomainEvent<unknown>): Promise<void> {
+    const INCIDENT_EVENT_MAP: Record<string, 'assigned' | 'resolved' | 'escalation' | 'sla_breach'> = {
+      'incident.created':   'assigned',
+      'incident.resolved':  'resolved',
+      'incident.escalated': 'escalation',
+      'incident.assigned':  'assigned',
+    }
+
+    if (event.type === 'sla.breached') {
+      const p = event.payload as SLABreachedPayload
+      if (p.entity_type !== 'incident') return
+      const incident: IncidentData = {
+        id: p.entity_id, title: `SLA breach su incident ${p.entity_id}`,
+        severity: 'high', status: 'open', tenantId: event.tenant_id,
+      }
+      await dispatchIncidentNotification(event.tenant_id, 'sla_breach', incident)
+      return
+    }
+
+    const notifType = INCIDENT_EVENT_MAP[event.type]
+    if (!notifType) return
+
+    const p = event.payload as EnrichedIncidentPayload
+    if (!p.id || !p.title) {
+      console.warn(`[dispatcher] Skipping channel dispatch — missing payload fields for event ${event.type}`)
+      return
+    }
+    const incident: IncidentData = {
+      id:           p.id,
+      title:        p.title,
+      severity:     p.severity,
+      status:       p.status,
+      ciNames:      p.ciName && p.ciName !== '—' ? [p.ciName] : undefined,
+      assigneeName: p.assignedTo && p.assignedTo !== '—' ? p.assignedTo : null,
+      tenantId:     event.tenant_id,
+    }
+    await dispatchIncidentNotification(event.tenant_id, notifType, incident)
   }
 }
 

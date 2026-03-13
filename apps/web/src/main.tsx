@@ -19,6 +19,7 @@ import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestP
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
 import { CMDBDetailPage } from '@/pages/cmdb/CMDBDetailPage'
 import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
+import NotificationsPage from '@/pages/settings/NotificationsPage'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
 
@@ -72,7 +73,8 @@ const router = createBrowserRouter([
       { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
       { path: 'cmdb',              element: <CMDBPage />,                errorElement: <RouteError /> },
       { path: 'cmdb/:id',              element: <CMDBDetailPage />,          errorElement: <RouteError /> },
-      { path: 'workflow/incident',     element: <WorkflowDesignerPage />,    errorElement: <RouteError /> },
+      { path: 'workflow/incident',          element: <WorkflowDesignerPage />,    errorElement: <RouteError /> },
+      { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
     ],
   },
 ])

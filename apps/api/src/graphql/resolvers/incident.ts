@@ -5,6 +5,38 @@ import { workflowEngine } from '@opengraphity/workflow'
 import type { DomainEvent, IncidentCreatedPayload, IncidentResolvedPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 
+export interface IncidentEventPayload {
+  id: string; title: string; severity: string; status: string
+  ciName: string; assignedTo: string
+  resolved_at?: string; affected_ci_ids?: string[]
+}
+
+type Session = ReturnType<typeof getSession>
+
+async function loadIncidentData(session: Session, incidentId: string, tenantId: string): Promise<IncidentEventPayload | null> {
+  const result = await session.executeRead((tx) =>
+    tx.run(`
+      MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+      OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci:ConfigurationItem)
+      OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
+      RETURN i.id AS id, i.title AS title,
+             i.severity AS severity, i.status AS status,
+             collect(ci.name)[0] AS ciName,
+             u.name AS assignedTo
+    `, { incidentId, tenantId }),
+  )
+  if (!result.records.length) return null
+  const r = result.records[0]
+  return {
+    id:         r.get('id')         as string,
+    title:      r.get('title')      as string,
+    severity:   r.get('severity')   as string,
+    status:     r.get('status')     as string,
+    ciName:     (r.get('ciName')    ?? '—') as string,
+    assignedTo: (r.get('assignedTo') ?? '—') as string,
+  }
+}
+
 // ── Mapper ───────────────────────────────────────────────────────────────────
 
 type Props = Record<string, unknown>
@@ -170,20 +202,18 @@ async function createIncident(
   }, true)
 
   // Publish domain event
-  const event: DomainEvent<IncidentCreatedPayload> = {
-    id:             uuidv4(),
-    type:           'incident.created',
-    tenant_id:      ctx.tenantId,
-    timestamp:      now,
-    correlation_id: uuidv4(),
-    actor_id:       ctx.userId,
-    payload: {
-      id,
-      title:           input.title,
-      severity:        input.severity as IncidentCreatedPayload['severity'],
-      affected_ci_ids: input.affectedCIIds ?? [],
-    },
+  const createdPayload: IncidentEventPayload = {
+    id, title: input.title, severity: input.severity, status: 'open',
+    ciName: '—', assignedTo: '—',
+    affected_ci_ids: input.affectedCIIds ?? [],
   }
+  const event: DomainEvent<IncidentEventPayload> = {
+    id: uuidv4(), type: 'incident.created',
+    tenant_id: ctx.tenantId, timestamp: now,
+    correlation_id: uuidv4(), actor_id: ctx.userId,
+    payload: createdPayload,
+  }
+  console.log('[PUBLISH] incident.created payload:', JSON.stringify(createdPayload, null, 2))
   await publish(event)
 
   return created
@@ -247,15 +277,19 @@ async function resolveIncident(
     return mapIncident(row.props)
   }, true)
 
-  const event: DomainEvent<IncidentResolvedPayload> = {
-    id:             uuidv4(),
-    type:           'incident.resolved',
-    tenant_id:      ctx.tenantId,
-    timestamp:      now,
-    correlation_id: uuidv4(),
-    actor_id:       ctx.userId,
-    payload: { id: args.id, resolved_at: now },
+  const resolvedData = await withSession((s) => loadIncidentData(s, args.id, ctx.tenantId))
+  const resolvedPayload: IncidentEventPayload = resolvedData ?? {
+    id: args.id, title: `Incident ${args.id}`, severity: 'low', status: 'resolved',
+    ciName: '—', assignedTo: '—', resolved_at: now,
   }
+  resolvedPayload.resolved_at = now
+  const event: DomainEvent<IncidentEventPayload> = {
+    id: uuidv4(), type: 'incident.resolved',
+    tenant_id: ctx.tenantId, timestamp: now,
+    correlation_id: uuidv4(), actor_id: ctx.userId,
+    payload: resolvedPayload,
+  }
+  console.log('[PUBLISH] incident.resolved payload:', JSON.stringify(resolvedPayload, null, 2))
   await publish(event)
 
   return resolved
@@ -301,7 +335,18 @@ async function assignIncidentToTeam(
     ))
     const row = result.records[0]
     if (!row) throw new Error('Incident not found')
-    return mapIncident(row.get('props') as Props)
+    const assigned = mapIncident(row.get('props') as Props)
+    const assignedData = await loadIncidentData(session, args.id, ctx.tenantId)
+    const assignedPayload = assignedData ?? { id: args.id, title: assigned.title, severity: assigned.severity, status: assigned.status, ciName: '—', assignedTo: '—' }
+    const assignedEvent: DomainEvent<IncidentEventPayload> = {
+      id: uuidv4(), type: 'incident.assigned',
+      tenant_id: ctx.tenantId, timestamp: now,
+      correlation_id: uuidv4(), actor_id: ctx.userId,
+      payload: assignedPayload,
+    }
+    console.log('[PUBLISH] incident.assigned (team) payload:', JSON.stringify(assignedPayload, null, 2))
+    await publish(assignedEvent)
+    return assigned
   }, true)
 }
 
@@ -345,7 +390,18 @@ async function assignIncidentToUser(
     ))
     const row = result.records[0]
     if (!row) throw new Error('Incident not found')
-    return mapIncident(row.get('props') as Props)
+    const assignedToUser = mapIncident(row.get('props') as Props)
+    const assignedToUserData = await loadIncidentData(session, args.id, ctx.tenantId)
+    const assignedToUserPayload = assignedToUserData ?? { id: args.id, title: assignedToUser.title, severity: assignedToUser.severity, status: assignedToUser.status, ciName: '—', assignedTo: '—' }
+    const assignedToUserEvent: DomainEvent<IncidentEventPayload> = {
+      id: uuidv4(), type: 'incident.assigned',
+      tenant_id: ctx.tenantId, timestamp: now,
+      correlation_id: uuidv4(), actor_id: ctx.userId,
+      payload: assignedToUserPayload,
+    }
+    console.log('[PUBLISH] incident.assigned (user) payload:', JSON.stringify(assignedToUserPayload, null, 2))
+    await publish(assignedToUserEvent)
+    return assignedToUser
   }, true)
 }
 
