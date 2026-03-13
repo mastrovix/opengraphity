@@ -14,8 +14,8 @@ import type {
 import { Message } from 'amqplib'
 import { sseManager, InAppNotification } from './sse.js'
 import { sendTeamsCard, TeamsCard } from './teams.js'
-import { dispatchIncidentNotification } from './consumer.js'
-import type { IncidentData } from './formatters.js'
+import { dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
+import type { IncidentData, ChangeTaskPayload } from './formatters.js'
 
 interface EnrichedIncidentPayload {
   id: string; title: string; severity: string; status: string
@@ -211,6 +211,9 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         break
       }
 
+      case 'change.task_assigned':
+        break  // no in-app notification — handled in dispatchToChannels
+
       default:
         console.log(`[dispatcher] Event type "${event.type}" — no notification rule, skipping`)
         return
@@ -234,6 +237,27 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       'incident.resolved':  'resolved',
       'incident.escalated': 'escalation',
       'incident.assigned':  'assigned',
+    }
+
+    if (event.type === 'change.approved') {
+      const p = event.payload as EnrichedIncidentPayload
+      if (p.id && p.title) {
+        await dispatchChangeNotification(event.tenant_id, {
+          id:          p.id,
+          title:       p.title,
+          type:        (p as unknown as { type?: string }).type ?? '—',
+          status:      p.status ?? 'scheduled',
+          tenantId:    event.tenant_id,
+        })
+      }
+      return
+    }
+
+    if (event.type === 'change.task_assigned') {
+      console.log('[DISPATCHER] change.task_assigned ricevuto:', JSON.stringify(event.payload, null, 2))
+      const p = event.payload as ChangeTaskPayload
+      await dispatchChangeTaskNotification(event.tenant_id, p)
+      return
     }
 
     if (event.type === 'sla.breached') {

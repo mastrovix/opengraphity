@@ -1,6 +1,6 @@
 import { getSession } from '@opengraphity/neo4j'
 import { sendSlackMessage, sendTeamsAdaptiveMessage } from './index.js'
-import { formatSlackIncident, formatTeamsIncident, type NotificationEvent, type IncidentData } from './formatters.js'
+import { formatSlackIncident, formatTeamsIncident, formatSlackChange, formatSlackChangeTask, type NotificationEvent, type IncidentData, type ChangeData, type ChangeTaskPayload } from './formatters.js'
 
 interface NotificationChannelRow {
   id: string
@@ -85,6 +85,59 @@ export async function dispatchIncidentNotification(
     } else if (ch.platform === 'teams' && ch.webhookUrl) {
       const card = formatTeamsIncident(eventType, enriched)
       await sendTeamsAdaptiveMessage(ch.webhookUrl, card)
+    }
+  }
+}
+
+export async function dispatchChangeNotification(
+  tenantId: string,
+  change: ChangeData,
+): Promise<void> {
+  const session = getSession(undefined, 'READ')
+  let enriched = change
+  try {
+    const result = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (c:Change {id: $id, tenant_id: $tenantId})
+        OPTIONAL MATCH (c)-[:AFFECTS]->(ci:ConfigurationItem)
+        OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(u:User)
+        OPTIONAL MATCH (c)-[:ASSIGNED_TO_TEAM]->(t:Team)
+        RETURN collect(DISTINCT ci.name) AS ciNames,
+               u.name AS assignedTo, t.name AS teamName
+      `, { id: change.id, tenantId }),
+    )
+    if (result.records.length) {
+      const r      = result.records[0]
+      const ciNames = (r.get('ciNames') as string[]).filter(Boolean)
+      enriched = {
+        ...change,
+        ciName:      ciNames[0] ?? null,
+        assigneeName: (r.get('assignedTo') ?? r.get('teamName') ?? null) as string | null,
+      }
+    }
+  } finally {
+    await session.close()
+  }
+
+  const channels = await loadChannels(tenantId, 'change_approved')
+  for (const ch of channels) {
+    if (ch.platform === 'slack') {
+      const blocks = formatSlackChange(enriched)
+      await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
+    }
+  }
+}
+
+export async function dispatchChangeTaskNotification(
+  tenantId: string,
+  payload: ChangeTaskPayload,
+): Promise<void> {
+  const channels = await loadChannels(tenantId, 'change_task_assigned')
+  console.log('[CHANGE TASK] dispatching per tenant:', tenantId, 'channels trovati:', channels.length)
+  for (const ch of channels) {
+    if (ch.platform === 'slack') {
+      const blocks = formatSlackChangeTask(payload)
+      await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
     }
   }
 }

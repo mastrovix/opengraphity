@@ -1,8 +1,15 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
+import { publish } from '@opengraphity/events'
 import type { WorkflowInstance } from '@opengraphity/workflow'
+import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
+
+interface ChangeEventPayload {
+  id: string; title: string; type: string; status: string
+  ciName: string; assignedTo: string
+}
 
 type Props = Record<string, unknown>
 
@@ -364,7 +371,7 @@ async function addAffectedCIToChange(
               tenant_id:  $tenantId,
               change_id:  $changeId,
               ci_id:      $ciId,
-              status:     'pending',
+              status:     'open',
               created_at: $now,
               updated_at: $now
             })
@@ -425,7 +432,7 @@ async function removeAffectedCIFromChange(
     if (currentStep === 'assessment') {
       await session.executeWrite((tx) => tx.run(`
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)-[:ASSESSES]->(ci:ConfigurationItem {id: $ciId})
-        WHERE t.status IN ['pending', 'in_progress']
+        WHERE t.status = 'open'
         SET t.status     = 'skipped',
             t.notes      = $reason,
             t.updated_at = $now
@@ -655,7 +662,7 @@ async function updateAssessmentTask(
           t.impact_description  = $impactDescription,
           t.mitigation          = $mitigation,
           t.notes               = $notes,
-          t.status              = 'in_progress',
+          t.status              = 'open',
           t.updated_at          = $now
     `, { taskId: args.taskId, tenantId: ctx.tenantId, riskLevel: args.input.riskLevel, impactDescription: args.input.impactDescription, mitigation: args.input.mitigation ?? null, notes: args.input.notes ?? null, now }))
 
@@ -1111,13 +1118,14 @@ async function executeChangeTransition(
           tenant_id:  $tenantId,
           change_id:  $changeId,
           ci_id:      ci.id,
-          status:     'pending',
+          status:     'open',
           created_at: $now,
           updated_at: $now
         })
         CREATE (c)-[:HAS_ASSESSMENT_TASK]->(t)
         CREATE (t)-[:ASSESSES]->(ci)
-        RETURN t.id AS taskId, ownerTeam.id AS teamId
+        RETURN t.id AS taskId, ownerTeam.id AS teamId,
+               ci.name AS ciName, ownerTeam.name AS teamName, c.title AS changeTitle
       `, { changeId, tenantId, now }))
 
       // Step 2: Assign owner team to each task (only where team exists)
@@ -1132,6 +1140,27 @@ async function executeChangeTransition(
           `, { taskId, teamId, tenantId }))
         }
       }
+
+      // Step 3: Publish change.task_assigned for each task
+      const eventNow = new Date().toISOString()
+      for (const record of tasksResult.records) {
+        await publish<{ changeId: string; changeTitle: string; taskId: string; ciName: string; teamName: string; assignedTo: string }>({
+          id:             uuidv4(),
+          type:           'change.task_assigned',
+          tenant_id:      tenantId,
+          timestamp:      eventNow,
+          correlation_id: uuidv4(),
+          actor_id:       ctx.userId,
+          payload: {
+            changeId,
+            changeTitle: (record.get('changeTitle') ?? '') as string,
+            taskId:      record.get('taskId')    as string,
+            ciName:      (record.get('ciName')   ?? '—') as string,
+            teamName:    (record.get('teamName') ?? '—') as string,
+            assignedTo:  '—',
+          },
+        })
+      }
     }
 
     // Execute the transition
@@ -1142,6 +1171,39 @@ async function executeChangeTransition(
       triggerType: 'manual',
       notes:       args.notes,
     }, { userId: ctx.userId })
+
+    // Publish change.approved when transition reaches 'scheduled'
+    if (result.success && args.toStep === 'scheduled') {
+      const chRes = await session.executeRead((tx) => tx.run(`
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+        OPTIONAL MATCH (c)-[:AFFECTS]->(ci:ConfigurationItem)
+        OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(u:User)
+        OPTIONAL MATCH (c)-[:ASSIGNED_TO_TEAM]->(t:Team)
+        RETURN c.id AS id, c.title AS title, c.type AS type, c.status AS status,
+               collect(DISTINCT ci.name)[0] AS ciName,
+               u.name AS assignedTo, t.name AS teamName
+      `, { changeId, tenantId }))
+      if (chRes.records.length > 0) {
+        const ch = chRes.records[0]
+        const changeEvent: DomainEvent<ChangeEventPayload> = {
+          id:             uuidv4(),
+          type:           'change.approved',
+          tenant_id:      tenantId,
+          timestamp:      new Date().toISOString(),
+          correlation_id: uuidv4(),
+          actor_id:       ctx.userId,
+          payload: {
+            id:         ch.get('id')                                                     as string,
+            title:      ch.get('title')                                                  as string,
+            type:       ch.get('type')                                                   as string,
+            status:     'scheduled',
+            ciName:     ((ch.get('ciName')    ?? '—') as string),
+            assignedTo: ((ch.get('assignedTo') ?? ch.get('teamName') ?? '—') as string),
+          },
+        }
+        await publish(changeEvent)
+      }
+    }
 
     // Audit comment when rejected
     if (result.success && args.toStep === 'rejected') {

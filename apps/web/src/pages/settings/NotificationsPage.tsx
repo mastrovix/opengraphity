@@ -39,8 +39,9 @@ const ALL_EVENTS = [
   { value: 'escalation',      label: 'Escalation',           defaultOn: true  },
   { value: 'assigned',        label: 'Assegnazione a me',    defaultOn: true  },
   { value: 'resolved',        label: 'Risoluzione incident', defaultOn: false },
-  { value: 'change_approved', label: 'Change approvato',     defaultOn: false },
-  { value: 'change_failed',   label: 'Change fallito',       defaultOn: false },
+  { value: 'change_approved',       label: 'Change approvato',           defaultOn: false },
+  { value: 'change_failed',         label: 'Change fallito',             defaultOn: false },
+  { value: 'change_task_assigned',  label: 'Task assessment assegnato',  defaultOn: false },
 ]
 
 interface Channel {

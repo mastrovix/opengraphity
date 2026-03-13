@@ -299,7 +299,7 @@ export const typeDefs = `#graphql
   type AssessmentTask {
     id:                ID!
     changeId:          String!
-    status:            String!
+    status:            String! # open | completed | skipped | rejected
     riskLevel:         String
     impactDescription: String
     mitigation:        String

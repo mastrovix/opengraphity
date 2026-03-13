@@ -114,10 +114,10 @@ const STATUS_STEP_COLORS: Record<string, { bg: string; color: string }> = {
   skipped:     { bg: '#f3f4f6', color: '#8892a4' },
 }
 const TASK_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  pending:     { bg: '#fefce8', color: '#ca8a04' },
-  in_progress: { bg: '#eff6ff', color: '#2563eb' },
-  completed:   { bg: '#ecfdf5', color: '#059669' },
-  rejected:    { bg: '#fef2f2', color: '#dc2626' },
+  open:      { bg: '#fefce8', color: '#ca8a04' },
+  completed: { bg: '#ecfdf5', color: '#059669' },
+  skipped:   { bg: '#f3f4f6', color: '#8892a4' },
+  rejected:  { bg: '#fef2f2', color: '#dc2626' },
 }
 
 function Badge({ value, map }: { value: string; map: Record<string, { bg: string; color: string }> }) {
@@ -1451,7 +1451,7 @@ export function ChangeDetailPage() {
         const task = change.assessmentTasks.find((t) => t.id === assessmentTaskPopup)
         if (!task) return null
         const taskForm = getTaskForm(task.id)
-        const isEditable = ['pending', 'in_progress'].includes(task.status)
+        const isEditable = task.status === 'open'
         const isDone = ['completed', 'rejected'].includes(task.status)
         const taskTeamUsers = users.filter((u) => u.teamId === task.assignedTeam?.id)
 
