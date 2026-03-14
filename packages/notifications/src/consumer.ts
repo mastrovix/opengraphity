@@ -133,7 +133,6 @@ export async function dispatchChangeTaskNotification(
   payload: ChangeTaskPayload,
 ): Promise<void> {
   const channels = await loadChannels(tenantId, 'change_task_assigned')
-  console.log('[CHANGE TASK] dispatching per tenant:', tenantId, 'channels trovati:', channels.length)
   for (const ch of channels) {
     if (ch.platform === 'slack') {
       const blocks = formatSlackChangeTask(payload)

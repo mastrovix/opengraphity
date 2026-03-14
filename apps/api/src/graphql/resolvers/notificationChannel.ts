@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { getSession } from '@opengraphity/neo4j'
 import { randomUUID } from 'crypto'
 import type { GraphQLContext } from '../../context.js'
@@ -84,7 +85,7 @@ async function updateNotificationChannel(
         },
       ),
     )
-    if (!result.records.length) throw new Error('NotificationChannel non trovato')
+    if (!result.records.length) throw new GraphQLError('NotificationChannel non trovato')
     return mapChannel(result.records[0]!.get('n').properties as Record<string, unknown>)
   }, true)
 }
@@ -109,7 +110,7 @@ async function testNotificationChannel(_: unknown, { id }: { id: string }, ctx: 
         { id, tenantId: ctx.tenantId },
       ),
     )
-    if (!result.records.length) throw new Error('NotificationChannel non trovato')
+    if (!result.records.length) throw new GraphQLError('NotificationChannel non trovato')
     const ch = mapChannel(result.records[0]!.get('n').properties as Record<string, unknown>)
     const { sendTestMessage } = await import('@opengraphity/notifications')
     return sendTestMessage(ch)
@@ -124,7 +125,7 @@ async function linkSlackAccount(_: unknown, { slackId }: { slackId: string }, ct
         { userId: ctx.userId, tenantId: ctx.tenantId, slackId },
       ),
     )
-    if (!result.records.length) throw new Error('User non trovato')
+    if (!result.records.length) throw new GraphQLError('User non trovato')
     const u = result.records[0]!.get('u').properties as Record<string, unknown>
     return {
       id:       u['id']        as string,

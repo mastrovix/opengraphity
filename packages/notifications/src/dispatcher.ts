@@ -254,7 +254,6 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     }
 
     if (event.type === 'change.task_assigned') {
-      console.log('[DISPATCHER] change.task_assigned ricevuto:', JSON.stringify(event.payload, null, 2))
       const p = event.payload as ChangeTaskPayload
       await dispatchChangeTaskNotification(event.tenant_id, p)
       return

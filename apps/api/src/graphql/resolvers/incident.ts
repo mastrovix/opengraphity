@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
@@ -179,7 +180,7 @@ async function createIncident(
       now,
     })
     const row = rows[0]
-    if (!row) throw new Error('Failed to create incident')
+    if (!row) throw new GraphQLError('Failed to create incident')
     return mapIncident(row.props)
   }, true)
 
@@ -213,7 +214,6 @@ async function createIncident(
     correlation_id: uuidv4(), actor_id: ctx.userId,
     payload: createdPayload,
   }
-  console.log('[PUBLISH] incident.created payload:', JSON.stringify(createdPayload, null, 2))
   await publish(event)
 
   return created
@@ -249,7 +249,7 @@ async function updateIncident(
       now,
     })
     const row = rows[0]
-    if (!row) throw new Error('Incident not found')
+    if (!row) throw new GraphQLError('Incident not found')
     return mapIncident(row.props)
   }, true)
 }
@@ -273,7 +273,7 @@ async function resolveIncident(
       now,
     })
     const row = rows[0]
-    if (!row) throw new Error('Incident not found')
+    if (!row) throw new GraphQLError('Incident not found')
     return mapIncident(row.props)
   }, true)
 
@@ -289,7 +289,6 @@ async function resolveIncident(
     correlation_id: uuidv4(), actor_id: ctx.userId,
     payload: resolvedPayload,
   }
-  console.log('[PUBLISH] incident.resolved payload:', JSON.stringify(resolvedPayload, null, 2))
   await publish(event)
 
   return resolved
@@ -300,7 +299,7 @@ async function assignIncidentToTeam(
   args: { id: string; teamId: string },
   ctx: GraphQLContext,
 ) {
-  if (!args.teamId || !args.teamId.trim()) throw new Error('teamId è obbligatorio')
+  if (!args.teamId || !args.teamId.trim()) throw new GraphQLError('teamId è obbligatorio')
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
@@ -334,7 +333,7 @@ async function assignIncidentToTeam(
       { id: args.id, tenantId: ctx.tenantId },
     ))
     const row = result.records[0]
-    if (!row) throw new Error('Incident not found')
+    if (!row) throw new GraphQLError('Incident not found')
     const assigned = mapIncident(row.get('props') as Props)
     const assignedData = await loadIncidentData(session, args.id, ctx.tenantId)
     const assignedPayload = assignedData ?? { id: args.id, title: assigned.title, severity: assigned.severity, status: assigned.status, ciName: '—', assignedTo: '—' }
@@ -344,7 +343,6 @@ async function assignIncidentToTeam(
       correlation_id: uuidv4(), actor_id: ctx.userId,
       payload: assignedPayload,
     }
-    console.log('[PUBLISH] incident.assigned (team) payload:', JSON.stringify(assignedPayload, null, 2))
     await publish(assignedEvent)
     return assigned
   }, true)
@@ -355,7 +353,7 @@ async function assignIncidentToUser(
   args: { id: string; userId: string },
   ctx: GraphQLContext,
 ) {
-  if (!args.userId || !args.userId.trim()) throw new Error('userId è obbligatorio')
+  if (!args.userId || !args.userId.trim()) throw new GraphQLError('userId è obbligatorio')
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
@@ -389,7 +387,7 @@ async function assignIncidentToUser(
       { id: args.id, tenantId: ctx.tenantId },
     ))
     const row = result.records[0]
-    if (!row) throw new Error('Incident not found')
+    if (!row) throw new GraphQLError('Incident not found')
     const assignedToUser = mapIncident(row.get('props') as Props)
     const assignedToUserData = await loadIncidentData(session, args.id, ctx.tenantId)
     const assignedToUserPayload = assignedToUserData ?? { id: args.id, title: assignedToUser.title, severity: assignedToUser.severity, status: assignedToUser.status, ciName: '—', assignedTo: '—' }
@@ -399,7 +397,6 @@ async function assignIncidentToUser(
       correlation_id: uuidv4(), actor_id: ctx.userId,
       payload: assignedToUserPayload,
     }
-    console.log('[PUBLISH] incident.assigned (user) payload:', JSON.stringify(assignedToUserPayload, null, 2))
     await publish(assignedToUserEvent)
     return assignedToUser
   }, true)
@@ -422,7 +419,7 @@ async function addAffectedCI(
       { id: args.incidentId, tenantId: ctx.tenantId },
     ))
     const row = r.records[0]
-    if (!row) throw new Error('Incident not found')
+    if (!row) throw new GraphQLError('Incident not found')
     return mapIncident(row.get('props') as Props)
   }, true)
 }
@@ -444,7 +441,7 @@ async function removeAffectedCI(
       { id: args.incidentId, tenantId: ctx.tenantId },
     ))
     const row = r.records[0]
-    if (!row) throw new Error('Incident not found')
+    if (!row) throw new GraphQLError('Incident not found')
     return mapIncident(row.get('props') as Props)
   }, true)
 }
@@ -476,7 +473,7 @@ async function addIncidentComment(
       id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, commentId, text: args.text, now,
     })
     const row = rows[0]
-    if (!row) throw new Error('Incident not found')
+    if (!row) throw new GraphQLError('Incident not found')
     return {
       id:        row.cProps['id']         as string,
       text:      row.cProps['text']       as string,

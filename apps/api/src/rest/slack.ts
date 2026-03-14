@@ -2,33 +2,18 @@ import { createHmac, timingSafeEqual, randomUUID } from 'crypto'
 import type { Request, Response } from 'express'
 import { getSession } from '@opengraphity/neo4j'
 
-// TEMPORANEO - solo per debug
-const SKIP_SIGNATURE_CHECK = true
-
 function verifySlackSignature(req: Request): boolean {
   const signingSecret = process.env['SLACK_SIGNING_SECRET'] ?? ''
   const timestamp     = req.headers['x-slack-request-timestamp'] as string
   const slackSig      = req.headers['x-slack-signature'] as string
 
-  console.log('[SLACK] headers:', { signature: slackSig, timestamp })
-  console.log('[SLACK] SIGNING_SECRET presente:', !!signingSecret)
-
-  if (SKIP_SIGNATURE_CHECK) {
-    console.log('[SLACK] ⚠️  signature check SKIPPED (debug mode)')
-    return true
-  }
-
   if (!timestamp || !slackSig) return false
   if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false
 
   const rawBody = Buffer.isBuffer(req.body) ? req.body.toString() : ''
-  console.log('[SLACK] rawBody (primi 100 char):', rawBody.slice(0, 100))
-
   const sigBase = `v0:${timestamp}:${rawBody}`
   const hmac    = createHmac('sha256', signingSecret).update(sigBase).digest('hex')
   const computed = `v0=${hmac}`
-
-  console.log('[SLACK] computed:', computed, '| received:', slackSig)
 
   try {
     return timingSafeEqual(Buffer.from(computed), Buffer.from(slackSig))
@@ -93,91 +78,86 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
 
 export async function handleSlackActions(req: Request, res: Response): Promise<void> {
   try {
-  if (!verifySlackSignature(req)) { res.status(401).json({ error: 'Unauthorized' }); return }
+    if (!verifySlackSignature(req)) { res.status(401).json({ error: 'Unauthorized' }); return }
 
-  const params  = parseUrlEncoded(req)
-  console.log('[SLACK ACTION] raw params:', params.toString().slice(0, 200))
-  const payload = JSON.parse(params.get('payload') ?? '{}') as {
-    actions?: Array<{ action_id: string; value: string }>
-    user?: { id: string }
-    response_url?: string
-  }
+    const params  = parseUrlEncoded(req)
+    const payload = JSON.parse(params.get('payload') ?? '{}') as {
+      actions?: Array<{ action_id: string; value: string }>
+      user?: { id: string }
+      response_url?: string
+    }
 
-  const action      = payload.actions?.[0]
-  const slackUserId = payload.user?.id
-  const responseUrl = payload.response_url
+    const action      = payload.actions?.[0]
+    const slackUserId = payload.user?.id
+    const responseUrl = payload.response_url
 
-  if (!action || !slackUserId) { res.sendStatus(200); return }
+    if (!action || !slackUserId) { res.sendStatus(200); return }
 
-  const { action: actionType, incidentId } = JSON.parse(action.value ?? '{}') as {
-    action: string; incidentId: string
-  }
+    const { action: actionType, incidentId } = JSON.parse(action.value ?? '{}') as {
+      action: string; incidentId: string
+    }
 
-  console.log('[SLACK ACTION] actionType:', actionType, '| incidentId:', incidentId, '| slackUserId:', slackUserId)
+    const session = getSession(undefined, 'WRITE')
+    try {
+      // Look up by slack_id only — tenantId derived from the user node (slack_id is unique)
+      const userResult = await session.executeRead((tx) =>
+        tx.run(
+          'MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1',
+          { slackUserId },
+        ),
+      )
+      if (!userResult.records.length) {
+        console.warn('No user found for slack_id:', slackUserId)
+        if (responseUrl) {
+          await fetch(responseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ response_type: 'ephemeral', text: '⚠️ Collega il tuo account Slack nelle impostazioni profilo.' }),
+          })
+        }
+        res.sendStatus(200)
+        return
+      }
+      const u        = userResult.records[0]!.get('u').properties as Record<string, unknown>
+      const userId   = u['id']        as string
+      const tenantId = u['tenant_id'] as string
+      const now      = new Date().toISOString()
+      if (actionType === 'assign_me') {
+        await session.executeWrite((tx) =>
+          tx.run(
+            'MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.assignee_id = $userId, i.updated_at = $now',
+            { incidentId, tenantId, userId, now },
+          ),
+        )
+      } else if (actionType === 'resolve') {
+        await session.executeWrite((tx) =>
+          tx.run(
+            "MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.status = 'resolved', i.updated_at = $now",
+            { incidentId, tenantId, now },
+          ),
+        )
+      } else if (actionType === 'escalate') {
+        await session.executeWrite((tx) =>
+          tx.run(
+            "MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.status = 'escalated', i.updated_at = $now",
+            { incidentId, tenantId, now },
+          ),
+        )
+      }
 
-  const session = getSession(undefined, 'WRITE')
-  try {
-    // Look up by slack_id only — tenantId derived from the user node (slack_id is unique)
-    const userResult = await session.executeRead((tx) =>
-      tx.run(
-        'MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1',
-        { slackUserId },
-      ),
-    )
-    if (!userResult.records.length) {
-      console.warn('[SLACK ACTION] No user found for slack_id:', slackUserId)
       if (responseUrl) {
         await fetch(responseUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ response_type: 'ephemeral', text: '⚠️ Collega il tuo account Slack nelle impostazioni profilo.' }),
+          body: JSON.stringify({ text: `✅ Azione *${actionType}* eseguita sull'incident \`${incidentId}\`.` }),
         })
       }
-      res.sendStatus(200)
-      return
+    } finally {
+      await session.close()
     }
-    const u        = userResult.records[0]!.get('u').properties as Record<string, unknown>
-    const userId   = u['id']        as string
-    const tenantId = u['tenant_id'] as string
-    const now      = new Date().toISOString()
-    console.log('[SLACK ACTION] user found:', userId, '| tenant:', tenantId)
-
-    if (actionType === 'assign_me') {
-      await session.executeWrite((tx) =>
-        tx.run(
-          'MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.assignee_id = $userId, i.updated_at = $now',
-          { incidentId, tenantId, userId, now },
-        ),
-      )
-    } else if (actionType === 'resolve') {
-      await session.executeWrite((tx) =>
-        tx.run(
-          "MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.status = 'resolved', i.updated_at = $now",
-          { incidentId, tenantId, now },
-        ),
-      )
-    } else if (actionType === 'escalate') {
-      await session.executeWrite((tx) =>
-        tx.run(
-          "MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.status = 'escalated', i.updated_at = $now",
-          { incidentId, tenantId, now },
-        ),
-      )
-    }
-
-    if (responseUrl) {
-      await fetch(responseUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: `✅ Azione *${actionType}* eseguita sull'incident \`${incidentId}\`.` }),
-      })
-    }
-  } finally {
-    await session.close()
-  }
-  res.sendStatus(200)
+    res.sendStatus(200)
   } catch (err) {
-    console.error('[SLACK ACTION] Error:', err)
+    console.error('[slack actions] error:', err)
     if (!res.headersSent) res.sendStatus(200)
   }
 }

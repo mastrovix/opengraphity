@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -262,7 +263,7 @@ async function createChange(
       rollbackPlan: input.rollbackPlan, now,
     })
     const row = rows[0]
-    if (!row) throw new Error('Failed to create change')
+    if (!row) throw new GraphQLError('Failed to create change')
     return mapChange(row.props)
   }, true)
 
@@ -396,7 +397,7 @@ async function addAffectedCIToChange(
       { id: args.changeId, tenantId: ctx.tenantId },
     ))
     const row = r.records[0]
-    if (!row) throw new Error('Change not found')
+    if (!row) throw new GraphQLError('Change not found')
     return mapChange(row.get('props') as Props)
   }, true)
 }
@@ -451,7 +452,7 @@ async function removeAffectedCIFromChange(
       { id: args.changeId, tenantId: ctx.tenantId },
     ))
     const row = r.records[0]
-    if (!row) throw new Error('Change not found')
+    if (!row) throw new GraphQLError('Change not found')
     return mapChange(row.get('props') as Props)
   }, true)
 }
@@ -468,7 +469,7 @@ async function addChangeComment(
       ORDER BY cm.created_at DESC LIMIT 1
     `, { changeId: args.changeId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('Comment not found')
+    if (!row) throw new GraphQLError('Comment not found')
     return mapChangeComment(row.get('cmProps') as Props, row.get('uProps') as Props | null)
   }, true)
 }
@@ -598,7 +599,7 @@ async function saveDeploySteps(
       { id: args.changeId, tenantId: ctx.tenantId },
     ))
     const row = r.records[0]
-    if (!row) throw new Error('Change not found')
+    if (!row) throw new GraphQLError('Change not found')
     return mapChange(row.get('props') as Props)
   }, true)
 }
@@ -619,7 +620,7 @@ async function saveChangeValidation(
     if (firstStepRes.records.length > 0) {
       const firstStart = firstStepRes.records[0].get('start') as string
       if (args.scheduledEnd >= firstStart) {
-        throw new Error(`La validazione deve terminare prima dell'inizio del primo deploy step (${firstStart})`)
+        throw new GraphQLError(`La validazione deve terminare prima dell'inizio del primo deploy step (${firstStart})`)
       }
     }
 
@@ -644,7 +645,7 @@ async function saveChangeValidation(
       { id: args.changeId, tenantId: ctx.tenantId },
     ))
     const row = result.records[0]
-    if (!row) throw new Error('Change not found')
+    if (!row) throw new GraphQLError('Change not found')
     return mapChange(row.get('props') as Props)
   }, true)
 }
@@ -683,7 +684,7 @@ async function updateAssessmentTask(
       RETURN properties(t) AS tProps, properties(ci) AS ciProps, properties(team) AS teamProps, properties(u) AS uProps
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('AssessmentTask not found')
+    if (!row) throw new GraphQLError('AssessmentTask not found')
     return mapAssessmentTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
@@ -706,7 +707,7 @@ async function completeAssessmentTask(
       RETURN team
     `, { taskId: args.taskId }))
     if (!teamCheck.records[0]?.get('team'))
-      throw new Error('Assegna un team prima di completare il task')
+      throw new GraphQLError('Assegna un team prima di completare il task')
 
     const taskData = await session.executeRead((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
@@ -721,7 +722,7 @@ async function completeAssessmentTask(
       `, { changeId, tenantId: ctx.tenantId }))
       const totalSteps = (stepsResult.records[0]?.get('total') as { toNumber(): number } | null)?.toNumber() ?? 0
       if (totalSteps === 0)
-        throw new Error('Aggiungi almeno uno step di deployment prima di completare il task')
+        throw new GraphQLError('Aggiungi almeno uno step di deployment prima di completare il task')
     }
 
     await session.executeWrite((tx) => tx.run(`
@@ -750,7 +751,7 @@ async function completeAssessmentTask(
       RETURN properties(t) AS tProps, properties(ci) AS ciProps, properties(team) AS teamProps, properties(u) AS uProps
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('AssessmentTask not found')
+    if (!row) throw new GraphQLError('AssessmentTask not found')
     return mapAssessmentTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
@@ -772,7 +773,7 @@ async function rejectAssessmentTask(
       MATCH (t)-[:ASSESSES]->(ci:ConfigurationItem)
       RETURN t, ci.id AS ciId, ci.name AS ciName, t.change_id AS changeId
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
-    if (!taskResult.records.length) throw new Error('Task non trovato')
+    if (!taskResult.records.length) throw new GraphQLError('Task non trovato')
     const rec      = taskResult.records[0]
     const changeId = rec.get('changeId') as string
     const ciId     = rec.get('ciId')     as string
@@ -824,7 +825,7 @@ async function rejectAssessmentTask(
              properties(supportTeam) AS supportTeamProps
     `, { taskId: args.taskId }))
     const row = r.records[0]
-    if (!row) throw new Error('AssessmentTask not found')
+    if (!row) throw new GraphQLError('AssessmentTask not found')
     const task = mapAssessmentTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
@@ -854,7 +855,7 @@ async function assignDeployStepToTeam(
       RETURN properties(s) AS props, properties(t) AS teamProps
     `, { stepId: args.stepId, teamId: args.teamId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('DeployStep not found')
+    if (!row) throw new GraphQLError('DeployStep not found')
     return mapDeployStep(row.get('props') as Props, row.get('teamProps') as Props)
   }, true)
 }
@@ -871,7 +872,7 @@ async function assignDeployStepToUser(
       RETURN properties(s) AS props, properties(u) AS uProps
     `, { stepId: args.stepId, userId: args.userId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('DeployStep not found')
+    if (!row) throw new GraphQLError('DeployStep not found')
     return mapDeployStep(row.get('props') as Props, null, row.get('uProps') as Props)
   }, true)
 }
@@ -892,7 +893,7 @@ async function assignDeployStepValidationTeam(
              properties(t) AS vtProps, properties(vu) AS vuProps
     `, { stepId: args.stepId, teamId: args.teamId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('DeployStep not found')
+    if (!row) throw new GraphQLError('DeployStep not found')
     return mapDeployStep(
       row.get('props') as Props,
       row.get('tProps') as Props | null,
@@ -919,7 +920,7 @@ async function assignDeployStepValidationUser(
              properties(vt) AS vtProps, properties(u) AS vuProps
     `, { stepId: args.stepId, userId: args.userId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('DeployStep not found')
+    if (!row) throw new GraphQLError('DeployStep not found')
     return mapDeployStep(
       row.get('props') as Props,
       row.get('tProps') as Props | null,
@@ -944,7 +945,7 @@ async function updateDeployStepStatus(
         RETURN team
       `, { stepId: args.stepId }))
       if (!teamCheck.records[0]?.get('team'))
-        throw new Error('Assegna un team allo step prima di procedere')
+        throw new GraphQLError('Assegna un team allo step prima di procedere')
     }
 
     await session.executeWrite((tx) => tx.run(`
@@ -966,7 +967,7 @@ async function updateDeployStepStatus(
              properties(vt) AS vtProps, properties(vu) AS vuProps
     `, { stepId: args.stepId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('DeployStep not found')
+    if (!row) throw new GraphQLError('DeployStep not found')
     const stepProps = row.get('props') as Props
     if (args.status === 'skipped') {
       const changeId = stepProps['change_id'] as string
@@ -999,13 +1000,13 @@ async function updateDeployStepValidation(
       RETURN team
     `, { stepId: args.stepId }))
     if (!teamCheck.records[0]?.get('team'))
-      throw new Error('Assegna un team di validazione prima di procedere')
+      throw new GraphQLError('Assegna un team di validazione prima di procedere')
 
     const stepResult = await session.executeRead((tx) => tx.run(`
       MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
       RETURN s.change_id AS changeId, s.order AS order, s.title AS title
     `, { stepId: args.stepId, tenantId: ctx.tenantId }))
-    if (!stepResult.records.length) throw new Error('Deploy step non trovato')
+    if (!stepResult.records.length) throw new GraphQLError('Deploy step non trovato')
     const changeId = stepResult.records[0].get('changeId') as string
     const order    = stepResult.records[0].get('order')    as number
     const title    = stepResult.records[0].get('title')    as string
@@ -1034,7 +1035,7 @@ async function updateDeployStepValidation(
              properties(vt) AS vtProps, properties(vu) AS vuProps
     `, { stepId: args.stepId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('DeployStep not found')
+    if (!row) throw new GraphQLError('DeployStep not found')
     return mapDeployStep(
       row.get('props') as Props,
       row.get('tProps') as Props | null,
@@ -1253,7 +1254,7 @@ async function assignAssessmentTaskTeam(
              properties(ci) AS ciProps, properties(u) AS uProps
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('AssessmentTask not found')
+    if (!row) throw new GraphQLError('AssessmentTask not found')
     return mapAssessmentTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
@@ -1289,7 +1290,7 @@ async function assignAssessmentTaskUser(
              properties(supportTeam) AS supportTeamProps
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('AssessmentTask not found')
+    if (!row) throw new GraphQLError('AssessmentTask not found')
     const task = mapAssessmentTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
@@ -1328,7 +1329,7 @@ async function completeChangeValidation(
       RETURN properties(v) AS vProps, properties(t) AS tProps, properties(u) AS uProps
     `, { changeId: args.changeId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('ChangeValidation not found')
+    if (!row) throw new GraphQLError('ChangeValidation not found')
     return mapChangeValidation(
       row.get('vProps') as Props,
       row.get('tProps') as Props | null,
@@ -1355,7 +1356,7 @@ async function failChangeValidation(
       RETURN properties(v) AS vProps, properties(t) AS tProps, properties(u) AS uProps
     `, { changeId: args.changeId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new Error('ChangeValidation not found')
+    if (!row) throw new GraphQLError('ChangeValidation not found')
     return mapChangeValidation(
       row.get('vProps') as Props,
       row.get('tProps') as Props | null,
@@ -1375,7 +1376,7 @@ async function approveChange(_: unknown, args: { id: string }, ctx: GraphQLConte
       RETURN properties(c) as props
     `, { id: args.id, tenantId: ctx.tenantId, now })
     const row = rows[0]
-    if (!row) throw new Error('Change not found')
+    if (!row) throw new GraphQLError('Change not found')
     return mapChange(row.props)
   }, true)
 }
@@ -1389,7 +1390,7 @@ async function rejectChange(_: unknown, args: { id: string; reason?: string }, c
       RETURN properties(c) as props
     `, { id: args.id, tenantId: ctx.tenantId, reason: args.reason ?? null, now })
     const row = rows[0]
-    if (!row) throw new Error('Change not found')
+    if (!row) throw new GraphQLError('Change not found')
     return mapChange(row.props)
   }, true)
 }
@@ -1403,7 +1404,7 @@ async function deployChange(_: unknown, args: { id: string }, ctx: GraphQLContex
       RETURN properties(c) as props
     `, { id: args.id, tenantId: ctx.tenantId, now })
     const row = rows[0]
-    if (!row) throw new Error('Change not found')
+    if (!row) throw new GraphQLError('Change not found')
     return mapChange(row.props)
   }, true)
 }
@@ -1417,7 +1418,7 @@ async function failChange(_: unknown, args: { id: string; reason?: string }, ctx
       RETURN properties(c) as props
     `, { id: args.id, tenantId: ctx.tenantId, reason: args.reason ?? null, now })
     const row = rows[0]
-    if (!row) throw new Error('Change not found')
+    if (!row) throw new GraphQLError('Change not found')
     return mapChange(row.props)
   }, true)
 }
