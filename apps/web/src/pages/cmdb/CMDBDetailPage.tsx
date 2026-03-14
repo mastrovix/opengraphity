@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { StatusBadge } from '@/components/StatusBadge'
 import { CIGraph } from '@/components/CIGraph'
 import { TypeBadge } from '@/components/Badges'
@@ -98,23 +99,6 @@ function CIRow({ ci, relationType, onClick }: { ci: CIRef; relationType?: string
   )
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: '0 0 16px 0' }}>{title}</h3>
-      {children}
-    </div>
-  )
-}
-
-function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #f1f3f9', gap: 12 }}>
-      <span style={{ fontSize: 12, color: '#8892a4', flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 13, color: '#0f1629', fontWeight: 500, textAlign: 'right', wordBreak: 'break-all' }}>{value}</span>
-    </div>
-  )
-}
 
 const CI_FIELDS: Record<string, string[]> = {
   server:            ['ipAddress', 'location', 'vendor', 'notes'],
@@ -138,6 +122,8 @@ export function CMDBDetailPage() {
   const [selectedCIId,  setSelectedCIId]  = useState('')
   const [depType,       setDepType]       = useState('depends_on')
   const [submitted,     setSubmitted]     = useState(false)
+  const [graphOpen,     setGraphOpen]     = useState(false)
+  const [infoOpen,      setInfoOpen]      = useState(true)
   const [depsOpen,      setDepsOpen]      = useState(false)
   const [depentsOpen,   setDepentsOpen]   = useState(false)
   const [blastOpen,     setBlastOpen]     = useState(false)
@@ -274,176 +260,206 @@ export function CMDBDetailPage() {
         </div>
       </div>
 
-      {/* Graph card — full width */}
-      <Card title="Mappa delle Dipendenze">
-        <CIGraph
-          centerCI={ci}
-          dependencies={ci.dependenciesWithType}
-          dependents={ci.dependentsWithType}
-          blastRadius={(() => {
-            const known = new Set([
-              ...ci.dependenciesWithType.map((r) => r.ci.id),
-              ...ci.dependentsWithType.map((r) => r.ci.id),
-              ci.id,
-            ])
-            return (blastData?.blastRadius ?? []).filter((n) => !known.has(n.id))
-          })()}
-        />
-      </Card>
+      {/* Information — collapsible full-width card */}
+      {(() => {
+        const ciItem = ci
+        const FIELD_LABELS: Record<string, string> = {
+          ipAddress:  'IP Address',
+          location:   'Location',
+          vendor:     'Vendor',
+          version:    'Version',
+          port:       'Port',
+          url:        'URL',
+          region:     'Region',
+          expiryDate: 'Expiry Date',
+          notes:      'Notes',
+        }
+        const typeFields = CI_FIELDS[ciItem.type] ?? []
 
-      {/* Two-column layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
-        {/* Main column */}
-        <div>
-          {/* Dependencies */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+        function renderFieldValue(field: string) {
+          const raw = ciItem[field as keyof typeof ciItem]
+          if (raw === null || raw === undefined || raw === '') return <span style={{ color: '#c4cad4' }}>—</span>
+          if (field === 'expiryDate') return String(new Date(String(raw)).toLocaleDateString())
+          return String(raw)
+        }
+
+        const InfoField = ({ label, children }: { label: string; children: React.ReactNode }) => (
+          <div>
+            <div style={{ fontSize: 11, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{children}</div>
+          </div>
+        )
+
+        return (
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16 }}>
+            {/* Header */}
             <div
-              onClick={() => setDepsOpen((v) => !v)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
+              onClick={() => setInfoOpen((v) => !v)}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', cursor: 'pointer', borderBottom: infoOpen ? '1px solid #e5e7eb' : 'none', borderRadius: infoOpen ? '10px 10px 0 0' : 10 }}
             >
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
-                Dipendenze{' '}
-                <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({ci.dependenciesWithType.length})</span>
-              </h3>
-              <span style={{ transform: depsOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 200ms ease', color: '#8892a4', lineHeight: 1 }}>▾</span>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>Information</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDialogOpen(true) }}
+                  style={{ padding: '6px 12px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  + Add Dependency
+                </button>
+                {infoOpen
+                  ? <ChevronDown size={16} color="#8892a4" />
+                  : <ChevronRight size={16} color="#8892a4" />
+                }
+              </div>
             </div>
-            {depsOpen && (
-              <div style={{ marginTop: 16 }}>
-                {ci.dependenciesWithType.length === 0 ? (
-                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p>
-                ) : (
-                  ci.dependenciesWithType.map((rel) => (
-                    <CIRow key={rel.ci.id} ci={rel.ci} relationType={rel.relationType} onClick={() => navigate(`/cmdb/${rel.ci.id}`)} />
-                  ))
-                )}
+
+            {/* Content — 2-column grid */}
+            {infoOpen && (
+              <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 32px' }}>
+                {/* ID — full width */}
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <InfoField label="ID">
+                    <span
+                      title={ciItem.id}
+                      style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, cursor: 'default', display: 'block', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {ciItem.id}
+                    </span>
+                  </InfoField>
+                </div>
+                {/* Row 2 */}
+                <InfoField label="Tipo"><TypeBadge type={ciItem.type} /></InfoField>
+                <InfoField label="Status"><StatusBadge value={ciItem.status} /></InfoField>
+                {/* Row 3 */}
+                <InfoField label="Environment"><span style={{ textTransform: 'capitalize' }}>{ciItem.environment}</span></InfoField>
+                <InfoField label="Creato">{new Date(ciItem.createdAt).toLocaleDateString('it-IT')}</InfoField>
+                {/* Row 4 */}
+                <InfoField label="Owner">
+                  {ciItem.owner
+                    ? <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: '#eef2ff', fontSize: 12, fontWeight: 500, color: '#4f46e5' }}>{ciItem.owner.name}</span>
+                    : <span style={{ color: '#c4cad4' }}>—</span>}
+                </InfoField>
+                <InfoField label="Support Group">
+                  {ciItem.supportGroup
+                    ? <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 12, fontWeight: 500, color: '#059669' }}>{ciItem.supportGroup.name}</span>
+                    : <span style={{ color: '#c4cad4' }}>—</span>}
+                </InfoField>
+                {/* Type-specific fields */}
+                {typeFields.map((field) => (
+                  <InfoField key={field} label={FIELD_LABELS[field] ?? field}>{renderFieldValue(field)}</InfoField>
+                ))}
               </div>
             )}
           </div>
+        )
+      })()}
 
-          {/* Dependents */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
-            <div
-              onClick={() => setDepentsOpen((v) => !v)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
-            >
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
-                Dipendenti{' '}
-                <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({ci.dependentsWithType.length})</span>
-              </h3>
-              <span style={{ transform: depentsOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 200ms ease', color: '#8892a4', lineHeight: 1 }}>▾</span>
-            </div>
-            {depentsOpen && (
-              <div style={{ marginTop: 16 }}>
-                {ci.dependentsWithType.length === 0 ? (
-                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p>
-                ) : (
-                  ci.dependentsWithType.map((rel) => (
-                    <CIRow key={rel.ci.id} ci={rel.ci} relationType={rel.relationType} onClick={() => navigate(`/cmdb/${rel.ci.id}`)} />
-                  ))
-                )}
-              </div>
-            )}
+      {/* Graph card — collapsible */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+        <div
+          onClick={() => setGraphOpen((p) => !p)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: graphOpen ? '1px solid #e5e7eb' : 'none' }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Mappa Dipendenze</span>
+          {graphOpen
+            ? <ChevronDown size={16} color="#8892a4" />
+            : <ChevronRight size={16} color="#8892a4" />}
+        </div>
+        {graphOpen && (
+          <div>
+            <CIGraph
+              centerCI={ci}
+              dependencies={ci.dependenciesWithType}
+              dependents={ci.dependentsWithType}
+              blastRadius={(() => {
+                const known = new Set([
+                  ...ci.dependenciesWithType.map((r) => r.ci.id),
+                  ...ci.dependentsWithType.map((r) => r.ci.id),
+                  ci.id,
+                ])
+                return (blastData?.blastRadius ?? []).filter((n) => !known.has(n.id))
+              })()}
+            />
           </div>
+        )}
+      </div>
 
-          {/* Blast Radius */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
-            <div
-              onClick={() => setBlastOpen((v) => !v)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
-            >
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
-                Blast Radius{' '}
-                <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({blastData?.blastRadius?.length ?? 0})</span>
-              </h3>
-              <span style={{ transform: blastOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 200ms ease', color: '#8892a4', lineHeight: 1 }}>▾</span>
-            </div>
-            {blastOpen && (
-              <div style={{ marginTop: 16 }}>
-                {blastLoading ? (
-                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Loading…</p>
-                ) : !blastData?.blastRadius?.length ? (
-                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun impatto downstream rilevato.</p>
-                ) : (
-                  blastData.blastRadius.map((d) => (
-                    <CIRow key={d.id} ci={d} onClick={() => navigate(`/cmdb/${d.id}`)} />
-                  ))
-                )}
-              </div>
-            )}
+      {/* Single-column layout */}
+      <div>
+        {/* Dependencies */}
+        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+          <div
+            onClick={() => setDepsOpen((v) => !v)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
+          >
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
+              Dipendenze{' '}
+              <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({ci.dependenciesWithType.length})</span>
+            </h3>
+            {depsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
           </div>
+          {depsOpen && (
+            <div style={{ marginTop: 16 }}>
+              {ci.dependenciesWithType.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p>
+              ) : (
+                ci.dependenciesWithType.map((rel) => (
+                  <CIRow key={rel.ci.id} ci={rel.ci} relationType={rel.relationType} onClick={() => navigate(`/cmdb/${rel.ci.id}`)} />
+                ))
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Sidebar */}
-        <div>
-          {/* Information */}
-          {(() => {
-            const ciItem = ci
-            const FIELD_LABELS: Record<string, string> = {
-              ipAddress:  'IP Address',
-              location:   'Location',
-              vendor:     'Vendor',
-              version:    'Version',
-              port:       'Port',
-              url:        'URL',
-              region:     'Region',
-              expiryDate: 'Expiry Date',
-              notes:      'Notes',
-            }
-            const typeFields = CI_FIELDS[ciItem.type] ?? []
+        {/* Dependents */}
+        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+          <div
+            onClick={() => setDepentsOpen((v) => !v)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
+          >
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
+              Dipendenti{' '}
+              <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({ci.dependentsWithType.length})</span>
+            </h3>
+            {depentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+          </div>
+          {depentsOpen && (
+            <div style={{ marginTop: 16 }}>
+              {ci.dependentsWithType.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p>
+              ) : (
+                ci.dependentsWithType.map((rel) => (
+                  <CIRow key={rel.ci.id} ci={rel.ci} relationType={rel.relationType} onClick={() => navigate(`/cmdb/${rel.ci.id}`)} />
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
-            function renderFieldValue(field: string) {
-              const raw = ciItem[field as keyof typeof ciItem]
-              if (raw === null || raw === undefined || raw === '') {
-                return <span style={{ color: '#c4cad4' }}>—</span>
-              }
-              if (field === 'expiryDate') {
-                return String(new Date(String(raw)).toLocaleDateString())
-              }
-              return String(raw)
-            }
-
-            return (
-              <Card title="Information">
-                {/* Fixed fields */}
-                <InfoRow label="ID"          value={ciItem.id} />
-                <InfoRow label="Type"        value={<TypeBadge type={ciItem.type} />} />
-                <InfoRow label="Status"      value={<StatusBadge value={ciItem.status} />} />
-                <InfoRow label="Environment" value={<span style={{ textTransform: 'capitalize' }}>{ciItem.environment}</span>} />
-                <InfoRow label="Owner" value={
-                  ciItem.owner
-                    ? <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: '#eef2ff', fontSize: 12, fontWeight: 500, color: '#4f46e5' }}>{ciItem.owner.name}</span>
-                    : <span style={{ color: '#c4cad4' }}>—</span>
-                } />
-                <InfoRow label="Support Group" value={
-                  ciItem.supportGroup
-                    ? <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 12, fontWeight: 500, color: '#059669' }}>{ciItem.supportGroup.name}</span>
-                    : <span style={{ color: '#c4cad4' }}>—</span>
-                } />
-                <InfoRow label="Created" value={new Date(ciItem.createdAt).toLocaleDateString()} />
-                <InfoRow label="Updated" value={new Date(ciItem.updatedAt).toLocaleDateString()} />
-
-                {/* Divider */}
-                {typeFields.length > 0 && (
-                  <div style={{ borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
-                )}
-
-                {/* Variable fields per CI type */}
-                {typeFields.map((field) => (
-                  <InfoRow key={field} label={FIELD_LABELS[field] ?? field} value={renderFieldValue(field)} />
-                ))}
-              </Card>
-            )
-          })()}
-
-          {/* Actions */}
-          <Card title="Actions">
-            <button
-              onClick={() => setDialogOpen(true)}
-              style={{ width: '100%', padding: '9px 16px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
-            >
-              + Add Dependency
-            </button>
-          </Card>
+        {/* Blast Radius */}
+        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+          <div
+            onClick={() => setBlastOpen((v) => !v)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
+          >
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
+              Blast Radius{' '}
+              <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({blastData?.blastRadius?.length ?? 0})</span>
+            </h3>
+            {blastOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+          </div>
+          {blastOpen && (
+            <div style={{ marginTop: 16 }}>
+              {blastLoading ? (
+                <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Caricamento…</p>
+              ) : !blastData?.blastRadius?.length ? (
+                <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun impatto downstream rilevato.</p>
+              ) : (
+                blastData.blastRadius.map((d) => (
+                  <CIRow key={d.id} ci={d} onClick={() => navigate(`/cmdb/${d.id}`)} />
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
 
