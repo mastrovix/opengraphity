@@ -9,6 +9,7 @@ import {
   GitBranch,
   Bell,
   User,
+  BarChart2,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { to: '/requests',               label: 'Requests',   icon: Inbox },
   { to: '/cmdb',                   label: 'CMDB',       icon: Server },
   { to: '/workflow/incident',      label: 'Workflow',   icon: GitBranch },
+  { to: '/reports',                label: 'Report',     icon: BarChart2 },
   { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
   { to: '/settings/profile',       label: 'Profilo',    icon: User },
 ]

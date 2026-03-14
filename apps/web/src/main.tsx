@@ -21,6 +21,7 @@ import { CMDBDetailPage } from '@/pages/cmdb/CMDBDetailPage'
 import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
 import NotificationsPage from '@/pages/settings/NotificationsPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
+import ReportsPage from '@/pages/reports/ReportsPage'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
 
@@ -77,6 +78,7 @@ const router = createBrowserRouter([
       { path: 'workflow/incident',          element: <WorkflowDesignerPage />,    errorElement: <RouteError /> },
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
+      { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },
     ],
   },
 ])

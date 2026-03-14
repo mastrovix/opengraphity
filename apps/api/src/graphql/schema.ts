@@ -34,6 +34,10 @@ export const typeDefs = `#graphql
     # Notification Channels
     notificationChannels: [NotificationChannel!]!
 
+    # Reports
+    reportConversations: [ReportConversation!]!
+    reportConversation(id: ID!): ReportConversation
+
     # Workflow
     incidentWorkflow(incidentId: ID!): WorkflowInstance
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
@@ -139,6 +143,10 @@ export const typeDefs = `#graphql
 
     # Slack account linking
     linkSlackAccount(slackId: String!): User!
+
+    # Reports
+    askReport(question: String!, conversationId: ID): AskReportResult!
+    deleteReportConversation(id: ID!): Boolean!
   }
 
   type Incident {
@@ -578,5 +586,25 @@ export const typeDefs = `#graphql
   input CreateTeamInput {
     name: String!
     description: String
+  }
+
+  type ReportConversation {
+    id:        ID!
+    title:     String!
+    createdAt: String!
+    updatedAt: String!
+    messages:  [ReportMessage!]!
+  }
+
+  type ReportMessage {
+    id:        ID!
+    role:      String!
+    content:   String!
+    createdAt: String!
+  }
+
+  type AskReportResult {
+    message:        ReportMessage!
+    conversationId: ID!
   }
 `
