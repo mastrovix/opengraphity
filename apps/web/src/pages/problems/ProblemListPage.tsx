@@ -1,8 +1,10 @@
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { Bug } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
+import { EmptyState } from '@/components/EmptyState'
 import { GET_PROBLEMS } from '@/graphql/queries'
 
 interface Problem {
@@ -83,7 +85,7 @@ export function ProblemListPage() {
         columns={columns}
         data={data?.problems ?? []}
         loading={loading}
-        emptyMessage="Nessun problema trovato"
+        emptyComponent={<EmptyState icon={<Bug size={32} />} title="Nessun problema trovato" description="Non ci sono problemi aperti al momento." />}
         onRowClick={(row) => navigate(`/problems/${row.id}`)}
       />
     </div>

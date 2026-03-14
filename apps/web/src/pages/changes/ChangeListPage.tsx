@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { GitPullRequest } from 'lucide-react'
 import { GET_CHANGES } from '@/graphql/queries'
 import { TypeBadge, PriorityBadge, StepBadge } from '@/components/Badges'
+import { SkeletonCard } from '@/components/SkeletonLoader'
+import { EmptyState } from '@/components/EmptyState'
 
 interface WorkflowInstance { id: string; currentStep: string; status: string }
 interface Team { id: string; name: string }
@@ -99,12 +102,21 @@ export function ChangeListPage() {
       </div>
 
       {/* Table */}
+      {loading ? (
+        <>
+          <SkeletonCard rows={4} />
+          <SkeletonCard rows={4} />
+          <SkeletonCard rows={4} />
+        </>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={<GitPullRequest size={32} />}
+          title="Nessun change trovato"
+          description="Crea il primo change o modifica i filtri applicati."
+        />
+      ) : (
       <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#8892a4', fontSize: 14 }}>Caricamento…</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#8892a4', fontSize: 14 }}>Nessun change trovato</div>
-        ) : (
+        {(
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
@@ -153,6 +165,7 @@ export function ChangeListPage() {
           </table>
         )}
       </div>
+      )}
     </div>
   )
 }

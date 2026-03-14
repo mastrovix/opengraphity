@@ -1,8 +1,10 @@
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { AlertCircle } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
+import { EmptyState } from '@/components/EmptyState'
 import { GET_INCIDENTS } from '@/graphql/queries'
 
 interface Incident {
@@ -102,7 +104,7 @@ export function IncidentListPage() {
         columns={columns}
         data={data?.incidents ?? []}
         loading={loading}
-        emptyMessage="Nessun incident trovato"
+        emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title="Nessun incident trovato" description="Apri un nuovo incident o modifica i filtri applicati." />}
         onRowClick={(row) => navigate(`/incidents/${row.id}`)}
       />
     </div>

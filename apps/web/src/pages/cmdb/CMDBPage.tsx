@@ -1,8 +1,10 @@
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { Server } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
+import { EmptyState } from '@/components/EmptyState'
 import { GET_CIS } from '@/graphql/queries'
 
 interface CI {
@@ -121,7 +123,7 @@ export function CMDBPage() {
         columns={columns}
         data={data?.configurationItems ?? []}
         loading={loading}
-        emptyMessage="Nessun configuration item trovato"
+        emptyComponent={<EmptyState icon={<Server size={32} />} title="Nessun configuration item trovato" description="Il CMDB è vuoto. Aggiungi il primo CI per iniziare." />}
         onRowClick={(row) => navigate(`/cmdb/${row.id}`)}
       />
     </div>

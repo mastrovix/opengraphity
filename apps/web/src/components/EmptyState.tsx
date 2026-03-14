@@ -1,0 +1,25 @@
+// ── EmptyState — shared empty state component ─────────────────────────────────
+
+interface EmptyStateProps {
+  icon:         React.ReactNode
+  title:        string
+  description?: string
+  action?:      React.ReactNode
+}
+
+export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+  return (
+    <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+      <div style={{ color: '#8892a4', marginBottom: 12, display: 'flex', justifyContent: 'center', width: 48, height: 48, margin: '0 auto 12px' }}>
+        {icon}
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{title}</div>
+      {description && (
+        <div style={{ fontSize: 13, color: '#8892a4', marginTop: 4, maxWidth: 320, margin: '4px auto 0' }}>
+          {description}
+        </div>
+      )}
+      {action && <div style={{ marginTop: 16 }}>{action}</div>}
+    </div>
+  )
+}

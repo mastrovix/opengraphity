@@ -1,8 +1,10 @@
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { Inbox } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
+import { EmptyState } from '@/components/EmptyState'
 import { GET_SERVICE_REQUESTS } from '@/graphql/queries'
 
 interface ServiceRequest {
@@ -93,7 +95,7 @@ export function RequestListPage() {
         columns={columns}
         data={data?.serviceRequests ?? []}
         loading={loading}
-        emptyMessage="Nessuna richiesta trovata"
+        emptyComponent={<EmptyState icon={<Inbox size={32} />} title="Nessuna richiesta trovata" description="Crea una nuova service request." />}
       />
     </div>
   )

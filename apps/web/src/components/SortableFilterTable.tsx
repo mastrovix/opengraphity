@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronUp, ChevronDown } from 'lucide-react'
+import { SkeletonLine } from '@/components/SkeletonLoader'
 
 export interface ColumnDef<T> {
   key:           keyof T
@@ -13,11 +14,12 @@ export interface ColumnDef<T> {
 }
 
 interface Props<T> {
-  columns:      ColumnDef<T>[]
-  data:         T[]
-  onRowClick?:  (row: T) => void
-  loading?:     boolean
-  emptyMessage?: string
+  columns:         ColumnDef<T>[]
+  data:            T[]
+  onRowClick?:     (row: T) => void
+  loading?:        boolean
+  emptyMessage?:   string
+  emptyComponent?: React.ReactNode
 }
 
 const thStyle: React.CSSProperties = {
@@ -49,7 +51,8 @@ export function SortableFilterTable<T extends object>({
   data,
   onRowClick,
   loading = false,
-  emptyMessage = 'No results found',
+  emptyMessage = 'Nessun risultato',
+  emptyComponent,
 }: Props<T>) {
   const [sortKey, setSortKey] = useState<keyof T | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -171,20 +174,21 @@ export function SortableFilterTable<T extends object>({
           {loading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <tr key={i}>
-                {columns.map((col) => (
+                {columns.map((col, ci) => (
                   <td key={String(col.key)} style={{ padding: '12px', borderBottom: '1px solid #f1f3f9' }}>
-                    <div style={{ height: 14, background: '#f1f3f9', borderRadius: 4, width: '75%' }} />
+                    <SkeletonLine width={ci === 0 ? '80%' : ci % 2 === 0 ? '60%' : '70%'} />
                   </td>
                 ))}
               </tr>
             ))
           ) : sorted.length === 0 ? (
             <tr>
-              <td
-                colSpan={columns.length}
-                style={{ textAlign: 'center', color: '#8892a4', padding: '40px 20px', fontSize: 13 }}
-              >
-                {emptyMessage}
+              <td colSpan={columns.length}>
+                {emptyComponent ?? (
+                  <div style={{ textAlign: 'center', color: '#8892a4', padding: '40px 20px', fontSize: 13 }}>
+                    {emptyMessage}
+                  </div>
+                )}
               </td>
             </tr>
           ) : (

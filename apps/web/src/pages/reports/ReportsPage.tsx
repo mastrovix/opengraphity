@@ -3,7 +3,9 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { BarChart2 } from 'lucide-react'
+import { BarChart2, X } from 'lucide-react'
+import { SkeletonLine } from '@/components/SkeletonLoader'
+import { EmptyState } from '@/components/EmptyState'
 
 // ── GraphQL ────────────────────────────────────────────────────────────────
 
@@ -118,7 +120,6 @@ export default function ReportsPage() {
 
     try {
       const result = await askReport({ variables: { question, conversationId: activeId } })
-      console.log('[SEND] result:', result)
       const data = result.data?.askReport
       if (data) {
         if (!activeId) setActiveId(data.conversationId)
@@ -129,7 +130,7 @@ export default function ReportsPage() {
         void refetch()
       }
     } catch (err) {
-      console.error('[SEND] error:', err)
+      console.error('[reports] send error:', err)
       setLocalMessages((prev) =>
         prev.filter((m) => !m.id.startsWith('tmp-'))
       )
@@ -195,7 +196,7 @@ export default function ReportsPage() {
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
           {conversations.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#9ca3af', padding: '12px 8px' }}>Nessuna conversazione</div>
+            <EmptyState icon={<BarChart2 size={24} />} title="Nessuna conversazione" description="Fai la prima domanda per iniziare." />
           ) : (
             conversations.map((c) => (
               <div
@@ -218,9 +219,9 @@ export default function ReportsPage() {
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); void handleDelete(c.id) }}
-                  style={{ fontSize: 14, color: '#d1d5db', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 3, flexShrink: 0, lineHeight: 1 }}
+                  style={{ color: '#d1d5db', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 3, flexShrink: 0, display: 'flex', alignItems: 'center' }}
                   title="Elimina"
-                >×</button>
+                ><X size={13} /></button>
               </div>
             ))
           )}
@@ -236,7 +237,7 @@ export default function ReportsPage() {
             <BarChart2 size={48} color="#d1d5db" strokeWidth={1.5} />
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Analisi ITSM</div>
-              <div style={{ fontSize: 14, color: '#6b7280' }}>Fai domande sui tuoi dati in linguaggio naturale</div>
+              <div style={{ fontSize: 14, color: '#8892a4' }}>Fai domande sui tuoi dati in linguaggio naturale</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8, width: '100%', maxWidth: 520 }}>
               {SUGGESTIONS.map((s) => (
@@ -329,8 +330,10 @@ export default function ReportsPage() {
 
             {loading && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: '10px 16px', fontSize: 18, color: '#9ca3af', letterSpacing: 4 }}>
-                  <span style={{ animation: 'pulse 1.2s infinite' }}>•••</span>
+                <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', width: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <SkeletonLine width="90%" height={12} />
+                  <SkeletonLine width="70%" height={12} />
+                  <SkeletonLine width="50%" height={12} />
                 </div>
               </div>
             )}
@@ -380,7 +383,7 @@ export default function ReportsPage() {
               {loading ? '…' : 'Invia'}
             </button>
           </div>
-          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>Enter per inviare · Shift+Enter per andare a capo</div>
+          <div style={{ fontSize: 11, color: '#8892a4', marginTop: 6 }}>Enter per inviare · Shift+Enter per andare a capo</div>
         </div>
       </div>
 
@@ -405,7 +408,7 @@ export default function ReportsPage() {
 }
 
 const exportBtnStyle: React.CSSProperties = {
-  fontSize: 12, color: '#6b7280', background: '#f9fafb',
+  fontSize: 12, color: '#8892a4', background: '#f9fafb',
   border: '1px solid #e5e7eb', borderRadius: 5,
   padding: '4px 10px', cursor: 'pointer',
 }
