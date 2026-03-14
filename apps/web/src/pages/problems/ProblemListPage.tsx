@@ -83,7 +83,7 @@ export function ProblemListPage() {
         columns={columns}
         data={data?.problems ?? []}
         loading={loading}
-        emptyMessage="No problems found"
+        emptyMessage="Nessun problema trovato"
         onRowClick={(row) => navigate(`/problems/${row.id}`)}
       />
     </div>

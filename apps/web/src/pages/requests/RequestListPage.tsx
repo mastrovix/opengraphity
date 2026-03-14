@@ -93,7 +93,7 @@ export function RequestListPage() {
         columns={columns}
         data={data?.serviceRequests ?? []}
         loading={loading}
-        emptyMessage="No service requests found"
+        emptyMessage="Nessuna richiesta trovata"
       />
     </div>
   )

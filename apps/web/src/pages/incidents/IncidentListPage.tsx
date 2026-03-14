@@ -102,7 +102,7 @@ export function IncidentListPage() {
         columns={columns}
         data={data?.incidents ?? []}
         loading={loading}
-        emptyMessage="No incidents found"
+        emptyMessage="Nessun incident trovato"
         onRowClick={(row) => navigate(`/incidents/${row.id}`)}
       />
     </div>

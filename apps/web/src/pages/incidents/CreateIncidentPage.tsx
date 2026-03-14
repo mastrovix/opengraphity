@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_INCIDENT } from '@/graphql/mutations'
 import { GET_INCIDENTS, GET_CIS_SEARCH } from '@/graphql/queries'
@@ -15,7 +15,7 @@ interface CIRef { id: string; name: string; type: string; environment?: string }
 const inputBase: React.CSSProperties = {
   width:           '100%',
   padding:         '10px 14px',
-  border:          '1px solid #e2e6f0',
+  border:          '1px solid #e5e7eb',
   borderRadius:    6,
   fontSize:        14,
   color:           '#0f1629',
@@ -42,7 +42,7 @@ function focusHandlers(hasError: boolean) {
       e.currentTarget.style.boxShadow   = '0 0 0 3px #eef2ff'
     },
     onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = hasError ? '#dc2626' : '#e2e6f0'
+      e.currentTarget.style.borderColor = hasError ? '#dc2626' : '#e5e7eb'
       e.currentTarget.style.boxShadow   = 'none'
     },
   }
@@ -134,7 +134,7 @@ export function CreateIncidentPage() {
       </div>
 
       {/* Form card */}
-      <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 12, padding: 32 }}>
+      <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 32 }}>
         <form onSubmit={handleSubmit} noValidate>
 
           {/* Title */}
@@ -147,7 +147,7 @@ export function CreateIncidentPage() {
               value={title}
               onChange={(e) => { setTitle(e.target.value); if (submitted) setSubmitted(false) }}
               placeholder="Brief description of the incident"
-              style={{ ...inputBase, borderColor: titleError ? '#dc2626' : '#e2e6f0' }}
+              style={{ ...inputBase, borderColor: titleError ? '#dc2626' : '#e5e7eb' }}
               {...focusHandlers(!!titleError)}
             />
             {titleError && (
@@ -227,8 +227,8 @@ export function CreateIncidentPage() {
                     <button
                       type="button"
                       onClick={() => setSelectedCIs(prev => prev.filter(c => c.id !== ci.id))}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4f46e5', fontSize: 14, lineHeight: 1, padding: 0 }}
-                    >×</button>
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4f46e5', fontSize: 14, lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center' }}
+                    ><X size={14} /></button>
                   </span>
                 ))}
               </div>
@@ -247,7 +247,7 @@ export function CreateIncidentPage() {
             {/* Dropdown risultati */}
             {ciResults.length > 0 && ciSearch.length >= 2 && (
               <div style={{
-                border:          '1px solid #e2e6f0',
+                border:          '1px solid #e5e7eb',
                 borderRadius:    8,
                 marginTop:       4,
                 maxHeight:       200,
@@ -291,7 +291,7 @@ export function CreateIncidentPage() {
             <button
               type="button"
               onClick={() => navigate('/incidents')}
-              style={{ padding: '8px 20px', border: '1px solid #e2e6f0', backgroundColor: '#ffffff', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', color: '#4a5468' }}
+              style={{ padding: '8px 20px', border: '1px solid #e5e7eb', backgroundColor: '#ffffff', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', color: '#4a5468' }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#ffffff' }}
             >

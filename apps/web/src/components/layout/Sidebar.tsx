@@ -45,7 +45,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         bottom:          0,
         width:           width,
         backgroundColor: '#ffffff',
-        borderRight:     '1px solid #e2e6f0',
+        borderRight:     '1px solid #e5e7eb',
         display:         'flex',
         flexDirection:   'column',
         zIndex:          40,
@@ -57,7 +57,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
       <div
         style={{
           height:          56,
-          borderBottom:    '1px solid #e2e6f0',
+          borderBottom:    '1px solid #e5e7eb',
           display:         'flex',
           alignItems:      'center',
           justifyContent:  collapsed ? 'center' : 'flex-start',
@@ -171,7 +171,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           padding:         collapsed ? '12px 0' : '12px 16px',
           background:      'none',
           border:          'none',
-          borderTop:       '1px solid #e2e6f0',
+          borderTop:       '1px solid #e5e7eb',
           color:           '#8892a4',
           cursor:          'pointer',
           width:           '100%',

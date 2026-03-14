@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Modal } from '@/components/Modal'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge }   from '@/components/StatusBadge'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS } from '@/graphql/queries'
@@ -540,7 +541,7 @@ export function IncidentDetailPage() {
                       onClick={() => void removeCI({ variables: { incidentId: incident.id, ciId: ci.id } })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}
                       title="Rimuovi CI"
-                    >×</button>
+                    ><X size={14} /></button>
                   </div>
                 ))}
               </div>
@@ -829,35 +830,74 @@ export function IncidentDetailPage() {
       </div>
 
       {/* ── Transition Dialog ──────────────────────────────────────────────── */}
-      {isTransitionDialogOpen && pendingTransition && (
-        <>
-          {/* Overlay */}
-          <div
-            onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes(''); setNotesError('') }}
-            style={{
-              position: 'fixed', inset: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              zIndex: 1000,
-            }}
-          />
-          {/* Dialog */}
-          <div style={{
-            position: 'fixed',
-            top: '50%', left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 1001,
-            backgroundColor: '#fff',
-            borderRadius: 12,
-            padding: 24,
-            width: 480,
-            maxWidth: '90vw',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-          }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, marginTop: 0 }}>
-              {pendingTransition.inputField === 'rootCause'
-                ? 'Root Cause Analysis'
-                : `Transizione → ${pendingTransition.toStep}`}
-            </h3>
+      <Modal
+        open={isTransitionDialogOpen && !!pendingTransition}
+        onClose={() => { setIsTransitionDialogOpen(false); setTransitionNotes(''); setNotesError('') }}
+        title={
+          pendingTransition?.inputField === 'rootCause'
+            ? 'Root Cause Analysis'
+            : `Transizione → ${pendingTransition?.toStep ?? ''}`
+        }
+        width={480}
+        footer={
+          <>
+            <button
+              onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes(''); setNotesError('') }}
+              style={{
+                padding: '8px 16px', borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'transparent', cursor: 'pointer',
+                fontSize: 13, fontWeight: 500,
+              }}
+            >
+              Annulla
+            </button>
+            <button
+              onClick={() => {
+                if (transitionNotes.trim().length < 10) return
+                if (!incident?.workflowInstance?.id) {
+                  toast.error('WorkflowInstance non trovato')
+                  return
+                }
+                if (!pendingTransition?.toStep) {
+                  toast.error('Transizione non selezionata')
+                  return
+                }
+                void execTransition({
+                  variables: {
+                    instanceId: incident.workflowInstance.id,
+                    toStep: pendingTransition.toStep,
+                    notes: transitionNotes.trim(),
+                  },
+                  onCompleted: (data) => {
+                    if (data.executeWorkflowTransition.success) {
+                      toast.success('Transizione eseguita')
+                      setIsTransitionDialogOpen(false)
+                      setPendingTransition(null)
+                      setTransitionNotes('')
+                      void refetch()
+                    } else {
+                      toast.error(data.executeWorkflowTransition.error ?? 'Errore transizione')
+                    }
+                  },
+                  onError: (err) => toast.error(err.message),
+                })
+              }}
+              style={{
+                padding: '8px 16px', borderRadius: 8,
+                border: 'none', cursor: 'pointer',
+                fontSize: 13, fontWeight: 500,
+                backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)',
+                color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)',
+              }}
+            >
+              {transitioning ? 'Esecuzione...' : 'Conferma'}
+            </button>
+          </>
+        }
+      >
+        {pendingTransition && (
+          <>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
               {pendingTransition.inputField === 'rootCause'
                 ? 'Descrivi la causa radice prima di risolvere (minimo 10 caratteri).'
@@ -889,63 +929,9 @@ export function IncidentDetailPage() {
             {notesError && (
               <p style={{ fontSize: 12, color: '#dc2626', margin: '6px 0 0 0' }}>{notesError}</p>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button
-                onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes(''); setNotesError('') }}
-                style={{
-                  padding: '8px 16px', borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'transparent', cursor: 'pointer',
-                  fontSize: 13, fontWeight: 500,
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                onClick={() => {
-                  if (transitionNotes.trim().length < 10) return
-                  if (!incident?.workflowInstance?.id) {
-                    toast.error('WorkflowInstance non trovato')
-                    return
-                  }
-                  if (!pendingTransition?.toStep) {
-                    toast.error('Transizione non selezionata')
-                    return
-                  }
-                  void execTransition({
-                    variables: {
-                      instanceId: incident.workflowInstance.id,
-                      toStep: pendingTransition.toStep,
-                      notes: transitionNotes.trim(),
-                    },
-                    onCompleted: (data) => {
-                      if (data.executeWorkflowTransition.success) {
-                        toast.success('Transizione eseguita')
-                        setIsTransitionDialogOpen(false)
-                        setPendingTransition(null)
-                        setTransitionNotes('')
-                        void refetch()
-                      } else {
-                        toast.error(data.executeWorkflowTransition.error ?? 'Errore transizione')
-                      }
-                    },
-                    onError: (err) => toast.error(err.message),
-                  })
-                }}
-                style={{
-                  padding: '8px 16px', borderRadius: 8,
-                  border: 'none', cursor: 'pointer',
-                  fontSize: 13, fontWeight: 500,
-                  backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)',
-                  color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)',
-                }}
-              >
-                {transitioning ? 'Esecuzione...' : 'Conferma'}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

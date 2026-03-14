@@ -36,7 +36,7 @@ export default function ProfilePage() {
 
   const card: React.CSSProperties = {
     background:   '#fff',
-    border:       '1px solid #e2e6f0',
+    border:       '1px solid #e5e7eb',
     borderRadius: 10,
     padding:      '24px 28px',
     maxWidth:     480,
@@ -84,7 +84,7 @@ export default function ProfilePage() {
         <h2 style={{ fontSize: 15, fontWeight: 700, color: '#0f1629', margin: '0 0 6px' }}>
           Integrazione Slack
         </h2>
-        <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 20px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13, color: '#8892a4', margin: '0 0 20px', lineHeight: 1.5 }}>
           Collega il tuo account Slack per poter eseguire azioni sugli incident
           direttamente da Slack.
         </p>
@@ -122,7 +122,7 @@ export default function ProfilePage() {
               onChange={(e) => { setInput(e.target.value); setSaved(false) }}
               placeholder="U0123456789"
             />
-            <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 16px' }}>
+            <p style={{ fontSize: 11, color: '#8892a4', margin: '5px 0 16px' }}>
               Trovalo in Slack → click sul tuo avatar → Profilo → ⋮ → Copia ID membro
             </p>
             {saved && (

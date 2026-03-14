@@ -21,8 +21,8 @@ interface Props<T> {
 }
 
 const thStyle: React.CSSProperties = {
-  background:    '#f8f9fc',
-  borderBottom:  '2px solid #e2e6f0',
+  background:    '#f9fafb',
+  borderBottom:  '2px solid #e5e7eb',
   padding:       '8px 12px 6px',
   verticalAlign: 'top',
   textAlign:     'left',
@@ -35,7 +35,7 @@ const filterInputBase: React.CSSProperties = {
   height:      28,
   fontSize:    12,
   width:       '100%',
-  border:      '1px solid #e2e6f0',
+  border:      '1px solid #e5e7eb',
   borderRadius: 4,
   padding:     '2px 6px',
   background:  'white',
@@ -97,7 +97,7 @@ export function SortableFilterTable<T extends object>({
       })
 
   return (
-    <div style={{ border: '1px solid #e2e6f0', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <colgroup>
           {columns.map((col) => (

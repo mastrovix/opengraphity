@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { StatusBadge } from '@/components/StatusBadge'
 import { CIGraph } from '@/components/CIGraph'
+import { TypeBadge } from '@/components/Badges'
+import { Modal } from '@/components/Modal'
 import { GET_CI_DETAIL, GET_BLAST_RADIUS, GET_CIS } from '@/graphql/queries'
 import { ADD_CI_DEPENDENCY, UPDATE_CI } from '@/graphql/mutations'
 
@@ -98,7 +100,7 @@ function CIRow({ ci, relationType, onClick }: { ci: CIRef; relationType?: string
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+    <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
       <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: '0 0 16px 0' }}>{title}</h3>
       {children}
     </div>
@@ -111,14 +113,6 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
       <span style={{ fontSize: 12, color: '#8892a4', flexShrink: 0 }}>{label}</span>
       <span style={{ fontSize: 13, color: '#0f1629', fontWeight: 500, textAlign: 'right', wordBreak: 'break-all' }}>{value}</span>
     </div>
-  )
-}
-
-function TypeBadge({ value }: { value: string }) {
-  return (
-    <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: '#f1f3f9', fontSize: 12, fontWeight: 500, color: '#4a5468', textTransform: 'capitalize' }}>
-      {value.replace(/_/g, ' ')}
-    </span>
   )
 }
 
@@ -223,7 +217,7 @@ export function CMDBDetailPage() {
   const inputBase: React.CSSProperties = {
     width:           '100%',
     padding:         '10px 14px',
-    border:          '1px solid #e2e6f0',
+    border:          '1px solid #e5e7eb',
     borderRadius:    6,
     fontSize:        14,
     color:           '#0f1629',
@@ -244,7 +238,7 @@ export function CMDBDetailPage() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 12 }}>
         <span style={{ fontSize: 32 }}>🔍</span>
-        <p style={{ color: '#8892a4', fontSize: 14, margin: 0 }}>Configuration item not found.</p>
+        <p style={{ color: '#8892a4', fontSize: 14, margin: 0 }}>Configuration item non trovato.</p>
         <button onClick={() => navigate('/cmdb')} style={{ color: '#4f46e5', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer' }}>
           ← Back to CMDB
         </button>
@@ -268,12 +262,12 @@ export function CMDBDetailPage() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', letterSpacing: '-0.01em', margin: 0 }}>
               {ci.name}
             </h1>
-            <TypeBadge value={ci.type} />
+            <TypeBadge type={ci.type} />
             <StatusBadge value={ci.status} />
           </div>
           <button
             onClick={openEdit}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'white', fontSize: 14, fontWeight: 500, color: '#1a1f2e', cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: '1px solid #e5e7eb', background: 'white', fontSize: 14, fontWeight: 500, color: '#1a1f2e', cursor: 'pointer' }}
           >
             ✏️ Modifica
           </button>
@@ -302,7 +296,7 @@ export function CMDBDetailPage() {
         {/* Main column */}
         <div>
           {/* Dependencies */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
             <div
               onClick={() => setDepsOpen((v) => !v)}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
@@ -316,7 +310,7 @@ export function CMDBDetailPage() {
             {depsOpen && (
               <div style={{ marginTop: 16 }}>
                 {ci.dependenciesWithType.length === 0 ? (
-                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>No dependencies.</p>
+                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p>
                 ) : (
                   ci.dependenciesWithType.map((rel) => (
                     <CIRow key={rel.ci.id} ci={rel.ci} relationType={rel.relationType} onClick={() => navigate(`/cmdb/${rel.ci.id}`)} />
@@ -327,7 +321,7 @@ export function CMDBDetailPage() {
           </div>
 
           {/* Dependents */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
             <div
               onClick={() => setDepentsOpen((v) => !v)}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
@@ -341,7 +335,7 @@ export function CMDBDetailPage() {
             {depentsOpen && (
               <div style={{ marginTop: 16 }}>
                 {ci.dependentsWithType.length === 0 ? (
-                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>No dependents.</p>
+                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p>
                 ) : (
                   ci.dependentsWithType.map((rel) => (
                     <CIRow key={rel.ci.id} ci={rel.ci} relationType={rel.relationType} onClick={() => navigate(`/cmdb/${rel.ci.id}`)} />
@@ -352,7 +346,7 @@ export function CMDBDetailPage() {
           </div>
 
           {/* Blast Radius */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
             <div
               onClick={() => setBlastOpen((v) => !v)}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
@@ -368,7 +362,7 @@ export function CMDBDetailPage() {
                 {blastLoading ? (
                   <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Loading…</p>
                 ) : !blastData?.blastRadius?.length ? (
-                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>No downstream impact detected.</p>
+                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun impatto downstream rilevato.</p>
                 ) : (
                   blastData.blastRadius.map((d) => (
                     <CIRow key={d.id} ci={d} onClick={() => navigate(`/cmdb/${d.id}`)} />
@@ -412,7 +406,7 @@ export function CMDBDetailPage() {
               <Card title="Information">
                 {/* Fixed fields */}
                 <InfoRow label="ID"          value={ciItem.id} />
-                <InfoRow label="Type"        value={<TypeBadge value={ciItem.type} />} />
+                <InfoRow label="Type"        value={<TypeBadge type={ciItem.type} />} />
                 <InfoRow label="Status"      value={<StatusBadge value={ciItem.status} />} />
                 <InfoRow label="Environment" value={<span style={{ textTransform: 'capitalize' }}>{ciItem.environment}</span>} />
                 <InfoRow label="Owner" value={
@@ -430,7 +424,7 @@ export function CMDBDetailPage() {
 
                 {/* Divider */}
                 {typeFields.length > 0 && (
-                  <div style={{ borderTop: '1px solid #e2e6f0', margin: '8px 0' }} />
+                  <div style={{ borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
                 )}
 
                 {/* Variable fields per CI type */}
@@ -454,219 +448,213 @@ export function CMDBDetailPage() {
       </div>
 
       {/* Dialog overlay */}
-      {dialogOpen && (
-        <div
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,22,41,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}
-          onClick={(e) => { if (e.target === e.currentTarget) setDialogOpen(false) }}
-        >
-          <div style={{ backgroundColor: '#ffffff', borderRadius: 12, padding: 28, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f1629', margin: '0 0 20px 0' }}>Add Dependency</h2>
+      <Modal
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title="Add Dependency"
+        width={440}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => { setDialogOpen(false); setSubmitted(false); setSelectedCIId('') }}
+              style={{ padding: '9px 18px', background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14, color: '#4a5468', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="add-dep-form"
+              disabled={adding || !selectedCIId}
+              style={{ padding: '9px 18px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: (adding || !selectedCIId) ? 'not-allowed' : 'pointer', opacity: (adding || !selectedCIId) ? 0.5 : 1 }}
+            >
+              {adding ? 'Adding…' : 'Add'}
+            </button>
+          </>
+        }
+      >
+        <form id="add-dep-form" onSubmit={handleAddDep}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>
+              Configuration Item <span style={{ color: '#dc2626' }}>*</span>
+            </label>
+            <select
+              value={selectedCIId}
+              onChange={(e) => setSelectedCIId(e.target.value)}
+              style={{ ...inputBase, borderColor: submitted && !selectedCIId ? '#dc2626' : '#e5e7eb', cursor: 'pointer' }}
+            >
+              <option value="">Seleziona CI...</option>
+              {(cisData?.configurationItems ?? [])
+                .filter((c) => c.id !== ci.id)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.type.replace(/_/g, ' ')} — {c.environment})
+                  </option>
+                ))
+              }
+            </select>
+            {submitted && !selectedCIId && (
+              <p style={{ fontSize: 12, color: '#dc2626', margin: '4px 0 0 0' }}>Seleziona un CI.</p>
+            )}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>
+              Dependency Type
+            </label>
+            <select
+              value={depType}
+              onChange={(e) => setDepType(e.target.value)}
+              style={{ ...inputBase }}
+            >
+              {DEP_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+        </form>
+      </Modal>
 
-            <form onSubmit={handleAddDep}>
+      {/* ── Edit Dialog ─────────────────────────────────────────── */}
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Modifica CI"
+        width={520}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditOpen(false)}
+              style={{ padding: '9px 18px', background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14, color: '#4a5468', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="edit-ci-form"
+              disabled={saving}
+              style={{ padding: '9px 18px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1 }}
+            >
+              {saving ? 'Salvataggio…' : 'Salva'}
+            </button>
+          </>
+        }
+      >
+        {ci && (() => {
+          const ciItem = ci
+          const varFields = CI_FIELDS[ciItem.type] ?? []
+          const fieldLabel: Record<string, string> = {
+            ipAddress:  'IP Address',
+            location:   'Location',
+            vendor:     'Vendor',
+            version:    'Version',
+            port:       'Port',
+            url:        'URL',
+            region:     'Region',
+            expiryDate: 'Expiry Date',
+            notes:      'Notes',
+          }
+          return (
+            <form id="edit-ci-form" onSubmit={handleEditSubmit}>
+
+              {/* Name */}
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>
-                  Configuration Item <span style={{ color: '#dc2626' }}>*</span>
-                </label>
-                <select
-                  value={selectedCIId}
-                  onChange={(e) => setSelectedCIId(e.target.value)}
-                  style={{ ...inputBase, borderColor: submitted && !selectedCIId ? '#dc2626' : '#e2e6f0', cursor: 'pointer' }}
-                >
-                  <option value="">Seleziona CI...</option>
-                  {(cisData?.configurationItems ?? [])
-                    .filter((c) => c.id !== ci.id)
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.type.replace(/_/g, ' ')} — {c.environment})
-                      </option>
-                    ))
-                  }
-                </select>
-                {submitted && !selectedCIId && (
-                  <p style={{ fontSize: 12, color: '#dc2626', margin: '4px 0 0 0' }}>Seleziona un CI.</p>
-                )}
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Name</label>
+                <input
+                  type="text"
+                  value={(editForm['name'] as string) ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  style={{ ...inputBase }}
+                />
               </div>
 
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>
-                  Dependency Type
-                </label>
+              {/* Status */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Status</label>
                 <select
-                  value={depType}
-                  onChange={(e) => setDepType(e.target.value)}
+                  value={(editForm['status'] as string) ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
                   style={{ ...inputBase }}
                 >
-                  {DEP_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
+                  {['active', 'inactive', 'maintenance', 'decommissioned'].map((s) => (
+                    <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
                   ))}
                 </select>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => { setDialogOpen(false); setSubmitted(false); setSelectedCIId('') }}
-                  style={{ padding: '9px 18px', background: 'none', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 14, color: '#4a5468', cursor: 'pointer' }}
+              {/* Environment */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Environment</label>
+                <select
+                  value={(editForm['environment'] as string) ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, environment: e.target.value }))}
+                  style={{ ...inputBase }}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={adding || !selectedCIId}
-                  style={{ padding: '9px 18px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: (adding || !selectedCIId) ? 'not-allowed' : 'pointer', opacity: (adding || !selectedCIId) ? 0.5 : 1 }}
-                >
-                  {adding ? 'Adding…' : 'Add'}
-                </button>
+                  {['production', 'staging', 'development', 'testing', 'dr'].map((env) => (
+                    <option key={env} value={env}>{env.charAt(0).toUpperCase() + env.slice(1)}</option>
+                  ))}
+                </select>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* ── Edit Dialog ─────────────────────────────────────────── */}
-      {editOpen && (() => {
-        const ciItem = ci
-        if (!ciItem) return null
-        const varFields = CI_FIELDS[ciItem.type] ?? []
-        const fieldLabel: Record<string, string> = {
-          ipAddress:  'IP Address',
-          location:   'Location',
-          vendor:     'Vendor',
-          version:    'Version',
-          port:       'Port',
-          url:        'URL',
-          region:     'Region',
-          expiryDate: 'Expiry Date',
-          notes:      'Notes',
-        }
-        return (
-          <div
-            onClick={() => setEditOpen(false)}
-            style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,22,41,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{ backgroundColor: '#ffffff', borderRadius: 12, padding: 28, width: '100%', maxWidth: 520, boxShadow: '0 8px 40px rgba(0,0,0,0.18)', maxHeight: '90vh', overflowY: 'auto' }}
-            >
-              <h2 style={{ fontSize: 17, fontWeight: 700, color: '#0f1629', margin: '0 0 20px 0' }}>Modifica CI</h2>
-              <form onSubmit={handleEditSubmit}>
-
-                {/* Name */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Name</label>
-                  <input
-                    type="text"
-                    value={(editForm['name'] as string) ?? ''}
-                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                    style={{ ...inputBase }}
-                  />
-                </div>
-
-                {/* Status */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Status</label>
-                  <select
-                    value={(editForm['status'] as string) ?? ''}
-                    onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
-                    style={{ ...inputBase }}
-                  >
-                    {['active', 'inactive', 'maintenance', 'decommissioned'].map((s) => (
-                      <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Environment */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Environment</label>
-                  <select
-                    value={(editForm['environment'] as string) ?? ''}
-                    onChange={(e) => setEditForm((f) => ({ ...f, environment: e.target.value }))}
-                    style={{ ...inputBase }}
-                  >
-                    {['production', 'staging', 'development', 'testing', 'dr'].map((env) => (
-                      <option key={env} value={env}>{env.charAt(0).toUpperCase() + env.slice(1)}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Variable fields per CI type */}
-                {varFields.map((field) => {
-                  const label = fieldLabel[field] ?? field
-                  if (field === 'notes') {
-                    return (
-                      <div key={field} style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>{label}</label>
-                        <textarea
-                          value={(editForm[field] as string) ?? ''}
-                          onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
-                          rows={3}
-                          style={{ ...inputBase, resize: 'vertical' }}
-                        />
-                      </div>
-                    )
-                  }
-                  if (field === 'expiryDate') {
-                    return (
-                      <div key={field} style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>{label}</label>
-                        <input
-                          type="date"
-                          value={(editForm[field] as string) ?? ''}
-                          onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
-                          style={{ ...inputBase }}
-                        />
-                      </div>
-                    )
-                  }
-                  if (field === 'port') {
-                    return (
-                      <div key={field} style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>{label}</label>
-                        <input
-                          type="number"
-                          value={(editForm[field] as string) ?? ''}
-                          onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
-                          style={{ ...inputBase }}
-                        />
-                      </div>
-                    )
-                  }
+              {/* Variable fields per CI type */}
+              {varFields.map((field) => {
+                const label = fieldLabel[field] ?? field
+                if (field === 'notes') {
+                  return (
+                    <div key={field} style={{ marginBottom: 16 }}>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>{label}</label>
+                      <textarea
+                        value={(editForm[field] as string) ?? ''}
+                        onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
+                        rows={3}
+                        style={{ ...inputBase, resize: 'vertical' }}
+                      />
+                    </div>
+                  )
+                }
+                if (field === 'expiryDate') {
                   return (
                     <div key={field} style={{ marginBottom: 16 }}>
                       <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>{label}</label>
                       <input
-                        type="text"
+                        type="date"
                         value={(editForm[field] as string) ?? ''}
                         onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
                         style={{ ...inputBase }}
                       />
                     </div>
                   )
-                })}
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => setEditOpen(false)}
-                    style={{ padding: '9px 18px', background: 'none', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 14, color: '#4a5468', cursor: 'pointer' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    style={{ padding: '9px 18px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1 }}
-                  >
-                    {saving ? 'Salvataggio…' : 'Salva'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )
-      })()}
+                }
+                if (field === 'port') {
+                  return (
+                    <div key={field} style={{ marginBottom: 16 }}>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>{label}</label>
+                      <input
+                        type="number"
+                        value={(editForm[field] as string) ?? ''}
+                        onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
+                        style={{ ...inputBase }}
+                      />
+                    </div>
+                  )
+                }
+                return (
+                  <div key={field} style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>{label}</label>
+                    <input
+                      type="text"
+                      value={(editForm[field] as string) ?? ''}
+                      onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
+                      style={{ ...inputBase }}
+                    />
+                  </div>
+                )
+              })}
+            </form>
+          )
+        })()}
+      </Modal>
     </div>
   )
 }

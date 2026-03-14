@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { StatusBadge } from '@/components/StatusBadge'
+import { EnvBadge } from '@/components/Badges'
 import { GET_CIS } from '@/graphql/queries'
 
 interface CI {
@@ -11,23 +12,6 @@ interface CI {
   status:      string
   environment: string
   createdAt:   string
-}
-
-const ENV_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  production:  { bg: '#fef2f2', text: '#dc2626', dot: '#dc2626' },
-  staging:     { bg: '#fffbeb', text: '#d97706', dot: '#d97706' },
-  development: { bg: '#ecfdf5', text: '#059669', dot: '#059669' },
-  dr:          { bg: '#f0f9ff', text: '#0284c7', dot: '#0284c7' },
-}
-
-function EnvBadge({ value }: { value: string }) {
-  const c = ENV_COLORS[value] ?? { bg: '#f1f3f9', text: '#8892a4', dot: '#8892a4' }
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 100, backgroundColor: c.bg, fontSize: 12, fontWeight: 500, color: c.text, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
-      <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: c.dot, flexShrink: 0 }} />
-      {value}
-    </span>
-  )
 }
 
 const TYPE_OPTIONS = [
@@ -94,7 +78,7 @@ const columns: ColumnDef<CI>[] = [
       { value: 'development', label: 'Development' },
       { value: 'dr',          label: 'DR' },
     ],
-    render: (v) => <EnvBadge value={String(v)} />,
+    render: (v) => <EnvBadge environment={String(v)} />,
   },
   {
     key:      'createdAt',
@@ -137,7 +121,7 @@ export function CMDBPage() {
         columns={columns}
         data={data?.configurationItems ?? []}
         loading={loading}
-        emptyMessage="No configuration items found"
+        emptyMessage="Nessun configuration item trovato"
         onRowClick={(row) => navigate(`/cmdb/${row.id}`)}
       />
     </div>

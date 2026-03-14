@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { Modal } from '@/components/Modal'
 
 const GET_NOTIFICATION_CHANNELS = gql`
   query GetNotificationChannels {
@@ -159,7 +160,7 @@ export default function NotificationsPage() {
       </div>
 
       {channels.length === 0 ? (
-        <div style={{ fontSize: 14, color: '#9ca3af', padding: '40px 0', textAlign: 'center' }}>
+        <div style={{ fontSize: 14, color: '#8892a4', padding: '40px 0', textAlign: 'center' }}>
           Nessun canale configurato. Aggiungi Slack o Teams per ricevere notifiche.
         </div>
       ) : (
@@ -174,7 +175,7 @@ export default function NotificationsPage() {
                 </span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{ch.name}</div>
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{ch.eventTypes.join(', ')}</div>
+                  <div style={{ fontSize: 12, color: '#8892a4', marginTop: 2 }}>{ch.eventTypes.join(', ')}</div>
                 </div>
                 {tr === true  && <span style={{ fontSize: 11, color: '#16a34a' }}>✓ Inviato</span>}
                 {tr === false && <span style={{ fontSize: 11, color: '#dc2626' }}>✗ Errore</span>}
@@ -187,94 +188,91 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      {dialogOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#fff', borderRadius: 10, padding: '28px 32px', width: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 20px' }}>
-              {editingId ? 'Modifica canale' : 'Aggiungi canale'}
-            </h2>
+      <Modal
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title={editingId ? 'Modifica canale' : 'Aggiungi canale'}
+        footer={
+          <>
+            <button onClick={() => setDialogOpen(false)} style={{ fontSize: 13, padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#374151', cursor: 'pointer' }}>Annulla</button>
+            <button onClick={() => void handleSave()} style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: '#4f46e5', color: '#fff', cursor: 'pointer' }}>Salva</button>
+          </>
+        }
+      >
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Platform</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {['slack', 'teams'].map((p) => (
+              <button
+                key={p}
+                onClick={() => setForm((f) => ({ ...f, platform: p }))}
+                style={{ fontSize: 13, fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? '#4f46e5' : '#e5e7eb', background: form.platform === p ? '#eff0ff' : '#fff', color: form.platform === p ? '#4f46e5' : '#374151' }}
+              >
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Platform</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['slack', 'teams'].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setForm((f) => ({ ...f, platform: p }))}
-                    style={{ fontSize: 13, fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? '#4f46e5' : '#e5e7eb', background: form.platform === p ? '#eff0ff' : '#fff', color: form.platform === p ? '#4f46e5' : '#374151' }}
-                  >
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Nome</label>
+          <input
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+          />
+        </div>
 
+        {form.platform === 'slack' && (
+          <>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Nome</label>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Webhook URL</label>
               <input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                value={form.webhookUrl}
+                onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
+                placeholder="https://hooks.slack.com/services/..."
                 style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
               />
             </div>
-
-            {form.platform === 'slack' && (
-              <>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Webhook URL</label>
-                  <input
-                    value={form.webhookUrl}
-                    onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
-                    placeholder="https://hooks.slack.com/services/..."
-                    style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
-                    Channel ID <span style={{ fontWeight: 400, color: '#9ca3af' }}>(Bot API)</span>
-                  </label>
-                  <input
-                    value={form.channelId}
-                    onChange={(e) => setForm((f) => ({ ...f, channelId: e.target.value }))}
-                    placeholder="C0XXXXXXXXX"
-                    style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
-                  />
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Usa Webhook URL per canali pubblici, Channel ID se hai configurato il Bot Token</div>
-                </div>
-              </>
-            )}
-
-            {form.platform === 'teams' && (
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Webhook URL *</label>
-                <input
-                  value={form.webhookUrl}
-                  onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
-                  placeholder="https://outlook.office.com/webhook/..."
-                  style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
-                />
-              </div>
-            )}
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>Eventi da notificare</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {ALL_EVENTS.map((ev) => (
-                  <label key={ev.value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={form.eventTypes.includes(ev.value)} onChange={() => toggleEvent(ev.value)} />
-                    {ev.label}
-                  </label>
-                ))}
-              </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                Channel ID <span style={{ fontWeight: 400, color: '#8892a4' }}>(Bot API)</span>
+              </label>
+              <input
+                value={form.channelId}
+                onChange={(e) => setForm((f) => ({ ...f, channelId: e.target.value }))}
+                placeholder="C0XXXXXXXXX"
+                style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+              />
+              <div style={{ fontSize: 11, color: '#8892a4', marginTop: 4 }}>Usa Webhook URL per canali pubblici, Channel ID se hai configurato il Bot Token</div>
             </div>
+          </>
+        )}
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setDialogOpen(false)} style={{ fontSize: 13, padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#374151', cursor: 'pointer' }}>Annulla</button>
-              <button onClick={() => void handleSave()}    style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: '#4f46e5', color: '#fff', cursor: 'pointer' }}>Salva</button>
-            </div>
+        {form.platform === 'teams' && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Webhook URL *</label>
+            <input
+              value={form.webhookUrl}
+              onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
+              placeholder="https://outlook.office.com/webhook/..."
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+            />
+          </div>
+        )}
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>Eventi da notificare</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {ALL_EVENTS.map((ev) => (
+              <label key={ev.value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.eventTypes.includes(ev.value)} onChange={() => toggleEvent(ev.value)} />
+                {ev.label}
+              </label>
+            ))}
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }
