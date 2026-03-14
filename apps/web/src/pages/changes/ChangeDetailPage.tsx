@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
@@ -25,7 +25,9 @@ import {
   ASSIGN_DEPLOY_STEP_VALIDATION_TEAM,
   ASSIGN_DEPLOY_STEP_VALIDATION_USER,
 } from '@/graphql/mutations'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { ImpactPanel } from '@/components/ImpactPanel'
+import { CountBadge } from '@/components/ui/CountBadge'
 import type { ImpactAnalysis } from '@/components/ImpactPanel'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -128,9 +130,6 @@ function Badge({ value, map }: { value: string; map: Record<string, { bg: string
 const cardStyle: React.CSSProperties = {
   backgroundColor: '#fff', border: '1px solid #e2e6f0', borderRadius: 10, padding: 20, marginBottom: 16,
 }
-const cardTitleStyle: React.CSSProperties = {
-  fontSize: 13, fontWeight: 700, color: '#0f1629', marginBottom: 14,
-}
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6,
   fontSize: 13, color: '#0f1629', outline: 'none', backgroundColor: '#fafafa', boxSizing: 'border-box' as const,
@@ -226,6 +225,30 @@ export function ChangeDetailPage() {
   const [valPopupReassignTeamId, setValPopupReassignTeamId] = useState('')
   const [valPopupShowReassign, setValPopupShowReassign] = useState(false)
   const [valPopupUserId, setValPopupUserId] = useState('')
+
+  // Card open/close state
+  const [incidentsOpen,  setIncidentsOpen]  = useState(true)
+  const [timelineOpen,   setTimelineOpen]   = useState(true)
+  const [descOpen,       setDescOpen]       = useState(true)
+  const [detailsOpen,    setDetailsOpen]    = useState(true)
+  const [impactOpen,     setImpactOpen]     = useState(true)
+  const [ciOpen,         setCiOpen]         = useState(true)
+  const [assessmentOpen, setAssessmentOpen] = useState(false)
+  const [deployOpen,     setDeployOpen]     = useState(false)
+  const [validationOpen, setValidationOpen] = useState(false)
+
+  // Initialize card open state once change data is available
+  useEffect(() => {
+    const step = data?.change?.workflowInstance?.currentStep ?? ''
+    setAssessmentOpen(step === 'assessment')
+    setDeployOpen(['scheduled', 'deployment'].includes(step))
+    setValidationOpen(step === 'validation')
+  }, [data?.change?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [commentsOpen,   setCommentsOpen]   = useState(true)
+
+  // Global validation popup drawer
+  const [globalValidationPopup, setGlobalValidationPopup] = useState(false)
+  const [globalValNotes, setGlobalValNotes] = useState('')
 
   // Comment state
   const [newComment, setNewComment] = useState('')
@@ -348,7 +371,16 @@ export function ChangeDetailPage() {
 
   const showDeploySteps = ['assessment', 'cab_approval', 'scheduled', 'validation', 'deployment', 'completed', 'failed'].includes(currentStep)
   const deployStepsEditable = currentStep === 'assessment'
-  const showAssessmentSection = currentStep === 'assessment'
+
+  const STEPS_ORDER = [
+    'draft', 'assessment', 'cab_approval',
+    'scheduled', 'validation', 'deployment',
+    'completed', 'failed', 'rejected',
+    'emergency_approval', 'post_review',
+  ]
+  const currentStepIndex  = STEPS_ORDER.indexOf(currentStep)
+  const assessmentIndex   = STEPS_ORDER.indexOf('assessment')
+  const showAssessmentTasks = currentStepIndex >= assessmentIndex
 
   // Compute scheduledEnd for a form step
   function calcEnd(start: string, days: number): string {
@@ -410,414 +442,543 @@ export function ChangeDetailPage() {
         {/* Left column */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
-          {/* Description + Rollback */}
-          <div style={cardStyle}>
-            <div style={cardTitleStyle}>Descrizione</div>
-            {change.description ? (
-              <p style={{ fontSize: 14, color: '#0f1629', margin: 0, marginBottom: 16, lineHeight: 1.6 }}>{change.description}</p>
-            ) : (
-              <p style={{ fontSize: 13, color: '#8892a4', margin: 0, marginBottom: 16 }}>Nessuna descrizione.</p>
-            )}
-            <div style={{ borderTop: '1px solid #f1f3f8', paddingTop: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Piano di Rollback</div>
-              <p style={{ fontSize: 13, color: '#0f1629', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{change.rollbackPlan || '—'}</p>
-            </div>
-          </div>
-
           {/* Impact Analysis */}
           {change.impactAnalysis && change.affectedCIs.length > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <ImpactPanel analysis={change.impactAnalysis} compact={false} />
+            <div style={{ ...cardStyle, padding: 0 }}>
+              <div onClick={() => setImpactOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: impactOpen ? '1px solid #e5e7eb' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Impact Analysis</span>
+                </div>
+                {impactOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              </div>
+              {impactOpen && <ImpactPanel analysis={change.impactAnalysis} compact={false} />}
             </div>
           )}
 
-          {/* CI Impattati */}
-          <div style={cardStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={cardTitleStyle}>CI Impattati</div>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 100, backgroundColor: '#f1f3f8', color: '#8892a4' }}>
-                  {change.affectedCIs.length}
-                </span>
+          {/* Description + Rollback */}
+          <div style={{ ...cardStyle, padding: 0 }}>
+            <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Descrizione</span>
               </div>
-              <button
-                onClick={() => setShowCISearch((v) => !v)}
-                style={{ fontSize: 12, fontWeight: 600, color: '#4f46e5', background: 'none', border: '1px solid #e2e6f0', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
-              >
-                {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
-              </button>
+              {descOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
             </div>
-
-            {showCISearch && (
-              <div style={{ marginBottom: 12 }}>
-                <input
-                  type="text"
-                  value={ciSearch}
-                  onChange={(e) => setCiSearch(e.target.value)}
-                  placeholder="Cerca CI per nome (min. 2 caratteri)…"
-                  autoFocus
-                  style={inputStyle}
-                />
-                {ciResults.filter((ci) => !change.affectedCIs.find((a) => a.id === ci.id)).length > 0 && (
-                  <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, marginTop: 4, backgroundColor: '#fff', maxHeight: 160, overflowY: 'auto' }}>
-                    {ciResults
-                      .filter((ci) => !change.affectedCIs.find((a) => a.id === ci.id))
-                      .map((ci) => (
-                        <div
-                          key={ci.id}
-                          onClick={() => addCI({ variables: { changeId: change.id, ciId: ci.id } })}
-                          style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f3f8', fontSize: 13 }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#f8f9fc' }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '' }}
-                        >
-                          <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                          <span style={{ color: '#8892a4', fontSize: 11, marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
-                        </div>
-                      ))}
-                  </div>
+            {descOpen && (
+              <div style={{ padding: '16px 20px 20px' }}>
+                {change.description ? (
+                  <p style={{ fontSize: 14, color: '#0f1629', margin: 0, marginBottom: 16, lineHeight: 1.6 }}>{change.description}</p>
+                ) : (
+                  <p style={{ fontSize: 13, color: '#8892a4', margin: 0, marginBottom: 16 }}>Nessuna descrizione.</p>
                 )}
+                <div style={{ borderTop: '1px solid #f1f3f8', paddingTop: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Piano di Rollback</div>
+                  <p style={{ fontSize: 13, color: '#0f1629', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{change.rollbackPlan || '—'}</p>
+                </div>
               </div>
             )}
+          </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {change.affectedCIs.map((ci) => (
-                <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 500 }}>
-                  {ci.name} <span style={{ opacity: 0.7, fontSize: 10 }}>({ci.type})</span>
-                  <button
-                    type="button"
-                    onClick={() => { setRemoveCIDialog({ ciId: ci.id, ciName: ci.name }); setRemoveCIReason('') }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 0, lineHeight: 1, fontSize: 14 }}
-                  >×</button>
-                </span>
-              ))}
-              {change.affectedCIs.length === 0 && <span style={{ fontSize: 13, color: '#8892a4' }}>Nessun CI associato</span>}
+          {/* Dettagli */}
+          <div style={{ ...cardStyle, padding: 0 }}>
+            <div onClick={() => setDetailsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: detailsOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Dettagli</span>
+              </div>
+              {detailsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
             </div>
+            {detailsOpen && (
+              <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[
+                  { label: 'Tipo', value: <Badge value={change.type} map={TYPE_COLORS} /> },
+                  { label: 'Priorità', value: <Badge value={change.priority} map={PRIORITY_COLORS} /> },
+                  { label: 'Step', value: change.workflowInstance ? <Badge value={currentStep} map={STEP_COLORS} /> : '—' },
+                  { label: 'Team', value: change.assignedTeam?.name ?? '—' },
+                  { label: 'Assegnato a', value: change.assignee?.name ?? '—' },
+                  { label: 'Creato da', value: change.createdBy?.name ?? '—' },
+                  { label: 'Scheduled Start', value: change.scheduledStart ? new Date(change.scheduledStart).toLocaleDateString('it-IT') : '—' },
+                  { label: 'Scheduled End', value: change.scheduledEnd ? new Date(change.scheduledEnd).toLocaleDateString('it-IT') : '—' },
+                  { label: 'Creato il', value: new Date(change.createdAt).toLocaleString('it-IT') },
+                  { label: 'Aggiornato', value: new Date(change.updatedAt).toLocaleString('it-IT') },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#8892a4', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
+                    <span style={{ fontSize: 13, color: '#0f1629', textAlign: 'right' }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* CI Impattati */}
+          <div style={{ ...cardStyle, padding: 0 }}>
+            <div onClick={() => setCiOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>CI Impattati</span>
+                <CountBadge count={change.affectedCIs.length} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowCISearch((v) => !v); if (!ciOpen) setCiOpen(true) }}
+                  style={{ fontSize: 12, fontWeight: 600, color: '#4f46e5', background: 'none', border: '1px solid #e2e6f0', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+                >
+                  {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
+                </button>
+                {ciOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              </div>
+            </div>
+            {ciOpen && (
+              <div style={{ padding: '16px 20px 20px' }}>
+                {showCISearch && (
+                  <div style={{ marginBottom: 12 }}>
+                    <input
+                      type="text"
+                      value={ciSearch}
+                      onChange={(e) => setCiSearch(e.target.value)}
+                      placeholder="Cerca CI per nome (min. 2 caratteri)…"
+                      autoFocus
+                      style={inputStyle}
+                    />
+                    {ciResults.filter((ci) => !change.affectedCIs.find((a) => a.id === ci.id)).length > 0 && (
+                      <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, marginTop: 4, backgroundColor: '#fff', maxHeight: 160, overflowY: 'auto' }}>
+                        {ciResults
+                          .filter((ci) => !change.affectedCIs.find((a) => a.id === ci.id))
+                          .map((ci) => (
+                            <div
+                              key={ci.id}
+                              onClick={() => addCI({ variables: { changeId: change.id, ciId: ci.id } })}
+                              style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f3f8', fontSize: 13 }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#f8f9fc' }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '' }}
+                            >
+                              <span style={{ fontWeight: 500 }}>{ci.name}</span>
+                              <span style={{ color: '#8892a4', fontSize: 11, marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {change.affectedCIs.map((ci) => (
+                    <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 500 }}>
+                      {ci.name} <span style={{ opacity: 0.7, fontSize: 10 }}>({ci.type})</span>
+                      <button
+                        type="button"
+                        onClick={() => { setRemoveCIDialog({ ciId: ci.id, ciName: ci.name }); setRemoveCIReason('') }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 0, lineHeight: 1, fontSize: 14 }}
+                      >×</button>
+                    </span>
+                  ))}
+                  {change.affectedCIs.length === 0 && <span style={{ fontSize: 13, color: '#8892a4' }}>Nessun CI associato</span>}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Related Incidents */}
           {change.relatedIncidents.length > 0 && (
-            <div style={cardStyle}>
-              <div style={cardTitleStyle}>Incident Correlati ({change.relatedIncidents.length})</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {change.relatedIncidents.map((inc) => (
-                  <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', backgroundColor: '#f8f9fc', borderRadius: 7 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: '#0f1629', flex: 1 }}>{inc.title}</span>
-                    <Badge value={inc.severity} map={{ critical: { bg: '#fef2f2', color: '#dc2626' }, high: { bg: '#fff7ed', color: '#ea580c' }, medium: { bg: '#fefce8', color: '#ca8a04' }, low: { bg: '#f0fdf4', color: '#16a34a' } }} />
-                    <Badge value={inc.status} map={STEP_COLORS} />
-                  </div>
-                ))}
+            <div style={{ ...cardStyle, padding: 0 }}>
+              <div onClick={() => setIncidentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Incident Correlati</span>
+                  <CountBadge count={change.relatedIncidents.length} />
+                </div>
+                {incidentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
               </div>
-            </div>
-          )}
-
-          {/* Assessment Tasks — table */}
-          {showAssessmentSection && change.assessmentTasks.length > 0 && (
-            <div style={cardStyle}>
-              <div style={{ ...cardTitleStyle, marginBottom: 12 }}>Assessment Tasks</div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                      {['CI', 'Tipo', 'Team', 'Assegnato a', 'Risk', 'Status'].map((h) => (
-                        <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {change.assessmentTasks.map((task) => (
-                      <tr
-                        key={task.id}
-                        onClick={() => setAssessmentTaskPopup(task.id)}
-                        style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                      >
-                        <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>{task.ci?.name ?? '—'}</td>
-                        <td style={{ padding: '10px 12px', color: '#8892a4', fontSize: 12 }}>{task.ci?.type ?? '—'}</td>
-                        <td style={{ padding: '10px 12px' }}>
-                          {task.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          {task.assignee ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                {task.assignee.name.charAt(0).toUpperCase()}
-                              </div>
-                              <span style={{ fontSize: 12 }}>{task.assignee.name}</span>
-                            </div>
-                          ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          {task.riskLevel ? (
-                            <span style={{
-                              fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-                              backgroundColor: task.riskLevel === 'critical' ? 'rgba(239,68,68,0.1)' : task.riskLevel === 'high' ? 'rgba(249,115,22,0.1)' : task.riskLevel === 'medium' ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)',
-                              color: task.riskLevel === 'critical' ? '#dc2626' : task.riskLevel === 'high' ? '#ea580c' : task.riskLevel === 'medium' ? '#ca8a04' : '#16a34a',
-                            }}>{task.riskLevel.toUpperCase()}</span>
-                          ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
-                        </td>
-                        <td style={{ padding: '10px 12px' }}><Badge value={task.status} map={TASK_STATUS_COLORS} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {/* Progress bar */}
-              {(() => {
-                const total = change.assessmentTasks.length
-                const done = change.assessmentTasks.filter((t) => ['completed', 'skipped', 'rejected'].includes(t.status)).length
-                return total > 0 ? (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#8892a4', marginBottom: 4 }}>
-                      <span>Completati</span><span>{done}/{total}</span>
+              {incidentsOpen && (
+                <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {change.relatedIncidents.map((inc) => (
+                    <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', backgroundColor: '#f8f9fc', borderRadius: 7 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#0f1629', flex: 1 }}>{inc.title}</span>
+                      <Badge value={inc.severity} map={{ critical: { bg: '#fef2f2', color: '#dc2626' }, high: { bg: '#fff7ed', color: '#ea580c' }, medium: { bg: '#fefce8', color: '#ca8a04' }, low: { bg: '#f0fdf4', color: '#16a34a' } }} />
+                      <Badge value={inc.status} map={STEP_COLORS} />
                     </div>
-                    <div style={{ height: 4, borderRadius: 2, backgroundColor: '#f1f3f8' }}>
-                      <div style={{ height: '100%', borderRadius: 2, backgroundColor: done === total ? '#059669' : '#4f46e5', width: `${(done / total) * 100}%`, transition: 'width 0.3s' }} />
-                    </div>
-                  </div>
-                ) : null
-              })()}
-            </div>
-          )}
-
-          {/* Deploy Steps — table */}
-          {showDeploySteps && !deployStepsEditable && (
-            <div style={cardStyle}>
-              <div style={cardTitleStyle}>Deploy Steps ({change.deploySteps.length})</div>
-              {change.deploySteps.length === 0 ? (
-                <span style={{ fontSize: 13, color: '#8892a4' }}>Nessuno step pianificato.</span>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                        {['#', 'Titolo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
-                          <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {change.deploySteps.map((step) => (
-                        <tr
-                          key={step.id}
-                          onClick={() => { setDeployStepPopup(step.id); setDeployPopupNotes(''); setDeployPopupShowSkip(false); setDeployPopupSkipReason(''); setDeployPopupShowFail(false); setDeployPopupFailReason(''); setDeployPopupShowReassign(false); setDeployPopupReassignTeamId(''); setDeployPopupUserId('') }}
-                          style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                        >
-                          <td style={{ padding: '10px 12px' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, backgroundColor: '#f3f4f6', padding: '2px 6px', borderRadius: 4 }}>#{step.order}</span>
-                          </td>
-                          <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>{step.title}</td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {step.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {step.assignee ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {step.assignee.name.charAt(0).toUpperCase()}
-                                </div>
-                                <span style={{ fontSize: 12 }}>{step.assignee.name}</span>
-                              </div>
-                            ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledStart)}</td>
-                          <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledEnd)}</td>
-                          <td style={{ padding: '10px 12px' }}><Badge value={step.status} map={STATUS_STEP_COLORS} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  ))}
                 </div>
               )}
             </div>
           )}
-        {/* Validation Card */}
-        {(['cab_approval', 'scheduled', 'validation', 'deployment', 'completed', 'failed'].includes(currentStep) &&
-          (change.deploySteps.some((s) => s.hasValidation) || !!change.validation)) && (
-          <div style={cardStyle}>
-            <div style={cardTitleStyle}>Validazione</div>
 
-            {/* Validazione globale */}
-            {change.validation && (
-              <div style={{ padding: 12, borderRadius: 8, border: '1px solid #e2e6f0', backgroundColor: '#fafafa', marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>Validazione Globale</span>
-                  <Badge value={change.validation.status} map={{ ...TASK_STATUS_COLORS, passed: { bg: '#ecfdf5', color: '#059669' }, failed: { bg: '#fef2f2', color: '#dc2626' } }} />
-                </div>
-                <div style={{ fontSize: 12, color: '#8892a4', marginBottom: 8 }}>
-                  {formatDate(change.validation.scheduledStart)} → {formatDate(change.validation.scheduledEnd)}
-                </div>
-                {change.validation.assignedTeam && (
-                  <div style={{ fontSize: 12, marginBottom: 10 }}>
-                    Team: <strong>{change.validation.assignedTeam.name}</strong>
-                  </div>
-                )}
-                {change.validation.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={() => completeValidation({ variables: { changeId: change.id, notes: '' } })} style={{ padding: '6px 12px', borderRadius: 6, backgroundColor: '#059669', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Passa</button>
-                    <button onClick={() => failValidation({ variables: { changeId: change.id } })} style={{ padding: '6px 12px', borderRadius: 6, backgroundColor: '#dc2626', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Fallisce</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Tabella validazioni per deploy step */}
-            {change.deploySteps.filter((s) => s.hasValidation).length > 0 && (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                      {['Step', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
-                        <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
+          {/* Assessment Tasks — table */}
+          {showAssessmentTasks && change.assessmentTasks.length > 0 && (() => {
+            const totalCount     = change.assessmentTasks.length
+            const completedCount = change.assessmentTasks.filter((t) => ['completed', 'skipped', 'rejected'].includes(t.status)).length
+            return (
+              <div style={{ ...cardStyle, padding: 0 }}>
+                <div onClick={() => setAssessmentOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: assessmentOpen ? '1px solid #e5e7eb' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Assessment Tasks</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {change.assessmentTasks.map((task) => (
+                        <div key={task.id} style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background:
+                            task.status === 'completed' ? '#16a34a' :
+                            task.status === 'skipped'   ? '#8892a4' :
+                            task.status === 'rejected'  ? '#dc2626' :
+                            '#e5e7eb',
+                        }} />
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {change.deploySteps.filter((s) => s.hasValidation).map((step) => (
-                      <tr
-                        key={step.id}
-                        onClick={() => { setValidationStepPopup(step.id); setValPopupNotes(''); setValPopupShowReassign(false); setValPopupReassignTeamId(''); setValPopupUserId('') }}
-                        style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                      >
-                        <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>Step {step.order}: {step.title}</td>
-                        <td style={{ padding: '10px 12px' }}>
-                          {step.validationTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          {step.validationUser ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {step.validationUser.name.charAt(0).toUpperCase()}
-                              </div>
-                              <span style={{ fontSize: 12 }}>{step.validationUser.name}</span>
-                            </div>
-                          ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.validationStart ?? '')}</td>
-                        <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.validationEnd ?? '')}</td>
-                        <td style={{ padding: '10px 12px' }}><Badge value={step.validationStatus ?? 'pending'} map={{ ...STATUS_STEP_COLORS, passed: { bg: '#ecfdf5', color: '#059669' }, failed: { bg: '#fef2f2', color: '#dc2626' } }} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {!change.validation && change.deploySteps.filter((s) => s.hasValidation).length === 0 && (
-              <span style={{ fontSize: 13, color: '#8892a4' }}>Nessuna validazione pianificata.</span>
-            )}
-          </div>
-        )}
-
-          {/* Comments */}
-          <div style={cardStyle}>
-            <div style={cardTitleStyle}>Commenti ({change.comments.length})</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: change.comments.length > 0 ? 14 : 0 }}>
-              {change.comments.map((cm) => {
-                const typeColors: Record<string, { bg: string; color: string }> = {
-                  manual:      { bg: '#f3f4f6', color: '#6b7280' },
-                  ci_removed:  { bg: '#fff7ed', color: '#ea580c' },
-                  task_skipped:{ bg: '#fefce8', color: '#ca8a04' },
-                  step_skipped:{ bg: '#fefce8', color: '#ca8a04' },
-                  rejected:    { bg: '#fef2f2', color: '#dc2626' },
-                  transition:  { bg: '#eff6ff', color: '#2563eb' },
-                }
-                const typeLabels: Record<string, string> = {
-                  manual: 'Commento', ci_removed: 'CI Rimosso',
-                  task_skipped: 'Task Saltato', step_skipped: 'Step Saltato',
-                  rejected: 'Rigettato', transition: 'Transizione',
-                }
-                const tc = typeColors[cm.type] ?? { bg: '#f3f4f6', color: '#6b7280' }
-                return (
-                  <div key={cm.id} style={{ padding: '10px 12px', backgroundColor: '#f8f9fc', borderRadius: 8, borderLeft: `3px solid ${tc.color}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <span style={{ ...tc, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600 }}>
-                        {typeLabels[cm.type] ?? cm.type}
-                      </span>
-                      <span style={{ fontSize: 11, color: '#8892a4' }}>
-                        {cm.createdBy?.name ?? '—'} · {new Date(cm.createdAt).toLocaleString('it-IT')}
+                      <span style={{ fontSize: 11, color: '#8892a4', marginLeft: 2 }}>
+                        {completedCount}/{totalCount} completati
                       </span>
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, color: '#0f1629', lineHeight: 1.5 }}>{cm.text}</p>
                   </div>
-                )
-              })}
+                  {assessmentOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+                </div>
+                {assessmentOpen && (
+                  <div style={{ padding: '0 0 4px' }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
+                            {['ID', 'CI', 'Tipo', 'Team', 'Assegnato a', 'Risk', 'Status'].map((h) => (
+                              <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {change.assessmentTasks.map((task) => (
+                            <tr
+                              key={task.id}
+                              onClick={() => setAssessmentTaskPopup(task.id)}
+                              style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
+                            >
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8892a4' }} title={task.id}>{task.id.slice(0, 8)}</span>
+                              </td>
+                              <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>{task.ci?.name ?? '—'}</td>
+                              <td style={{ padding: '10px 12px', color: '#8892a4', fontSize: 12 }}>{task.ci?.type ?? '—'}</td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {task.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {task.assignee ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      {task.assignee.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <span style={{ fontSize: 12 }}>{task.assignee.name}</span>
+                                  </div>
+                                ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {task.riskLevel ? (
+                                  <span style={{
+                                    fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+                                    backgroundColor: task.riskLevel === 'critical' ? 'rgba(239,68,68,0.1)' : task.riskLevel === 'high' ? 'rgba(249,115,22,0.1)' : task.riskLevel === 'medium' ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)',
+                                    color: task.riskLevel === 'critical' ? '#dc2626' : task.riskLevel === 'high' ? '#ea580c' : task.riskLevel === 'medium' ? '#ca8a04' : '#16a34a',
+                                  }}>{task.riskLevel.toUpperCase()}</span>
+                                ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}><Badge value={task.status} map={TASK_STATUS_COLORS} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Validation Card */}
+          {(['cab_approval', 'scheduled', 'validation', 'deployment', 'completed', 'failed'].includes(currentStep) &&
+            (change.deploySteps.some((s) => s.hasValidation) || !!change.validation)) && (() => {
+            const allValItems: { status: string }[] = [
+              ...(change.validation ? [change.validation] : []),
+              ...change.deploySteps.filter((s) => s.hasValidation).map((s) => ({ status: s.validationStatus ?? 'pending' })),
+            ]
+            const totalValCount  = allValItems.length
+            const passedValCount = allValItems.filter((v) => v.status === 'passed').length
+            return (
+              <div style={{ ...cardStyle, padding: 0 }}>
+                <div onClick={() => setValidationOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: validationOpen ? '1px solid #e5e7eb' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Validation Tasks</span>
+                    {totalValCount > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {allValItems.map((v, i) => (
+                          <div key={i} style={{
+                            width: 8, height: 8, borderRadius: '50%',
+                            background: v.status === 'passed' ? '#16a34a' : v.status === 'failed' ? '#dc2626' : '#e5e7eb',
+                          }} />
+                        ))}
+                        <span style={{ fontSize: 11, color: '#8892a4', marginLeft: 2 }}>
+                          {passedValCount}/{totalValCount} completati
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {validationOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+                </div>
+                {validationOpen && (
+                  <div style={{ padding: '0 0 4px' }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
+                            {['ID', 'Tipo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
+                              <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {change.validation && (
+                            <tr
+                              onClick={() => { setGlobalValidationPopup(true); setGlobalValNotes('') }}
+                              style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
+                            >
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8892a4' }} title={change.validation.id}>{change.validation.id.slice(0, 8)}</span>
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, backgroundColor: '#f1f5f9', color: '#64748b' }}>Globale</span>
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {change.validation.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {change.validation.assignee ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      {change.validation.assignee.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <span style={{ fontSize: 12 }}>{change.validation.assignee.name}</span>
+                                  </div>
+                                ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(change.validation.scheduledStart)}</td>
+                              <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(change.validation.scheduledEnd)}</td>
+                              <td style={{ padding: '10px 12px' }}><Badge value={change.validation.status} map={{ ...TASK_STATUS_COLORS, passed: { bg: '#ecfdf5', color: '#059669' }, failed: { bg: '#fef2f2', color: '#dc2626' } }} /></td>
+                            </tr>
+                          )}
+                          {change.deploySteps.filter((s) => s.hasValidation).map((step) => (
+                            <tr
+                              key={step.id}
+                              onClick={() => { setValidationStepPopup(step.id); setValPopupNotes(''); setValPopupShowReassign(false); setValPopupReassignTeamId(''); setValPopupUserId('') }}
+                              style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
+                            >
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8892a4' }} title={step.id}>{step.id.slice(0, 8)}</span>
+                              </td>
+                              <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>Step {step.order}: {step.title}</td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {step.validationTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {step.validationUser ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      {step.validationUser.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <span style={{ fontSize: 12 }}>{step.validationUser.name}</span>
+                                  </div>
+                                ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.validationStart ?? '')}</td>
+                              <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.validationEnd ?? '')}</td>
+                              <td style={{ padding: '10px 12px' }}><Badge value={step.validationStatus ?? 'pending'} map={{ ...STATUS_STEP_COLORS, passed: { bg: '#ecfdf5', color: '#059669' }, failed: { bg: '#fef2f2', color: '#dc2626' } }} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Deploy Tasks — table */}
+          {showDeploySteps && !deployStepsEditable && (() => {
+            const totalDeployCount     = change.deploySteps.length
+            const completedDeployCount = change.deploySteps.filter((s) => s.status === 'completed').length
+            return (
+              <div style={{ ...cardStyle, padding: 0 }}>
+                <div onClick={() => setDeployOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: deployOpen ? '1px solid #e5e7eb' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Deploy Tasks</span>
+                    {totalDeployCount > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {change.deploySteps.map((s) => (
+                          <div key={s.id} style={{
+                            width: 8, height: 8, borderRadius: '50%',
+                            background:
+                              s.status === 'completed' ? '#16a34a' :
+                              s.status === 'failed'    ? '#dc2626' :
+                              s.status === 'skipped'   ? '#8892a4' :
+                              '#e5e7eb',
+                          }} />
+                        ))}
+                        <span style={{ fontSize: 11, color: '#8892a4', marginLeft: 2 }}>
+                          {completedDeployCount}/{totalDeployCount} completati
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {deployOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+                </div>
+                {deployOpen && (
+                  <div style={{ padding: '0 0 4px' }}>
+                    {change.deploySteps.length === 0 ? (
+                      <div style={{ padding: '16px 20px', fontSize: 13, color: '#8892a4' }}>Nessuno step pianificato.</div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
+                              {['ID', 'Titolo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
+                                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {change.deploySteps.map((step) => (
+                              <tr
+                                key={step.id}
+                                onClick={() => { setDeployStepPopup(step.id); setDeployPopupNotes(''); setDeployPopupShowSkip(false); setDeployPopupSkipReason(''); setDeployPopupShowFail(false); setDeployPopupFailReason(''); setDeployPopupShowReassign(false); setDeployPopupReassignTeamId(''); setDeployPopupUserId('') }}
+                                style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
+                              >
+                                <td style={{ padding: '10px 12px' }}>
+                                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8892a4' }} title={step.id}>{step.id.slice(0, 8)}</span>
+                                </td>
+                                <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>{step.title}</td>
+                                <td style={{ padding: '10px 12px' }}>
+                                  {step.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
+                                </td>
+                                <td style={{ padding: '10px 12px' }}>
+                                  {step.assignee ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        {step.assignee.name.charAt(0).toUpperCase()}
+                                      </div>
+                                      <span style={{ fontSize: 12 }}>{step.assignee.name}</span>
+                                    </div>
+                                  ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
+                                </td>
+                                <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledStart)}</td>
+                                <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledEnd)}</td>
+                                <td style={{ padding: '10px 12px' }}><Badge value={step.status} map={STATUS_STEP_COLORS} /></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Comments */}
+          <div style={{ ...cardStyle, padding: 0 }}>
+            <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Commenti</span>
+                <CountBadge count={change.comments.length} />
+              </div>
+              {commentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Aggiungi un commento…"
-                rows={2}
-                style={{ flex: 1, padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
-              />
-              <button
-                disabled={newComment.trim().length < 3 || addingComment}
-                onClick={() => addComment({ variables: { changeId: change.id, text: newComment.trim() } })}
-                style={{
-                  padding: '8px 14px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: 600,
-                  cursor: newComment.trim().length >= 3 && !addingComment ? 'pointer' : 'not-allowed',
-                  backgroundColor: newComment.trim().length >= 3 && !addingComment ? '#4f46e5' : '#e2e6f0',
-                  color: newComment.trim().length >= 3 && !addingComment ? '#fff' : '#8892a4',
-                  alignSelf: 'flex-end',
-                }}
-              >
-                Invia
-              </button>
-            </div>
+            {commentsOpen && (
+              <div style={{ padding: '16px 20px 20px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: change.comments.length > 0 ? 14 : 0 }}>
+                  {change.comments.map((cm) => {
+                    const typeColors: Record<string, { bg: string; color: string }> = {
+                      manual:      { bg: '#f3f4f6', color: '#6b7280' },
+                      ci_removed:  { bg: '#fff7ed', color: '#ea580c' },
+                      task_skipped:{ bg: '#fefce8', color: '#ca8a04' },
+                      step_skipped:{ bg: '#fefce8', color: '#ca8a04' },
+                      rejected:    { bg: '#fef2f2', color: '#dc2626' },
+                      transition:  { bg: '#eff6ff', color: '#2563eb' },
+                    }
+                    const typeLabels: Record<string, string> = {
+                      manual: 'Commento', ci_removed: 'CI Rimosso',
+                      task_skipped: 'Task Saltato', step_skipped: 'Step Saltato',
+                      rejected: 'Rigettato', transition: 'Transizione',
+                    }
+                    const tc = typeColors[cm.type] ?? { bg: '#f3f4f6', color: '#6b7280' }
+                    return (
+                      <div key={cm.id} style={{ padding: '10px 12px', backgroundColor: '#f8f9fc', borderRadius: 8, borderLeft: `3px solid ${tc.color}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ ...tc, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600 }}>
+                            {typeLabels[cm.type] ?? cm.type}
+                          </span>
+                          <span style={{ fontSize: 11, color: '#8892a4' }}>
+                            {cm.createdBy?.name ?? '—'} · {new Date(cm.createdAt).toLocaleString('it-IT')}
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 13, color: '#0f1629', lineHeight: 1.5 }}>{cm.text}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Aggiungi un commento…"
+                    rows={2}
+                    style={{ flex: 1, padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                  <button
+                    disabled={newComment.trim().length < 3 || addingComment}
+                    onClick={() => addComment({ variables: { changeId: change.id, text: newComment.trim() } })}
+                    style={{
+                      padding: '8px 14px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: 600,
+                      cursor: newComment.trim().length >= 3 && !addingComment ? 'pointer' : 'not-allowed',
+                      backgroundColor: newComment.trim().length >= 3 && !addingComment ? '#4f46e5' : '#e2e6f0',
+                      color: newComment.trim().length >= 3 && !addingComment ? '#fff' : '#8892a4',
+                      alignSelf: 'flex-end',
+                    }}
+                  >
+                    Invia
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right column */}
         <div style={{ width: 320, flexShrink: 0 }}>
 
-          {/* Details card */}
-          <div style={cardStyle}>
-            <div style={cardTitleStyle}>Dettagli</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[
-                { label: 'Tipo', value: <Badge value={change.type} map={TYPE_COLORS} /> },
-                { label: 'Priorità', value: <Badge value={change.priority} map={PRIORITY_COLORS} /> },
-                { label: 'Step', value: change.workflowInstance ? <Badge value={currentStep} map={STEP_COLORS} /> : '—' },
-                { label: 'Team', value: change.assignedTeam?.name ?? '—' },
-                { label: 'Assegnato a', value: change.assignee?.name ?? '—' },
-                { label: 'Creato da', value: change.createdBy?.name ?? '—' },
-                { label: 'Scheduled Start', value: change.scheduledStart ? new Date(change.scheduledStart).toLocaleDateString('it-IT') : '—' },
-                { label: 'Scheduled End', value: change.scheduledEnd ? new Date(change.scheduledEnd).toLocaleDateString('it-IT') : '—' },
-                { label: 'Creato il', value: new Date(change.createdAt).toLocaleString('it-IT') },
-                { label: 'Aggiornato', value: new Date(change.updatedAt).toLocaleString('it-IT') },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <span style={{ fontSize: 12, color: '#8892a4', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
-                  <span style={{ fontSize: 13, color: '#0f1629', textAlign: 'right' }}>{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Timeline */}
           {change.workflowHistory.length > 0 && (
-            <div style={cardStyle}>
-              <div style={cardTitleStyle}>Timeline Workflow</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                {change.workflowHistory.map((exec, idx) => (
-                  <div key={exec.id ?? idx} style={{ display: 'flex', gap: 12, paddingBottom: idx < change.workflowHistory.length - 1 ? 16 : 0, position: 'relative' }}>
-                    {idx < change.workflowHistory.length - 1 && (
-                      <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: '#e2e6f0' }} />
-                    )}
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: STEP_COLORS[exec.stepName]?.color ?? '#8892a4', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: '0 0 0 1px #e2e6f0' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#0f1629' }}>{exec.stepName.replace(/_/g, ' ')}</div>
-                      <div style={{ fontSize: 11, color: '#8892a4' }}>{new Date(exec.enteredAt).toLocaleString('it-IT')}</div>
-                      {exec.notes && <div style={{ fontSize: 11, color: '#4a5468', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
-                    </div>
-                  </div>
-                ))}
+            <div style={{ ...cardStyle, padding: 0 }}>
+              <div onClick={() => setTimelineOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Timeline Workflow</span>
+                </div>
+                {timelineOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
               </div>
+              {timelineOpen && (
+                <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {change.workflowHistory.map((exec, idx) => (
+                    <div key={exec.id ?? idx} style={{ display: 'flex', gap: 12, paddingBottom: idx < change.workflowHistory.length - 1 ? 16 : 0, position: 'relative' }}>
+                      {idx < change.workflowHistory.length - 1 && (
+                        <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: '#e2e6f0' }} />
+                      )}
+                      <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: STEP_COLORS[exec.stepName]?.color ?? '#8892a4', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: '0 0 0 1px #e2e6f0' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#0f1629' }}>{exec.stepName.replace(/_/g, ' ')}</div>
+                        <div style={{ fontSize: 11, color: '#8892a4' }}>{new Date(exec.enteredAt).toLocaleString('it-IT')}</div>
+                        {exec.notes && <div style={{ fontSize: 11, color: '#4a5468', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1053,6 +1214,10 @@ export function ChangeDetailPage() {
 
               {/* Body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#374151', padding: '4px 8px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, display: 'inline-block' }}>{step.id}</div>
+                </div>
 
                 {/* Dettagli */}
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Dettagli</div>
@@ -1294,6 +1459,10 @@ export function ChangeDetailPage() {
 
               {/* Body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#374151', padding: '4px 8px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, display: 'inline-block' }}>{step.id}</div>
+                </div>
 
                 {/* Finestra di validazione */}
                 {step.validationStart && step.validationEnd && (
@@ -1446,6 +1615,128 @@ export function ChangeDetailPage() {
         )
       })()}
 
+      {/* Global Validation Popup Drawer */}
+      {globalValidationPopup && change.validation && (() => {
+        const val = change.validation
+        const valDone = val.status === 'passed' || val.status === 'failed'
+        const canAct  = currentStep === 'validation' && !valDone
+        return (
+          <>
+            <div onClick={() => setGlobalValidationPopup(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.35)' }} />
+            <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 520, backgroundColor: '#fff', zIndex: 1001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
+
+              {/* Header */}
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e6f0', flexShrink: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Validazione</div>
+                    <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0f1629', margin: '0 0 6px' }}>Validazione Globale</h2>
+                    <Badge value={val.status} map={{ ...TASK_STATUS_COLORS, passed: { bg: '#ecfdf5', color: '#059669' }, failed: { bg: '#fef2f2', color: '#dc2626' } }} />
+                  </div>
+                  <button onClick={() => setGlobalValidationPopup(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#8892a4', lineHeight: 1, padding: 4 }}>×</button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#374151', padding: '4px 8px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, display: 'inline-block' }}>{val.id}</div>
+                </div>
+
+                {/* Finestra di validazione */}
+                {val.scheduledStart && val.scheduledEnd && (
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Finestra di Validazione</div>
+                    <div style={{ display: 'flex', gap: 24, fontSize: 13 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 2 }}>Inizio</div>
+                        <div style={{ fontWeight: 500 }}>{formatDate(val.scheduledStart)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 2 }}>Fine</div>
+                        <div style={{ fontWeight: 500 }}>{formatDate(val.scheduledEnd)}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Assegnazione */}
+                <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Assegnazione</div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', marginBottom: 4 }}>Team</div>
+                    {val.assignedTeam ? (
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#0f1629' }}>{val.assignedTeam.name}</span>
+                    ) : (
+                      <span style={{ fontSize: 13, color: '#dc2626' }}>Non assegnato</span>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', marginBottom: 4 }}>Responsabile</div>
+                    {val.assignee ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: '#ea580c', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {val.assignee.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span style={{ fontSize: 13, color: '#0f1629' }}>{val.assignee.name}</span>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 13, color: '#8892a4' }}>—</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Azioni */}
+                {canAct && (
+                  <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Azioni</div>
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: 11, color: '#8892a4', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Note (obbligatorie per fallimento)</label>
+                      <textarea
+                        value={globalValNotes}
+                        onChange={(e) => setGlobalValNotes(e.target.value)}
+                        rows={3}
+                        placeholder="Note della validazione..."
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => { completeValidation({ variables: { changeId: change.id, notes: globalValNotes || null } }); setGlobalValidationPopup(false) }}
+                        style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', backgroundColor: '#059669', color: '#fff' }}
+                      >
+                        ✓ Passa
+                      </button>
+                      <button
+                        disabled={!globalValNotes.trim()}
+                        onClick={() => { failValidation({ variables: { changeId: change.id } }); setGlobalValidationPopup(false) }}
+                        style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 600, cursor: globalValNotes.trim() ? 'pointer' : 'not-allowed', backgroundColor: globalValNotes.trim() ? '#dc2626' : '#e2e6f0', color: globalValNotes.trim() ? '#fff' : '#8892a4' }}
+                      >
+                        ✗ Fallisce
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Read-only per validazione completata */}
+                {valDone && (
+                  <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Risultato</div>
+                    {val.notes && (
+                      <div style={{ fontSize: 13, color: '#0f1629', marginBottom: 8, lineHeight: 1.5 }}>{val.notes}</div>
+                    )}
+                    {val.completedAt && (
+                      <div style={{ fontSize: 12, color: '#8892a4' }}>Completato il: {new Date(val.completedAt).toLocaleString('it-IT')}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )
+      })()}
+
       {/* Assessment Task Popup Drawer */}
       {assessmentTaskPopup && (() => {
         const task = change.assessmentTasks.find((t) => t.id === assessmentTaskPopup)
@@ -1478,6 +1769,10 @@ export function ChangeDetailPage() {
 
               {/* Scrollable body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#374151', padding: '4px 8px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, display: 'inline-block' }}>{task.id}</div>
+                </div>
 
                 {/* ── Section 1: Assessment ─────────────────────────── */}
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Assessment</div>

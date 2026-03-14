@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import { EnvBadge } from '@/components/Badges'
+import { CountBadge } from '@/components/ui/CountBadge'
 import {
   GitBranch,
   AlertCircle,
@@ -166,7 +167,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
           <button style={SECTION_HEADER} onClick={() => setShowBlast((v) => !v)}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <GitBranch size={14} />
-              Blast Radius ({analysis.blastRadius.length} CI)
+              Blast Radius <CountBadge count={analysis.blastRadius.length} />
             </span>
             <span style={{ color: '#8892a4' }}>{showBlast ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
           </button>
@@ -223,7 +224,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
           <button style={SECTION_HEADER} onClick={() => setShowIncidents((v) => !v)}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <AlertCircle size={14} />
-              Incident ({totalInc})
+              Incident <CountBadge count={totalInc} />
             </span>
             <span style={{ color: '#8892a4' }}>{showIncidents ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
           </button>
@@ -279,7 +280,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
           <button style={SECTION_HEADER} onClick={() => setShowChanges((v) => !v)}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <GitCommit size={14} />
-              Change Recenti ({analysis.recentChanges.length})
+              Change Recenti <CountBadge count={analysis.recentChanges.length} />
             </span>
             <span style={{ color: '#8892a4' }}>{showChanges ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
           </button>

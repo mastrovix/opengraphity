@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { ArrowLeft, X } from 'lucide-react'
+import { ArrowLeft, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/Modal'
+import { CountBadge } from '@/components/ui/CountBadge'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge }   from '@/components/StatusBadge'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS } from '@/graphql/queries'
@@ -139,20 +140,6 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   )
 }
 
-function CardLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      fontSize:      11,
-      fontWeight:    700,
-      color:         'var(--text-muted)',
-      textTransform: 'uppercase',
-      letterSpacing: '0.06em',
-      marginBottom:  10,
-    }}>
-      {children}
-    </div>
-  )
-}
 
 function MicroBadge({ children, color }: { children: React.ReactNode; color?: string }) {
   return (
@@ -223,6 +210,13 @@ export function IncidentDetailPage() {
   // CI search state
   const [ciSearch, setCiSearch]       = useState('')
   const [showCISearch, setShowCISearch] = useState(false)
+
+  // Card open/close state
+  const [descOpen,     setDescOpen]     = useState(true)
+  const [detailsOpen,  setDetailsOpen]  = useState(true)
+  const [ciOpen,       setCiOpen]       = useState(true)
+  const [commentsOpen, setCommentsOpen] = useState(true)
+  const [timelineOpen, setTimelineOpen] = useState(true)
 
   // Queries
   const { data, loading, refetch } = useQuery<{ incident: Incident | null }>(
@@ -432,213 +426,36 @@ export function IncidentDetailPage() {
         <div>
 
           {/* Descrizione */}
-          <Card style={{ marginBottom: 16 }}>
-            <CardLabel>Descrizione</CardLabel>
-            {incident.description ? (
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-                {incident.description}
-              </p>
-            ) : (
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
-            )}
-          </Card>
-
-          {/* CI Impattati */}
-          <Card style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <CardLabel>CI Impattati</CardLabel>
-                <span style={{
-                  fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 100,
-                  backgroundColor: 'var(--surface-2)', color: 'var(--text-muted)',
-                }}>
-                  {incident.affectedCIs.length}
-                </span>
+          <Card style={{ marginBottom: 16, padding: 0 }}>
+            <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Descrizione</span>
               </div>
-              <button
-                onClick={() => setShowCISearch(s => !s)}
-                style={{
-                  fontSize: 12, padding: '4px 10px', borderRadius: 6,
-                  border: '1px solid var(--border)', background: 'transparent',
-                  cursor: 'pointer', color: 'var(--accent)',
-                }}
-              >
-                {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
-              </button>
+              {descOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
             </div>
-
-            {/* Form ricerca CI */}
-            {showCISearch && (
-              <div style={{ marginBottom: 12, position: 'relative' }}>
-                <input
-                  type="text"
-                  value={ciSearch}
-                  onChange={e => setCiSearch(e.target.value)}
-                  placeholder="Cerca CI per nome (min. 2 caratteri)..."
-                  autoFocus
-                  style={{
-                    width: '100%', boxSizing: 'border-box',
-                    padding: '7px 12px', borderRadius: 8,
-                    border: '1px solid var(--border)', fontSize: 13,
-                    outline: 'none',
-                  }}
-                />
-                {ciResults.length > 0 && (
-                  <div style={{
-                    border: '1px solid var(--border)', borderRadius: 8,
-                    marginTop: 4, maxHeight: 180, overflowY: 'auto',
-                    backgroundColor: '#fff',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                  }}>
-                    {ciResults
-                      .filter(ci => !incident.affectedCIs.find(a => a.id === ci.id))
-                      .map(ci => (
-                        <div
-                          key={ci.id}
-                          onClick={() => void addCI({ variables: { incidentId: incident.id, ciId: ci.id } })}
-                          style={{
-                            padding: '8px 12px', cursor: 'pointer', fontSize: 13,
-                            display: 'flex', justifyContent: 'space-between',
-                            borderBottom: '1px solid var(--border)',
-                          }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
-                        >
-                          <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                            {ci.type} · {ci.environment}
-                          </span>
-                        </div>
-                      ))
-                    }
-                  </div>
+            {descOpen && (
+              <div style={{ padding: '16px 20px 20px' }}>
+                {incident.description ? (
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
+                    {incident.description}
+                  </p>
+                ) : (
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
                 )}
               </div>
             )}
-
-            {incident.affectedCIs.length === 0 ? (
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {incident.affectedCIs.map((ci) => (
-                  <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => navigate(`/cmdb/${ci.id}`)}
-                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
-                    >
-                      {ci.name}
-                    </button>
-                    <MicroBadge>{ci.type.replace(/_/g, ' ')}</MicroBadge>
-                    <MicroBadge color={
-                      ci.status === 'active'          ? '#dcfce7' :
-                      ci.status === 'maintenance'     ? '#fef9c3' :
-                      ci.status === 'decommissioned'  ? '#fee2e2' : undefined
-                    }>
-                      {ci.status}
-                    </MicroBadge>
-                    <MicroBadge>{ci.environment}</MicroBadge>
-                    <button
-                      onClick={() => void removeCI({ variables: { incidentId: incident.id, ciId: ci.id } })}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}
-                      title="Rimuovi CI"
-                    ><X size={14} /></button>
-                  </div>
-                ))}
-              </div>
-            )}
           </Card>
-
-          {/* Commenti */}
-          <Card style={{ marginBottom: 16 }}>
-            <CardLabel>Commenti</CardLabel>
-
-            {/* Lista commenti */}
-            {incident.comments.length === 0 ? (
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
-                Nessun commento ancora.
-              </p>
-            ) : (
-              <div style={{ marginBottom: 16 }}>
-                {incident.comments.map((c, i) => (
-                  <div key={c.id}>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
-                      {/* Avatar */}
-                      <div style={{
-                        width:           32,
-                        height:          32,
-                        borderRadius:    '50%',
-                        backgroundColor: '#eef2ff',
-                        color:           'var(--accent)',
-                        display:         'flex',
-                        alignItems:      'center',
-                        justifyContent:  'center',
-                        fontSize:        12,
-                        fontWeight:      700,
-                        flexShrink:      0,
-                      }}>
-                        {c.author
-                          ? c.author.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
-                          : '?'}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {c.author?.name ?? 'Utente sconosciuto'}
-                          </span>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                            {timeAgo(c.createdAt)}
-                          </span>
-                        </div>
-                        <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-                          {c.text}
-                        </p>
-                      </div>
-                    </div>
-                    {i < incident.comments.length - 1 && (
-                      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px 0' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Label style={{ fontSize: 12 }}>Scrivi un commento</Label>
-              <Textarea
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Scrivi un commento..."
-                rows={3}
-              />
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  disabled={!commentText.trim() || addingComment}
-                  onClick={() => void addComment({ variables: { id: incident.id, text: commentText.trim() } })}
-                  style={{
-                    padding:         '7px 16px',
-                    backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)',
-                    color:           (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)',
-                    border:          'none',
-                    borderRadius:    6,
-                    fontSize:        13,
-                    fontWeight:      500,
-                    cursor:          (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  {addingComment ? 'Invio…' : 'Invia commento'}
-                </button>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* ── Right column ────────────────────────────────────────────────── */}
-        <div>
 
           {/* Dettagli */}
-          <Card style={{ marginBottom: 16 }}>
-            <CardLabel>Dettagli</CardLabel>
+          <Card style={{ marginBottom: 16, padding: 0 }}>
+            <div onClick={() => setDetailsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: detailsOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Dettagli</span>
+              </div>
+              {detailsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {detailsOpen && (
+            <div style={{ padding: '16px 20px 20px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 12px', marginBottom: 16 }}>
               <DetailRow label="Severity">
                 <SeverityBadge value={incident.severity} />
@@ -771,61 +588,196 @@ export function IncidentDetailPage() {
                 </div>
               )
             })()}
+            </div>
+            )}
           </Card>
 
-          {/* Workflow Timeline */}
-          <Card>
-            <CardLabel>Timeline workflow</CardLabel>
-            {historyDesc.length === 0 ? (
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
-            ) : (
-              <div style={{ position: 'relative' }}>
-                {/* Vertical line */}
-                <div style={{
-                  position:   'absolute',
-                  left:       2,
-                  top:        8,
-                  bottom:     8,
-                  width:      2,
-                  backgroundColor: 'var(--border)',
-                }} />
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {historyDesc.map((exec) => (
-                    <div key={exec.id} style={{ display: 'flex', gap: 12, paddingLeft: 0 }}>
-                      {/* Dot */}
-                      <div style={{
-                        width:           6,
-                        height:          6,
-                        borderRadius:    '50%',
-                        backgroundColor: STEP_DOT[exec.stepName] ?? '#8892a4',
-                        flexShrink:      0,
-                        marginTop:       4,
-                        position:        'relative',
-                        zIndex:          1,
-                      }} />
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          {exec.stepName.replace(/_/g, ' ')}
-                        </div>
-                        {exec.notes && (
-                          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 1 }}>
-                            {exec.notes}
-                          </div>
-                        )}
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 6 }}>
-                          <span>{timeAgo(exec.enteredAt)}</span>
-                          {exec.durationMs != null && (
-                            <span>({formatDuration(exec.durationMs)})</span>
-                          )}
-                        </div>
+          {/* CI Impattati */}
+          <Card style={{ marginBottom: 16, padding: 0 }}>
+            <div onClick={() => setCiOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>CI Impattati</span>
+                <CountBadge count={incident.affectedCIs.length} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowCISearch((s) => !s); if (!ciOpen) setCiOpen(true) }}
+                  style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}
+                >
+                  {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
+                </button>
+                {ciOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              </div>
+            </div>
+            {ciOpen && (
+              <div style={{ padding: '16px 20px 20px' }}>
+                {/* Form ricerca CI */}
+                {showCISearch && (
+                  <div style={{ marginBottom: 12, position: 'relative' }}>
+                    <input
+                      type="text"
+                      value={ciSearch}
+                      onChange={e => setCiSearch(e.target.value)}
+                      placeholder="Cerca CI per nome (min. 2 caratteri)..."
+                      autoFocus
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, outline: 'none' }}
+                    />
+                    {ciResults.length > 0 && (
+                      <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                        {ciResults
+                          .filter(ci => !incident.affectedCIs.find(a => a.id === ci.id))
+                          .map(ci => (
+                            <div
+                              key={ci.id}
+                              onClick={() => void addCI({ variables: { incidentId: incident.id, ciId: ci.id } })}
+                              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+                            >
+                              <span style={{ fontWeight: 500 }}>{ci.name}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{ci.type} · {ci.environment}</span>
+                            </div>
+                          ))
+                        }
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
+                )}
+                {incident.affectedCIs.length === 0 ? (
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {incident.affectedCIs.map((ci) => (
+                      <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => navigate(`/cmdb/${ci.id}`)}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                        >
+                          {ci.name}
+                        </button>
+                        <MicroBadge>{ci.type.replace(/_/g, ' ')}</MicroBadge>
+                        <MicroBadge color={
+                          ci.status === 'active'         ? '#dcfce7' :
+                          ci.status === 'maintenance'    ? '#fef9c3' :
+                          ci.status === 'decommissioned' ? '#fee2e2' : undefined
+                        }>{ci.status}</MicroBadge>
+                        <MicroBadge>{ci.environment}</MicroBadge>
+                        <button
+                          onClick={() => void removeCI({ variables: { incidentId: incident.id, ciId: ci.id } })}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}
+                          title="Rimuovi CI"
+                        ><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
+          {/* Commenti */}
+          <Card style={{ marginBottom: 16, padding: 0 }}>
+            <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Commenti</span>
+                <CountBadge count={incident.comments.length} />
+              </div>
+              {commentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {commentsOpen && (
+              <div style={{ padding: '16px 20px 20px' }}>
+                {/* Lista commenti */}
+                {incident.comments.length === 0 ? (
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
+                    Nessun commento ancora.
+                  </p>
+                ) : (
+                  <div style={{ marginBottom: 16 }}>
+                    {incident.comments.map((c, i) => (
+                      <div key={c.id}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#eef2ff', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                            {c.author ? c.author.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {c.author?.name ?? 'Utente sconosciuto'}
+                              </span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
+                            </div>
+                            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{c.text}</p>
+                          </div>
+                        </div>
+                        {i < incident.comments.length - 1 && (
+                          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px 0' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Label style={{ fontSize: 12 }}>Scrivi un commento</Label>
+                  <Textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Scrivi un commento..." rows={3} />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      disabled={!commentText.trim() || addingComment}
+                      onClick={() => void addComment({ variables: { id: incident.id, text: commentText.trim() } })}
+                      style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
+                    >
+                      {addingComment ? 'Invio…' : 'Invia commento'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
           </Card>
+        </div>
+
+        {/* ── Right column ────────────────────────────────────────────────── */}
+        <div>
+
+          {/* Workflow Timeline */}
+          <Card style={{ marginBottom: 16, padding: 0 }}>
+            <div onClick={() => setTimelineOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Timeline workflow</span>
+              </div>
+              {timelineOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {timelineOpen && (
+              <div style={{ padding: '16px 20px 20px' }}>
+                {historyDesc.length === 0 ? (
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 2, top: 8, bottom: 8, width: 2, backgroundColor: 'var(--border)' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      {historyDesc.map((exec) => (
+                        <div key={exec.id} style={{ display: 'flex', gap: 12, paddingLeft: 0 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: STEP_DOT[exec.stepName] ?? '#8892a4', flexShrink: 0, marginTop: 4, position: 'relative', zIndex: 1 }} />
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              {exec.stepName.replace(/_/g, ' ')}
+                            </div>
+                            {exec.notes && (
+                              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 1 }}>{exec.notes}</div>
+                            )}
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 6 }}>
+                              <span>{timeAgo(exec.enteredAt)}</span>
+                              {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
         </div>
       </div>
 

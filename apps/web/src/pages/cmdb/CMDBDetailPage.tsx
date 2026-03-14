@@ -6,6 +6,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CIGraph } from '@/components/CIGraph'
 import { TypeBadge } from '@/components/Badges'
 import { Modal } from '@/components/Modal'
+import { CountBadge } from '@/components/ui/CountBadge'
 import { GET_CI_DETAIL, GET_BLAST_RADIUS, GET_CIS } from '@/graphql/queries'
 import { ADD_CI_DEPENDENCY, UPDATE_CI } from '@/graphql/mutations'
 
@@ -398,9 +399,9 @@ export function CMDBDetailPage() {
             onClick={() => setDepsOpen((v) => !v)}
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
           >
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
-              Dipendenze{' '}
-              <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({ci.dependenciesWithType.length})</span>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0, display: 'flex', alignItems: 'center' }}>
+              Dipendenze
+              <CountBadge count={ci.dependenciesWithType.length} />
             </h3>
             {depsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
           </div>
@@ -423,9 +424,9 @@ export function CMDBDetailPage() {
             onClick={() => setDepentsOpen((v) => !v)}
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
           >
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
-              Dipendenti{' '}
-              <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({ci.dependentsWithType.length})</span>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0, display: 'flex', alignItems: 'center' }}>
+              Dipendenti
+              <CountBadge count={ci.dependentsWithType.length} />
             </h3>
             {depentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
           </div>
@@ -448,9 +449,9 @@ export function CMDBDetailPage() {
             onClick={() => setBlastOpen((v) => !v)}
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', margin: 0 }}
           >
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0 }}>
-              Blast Radius{' '}
-              <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>({blastData?.blastRadius?.length ?? 0})</span>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0, display: 'flex', alignItems: 'center' }}>
+              Blast Radius
+              <CountBadge count={blastData?.blastRadius?.length ?? 0} />
             </h3>
             {blastOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
           </div>
