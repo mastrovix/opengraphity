@@ -242,6 +242,7 @@ export const GET_BLAST_RADIUS = gql`
       type
       status
       environment
+      distance
     }
   }
 `

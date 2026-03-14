@@ -17,6 +17,13 @@ interface CIRef {
   environment: string
 }
 
+interface BlastRadiusItem extends CIRef {
+  distance: number
+}
+
+const DIST_BG:   Record<number, string> = { 1: '#fef2f2', 2: '#fff7ed', 3: '#fefce8' }
+const DIST_TEXT: Record<number, string> = { 1: '#dc2626', 2: '#ea580c', 3: '#ca8a04' }
+
 interface CIRelation {
   relationType: string
   ci:           CIRef
@@ -137,7 +144,7 @@ export function CMDBDetailPage() {
 
   const { data: cisData } = useQuery<{ configurationItems: CIRef[] }>(GET_CIS)
 
-  const { data: blastData, loading: blastLoading } = useQuery<{ blastRadius: CIRef[] }>(
+  const { data: blastData, loading: blastLoading } = useQuery<{ blastRadius: BlastRadiusItem[] }>(
     GET_BLAST_RADIUS,
     { variables: { ciId: id, depth: 3 }, skip: !id },
   )
@@ -453,11 +460,31 @@ export function CMDBDetailPage() {
                 <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Caricamento…</p>
               ) : !blastData?.blastRadius?.length ? (
                 <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun impatto downstream rilevato.</p>
-              ) : (
-                blastData.blastRadius.map((d) => (
-                  <CIRow key={d.id} ci={d} onClick={() => navigate(`/cmdb/${d.id}`)} />
+              ) : (() => {
+                const groups = new Map<number, BlastRadiusItem[]>()
+                for (const item of blastData.blastRadius) {
+                  const g = groups.get(item.distance) ?? []
+                  g.push(item)
+                  groups.set(item.distance, g)
+                }
+                return Array.from(groups.entries()).map(([dist, items]) => (
+                  <div key={dist}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '8px 0 4px' }}>
+                      {dist === 1 ? 'Dipendenze dirette' : `Profondità ${dist}`}
+                    </div>
+                    {items.map((d) => (
+                      <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => navigate(`/cmdb/${d.id}`)}>
+                        <div style={{ flex: 1 }}>
+                          <CIRow ci={d} />
+                        </div>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: DIST_BG[dist] ?? '#f1f5f9', color: DIST_TEXT[dist] ?? '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {dist} hop
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 ))
-              )}
+              })()}
             </div>
           )}
         </div>

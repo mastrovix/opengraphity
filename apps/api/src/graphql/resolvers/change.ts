@@ -1615,18 +1615,16 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
   const blastResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
-    MATCH (ci)<-[:DEPENDS_ON|HOSTED_ON*1..5]-(impacted:ConfigurationItem)
+    MATCH path = (ci)<-[:DEPENDS_ON|HOSTED_ON*1..5]-(impacted:ConfigurationItem)
     WHERE impacted.tenant_id = $tenantId
     AND NOT impacted.id IN $ciIds
-    WITH DISTINCT impacted,
-      MIN(length(shortestPath(
-        (impacted)-[:DEPENDS_ON|HOSTED_ON*1..5]->(ci)
-      ))) AS dist
-    RETURN impacted.id AS id, impacted.name AS name,
-           impacted.type AS type,
-           impacted.environment AS environment,
-           dist AS distance
-    ORDER BY dist ASC, impacted.environment DESC
+    WITH impacted, min(length(path)) AS distance
+    RETURN DISTINCT
+      impacted.id AS id, impacted.name AS name,
+      impacted.type AS type,
+      impacted.environment AS environment,
+      distance
+    ORDER BY distance ASC, impacted.name ASC
   `, { ciIds, tenantId }))
 
   const blastRadius = blastResult.records.map((r) => ({

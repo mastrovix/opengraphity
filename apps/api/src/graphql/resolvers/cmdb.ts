@@ -92,16 +92,37 @@ async function blastRadius(
 ) {
   const depth = args.depth ?? 3
   return withSession(async (session) => {
-    // Variable-length path up to $depth hops
     const cypher = `
       MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
-        -[:DEPENDS_ON*1..${depth}]->(d:ConfigurationItem)
-      RETURN DISTINCT properties(d) as props
+      MATCH path = (ci)-[:DEPENDS_ON|HOSTED_ON*1..${depth}]->(d:ConfigurationItem)
+      WHERE d.tenant_id = $tenantId
+      AND d.id <> $ciId
+      WITH d, min(length(path)) AS distance
+      RETURN
+        d.id AS id, d.name AS name,
+        d.type AS type,
+        d.environment AS environment,
+        d.status AS status,
+        distance
+      ORDER BY distance ASC, d.name ASC
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
+    const rows = await runQuery<{
+      id: string; name: string; type: string;
+      environment: string; status: string;
+      distance: number
+    }>(session, cypher, {
       ciId: args.ciId, tenantId: ctx.tenantId,
     })
-    return rows.map((r) => mapCI(r.props))
+    return rows.map((r) => ({
+      id:          r.id,
+      name:        r.name,
+      type:        r.type,
+      environment: r.environment ?? null,
+      status:      r.status ?? null,
+      distance:    typeof r.distance === 'object'
+        ? (r.distance as any).toNumber()
+        : Number(r.distance),
+    }))
   })
 }
 

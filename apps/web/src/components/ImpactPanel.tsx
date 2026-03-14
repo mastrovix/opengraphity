@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
-import { TypeBadge, EnvBadge } from '@/components/Badges'
+import { EnvBadge } from '@/components/Badges'
 import {
   GitBranch,
   AlertCircle,
@@ -72,9 +72,6 @@ const RISK_PALETTE: Record<string, { bg: string; border: string; color: string }
   critical: { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', color: '#b91c1c' },
 }
 
-const DIST_COLORS: Record<number, string> = { 1: '#dc2626', 2: '#f97316', 3: '#eab308' }
-
-
 const STATUS_DOT: Record<string, string> = {
   completed: '#22c55e', failed: '#dc2626', rejected: '#f97316',
 }
@@ -84,11 +81,6 @@ const STATUS_DOT: Record<string, string> = {
 function formatDate(iso: string) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function DistBadge({ dist }: { dist: number }) {
-  const color = DIST_COLORS[dist] ?? '#8892a4'
-  return <span style={{ ...BADGE_BASE, backgroundColor: `${color}18`, color }}>{dist} hop</span>
 }
 
 function SectionLabel({ text }: { text: string }) {
@@ -185,23 +177,45 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                   <CheckCircle size={14} style={{ color: '#10b981', flexShrink: 0 }} />
                   Nessun CI nel blast radius
                 </div>
-              ) : (
-                <>
-                  {analysis.blastRadius.slice(0, blastLimit).map((ci) => (
-                    <div key={ci.id} style={ROW}>
-                      <TypeBadge type={ci.type} />
-                      <span style={{ flex: 1, fontWeight: 500, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ci.name}</span>
-                      <EnvBadge environment={ci.environment} />
-                      <DistBadge dist={ci.distance} />
-                    </div>
-                  ))}
-                  {analysis.blastRadius.length > blastLimit && (
-                    <button onClick={() => setBlastLimit((l) => l + 10)} style={{ fontSize: 11, color: '#4f46e5', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
-                      Mostra altri {analysis.blastRadius.length - blastLimit}…
-                    </button>
-                  )}
-                </>
-              )}
+              ) : (() => {
+                const DIST_BG:    Record<number, string> = { 1: '#fef2f2', 2: '#fff7ed', 3: '#fefce8', 4: '#f1f5f9' }
+                const DIST_COLOR: Record<number, string> = { 1: '#dc2626', 2: '#ea580c', 3: '#ca8a04', 4: '#64748b' }
+                const visible = analysis.blastRadius.slice(0, blastLimit)
+                const byDistance = visible.reduce((acc, ci) => {
+                  const d = ci.distance ?? 1
+                  if (!acc[d]) acc[d] = []
+                  acc[d]!.push(ci)
+                  return acc
+                }, {} as Record<number, ImpactCI[]>)
+                return (
+                  <>
+                    {Object.entries(byDistance)
+                      .sort(([a], [b]) => Number(a) - Number(b))
+                      .map(([dist, items]) => (
+                        <div key={dist}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '8px 0 4px' }}>
+                            {dist === '1' ? 'Dipendenze dirette' : `Profondità ${dist}`}
+                          </div>
+                          {items.map((ci) => (
+                            <div key={ci.id} style={ROW}>
+                              <EnvBadge environment={ci.environment} />
+                              <span style={{ flex: 1, fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ci.name}</span>
+                              <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: DIST_BG[Number(dist)] ?? '#f1f5f9', color: DIST_COLOR[Number(dist)] ?? '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                {dist} hop
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ))
+                    }
+                    {analysis.blastRadius.length > blastLimit && (
+                      <button onClick={() => setBlastLimit((l) => l + 10)} style={{ fontSize: 11, color: '#4f46e5', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
+                        Mostra altri {analysis.blastRadius.length - blastLimit}…
+                      </button>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           )}
 

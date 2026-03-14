@@ -21,7 +21,7 @@ export const typeDefs = `#graphql
     # CMDB
     configurationItems(type: String, search: String, limit: Int, offset: Int): [ConfigurationItem!]!
     configurationItem(id: ID!): ConfigurationItem
-    blastRadius(ciId: ID!, depth: Int): [ConfigurationItem!]!
+    blastRadius(ciId: ID!, depth: Int): [BlastRadiusItem!]!
 
     # Teams
     teams: [Team!]!
@@ -384,6 +384,15 @@ export const typeDefs = `#graphql
     region: String
     expiryDate: String
     notes: String
+  }
+
+  type BlastRadiusItem {
+    id: ID!
+    name: String!
+    type: String!
+    environment: String
+    status: String
+    distance: Int!
   }
 
   type User {
