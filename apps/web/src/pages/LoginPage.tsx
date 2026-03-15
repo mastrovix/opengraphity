@@ -71,7 +71,7 @@ export function LoginPage() {
             <span style={{ color: '#fff', fontSize: 13, fontWeight: 800, letterSpacing: '-0.03em' }}>OG</span>
           </div>
           <span style={{ color: '#fff', fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em' }}>
-            OpenGraphity
+            OpenGrafo
           </span>
         </div>
 
@@ -88,7 +88,7 @@ export function LoginPage() {
         {/* Bottom meta */}
         <div className="relative">
           <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
-            © 2026 OpenGraphity · ITSM Platform
+            © 2026 OpenGrafo · ITSM Platform
           </p>
         </div>
       </div>
@@ -104,7 +104,7 @@ export function LoginPage() {
             >
               <span style={{ color: '#fff', fontSize: 11, fontWeight: 800 }}>OG</span>
             </div>
-            <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>OpenGraphity</span>
+            <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>OpenGrafo</span>
           </div>
 
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, letterSpacing: '-0.02em' }}>

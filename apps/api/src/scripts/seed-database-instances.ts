@@ -38,23 +38,34 @@ async function seed() {
   const teamIds = teamsResult.records.map((r) => r.get('id') as string)
   if (teamIds.length === 0) throw new Error('No teams found for tenant-demo')
 
+  // Load SRV-xxx servers only
+  const serversResult = await session.run(
+    `MATCH (c:ConfigurationItem {tenant_id: $tenantId, type: 'server'})
+     WHERE c.name STARTS WITH 'SRV-'
+     RETURN c.id AS id`,
+    { tenantId: TENANT_ID }
+  )
+  const serverIds = serversResult.records.map((r) => r.get('id') as string)
+  if (serverIds.length === 0) throw new Error('No SRV-xxx servers found for tenant-demo')
+
   let created = 0
   let skipped = 0
 
-  for (let i = 1; i <= 600; i++) {
-    const name          = `SRV-${String(i).padStart(3, '0')}`
+  for (let i = 1; i <= 100; i++) {
+    const name          = `DBINST-${String(i).padStart(3, '0')}`
     const id            = uuidv4()
     const environment   = pickEnvironment()
     const status        = pickStatus()
     const createdAt     = randomDateInPast2Years()
     const ownerTeamId   = pick(teamIds)
     const supportTeamId = pick(teamIds)
+    const serverId      = pick(serverIds)
 
     const result = await session.run(
       `MERGE (c:ConfigurationItem {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,
-         c.type        = 'server',
+         c.type        = 'database_instance',
          c.environment = $environment,
          c.status      = $status,
          c.description = $description,
@@ -68,7 +79,7 @@ async function seed() {
         id,
         environment,
         status,
-        description: `Server ${name}`,
+        description: `Database Instance ${name}`,
         createdAt,
       }
     )
@@ -79,25 +90,28 @@ async function seed() {
 
     if (wasCreated) { created++ } else { skipped++ }
 
-    // OWNED_BY
     await session.run(
       `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:OWNED_BY]->(t)`,
       { ciId, teamId: ownerTeamId }
     )
 
-    // SUPPORTED_BY
     await session.run(
       `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:SUPPORTED_BY]->(t)`,
       { ciId, teamId: supportTeamId }
     )
 
-    if (i % 60 === 0) console.log(`  ${i}/600 processed...`)
+    await session.run(
+      `MATCH (c:ConfigurationItem {id: $ciId}), (s:ConfigurationItem {id: $serverId})
+       MERGE (c)-[:HOSTED_ON]->(s)`,
+      { ciId, serverId }
+    )
+
+    if (i % 20 === 0) console.log(`  ${i}/100 processed...`)
   }
 
   await session.close()
-
   console.log(`\nDone. Created: ${created}, Skipped (already existed): ${skipped}`)
 }
 

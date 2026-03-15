@@ -154,8 +154,7 @@ export function CMDBPage() {
           disabled
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'not-allowed', opacity: 0.6 }}
         >
-          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-          New CI
+          New
         </button>
       </div>
 

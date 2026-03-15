@@ -77,7 +77,8 @@ async function seed() {
          c.status      = $status,
          c.description = $description,
          c.tenant_id   = $tenantId,
-         c.created_at  = $createdAt
+         c.created_at  = $createdAt,
+         c.updated_at  = $createdAt
        WITH c, $isNew AS isNew
        RETURN c.id AS id, (c.created_at = $createdAt) AS wasCreated`,
       {

@@ -10,6 +10,7 @@ function mapTeam(props: Props) {
     tenantId:    props['tenant_id']   as string,
     name:        props['name']        as string,
     description: props['description'] as string | null,
+    type:        props['type']        as string | null,
     createdAt:   props['created_at']  as string,
   }
 }
@@ -81,13 +82,14 @@ async function createTeam(
         tenant_id:   $tenantId,
         name:        $name,
         description: $description,
+        type:        $type,
         created_at:  $now,
         updated_at:  $now
       })
       RETURN properties(t) as props
     `
     const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id, tenantId: ctx.tenantId, name: input.name, description: input.description ?? null, now,
+      id, tenantId: ctx.tenantId, name: input.name, description: input.description ?? null, type: null, now,
     })
     const row = rows[0]
     if (!row) throw new Error('Failed to create Team')
@@ -161,11 +163,54 @@ async function ciSupportGroup(parent: { id: string }, _: unknown, ctx: GraphQLCo
   })
 }
 
+async function teamMembers(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const cypher = `
+      MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:MEMBER_OF]-(u:User)
+      RETURN properties(u) as props
+      ORDER BY u.name
+    `
+    const rows = await runQuery<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => r.props)
+  })
+}
+
+async function teamOwnedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const cypher = `
+      MATCH (t:Team {id: $id})<-[:OWNED_BY]-(ci:ConfigurationItem)
+      WHERE ci.tenant_id = $tenantId
+      RETURN properties(ci) as props
+      ORDER BY ci.name
+    `
+    const rows = await runQuery<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => mapCI(r.props))
+  })
+}
+
+async function teamSupportedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const cypher = `
+      MATCH (t:Team {id: $id})<-[:SUPPORTED_BY]-(ci:ConfigurationItem)
+      WHERE ci.tenant_id = $tenantId
+      RETURN properties(ci) as props
+      ORDER BY ci.name
+    `
+    const rows = await runQuery<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => mapCI(r.props))
+  })
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const teamResolvers = {
   Query:    { teams, team },
   Mutation: { createTeam, assignCIOwner, assignCISupportGroup },
+  Team: {
+    members:      teamMembers,
+    ownedCIs:     teamOwnedCIs,
+    supportedCIs: teamSupportedCIs,
+  },
   ConfigurationItem: {
     owner:        ciOwner,
     supportGroup: ciSupportGroup,

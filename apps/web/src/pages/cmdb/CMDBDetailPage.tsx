@@ -143,7 +143,7 @@ export function CMDBDetailPage() {
     { variables: { id }, skip: !id },
   )
 
-  const { data: cisData } = useQuery<{ configurationItems: CIRef[] }>(GET_CIS)
+  const { data: cisData } = useQuery<{ configurationItems: { items: CIRef[] } }>(GET_CIS)
 
   const { data: blastData, loading: blastLoading } = useQuery<{ blastRadius: BlastRadiusItem[] }>(
     GET_BLAST_RADIUS,
@@ -528,7 +528,7 @@ export function CMDBDetailPage() {
               style={{ ...inputBase, borderColor: submitted && !selectedCIId ? '#dc2626' : '#e5e7eb', cursor: 'pointer' }}
             >
               <option value="">Seleziona CI...</option>
-              {(cisData?.configurationItems ?? [])
+              {(cisData?.configurationItems?.items ?? [])
                 .filter((c) => c.id !== ci.id)
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((c) => (

@@ -11,6 +11,7 @@ import {
   GitBranch,
   Bell,
   User,
+  Users,
   BarChart2,
   ChevronLeft,
   ChevronRight,
@@ -40,6 +41,7 @@ interface SidebarProps {
 export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { pathname } = useLocation()
   const [cmdbOpen, setCmdbOpen] = useState(true)
+  const [teamsOpen, setTeamsOpen] = useState(false)
 
   const { data: ciTypesData } = useQuery<{ ciTypes: { type: string; count: number }[] }>(
     GET_CI_TYPES,
@@ -134,7 +136,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         </div>
         {!collapsed && (
           <span style={{ color: '#0f1629', fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
-            OpenGraphity
+            OpenGrafo
           </span>
         )}
       </div>
@@ -266,6 +268,48 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                     <CountBadge count={t.count} />
                   </NavLink>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Teams & Users */}
+        {!collapsed && (
+          <div style={{ marginBottom: 2 }}>
+            <div
+              onClick={() => setTeamsOpen((p) => !p)}
+              style={{
+                display:        'flex',
+                alignItems:     'center',
+                justifyContent: 'space-between',
+                padding:        '7px 10px',
+                borderRadius:   6,
+                cursor:         'pointer',
+                backgroundColor: 'transparent',
+                borderLeft:     '2px solid transparent',
+                transition:     'background 150ms',
+                margin:         '1px 0',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Users size={16} style={{ flexShrink: 0, color: '#4a5468' }} />
+                <span style={{ fontSize: 13, fontWeight: 400, color: '#4a5468' }}>Teams & Users</span>
+              </div>
+              {teamsOpen
+                ? <ChevronDown size={12} color="#8892a4" />
+                : <ChevronRight size={12} color="#8892a4" />}
+            </div>
+
+            {teamsOpen && (
+              <div style={{ paddingLeft: 28, marginTop: 2 }}>
+                <NavLink to="/teams" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>Teams</span>
+                </NavLink>
+                <NavLink to="/users" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>Users</span>
+                </NavLink>
               </div>
             )}
           </div>

@@ -44,13 +44,22 @@ export const GET_INCIDENT = gql`
 
 export const GET_USERS = gql`
   query GetUsers {
-    users { id name email teamId }
+    users { id name email role createdAt }
+  }
+`
+
+export const GET_USER = gql`
+  query GetUser($id: ID!) {
+    user(id: $id) {
+      id name email role createdAt
+      teams { id name type }
+    }
   }
 `
 
 export const GET_TEAMS = gql`
   query GetTeams {
-    teams { id name }
+    teams { id name description type createdAt }
   }
 `
 
@@ -259,6 +268,17 @@ export const GET_BLAST_RADIUS = gql`
       status
       environment
       distance
+    }
+  }
+`
+
+export const GET_TEAM = gql`
+  query GetTeam($id: ID!) {
+    team(id: $id) {
+      id name description type createdAt
+      members { id name email role }
+      ownedCIs { id name type environment status }
+      supportedCIs { id name type environment status }
     }
   }
 `

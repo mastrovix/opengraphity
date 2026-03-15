@@ -31,6 +31,7 @@ export const typeDefs = `#graphql
     # Users
     me: User
     users: [User!]!
+    user(id: ID!): User
 
     # Notification Channels
     notificationChannels: [NotificationChannel!]!
@@ -353,7 +354,11 @@ export const typeDefs = `#graphql
     tenantId: String!
     name: String!
     description: String
+    type: String
     createdAt: String!
+    members: [User!]!
+    ownedCIs: [ConfigurationItem!]!
+    supportedCIs: [ConfigurationItem!]!
   }
 
   type IncidentsResult {
@@ -389,7 +394,7 @@ export const typeDefs = `#graphql
     status: String!
     environment: String!
     createdAt: String!
-    updatedAt: String!
+    updatedAt: String
     dependencies: [ConfigurationItem!]!
     dependents: [ConfigurationItem!]!
     dependenciesWithType: [CIRelation!]!
@@ -424,6 +429,8 @@ export const typeDefs = `#graphql
     role: String!
     teamId: String
     slackId: String
+    createdAt: String
+    teams: [Team!]!
   }
 
   type NotificationChannel {

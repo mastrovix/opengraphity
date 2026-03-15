@@ -22,6 +22,10 @@ import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
 import NotificationsPage from '@/pages/settings/NotificationsPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
 import ReportsPage from '@/pages/reports/ReportsPage'
+import { TeamsPage } from '@/pages/teams/TeamsPage'
+import { TeamDetailPage } from '@/pages/teams/TeamDetailPage'
+import { UsersPage } from '@/pages/users/UsersPage'
+import { UserDetailPage } from '@/pages/users/UserDetailPage'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
 
@@ -79,6 +83,10 @@ const router = createBrowserRouter([
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
       { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },
+      { path: 'teams',                     element: <TeamsPage />,               errorElement: <RouteError /> },
+      { path: 'teams/:id',                 element: <TeamDetailPage />,          errorElement: <RouteError /> },
+      { path: 'users',                     element: <UsersPage />,               errorElement: <RouteError /> },
+      { path: 'users/:id',                 element: <UserDetailPage />,          errorElement: <RouteError /> },
     ],
   },
 ])
