@@ -4,9 +4,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { GET_DASHBOARD_STATS } from '@/graphql/queries'
 
 interface DashboardStats {
-  openIncidents:  { id: string }[]
+  openIncidents:  { total: number }
   openProblems:   { id: string }[]
-  pendingChanges: { id: string }[]
+  pendingChanges: { total: number }
   openRequests:   { id: string }[]
 }
 
@@ -91,7 +91,10 @@ export function DashboardPage() {
             ) : (
               <div className="flex items-end gap-2">
                 <span style={{ fontSize: 32, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1 }}>
-                  {data?.[key]?.length ?? 0}
+                  {key === 'openIncidents' || key === 'pendingChanges'
+                    ? (data?.[key] as { total: number } | undefined)?.total ?? 0
+                    : (data?.[key] as { id: string }[] | undefined)?.length ?? 0
+                  }
                 </span>
                 <TrendingUp size={13} style={{ color: 'var(--text-muted)', marginBottom: 4 }} />
               </div>

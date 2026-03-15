@@ -196,20 +196,42 @@ async function createChangeComment(
 
 async function changes(
   _: unknown,
-  args: { status?: string; type?: string; limit?: number; offset?: number },
+  args: { status?: string; type?: string; priority?: string; search?: string; limit?: number; offset?: number },
   ctx: GraphQLContext,
 ) {
-  const { status, type, limit = 20, offset = 0 } = args
+  const { status, type, priority, search, limit = 50, offset = 0 } = args
   return withSession(async (session) => {
-    const rows = await runQuery<{ props: Props }>(session, `
+    const params = {
+      tenantId: ctx.tenantId,
+      status:   status   ?? null,
+      type:     type     ?? null,
+      priority: priority ?? null,
+      search:   search   ?? null,
+      offset,
+      limit,
+    }
+    const whereClause = `
+      WHERE ($status   IS NULL OR c.status   = $status)
+        AND ($type     IS NULL OR c.type     = $type)
+        AND ($priority IS NULL OR c.priority = $priority)
+        AND ($search   IS NULL OR toLower(c.title) CONTAINS toLower($search))
+    `
+    const itemRows = await runQuery<{ props: Props }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
-      WHERE ($status IS NULL OR c.status = $status)
-        AND ($type   IS NULL OR c.type   = $type)
+      ${whereClause}
       WITH c ORDER BY c.created_at DESC
       SKIP toInteger($offset) LIMIT toInteger($limit)
       RETURN properties(c) as props
-    `, { tenantId: ctx.tenantId, status: status ?? null, type: type ?? null, offset, limit })
-    return rows.map((r) => mapChange(r.props))
+    `, params)
+    const countRows = await runQuery<{ total: number }>(session, `
+      MATCH (c:Change {tenant_id: $tenantId})
+      ${whereClause}
+      RETURN count(c) AS total
+    `, params)
+    return {
+      items: itemRows.map((r) => mapChange(r.props)),
+      total: (countRows[0]?.total as unknown as { toNumber(): number })?.toNumber?.() ?? Number(countRows[0]?.total ?? 0),
+    }
   })
 }
 

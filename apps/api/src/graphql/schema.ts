@@ -2,7 +2,7 @@ export const typeDefs = `#graphql
 
   type Query {
     # Incidents
-    incidents(status: String, severity: String, limit: Int, offset: Int): [Incident!]!
+    incidents(status: String, severity: String, limit: Int, offset: Int): IncidentsResult!
     incident(id: ID!): Incident
 
     # Problems
@@ -10,7 +10,7 @@ export const typeDefs = `#graphql
     problem(id: ID!): Problem
 
     # Changes
-    changes(status: String, type: String, limit: Int, offset: Int): [Change!]!
+    changes(status: String, type: String, priority: String, search: String, limit: Int, offset: Int): ChangesResult!
     change(id: ID!): Change
     changeImpactAnalysis(ciIds: [ID!]!): ImpactAnalysis!
 
@@ -19,7 +19,7 @@ export const typeDefs = `#graphql
     serviceRequest(id: ID!): ServiceRequest
 
     # CMDB
-    configurationItems(type: String, search: String, limit: Int, offset: Int): [ConfigurationItem!]!
+    configurationItems(type: String, environment: String, status: String, search: String, limit: Int, offset: Int): ConfigurationItemsResult!
     configurationItem(id: ID!): ConfigurationItem
     blastRadius(ciId: ID!, depth: Int): [BlastRadiusItem!]!
 
@@ -353,6 +353,21 @@ export const typeDefs = `#graphql
     name: String!
     description: String
     createdAt: String!
+  }
+
+  type IncidentsResult {
+    items: [Incident!]!
+    total: Int!
+  }
+
+  type ChangesResult {
+    items: [Change!]!
+    total: Int!
+  }
+
+  type ConfigurationItemsResult {
+    items: [ConfigurationItem!]!
+    total: Int!
   }
 
   type CIRelation {

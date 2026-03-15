@@ -632,7 +632,7 @@ export function ChangeDetailPage() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                            {['ID', 'CI', 'Tipo', 'Team', 'Assegnato a', 'Risk', 'Status'].map((h) => (
+                            {['CI', 'Tipo', 'Team', 'Assegnato a', 'Risk', 'Status'].map((h) => (
                               <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
                             ))}
                           </tr>
@@ -646,9 +646,6 @@ export function ChangeDetailPage() {
                               onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
                               onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
                             >
-                              <td style={{ padding: '10px 12px' }}>
-                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8892a4' }} title={task.id}>{task.id.slice(0, 8)}</span>
-                              </td>
                               <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>{task.ci?.name ?? '—'}</td>
                               <td style={{ padding: '10px 12px', color: '#8892a4', fontSize: 12 }}>{task.ci?.type ?? '—'}</td>
                               <td style={{ padding: '10px 12px' }}>
@@ -721,7 +718,7 @@ export function ChangeDetailPage() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                            {['ID', 'Tipo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
+                            {['Tipo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
                               <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
                             ))}
                           </tr>
@@ -734,9 +731,6 @@ export function ChangeDetailPage() {
                               onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
                               onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
                             >
-                              <td style={{ padding: '10px 12px' }}>
-                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8892a4' }} title={change.validation.id}>{change.validation.id.slice(0, 8)}</span>
-                              </td>
                               <td style={{ padding: '10px 12px' }}>
                                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, backgroundColor: '#f1f5f9', color: '#64748b' }}>Globale</span>
                               </td>
@@ -766,9 +760,6 @@ export function ChangeDetailPage() {
                               onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
                               onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
                             >
-                              <td style={{ padding: '10px 12px' }}>
-                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8892a4' }} title={step.id}>{step.id.slice(0, 8)}</span>
-                              </td>
                               <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>Step {step.order}: {step.title}</td>
                               <td style={{ padding: '10px 12px' }}>
                                 {step.validationTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
@@ -835,7 +826,7 @@ export function ChangeDetailPage() {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                           <thead>
                             <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                              {['ID', 'Titolo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
+                              {['Titolo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
                                 <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
                               ))}
                             </tr>
@@ -849,9 +840,6 @@ export function ChangeDetailPage() {
                                 onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
                                 onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
                               >
-                                <td style={{ padding: '10px 12px' }}>
-                                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8892a4' }} title={step.id}>{step.id.slice(0, 8)}</span>
-                                </td>
                                 <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>{step.title}</td>
                                 <td style={{ padding: '10px 12px' }}>
                                   {step.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
@@ -1216,7 +1204,7 @@ export function ChangeDetailPage() {
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#374151', padding: '4px 8px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, display: 'inline-block' }}>{step.id}</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>{step.id}</div>
                 </div>
 
                 {/* Dettagli */}
@@ -1461,7 +1449,7 @@ export function ChangeDetailPage() {
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#374151', padding: '4px 8px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, display: 'inline-block' }}>{step.id}</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>{step.id}</div>
                 </div>
 
                 {/* Finestra di validazione */}
@@ -1641,7 +1629,7 @@ export function ChangeDetailPage() {
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#374151', padding: '4px 8px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, display: 'inline-block' }}>{val.id}</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>{val.id}</div>
                 </div>
 
                 {/* Finestra di validazione */}
@@ -1771,7 +1759,7 @@ export function ChangeDetailPage() {
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#374151', padding: '4px 8px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, display: 'inline-block' }}>{task.id}</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>{task.id}</div>
                 </div>
 
                 {/* ── Section 1: Assessment ─────────────────────────── */}

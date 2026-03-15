@@ -14,12 +14,13 @@ export interface ColumnDef<T> {
 }
 
 interface Props<T> {
-  columns:         ColumnDef<T>[]
-  data:            T[]
-  onRowClick?:     (row: T) => void
-  loading?:        boolean
-  emptyMessage?:   string
-  emptyComponent?: React.ReactNode
+  columns:          ColumnDef<T>[]
+  data:             T[]
+  onRowClick?:      (row: T) => void
+  loading?:         boolean
+  emptyMessage?:    string
+  emptyComponent?:  React.ReactNode
+  onFiltersChange?: (filters: Record<string, string>) => void
 }
 
 const thStyle: React.CSSProperties = {
@@ -53,6 +54,7 @@ export function SortableFilterTable<T extends object>({
   loading = false,
   emptyMessage = 'Nessun risultato',
   emptyComponent,
+  onFiltersChange,
 }: Props<T>) {
   const [sortKey, setSortKey] = useState<keyof T | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -68,7 +70,9 @@ export function SortableFilterTable<T extends object>({
   }
 
   const handleFilter = (key: string, value: string) => {
-    setFilters((f) => ({ ...f, [key]: value }))
+    const next = { ...filters, [key]: value }
+    setFilters(next)
+    onFiltersChange?.(next)
   }
 
   const getVal = (row: T, key: keyof T): unknown =>

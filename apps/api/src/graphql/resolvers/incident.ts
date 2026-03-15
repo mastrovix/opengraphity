@@ -106,25 +106,36 @@ async function incidents(
   args: { status?: string; severity?: string; limit?: number; offset?: number },
   ctx: GraphQLContext,
 ) {
-  const { status, severity, limit = 20, offset = 0 } = args
+  const { status, severity, limit = 50, offset = 0 } = args
 
   return withSession(async (session) => {
-    const cypher = `
-      MATCH (i:Incident {tenant_id: $tenantId})
-      WHERE ($status IS NULL OR i.status = $status)
-        AND ($severity IS NULL OR i.severity = $severity)
-      WITH i ORDER BY i.created_at DESC
-      SKIP toInteger($offset) LIMIT toInteger($limit)
-      RETURN properties(i) as props
-    `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
+    const params = {
       tenantId: ctx.tenantId,
-      status: status ?? null,
+      status:   status   ?? null,
       severity: severity ?? null,
       offset,
       limit,
-    })
-    return rows.map((r) => mapIncident(r.props))
+    }
+    const whereClause = `
+      WHERE ($status   IS NULL OR i.status   = $status)
+        AND ($severity IS NULL OR i.severity = $severity)
+    `
+    const itemRows = await runQuery<{ props: Props }>(session, `
+      MATCH (i:Incident {tenant_id: $tenantId})
+      ${whereClause}
+      WITH i ORDER BY i.created_at DESC
+      SKIP toInteger($offset) LIMIT toInteger($limit)
+      RETURN properties(i) as props
+    `, params)
+    const countRows = await runQuery<{ total: number }>(session, `
+      MATCH (i:Incident {tenant_id: $tenantId})
+      ${whereClause}
+      RETURN count(i) AS total
+    `, params)
+    return {
+      items: itemRows.map((r) => mapIncident(r.props)),
+      total: (countRows[0]?.total as unknown as { toNumber(): number })?.toNumber?.() ?? Number(countRows[0]?.total ?? 0),
+    }
   })
 }
 

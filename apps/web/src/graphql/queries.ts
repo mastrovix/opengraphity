@@ -3,11 +3,10 @@ import { gql } from '@apollo/client'
 export const GET_INCIDENTS = gql`
   query GetIncidents($status: String, $severity: String, $limit: Int, $offset: Int) {
     incidents(status: $status, severity: $severity, limit: $limit, offset: $offset) {
-      id
-      title
-      severity
-      status
-      createdAt
+      total
+      items {
+        id title severity status createdAt
+      }
     }
   }
 `
@@ -68,15 +67,18 @@ export const GET_PROBLEMS = gql`
 `
 
 export const GET_CHANGES = gql`
-  query GetChanges($status: String, $type: String) {
-    changes(status: $status, type: $type, limit: 50, offset: 0) {
-      id title type priority status
-      scheduledStart scheduledEnd
-      createdAt updatedAt
-      assignedTeam { id name }
-      assignee { id name }
-      affectedCIs { id name type }
-      workflowInstance { id currentStep status }
+  query GetChanges($status: String, $type: String, $priority: String, $search: String, $limit: Int, $offset: Int) {
+    changes(status: $status, type: $type, priority: $priority, search: $search, limit: $limit, offset: $offset) {
+      total
+      items {
+        id title type priority status
+        scheduledStart scheduledEnd
+        createdAt updatedAt
+        assignedTeam { id name }
+        assignee { id name }
+        affectedCIs { id name type }
+        workflowInstance { id currentStep status }
+      }
     }
   }
 `
@@ -102,14 +104,22 @@ export const GET_CIS_SEARCH = gql`
 `
 
 export const GET_CIS = gql`
-  query GetConfigurationItems {
-    configurationItems(limit: 100) {
-      id
-      name
-      type
-      status
-      environment
-      createdAt
+  query GetCIs(
+    $limit: Int, $offset: Int,
+    $type: String, $environment: String,
+    $status: String, $search: String
+  ) {
+    configurationItems(
+      limit: $limit, offset: $offset,
+      type: $type, environment: $environment,
+      status: $status, search: $search
+    ) {
+      total
+      items {
+        id name type status environment createdAt
+        owner { id name }
+        supportGroup { id name }
+      }
     }
   }
 `
@@ -249,14 +259,14 @@ export const GET_BLAST_RADIUS = gql`
 
 export const GET_DASHBOARD_STATS = gql`
   query GetDashboardStats {
-    openIncidents: incidents(status: "open", limit: 1000) {
-      id
+    openIncidents: incidents(status: "open", limit: 1) {
+      total
     }
     openProblems: problems(status: "open", limit: 1000) {
       id
     }
-    pendingChanges: changes(limit: 1000) {
-      id
+    pendingChanges: changes(limit: 1) {
+      total
     }
     openRequests: serviceRequests(status: "open", limit: 1000) {
       id

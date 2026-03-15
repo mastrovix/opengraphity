@@ -44,27 +44,44 @@ async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<
 
 async function configurationItems(
   _: unknown,
-  args: { type?: string; search?: string; limit?: number; offset?: number },
+  args: { type?: string; environment?: string; status?: string; search?: string; limit?: number; offset?: number },
   ctx: GraphQLContext,
 ) {
-  const { type, search, limit = 100, offset = 0 } = args
+  const { type, environment, status, search, limit = 50, offset = 0 } = args
   return withSession(async (session) => {
-    const cypher = `
+    const whereClause = `
+      WHERE ($type        IS NULL OR ci.type        = $type)
+        AND ($environment IS NULL OR ci.environment = $environment)
+        AND ($status      IS NULL OR ci.status      = $status)
+        AND ($search      IS NULL OR toLower(ci.name) CONTAINS toLower($search))
+    `
+    const params = {
+      tenantId:    ctx.tenantId,
+      type:        type        ?? null,
+      environment: environment ?? null,
+      status:      status      ?? null,
+      search:      search      ?? null,
+      offset,
+      limit,
+    }
+
+    const itemRows  = await runQuery<{ props: Props }>(session, `
       MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
-      WHERE ($type IS NULL OR ci.type = $type)
-        AND ($search IS NULL OR toLower(ci.name) CONTAINS toLower($search))
+      ${whereClause}
       WITH ci ORDER BY ci.name
       SKIP toInteger($offset) LIMIT toInteger($limit)
       RETURN properties(ci) as props
-    `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
-      tenantId: ctx.tenantId,
-      type:     type   ?? null,
-      search:   search ?? null,
-      offset,
-      limit,
-    })
-    return rows.map((r) => mapCI(r.props))
+    `, params)
+    const countRows = await runQuery<{ total: number }>(session, `
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+      ${whereClause}
+      RETURN count(ci) AS total
+    `, params)
+
+    return {
+      items: itemRows.map((r) => mapCI(r.props)),
+      total: (countRows[0]?.total as unknown as { toNumber(): number })?.toNumber?.() ?? Number(countRows[0]?.total ?? 0),
+    }
   })
 }
 
