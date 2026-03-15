@@ -85,6 +85,24 @@ async function configurationItems(
   })
 }
 
+async function ciTypes(
+  _: unknown,
+  __: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ type: string; count: number }>(session, `
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+      RETURN ci.type AS type, count(ci) AS count
+      ORDER BY count DESC
+    `, { tenantId: ctx.tenantId })
+    return rows.map((r) => ({
+      type:  r.type,
+      count: (r.count as unknown as { toNumber(): number })?.toNumber?.() ?? Number(r.count),
+    }))
+  })
+}
+
 async function configurationItem(
   _: unknown,
   args: { id: string },
@@ -389,7 +407,7 @@ async function ciDependentsWithType(
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const cmdbResolvers = {
-  Query:   { configurationItems, configurationItem, blastRadius },
+  Query:   { configurationItems, configurationItem, blastRadius, ciTypes },
   Mutation: { createConfigurationItem, updateConfigurationItem, updateCIFields, addCIDependency },
   ConfigurationItem: {
     dependencies:         ciDependencies,

@@ -22,6 +22,7 @@ export const typeDefs = `#graphql
     configurationItems(type: String, environment: String, status: String, search: String, limit: Int, offset: Int): ConfigurationItemsResult!
     configurationItem(id: ID!): ConfigurationItem
     blastRadius(ciId: ID!, depth: Int): [BlastRadiusItem!]!
+    ciTypes: [CITypeSummary!]!
 
     # Teams
     teams: [Team!]!
@@ -363,6 +364,11 @@ export const typeDefs = `#graphql
   type ChangesResult {
     items: [Change!]!
     total: Int!
+  }
+
+  type CITypeSummary {
+    type:  String!
+    count: Int!
   }
 
   type ConfigurationItemsResult {

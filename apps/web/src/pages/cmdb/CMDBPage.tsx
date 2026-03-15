@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Server } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -100,8 +100,22 @@ const PAGE_SIZE = 50
 
 export function CMDBPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const typeFromUrl = searchParams.get('type')
+
+  const pageTitle = typeFromUrl
+    ? typeFromUrl.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : 'CMDB'
+
   const [page, setPage] = useState(0)
-  const [queryFilters, setQueryFilters] = useState<Record<string, string>>({})
+  const [queryFilters, setQueryFilters] = useState<Record<string, string>>(
+    typeFromUrl ? { type: typeFromUrl } : {}
+  )
+
+  useEffect(() => {
+    setQueryFilters(typeFromUrl ? { type: typeFromUrl } : {})
+    setPage(0)
+  }, [typeFromUrl])
 
   const { data, loading } = useQuery<{
     configurationItems: { items: CI[]; total: number }
@@ -130,7 +144,7 @@ export function CMDBPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', letterSpacing: '-0.01em', margin: 0 }}>
-            CMDB
+            {pageTitle}
           </h1>
           <p style={{ fontSize: 13, color: '#8892a4', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} configuration items`}

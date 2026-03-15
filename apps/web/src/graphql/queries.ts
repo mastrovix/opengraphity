@@ -95,6 +95,12 @@ export const GET_SERVICE_REQUESTS = gql`
   }
 `
 
+export const GET_CI_TYPES = gql`
+  query GetCITypes {
+    ciTypes { type count }
+  }
+`
+
 export const GET_CIS_SEARCH = gql`
   query SearchCIs($search: String) {
     configurationItems(search: $search, limit: 20) {

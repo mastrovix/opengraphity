@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
+import { useQuery } from '@apollo/client/react'
 import {
   LayoutDashboard,
   AlertCircle,
@@ -12,7 +14,10 @@ import {
   BarChart2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
 } from 'lucide-react'
+import { CountBadge } from '@/components/ui/CountBadge'
+import { GET_CI_TYPES } from '@/graphql/queries'
 
 const NAV_ITEMS = [
   { to: '/dashboard',              label: 'Dashboard',  icon: LayoutDashboard },
@@ -20,7 +25,6 @@ const NAV_ITEMS = [
   { to: '/problems',               label: 'Problems',   icon: Bug },
   { to: '/changes',                label: 'Changes',    icon: GitPullRequest },
   { to: '/requests',               label: 'Requests',   icon: Inbox },
-  { to: '/cmdb',                   label: 'CMDB',       icon: Server },
   { to: '/workflow/incident',      label: 'Workflow',   icon: GitBranch },
   { to: '/reports',                label: 'Report',     icon: BarChart2 },
   { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
@@ -35,6 +39,52 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { pathname } = useLocation()
+  const [cmdbOpen, setCmdbOpen] = useState(true)
+
+  const { data: ciTypesData } = useQuery<{ ciTypes: { type: string; count: number }[] }>(
+    GET_CI_TYPES,
+    { fetchPolicy: 'cache-and-network' }
+  )
+  const ciTypes = ciTypesData?.ciTypes ?? []
+  const ciTotal = ciTypes.reduce((s, t) => s + t.count, 0)
+  console.log('[SIDEBAR] ciTypes:', ciTypes)
+
+  const navItemStyle = (isActive: boolean, isCollapsed: boolean): React.CSSProperties => ({
+    display:         'flex',
+    alignItems:      'center',
+    gap:             isCollapsed ? 0 : 10,
+    justifyContent:  isCollapsed ? 'center' : 'flex-start',
+    padding:         isCollapsed ? 0 : '7px 10px',
+    width:           isCollapsed ? 40 : 'auto',
+    height:          isCollapsed ? 40 : 'auto',
+    margin:          isCollapsed ? '2px auto' : '1px 0',
+    borderRadius:    6,
+    textDecoration:  'none',
+    fontWeight:      isActive ? 600 : 400,
+    fontSize:        13,
+    color:           isActive ? '#4f46e5' : '#4a5468',
+    backgroundColor: isActive ? '#eef2ff' : 'transparent',
+    borderLeft:      isActive ? '2px solid #4f46e5' : '2px solid transparent',
+    transition:      'background 150ms, color 150ms',
+    cursor:          'pointer',
+    boxSizing:       'border-box' as const,
+  })
+
+  const subItemStyle = (isActive: boolean): React.CSSProperties => ({
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    padding:        '5px 8px',
+    borderRadius:   4,
+    fontSize:       12,
+    color:          isActive ? '#4f46e5' : '#6b7280',
+    fontWeight:     isActive ? 600 : 400,
+    textDecoration: 'none',
+    cursor:         'pointer',
+    marginBottom:   1,
+  })
+
+  const cmdbActive = pathname.startsWith('/cmdb')
 
   return (
     <aside
@@ -120,26 +170,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               key={to}
               to={to}
               title={collapsed ? label : undefined}
-              style={{
-                display:         'flex',
-                alignItems:      'center',
-                gap:             collapsed ? 0 : 10,
-                justifyContent:  collapsed ? 'center' : 'flex-start',
-                padding:         collapsed ? 0 : '7px 10px',
-                width:           collapsed ? 40 : 'auto',
-                height:          collapsed ? 40 : 'auto',
-                margin:          collapsed ? '2px auto' : '1px 0',
-                borderRadius:    6,
-                textDecoration:  'none',
-                fontWeight:      isActive ? 600 : 400,
-                fontSize:        13,
-                color:           isActive ? '#4f46e5' : '#4a5468',
-                backgroundColor: isActive ? '#eef2ff' : 'transparent',
-                borderLeft:      isActive ? '2px solid #4f46e5' : '2px solid transparent',
-                transition:      'background 150ms, color 150ms',
-                cursor:          'pointer',
-                boxSizing:       'border-box',
-              }}
+              style={navItemStyle(isActive, collapsed)}
               onMouseEnter={(e) => {
                 if (!isActive) {
                   (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
@@ -158,6 +189,87 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             </NavLink>
           )
         })}
+
+        {/* CMDB — collapsible with sub-items */}
+        {collapsed ? (
+          <NavLink
+            to="/cmdb"
+            title="CMDB"
+            style={navItemStyle(cmdbActive, true)}
+            onMouseEnter={(e) => {
+              if (!cmdbActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
+                ;(e.currentTarget as HTMLElement).style.color = '#0f1629'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!cmdbActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                ;(e.currentTarget as HTMLElement).style.color = '#4a5468'
+              }
+            }}
+          >
+            <Server size={16} style={{ flexShrink: 0, color: cmdbActive ? '#4f46e5' : 'inherit' }} />
+          </NavLink>
+        ) : (
+          <div style={{ marginBottom: 2 }}>
+            {/* Header */}
+            <div
+              onClick={() => setCmdbOpen((p) => !p)}
+              style={{
+                display:         'flex',
+                alignItems:      'center',
+                justifyContent:  'space-between',
+                padding:         '7px 10px',
+                borderRadius:    6,
+                cursor:          'pointer',
+                backgroundColor: cmdbActive ? '#eef2ff' : 'transparent',
+                borderLeft:      cmdbActive ? '2px solid #4f46e5' : '2px solid transparent',
+                transition:      'background 150ms',
+                margin:          '1px 0',
+              }}
+              onMouseEnter={(e) => { if (!cmdbActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+              onMouseLeave={(e) => { if (!cmdbActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Server size={16} style={{ flexShrink: 0, color: cmdbActive ? '#4f46e5' : '#4a5468' }} />
+                <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? '#4f46e5' : '#4a5468' }}>
+                  CMDB
+                </span>
+              </div>
+              {cmdbOpen
+                ? <ChevronDown size={12} color="#8892a4" />
+                : <ChevronRight size={12} color="#8892a4" />}
+            </div>
+
+            {/* Sub-items */}
+            {cmdbOpen && (
+              <div style={{ paddingLeft: 28, marginTop: 2 }}>
+                <NavLink
+                  to="/cmdb"
+                  end
+                  style={({ isActive }) => subItemStyle(isActive)}
+                >
+                  <span>Tutti</span>
+                  {ciTotal > 0 && <CountBadge count={ciTotal} />}
+                </NavLink>
+
+                {ciTypes.map((t) => (
+                  <NavLink
+                    key={t.type}
+                    to={`/cmdb?type=${t.type}`}
+                    style={({ isActive }) => subItemStyle(isActive)}
+                  >
+                    <span style={{ textTransform: 'capitalize' }}>
+                      {t.type.replace(/_/g, ' ')}
+                    </span>
+                    <CountBadge count={t.count} />
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* Collapse toggle */}
