@@ -6,14 +6,20 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+
     "seed:teams": "tsx src/scripts/seed-teams.ts",
-    "seed:users": "tsx src/scripts/seed-users.ts",
+
     "seed:users-bulk": "tsx src/scripts/seed-users-bulk.ts",
     "seed:apps": "tsx src/scripts/seed-apps.ts",
+    "seed:apps-with-teams": "tsx src/scripts/seed-apps-with-teams.ts",
     "seed:databases": "tsx src/scripts/seed-databases.ts",
+    "seed:databases-with-teams": "tsx src/scripts/seed-databases-with-teams.ts",
     "seed:servers": "tsx src/scripts/seed-servers.ts",
+    "seed:servers-with-teams": "tsx src/scripts/seed-servers-with-teams.ts",
     "seed:dbinstances": "tsx src/scripts/seed-database-instances.ts",
+    "seed:dbinstances-with-teams": "tsx src/scripts/seed-dbinstances-with-teams.ts",
     "seed:relations": "tsx src/scripts/seed-relations.ts",
+    "seed:ci-relations": "tsx src/scripts/seed-ci-relations.ts",
     "seed:app-relations": "tsx src/scripts/seed-app-relations.ts"
   },
   "dependencies": {
