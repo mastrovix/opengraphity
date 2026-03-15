@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { publish } from '@opengraphity/events'
+import { mapCI } from './ci-utils.js'
 import type { WorkflowInstance } from '@opengraphity/workflow'
 import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
@@ -101,16 +102,6 @@ function mapChangeValidation(props: Props, team?: Props | null, user?: Props | n
     completedAt:    (props['completed_at']  ?? null) as string | null,
     assignedTeam:   team ? mapTeam(team) : null,
     assignee:       user ? mapUser(user) : null,
-  }
-}
-
-function mapCI(props: Props) {
-  return {
-    id: props['id'] as string, tenantId: props['tenant_id'] as string,
-    name: props['name'] as string, type: props['type'] as string,
-    status: props['status'] as string, environment: props['environment'] as string,
-    createdAt: props['created_at'] as string, updatedAt: props['updated_at'] as string,
-    dependencies: [], dependents: [],
   }
 }
 

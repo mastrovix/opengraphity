@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
 import { workflowEngine } from '@opengraphity/workflow'
+import { mapCI } from './ci-utils.js'
 import type { DomainEvent, IncidentCreatedPayload, IncidentResolvedPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 
@@ -60,21 +61,6 @@ function mapIncident(props: Props) {
     affectedCIs:     [],
     causedByProblem: null,
     comments:        [],
-  }
-}
-
-function mapCI(props: Props) {
-  return {
-    id:          props['id']          as string,
-    tenantId:    props['tenant_id']   as string,
-    name:        props['name']        as string,
-    type:        props['type']        as string,
-    status:      props['status']      as string,
-    environment: props['environment'] as string,
-    createdAt:   props['created_at']  as string,
-    updatedAt:   props['updated_at']  as string,
-    dependencies: [],
-    dependents:   [],
   }
 }
 

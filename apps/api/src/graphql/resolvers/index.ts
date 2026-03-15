@@ -1,6 +1,5 @@
 import { authResolvers } from './auth.js'
 import { incidentResolvers } from './incident.js'
-import { cmdbResolvers } from './cmdb.js'
 import { problemResolvers } from './problem.js'
 import { changeResolvers } from './change.js'
 import { serviceRequestResolvers } from './service_request.js'
@@ -8,6 +7,12 @@ import { teamResolvers } from './team.js'
 import { workflowResolvers } from './workflow.js'
 import { notificationChannelResolvers } from './notificationChannel.js'
 import { reportResolvers } from './report.js'
+import { applicationResolvers } from './application.js'
+import { databaseResolvers } from './database.js'
+import { databaseInstanceResolvers } from './databaseInstance.js'
+import { serverResolvers } from './server.js'
+import { certificateResolvers } from './certificate.js'
+import { ciResolvers } from './ci.js'
 import type { GraphQLContext } from '../../context.js'
 
 // ── me + users stubs ──────────────────────────────────────────────────────────
@@ -90,7 +95,6 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
 export const resolvers = {
   Query: {
     ...incidentResolvers.Query,
-    ...cmdbResolvers.Query,
     ...problemResolvers.Query,
     ...changeResolvers.Query,
     ...serviceRequestResolvers.Query,
@@ -98,13 +102,18 @@ export const resolvers = {
     ...workflowResolvers.Query,
     ...notificationChannelResolvers.Query,
     ...reportResolvers.Query,
+    ...applicationResolvers.Query,
+    ...databaseResolvers.Query,
+    ...databaseInstanceResolvers.Query,
+    ...serverResolvers.Query,
+    ...certificateResolvers.Query,
+    ...ciResolvers.Query,
     ...meStub,
     user: userById,
   },
   Mutation: {
     ...authResolvers.Mutation,
     ...incidentResolvers.Mutation,
-    ...cmdbResolvers.Mutation,
     ...problemResolvers.Mutation,
     ...changeResolvers.Mutation,
     ...serviceRequestResolvers.Mutation,
@@ -117,10 +126,23 @@ export const resolvers = {
     ...incidentResolvers.Incident,
     ...workflowResolvers.Incident,
   },
-  ConfigurationItem: {
-    ...cmdbResolvers.ConfigurationItem,
-    ...teamResolvers.ConfigurationItem,
+  CIBase: {
+    __resolveType(obj: { type?: string }) {
+      switch (obj.type) {
+        case 'application':        return 'Application'
+        case 'database':           return 'Database'
+        case 'database_instance':  return 'DatabaseInstance'
+        case 'server':             return 'Server'
+        case 'certificate':        return 'Certificate'
+        default:                   return 'Application'
+      }
+    }
   },
+  Application:      applicationResolvers.Application,
+  Database:         databaseResolvers.Database,
+  DatabaseInstance: databaseInstanceResolvers.DatabaseInstance,
+  Server:           serverResolvers.Server,
+  Certificate:      certificateResolvers.Certificate,
   Team:                teamResolvers.Team,
   User:                { teams: userTeams },
   Problem:             problemResolvers.Problem,

@@ -10,9 +10,8 @@ import { Modal } from '@/components/Modal'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge }   from '@/components/StatusBadge'
-import { GET_INCIDENT, GET_USERS, GET_TEAMS } from '@/graphql/queries'
+import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI } from '@/graphql/mutations'
-import { GET_CIS_SEARCH } from '@/graphql/queries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -225,8 +224,8 @@ export function IncidentDetailPage() {
   )
   const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
-  const { data: ciSearchData } = useQuery<{ configurationItems: CIRef[] }>(GET_CIS_SEARCH, {
-    variables: { search: ciSearch },
+  const { data: ciSearchData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch, limit: 20 },
     skip: ciSearch.length < 2,
   })
 
@@ -290,7 +289,7 @@ export function IncidentDetailPage() {
   const incident    = data?.incident
   const users       = usersData?.users ?? []
   const teams       = teamsData?.teams ?? []
-  const ciResults   = ciSearchData?.configurationItems ?? []
+  const ciResults   = ciSearchData?.allCIs?.items ?? []
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 

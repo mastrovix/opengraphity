@@ -20,7 +20,8 @@
     "seed:dbinstances-with-teams": "tsx src/scripts/seed-dbinstances-with-teams.ts",
     "seed:relations": "tsx src/scripts/seed-relations.ts",
     "seed:ci-relations": "tsx src/scripts/seed-ci-relations.ts",
-    "seed:app-relations": "tsx src/scripts/seed-app-relations.ts"
+    "seed:app-relations": "tsx src/scripts/seed-app-relations.ts",
+    "seed:certificates": "tsx src/scripts/seed-certificates.ts"
   },
   "dependencies": {
     "@apollo/server": "^4.10.0",

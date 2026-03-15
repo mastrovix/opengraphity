@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { mapCI } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Props = Record<string, unknown>
@@ -12,21 +13,6 @@ function mapTeam(props: Props) {
     description: props['description'] as string | null,
     type:        props['type']        as string | null,
     createdAt:   props['created_at']  as string,
-  }
-}
-
-function mapCI(props: Props) {
-  return {
-    id:          props['id']          as string,
-    tenantId:    props['tenant_id']   as string,
-    name:        props['name']        as string,
-    type:        props['type']        as string,
-    status:      props['status']      as string,
-    environment: props['environment'] as string,
-    createdAt:   props['created_at']  as string,
-    updatedAt:   props['updated_at']  as string,
-    dependencies: [],
-    dependents:   [],
   }
 }
 
@@ -210,9 +196,5 @@ export const teamResolvers = {
     members:      teamMembers,
     ownedCIs:     teamOwnedCIs,
     supportedCIs: teamSupportedCIs,
-  },
-  ConfigurationItem: {
-    owner:        ciOwner,
-    supportGroup: ciSupportGroup,
   },
 }

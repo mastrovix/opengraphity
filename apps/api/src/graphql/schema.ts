@@ -18,11 +18,19 @@ export const typeDefs = `#graphql
     serviceRequests(status: String, priority: String, limit: Int, offset: Int): [ServiceRequest!]!
     serviceRequest(id: ID!): ServiceRequest
 
-    # CMDB
-    configurationItems(type: String, environment: String, status: String, search: String, limit: Int, offset: Int): ConfigurationItemsResult!
-    configurationItem(id: ID!): ConfigurationItem
-    blastRadius(ciId: ID!, depth: Int): [BlastRadiusItem!]!
-    ciTypes: [CITypeSummary!]!
+    # CMDB — typed queries
+    applications(limit: Int, offset: Int, environment: String, status: String, search: String): ApplicationsResult!
+    application(id: ID!): Application
+    databases(limit: Int, offset: Int, environment: String, status: String, search: String): DatabasesResult!
+    database(id: ID!): Database
+    databaseInstances(limit: Int, offset: Int, environment: String, status: String, search: String): DatabaseInstancesResult!
+    databaseInstance(id: ID!): DatabaseInstance
+    servers(limit: Int, offset: Int, environment: String, status: String, search: String): ServersResult!
+    server(id: ID!): Server
+    certificates(limit: Int, offset: Int, environment: String, status: String, search: String): CertificatesResult!
+    certificate(id: ID!): Certificate
+    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String): AllCIsResult!
+    ciById(id: ID!): CIBase
 
     # Teams
     teams: [Team!]!
@@ -105,11 +113,10 @@ export const typeDefs = `#graphql
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
     completeServiceRequest(id: ID!): ServiceRequest!
 
-    # CMDB
-    createConfigurationItem(input: CreateCIInput!): ConfigurationItem!
-    updateConfigurationItem(id: ID!, input: UpdateCIInput!): ConfigurationItem!
-    updateCIFields(id: ID!, input: UpdateCIFieldsInput!): ConfigurationItem!
-    addCIDependency(fromId: ID!, toId: ID!, type: String!): Boolean!
+    # Teams
+    createTeam(input: CreateTeamInput!): Team!
+    assignCIOwner(ciId: ID!, teamId: ID!): CIBase!
+    assignCISupportGroup(ciId: ID!, teamId: ID!): CIBase!
 
     # Workflow
     updateWorkflowStep(
@@ -132,11 +139,6 @@ export const typeDefs = `#graphql
       notes: String
     ): TransitionResult!
 
-    # Teams
-    createTeam(input: CreateTeamInput!): Team!
-    assignCIOwner(ciId: ID!, teamId: ID!): ConfigurationItem!
-    assignCISupportGroup(ciId: ID!, teamId: ID!): ConfigurationItem!
-
     # Notification Channels
     createNotificationChannel(input: CreateNotificationChannelInput!): NotificationChannel!
     updateNotificationChannel(id: ID!, input: CreateNotificationChannelInput!): NotificationChannel!
@@ -151,6 +153,124 @@ export const typeDefs = `#graphql
     deleteReportConversation(id: ID!): Boolean!
   }
 
+  # ── CMDB — interface & specialized types ────────────────────────────────────
+
+  interface CIBase {
+    id: ID!
+    name: String!
+    type: String!
+    status: String
+    environment: String
+    description: String
+    createdAt: String!
+    updatedAt: String
+    notes: String
+    ownerGroup: Team
+    supportGroup: Team
+  }
+
+  type Application implements CIBase {
+    id: ID!
+    name: String!
+    type: String!
+    status: String
+    environment: String
+    description: String
+    createdAt: String!
+    updatedAt: String
+    notes: String
+    ownerGroup: Team
+    supportGroup: Team
+    url: String
+    version: String
+    vendor: String
+    dependencies: [CIBase!]!
+    dependents: [CIBase!]!
+  }
+
+  type Database implements CIBase {
+    id: ID!
+    name: String!
+    type: String!
+    status: String
+    environment: String
+    description: String
+    createdAt: String!
+    updatedAt: String
+    notes: String
+    ownerGroup: Team
+    supportGroup: Team
+    port: String
+    dependencies: [CIBase!]!
+    dependents: [CIBase!]!
+  }
+
+  type DatabaseInstance implements CIBase {
+    id: ID!
+    name: String!
+    type: String!
+    status: String
+    environment: String
+    description: String
+    createdAt: String!
+    updatedAt: String
+    notes: String
+    ownerGroup: Team
+    supportGroup: Team
+    ipAddress: String
+    port: String
+    vendor: String
+    dbVersion: String
+    dependencies: [CIBase!]!
+    dependents: [CIBase!]!
+  }
+
+  type Server implements CIBase {
+    id: ID!
+    name: String!
+    type: String!
+    status: String
+    environment: String
+    description: String
+    createdAt: String!
+    updatedAt: String
+    notes: String
+    ownerGroup: Team
+    supportGroup: Team
+    ipAddress: String
+    location: String
+    vendor: String
+    osVersion: String
+    dependencies: [CIBase!]!
+    dependents: [CIBase!]!
+  }
+
+  type Certificate implements CIBase {
+    id: ID!
+    name: String!
+    type: String!
+    status: String
+    environment: String
+    description: String
+    createdAt: String!
+    updatedAt: String
+    notes: String
+    ownerGroup: Team
+    supportGroup: Team
+    serialNumber: String
+    expiresAt: String
+    certificateType: String
+  }
+
+  type ApplicationsResult { items: [Application!]!, total: Int! }
+  type DatabasesResult { items: [Database!]!, total: Int! }
+  type DatabaseInstancesResult { items: [DatabaseInstance!]!, total: Int! }
+  type ServersResult { items: [Server!]!, total: Int! }
+  type CertificatesResult { items: [Certificate!]!, total: Int! }
+  type AllCIsResult { items: [CIBase!]!, total: Int! }
+
+  # ── Incident ──────────────────────────────────────────────────────────────────
+
   type Incident {
     id: ID!
     tenantId: String!
@@ -164,7 +284,7 @@ export const typeDefs = `#graphql
     rootCause: String
     assignee: User
     assignedTeam: Team
-    affectedCIs: [ConfigurationItem!]!
+    affectedCIs: [CIBase!]!
     causedByProblem: Problem
     workflowInstance:     WorkflowInstance
     workflowHistory:      [WorkflowStepExecution!]!
@@ -212,7 +332,7 @@ export const typeDefs = `#graphql
     updatedAt:      String!
     assignedTeam:       Team
     assignee:           User
-    affectedCIs:        [ConfigurationItem!]!
+    affectedCIs:        [CIBase!]!
     relatedIncidents:   [Incident!]!
     deploySteps:        [DeployStep!]!
     assessmentTasks:    [AssessmentTask!]!
@@ -316,7 +436,7 @@ export const typeDefs = `#graphql
     notes:             String
     completedAt:       String
     createdAt:         String!
-    ci:                ConfigurationItem
+    ci:                CIBase
     assignedTeam:      Team
     assignee:          User
   }
@@ -357,8 +477,8 @@ export const typeDefs = `#graphql
     type: String
     createdAt: String!
     members: [User!]!
-    ownedCIs: [ConfigurationItem!]!
-    supportedCIs: [ConfigurationItem!]!
+    ownedCIs: [CIBase!]!
+    supportedCIs: [CIBase!]!
   }
 
   type IncidentsResult {
@@ -369,56 +489,6 @@ export const typeDefs = `#graphql
   type ChangesResult {
     items: [Change!]!
     total: Int!
-  }
-
-  type CITypeSummary {
-    type:  String!
-    count: Int!
-  }
-
-  type ConfigurationItemsResult {
-    items: [ConfigurationItem!]!
-    total: Int!
-  }
-
-  type CIRelation {
-    ci: ConfigurationItem!
-    relationType: String!
-  }
-
-  type ConfigurationItem {
-    id: ID!
-    tenantId: String!
-    name: String!
-    type: String!
-    status: String!
-    environment: String!
-    createdAt: String!
-    updatedAt: String
-    dependencies: [ConfigurationItem!]!
-    dependents: [ConfigurationItem!]!
-    dependenciesWithType: [CIRelation!]!
-    dependentsWithType: [CIRelation!]!
-    owner: Team
-    supportGroup: Team
-    ipAddress: String
-    location: String
-    vendor: String
-    version: String
-    port: Int
-    url: String
-    region: String
-    expiryDate: String
-    notes: String
-  }
-
-  type BlastRadiusItem {
-    id: ID!
-    name: String!
-    type: String!
-    environment: String
-    status: String
-    distance: Int!
   }
 
   type User {
@@ -527,32 +597,9 @@ export const typeDefs = `#graphql
     dueDate: String
   }
 
-  input CreateCIInput {
+  input CreateTeamInput {
     name: String!
-    type: String!
-    status: String!
-    environment: String!
-  }
-
-  input UpdateCIInput {
-    name: String
-    status: String
-    environment: String
-  }
-
-  input UpdateCIFieldsInput {
-    name: String
-    status: String
-    environment: String
-    ipAddress: String
-    location: String
-    vendor: String
-    version: String
-    port: Int
-    url: String
-    region: String
-    expiryDate: String
-    notes: String
+    description: String
   }
 
   # ── Workflow types ─────────────────────────────────────────────────────────
@@ -618,11 +665,6 @@ export const typeDefs = `#graphql
     active:      Boolean!
     steps:       [WorkflowStep!]!
     transitions: [WorkflowTransitionDef!]!
-  }
-
-  input CreateTeamInput {
-    name: String!
-    description: String
   }
 
   type ReportConversation {

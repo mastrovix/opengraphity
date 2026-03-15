@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { ArrowLeft, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_INCIDENT } from '@/graphql/mutations'
-import { GET_INCIDENTS, GET_CIS_SEARCH } from '@/graphql/queries'
+import { GET_INCIDENTS, GET_ALL_CIS } from '@/graphql/queries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,11 +70,11 @@ export function CreateIncidentPage() {
 
   const titleError = submitted && !title.trim() ? 'This field is required' : ''
 
-  const { data: ciData } = useQuery<{ configurationItems: CIRef[] }>(GET_CIS_SEARCH, {
-    variables: { search: ciSearch },
+  const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch, limit: 20 },
     skip: ciSearch.length < 2,
   })
-  const ciResults = ciData?.configurationItems ?? []
+  const ciResults = ciData?.allCIs?.items ?? []
 
   const [createIncident, { loading }] = useMutation(CREATE_INCIDENT, {
     refetchQueries: [{ query: GET_INCIDENTS }],

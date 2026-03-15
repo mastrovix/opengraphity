@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { X } from 'lucide-react'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_INCIDENTS, GET_CIS_SEARCH, GET_CHANGE_IMPACT } from '@/graphql/queries'
+import { GET_INCIDENTS, GET_ALL_CIS, GET_CHANGE_IMPACT } from '@/graphql/queries'
 import { ImpactPanel } from '@/components/ImpactPanel'
 import type { ImpactAnalysis } from '@/components/ImpactPanel'
 
@@ -50,8 +50,8 @@ export function CreateChangePage() {
     }
   }, [selectedCIs, getImpact])
 
-  const { data: cisData } = useQuery<{ configurationItems: CI[] }>(GET_CIS_SEARCH, {
-    variables: { search: ciSearch || null },
+  const { data: cisData } = useQuery<{ allCIs: { items: CI[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch || null, limit: 20 },
     skip: ciSearch.length < 2,
   })
   const { data: incData } = useQuery<{ incidents: Incident[] }>(GET_INCIDENTS)
@@ -86,7 +86,7 @@ export function CreateChangePage() {
     })
   }
 
-  const availableCIs = (cisData?.configurationItems ?? []).filter((ci) => !selectedCIs.find((s) => s.id === ci.id))
+  const availableCIs = (cisData?.allCIs?.items ?? []).filter((ci) => !selectedCIs.find((s) => s.id === ci.id))
   const availableIncidents = (incData?.incidents ?? []).filter((i) => !selectedIncidents.find((s) => s.id === i.id))
 
   return (

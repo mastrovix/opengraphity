@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import {
-  GET_CHANGE, GET_TEAMS, GET_USERS, GET_CIS_SEARCH,
+  GET_CHANGE, GET_TEAMS, GET_USERS, GET_ALL_CIS,
 } from '@/graphql/queries'
 import {
   EXECUTE_CHANGE_TRANSITION,
@@ -173,8 +173,8 @@ export function ChangeDetailPage() {
   // CI search state
   const [ciSearch, setCiSearch]     = useState('')
   const [showCISearch, setShowCISearch] = useState(false)
-  const { data: ciSearchData } = useQuery<{ configurationItems: CI[] }>(GET_CIS_SEARCH, {
-    variables: { search: ciSearch || null },
+  const { data: ciSearchData } = useQuery<{ allCIs: { items: CI[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch || null, limit: 20 },
     skip: ciSearch.length < 2,
   })
 
@@ -358,7 +358,7 @@ export function ChangeDetailPage() {
     onError: (e) => toast.error(e.message),
   })
 
-  const ciResults = ciSearchData?.configurationItems ?? []
+  const ciResults = ciSearchData?.allCIs?.items ?? []
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []
 

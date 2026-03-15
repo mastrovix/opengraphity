@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { useQuery } from '@apollo/client/react'
 import {
   LayoutDashboard,
   AlertCircle,
@@ -17,8 +16,6 @@ import {
   ChevronRight,
   ChevronDown,
 } from 'lucide-react'
-import { CountBadge } from '@/components/ui/CountBadge'
-import { GET_CI_TYPES } from '@/graphql/queries'
 
 const NAV_ITEMS = [
   { to: '/dashboard',              label: 'Dashboard',  icon: LayoutDashboard },
@@ -42,14 +39,6 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { pathname } = useLocation()
   const [cmdbOpen, setCmdbOpen] = useState(true)
   const [teamsOpen, setTeamsOpen] = useState(false)
-
-  const { data: ciTypesData } = useQuery<{ ciTypes: { type: string; count: number }[] }>(
-    GET_CI_TYPES,
-    { fetchPolicy: 'cache-and-network' }
-  )
-  const ciTypes = ciTypesData?.ciTypes ?? []
-  const ciTotal = ciTypes.reduce((s, t) => s + t.count, 0)
-  console.log('[SIDEBAR] ciTypes:', ciTypes)
 
   const navItemStyle = (isActive: boolean, isCollapsed: boolean): React.CSSProperties => ({
     display:         'flex',
@@ -86,7 +75,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     marginBottom:   1,
   })
 
-  const cmdbActive = pathname.startsWith('/cmdb')
+  const cmdbActive = pathname.startsWith('/cmdb') || pathname.startsWith('/applications') || pathname.startsWith('/databases') || pathname.startsWith('/database-instances') || pathname.startsWith('/servers') || pathname.startsWith('/certificates')
 
   return (
     <aside
@@ -247,27 +236,24 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             {/* Sub-items */}
             {cmdbOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                <NavLink
-                  to="/cmdb"
-                  end
-                  style={({ isActive }) => subItemStyle(isActive)}
-                >
+                <NavLink to="/cmdb" end style={({ isActive }) => subItemStyle(isActive)}>
                   <span>Tutti</span>
-                  {ciTotal > 0 && <CountBadge count={ciTotal} />}
                 </NavLink>
-
-                {ciTypes.map((t) => (
-                  <NavLink
-                    key={t.type}
-                    to={`/cmdb?type=${t.type}`}
-                    style={({ isActive }) => subItemStyle(isActive)}
-                  >
-                    <span style={{ textTransform: 'capitalize' }}>
-                      {t.type.replace(/_/g, ' ')}
-                    </span>
-                    <CountBadge count={t.count} />
-                  </NavLink>
-                ))}
+                <NavLink to="/applications" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>Applicazioni</span>
+                </NavLink>
+                <NavLink to="/databases" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>Database</span>
+                </NavLink>
+                <NavLink to="/database-instances" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>DB Instance</span>
+                </NavLink>
+                <NavLink to="/servers" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>Server</span>
+                </NavLink>
+                <NavLink to="/certificates" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>Certificati</span>
+                </NavLink>
               </div>
             )}
           </div>

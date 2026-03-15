@@ -18,6 +18,16 @@ import { RequestListPage } from '@/pages/requests/RequestListPage'
 import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestPage'
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
 import { CMDBDetailPage } from '@/pages/cmdb/CMDBDetailPage'
+import { ApplicationsPage } from '@/pages/applications/ApplicationsPage'
+import { ApplicationDetailPage } from '@/pages/applications/ApplicationDetailPage'
+import { DatabasesPage } from '@/pages/databases/DatabasesPage'
+import { DatabaseDetailPage } from '@/pages/databases/DatabaseDetailPage'
+import { DatabaseInstancesPage } from '@/pages/database-instances/DatabaseInstancesPage'
+import { DatabaseInstanceDetailPage } from '@/pages/database-instances/DatabaseInstanceDetailPage'
+import { ServersPage } from '@/pages/servers/ServersPage'
+import { ServerDetailPage } from '@/pages/servers/ServerDetailPage'
+import { CertificatesPage } from '@/pages/certificates/CertificatesPage'
+import { CertificateDetailPage } from '@/pages/certificates/CertificateDetailPage'
 import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
 import NotificationsPage from '@/pages/settings/NotificationsPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
@@ -77,9 +87,19 @@ const router = createBrowserRouter([
       { path: 'changes/:id',       element: <ChangeDetailPage />,        errorElement: <RouteError /> },
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
       { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
-      { path: 'cmdb',              element: <CMDBPage />,                errorElement: <RouteError /> },
-      { path: 'cmdb/:id',              element: <CMDBDetailPage />,          errorElement: <RouteError /> },
-      { path: 'workflow/incident',          element: <WorkflowDesignerPage />,    errorElement: <RouteError /> },
+      { path: 'cmdb',                          element: <CMDBPage />,                    errorElement: <RouteError /> },
+      { path: 'cmdb/:id',                      element: <CMDBDetailPage />,              errorElement: <RouteError /> },
+      { path: 'applications',                  element: <ApplicationsPage />,            errorElement: <RouteError /> },
+      { path: 'applications/:id',              element: <ApplicationDetailPage />,       errorElement: <RouteError /> },
+      { path: 'databases',                     element: <DatabasesPage />,               errorElement: <RouteError /> },
+      { path: 'databases/:id',                 element: <DatabaseDetailPage />,          errorElement: <RouteError /> },
+      { path: 'database-instances',            element: <DatabaseInstancesPage />,       errorElement: <RouteError /> },
+      { path: 'database-instances/:id',        element: <DatabaseInstanceDetailPage />,  errorElement: <RouteError /> },
+      { path: 'servers',                       element: <ServersPage />,                 errorElement: <RouteError /> },
+      { path: 'servers/:id',                   element: <ServerDetailPage />,            errorElement: <RouteError /> },
+      { path: 'certificates',                  element: <CertificatesPage />,            errorElement: <RouteError /> },
+      { path: 'certificates/:id',              element: <CertificateDetailPage />,       errorElement: <RouteError /> },
+      { path: 'workflow/incident',             element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
       { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },

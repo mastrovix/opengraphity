@@ -6,7 +6,7 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
-import { GET_CIS } from '@/graphql/queries'
+import { GET_ALL_CIS } from '@/graphql/queries'
 
 interface CI {
   id:          string
@@ -118,8 +118,8 @@ export function CMDBPage() {
   }, [typeFromUrl])
 
   const { data, loading } = useQuery<{
-    configurationItems: { items: CI[]; total: number }
-  }>(GET_CIS, {
+    allCIs: { items: CI[]; total: number }
+  }>(GET_ALL_CIS, {
     variables: {
       limit:       PAGE_SIZE,
       offset:      page * PAGE_SIZE,
@@ -130,8 +130,8 @@ export function CMDBPage() {
     },
   })
 
-  const items = data?.configurationItems?.items ?? []
-  const total = data?.configurationItems?.total ?? 0
+  const items = data?.allCIs?.items ?? []
+  const total = data?.allCIs?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   const handleFiltersChange = (filters: Record<string, string>) => {
