@@ -4,7 +4,10 @@ import { useQuery } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { StatusBadge } from '@/components/StatusBadge'
 import { CountBadge } from '@/components/ui/CountBadge'
-import { GET_APPLICATION } from '@/graphql/queries'
+import { GET_APPLICATION, GET_BLAST_RADIUS } from '@/graphql/queries'
+import { ciPath } from '@/lib/ciPath'
+import { DetailField } from '@/components/ui/DetailField'
+import { CIGraph } from '@/components/CIGraph'
 
 interface CIRef {
   id: string
@@ -12,6 +15,11 @@ interface CIRef {
   type: string
   status: string | null
   environment: string | null
+}
+
+interface CIRelation {
+  relation: string
+  ci: CIRef
 }
 
 interface Team {
@@ -30,23 +38,10 @@ interface ApplicationDetail {
   updatedAt: string | null
   notes: string | null
   url: string | null
-  version: string | null
-  vendor: string | null
   ownerGroup: Team | null
   supportGroup: Team | null
-  dependencies: CIRef[]
-  dependents: CIRef[]
-}
-
-function ciPath(id: string, type: string): string {
-  switch (type) {
-    case 'application':        return `/applications/${id}`
-    case 'database':           return `/databases/${id}`
-    case 'database_instance':  return `/database-instances/${id}`
-    case 'server':             return `/servers/${id}`
-    case 'certificate':        return `/certificates/${id}`
-    default:                   return `/cmdb/${id}`
-  }
+  dependencies: CIRelation[]
+  dependents: CIRelation[]
 }
 
 const InfoField = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -56,30 +51,23 @@ const InfoField = ({ label, children }: { label: string; children: React.ReactNo
   </div>
 )
 
-function CIRow({ ci, onClick }: { ci: CIRef; onClick?: () => void }) {
-  return (
-    <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f1f3f9', cursor: onClick ? 'pointer' : 'default' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629' }}>{ci.name}</div>
-        <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' }}>
-          {ci.type.replace(/_/g, ' ')} {ci.environment ? `· ${ci.environment}` : ''}
-        </div>
-      </div>
-      {ci.status && <StatusBadge value={ci.status} />}
-    </div>
-  )
-}
-
 export function ApplicationDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [depsOpen, setDepsOpen] = useState(false)
   const [depentsOpen, setDepentsOpen] = useState(false)
+  const [graphOpen, setGraphOpen] = useState(false)
+  const [brOpen, setBrOpen] = useState(false)
 
   const { data, loading } = useQuery<{ application: ApplicationDetail | null }>(GET_APPLICATION, {
     variables: { id },
     skip: !id,
   })
+  const { data: brData } = useQuery<{ blastRadius: { distance: number; parentId: string | null; ci: { id: string; name: string; type: string; environment: string | null; status: string | null } }[] }>(
+    GET_BLAST_RADIUS,
+    { variables: { id }, skip: !id }
+  )
+  const blastRadius = brData?.blastRadius ?? []
 
   if (loading) return <div style={{ padding: 40, color: '#8892a4', fontSize: 14 }}>Loading…</div>
 
@@ -118,11 +106,74 @@ export function ApplicationDetailPage() {
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>Info Tecniche</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px' }}>
-              {app.url     && <InfoField label="URL">{app.url}</InfoField>}
-              {app.version && <InfoField label="Version">{app.version}</InfoField>}
-              {app.vendor  && <InfoField label="Vendor">{app.vendor}</InfoField>}
-              {app.notes   && <div style={{ gridColumn: '1 / -1' }}><InfoField label="Note">{app.notes}</InfoField></div>}
+              <DetailField label="URL" value={app.url ?? null} />
+
+              <div style={{ gridColumn: '1 / -1' }}><DetailField label="Note" value={app.notes ?? null} /></div>
             </div>
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+            <div
+              onClick={() => setGraphOpen(p => !p)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: graphOpen ? '1px solid #e5e7eb' : 'none' }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Mappa Dipendenze</span>
+              {graphOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {graphOpen && (
+              <div style={{ padding: 16 }}>
+                <CIGraph
+                  centerCI={{ id: app.id, name: app.name, type: app.type, status: app.status ?? 'unknown', environment: app.environment ?? undefined }}
+                  dependencies={app.dependencies.map(r => ({ relationType: r.relation, ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined } }))}
+                  dependents={app.dependents.map(r => ({ relationType: r.relation, ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined } }))}
+                  blastRadius={blastRadius.map(b => ({ ...b.ci, status: b.ci.status ?? 'unknown', environment: b.ci.environment ?? undefined, distance: b.distance, parentId: b.parentId }))}
+                />
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+            <div
+              onClick={() => setBrOpen(p => !p)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: brOpen ? '1px solid #e5e7eb' : 'none' }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Blast Radius</span>
+              {brOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {brOpen && (
+              <div style={{ padding: '0 20px 16px' }}>
+                {blastRadius.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: '12px 0 0' }}>Nessun impatto rilevato.</p>
+                  : (() => {
+                      const grouped = blastRadius.reduce((acc, b) => {
+                        const key = b.distance
+                        if (!acc[key]) acc[key] = []
+                        acc[key].push(b)
+                        return acc
+                      }, {} as Record<number, typeof blastRadius>)
+                      return Object.entries(grouped)
+                        .sort(([a], [b]) => Number(a) - Number(b))
+                        .map(([dist, items]) => (
+                          <div key={dist} style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.06em', padding: '8px 0 4px 0', marginBottom: 6 }}>
+                              {Number(dist) === 1 ? 'Dipendenze dirette' : `Profondità ${dist}`}
+                            </div>
+                            <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                              {items.map(b => (
+                                <div key={b.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb' }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629' }}>{b.ci.name}</div>
+                                    <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{b.ci.type.replace(/_/g, ' ')}{b.ci.environment ? ` · ${b.ci.environment}` : ''}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                    })()
+                }
+              </div>
+            )}
           </div>
 
           {/* Dependencies */}
@@ -135,8 +186,43 @@ export function ApplicationDetailPage() {
             </div>
             {depsOpen && (
               <div style={{ marginTop: 12 }}>
-                {app.dependencies.length === 0 ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p>
-                  : app.dependencies.map(d => <CIRow key={d.id} ci={d} onClick={() => navigate(ciPath(d.id, d.type))} />)}
+                {app.dependencies.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p>
+                  : (() => {
+                      const grouped = app.dependencies.reduce((acc, rel) => {
+                        if (!acc[rel.relation]) acc[rel.relation] = []
+                        acc[rel.relation].push(rel)
+                        return acc
+                      }, {} as Record<string, typeof app.dependencies>)
+                      return Object.entries(grouped).map(([relation, rels]) => (
+                        <div key={relation} style={{ marginBottom: 12 }}>
+                          <div style={{
+                            fontSize: 11, fontWeight: 600,
+                            color: '#64748b',
+                            textTransform: 'uppercase' as const,
+                            letterSpacing: '0.06em',
+                            padding: '8px 0 4px 0',
+                            marginBottom: 6,
+                          }}>
+                            {relation.replace(/_/g, ' ')}
+                          </div>
+                          <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                            {rels.map(rel => (
+                              <div key={rel.ci.id}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
+                                onClick={() => navigate(ciPath(rel.ci))}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rel.ci.name}</div>
+                                  <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}</div>
+                                </div>
+                                {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    })()
+                }
               </div>
             )}
           </div>
@@ -151,8 +237,43 @@ export function ApplicationDetailPage() {
             </div>
             {depentsOpen && (
               <div style={{ marginTop: 12 }}>
-                {app.dependents.length === 0 ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p>
-                  : app.dependents.map(d => <CIRow key={d.id} ci={d} onClick={() => navigate(ciPath(d.id, d.type))} />)}
+                {app.dependents.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p>
+                  : (() => {
+                      const grouped = app.dependents.reduce((acc, rel) => {
+                        if (!acc[rel.relation]) acc[rel.relation] = []
+                        acc[rel.relation].push(rel)
+                        return acc
+                      }, {} as Record<string, typeof app.dependents>)
+                      return Object.entries(grouped).map(([relation, rels]) => (
+                        <div key={relation} style={{ marginBottom: 12 }}>
+                          <div style={{
+                            fontSize: 11, fontWeight: 600,
+                            color: '#64748b',
+                            textTransform: 'uppercase' as const,
+                            letterSpacing: '0.06em',
+                            padding: '8px 0 4px 0',
+                            marginBottom: 6,
+                          }}>
+                            {relation.replace(/_/g, ' ')}
+                          </div>
+                          <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                            {rels.map(rel => (
+                              <div key={rel.ci.id}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
+                                onClick={() => navigate(ciPath(rel.ci))}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rel.ci.name}</div>
+                                  <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}</div>
+                                </div>
+                                {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    })()
+                }
               </div>
             )}
           </div>
@@ -163,10 +284,9 @@ export function ApplicationDetailPage() {
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px' }}>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>Dettagli</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <InfoField label="ID">
-                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>{app.id}</span>
-              </InfoField>
-              {app.environment && <InfoField label="Environment"><span style={{ textTransform: 'capitalize' }}>{app.environment}</span></InfoField>}
+              <DetailField label="ID" value={app.id} mono />
+              <DetailField label="Tipo" value={app.type} />
+              <DetailField label="Environment" value={app.environment ?? null} />
               {app.status      && <InfoField label="Status"><StatusBadge value={app.status} /></InfoField>}
               <InfoField label="Owner Group">
                 {app.ownerGroup
@@ -178,8 +298,8 @@ export function ApplicationDetailPage() {
                   ? <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 12, fontWeight: 500, color: '#059669' }}>{app.supportGroup.name}</span>
                   : <span style={{ color: '#c4cad4' }}>—</span>}
               </InfoField>
-              <InfoField label="Creato">{new Date(app.createdAt).toLocaleDateString('it-IT')}</InfoField>
-              {app.updatedAt && <InfoField label="Aggiornato">{new Date(app.updatedAt).toLocaleDateString('it-IT')}</InfoField>}
+              <DetailField label="Creato" value={new Date(app.createdAt).toLocaleDateString('it-IT')} />
+              <DetailField label="Aggiornato" value={app.updatedAt ? new Date(app.updatedAt).toLocaleDateString('it-IT') : null} />
             </div>
           </div>
         </div>

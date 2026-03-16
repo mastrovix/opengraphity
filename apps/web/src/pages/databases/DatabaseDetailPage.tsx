@@ -4,26 +4,19 @@ import { useQuery } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { StatusBadge } from '@/components/StatusBadge'
 import { CountBadge } from '@/components/ui/CountBadge'
-import { GET_DATABASE } from '@/graphql/queries'
+import { GET_DATABASE, GET_BLAST_RADIUS } from '@/graphql/queries'
+import { ciPath } from '@/lib/ciPath'
+import { DetailField } from '@/components/ui/DetailField'
+import { CIGraph } from '@/components/CIGraph'
 
 interface CIRef { id: string; name: string; type: string; status: string | null; environment: string | null }
+interface CIRelation { relation: string; ci: CIRef }
 interface Team { id: string; name: string }
 interface DatabaseDetail {
   id: string; name: string; type: string; status: string | null; environment: string | null
   description: string | null; createdAt: string; updatedAt: string | null; notes: string | null
-  port: string | null; ownerGroup: Team | null; supportGroup: Team | null
-  dependencies: CIRef[]; dependents: CIRef[]
-}
-
-function ciPath(id: string, type: string): string {
-  switch (type) {
-    case 'application': return `/applications/${id}`
-    case 'database': return `/databases/${id}`
-    case 'database_instance': return `/database-instances/${id}`
-    case 'server': return `/servers/${id}`
-    case 'certificate': return `/certificates/${id}`
-    default: return `/cmdb/${id}`
-  }
+  port: string | null; instanceType: string | null; ownerGroup: Team | null; supportGroup: Team | null
+  dependencies: CIRelation[]; dependents: CIRelation[]
 }
 
 const InfoField = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -33,25 +26,20 @@ const InfoField = ({ label, children }: { label: string; children: React.ReactNo
   </div>
 )
 
-function CIRow({ ci, onClick }: { ci: CIRef; onClick?: () => void }) {
-  return (
-    <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f1f3f9', cursor: onClick ? 'pointer' : 'default' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629' }}>{ci.name}</div>
-        <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' }}>{ci.type.replace(/_/g, ' ')} {ci.environment ? `· ${ci.environment}` : ''}</div>
-      </div>
-      {ci.status && <StatusBadge value={ci.status} />}
-    </div>
-  )
-}
-
 export function DatabaseDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [depsOpen, setDepsOpen] = useState(false)
   const [depentsOpen, setDepentsOpen] = useState(false)
+  const [graphOpen, setGraphOpen] = useState(false)
+  const [brOpen, setBrOpen] = useState(false)
 
   const { data, loading } = useQuery<{ database: DatabaseDetail | null }>(GET_DATABASE, { variables: { id }, skip: !id })
+  const { data: brData } = useQuery<{ blastRadius: { distance: number; parentId: string | null; ci: { id: string; name: string; type: string; environment: string | null; status: string | null } }[] }>(
+    GET_BLAST_RADIUS,
+    { variables: { id }, skip: !id }
+  )
+  const blastRadius = brData?.blastRadius ?? []
 
   if (loading) return <div style={{ padding: 40, color: '#8892a4', fontSize: 14 }}>Loading…</div>
 
@@ -85,36 +73,183 @@ export function DatabaseDetailPage() {
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>Info Tecniche</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px' }}>
-              {db.port  && <InfoField label="Port">{db.port}</InfoField>}
-              {db.notes && <div style={{ gridColumn: '1 / -1' }}><InfoField label="Note">{db.notes}</InfoField></div>}
+              <DetailField label="Instance Type" value={db.instanceType ?? null} />
+              <DetailField label="Port" value={db.port ?? null} />
+              <div style={{ gridColumn: '1 / -1' }}><DetailField label="Note" value={db.notes ?? null} /></div>
             </div>
           </div>
+
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+            <div
+              onClick={() => setGraphOpen(p => !p)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: graphOpen ? '1px solid #e5e7eb' : 'none' }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Mappa Dipendenze</span>
+              {graphOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {graphOpen && (
+              <div style={{ padding: 16 }}>
+                <CIGraph
+                  centerCI={{ id: db.id, name: db.name, type: db.type, status: db.status ?? 'unknown', environment: db.environment ?? undefined }}
+                  dependencies={db.dependencies.map(r => ({ relationType: r.relation, ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined } }))}
+                  dependents={db.dependents.map(r => ({ relationType: r.relation, ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined } }))}
+                  blastRadius={blastRadius.map(b => ({ ...b.ci, status: b.ci.status ?? 'unknown', environment: b.ci.environment ?? undefined, distance: b.distance, parentId: b.parentId }))}
+                />
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+            <div
+              onClick={() => setBrOpen(p => !p)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: brOpen ? '1px solid #e5e7eb' : 'none' }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Blast Radius</span>
+              {brOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {brOpen && (
+              <div style={{ padding: '0 20px 16px' }}>
+                {blastRadius.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: '12px 0 0' }}>Nessun impatto rilevato.</p>
+                  : (() => {
+                      const grouped = blastRadius.reduce((acc, b) => {
+                        const key = b.distance
+                        if (!acc[key]) acc[key] = []
+                        acc[key].push(b)
+                        return acc
+                      }, {} as Record<number, typeof blastRadius>)
+                      return Object.entries(grouped)
+                        .sort(([a], [b]) => Number(a) - Number(b))
+                        .map(([dist, items]) => (
+                          <div key={dist} style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.06em', padding: '8px 0 4px 0', marginBottom: 6 }}>
+                              {Number(dist) === 1 ? 'Dipendenze dirette' : `Profondità ${dist}`}
+                            </div>
+                            <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                              {items.map(b => (
+                                <div key={b.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb' }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629' }}>{b.ci.name}</div>
+                                    <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{b.ci.type.replace(/_/g, ' ')}{b.ci.environment ? ` · ${b.ci.environment}` : ''}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                    })()
+                }
+              </div>
+            )}
+          </div>
+
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, marginBottom: 16 }}>
             <div onClick={() => setDepsOpen(v => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
               <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0, display: 'flex', alignItems: 'center' }}>Dipendenze <CountBadge count={db.dependencies.length} /></h3>
               {depsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
             </div>
-            {depsOpen && <div style={{ marginTop: 12 }}>{db.dependencies.length === 0 ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p> : db.dependencies.map(d => <CIRow key={d.id} ci={d} onClick={() => navigate(ciPath(d.id, d.type))} />)}</div>}
+            {depsOpen && (
+              <div style={{ marginTop: 12 }}>
+                {db.dependencies.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p>
+                  : (() => {
+                      const grouped = db.dependencies.reduce((acc, rel) => {
+                        if (!acc[rel.relation]) acc[rel.relation] = []
+                        acc[rel.relation].push(rel)
+                        return acc
+                      }, {} as Record<string, typeof db.dependencies>)
+                      return Object.entries(grouped).map(([relation, rels]) => (
+                        <div key={relation} style={{ marginBottom: 12 }}>
+                          <div style={{
+                            fontSize: 11, fontWeight: 600,
+                            color: '#64748b',
+                            textTransform: 'uppercase' as const,
+                            letterSpacing: '0.06em',
+                            padding: '8px 0 4px 0',
+                            marginBottom: 6,
+                          }}>
+                            {relation.replace(/_/g, ' ')}
+                          </div>
+                          <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                            {rels.map(rel => (
+                              <div key={rel.ci.id}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
+                                onClick={() => navigate(ciPath(rel.ci))}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rel.ci.name}</div>
+                                  <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}</div>
+                                </div>
+                                {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    })()
+                }
+              </div>
+            )}
           </div>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, marginBottom: 16 }}>
             <div onClick={() => setDepentsOpen(v => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
               <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0, display: 'flex', alignItems: 'center' }}>Dipendenti <CountBadge count={db.dependents.length} /></h3>
               {depentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
             </div>
-            {depentsOpen && <div style={{ marginTop: 12 }}>{db.dependents.length === 0 ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p> : db.dependents.map(d => <CIRow key={d.id} ci={d} onClick={() => navigate(ciPath(d.id, d.type))} />)}</div>}
+            {depentsOpen && (
+              <div style={{ marginTop: 12 }}>
+                {db.dependents.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p>
+                  : (() => {
+                      const grouped = db.dependents.reduce((acc, rel) => {
+                        if (!acc[rel.relation]) acc[rel.relation] = []
+                        acc[rel.relation].push(rel)
+                        return acc
+                      }, {} as Record<string, typeof db.dependents>)
+                      return Object.entries(grouped).map(([relation, rels]) => (
+                        <div key={relation} style={{ marginBottom: 12 }}>
+                          <div style={{
+                            fontSize: 11, fontWeight: 600,
+                            color: '#64748b',
+                            textTransform: 'uppercase' as const,
+                            letterSpacing: '0.06em',
+                            padding: '8px 0 4px 0',
+                            marginBottom: 6,
+                          }}>
+                            {relation.replace(/_/g, ' ')}
+                          </div>
+                          <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                            {rels.map(rel => (
+                              <div key={rel.ci.id}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
+                                onClick={() => navigate(ciPath(rel.ci))}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rel.ci.name}</div>
+                                  <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}</div>
+                                </div>
+                                {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    })()
+                }
+              </div>
+            )}
           </div>
         </div>
         <div>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px' }}>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>Dettagli</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <InfoField label="ID"><span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>{db.id}</span></InfoField>
-              {db.environment && <InfoField label="Environment"><span style={{ textTransform: 'capitalize' }}>{db.environment}</span></InfoField>}
+              <DetailField label="ID" value={db.id} mono />
+              <DetailField label="Tipo" value={db.type} />
+              <DetailField label="Environment" value={db.environment ?? null} />
               {db.status      && <InfoField label="Status"><StatusBadge value={db.status} /></InfoField>}
               <InfoField label="Owner Group">{db.ownerGroup ? <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#eef2ff', fontSize: 12, fontWeight: 500, color: '#4f46e5' }}>{db.ownerGroup.name}</span> : <span style={{ color: '#c4cad4' }}>—</span>}</InfoField>
               <InfoField label="Support Group">{db.supportGroup ? <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 12, fontWeight: 500, color: '#059669' }}>{db.supportGroup.name}</span> : <span style={{ color: '#c4cad4' }}>—</span>}</InfoField>
-              <InfoField label="Creato">{new Date(db.createdAt).toLocaleDateString('it-IT')}</InfoField>
-              {db.updatedAt && <InfoField label="Aggiornato">{new Date(db.updatedAt).toLocaleDateString('it-IT')}</InfoField>}
+              <DetailField label="Creato" value={new Date(db.createdAt).toLocaleDateString('it-IT')} />
+              <DetailField label="Aggiornato" value={db.updatedAt ? new Date(db.updatedAt).toLocaleDateString('it-IT') : null} />
             </div>
           </div>
         </div>

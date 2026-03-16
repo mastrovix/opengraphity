@@ -22,18 +22,18 @@ async function seed() {
 
   // ── STEP 1: Load CIs ────────────────────────────────────────────────────────
 
-  const load = async (type: string): Promise<string[]> => {
+  const load = async (label: string): Promise<string[]> => {
     const r = await session.run(
-      `MATCH (c:ConfigurationItem {tenant_id: $tenantId, type: $type}) RETURN c.id AS id ORDER BY c.name`,
-      { tenantId: TENANT_ID, type }
+      `MATCH (c {tenant_id: $tenantId}) WHERE $label IN labels(c) RETURN c.id AS id ORDER BY c.name`,
+      { tenantId: TENANT_ID, label }
     )
     return r.records.map((rec) => rec.get('id') as string)
   }
 
-  const apps        = await load('application')
-  const databases   = await load('database')
-  const dbInstances = await load('database_instance')
-  const servers     = await load('server')
+  const apps        = await load('Application')
+  const databases   = await load('Database')
+  const dbInstances = await load('DatabaseInstance')
+  const servers     = await load('Server')
 
   console.log(`Loaded: ${apps.length} apps, ${databases.length} databases, ${dbInstances.length} dbInstances, ${servers.length} servers`)
 
@@ -55,7 +55,7 @@ async function seed() {
     const dbId  = databases[i]
     const dbiId = dbInstances[i % dbInstances.length]
     await session.run(
-      `MATCH (db:ConfigurationItem {id: $dbId}), (dbi:ConfigurationItem {id: $dbiId})
+      `MATCH (db:Database {id: $dbId}), (dbi:DatabaseInstance {id: $dbiId})
        MERGE (db)-[:DEPENDS_ON]->(dbi)`,
       { dbId, dbiId }
     )
@@ -66,7 +66,7 @@ async function seed() {
     const dbiId = dbInstances[i]
     const srvId = servers[i % servers.length]
     await session.run(
-      `MATCH (dbi:ConfigurationItem {id: $dbiId}), (srv:ConfigurationItem {id: $srvId})
+      `MATCH (dbi:DatabaseInstance {id: $dbiId}), (srv:Server {id: $srvId})
        MERGE (dbi)-[:HOSTED_ON]->(srv)`,
       { dbiId, srvId }
     )
@@ -89,7 +89,7 @@ async function seed() {
       const targets = randomSubset(servers, 1, 3)
       for (const srvId of targets) {
         await session.run(
-          `MATCH (a:ConfigurationItem {id: $appId}), (s:ConfigurationItem {id: $srvId})
+          `MATCH (a:Application {id: $appId}), (s:Server {id: $srvId})
            MERGE (a)-[:DEPENDS_ON]->(s)`,
           { appId, srvId }
         )
@@ -100,7 +100,7 @@ async function seed() {
       const targets = randomSubset(databases, 1, 3)
       for (const dbId of targets) {
         await session.run(
-          `MATCH (a:ConfigurationItem {id: $appId}), (db:ConfigurationItem {id: $dbId})
+          `MATCH (a:Application {id: $appId}), (db:Database {id: $dbId})
            MERGE (a)-[:DEPENDS_ON]->(db)`,
           { appId, dbId }
         )
@@ -111,7 +111,7 @@ async function seed() {
       const srvTargets = randomSubset(servers, 1, 2)
       for (const srvId of srvTargets) {
         await session.run(
-          `MATCH (a:ConfigurationItem {id: $appId}), (s:ConfigurationItem {id: $srvId})
+          `MATCH (a:Application {id: $appId}), (s:Server {id: $srvId})
            MERGE (a)-[:DEPENDS_ON]->(s)`,
           { appId, srvId }
         )
@@ -120,7 +120,7 @@ async function seed() {
       const dbTargets = randomSubset(databases, 1, 2)
       for (const dbId of dbTargets) {
         await session.run(
-          `MATCH (a:ConfigurationItem {id: $appId}), (db:ConfigurationItem {id: $dbId})
+          `MATCH (a:Application {id: $appId}), (db:Database {id: $dbId})
            MERGE (a)-[:DEPENDS_ON]->(db)`,
           { appId, dbId }
         )
@@ -155,7 +155,7 @@ async function seed() {
       if (created.has(forward) || created.has(reverse)) continue
 
       await session.run(
-        `MATCH (a:ConfigurationItem {id: $appId}), (b:ConfigurationItem {id: $targetId})
+        `MATCH (a:Application {id: $appId}), (b:Application {id: $targetId})
          MERGE (a)-[:DEPENDS_ON]->(b)`,
         { appId, targetId }
       )

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
 import { workflowEngine } from '@opengraphity/workflow'
-import { mapCI } from './ci-utils.js'
+import { mapCI, labelToType } from './ci-utils.js'
 import type { DomainEvent, IncidentCreatedPayload, IncidentResolvedPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 
@@ -19,7 +19,7 @@ async function loadIncidentData(session: Session, incidentId: string, tenantId: 
   const result = await session.executeRead((tx) =>
     tx.run(`
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-      OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci:ConfigurationItem)
+      OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
       OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
       RETURN i.id AS id, i.title AS title,
              i.severity AS severity, i.status AS status,
@@ -187,7 +187,8 @@ async function createIncident(
       for (const ciId of input.affectedCIIds!) {
         await runQuery(session, `
           MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-          MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+          MATCH (ci {id: $ciId, tenant_id: $tenantId})
+          WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
           MERGE (i)-[:AFFECTED_BY]->(ci)
         `, { id, tenantId: ctx.tenantId, ciId })
       }
@@ -407,7 +408,8 @@ async function addAffectedCI(
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
       MERGE (i)-[:AFFECTED_BY]->(ci)
       SET i.updated_at = $now
     `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
@@ -429,7 +431,7 @@ async function removeAffectedCI(
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-            -[r:AFFECTED_BY]->(ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+            -[r:AFFECTED_BY]->(ci {id: $ciId, tenant_id: $tenantId})
       DELETE r
       SET i.updated_at = $now
     `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
@@ -529,13 +531,17 @@ async function incidentAffectedCIs(
 ) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(ci:ConfigurationItem)
-      RETURN properties(ci) as props
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)
+      WHERE ci.tenant_id = $tenantId
+      RETURN properties(ci) as props, labels(ci)[0] AS label
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
+    const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
       id: parent.id, tenantId: ctx.tenantId,
     })
-    return rows.map((r) => mapCI(r.props))
+    return rows.map((r) => {
+      r.props['type'] = labelToType(r.label)
+      return mapCI(r.props)
+    })
   })
 }
 

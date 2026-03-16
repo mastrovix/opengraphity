@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { mapCI } from './ci-utils.js'
+import { mapCI, labelToType } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Props = Record<string, unknown>
@@ -90,16 +90,18 @@ async function assignCIOwner(
 ) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       MERGE (ci)-[:OWNED_BY]->(t)
-      RETURN properties(ci) as props
+      RETURN properties(ci) as props, labels(ci)[0] AS label
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
+    const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
       ciId: args.ciId, teamId: args.teamId, tenantId: ctx.tenantId,
     })
     const row = rows[0]
     if (!row) throw new Error('ConfigurationItem or Team not found')
+    row.props['type'] = labelToType(row.label)
     return mapCI(row.props)
   }, true)
 }
@@ -111,16 +113,18 @@ async function assignCISupportGroup(
 ) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       MERGE (ci)-[:SUPPORTED_BY]->(t)
-      RETURN properties(ci) as props
+      RETURN properties(ci) as props, labels(ci)[0] AS label
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
+    const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
       ciId: args.ciId, teamId: args.teamId, tenantId: ctx.tenantId,
     })
     const row = rows[0]
     if (!row) throw new Error('ConfigurationItem or Team not found')
+    row.props['type'] = labelToType(row.label)
     return mapCI(row.props)
   }, true)
 }
@@ -130,7 +134,7 @@ async function assignCISupportGroup(
 async function ciOwner(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})-[:OWNED_BY]->(t:Team)
+      MATCH (ci {id: $id, tenant_id: $tenantId})-[:OWNED_BY]->(t:Team)
       RETURN properties(t) as props
     `
     const row = await runQueryOne<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
@@ -141,7 +145,7 @@ async function ciOwner(parent: { id: string }, _: unknown, ctx: GraphQLContext) 
 async function ciSupportGroup(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})-[:SUPPORTED_BY]->(t:Team)
+      MATCH (ci {id: $id, tenant_id: $tenantId})-[:SUPPORTED_BY]->(t:Team)
       RETURN properties(t) as props
     `
     const row = await runQueryOne<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
@@ -164,26 +168,32 @@ async function teamMembers(parent: { id: string }, _: unknown, ctx: GraphQLConte
 async function teamOwnedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (t:Team {id: $id})<-[:OWNED_BY]-(ci:ConfigurationItem)
-      WHERE ci.tenant_id = $tenantId
-      RETURN properties(ci) as props
-      ORDER BY ci.name
+      MATCH (t:Team {id: $id})<-[:OWNED_BY]-(n)
+      WHERE n.tenant_id = $tenantId
+      RETURN properties(n) as props, labels(n)[0] AS label
+      ORDER BY n.name
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => mapCI(r.props))
+    const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => {
+      r.props['type'] = labelToType(r.label)
+      return mapCI(r.props)
+    })
   })
 }
 
 async function teamSupportedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (t:Team {id: $id})<-[:SUPPORTED_BY]-(ci:ConfigurationItem)
-      WHERE ci.tenant_id = $tenantId
-      RETURN properties(ci) as props
-      ORDER BY ci.name
+      MATCH (t:Team {id: $id})<-[:SUPPORTED_BY]-(n)
+      WHERE n.tenant_id = $tenantId
+      RETURN properties(n) as props, labels(n)[0] AS label
+      ORDER BY n.name
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => mapCI(r.props))
+    const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => {
+      r.props['type'] = labelToType(r.label)
+      return mapCI(r.props)
+    })
   })
 }
 

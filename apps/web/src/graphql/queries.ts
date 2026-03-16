@@ -124,24 +124,24 @@ export const GET_CI_BY_ID = gql`
       ownerGroup { id name }
       supportGroup { id name }
       ... on Application {
-        url version vendor
-        dependencies { id name type environment status }
-        dependents { id name type environment status }
+        url
+        dependencies { relation ci { id name type environment status } }
+        dependents { relation ci { id name type environment status } }
       }
       ... on Database {
-        port
-        dependencies { id name type environment status }
-        dependents { id name type environment status }
+        port instanceType
+        dependencies { relation ci { id name type environment status } }
+        dependents { relation ci { id name type environment status } }
       }
       ... on DatabaseInstance {
-        ipAddress port vendor dbVersion
-        dependencies { id name type environment status }
-        dependents { id name type environment status }
+        ipAddress port instanceType version
+        dependencies { relation ci { id name type environment status } }
+        dependents { relation ci { id name type environment status } }
       }
       ... on Server {
-        ipAddress location vendor osVersion
-        dependencies { id name type environment status }
-        dependents { id name type environment status }
+        ipAddress location vendor os version
+        dependencies { relation ci { id name type environment status } }
+        dependents { relation ci { id name type environment status } }
       }
       ... on Certificate {
         serialNumber expiresAt certificateType
@@ -154,7 +154,7 @@ export const GET_APPLICATIONS = gql`
   query GetApplications($limit: Int, $offset: Int, $environment: String, $status: String, $search: String) {
     applications(limit: $limit, offset: $offset, environment: $environment, status: $status, search: $search) {
       total
-      items { id name type status environment description createdAt url version vendor ownerGroup { id name } supportGroup { id name } }
+      items { id name type status environment description createdAt url ownerGroup { id name } supportGroup { id name } }
     }
   }
 `
@@ -163,11 +163,11 @@ export const GET_APPLICATION = gql`
   query GetApplication($id: ID!) {
     application(id: $id) {
       id name type status environment description createdAt updatedAt notes
-      url version vendor
+      url
       ownerGroup { id name }
       supportGroup { id name }
-      dependencies { id name type environment status }
-      dependents { id name type environment status }
+      dependencies { relation ci { id name type environment status } }
+      dependents { relation ci { id name type environment status } }
     }
   }
 `
@@ -176,7 +176,7 @@ export const GET_DATABASES = gql`
   query GetDatabases($limit: Int, $offset: Int, $environment: String, $status: String, $search: String) {
     databases(limit: $limit, offset: $offset, environment: $environment, status: $status, search: $search) {
       total
-      items { id name type status environment description createdAt port ownerGroup { id name } supportGroup { id name } }
+      items { id name type status environment description createdAt port instanceType ownerGroup { id name } supportGroup { id name } }
     }
   }
 `
@@ -184,11 +184,11 @@ export const GET_DATABASES = gql`
 export const GET_DATABASE = gql`
   query GetDatabase($id: ID!) {
     database(id: $id) {
-      id name type status environment description createdAt updatedAt notes port
+      id name type status environment description createdAt updatedAt notes port instanceType
       ownerGroup { id name }
       supportGroup { id name }
-      dependencies { id name type environment status }
-      dependents { id name type environment status }
+      dependencies { relation ci { id name type environment status } }
+      dependents { relation ci { id name type environment status } }
     }
   }
 `
@@ -197,7 +197,7 @@ export const GET_DATABASE_INSTANCES = gql`
   query GetDatabaseInstances($limit: Int, $offset: Int, $environment: String, $status: String, $search: String) {
     databaseInstances(limit: $limit, offset: $offset, environment: $environment, status: $status, search: $search) {
       total
-      items { id name type status environment description createdAt ipAddress port vendor dbVersion ownerGroup { id name } supportGroup { id name } }
+      items { id name type status environment description createdAt ipAddress port instanceType version ownerGroup { id name } supportGroup { id name } }
     }
   }
 `
@@ -205,11 +205,11 @@ export const GET_DATABASE_INSTANCES = gql`
 export const GET_DATABASE_INSTANCE = gql`
   query GetDatabaseInstance($id: ID!) {
     databaseInstance(id: $id) {
-      id name type status environment description createdAt updatedAt notes ipAddress port vendor dbVersion
+      id name type status environment description createdAt updatedAt notes ipAddress port instanceType version
       ownerGroup { id name }
       supportGroup { id name }
-      dependencies { id name type environment status }
-      dependents { id name type environment status }
+      dependencies { relation ci { id name type environment status } }
+      dependents { relation ci { id name type environment status } }
     }
   }
 `
@@ -218,7 +218,7 @@ export const GET_SERVERS = gql`
   query GetServers($limit: Int, $offset: Int, $environment: String, $status: String, $search: String) {
     servers(limit: $limit, offset: $offset, environment: $environment, status: $status, search: $search) {
       total
-      items { id name type status environment description createdAt ipAddress location vendor osVersion ownerGroup { id name } supportGroup { id name } }
+      items { id name type status environment description createdAt ipAddress location vendor os version ownerGroup { id name } supportGroup { id name } }
     }
   }
 `
@@ -226,11 +226,11 @@ export const GET_SERVERS = gql`
 export const GET_SERVER = gql`
   query GetServer($id: ID!) {
     server(id: $id) {
-      id name type status environment description createdAt updatedAt notes ipAddress location vendor osVersion
+      id name type status environment description createdAt updatedAt notes ipAddress location vendor os version
       ownerGroup { id name }
       supportGroup { id name }
-      dependencies { id name type environment status }
-      dependents { id name type environment status }
+      dependencies { relation ci { id name type environment status } }
+      dependents { relation ci { id name type environment status } }
     }
   }
 `
@@ -250,6 +250,8 @@ export const GET_CERTIFICATE = gql`
       id name type status environment description createdAt updatedAt notes serialNumber expiresAt certificateType
       ownerGroup { id name }
       supportGroup { id name }
+      dependencies { relation ci { id name type environment status } }
+      dependents { relation ci { id name type environment status } }
     }
   }
 `
@@ -365,6 +367,16 @@ export const GET_DASHBOARD_STATS = gql`
     }
     openRequests: serviceRequests(status: "open", limit: 1000) {
       id
+    }
+  }
+`
+
+export const GET_BLAST_RADIUS = gql`
+  query GetBlastRadius($id: ID!) {
+    blastRadius(id: $id) {
+      distance
+      parentId
+      ci { id name type environment status }
     }
   }
 `

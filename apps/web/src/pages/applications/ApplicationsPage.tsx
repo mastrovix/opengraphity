@@ -15,8 +15,6 @@ interface Application {
   status: string | null
   environment: string | null
   url: string | null
-  version: string | null
-  vendor: string | null
   createdAt: string
   ownerGroup: { id: string; name: string } | null
 }
@@ -40,8 +38,6 @@ export function ApplicationsPage() {
   const COLUMNS: ColumnDef<Application>[] = [
     { key: 'name', label: 'Nome', sortable: true, filterable: true },
     { key: 'url', label: 'URL', sortable: false, render: (v) => v ? <span style={{ fontSize: 12, color: '#4a5468' }}>{v as string}</span> : <span style={{ color: '#c4cad4' }}>—</span> },
-    { key: 'version', label: 'Version', sortable: true, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
-    { key: 'vendor', label: 'Vendor', sortable: true, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'environment', label: 'Env', sortable: true, render: (v) => v ? <EnvBadge environment={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'status', label: 'Status', sortable: true, render: (v) => v ? <StatusBadge value={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'ownerGroup', label: 'Owner Group', sortable: false, render: (v) => (v as Application['ownerGroup'])?.name ?? <span style={{ color: '#c4cad4' }}>—</span> },

@@ -14,7 +14,10 @@ async function main() {
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
 
+  let shuttingDown = false
   const shutdown = async (signal: string) => {
+    if (shuttingDown) return
+    shuttingDown = true
     console.log(`\n[api] Received ${signal} — shutting down gracefully...`)
     httpServer.close(() => {
       console.log('[api] HTTP server closed')

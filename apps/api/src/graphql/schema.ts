@@ -31,6 +31,7 @@ export const typeDefs = `#graphql
     certificate(id: ID!): Certificate
     allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String): AllCIsResult!
     ciById(id: ID!): CIBase
+    blastRadius(id: ID!): [BlastRadiusItem!]!
 
     # Teams
     teams: [Team!]!
@@ -155,6 +156,11 @@ export const typeDefs = `#graphql
 
   # ── CMDB — interface & specialized types ────────────────────────────────────
 
+  type CIRelation {
+    ci: CIBase!
+    relation: String!
+  }
+
   interface CIBase {
     id: ID!
     name: String!
@@ -182,10 +188,8 @@ export const typeDefs = `#graphql
     ownerGroup: Team
     supportGroup: Team
     url: String
-    version: String
-    vendor: String
-    dependencies: [CIBase!]!
-    dependents: [CIBase!]!
+    dependencies: [CIRelation!]!
+    dependents: [CIRelation!]!
   }
 
   type Database implements CIBase {
@@ -201,8 +205,9 @@ export const typeDefs = `#graphql
     ownerGroup: Team
     supportGroup: Team
     port: String
-    dependencies: [CIBase!]!
-    dependents: [CIBase!]!
+    instanceType: String
+    dependencies: [CIRelation!]!
+    dependents: [CIRelation!]!
   }
 
   type DatabaseInstance implements CIBase {
@@ -219,10 +224,10 @@ export const typeDefs = `#graphql
     supportGroup: Team
     ipAddress: String
     port: String
-    vendor: String
-    dbVersion: String
-    dependencies: [CIBase!]!
-    dependents: [CIBase!]!
+    instanceType: String
+    version: String
+    dependencies: [CIRelation!]!
+    dependents: [CIRelation!]!
   }
 
   type Server implements CIBase {
@@ -240,9 +245,10 @@ export const typeDefs = `#graphql
     ipAddress: String
     location: String
     vendor: String
-    osVersion: String
-    dependencies: [CIBase!]!
-    dependents: [CIBase!]!
+    os: String
+    version: String
+    dependencies: [CIRelation!]!
+    dependents: [CIRelation!]!
   }
 
   type Certificate implements CIBase {
@@ -260,6 +266,8 @@ export const typeDefs = `#graphql
     serialNumber: String
     expiresAt: String
     certificateType: String
+    dependencies: [CIRelation!]!
+    dependents: [CIRelation!]!
   }
 
   type ApplicationsResult { items: [Application!]!, total: Int! }
@@ -268,6 +276,7 @@ export const typeDefs = `#graphql
   type ServersResult { items: [Server!]!, total: Int! }
   type CertificatesResult { items: [Certificate!]!, total: Int! }
   type AllCIsResult { items: [CIBase!]!, total: Int! }
+  type BlastRadiusItem { ci: CIBase!, distance: Int!, parentId: String }
 
   # ── Incident ──────────────────────────────────────────────────────────────────
 

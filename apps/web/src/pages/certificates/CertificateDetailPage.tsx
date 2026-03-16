@@ -1,14 +1,23 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { StatusBadge } from '@/components/StatusBadge'
-import { GET_CERTIFICATE } from '@/graphql/queries'
+import { CountBadge } from '@/components/ui/CountBadge'
+import { GET_CERTIFICATE, GET_BLAST_RADIUS } from '@/graphql/queries'
+import { ciPath } from '@/lib/ciPath'
+import { DetailField } from '@/components/ui/DetailField'
+import { CIGraph } from '@/components/CIGraph'
 
 interface Team { id: string; name: string }
+interface CIRef { id: string; name: string; type: string; environment: string | null; status: string | null }
+interface CIRelation { relation: string; ci: CIRef }
 interface CertificateDetail {
   id: string; name: string; type: string; status: string | null; environment: string | null
   description: string | null; createdAt: string; updatedAt: string | null; notes: string | null
   serialNumber: string | null; expiresAt: string | null; certificateType: string | null
   ownerGroup: Team | null; supportGroup: Team | null
+  dependencies: CIRelation[]; dependents: CIRelation[]
 }
 
 const InfoField = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -40,8 +49,17 @@ function ExpiryInfo({ expiresAt }: { expiresAt: string | null }) {
 export function CertificateDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [depsOpen, setDepsOpen]   = useState(false)
+  const [deptsOpen, setDeptsOpen] = useState(false)
+  const [graphOpen, setGraphOpen] = useState(false)
+  const [brOpen, setBrOpen] = useState(false)
 
   const { data, loading } = useQuery<{ certificate: CertificateDetail | null }>(GET_CERTIFICATE, { variables: { id }, skip: !id })
+  const { data: brData } = useQuery<{ blastRadius: { distance: number; parentId: string | null; ci: { id: string; name: string; type: string; environment: string | null; status: string | null } }[] }>(
+    GET_BLAST_RADIUS,
+    { variables: { id }, skip: !id }
+  )
+  const blastRadius = brData?.blastRadius ?? []
 
   if (loading) return <div style={{ padding: 40, color: '#8892a4', fontSize: 14 }}>Loading…</div>
 
@@ -75,26 +93,186 @@ export function CertificateDetailPage() {
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>Info Certificato</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px' }}>
-              {cert.certificateType && <InfoField label="Tipo">{cert.certificateType}</InfoField>}
-              {cert.serialNumber    && <InfoField label="Serial Number"><span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>{cert.serialNumber}</span></InfoField>}
+              <DetailField label="Tipo" value={cert.certificateType ?? null} />
+              <DetailField label="Serial Number" value={cert.serialNumber ?? null} />
               <div style={{ gridColumn: '1 / -1' }}>
                 <InfoField label="Scadenza"><ExpiryInfo expiresAt={cert.expiresAt} /></InfoField>
               </div>
-              {cert.notes && <div style={{ gridColumn: '1 / -1' }}><InfoField label="Note">{cert.notes}</InfoField></div>}
+              <div style={{ gridColumn: '1 / -1' }}><DetailField label="Note" value={cert.notes ?? null} /></div>
             </div>
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+            <div
+              onClick={() => setGraphOpen(p => !p)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: graphOpen ? '1px solid #e5e7eb' : 'none' }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Mappa Dipendenze</span>
+              {graphOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {graphOpen && (
+              <div style={{ padding: 16 }}>
+                <CIGraph
+                  centerCI={{ id: cert.id, name: cert.name, type: cert.type, status: cert.status ?? 'unknown', environment: cert.environment ?? undefined }}
+                  dependencies={cert.dependencies.map(r => ({ relationType: r.relation, ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined } }))}
+                  dependents={cert.dependents.map(r => ({ relationType: r.relation, ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined } }))}
+                  blastRadius={blastRadius.map(b => ({ ...b.ci, status: b.ci.status ?? 'unknown', environment: b.ci.environment ?? undefined, distance: b.distance, parentId: b.parentId }))}
+                />
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+            <div
+              onClick={() => setBrOpen(p => !p)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: brOpen ? '1px solid #e5e7eb' : 'none' }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Blast Radius</span>
+              {brOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {brOpen && (
+              <div style={{ padding: '0 20px 16px' }}>
+                {blastRadius.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: '12px 0 0' }}>Nessun impatto rilevato.</p>
+                  : (() => {
+                      const grouped = blastRadius.reduce((acc, b) => {
+                        const key = b.distance
+                        if (!acc[key]) acc[key] = []
+                        acc[key].push(b)
+                        return acc
+                      }, {} as Record<number, typeof blastRadius>)
+                      return Object.entries(grouped)
+                        .sort(([a], [b]) => Number(a) - Number(b))
+                        .map(([dist, items]) => (
+                          <div key={dist} style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.06em', padding: '8px 0 4px 0', marginBottom: 6 }}>
+                              {Number(dist) === 1 ? 'Dipendenze dirette' : `Profondità ${dist}`}
+                            </div>
+                            <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                              {items.map(b => (
+                                <div key={b.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb' }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629' }}>{b.ci.name}</div>
+                                    <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{b.ci.type.replace(/_/g, ' ')}{b.ci.environment ? ` · ${b.ci.environment}` : ''}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                    })()
+                }
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, marginBottom: 16 }}>
+            <div onClick={() => setDepsOpen(v => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0, display: 'flex', alignItems: 'center' }}>Dipendenze <CountBadge count={cert.dependencies.length} /></h3>
+              {depsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {depsOpen && (
+              <div style={{ marginTop: 12 }}>
+                {cert.dependencies.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p>
+                  : (() => {
+                      const grouped = cert.dependencies.reduce((acc, rel) => {
+                        if (!acc[rel.relation]) acc[rel.relation] = []
+                        acc[rel.relation].push(rel)
+                        return acc
+                      }, {} as Record<string, typeof cert.dependencies>)
+                      return Object.entries(grouped).map(([relation, rels]) => (
+                        <div key={relation} style={{ marginBottom: 12 }}>
+                          <div style={{
+                            fontSize: 11, fontWeight: 600,
+                            color: '#64748b',
+                            textTransform: 'uppercase' as const,
+                            letterSpacing: '0.06em',
+                            padding: '8px 0 4px 0',
+                            marginBottom: 6,
+                          }}>
+                            {relation.replace(/_/g, ' ')}
+                          </div>
+                          <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                            {rels.map(rel => (
+                              <div key={rel.ci.id}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
+                                onClick={() => navigate(ciPath(rel.ci))}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rel.ci.name}</div>
+                                  <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}</div>
+                                </div>
+                                {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    })()
+                }
+              </div>
+            )}
+          </div>
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, marginBottom: 16 }}>
+            <div onClick={() => setDeptsOpen(v => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f1629', margin: 0, display: 'flex', alignItems: 'center' }}>Dipendenti <CountBadge count={cert.dependents.length} /></h3>
+              {deptsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+            </div>
+            {deptsOpen && (
+              <div style={{ marginTop: 12 }}>
+                {cert.dependents.length === 0
+                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p>
+                  : (() => {
+                      const grouped = cert.dependents.reduce((acc, rel) => {
+                        if (!acc[rel.relation]) acc[rel.relation] = []
+                        acc[rel.relation].push(rel)
+                        return acc
+                      }, {} as Record<string, typeof cert.dependents>)
+                      return Object.entries(grouped).map(([relation, rels]) => (
+                        <div key={relation} style={{ marginBottom: 12 }}>
+                          <div style={{
+                            fontSize: 11, fontWeight: 600,
+                            color: '#64748b',
+                            textTransform: 'uppercase' as const,
+                            letterSpacing: '0.06em',
+                            padding: '8px 0 4px 0',
+                            marginBottom: 6,
+                          }}>
+                            {relation.replace(/_/g, ' ')}
+                          </div>
+                          <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+                            {rels.map(rel => (
+                              <div key={rel.ci.id}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
+                                onClick={() => navigate(ciPath(rel.ci))}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rel.ci.name}</div>
+                                  <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}</div>
+                                </div>
+                                {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    })()
+                }
+              </div>
+            )}
           </div>
         </div>
         <div>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px' }}>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>Dettagli</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <InfoField label="ID"><span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>{cert.id}</span></InfoField>
-              {cert.environment && <InfoField label="Environment"><span style={{ textTransform: 'capitalize' }}>{cert.environment}</span></InfoField>}
+              <DetailField label="ID" value={cert.id} mono />
+              <DetailField label="Tipo" value={cert.type} />
+              <DetailField label="Environment" value={cert.environment ?? null} />
               {cert.status      && <InfoField label="Status"><StatusBadge value={cert.status} /></InfoField>}
               <InfoField label="Owner Group">{cert.ownerGroup ? <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#eef2ff', fontSize: 12, fontWeight: 500, color: '#4f46e5' }}>{cert.ownerGroup.name}</span> : <span style={{ color: '#c4cad4' }}>—</span>}</InfoField>
               <InfoField label="Support Group">{cert.supportGroup ? <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 12, fontWeight: 500, color: '#059669' }}>{cert.supportGroup.name}</span> : <span style={{ color: '#c4cad4' }}>—</span>}</InfoField>
-              <InfoField label="Creato">{new Date(cert.createdAt).toLocaleDateString('it-IT')}</InfoField>
-              {cert.updatedAt && <InfoField label="Aggiornato">{new Date(cert.updatedAt).toLocaleDateString('it-IT')}</InfoField>}
+              <DetailField label="Creato" value={new Date(cert.createdAt).toLocaleDateString('it-IT')} />
+              <DetailField label="Aggiornato" value={cert.updatedAt ? new Date(cert.updatedAt).toLocaleDateString('it-IT') : null} />
             </div>
           </div>
         </div>

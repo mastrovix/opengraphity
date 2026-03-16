@@ -127,14 +127,15 @@ export const resolvers = {
     ...workflowResolvers.Incident,
   },
   CIBase: {
-    __resolveType(obj: { type?: string }) {
+    __resolveType(obj: { __typename?: string; type?: string }) {
+      if (obj.__typename) return obj.__typename
       switch (obj.type) {
-        case 'application':        return 'Application'
-        case 'database':           return 'Database'
-        case 'database_instance':  return 'DatabaseInstance'
-        case 'server':             return 'Server'
-        case 'certificate':        return 'Certificate'
-        default:                   return 'Application'
+        case 'application':       return 'Application'
+        case 'database':          return 'Database'
+        case 'database_instance': return 'DatabaseInstance'
+        case 'server':            return 'Server'
+        case 'certificate':       return 'Certificate'
+        default:                  return 'Application'
       }
     }
   },

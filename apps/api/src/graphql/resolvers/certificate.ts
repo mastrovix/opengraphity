@@ -1,4 +1,4 @@
-import { withSession, mapCertificate, CI_FIELD_RESOLVERS, runQuery, runQueryOne } from './ci-utils.js'
+import { withSession, mapCertificate, labelToType, mapCI, CI_FIELD_RESOLVERS, runQuery, runQueryOne } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
 
@@ -14,13 +14,13 @@ async function certificates(_: unknown, args: { limit?: number; offset?: number;
   const params = { tenantId: ctx.tenantId, environment: args.environment ?? null, status: args.status ?? null, search: args.search ?? null, limit, offset }
   return withSession(async (session) => {
     const items = await runQuery<{ props: Props }>(session,
-      `MATCH (n:ConfigurationItem {tenant_id: $tenantId, type: 'certificate'})
+      `MATCH (n:Certificate {tenant_id: $tenantId})
        ${WHERE}
-       RETURN properties(n) AS props ORDER BY n.name ASC SKIP $offset LIMIT $limit`,
+       RETURN properties(n) AS props ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
       params
     )
     const countResult = await runQuery<{ total: unknown }>(session,
-      `MATCH (n:ConfigurationItem {tenant_id: $tenantId, type: 'certificate'})
+      `MATCH (n:Certificate {tenant_id: $tenantId})
        ${WHERE}
        RETURN count(n) AS total`,
       params
@@ -33,18 +33,46 @@ async function certificates(_: unknown, args: { limit?: number; offset?: number;
 async function certificate(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const row = await runQueryOne<{ props: Props }>(session,
-      `MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS props`,
+      `MATCH (n:Certificate {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS props`,
       { id: args.id, tenantId: ctx.tenantId }
     )
     return row ? mapCertificate(row.props) : null
   })
 }
 
+const { dependencies: _deps, dependents: _depts, ...CERT_FIELD_RESOLVERS } = CI_FIELD_RESOLVERS
+
+async function certificateDependencies(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props; label: string; relation: string }>(session,
+      `MATCH (n:Certificate {id: $id})-[r:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE]->(d)
+       WHERE d.tenant_id = $tenantId
+       RETURN properties(d) AS props, labels(d)[0] AS label, type(r) AS relation
+       ORDER BY d.name`,
+      { id: parent.id, tenantId: ctx.tenantId }
+    )
+    return rows.map((r) => { r.props['type'] = labelToType(r.label); return { ci: mapCI(r.props), relation: r.relation } })
+  })
+}
+
+async function certificateDependents(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props; label: string; relation: string }>(session,
+      `MATCH (n:Certificate {id: $id})<-[r:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE]-(d)
+       WHERE d.tenant_id = $tenantId
+       RETURN properties(d) AS props, labels(d)[0] AS label, type(r) AS relation
+       ORDER BY d.name`,
+      { id: parent.id, tenantId: ctx.tenantId }
+    )
+    return rows.map((r) => { r.props['type'] = labelToType(r.label); return { ci: mapCI(r.props), relation: r.relation } })
+  })
+}
+
 export const certificateResolvers = {
   Query: { certificates, certificate },
   Certificate: {
-    ...CI_FIELD_RESOLVERS,
-    dependencies: undefined,
-    dependents:   undefined,
+    ...CERT_FIELD_RESOLVERS,
+    dependencies: certificateDependencies,
+    dependents:   certificateDependents,
   },
 }

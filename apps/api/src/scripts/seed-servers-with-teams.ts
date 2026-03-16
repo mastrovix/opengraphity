@@ -4,6 +4,13 @@ import { getSession } from '@opengraphity/neo4j'
 
 const TENANT_ID = 'tenant-demo'
 
+const LOCATIONS  = ['Milano', 'Roma', 'Torino', 'Napoli', 'Bologna', 'Firenze', 'Palermo', 'Genova']
+const VENDORS    = ['Dell', 'HP', 'IBM', 'Cisco', 'Lenovo', 'Supermicro', 'Fujitsu']
+
+function randomIp(): string {
+  return `10.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`
+}
+
 function pickEnvironment(): string {
   const r = Math.random()
   if (r < 0.40) return 'production'
@@ -48,20 +55,27 @@ async function seed() {
     const status      = pickStatus()
     const ownerTeam   = ownerTeams[i % ownerTeams.length]
     const supportTeam = supportTeams[i % supportTeams.length]
+    const ipAddress   = randomIp()
+    const location    = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]
+    const vendor      = VENDORS[Math.floor(Math.random() * VENDORS.length)]
+    const osVersion   = i % 2 === 0 ? 'Windows' : 'Linux'
 
     const result = await session.run(
-      `MERGE (c:ConfigurationItem {name: $name, tenant_id: $tenantId})
+      `MERGE (c:Server {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,
-         c.type        = 'server',
          c.environment = $environment,
          c.status      = $status,
          c.description = $description,
+         c.ip_address  = $ipAddress,
+         c.location    = $location,
+         c.vendor      = $vendor,
+         c.os_version  = $osVersion,
          c.tenant_id   = $tenantId,
          c.created_at  = $createdAt,
          c.updated_at  = $createdAt
        RETURN c.id AS id, (c.created_at = $createdAt) AS wasCreated`,
-      { name, tenantId: TENANT_ID, id, environment, status, description: `Server ${name}`, createdAt: now }
+      { name, tenantId: TENANT_ID, id, environment, status, description: `Server ${name}`, ipAddress, location, vendor, osVersion, createdAt: now }
     )
 
     const rec        = result.records[0]
@@ -70,12 +84,12 @@ async function seed() {
     if (wasCreated) { created++ } else { skipped++ }
 
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
+      `MATCH (c:Server {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:OWNED_BY]->(t)`,
       { ciId, teamId: ownerTeam.id }
     )
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
+      `MATCH (c:Server {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:SUPPORTED_BY]->(t)`,
       { ciId, teamId: supportTeam.id }
     )

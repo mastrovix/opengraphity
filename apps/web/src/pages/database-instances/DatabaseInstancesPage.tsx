@@ -10,7 +10,7 @@ import { GET_DATABASE_INSTANCES } from '@/graphql/queries'
 
 interface DatabaseInstanceItem {
   id: string; name: string; type: string; status: string | null; environment: string | null
-  ipAddress: string | null; port: string | null; vendor: string | null; dbVersion: string | null
+  ipAddress: string | null; port: string | null; instanceType: string | null; version: string | null
   createdAt: string; ownerGroup: { id: string; name: string } | null
 }
 
@@ -34,8 +34,8 @@ export function DatabaseInstancesPage() {
     { key: 'name', label: 'Nome', sortable: true, filterable: true },
     { key: 'ipAddress', label: 'IP', sortable: false, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'port', label: 'Port', sortable: false, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
-    { key: 'vendor', label: 'Vendor', sortable: true, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
-    { key: 'dbVersion', label: 'Version', sortable: false, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
+    { key: 'instanceType', label: 'Instance Type', sortable: true, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
+    { key: 'version', label: 'Version', sortable: false, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'environment', label: 'Env', sortable: true, render: (v) => v ? <EnvBadge environment={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'status', label: 'Status', sortable: true, render: (v) => v ? <StatusBadge value={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span> },
   ]

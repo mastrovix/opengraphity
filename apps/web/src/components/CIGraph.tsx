@@ -15,11 +15,16 @@ interface CIRelationInput {
   ci: CINode
 }
 
+interface BlastNode extends CINode {
+  parentId?: string | null
+  distance?: number
+}
+
 interface Props {
   centerCI:     CINode
   dependencies: CIRelationInput[]
   dependents:   CIRelationInput[]
-  blastRadius:  CINode[]
+  blastRadius:  BlastNode[]
 }
 
 type NodeRole = 'center' | 'dependency' | 'dependent' | 'blast'
@@ -76,6 +81,9 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
   const svgRef   = useRef<SVGSVGElement>(null)
   const navigate = useNavigate()
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const [showBlastRadius, setShowBlastRadius] = useState(false)
+  const [maxDepth, setMaxDepth] = useState(5)
+  const [nodeSpread, setNodeSpread] = useState(1)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -107,13 +115,19 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
     dependencies.forEach(({ ci, relationType }) => addNode(ci, 'dependency', relationType))
     dependents.forEach(({ ci, relationType }) => addNode(ci, 'dependent', relationType))
 
+    const filteredBlastRadius = showBlastRadius
+      ? blastRadius.filter((b) => (b.distance ?? 0) <= maxDepth)
+      : []
+
     const depIds = new Set([
       ...dependencies.map((r) => r.ci.id),
       ...dependents.map((r) => r.ci.id),
     ])
-    blastRadius
-      .filter((ci) => !depIds.has(ci.id) && ci.id !== centerCI.id)
-      .forEach((ci) => addNode(ci, 'blast'))
+    if (showBlastRadius) {
+      filteredBlastRadius
+        .filter((ci) => !depIds.has(ci.id) && ci.id !== centerCI.id)
+        .forEach((ci) => addNode(ci, 'blast'))
+    }
 
     const nodes: GraphNode[] = Array.from(nodeMap.values())
 
@@ -130,14 +144,16 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
         relationType: r.relationType,
         role:         'dependent' as const,
       })),
-      ...blastRadius
-        .filter((ci) => !depIds.has(ci.id) && ci.id !== centerCI.id)
-        .map((ci) => ({
-          source:       centerCI.id,
-          target:       ci.id,
-          relationType: 'blast_radius',
-          role:         'blast' as const,
-        })),
+      ...(showBlastRadius
+        ? filteredBlastRadius
+            .filter((ci) => !depIds.has(ci.id) && ci.id !== centerCI.id)
+            .map((ci) => ({
+              source:       ci.parentId ?? centerCI.id,
+              target:       ci.id,
+              relationType: 'blast_radius',
+              role:         'blast' as const,
+            }))
+        : []),
     ]
 
     // ── SVG setup ───────────────────────────────────────────────────────────
@@ -185,10 +201,17 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
     centerNode.fy = height / 2
 
     const simulation = d3.forceSimulation<GraphNode>(nodes)
-      .force('link',    d3.forceLink<GraphNode, GraphLink>(links).id((d) => d.id).distance(200))
-      .force('charge',  d3.forceManyBody().strength(-600))
-      .force('center',  d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide(70))
+      .force('link',      d3.forceLink<GraphNode, GraphLink>(links).id((d) => d.id).distance((d) => ((d as GraphLink).role === 'blast' ? 120 : 80) * nodeSpread).strength(0.8))
+      .force('charge',    d3.forceManyBody().strength(-300 * nodeSpread))
+      .force('center',    d3.forceCenter(width / 2, height / 2).strength(0.1))
+      .force('collision', d3.forceCollide(40))
+      .force('radial',    d3.forceRadial((d) => {
+        const n = d as GraphNode
+        if (n.role === 'center')     return 0
+        if (n.role === 'dependency') return 120 * nodeSpread
+        if (n.role === 'dependent')  return 120 * nodeSpread
+        return (120 + ((n as GraphNode & { distance?: number }).distance ?? 1) * 80) * nodeSpread
+      }, width / 2, height / 2).strength(0.5))
 
     // ── Links ───────────────────────────────────────────────────────────────
 
@@ -335,11 +358,49 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
     })
 
     return () => { simulation.stop() }
-  }, [centerCI.id, dependencies, dependents, blastRadius, navigate])
+  }, [centerCI.id, dependencies, dependents, blastRadius, showBlastRadius, maxDepth, nodeSpread, navigate])
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
-      <svg ref={svgRef} style={{ width: '100%', height: 600, display: 'block', backgroundColor: '#fafbfc', borderRadius: 8 }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: '1px solid #f3f4f6' }}>
+        <input
+          type="checkbox"
+          id="showBlast"
+          checked={showBlastRadius}
+          onChange={e => setShowBlastRadius(e.target.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <label htmlFor="showBlast" style={{ fontSize: 12, color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+          Mostra blast radius
+        </label>
+        {showBlastRadius && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
+            <label style={{ fontSize: 12, color: '#374151' }}>Profondità max</label>
+            <select
+              value={maxDepth}
+              onChange={e => setMaxDepth(Number(e.target.value))}
+              style={{ fontSize: 12, padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              {[1, 2, 3, 4, 5].map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
+          <label style={{ fontSize: 12, color: '#374151' }}>Distanza</label>
+          <input
+            type="range"
+            min={0.5}
+            max={3}
+            step={0.1}
+            value={nodeSpread}
+            onChange={e => setNodeSpread(Number(e.target.value))}
+            style={{ width: 80, cursor: 'pointer' }}
+          />
+        </div>
+      </div>
+      <svg key={`graph-${showBlastRadius}-${maxDepth}`} ref={svgRef} style={{ width: '100%', height: 600, display: 'block', backgroundColor: '#fafbfc', borderRadius: 8 }} />
 
       {/* Tooltip */}
       {tooltip && (

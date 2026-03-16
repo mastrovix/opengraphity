@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { publish } from '@opengraphity/events'
-import { mapCI } from './ci-utils.js'
+import { mapCI, labelToType } from './ci-utils.js'
 import type { WorkflowInstance } from '@opengraphity/workflow'
 import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
@@ -286,7 +286,8 @@ async function createChange(
       for (const ciId of input.affectedCIIds!) {
         await runQuery(session, `
           MATCH (c:Change {id: $id, tenant_id: $tenantId})
-          MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+          MATCH (ci {id: $ciId, tenant_id: $tenantId})
+          WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
           MERGE (c)-[:AFFECTS]->(ci)
         `, { id, tenantId: ctx.tenantId, ciId })
       }
@@ -348,7 +349,8 @@ async function addAffectedCIToChange(
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
       MERGE (c)-[:AFFECTS]->(ci)
       SET c.updated_at = $now
     `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now }))
@@ -362,13 +364,13 @@ async function addAffectedCIToChange(
     if (wiResult.records[0]?.get('step') === 'assessment') {
       // Check no task already exists for this CI on this change
       const existingTask = await session.executeRead((tx) => tx.run(`
-        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)-[:ASSESSES]->(ci:ConfigurationItem {id: $ciId})
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)-[:ASSESSES]->(ci {id: $ciId})
         RETURN t.id AS taskId LIMIT 1
       `, { changeId: args.changeId, tenantId: ctx.tenantId, ciId: args.ciId }))
 
       if (!existingTask.records.length) {
         const ciResult = await session.executeRead((tx) => tx.run(`
-          MATCH (ci:ConfigurationItem {id: $ciId})
+          MATCH (ci {id: $ciId})
           OPTIONAL MATCH (ci)-[:OWNED_BY]->(t:Team)
           RETURN ci, t AS ownerTeam
         `, { ciId: args.ciId }))
@@ -379,7 +381,7 @@ async function addAffectedCIToChange(
           const taskId = uuidv4()
           await session.executeWrite((tx) => tx.run(`
             MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-            MATCH (ci:ConfigurationItem {id: $ciId})
+            MATCH (ci {id: $ciId})
             CREATE (t:AssessmentTask {
               id:         $taskId,
               tenant_id:  $tenantId,
@@ -422,7 +424,8 @@ async function removeAffectedCIFromChange(
   return withSession(async (session) => {
     // Get CI name before removing
     const ciRes = await session.executeRead((tx) => tx.run(`
-      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
       RETURN ci.name AS ciName
     `, { ciId: args.ciId, tenantId: ctx.tenantId }))
     const ciName = (ciRes.records[0]?.get('ciName') as string | null) ?? 'sconosciuto'
@@ -430,7 +433,7 @@ async function removeAffectedCIFromChange(
     // Remove the AFFECTS relation
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-            -[r:AFFECTS]->(ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+            -[r:AFFECTS]->(ci {id: $ciId, tenant_id: $tenantId})
       DELETE r
       SET c.updated_at = $now
     `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now }))
@@ -445,7 +448,7 @@ async function removeAffectedCIFromChange(
     // If in assessment: skip AssessmentTask for this CI
     if (currentStep === 'assessment') {
       await session.executeWrite((tx) => tx.run(`
-        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)-[:ASSESSES]->(ci:ConfigurationItem {id: $ciId})
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)-[:ASSESSES]->(ci {id: $ciId})
         WHERE t.status = 'open'
         SET t.status     = 'skipped',
             t.notes      = $reason,
@@ -511,7 +514,7 @@ async function saveDeploySteps(
     // Fetch default validation team (owner of first affected CI)
     const ownerResult = await session.executeRead((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-            -[:AFFECTS]->(ci:ConfigurationItem)
+            -[:AFFECTS]->(ci)
             -[:OWNED_BY]->(ownerTeam:Team)
       RETURN ownerTeam.id AS teamId
       LIMIT 1
@@ -521,7 +524,7 @@ async function saveDeploySteps(
     // Fetch default deploy team (support group of first affected CI)
     const supportResult = await session.executeRead((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-            -[:AFFECTS]->(ci:ConfigurationItem)
+            -[:AFFECTS]->(ci)
             -[:SUPPORTED_BY]->(supportTeam:Team)
       RETURN supportTeam.id AS teamId
       LIMIT 1
@@ -691,7 +694,7 @@ async function updateAssessmentTask(
 
     const r = await session.executeRead((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
-      OPTIONAL MATCH (t)-[:ASSESSES]->(ci:ConfigurationItem)
+      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
       RETURN properties(t) AS tProps, properties(ci) AS ciProps, properties(team) AS teamProps, properties(u) AS uProps
@@ -758,7 +761,7 @@ async function completeAssessmentTask(
 
     const r = await session.executeRead((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
-      OPTIONAL MATCH (t)-[:ASSESSES]->(ci:ConfigurationItem)
+      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
       RETURN properties(t) AS tProps, properties(ci) AS ciProps, properties(team) AS teamProps, properties(u) AS uProps
@@ -783,7 +786,7 @@ async function rejectAssessmentTask(
     // 1. Recupera task + CI + change_id
     const taskResult = await session.executeRead((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
-      MATCH (t)-[:ASSESSES]->(ci:ConfigurationItem)
+      MATCH (t)-[:ASSESSES]->(ci)
       RETURN t, ci.id AS ciId, ci.name AS ciName, t.change_id AS changeId
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     if (!taskResult.records.length) throw new GraphQLError('Task non trovato')
@@ -813,7 +816,7 @@ async function rejectAssessmentTask(
     // 4. Rimuovi CI dagli affected del change
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-            -[r:AFFECTS]->(ci:ConfigurationItem {id: $ciId})
+            -[r:AFFECTS]->(ci {id: $ciId})
       DELETE r
     `, { changeId, ciId, tenantId: ctx.tenantId }))
 
@@ -829,7 +832,7 @@ async function rejectAssessmentTask(
       MATCH (t:AssessmentTask {id: $taskId})
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
-      OPTIONAL MATCH (t)-[:ASSESSES]->(ci:ConfigurationItem)
+      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
       OPTIONAL MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       RETURN properties(t) AS tProps, properties(team) AS teamProps,
@@ -1125,7 +1128,7 @@ async function executeChangeTransition(
       // Step 1: Create tasks and get CI + owner team in one write
       const tasksResult = await session.executeWrite((tx) => tx.run(`
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-              -[:AFFECTS]->(ci:ConfigurationItem)
+              -[:AFFECTS]->(ci)
         OPTIONAL MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
         CREATE (t:AssessmentTask {
           id:         randomUUID(),
@@ -1190,7 +1193,7 @@ async function executeChangeTransition(
     if (result.success && args.toStep === 'scheduled') {
       const chRes = await session.executeRead((tx) => tx.run(`
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-        OPTIONAL MATCH (c)-[:AFFECTS]->(ci:ConfigurationItem)
+        OPTIONAL MATCH (c)-[:AFFECTS]->(ci)
         OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(u:User)
         OPTIONAL MATCH (c)-[:ASSIGNED_TO_TEAM]->(t:Team)
         RETURN c.id AS id, c.title AS title, c.type AS type, c.status AS status,
@@ -1261,7 +1264,7 @@ async function assignAssessmentTaskTeam(
     const r = await session.executeRead((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
-      OPTIONAL MATCH (t)-[:ASSESSES]->(ci:ConfigurationItem)
+      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
       RETURN properties(t) AS tProps, properties(team) AS teamProps,
              properties(ci) AS ciProps, properties(u) AS uProps
@@ -1294,7 +1297,7 @@ async function assignAssessmentTaskUser(
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
-      OPTIONAL MATCH (t)-[:ASSESSES]->(ci:ConfigurationItem)
+      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
       OPTIONAL MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       RETURN properties(t) AS tProps, properties(team) AS teamProps,
@@ -1460,11 +1463,15 @@ async function changeAssignee(parent: { id: string }, _: unknown, ctx: GraphQLCo
 
 async function changeAffectedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
-    const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci:ConfigurationItem)
-      RETURN properties(ci) AS props
+    const rows = await runQuery<{ props: Props; label: string }>(session, `
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci)
+      WHERE ci.tenant_id = $tenantId
+      RETURN properties(ci) AS props, labels(ci)[0] AS label
     `, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => mapCI(r.props))
+    return rows.map((r) => {
+      r.props['type'] = labelToType(r.label)
+      return mapCI(r.props)
+    })
   })
 }
 
@@ -1512,7 +1519,7 @@ async function changeAssessmentTasks(parent: { id: string }, _: unknown, ctx: Gr
   return withSession(async (session) => {
     const r = await session.executeRead((tx) => tx.run(`
       MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)
-      OPTIONAL MATCH (t)-[:ASSESSES]->(ci:ConfigurationItem)
+      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
@@ -1627,14 +1634,23 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
   // 1. Blast radius
   const blastResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
-    MATCH path = (ci)<-[:DEPENDS_ON|HOSTED_ON*1..5]-(impacted:ConfigurationItem)
-    WHERE impacted.tenant_id = $tenantId
+    MATCH (ci {id: ciId, tenant_id: $tenantId})
+    WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
+    MATCH path = (ci)<-[:DEPENDS_ON|HOSTED_ON*1..5]-(impacted)
+    WHERE (impacted:Application OR impacted:Database OR impacted:DatabaseInstance OR impacted:Server OR impacted:Certificate)
+    AND impacted.tenant_id = $tenantId
     AND NOT impacted.id IN $ciIds
-    WITH impacted, min(length(path)) AS distance
+    WITH impacted, labels(impacted)[0] AS lbl, min(length(path)) AS distance
     RETURN DISTINCT
       impacted.id AS id, impacted.name AS name,
-      impacted.type AS type,
+      CASE lbl
+        WHEN 'Application' THEN 'application'
+        WHEN 'Database' THEN 'database'
+        WHEN 'DatabaseInstance' THEN 'database_instance'
+        WHEN 'Server' THEN 'server'
+        WHEN 'Certificate' THEN 'certificate'
+        ELSE 'application'
+      END AS type,
       impacted.environment AS environment,
       distance
     ORDER BY distance ASC, impacted.name ASC
@@ -1652,7 +1668,7 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
   const openResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (i:Incident {tenant_id: $tenantId})
-          -[:AFFECTED_BY]->(ci:ConfigurationItem {id: ciId})
+          -[:AFFECTED_BY]->(ci {id: ciId})
     WHERE NOT i.status IN ['resolved', 'closed']
     RETURN DISTINCT i.id AS id, i.title AS title,
            i.severity AS severity, i.status AS status,
@@ -1666,7 +1682,7 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
   const recentIncResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (i:Incident {tenant_id: $tenantId})
-          -[:AFFECTED_BY]->(ci:ConfigurationItem {id: ciId})
+          -[:AFFECTED_BY]->(ci {id: ciId})
     WHERE i.created_at >= $since
     AND i.status IN ['resolved', 'closed']
     RETURN DISTINCT i.id AS id, i.title AS title,
@@ -1696,7 +1712,7 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
   const since60 = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
   const changeResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci:ConfigurationItem {id: ciId})
+    MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci {id: ciId})
     WHERE c.created_at >= $since
     AND c.status <> 'draft'
     RETURN c.id AS id, c.title AS title,
@@ -1720,7 +1736,8 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
   // 4. Environments of affected CIs
   const ciResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
+    MATCH (ci {id: ciId, tenant_id: $tenantId})
+    WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
     RETURN ci.environment AS env
   `, { ciIds, tenantId }))
 
@@ -1787,7 +1804,7 @@ async function changeImpactAnalysisField(
 ) {
   return withSession(async (session) => {
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci:ConfigurationItem)
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci)
       RETURN ci.id AS ciId
     `, { id: parent.id, tenantId: ctx.tenantId }))
     const ciIds = r.records.map((rec) => rec.get('ciId') as string)

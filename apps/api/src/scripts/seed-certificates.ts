@@ -50,7 +50,7 @@ async function seed() {
   const supportTeams = supportResult.records.map(r => r.get('id') as string)
 
   const serverResult = await session.run(
-    `MATCH (c:ConfigurationItem {tenant_id: $tenantId, type: 'server'}) RETURN c.id AS id`,
+    `MATCH (c:Server {tenant_id: $tenantId}) RETURN c.id AS id`,
     { tenantId: TENANT_ID }
   )
   const servers = serverResult.records.map(r => r.get('id') as string)
@@ -67,10 +67,9 @@ async function seed() {
     const supportTeam = supportTeams.length > 0 ? supportTeams[i % supportTeams.length] : ownerTeam
 
     const result = await session.run(
-      `MERGE (c:ConfigurationItem {name: $name, tenant_id: $tenantId})
+      `MERGE (c:Certificate {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id               = $id,
-         c.type             = 'certificate',
          c.serial_number    = $serialNumber,
          c.certificate_type = $certType,
          c.expires_at       = $expiresAt,
@@ -99,11 +98,11 @@ async function seed() {
     if (wasCreated) { created++ } else { skipped++ }
 
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId}) MERGE (c)-[:OWNED_BY]->(t)`,
+      `MATCH (c:Certificate {id: $ciId}), (t:Team {id: $teamId}) MERGE (c)-[:OWNED_BY]->(t)`,
       { ciId, teamId: ownerTeam }
     )
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId}) MERGE (c)-[:SUPPORTED_BY]->(t)`,
+      `MATCH (c:Certificate {id: $ciId}), (t:Team {id: $teamId}) MERGE (c)-[:SUPPORTED_BY]->(t)`,
       { ciId, teamId: supportTeam }
     )
 
@@ -111,7 +110,7 @@ async function seed() {
     const protectedServers = pickSubset(servers, protectedByCount)
     for (const srvId of protectedServers) {
       await session.run(
-        `MATCH (c:ConfigurationItem {id: $ciId}), (s:ConfigurationItem {id: $srvId}) MERGE (c)-[:PROTECTED_BY]->(s)`,
+        `MATCH (c:Certificate {id: $ciId}), (s:Server {id: $srvId}) MERGE (c)-[:INSTALLED_ON]->(s)`,
         { ciId, srvId }
       )
     }

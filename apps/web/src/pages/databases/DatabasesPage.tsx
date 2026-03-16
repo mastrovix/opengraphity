@@ -10,7 +10,7 @@ import { GET_DATABASES } from '@/graphql/queries'
 
 interface DatabaseItem {
   id: string; name: string; type: string; status: string | null
-  environment: string | null; port: string | null; createdAt: string
+  environment: string | null; port: string | null; instanceType: string | null; createdAt: string
   ownerGroup: { id: string; name: string } | null
 }
 
@@ -32,6 +32,7 @@ export function DatabasesPage() {
 
   const COLUMNS: ColumnDef<DatabaseItem>[] = [
     { key: 'name', label: 'Nome', sortable: true, filterable: true },
+    { key: 'instanceType', label: 'Instance Type', sortable: true, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'port', label: 'Port', sortable: false, render: (v) => v as string || <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'environment', label: 'Env', sortable: true, render: (v) => v ? <EnvBadge environment={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span> },
     { key: 'status', label: 'Status', sortable: true, render: (v) => v ? <StatusBadge value={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span> },

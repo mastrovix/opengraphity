@@ -14,13 +14,13 @@ async function applications(_: unknown, args: { limit?: number; offset?: number;
   const params = { tenantId: ctx.tenantId, environment: args.environment ?? null, status: args.status ?? null, search: args.search ?? null, limit, offset }
   return withSession(async (session) => {
     const items = await runQuery<{ props: Props }>(session,
-      `MATCH (n:ConfigurationItem {tenant_id: $tenantId, type: 'application'})
+      `MATCH (n:Application {tenant_id: $tenantId})
        ${WHERE}
-       RETURN properties(n) AS props ORDER BY n.name ASC SKIP $offset LIMIT $limit`,
+       RETURN properties(n) AS props ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
       params
     )
     const countResult = await runQuery<{ total: unknown }>(session,
-      `MATCH (n:ConfigurationItem {tenant_id: $tenantId, type: 'application'})
+      `MATCH (n:Application {tenant_id: $tenantId})
        ${WHERE}
        RETURN count(n) AS total`,
       params
@@ -33,7 +33,7 @@ async function applications(_: unknown, args: { limit?: number; offset?: number;
 async function application(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const row = await runQueryOne<{ props: Props }>(session,
-      `MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS props`,
+      `MATCH (n:Application {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS props`,
       { id: args.id, tenantId: ctx.tenantId }
     )
     return row ? mapApplication(row.props) : null

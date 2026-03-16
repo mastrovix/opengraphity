@@ -70,12 +70,24 @@ export async function getConnection(): Promise<ChannelModel> {
   return _connectPromise
 }
 
+let _closePromise: Promise<void> | null = null
+
 export async function closeConnection(): Promise<void> {
-  if (_model) {
-    _closing = true
-    await _model.close()
-    _model = null
-    _connectPromise = null
-    console.log('[rabbitmq] Connection closed')
-  }
+  if (_closePromise) return _closePromise
+  if (!_model) return
+
+  _closing = true
+  _closePromise = _model.close()
+    .then(() => {
+      _model = null
+      _connectPromise = null
+      _closePromise = null
+      console.log('[rabbitmq] Connection closed')
+    })
+    .catch(() => {
+      _model = null
+      _connectPromise = null
+      _closePromise = null
+    })
+  return _closePromise
 }
