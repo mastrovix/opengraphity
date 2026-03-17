@@ -85,6 +85,30 @@ async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<
   }
 }
 
+// ── Comment helper ───────────────────────────────────────────────────────────
+
+async function createTransitionComment(
+  session: ReturnType<typeof getSession>,
+  incidentId: string,
+  tenantId: string,
+  userId: string,
+  text: string,
+) {
+  const now = new Date().toISOString()
+  await session.executeWrite((tx) => tx.run(`
+    MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+    CREATE (c:Comment {
+      id:         randomUUID(),
+      tenant_id:  $tenantId,
+      text:       $text,
+      author_id:  $userId,
+      created_at: $now,
+      updated_at: $now
+    })
+    CREATE (i)-[:HAS_COMMENT]->(c)
+  `, { incidentId, tenantId, text, userId, now }))
+}
+
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
 async function incidents(
@@ -311,19 +335,49 @@ async function assignIncidentToTeam(
       SET i.updated_at = $now
     `, { id: args.id, teamId: args.teamId, tenantId: ctx.tenantId, now }))
 
+    // Lookup team name (always needed)
+    const teamResult = await session.executeRead((tx) => tx.run(
+      'MATCH (t:Team {id: $id}) RETURN t.name AS name', { id: args.teamId }
+    ))
+    const teamName = (teamResult.records[0]?.get('name') as string | null) ?? args.teamId
+    const transitionNotes = `Riassegnato al team ${teamName}`
+
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      WHERE wi.current_step = 'new'
-      RETURN wi.id AS instanceId
+      RETURN wi.id AS instanceId, wi.current_step AS currentStep
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (wiResult.records.length > 0) {
-      const instanceId = wiResult.records[0]!.get('instanceId') as string
-      await workflowEngine.transition(
-        session,
-        { instanceId, toStepName: 'assigned', triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato al team ${args.teamId}` },
-        { userId: ctx.userId },
-      )
+      const instanceId  = wiResult.records[0]!.get('instanceId')  as string
+      const currentStep = wiResult.records[0]!.get('currentStep') as string
+
+      if (currentStep === 'new') {
+        // workflowEngine.transition creates the WorkflowStepExecution internally
+        await workflowEngine.transition(
+          session,
+          { instanceId, toStepName: 'assigned', triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes },
+          { userId: ctx.userId },
+        )
+      } else {
+        // Manually record the reassignment in the workflow history
+        await session.executeWrite((tx) => tx.run(`
+          MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+          CREATE (wi)-[:STEP_HISTORY]->(:WorkflowStepExecution {
+            id:           randomUUID(),
+            tenant_id:    $tenantId,
+            instance_id:  wi.id,
+            step_name:    'assigned',
+            entered_at:   $now,
+            exited_at:    $now,
+            duration_ms:  toInteger(0),
+            triggered_by: $userId,
+            trigger_type: 'manual',
+            notes:        $notes
+          })
+        `, { incidentId: args.id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: transitionNotes }))
+      }
+
+      await createTransitionComment(session, args.id, ctx.tenantId, ctx.userId, transitionNotes)
     }
 
     const result = await session.executeRead((tx) => tx.run(
@@ -348,13 +402,29 @@ async function assignIncidentToTeam(
 
 async function assignIncidentToUser(
   _: unknown,
-  args: { id: string; userId: string },
+  args: { id: string; userId: string | null },
   ctx: GraphQLContext,
 ) {
-  if (!args.userId || !args.userId.trim()) throw new GraphQLError('userId è obbligatorio')
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
+    // userId = null → only remove the existing ASSIGNED_TO relation (reset)
+    if (!args.userId) {
+      await session.executeWrite((tx) => tx.run(`
+        MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+        OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()
+        DELETE old
+        SET i.updated_at = $now
+      `, { id: args.id, tenantId: ctx.tenantId, now }))
+      const r = await session.executeRead((tx) => tx.run(
+        `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
+        { id: args.id, tenantId: ctx.tenantId },
+      ))
+      const row = r.records[0]
+      if (!row) throw new GraphQLError('Incident not found')
+      return mapIncident(row.get('props') as Props)
+    }
+
     await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
       OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()
@@ -365,19 +435,48 @@ async function assignIncidentToUser(
       SET i.updated_at = $now
     `, { id: args.id, userId: args.userId, tenantId: ctx.tenantId, now }))
 
+    // Lookup user name (always needed)
+    const userResult = await session.executeRead((tx) => tx.run(
+      'MATCH (u:User {id: $id}) RETURN u.name AS name', { id: args.userId }
+    ))
+    const userName = (userResult.records[0]?.get('name') as string | null) ?? args.userId
+
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      WHERE wi.current_step = 'assigned'
-      RETURN wi.id AS instanceId
+      RETURN wi.id AS instanceId, wi.current_step AS currentStep
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (wiResult.records.length > 0) {
-      const instanceId = wiResult.records[0]!.get('instanceId') as string
-      await workflowEngine.transition(
-        session,
-        { instanceId, toStepName: 'in_progress', triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Preso in carico da user ${args.userId}` },
-        { userId: ctx.userId },
-      )
+      const instanceId  = wiResult.records[0]!.get('instanceId')  as string
+      const currentStep = wiResult.records[0]!.get('currentStep') as string
+
+      if (currentStep === 'assigned') {
+        // workflowEngine.transition creates the WorkflowStepExecution internally
+        await workflowEngine.transition(
+          session,
+          { instanceId, toStepName: 'in_progress', triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato a ${userName}` },
+          { userId: ctx.userId },
+        )
+      } else {
+        // Already in_progress or beyond — log the reassignment without changing step
+        await session.executeWrite((tx) => tx.run(`
+          MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+          CREATE (wi)-[:STEP_HISTORY]->(:WorkflowStepExecution {
+            id:           randomUUID(),
+            tenant_id:    $tenantId,
+            instance_id:  wi.id,
+            step_name:    wi.current_step,
+            entered_at:   $now,
+            exited_at:    $now,
+            duration_ms:  toInteger(0),
+            triggered_by: $userId,
+            trigger_type: 'manual',
+            notes:        $notes
+          })
+        `, { incidentId: args.id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: `Riassegnato a ${userName}` }))
+      }
+
+      await createTransitionComment(session, args.id, ctx.tenantId, ctx.userId, `Assegnato a ${userName}`)
     }
 
     const result = await session.executeRead((tx) => tx.run(

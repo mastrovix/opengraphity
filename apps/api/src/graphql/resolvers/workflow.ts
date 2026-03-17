@@ -33,7 +33,7 @@ function mapExec(e: Record<string, unknown>) {
     stepName:    e['step_name']    as string,
     enteredAt:   e['entered_at']   as string,
     exitedAt:    (e['exited_at']   ?? null) as string | null,
-    durationMs:  (e['duration_ms'] ?? null) as number | null,
+    durationMs:  e['duration_ms'] == null ? null : (typeof e['duration_ms'] === 'object' ? (e['duration_ms'] as { toNumber(): number }).toNumber() : Math.round(Number(e['duration_ms']))),
     triggeredBy: e['triggered_by'] as string,
     triggerType: e['trigger_type'] as string,
     notes:       (e['notes']       ?? null) as string | null,
@@ -309,7 +309,7 @@ async function executeWorkflowTransition(
       { userId: ctx.userId },
     )
 
-    if (result.success && (toStep === 'escalated' || toStep === 'resolved')) {
+    if (result.success) {
       const wiResult = await session.executeRead((tx) =>
         tx.run(`
           MATCH (wi:WorkflowInstance {id: $instanceId})
@@ -327,24 +327,44 @@ async function executeWorkflowTransition(
       if (wiResult.records.length > 0) {
         const r        = wiResult.records[0]
         const tenantId = r.get('tenantId') as string
-        const payload: IncidentEventPayload = {
-          id:         r.get('id')                                                    as string,
-          title:      r.get('title')                                                 as string,
-          severity:   r.get('severity')                                              as string,
-          status:     toStep,
-          ciName:     (r.get('ciName')    ?? '—')                                   as string,
-          assignedTo: ((r.get('assignedTo') ?? r.get('teamName') ?? '—') as string),
+        const incidentId = r.get('id') as string
+
+        // Add automatic comment for every incident workflow transition
+        const commentText = notes ? `Workflow: ${toStep} — ${notes}` : `Workflow: ${toStep}`
+        const now = new Date().toISOString()
+        await session.executeWrite((tx) => tx.run(`
+          MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+          CREATE (c:Comment {
+            id:         randomUUID(),
+            tenant_id:  $tenantId,
+            text:       $text,
+            author_id:  $userId,
+            created_at: $now,
+            updated_at: $now
+          })
+          CREATE (i)-[:HAS_COMMENT]->(c)
+        `, { incidentId, tenantId, text: commentText, userId: ctx.userId, now }))
+
+        if (toStep === 'escalated' || toStep === 'resolved') {
+          const payload: IncidentEventPayload = {
+            id:         incidentId,
+            title:      r.get('title')                                                 as string,
+            severity:   r.get('severity')                                              as string,
+            status:     toStep,
+            ciName:     (r.get('ciName')    ?? '—')                                   as string,
+            assignedTo: ((r.get('assignedTo') ?? r.get('teamName') ?? '—') as string),
+          }
+          const domainEvent: DomainEvent<IncidentEventPayload> = {
+            id:             uuidv4(),
+            type:           toStep === 'escalated' ? 'incident.escalated' : 'incident.resolved',
+            tenant_id:      tenantId,
+            timestamp:      now,
+            correlation_id: uuidv4(),
+            actor_id:       ctx.userId,
+            payload,
+          }
+          await publish(domainEvent)
         }
-        const domainEvent: DomainEvent<IncidentEventPayload> = {
-          id:             uuidv4(),
-          type:           toStep === 'escalated' ? 'incident.escalated' : 'incident.resolved',
-          tenant_id:      tenantId,
-          timestamp:      new Date().toISOString(),
-          correlation_id: uuidv4(),
-          actor_id:       ctx.userId,
-          payload,
-        }
-        await publish(domainEvent)
       }
     }
 

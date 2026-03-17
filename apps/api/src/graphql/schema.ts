@@ -32,6 +32,8 @@ export const typeDefs = `#graphql
     allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String): AllCIsResult!
     ciById(id: ID!): CIBase
     blastRadius(id: ID!): [BlastRadiusItem!]!
+    ciIncidents(ciId: ID!): [Incident!]!
+    ciChanges(ciId: ID!): [Change!]!
 
     # Teams
     teams: [Team!]!
@@ -72,7 +74,7 @@ export const typeDefs = `#graphql
     updateIncident(id: ID!, input: UpdateIncidentInput!): Incident!
     resolveIncident(id: ID!, rootCause: String): Incident!
     assignIncidentToTeam(id: ID!, teamId: ID!): Incident!
-    assignIncidentToUser(id: ID!, userId: ID!): Incident!
+    assignIncidentToUser(id: ID!, userId: ID): Incident!
     addIncidentComment(id: ID!, text: String!): Comment!
     addAffectedCI(incidentId: ID!, ciId: ID!): Incident!
     removeAffectedCI(incidentId: ID!, ciId: ID!): Incident!

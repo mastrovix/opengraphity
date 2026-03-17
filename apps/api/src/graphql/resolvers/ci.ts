@@ -145,6 +145,66 @@ async function blastRadius(_: unknown, args: { id: string }, ctx: GraphQLContext
   })
 }
 
+async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session,
+      `MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(n {id: $ciId})
+       RETURN properties(i) AS props
+       ORDER BY i.created_at DESC`,
+      { ciId: args.ciId, tenantId: ctx.tenantId }
+    )
+    return rows.map((r) => ({
+      id:          r.props['id']          as string,
+      tenantId:    r.props['tenant_id']   as string,
+      title:       r.props['title']       as string,
+      description: r.props['description'] as string | undefined,
+      severity:    r.props['severity']    as string,
+      status:      r.props['status']      as string,
+      createdAt:   r.props['created_at']  as string,
+      updatedAt:   r.props['updated_at']  as string,
+      resolvedAt:  r.props['resolved_at'] as string | undefined,
+      rootCause:   (r.props['root_cause'] ?? null) as string | null,
+      assignee:    null,
+      assignedTeam: null,
+      affectedCIs: [],
+      workflowInstance: null,
+      availableTransitions: [],
+      workflowHistory: [],
+      comments: [],
+    }))
+  })
+}
+
+async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session,
+      `MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(n {id: $ciId})
+       RETURN properties(c) AS props
+       ORDER BY c.created_at DESC`,
+      { ciId: args.ciId, tenantId: ctx.tenantId }
+    )
+    return rows.map((r) => ({
+      id:             r.props['id']              as string,
+      tenantId:       r.props['tenant_id']       as string,
+      title:          r.props['title']           as string,
+      description:    (r.props['description']    ?? null) as string | null,
+      type:           r.props['type']            as string,
+      priority:       (r.props['priority']       ?? 'medium') as string,
+      status:         r.props['status']          as string,
+      rollbackPlan:   (r.props['rollback_plan']  ?? '') as string,
+      scheduledStart: (r.props['scheduled_start'] ?? null) as string | null,
+      scheduledEnd:   (r.props['scheduled_end']   ?? null) as string | null,
+      implementedAt:  (r.props['implemented_at']  ?? null) as string | null,
+      createdAt:      r.props['created_at']      as string,
+      updatedAt:      r.props['updated_at']      as string,
+      assignedTeam: null, assignee: null,
+      affectedCIs: [], relatedIncidents: [],
+      deploySteps: [], assessmentTasks: [],
+      validation: null, createdBy: null, comments: [],
+    }))
+  })
+}
+
 export const ciResolvers = {
-  Query: { allCIs, ciById, blastRadius },
+  Query: { allCIs, ciById, blastRadius, ciIncidents, ciChanges },
 }

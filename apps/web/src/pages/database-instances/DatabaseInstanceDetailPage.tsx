@@ -8,6 +8,8 @@ import { GET_DATABASE_INSTANCE, GET_BLAST_RADIUS } from '@/graphql/queries'
 import { ciPath } from '@/lib/ciPath'
 import { DetailField } from '@/components/ui/DetailField'
 import { CIGraph } from '@/components/CIGraph'
+import { CIIncidentsCard } from '@/components/CIIncidentsCard'
+import { CIChangesCard } from '@/components/CIChangesCard'
 
 interface CIRef { id: string; name: string; type: string; status: string | null; environment: string | null }
 interface CIRelation { relation: string; ci: CIRef }
@@ -194,6 +196,8 @@ export function DatabaseInstanceDetailPage() {
               </div>
             )}
           </div>
+          <CIIncidentsCard ciId={dbi.id} />
+          <CIChangesCard ciId={dbi.id} />
         </div>
         <div>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px' }}>

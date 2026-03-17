@@ -11,6 +11,7 @@ import { CountBadge } from '@/components/ui/CountBadge'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge }   from '@/components/StatusBadge'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
+import { ciPath } from '@/lib/ciPath'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI } from '@/graphql/mutations'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -77,7 +78,7 @@ interface Comment {
   author:    { id: string; name: string; email: string } | null
 }
 
-interface User { id: string; name: string; email: string; teamId: string | null }
+interface User { id: string; name: string; email: string; teams: { id: string; name: string }[] }
 
 // ── Utility functions ─────────────────────────────────────────────────────────
 
@@ -199,9 +200,10 @@ export function IncidentDetailPage() {
   const [isTransitionDialogOpen, setIsTransitionDialogOpen] = useState(false)
 
   // Assign state
-  const [selectedTeamId,  setSelectedTeamId]  = useState('')
-  const [selectedUserId,  setSelectedUserId]  = useState('')
-  const [showReassign,    setShowReassign]    = useState(false)
+  const [selectedTeamId,       setSelectedTeamId]       = useState('')
+  const [selectedUserId,       setSelectedUserId]        = useState('')
+  const [showReassign,         setShowReassign]          = useState(false)
+  const [awaitingUserAssign,   setAwaitingUserAssign]    = useState(false)
 
   // Comment state
   const [commentText, setCommentText] = useState('')
@@ -249,20 +251,35 @@ export function IncidentDetailPage() {
   })
 
   const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onCompleted: () => {
+    onCompleted: (_data, opts) => {
       toast.success('Team assegnato')
       setSelectedTeamId('')
       setShowReassign(false)
-      void refetch()
+      setSelectedUserId('')
+      // Reset the assignee on the server, then show the user dropdown
+      const incidentId = (opts?.variables as { id?: string } | undefined)?.id
+      if (incidentId) {
+        void assignToUser({ variables: { id: incidentId, userId: null } })
+          .then(() => { setAwaitingUserAssign(true); void refetch() })
+          .catch(() => { setAwaitingUserAssign(true); void refetch() })
+      } else {
+        setAwaitingUserAssign(true)
+        void refetch()
+      }
     },
     onError: (err) => toast.error(err.message),
   })
 
   const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_INCIDENT_TO_USER, {
-    onCompleted: () => {
-      toast.success('Incident preso in carico')
-      setSelectedUserId('')
-      void refetch()
+    onCompleted: (_data, opts) => {
+      const userId = (opts?.variables as { userId?: string | null } | undefined)?.userId
+      if (userId) {
+        toast.success('Incident preso in carico')
+        setAwaitingUserAssign(false)
+        setSelectedUserId('')
+        void refetch()
+      }
+      // userId = null → silent reset, handled by assignToTeam flow
     },
     onError: (err) => toast.error(err.message),
   })
@@ -497,7 +514,7 @@ export function IncidentDetailPage() {
             {/* ── Assegnazione a due step ────────────────────────────── */}
             {incident.status !== 'closed' && (() => {
               const hasTeam = !!incident.assignedTeam
-              const hasUser = !!incident.assignee
+              const hasUser = !!incident.assignee && !awaitingUserAssign
 
               // Stato finale: mostra testo + link riassegna
               if (hasTeam && hasUser && !showReassign) {
@@ -510,7 +527,7 @@ export function IncidentDetailPage() {
                       Assegnato: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignee!.name}</span>
                     </div>
                     <button
-                      onClick={() => setShowReassign(true)}
+                      onClick={() => { setShowReassign(true); setAwaitingUserAssign(false) }}
                       style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 12, color: 'var(--accent)', cursor: 'pointer', textAlign: 'left' }}
                     >
                       Riassegna
@@ -557,7 +574,7 @@ export function IncidentDetailPage() {
               }
 
               // Step 2: assegna utente del team
-              const teamUsers = users.filter((u) => u.teamId === incident.assignedTeam?.id)
+              const teamUsers = users.filter((u) => u.teams?.some((t) => t.id === incident.assignedTeam?.id))
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -649,7 +666,7 @@ export function IncidentDetailPage() {
                     {incident.affectedCIs.map((ci) => (
                       <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <button
-                          onClick={() => navigate(`/cmdb/${ci.id}`)}
+                          onClick={() => navigate(ciPath(ci))}
                           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
                         >
                           {ci.name}

@@ -148,7 +148,7 @@ export const ASSIGN_INCIDENT_TO_TEAM = gql`
 `
 
 export const ASSIGN_INCIDENT_TO_USER = gql`
-  mutation AssignIncidentToUser($id: ID!, $userId: ID!) {
+  mutation AssignIncidentToUser($id: ID!, $userId: ID) {
     assignIncidentToUser(id: $id, userId: $userId) {
       id status
       assignee { id name email }

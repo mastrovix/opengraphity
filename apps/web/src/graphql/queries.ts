@@ -44,7 +44,10 @@ export const GET_INCIDENT = gql`
 
 export const GET_USERS = gql`
   query GetUsers {
-    users { id name email role createdAt }
+    users {
+      id name email role createdAt
+      teams { id name }
+    }
   }
 `
 
@@ -377,6 +380,24 @@ export const GET_BLAST_RADIUS = gql`
       distance
       parentId
       ci { id name type environment status }
+    }
+  }
+`
+
+export const GET_CI_CHANGES = gql`
+  query GetCIChanges($ciId: ID!) {
+    ciChanges(ciId: $ciId) {
+      id title type priority status
+      createdAt scheduledStart
+    }
+  }
+`
+
+export const GET_CI_INCIDENTS = gql`
+  query GetCIIncidents($ciId: ID!) {
+    ciIncidents(ciId: $ciId) {
+      id title severity status
+      createdAt updatedAt
     }
   }
 `

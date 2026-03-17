@@ -135,7 +135,7 @@ function mapExec(e: Record<string, unknown>) {
   return {
     id: e['id'] as string, stepName: e['step_name'] as string,
     enteredAt: e['entered_at'] as string, exitedAt: (e['exited_at'] ?? null) as string | null,
-    durationMs: (e['duration_ms'] ?? null) as number | null,
+    durationMs: e['duration_ms'] == null ? null : (typeof e['duration_ms'] === 'object' ? (e['duration_ms'] as { toNumber(): number }).toNumber() : Math.round(Number(e['duration_ms']))),
     triggeredBy: e['triggered_by'] as string, triggerType: e['trigger_type'] as string,
     notes: (e['notes'] ?? null) as string | null,
   }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as d3 from 'd3'
+import { ciPath } from '@/lib/ciPath'
 
 interface CINode {
   id:          string
@@ -235,7 +236,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .enter().append('g')
       .attr('cursor', (d) => d.role === 'center' ? 'default' : 'pointer')
       .on('click', (_event, d) => {
-        if (d.role !== 'center') navigate(`/cmdb/${d.id}`)
+        if (d.role !== 'center') navigate(ciPath({ id: d.id, type: d.type }))
       })
       .on('mouseover', (event, d) => {
         const rect = containerRef.current?.getBoundingClientRect()

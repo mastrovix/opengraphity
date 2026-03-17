@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { GET_TEAM } from '@/graphql/queries'
+import { ciPath } from '@/lib/ciPath'
 
 interface Member {
   id:    string
@@ -91,7 +92,7 @@ function CollapsibleCard({
 
 // ── CI mini-table ─────────────────────────────────────────────────────────────
 
-function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: (id: string) => void; emptyMsg: string }) {
+function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: (ci: CIRef) => void; emptyMsg: string }) {
   if (items.length === 0) {
     return <EmptyState icon={<Users size={24} color="#8892a4" />} title={emptyMsg} />
   }
@@ -108,7 +109,7 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
         {items.map((ci) => (
           <tr
             key={ci.id}
-            onClick={() => onRowClick(ci.id)}
+            onClick={() => onRowClick(ci)}
             style={{ cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8f9fc' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
@@ -199,12 +200,12 @@ export function TeamDetailPage() {
 
           {/* Owned CIs */}
           <CollapsibleCard title={`CI Owned (${team.ownedCIs.length})`} defaultOpen={false}>
-            <CITable items={team.ownedCIs} onRowClick={(ciId) => navigate(`/cmdb/${ciId}`)} emptyMsg="Nessun CI in ownership" />
+            <CITable items={team.ownedCIs} onRowClick={(ci) => navigate(ciPath(ci))} emptyMsg="Nessun CI in ownership" />
           </CollapsibleCard>
 
           {/* Supported CIs */}
           <CollapsibleCard title={`CI Supported (${team.supportedCIs.length})`} defaultOpen={false}>
-            <CITable items={team.supportedCIs} onRowClick={(ciId) => navigate(`/cmdb/${ciId}`)} emptyMsg="Nessun CI in supporto" />
+            <CITable items={team.supportedCIs} onRowClick={(ci) => navigate(ciPath(ci))} emptyMsg="Nessun CI in supporto" />
           </CollapsibleCard>
         </div>
 

@@ -8,6 +8,8 @@ import { GET_CERTIFICATE, GET_BLAST_RADIUS } from '@/graphql/queries'
 import { ciPath } from '@/lib/ciPath'
 import { DetailField } from '@/components/ui/DetailField'
 import { CIGraph } from '@/components/CIGraph'
+import { CIIncidentsCard } from '@/components/CIIncidentsCard'
+import { CIChangesCard } from '@/components/CIChangesCard'
 
 interface Team { id: string; name: string }
 interface CIRef { id: string; name: string; type: string; environment: string | null; status: string | null }
@@ -215,6 +217,8 @@ export function CertificateDetailPage() {
               </div>
             )}
           </div>
+          <CIIncidentsCard ciId={cert.id} />
+          <CIChangesCard ciId={cert.id} />
         </div>
         <div>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px' }}>
