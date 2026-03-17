@@ -32,7 +32,6 @@ export function DatabaseDetailPage() {
   const [depsOpen, setDepsOpen] = useState(false)
   const [depentsOpen, setDepentsOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
-  const [brOpen, setBrOpen] = useState(false)
 
   const { data, loading } = useQuery<{ database: DatabaseDetail | null }>(GET_DATABASE, { variables: { id }, skip: !id })
   const { data: brData } = useQuery<{ blastRadius: { distance: number; parentId: string | null; ci: { id: string; name: string; type: string; environment: string | null; status: string | null } }[] }>(
@@ -95,50 +94,6 @@ export function DatabaseDetailPage() {
                   dependents={db.dependents.map(r => ({ relationType: r.relation, ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined } }))}
                   blastRadius={blastRadius.map(b => ({ ...b.ci, status: b.ci.status ?? 'unknown', environment: b.ci.environment ?? undefined, distance: b.distance, parentId: b.parentId }))}
                 />
-              </div>
-            )}
-          </div>
-
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
-            <div
-              onClick={() => setBrOpen(p => !p)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: brOpen ? '1px solid #e5e7eb' : 'none' }}
-            >
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Blast Radius</span>
-              {brOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
-            </div>
-            {brOpen && (
-              <div style={{ padding: '0 20px 16px' }}>
-                {blastRadius.length === 0
-                  ? <p style={{ fontSize: 13, color: '#8892a4', margin: '12px 0 0' }}>Nessun impatto rilevato.</p>
-                  : (() => {
-                      const grouped = blastRadius.reduce((acc, b) => {
-                        const key = b.distance
-                        if (!acc[key]) acc[key] = []
-                        acc[key].push(b)
-                        return acc
-                      }, {} as Record<number, typeof blastRadius>)
-                      return Object.entries(grouped)
-                        .sort(([a], [b]) => Number(a) - Number(b))
-                        .map(([dist, items]) => (
-                          <div key={dist} style={{ marginTop: 12 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.06em', padding: '8px 0 4px 0', marginBottom: 6 }}>
-                              {Number(dist) === 1 ? 'Dipendenze dirette' : `Profondità ${dist}`}
-                            </div>
-                            <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
-                              {items.map(b => (
-                                <div key={b.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb' }}>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629' }}>{b.ci.name}</div>
-                                    <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' as const }}>{b.ci.type.replace(/_/g, ' ')}{b.ci.environment ? ` · ${b.ci.environment}` : ''}</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))
-                    })()
-                }
               </div>
             )}
           </div>

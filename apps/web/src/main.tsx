@@ -17,7 +17,6 @@ import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
 import { RequestListPage } from '@/pages/requests/RequestListPage'
 import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestPage'
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
-import { CMDBDetailPage } from '@/pages/cmdb/CMDBDetailPage'
 import { ApplicationsPage } from '@/pages/applications/ApplicationsPage'
 import { ApplicationDetailPage } from '@/pages/applications/ApplicationDetailPage'
 import { DatabasesPage } from '@/pages/databases/DatabasesPage'
@@ -88,7 +87,6 @@ const router = createBrowserRouter([
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
       { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
       { path: 'cmdb',                          element: <CMDBPage />,                    errorElement: <RouteError /> },
-      { path: 'cmdb/:id',                      element: <CMDBDetailPage />,              errorElement: <RouteError /> },
       { path: 'applications',                  element: <ApplicationsPage />,            errorElement: <RouteError /> },
       { path: 'applications/:id',              element: <ApplicationDetailPage />,       errorElement: <RouteError /> },
       { path: 'databases',                     element: <DatabasesPage />,               errorElement: <RouteError /> },

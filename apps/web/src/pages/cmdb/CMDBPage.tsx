@@ -163,7 +163,16 @@ export function CMDBPage() {
         data={items}
         loading={loading}
         emptyComponent={<EmptyState icon={<Server size={32} />} title="Nessun configuration item trovato" description="Il CMDB è vuoto. Aggiungi il primo CI per iniziare." />}
-        onRowClick={(row) => navigate(`/cmdb/${row.id}`)}
+        onRowClick={(row) => {
+          switch (row.type) {
+            case 'application':       navigate(`/applications/${row.id}`);       break
+            case 'database':          navigate(`/databases/${row.id}`);          break
+            case 'database_instance': navigate(`/database-instances/${row.id}`); break
+            case 'server':            navigate(`/servers/${row.id}`);            break
+            case 'certificate':       navigate(`/certificates/${row.id}`);       break
+            default:                  navigate(`/cmdb/${row.id}`)
+          }
+        }}
         onFiltersChange={handleFiltersChange}
       />
 
