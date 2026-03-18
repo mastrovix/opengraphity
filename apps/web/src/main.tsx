@@ -35,6 +35,7 @@ import { TeamsPage } from '@/pages/teams/TeamsPage'
 import { TeamDetailPage } from '@/pages/teams/TeamDetailPage'
 import { UsersPage } from '@/pages/users/UsersPage'
 import { UserDetailPage } from '@/pages/users/UserDetailPage'
+import { LogsPage } from '@/pages/logs/LogsPage'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
@@ -102,6 +103,7 @@ const router = createBrowserRouter([
       { path: 'teams/:id',                 element: <TeamDetailPage />,          errorElement: <RouteError /> },
       { path: 'users',                     element: <UsersPage />,               errorElement: <RouteError /> },
       { path: 'users/:id',                 element: <UserDetailPage />,          errorElement: <RouteError /> },
+      { path: 'logs',                      element: <LogsPage />,                errorElement: <RouteError /> },
     ],
   },
 ])

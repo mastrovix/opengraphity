@@ -51,6 +51,9 @@ export const typeDefs = `#graphql
     reportConversations: [ReportConversation!]!
     reportConversation(id: ID!): ReportConversation
 
+    # Logs
+    logs(level: String, module: String, search: String, limit: Int, offset: Int): LogsResult!
+
     # Workflow
     incidentWorkflow(incidentId: ID!): WorkflowInstance
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
@@ -697,5 +700,19 @@ export const typeDefs = `#graphql
   type AskReportResult {
     message:        ReportMessage!
     conversationId: ID!
+  }
+
+  type LogEntry {
+    id:        ID!
+    timestamp: String!
+    level:     String!
+    module:    String
+    message:   String!
+    data:      String
+  }
+
+  type LogsResult {
+    entries: [LogEntry!]!
+    total:   Int!
   }
 `

@@ -47,6 +47,9 @@ services:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - opengrafo-network
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
@@ -63,6 +66,27 @@ services:
       - keycloak_data:/opt/keycloak/data
     networks:
       - opengrafo-network
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: opengrafo-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - opengrafo-network
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: opengrafo-promtail
+    volumes:
+      - /tmp:/var/log/opengrafo
+      - ./promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - opengrafo-network
+    depends_on:
+      - loki
 
 networks:
   opengrafo-network:

@@ -13,6 +13,7 @@ import { databaseInstanceResolvers } from './databaseInstance.js'
 import { serverResolvers } from './server.js'
 import { certificateResolvers } from './certificate.js'
 import { ciResolvers } from './ci.js'
+import { logsResolvers } from './logs.js'
 import type { GraphQLContext } from '../../context.js'
 
 // ── me + users stubs ──────────────────────────────────────────────────────────
@@ -108,6 +109,7 @@ export const resolvers = {
     ...serverResolvers.Query,
     ...certificateResolvers.Query,
     ...ciResolvers.Query,
+    ...logsResolvers.Query,
     ...meStub,
     user: userById,
   },

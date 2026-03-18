@@ -12,10 +12,12 @@ import {
   User,
   Users,
   BarChart2,
+  ScrollText,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
 } from 'lucide-react'
+import { keycloak } from '../../lib/keycloak'
 
 const NAV_ITEMS = [
   { to: '/dashboard',              label: 'Dashboard',  icon: LayoutDashboard },
@@ -27,6 +29,10 @@ const NAV_ITEMS = [
   { to: '/reports',                label: 'Report',     icon: BarChart2 },
   { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
   { to: '/settings/profile',       label: 'Profilo',    icon: User },
+]
+
+const ADMIN_NAV_ITEMS = [
+  { to: '/logs', label: 'Logs', icon: ScrollText },
 ]
 
 interface SidebarProps {
@@ -299,6 +305,42 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               </div>
             )}
           </div>
+        )}
+        {/* Admin items */}
+        {keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin') && (
+          <>
+            {!collapsed && (
+              <p style={{ color: '#8892a4', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
+                ADMIN
+              </p>
+            )}
+            {ADMIN_NAV_ITEMS.map(({ to, label, icon: Icon }) => {
+              const isActive = pathname === to || pathname.startsWith(to + '/')
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  title={collapsed ? label : undefined}
+                  style={navItemStyle(isActive, collapsed)}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
+                      ;(e.currentTarget as HTMLElement).style.color = '#0f1629'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                      ;(e.currentTarget as HTMLElement).style.color = '#4a5468'
+                    }
+                  }}
+                >
+                  <Icon size={16} style={{ flexShrink: 0, color: isActive ? '#4f46e5' : 'inherit' }} />
+                  {!collapsed && label}
+                </NavLink>
+              )
+            })}
+          </>
         )}
       </nav>
 
