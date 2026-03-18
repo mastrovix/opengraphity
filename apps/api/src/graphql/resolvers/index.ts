@@ -1,3 +1,5 @@
+import { mergeResolvers } from '@graphql-tools/merge'
+import type { IResolvers } from '@graphql-tools/utils'
 import { authResolvers } from './auth.js'
 import { incidentResolvers } from './incident.js'
 import { problemResolvers } from './problem.js'
@@ -14,7 +16,9 @@ import { serverResolvers } from './server.js'
 import { certificateResolvers } from './certificate.js'
 import { ciResolvers } from './ci.js'
 import { logsResolvers } from './logs.js'
+import { buildDynamicCIResolvers } from './dynamic-ci.js'
 import type { GraphQLContext } from '../../context.js'
+import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
 // ── me + users stubs ──────────────────────────────────────────────────────────
 
@@ -157,4 +161,52 @@ export const resolvers = {
   ChangeValidation: {},
   ServiceRequest:      serviceRequestResolvers.ServiceRequest,
   ReportConversation:  reportResolvers.ReportConversation,
+}
+
+// Builds a resolver map that combines dynamic CI resolvers (from metamodel)
+// with all static non-CI resolvers (incident, change, team, workflow, etc.)
+export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
+  const dynamicCI = buildDynamicCIResolvers(types)
+
+  const staticResolvers = {
+    Query: {
+      ...incidentResolvers.Query,
+      ...problemResolvers.Query,
+      ...changeResolvers.Query,
+      ...serviceRequestResolvers.Query,
+      ...teamResolvers.Query,
+      ...workflowResolvers.Query,
+      ...notificationChannelResolvers.Query,
+      ...reportResolvers.Query,
+      ...logsResolvers.Query,
+      ...meStub,
+      user: userById,
+    },
+    Mutation: {
+      ...authResolvers.Mutation,
+      ...incidentResolvers.Mutation,
+      ...problemResolvers.Mutation,
+      ...changeResolvers.Mutation,
+      ...serviceRequestResolvers.Mutation,
+      ...teamResolvers.Mutation,
+      ...workflowResolvers.Mutation,
+      ...notificationChannelResolvers.Mutation,
+      ...reportResolvers.Mutation,
+    },
+    Incident: {
+      ...incidentResolvers.Incident,
+      ...workflowResolvers.Incident,
+    },
+    Team:               teamResolvers.Team,
+    User:               { teams: userTeams },
+    Problem:            problemResolvers.Problem,
+    Change:             { ...changeResolvers.Change },
+    DeployStep:         {},
+    AssessmentTask:     {},
+    ChangeValidation:   {},
+    ServiceRequest:     serviceRequestResolvers.ServiceRequest,
+    ReportConversation: reportResolvers.ReportConversation,
+  }
+
+  return mergeResolvers([dynamicCI as IResolvers, staticResolvers as IResolvers])
 }

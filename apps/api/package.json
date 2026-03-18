@@ -27,9 +27,13 @@
   },
   "dependencies": {
     "@apollo/server": "^4.10.0",
+    "@graphql-tools/merge": "^9.1.7",
+    "@graphql-tools/schema": "^10.0.31",
+    "@graphql-tools/utils": "^11.0.0",
     "@opengraphity/events": "workspace:*",
     "@opengraphity/neo4j": "workspace:*",
     "@opengraphity/notifications": "workspace:*",
+    "@opengraphity/schema-generator": "workspace:*",
     "@opengraphity/scripting": "workspace:*",
     "@opengraphity/sla": "workspace:*",
     "@opengraphity/types": "workspace:*",
