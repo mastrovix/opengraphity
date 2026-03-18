@@ -25,6 +25,7 @@ export function buildBaseSDL(): string {
     blastRadius(id: ID!): [BlastRadiusItem!]!
     ciIncidents(ciId: ID!): [Incident!]!
     ciChanges(ciId: ID!): [Change!]!
+    baseCIType: CITypeDefinition!
     ciTypes: [CITypeDefinition!]!
 
     # Teams
@@ -203,6 +204,7 @@ export function buildBaseSDL(): string {
     validationScript: String
     visibilityScript: String
     defaultScript: String
+    isSystem: Boolean!
   }
 
   type CIRelationDef {

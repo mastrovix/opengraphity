@@ -222,7 +222,9 @@ export function CIDynamicForm({
     }
   }
 
-  const sortedFields = [...ciType.fields].sort((a, b) => a.order - b.order)
+  const sortedFields = [...ciType.fields]
+    .filter(f => !f.isSystem)
+    .sort((a, b) => a.order - b.order)
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

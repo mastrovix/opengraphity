@@ -36,6 +36,7 @@ import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
 import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
 import NotificationsPage from '@/pages/settings/NotificationsPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
+import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import ReportsPage from '@/pages/reports/ReportsPage'
 import { TeamsPage } from '@/pages/teams/TeamsPage'
 import { TeamDetailPage } from '@/pages/teams/TeamDetailPage'
@@ -121,6 +122,7 @@ const router = createBrowserRouter([
       { path: 'workflow/:id',                  element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
+      { path: 'settings/ci-types',         element: <CITypeDesignerPage />,      errorElement: <RouteError /> },
       { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },
       { path: 'teams',                     element: <TeamsPage />,               errorElement: <RouteError /> },
       { path: 'teams/:id',                 element: <TeamDetailPage />,          errorElement: <RouteError /> },

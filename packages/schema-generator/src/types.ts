@@ -25,6 +25,7 @@ export interface CIFieldDefinition {
   validationScript: string | null
   visibilityScript: string | null
   defaultScript: string | null
+  isSystem: boolean
 }
 
 export interface CIRelationDefinition {

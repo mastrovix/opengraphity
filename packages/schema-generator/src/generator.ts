@@ -9,13 +9,18 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
         MATCH (t:CITypeDefinition)
         WHERE (t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId))
           AND t.active = true
+          AND t.name <> '__base__'
         OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
           WHERE f.scope = 'base' OR (f.scope = 'tenant' AND f.tenant_id = $tenantId)
         OPTIONAL MATCH (t)-[:HAS_RELATION]->(r:CIRelationDefinition)
         OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
+        OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})
+          WHERE base.tenant_id = $tenantId OR base.tenant_id = 'system'
+        OPTIONAL MATCH (base)-[:HAS_FIELD]->(bf:CIFieldDefinition)
         RETURN t,
-          collect(DISTINCT f) AS fields,
-          collect(DISTINCT r) AS relations,
+          collect(DISTINCT f)  AS typeFields,
+          collect(DISTINCT bf) AS baseFields,
+          collect(DISTINCT r)  AS relations,
           collect(DISTINCT sr) AS systemRelations
         ORDER BY t.name
       `, { tenantId }),
@@ -24,10 +29,19 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
     return result.records.map(record => {
       const t = record.get('t').properties as Record<string, unknown>
 
-      const fields = (record.get('fields') as Array<{ properties: Record<string, unknown> }>)
+      const typeFields = (record.get('typeFields') as Array<{ properties: Record<string, unknown> }>)
         .filter(f => f && f.properties)
         .map(f => mapField(f.properties))
+
+      const baseFields = (record.get('baseFields') as Array<{ properties: Record<string, unknown> }>)
+        .filter(f => f && f.properties)
+        .map(f => mapField(f.properties))
+
+      // Merge: base fields first, then type-specific; deduplicate by name
+      const seen = new Set<string>()
+      const fields = [...baseFields, ...typeFields]
         .sort((a, b) => a.order - b.order)
+        .filter(f => { if (seen.has(f.name)) return false; seen.add(f.name); return true })
 
       const relations = (record.get('relations') as Array<{ properties: Record<string, unknown> }>)
         .filter(r => r && r.properties)
@@ -38,6 +52,7 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
         .filter(sr => sr && sr.properties)
         .map(sr => mapSystemRelation(sr.properties))
         .sort((a, b) => a.order - b.order)
+
 
       return {
         id:               t['id'] as string,
@@ -75,6 +90,7 @@ function mapField(f: Record<string, unknown>): CIFieldDefinition {
     validationScript: (f['validation_script'] as string | null) ?? null,
     visibilityScript: (f['visibility_script'] as string | null) ?? null,
     defaultScript:    (f['default_script']    as string | null) ?? null,
+    isSystem:         (f['is_system']         as boolean)       ?? false,
   }
 }
 
@@ -125,7 +141,7 @@ export function generateSDL(types: CITypeWithDefinitions[]): string {
   for (const type of types) {
     const typeName = toPascalCase(type.name)
     const specificFields = type.fields
-      .filter(f => !BASE_TYPE_FIELDS.has(f.name))
+      .filter(f => !BASE_TYPE_FIELDS.has(f.name) && !f.isSystem)
       .map(f => `  ${f.name}: ${graphqlFieldType(f.fieldType)}${f.required ? '!' : ''}`)
       .join('\n')
 
@@ -176,7 +192,7 @@ ${queryFields}
   for (const type of types) {
     const typeName = toPascalCase(type.name)
     const inputFields = type.fields
-      .filter(f => !BASE_INPUT_FIELDS.has(f.name))
+      .filter(f => !BASE_INPUT_FIELDS.has(f.name) && !f.isSystem)
       .map(f => `  ${f.name}: ${graphqlFieldType(f.fieldType)}${f.required ? '!' : ''}`)
       .join('\n')
 
@@ -236,6 +252,7 @@ input UpdateCITypeInput {
   icon: String
   color: String
   active: Boolean
+  validationScript: String
 }
 
 input CIFieldInput {
@@ -246,6 +263,9 @@ input CIFieldInput {
   defaultValue: String
   enumValues: [String!]
   order: Int
+  validationScript: String
+  visibilityScript: String
+  defaultScript: String
 }
 
 input CIRelationInput {

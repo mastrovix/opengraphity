@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Layers,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -309,6 +310,27 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             )}
           </div>
         )}
+        {/* CI Type Designer — admin only */}
+        {keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin') && !collapsed && (
+          <NavLink
+            to="/settings/ci-types"
+            style={({ isActive }) => navItemStyle(isActive, false)}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLElement
+              const isActive = pathname === '/settings/ci-types'
+              if (!isActive) { el.style.backgroundColor = '#f1f3f9'; el.style.color = '#0f1629' }
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget as HTMLElement
+              const isActive = pathname === '/settings/ci-types'
+              if (!isActive) { el.style.backgroundColor = 'transparent'; el.style.color = '#4a5468' }
+            }}
+          >
+            <Layers size={16} style={{ flexShrink: 0 }} />
+            Tipi CI
+          </NavLink>
+        )}
+
         {/* Admin items */}
         {keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin') && (
           <>

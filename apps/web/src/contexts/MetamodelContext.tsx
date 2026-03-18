@@ -10,6 +10,7 @@ export interface CIFieldDef {
   required: boolean
   enumValues: string[]
   order: number
+  isSystem: boolean
   validationScript: string | null
   visibilityScript: string | null
   defaultScript: string | null

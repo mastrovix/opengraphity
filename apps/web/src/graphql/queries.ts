@@ -422,6 +422,25 @@ export const GET_CI_INCIDENTS = gql`
   }
 `
 
+export const GET_BASE_CI_TYPE = gql`
+  query GetBaseCIType {
+    baseCIType {
+      id name label icon color active
+      validationScript
+      fields {
+        id name label fieldType
+        required enumValues order
+        isSystem
+        validationScript
+        visibilityScript
+        defaultScript
+      }
+      relations { id name label relationshipType targetType cardinality direction order }
+      systemRelations { id name label relationshipType targetEntity required order }
+    }
+  }
+`
+
 export const GET_CI_TYPES = gql`
   query GetCITypes {
     ciTypes {
@@ -430,6 +449,7 @@ export const GET_CI_TYPES = gql`
       fields {
         id name label fieldType
         required enumValues order
+        isSystem
         validationScript
         visibilityScript
         defaultScript

@@ -4,6 +4,7 @@ import { loadMetamodel, generateSDL } from '@opengraphity/schema-generator'
 import { buildBaseSDL } from '../graphql/schema-base.js'
 import { buildResolvers } from '../graphql/resolvers/index.js'
 import { logger } from './logger.js'
+import { registerSchemaInvalidator } from './schemaInvalidator.js'
 
 interface SchemaCacheEntry {
   schema: GraphQLSchema
@@ -13,6 +14,12 @@ interface SchemaCacheEntry {
 
 const cache = new Map<string, SchemaCacheEntry>()
 const TTL = 5 * 60 * 1000  // 5 minuti
+
+// Register invalidator so dynamic-ci.ts can call it without circular imports
+registerSchemaInvalidator((tenantId: string) => {
+  cache.delete(tenantId)
+  logger.info({ tenantId }, 'Schema invalidato — verrà rigenerato')
+})
 
 export async function getSchemaForTenant(tenantId: string): Promise<GraphQLSchema> {
   const cached = cache.get(tenantId)
@@ -43,7 +50,6 @@ export async function regenerateSchema(tenantId: string): Promise<GraphQLSchema>
   return schema
 }
 
-export function invalidateSchema(tenantId: string): void {
-  cache.delete(tenantId)
-  logger.info({ tenantId }, 'Schema invalidato — verrà rigenerato')
-}
+// Note: invalidateSchema is now in schemaInvalidator.ts to avoid circular imports
+// It is still exported here for backward compatibility with server.ts etc.
+export { invalidateSchema } from './schemaInvalidator.js'
