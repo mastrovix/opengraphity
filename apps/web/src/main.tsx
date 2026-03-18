@@ -18,16 +18,6 @@ import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestP
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
 import { CIListPage } from '@/pages/ci/CIListPage'
 import { CIDetailPage } from '@/pages/ci/CIDetailPage'
-import { ApplicationsPage } from '@/pages/applications/ApplicationsPage'
-import { ApplicationDetailPage } from '@/pages/applications/ApplicationDetailPage'
-import { DatabasesPage } from '@/pages/databases/DatabasesPage'
-import { DatabaseDetailPage } from '@/pages/databases/DatabaseDetailPage'
-import { DatabaseInstancesPage } from '@/pages/database-instances/DatabaseInstancesPage'
-import { DatabaseInstanceDetailPage } from '@/pages/database-instances/DatabaseInstanceDetailPage'
-import { ServersPage } from '@/pages/servers/ServersPage'
-import { ServerDetailPage } from '@/pages/servers/ServerDetailPage'
-import { CertificatesPage } from '@/pages/certificates/CertificatesPage'
-import { CertificateDetailPage } from '@/pages/certificates/CertificateDetailPage'
 function CIDetailRedirect({ typeName }: { typeName: string }) {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
@@ -107,17 +97,6 @@ const router = createBrowserRouter([
       { path: 'servers/:id',                   element: <CIDetailRedirect typeName="server" /> },
       { path: 'certificates',                  element: <Navigate to="/ci/certificate" replace /> },
       { path: 'certificates/:id',              element: <CIDetailRedirect typeName="certificate" /> },
-      // Keep old static pages as fallback (unused, but no dead imports)
-      { path: 'applications-legacy',           element: <ApplicationsPage />,            errorElement: <RouteError /> },
-      { path: 'applications-legacy/:id',       element: <ApplicationDetailPage />,       errorElement: <RouteError /> },
-      { path: 'databases-legacy',              element: <DatabasesPage />,               errorElement: <RouteError /> },
-      { path: 'databases-legacy/:id',          element: <DatabaseDetailPage />,          errorElement: <RouteError /> },
-      { path: 'database-instances-legacy',     element: <DatabaseInstancesPage />,       errorElement: <RouteError /> },
-      { path: 'database-instances-legacy/:id', element: <DatabaseInstanceDetailPage />,  errorElement: <RouteError /> },
-      { path: 'servers-legacy',                element: <ServersPage />,                 errorElement: <RouteError /> },
-      { path: 'servers-legacy/:id',            element: <ServerDetailPage />,            errorElement: <RouteError /> },
-      { path: 'certificates-legacy',           element: <CertificatesPage />,            errorElement: <RouteError /> },
-      { path: 'certificates-legacy/:id',       element: <CertificateDetailPage />,       errorElement: <RouteError /> },
       { path: 'workflow',                      element: <WorkflowListPage />,            errorElement: <RouteError /> },
       { path: 'workflow/:id',                  element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },

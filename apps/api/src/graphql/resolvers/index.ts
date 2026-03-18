@@ -9,11 +9,6 @@ import { teamResolvers } from './team.js'
 import { workflowResolvers } from './workflow.js'
 import { notificationChannelResolvers } from './notificationChannel.js'
 import { reportResolvers } from './report.js'
-import { applicationResolvers } from './application.js'
-import { databaseResolvers } from './database.js'
-import { databaseInstanceResolvers } from './databaseInstance.js'
-import { serverResolvers } from './server.js'
-import { certificateResolvers } from './certificate.js'
 import { ciResolvers } from './ci.js'
 import { logsResolvers } from './logs.js'
 import { buildDynamicCIResolvers } from './dynamic-ci.js'
@@ -95,74 +90,6 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
   }
 }
 
-// ── Combined resolvers ────────────────────────────────────────────────────────
-
-export const resolvers = {
-  Query: {
-    ...incidentResolvers.Query,
-    ...problemResolvers.Query,
-    ...changeResolvers.Query,
-    ...serviceRequestResolvers.Query,
-    ...teamResolvers.Query,
-    ...workflowResolvers.Query,
-    ...notificationChannelResolvers.Query,
-    ...reportResolvers.Query,
-    ...applicationResolvers.Query,
-    ...databaseResolvers.Query,
-    ...databaseInstanceResolvers.Query,
-    ...serverResolvers.Query,
-    ...certificateResolvers.Query,
-    ...ciResolvers.Query,
-    ...logsResolvers.Query,
-    ...meStub,
-    user: userById,
-  },
-  Mutation: {
-    ...authResolvers.Mutation,
-    ...incidentResolvers.Mutation,
-    ...problemResolvers.Mutation,
-    ...changeResolvers.Mutation,
-    ...serviceRequestResolvers.Mutation,
-    ...teamResolvers.Mutation,
-    ...workflowResolvers.Mutation,
-    ...notificationChannelResolvers.Mutation,
-    ...reportResolvers.Mutation,
-  },
-  Incident: {
-    ...incidentResolvers.Incident,
-    ...workflowResolvers.Incident,
-  },
-  CIBase: {
-    __resolveType(obj: { __typename?: string; type?: string }) {
-      if (obj.__typename) return obj.__typename
-      switch (obj.type) {
-        case 'application':       return 'Application'
-        case 'database':          return 'Database'
-        case 'database_instance': return 'DatabaseInstance'
-        case 'server':            return 'Server'
-        case 'certificate':       return 'Certificate'
-        default:                  return 'Application'
-      }
-    }
-  },
-  Application:      applicationResolvers.Application,
-  Database:         databaseResolvers.Database,
-  DatabaseInstance: databaseInstanceResolvers.DatabaseInstance,
-  Server:           serverResolvers.Server,
-  Certificate:      certificateResolvers.Certificate,
-  Team:                teamResolvers.Team,
-  User:                { teams: userTeams },
-  Problem:             problemResolvers.Problem,
-  Change: {
-    ...changeResolvers.Change,
-  },
-  DeployStep:     {},
-  AssessmentTask: {},
-  ChangeValidation: {},
-  ServiceRequest:      serviceRequestResolvers.ServiceRequest,
-  ReportConversation:  reportResolvers.ReportConversation,
-}
-
 // Builds a resolver map that combines dynamic CI resolvers (from metamodel)
 // with all static non-CI resolvers (incident, change, team, workflow, etc.)
 export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
@@ -179,6 +106,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...notificationChannelResolvers.Query,
       ...reportResolvers.Query,
       ...logsResolvers.Query,
+      ciIncidents: ciResolvers.Query.ciIncidents,
+      ciChanges:   ciResolvers.Query.ciChanges,
       ...meStub,
       user: userById,
     },
