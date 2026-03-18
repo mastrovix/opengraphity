@@ -4,6 +4,7 @@ import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { publish } from '@opengraphity/events'
 import { mapCI, labelToType } from './ci-utils.js'
+import { calculateRiskScore } from '../../lib/riskScore.js'
 import type { WorkflowInstance } from '@opengraphity/workflow'
 import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
@@ -1749,28 +1750,13 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
   const failedChanges  = recentChanges.filter((c) => c.status === 'failed').length
   const ongoingChanges    = recentChanges.filter((c) => !['completed', 'failed', 'rejected', 'draft'].includes(c.status)).length
 
-  let score = 0
-  const details: string[] = []
-
-  const prodScore = productionCIs * 20
-  if (prodScore > 0) { score += prodScore; details.push(`+${prodScore} (${productionCIs} CI in production)`) }
-
-  const blastScore = Math.min(blastRadiusCIs * 10, 40)
-  if (blastScore > 0) { score += blastScore; details.push(`+${blastScore} (${blastRadiusCIs} CI nel blast radius)`) }
-
-  const incidentScore = openIncidentsCount * 15
-  if (incidentScore > 0) { score += incidentScore; details.push(`+${incidentScore} (${openIncidentsCount} incident aperti)`) }
-
-  const failedScore = failedChanges * 10
-  if (failedScore > 0) { score += failedScore; details.push(`+${failedScore} (${failedChanges} change falliti di recente)`) }
-
-  const ongoingScore = ongoingChanges * 5
-  if (ongoingScore > 0) { score += ongoingScore; details.push(`+${ongoingScore} (${ongoingChanges} change in corso)`) }
-
-  const riskLevel =
-    score >= 76 ? 'critical' :
-    score >= 51 ? 'high' :
-    score >= 26 ? 'medium' : 'low'
+  const { score, level: riskLevel, details } = calculateRiskScore({
+    productionCIs,
+    blastRadiusCIs,
+    openIncidents: openIncidentsCount,
+    failedChanges,
+    ongoingChanges,
+  })
 
   return {
     riskScore: score,
