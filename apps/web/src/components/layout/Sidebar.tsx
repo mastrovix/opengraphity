@@ -29,7 +29,8 @@ const NAV_ITEMS = [
   { to: '/changes',                label: 'Changes',    icon: GitPullRequest },
   { to: '/requests',               label: 'Requests',   icon: Inbox },
   { to: '/workflow',               label: 'Workflow',   icon: GitBranch },
-  { to: '/reports',                label: 'Report',     icon: BarChart2 },
+  { to: '/reports',                label: 'Report AI',      icon: BarChart2 },
+  { to: '/custom-reports',         label: 'Report Custom',  icon: BarChart2 },
   { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
   { to: '/settings/profile',       label: 'Profilo',    icon: User },
 ]

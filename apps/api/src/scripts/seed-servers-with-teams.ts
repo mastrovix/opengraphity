@@ -70,7 +70,7 @@ async function seed() {
          c.ip_address  = $ipAddress,
          c.location    = $location,
          c.vendor      = $vendor,
-         c.os_version  = $osVersion,
+         c.os          = $osVersion,
          c.tenant_id   = $tenantId,
          c.created_at  = $createdAt,
          c.updated_at  = $createdAt

@@ -28,6 +28,7 @@ import NotificationsPage from '@/pages/settings/NotificationsPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import ReportsPage from '@/pages/reports/ReportsPage'
+import { CustomReportsPage } from '@/pages/reports/CustomReportsPage'
 import { TeamsPage } from '@/pages/teams/TeamsPage'
 import { TeamDetailPage } from '@/pages/teams/TeamDetailPage'
 import { UsersPage } from '@/pages/users/UsersPage'
@@ -103,6 +104,7 @@ const router = createBrowserRouter([
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
       { path: 'settings/ci-types',         element: <CITypeDesignerPage />,      errorElement: <RouteError /> },
       { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },
+      { path: 'custom-reports',            element: <CustomReportsPage />,       errorElement: <RouteError /> },
       { path: 'teams',                     element: <TeamsPage />,               errorElement: <RouteError /> },
       { path: 'teams/:id',                 element: <TeamDetailPage />,          errorElement: <RouteError /> },
       { path: 'users',                     element: <UsersPage />,               errorElement: <RouteError /> },

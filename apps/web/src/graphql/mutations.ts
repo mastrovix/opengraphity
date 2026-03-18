@@ -414,3 +414,66 @@ export const REMOVE_CI_RELATION = gql`
     }
   }
 `
+
+export const CREATE_REPORT_TEMPLATE = gql`
+  mutation CreateReportTemplate($input: CreateReportTemplateInput!) {
+    createReportTemplate(input: $input) {
+      id name description icon visibility scheduleEnabled scheduleCron createdAt
+    }
+  }
+`
+
+export const UPDATE_REPORT_TEMPLATE = gql`
+  mutation UpdateReportTemplate($id: ID!, $input: UpdateReportTemplateInput!) {
+    updateReportTemplate(id: $id, input: $input) {
+      id name description icon visibility scheduleEnabled scheduleCron scheduleChannelId
+      sharedWith { id name }
+    }
+  }
+`
+
+export const DELETE_REPORT_TEMPLATE = gql`
+  mutation DeleteReportTemplate($id: ID!) {
+    deleteReportTemplate(id: $id)
+  }
+`
+
+export const ADD_REPORT_SECTION = gql`
+  mutation AddReportSection($templateId: ID!, $input: ReportSectionInput!) {
+    addReportSection(templateId: $templateId, input: $input) {
+      id sections {
+        id order title chartType groupByNodeId groupByField metric metricField limit sortDir
+        nodes { id entityType neo4jLabel label isResult isRoot positionX positionY filters selectedFields }
+        edges { id sourceNodeId targetNodeId relationshipType direction label }
+      }
+    }
+  }
+`
+
+export const UPDATE_REPORT_SECTION = gql`
+  mutation UpdateReportSection($sectionId: ID!, $input: ReportSectionInput!) {
+    updateReportSection(sectionId: $sectionId, input: $input) {
+      id sections {
+        id order title chartType groupByNodeId groupByField metric metricField limit sortDir
+        nodes { id entityType neo4jLabel label isResult isRoot positionX positionY filters selectedFields }
+        edges { id sourceNodeId targetNodeId relationshipType direction label }
+      }
+    }
+  }
+`
+
+export const REMOVE_REPORT_SECTION = gql`
+  mutation RemoveReportSection($templateId: ID!, $sectionId: ID!) {
+    removeReportSection(templateId: $templateId, sectionId: $sectionId) {
+      id sections { id order title }
+    }
+  }
+`
+
+export const REORDER_REPORT_SECTIONS = gql`
+  mutation ReorderReportSections($templateId: ID!, $sectionIds: [ID!]!) {
+    reorderReportSections(templateId: $templateId, sectionIds: $sectionIds) {
+      id sections { id order title }
+    }
+  }
+`

@@ -9,6 +9,7 @@ import { teamResolvers } from './team.js'
 import { workflowResolvers } from './workflow.js'
 import { notificationChannelResolvers } from './notificationChannel.js'
 import { reportResolvers } from './report.js'
+import { customReportResolvers } from './customReports.js'
 import { ciResolvers } from './ci.js'
 import { logsResolvers } from './logs.js'
 import { buildDynamicCIResolvers } from './dynamic-ci.js'
@@ -105,6 +106,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...workflowResolvers.Query,
       ...notificationChannelResolvers.Query,
       ...reportResolvers.Query,
+      ...customReportResolvers.Query,
       ...logsResolvers.Query,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
@@ -121,6 +123,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...workflowResolvers.Mutation,
       ...notificationChannelResolvers.Mutation,
       ...reportResolvers.Mutation,
+      ...customReportResolvers.Mutation,
     },
     Incident: {
       ...incidentResolvers.Incident,

@@ -2,6 +2,7 @@ import { startServer } from './server.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine } from '@opengraphity/sla'
 import { closeConnection } from '@opengraphity/events'
+import { startReportScheduler } from './jobs/reportScheduler.js'
 
 async function main() {
   const httpServer = await startServer()
@@ -9,6 +10,9 @@ async function main() {
   // Start RabbitMQ consumers
   await createNotificationDispatcher()
   await createSLAEngine()
+
+  // Start report scheduler (BullMQ, every 60s)
+  startReportScheduler()
 
   console.log('[api] All consumers started')
 
