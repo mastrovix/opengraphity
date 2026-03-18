@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { setToken, removeToken, isAuthenticated } from '@/lib/auth'
+import { keycloak } from '../lib/keycloak'
 
 export function useAuth() {
   const navigate = useNavigate()
@@ -11,7 +12,7 @@ export function useAuth() {
 
   const logout = () => {
     removeToken()
-    navigate('/login')
+    keycloak.logout({ redirectUri: window.location.origin + '/' })
   }
 
   return { isAuthenticated: isAuthenticated(), login, logout }

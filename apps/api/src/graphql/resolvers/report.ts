@@ -116,7 +116,7 @@ async function askReport(
     const historyWithoutLast = history.slice(0, -1)
 
     // 4. Chiama Claude API
-    const aiResponse = await callReportAI(session, ctx.tenantId, historyWithoutLast, args.question)
+    const aiResponse = await callReportAI(ctx.tenantId, historyWithoutLast, args.question)
 
     // 5. Salva risposta assistant
     const asstMsgId = uuidv4()

@@ -1,7 +1,8 @@
 import { memo, useEffect, useState, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
-import { Pencil, Settings2, X } from 'lucide-react'
+import { ArrowLeft, Pencil, Settings2, X } from 'lucide-react'
 import {
   ReactFlow,
   Background,
@@ -18,7 +19,7 @@ import {
   ConnectionMode,
 } from '@xyflow/react'
 import type { NodeProps, EdgeProps, Node, Edge } from '@xyflow/react'
-import { GET_WORKFLOW_DEFINITIONS } from '@/graphql/queries'
+import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { UPDATE_WORKFLOW_STEP, UPDATE_WORKFLOW_TRANSITION } from '@/graphql/mutations'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -552,24 +553,27 @@ const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+function defToWorkflowKey(def: WorkflowDefinition | null): WorkflowKey {
+  if (!def) return 'incident'
+  if (def.entityType === 'incident') return 'incident'
+  const n = def.name.toLowerCase()
+  if (n.includes('standard'))  return 'standard'
+  if (n.includes('normal'))    return 'normal'
+  if (n.includes('emergency')) return 'emergency'
+  return 'standard'
+}
+
 export function WorkflowDesignerPage() {
-  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowKey>('incident')
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
 
-  const entityType = selectedWorkflow === 'incident' ? 'incident' : 'change'
-
-  const { data, loading } = useQuery<{ workflowDefinitions: WorkflowDefinition[] }>(
-    GET_WORKFLOW_DEFINITIONS,
-    { variables: { entityType } },
+  const { data, loading } = useQuery<{ workflowDefinitionById: WorkflowDefinition | null }>(
+    GET_WORKFLOW_DEFINITION_BY_ID,
+    { variables: { id }, skip: !id },
   )
 
-  const workflowName = selectedWorkflow === 'incident' ? null
-    : selectedWorkflow === 'standard' ? 'Standard'
-    : selectedWorkflow === 'normal'   ? 'Normal'
-    : 'Emergency'
-
-  const def = data?.workflowDefinitions?.find((d) =>
-    workflowName ? d.name.includes(workflowName) : true,
-  ) ?? null
+  const def = data?.workflowDefinitionById ?? null
+  const selectedWorkflow = defToWorkflowKey(def)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -718,34 +722,26 @@ export function WorkflowDesignerPage() {
         flexShrink:      0,
       }}>
         <div>
-          <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 6 }}>
-            Impostazioni &rsaquo; Workflow Designer
-          </div>
+          <button
+            onClick={() => navigate('/workflow')}
+            style={{
+              display:      'inline-flex',
+              alignItems:   'center',
+              gap:          6,
+              marginBottom: 8,
+              background:   'none',
+              border:       'none',
+              cursor:       'pointer',
+              color:        '#8892a4',
+              fontSize:     12,
+              padding:      0,
+            }}
+          >
+            <ArrowLeft size={13} />
+            Workflow
+          </button>
 
-          {/* Workflow selector */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-            {(['incident', 'standard', 'normal', 'emergency'] as WorkflowKey[]).map((wf) => (
-              <button
-                key={wf}
-                onClick={() => { setSelectedWorkflow(wf); setHasChanges(false) }}
-                style={{
-                  padding:         '5px 12px',
-                  borderRadius:    6,
-                  border:          `1.5px solid ${selectedWorkflow === wf ? WORKFLOW_COLORS[wf] : '#e2e6f0'}`,
-                  backgroundColor: selectedWorkflow === wf ? `${WORKFLOW_COLORS[wf]}15` : 'transparent',
-                  color:           selectedWorkflow === wf ? WORKFLOW_COLORS[wf] : '#8892a4',
-                  fontSize:        12,
-                  fontWeight:      600,
-                  cursor:          'pointer',
-                  transition:      'all 0.15s',
-                }}
-              >
-                {WORKFLOW_LABELS[wf]}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ fontSize: 16, fontWeight: 700, color: '#0f1629', margin: 0 }}>
               {WORKFLOW_LABELS[selectedWorkflow]}
             </h1>

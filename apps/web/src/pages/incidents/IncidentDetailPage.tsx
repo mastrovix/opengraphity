@@ -709,7 +709,7 @@ export function IncidentDetailPage() {
                   </p>
                 ) : (
                   <div style={{ marginBottom: 16 }}>
-                    {incident.comments.map((c, i) => (
+                    {incident.comments.slice().reverse().map((c, i) => (
                       <div key={c.id}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
                           <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#eef2ff', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>

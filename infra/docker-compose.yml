@@ -48,6 +48,26 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: opengrafo-keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: opengrafo_local
+      KC_DB: dev-file
+      KC_HTTP_PORT: 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    networks:
+      - opengrafo-network
+
+networks:
+  opengrafo-network:
+    driver: bridge
+
 volumes:
   neo4j_data:
   neo4j_logs:
@@ -55,3 +75,4 @@ volumes:
   rabbitmq_data:
   minio_data:
   grafana_data:
+  keycloak_data:

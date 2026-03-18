@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Outlet, Navigate } from 'react-router-dom'
-import { isAuthenticated } from '@/lib/auth'
+import { Outlet } from 'react-router-dom'
+import { keycloak } from '../../lib/keycloak'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 
@@ -8,8 +8,9 @@ const SIDEBAR_WIDTH     = 240
 const SIDEBAR_COLLAPSED = 56
 
 export function AppLayout() {
-  if (!isAuthenticated()) {
-    return <Navigate to="/login" replace />
+  if (!keycloak.authenticated) {
+    keycloak.login()
+    return null
   }
 
   const [collapsed, setCollapsed] = useState(false)

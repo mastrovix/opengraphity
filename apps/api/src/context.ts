@@ -1,5 +1,8 @@
 import jwt from 'jsonwebtoken'
 import type express from 'express'
+import { GraphQLError } from 'graphql'
+import { getSession } from '@opengraphity/neo4j'
+import { verifyKeycloakToken } from './auth/keycloak.js'
 
 const JWT_SECRET =
   process.env['JWT_SECRET'] ?? 'opengraphity_dev_secret_change_in_production'
@@ -18,7 +21,30 @@ interface JWTPayload {
   role:      'admin' | 'operator' | 'viewer'
 }
 
-export function buildContext(req: express.Request): GraphQLContext {
+const ITSM_ROLES = ['admin', 'operator', 'viewer'] as const
+
+async function getUserByEmail(email: string): Promise<{ id: string; tenantId: string; role: string } | null> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const result = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (u:User {email: $email}) RETURN u.id AS id, u.tenant_id AS tenantId, u.role AS role LIMIT 1`,
+        { email },
+      ),
+    )
+    if (!result.records.length) return null
+    const r = result.records[0]
+    return {
+      id:       r.get('id')       as string,
+      tenantId: r.get('tenantId') as string,
+      role:     r.get('role')     as string,
+    }
+  } finally {
+    await session.close()
+  }
+}
+
+export async function buildContext(req: express.Request): Promise<GraphQLContext> {
   const auth = req.headers.authorization
 
   if (!auth?.startsWith('Bearer ')) {
@@ -30,11 +56,31 @@ export function buildContext(req: express.Request): GraphQLContext {
     if (isLogin) {
       return { tenantId: '', userId: '', userEmail: '', role: 'viewer' }
     }
-    throw new Error('Unauthorized')
+    throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHORIZED' } })
   }
 
   const token = auth.slice(7)
 
+  // Try Keycloak token first
+  try {
+    const decoded = await verifyKeycloakToken(token)
+    const user = await getUserByEmail(decoded.email)
+
+    const kcRole = decoded.realm_access?.roles?.find((r) =>
+      (ITSM_ROLES as readonly string[]).includes(r),
+    ) ?? 'viewer'
+
+    return {
+      tenantId:  user?.tenantId ?? 'tenant-demo',
+      userId:    user?.id       ?? decoded.sub,
+      userEmail: decoded.email  ?? decoded.preferred_username,
+      role:      (user?.role    ?? kcRole) as GraphQLContext['role'],
+    }
+  } catch {
+    // Not a Keycloak token — fall through to legacy JWT
+  }
+
+  // Fallback: legacy dev JWT
   try {
     const payload = jwt.verify(token, JWT_SECRET) as JWTPayload
     return {
@@ -44,6 +90,6 @@ export function buildContext(req: express.Request): GraphQLContext {
       role:      payload.role,
     }
   } catch {
-    throw new Error('Invalid token')
+    throw new GraphQLError('Invalid token', { extensions: { code: 'UNAUTHORIZED' } })
   }
 }

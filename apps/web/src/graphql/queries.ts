@@ -322,6 +322,26 @@ export const GET_CHANGE_IMPACT = gql`
   }
 `
 
+export const GET_WORKFLOW_LIST = gql`
+  query GetWorkflowList {
+    workflowDefinitions {
+      id name entityType active version
+    }
+  }
+`
+
+export const GET_WORKFLOW_DEFINITION_BY_ID = gql`
+  query GetWorkflowDefinitionById($id: ID!) {
+    workflowDefinitionById(id: $id) {
+      id name entityType version active
+      steps { id name label type enterActions exitActions }
+      transitions {
+        id fromStepName toStepName trigger label requiresInput inputField condition
+      }
+    }
+  }
+`
+
 export const GET_WORKFLOW_DEFINITION = gql`
   query GetWorkflowDefinition($entityType: String!) {
     workflowDefinition(entityType: $entityType) {

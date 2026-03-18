@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { getToken } from '@/lib/auth'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { toast } from 'sonner'
 import { BarChart2, X } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
 import { EmptyState } from '@/components/EmptyState'
@@ -14,15 +16,6 @@ const GET_CONVERSATIONS = gql`
     reportConversations {
       id title createdAt updatedAt
       messages { id role content createdAt }
-    }
-  }
-`
-
-const ASK_REPORT = gql`
-  mutation AskReport($question: String!, $conversationId: ID) {
-    askReport(question: $question, conversationId: $conversationId) {
-      conversationId
-      message { id role content createdAt }
     }
   }
 `
@@ -74,41 +67,45 @@ function extractCSV(content: string): string | null {
   return lines.join('\n')
 }
 
-const SUGGESTIONS = [
-  'Quanti incident sono aperti oggi?',
-  'Quali CI hanno avuto più problemi questo mese?',
-  'Report change della settimana scorsa',
-  'Qual è il MTTR medio per severity?',
-]
-
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
   const { data, refetch } = useQuery<{ reportConversations: ReportConversation[] }>(GET_CONVERSATIONS)
-  const [askReport, { loading }]      = useMutation<{ askReport: { conversationId: string; message: ReportMessage } }>(ASK_REPORT)
   const [deleteConv]                  = useMutation(DELETE_CONVERSATION)
 
   const [activeId, setActiveId]       = useState<string | null>(null)
   const [input, setInput]             = useState('')
   const [localMessages, setLocalMessages] = useState<ReportMessage[]>([])
+  const [isStreaming, setIsStreaming]  = useState(false)
+  const [streamingText, setStreamingText] = useState('')
+  const [toolStatus, setToolStatus]   = useState<string | null>(null)
   const messagesEndRef                = useRef<HTMLDivElement>(null)
   const textareaRef                   = useRef<HTMLTextAreaElement>(null)
+  const abortRef                      = useRef<AbortController | null>(null)
+  const suppressSyncRef               = useRef(false)
 
   const conversations = data?.reportConversations ?? []
   const active = conversations.find((c) => c.id === activeId) ?? null
 
-  // Sync local messages when active conversation changes
+  // Sync local messages when user switches conversation — suppressed during/after streaming
   useEffect(() => {
+    if (suppressSyncRef.current) return
     if (active) setLocalMessages(active.messages)
   }, [activeId, active?.messages.length])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [localMessages, loading])
+  }, [localMessages, isStreaming, streamingText])
+
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
 
   const handleSend = useCallback(async (question: string) => {
-    if (!question.trim() || loading) return
+    if (!question.trim() || isStreaming) return
     setInput('')
+
+    const isNewConv = !activeId
 
     const userMsg: ReportMessage = {
       id: `tmp-${Date.now()}`,
@@ -117,25 +114,145 @@ export default function ReportsPage() {
       createdAt: new Date().toISOString(),
     }
     setLocalMessages((prev) => [...prev, userMsg])
+    setIsStreaming(true)
+    setStreamingText('')
+    setToolStatus(null)
+
+    const abort = new AbortController()
+    abortRef.current = abort
+
+    const apiUrl = import.meta.env['VITE_API_BASE_URL'] ?? 'http://localhost:4000'
+    const token = getToken()
 
     try {
-      const result = await askReport({ variables: { question, conversationId: activeId } })
-      const data = result.data?.askReport
-      if (data) {
-        if (!activeId) setActiveId(data.conversationId)
+      const res = await fetch(`${apiUrl}/api/report/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token ? `Bearer ${token}` : '',
+        },
+        body: JSON.stringify({ question, conversationId: activeId }),
+        signal: abort.signal,
+      })
+
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let pendingConvId: string | null = null
+      let accumulatedText = ''
+      let donePayload: { message: ReportMessage; conversationId?: string } | null = null
+      let errorOccurred = false
+
+      // Parse SSE with event names
+      const processSSEChunk = (block: string) => {
+        const lines = block.split('\n')
+        let currentEvent = ''
+        let lastEventWasError = false
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+            lastEventWasError = currentEvent === 'error'
+          } else if (line.startsWith('data: ')) {
+            if (lastEventWasError) {
+              try {
+                const errorData = JSON.parse(line.slice(6)) as { message?: string }
+                errorOccurred = true
+                setIsStreaming(false)
+                setStreamingText('')
+                setLocalMessages((prev) => prev.filter((m) => !m.id.startsWith('tmp-')))
+                toast.error(
+                  errorData.message?.includes('overloaded')
+                    ? 'Servizio AI temporaneamente sovraccarico. Riprova tra qualche secondo.'
+                    : (errorData.message ?? 'Errore durante la generazione della risposta'),
+                )
+              } catch { /* ignore */ }
+              lastEventWasError = false
+              currentEvent = ''
+              return
+            }
+            try {
+              const payload = JSON.parse(line.slice(6)) as {
+                text?: string
+                description?: string
+                conversationId?: string
+                message?: ReportMessage
+              }
+              if (currentEvent === 'chunk' && payload.text) {
+                accumulatedText += payload.text
+                setStreamingText((prev) => prev + payload.text!)
+              } else if (currentEvent === 'tool' && payload.description) {
+                setToolStatus(payload.description)
+              } else if (currentEvent === 'conversation' && payload.conversationId) {
+                // Don't call setActiveId here — it triggers useEffect that wipes localMessages
+                if (isNewConv) pendingConvId = payload.conversationId
+              } else if (currentEvent === 'done' && payload.message) {
+                donePayload = { message: payload.message, conversationId: payload.conversationId }
+              }
+            } catch { /* ignore */ }
+            currentEvent = ''
+            lastEventWasError = false
+          }
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        console.log('[SSE] raw chunk:', chunk)
+        buffer += chunk
+        const blocks = buffer.split('\n\n')
+        buffer = blocks.pop() ?? ''
+        for (const block of blocks) {
+          const dataLine = block.split('\n').find((l) => l.startsWith('data: '))
+          if (dataLine) {
+            try { console.log('[SSE] parsed data:', JSON.parse(dataLine.slice(6))) } catch { /* ignore */ }
+          }
+          processSSEChunk(block)
+        }
+      }
+      if (buffer.trim()) processSSEChunk(buffer)
+
+      // TS 5.4 narrows closure-assigned vars to null — use explicit cast to restore union type
+      type DonePayload = { message: ReportMessage; conversationId?: string }
+      const doneFinal = donePayload as DonePayload | null
+      if (!errorOccurred && doneFinal) {
+        const finalConvId = doneFinal.conversationId ?? pendingConvId
+        const assistantMsg: ReportMessage = {
+          id: doneFinal.message.id,
+          role: 'assistant',
+          content: accumulatedText || doneFinal.message.content,
+          createdAt: doneFinal.message.createdAt,
+        }
+
+        // Suppress the sync-from-Apollo effect until refetch settles
+        suppressSyncRef.current = true
         setLocalMessages((prev) => {
           const withoutTmp = prev.filter((m) => !m.id.startsWith('tmp-'))
-          return [...withoutTmp, userMsg, data.message]
+          return [...withoutTmp, userMsg, assistantMsg]
         })
-        void refetch()
+        setStreamingText('')
+        if (isNewConv && finalConvId) setActiveId(finalConvId)
+        void (refetch() as Promise<unknown>).then(() => { suppressSyncRef.current = false })
+      } else if (!errorOccurred) {
+        setLocalMessages((prev) => prev.filter((m) => !m.id.startsWith('tmp-')))
       }
     } catch (err) {
-      console.error('[reports] send error:', err)
-      setLocalMessages((prev) =>
-        prev.filter((m) => !m.id.startsWith('tmp-'))
-      )
+      if ((err as Error).name !== 'AbortError') {
+        console.error('[reports] stream error:', err)
+        setLocalMessages((prev) => prev.filter((m) => !m.id.startsWith('tmp-')))
+      }
+    } finally {
+      setIsStreaming(false)
+      setStreamingText('')
+      setToolStatus(null)
+      abortRef.current = null
     }
-  }, [activeId, loading, askReport, refetch])
+  }, [activeId, isStreaming, refetch])
+
+  const loading = isStreaming
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -239,24 +356,6 @@ export default function ReportsPage() {
               <div style={{ fontSize: 22, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Analisi ITSM</div>
               <div style={{ fontSize: 14, color: '#8892a4' }}>Fai domande sui tuoi dati in linguaggio naturale</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8, width: '100%', maxWidth: 520 }}>
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => void handleSend(s)}
-                  style={{
-                    fontSize: 13, color: '#374151', background: '#f9fafb',
-                    border: '1px solid #e5e7eb', borderRadius: 8,
-                    padding: '10px 14px', cursor: 'pointer', textAlign: 'left',
-                    transition: 'background 0.1s',
-                  }}
-                  onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = '#f3f4f6')}
-                  onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = '#f9fafb')}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           /* Messages area */
@@ -328,12 +427,73 @@ export default function ReportsPage() {
               </div>
             ))}
 
-            {loading && (
+            {isStreaming && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', width: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <SkeletonLine width="90%" height={12} />
-                  <SkeletonLine width="70%" height={12} />
-                  <SkeletonLine width="50%" height={12} />
+                <div style={{
+                  maxWidth: '85%',
+                  background: '#f9fafb',
+                  color: '#111827',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 12,
+                  padding: '10px 14px',
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                }}>
+                  {toolStatus && !streamingText && (
+                    <div style={{ fontSize: 12, color: '#8892a4', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ animation: 'pulse 1.5s infinite' }}>⚙</span>
+                      {toolStatus}
+                    </div>
+                  )}
+                  {streamingText ? (
+                    <div className="report-markdown">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({ children }) => (
+                            <div style={{ overflowX: 'auto', margin: '12px 0' }}>
+                              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>{children}</table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead style={{ background: '#f8fafc' }}>{children}</thead>,
+                          tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
+                          th: ({ children }) => (
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
+                          ),
+                          td: ({ children }) => (
+                            <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 13, verticalAlign: 'top' }}>{children}</td>
+                          ),
+                          p: ({ children }) => (
+                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: '#374151', fontSize: 14 }}>{children}</p>
+                          ),
+                          strong: ({ children }) => (
+                            <strong style={{ fontWeight: 600, color: '#111827' }}>{children}</strong>
+                          ),
+                          h2: ({ children }) => (
+                            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
+                          ),
+                          h3: ({ children }) => (
+                            <h3 style={{ fontSize: 13, fontWeight: 600, color: '#374151', margin: '12px 0 6px 0' }}>{children}</h3>
+                          ),
+                          ul: ({ children }) => (
+                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: '#374151', fontSize: 14 }}>{children}</ul>
+                          ),
+                          li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
+                          code: ({ children }) => (
+                            <code style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, fontSize: 12, fontFamily: 'monospace', color: '#1e3a5f' }}>{children}</code>
+                          ),
+                        }}
+                      >
+                        {streamingText}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <SkeletonLine width="90%" height={12} />
+                      <SkeletonLine width="70%" height={12} />
+                      <SkeletonLine width="50%" height={12} />
+                    </div>
+                  )}
                 </div>
               </div>
             )}

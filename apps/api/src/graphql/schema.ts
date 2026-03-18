@@ -56,6 +56,7 @@ export const typeDefs = `#graphql
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
     incidentAvailableTransitions(incidentId: ID!): [WorkflowTransition!]!
     workflowDefinition(entityType: String!): WorkflowDefinition
+    workflowDefinitionById(id: ID!): WorkflowDefinition
     workflowDefinitions(entityType: String): [WorkflowDefinition!]!
   }
 

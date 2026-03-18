@@ -5,7 +5,6 @@ import { createBrowserRouter, RouterProvider, useRouteError } from 'react-router
 import { Toaster } from '@/components/ui/sonner'
 import { apolloClient } from '@/lib/apollo'
 import { AppLayout } from '@/components/layout/AppLayout'
-import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { IncidentListPage } from '@/pages/incidents/IncidentListPage'
 import { IncidentDetailPage } from '@/pages/incidents/IncidentDetailPage'
@@ -27,6 +26,7 @@ import { ServersPage } from '@/pages/servers/ServersPage'
 import { ServerDetailPage } from '@/pages/servers/ServerDetailPage'
 import { CertificatesPage } from '@/pages/certificates/CertificatesPage'
 import { CertificateDetailPage } from '@/pages/certificates/CertificateDetailPage'
+import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
 import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
 import NotificationsPage from '@/pages/settings/NotificationsPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
@@ -35,6 +35,7 @@ import { TeamsPage } from '@/pages/teams/TeamsPage'
 import { TeamDetailPage } from '@/pages/teams/TeamDetailPage'
 import { UsersPage } from '@/pages/users/UsersPage'
 import { UserDetailPage } from '@/pages/users/UserDetailPage'
+import { initKeycloak, keycloak } from '@/lib/keycloak'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
 
@@ -66,11 +67,6 @@ function RouteError() {
 
 const router = createBrowserRouter([
   {
-    path:         '/login',
-    element:      <LoginPage />,
-    errorElement: <RouteError />,
-  },
-  {
     path:         '/',
     element:      <AppLayout />,
     errorElement: <RouteError />,
@@ -97,7 +93,8 @@ const router = createBrowserRouter([
       { path: 'servers/:id',                   element: <ServerDetailPage />,            errorElement: <RouteError /> },
       { path: 'certificates',                  element: <CertificatesPage />,            errorElement: <RouteError /> },
       { path: 'certificates/:id',              element: <CertificateDetailPage />,       errorElement: <RouteError /> },
-      { path: 'workflow/incident',             element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
+      { path: 'workflow',                      element: <WorkflowListPage />,            errorElement: <RouteError /> },
+      { path: 'workflow/:id',                  element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
       { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },
@@ -111,11 +108,23 @@ const router = createBrowserRouter([
 
 const root = document.getElementById('root')!
 
-createRoot(root).render(
-  <StrictMode>
-    <ApolloProvider client={apolloClient}>
-      <RouterProvider router={router} />
-      <Toaster richColors position="top-right" />
-    </ApolloProvider>
-  </StrictMode>,
-)
+initKeycloak().then((authenticated) => {
+  if (!authenticated) {
+    keycloak.login()
+    return
+  }
+
+  // Auto-refresh token before expiry
+  setInterval(() => {
+    keycloak.updateToken(60).catch(() => keycloak.login())
+  }, 30_000)
+
+  createRoot(root).render(
+    <StrictMode>
+      <ApolloProvider client={apolloClient}>
+        <RouterProvider router={router} />
+        <Toaster richColors position="top-right" />
+      </ApolloProvider>
+    </StrictMode>,
+  )
+})

@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { to: '/problems',               label: 'Problems',   icon: Bug },
   { to: '/changes',                label: 'Changes',    icon: GitPullRequest },
   { to: '/requests',               label: 'Requests',   icon: Inbox },
-  { to: '/workflow/incident',      label: 'Workflow',   icon: GitBranch },
+  { to: '/workflow',               label: 'Workflow',   icon: GitBranch },
   { to: '/reports',                label: 'Report',     icon: BarChart2 },
   { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
   { to: '/settings/profile',       label: 'Profilo',    icon: User },

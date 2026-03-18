@@ -9,6 +9,7 @@ import { resolvers } from './graphql/resolvers/index.js'
 import { buildContext, type GraphQLContext } from './context.js'
 import { healthRouter } from './rest/health.js'
 import { sseRouter } from './rest/sse.js'
+import { reportStreamRouter } from './rest/report-stream.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import http from 'http'
 
@@ -52,6 +53,7 @@ app.use(rateLimit({
 
 app.use('/',    healthRouter)
 app.use('/api', sseRouter)
+app.use('/api', reportStreamRouter)
 
 // ── Apollo Server ─────────────────────────────────────────────────────────────
 

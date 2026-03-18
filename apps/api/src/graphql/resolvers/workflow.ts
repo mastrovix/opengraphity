@@ -159,6 +159,64 @@ async function workflowDefinition(
   })
 }
 
+async function workflowDefinitionById(
+  _: unknown,
+  { id }: { id: string },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const defResult = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $id, tenant_id: $tenantId})
+        MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+        RETURN wd, collect(s) AS steps
+        LIMIT 1
+      `, { id, tenantId: ctx.tenantId }),
+    )
+    if (!defResult.records.length) return null
+
+    const wd    = defResult.records[0].get('wd').properties    as Record<string, unknown>
+    const steps = defResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
+
+    const trResult = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
+        RETURN from.name AS fromStep, to.name AS toStep,
+               tr.id AS id, tr.trigger AS trigger, tr.label AS label,
+               tr.requires_input AS requiresInput,
+               tr.input_field AS inputField,
+               tr.condition AS condition
+      `, { defId: id }),
+    )
+
+    return {
+      id:         wd['id']          as string,
+      name:       wd['name']        as string,
+      entityType: wd['entity_type'] as string,
+      version:    wd['version']     as number,
+      active:     wd['active']      as boolean,
+      steps: steps.map((s) => ({
+        id:           s.properties['id']             as string,
+        name:         s.properties['name']           as string,
+        label:        s.properties['label']          as string,
+        type:         s.properties['type']           as string,
+        enterActions: (s.properties['enter_actions'] ?? null) as string | null,
+        exitActions:  (s.properties['exit_actions']  ?? null) as string | null,
+      })),
+      transitions: trResult.records.map((r) => ({
+        id:            r.get('id')            as string,
+        fromStepName:  r.get('fromStep')      as string,
+        toStepName:    r.get('toStep')        as string,
+        trigger:       r.get('trigger')       as string,
+        label:         r.get('label')         as string,
+        requiresInput: r.get('requiresInput') as boolean,
+        inputField:    (r.get('inputField')   ?? null) as string | null,
+        condition:     (r.get('condition')    ?? null) as string | null,
+      })),
+    }
+  })
+}
+
 async function workflowDefinitions(
   _: unknown,
   { entityType }: { entityType?: string | null },
@@ -442,6 +500,7 @@ export const workflowResolvers = {
     incidentAvailableTransitions,
     incidentWorkflowHistory,
     workflowDefinition,
+    workflowDefinitionById,
     workflowDefinitions,
   },
   Mutation: {
