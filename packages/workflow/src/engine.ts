@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { Session } from 'neo4j-driver'
+import pino from 'pino'
 import type {
   WorkflowInstance,
   WorkflowActionConfig,
@@ -7,6 +8,8 @@ import type {
   TransitionResult,
 } from './types.js'
 import { runAction } from './actions.js'
+
+const workflowLogger = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow' })
 
 export class WorkflowEngine {
 
@@ -258,7 +261,7 @@ export class WorkflowEngine {
           await runAction(action, instance, { userId: context.userId, notes: input.notes })
           actionsRun.push(action.type)
         } catch (e) {
-          console.error(`[workflow] Action "${action.type}" failed:`, e)
+          workflowLogger.error({ err: e, actionType: action.type }, 'Workflow action failed')
           // Non bloccare la transizione se un'azione fallisce
         }
       }

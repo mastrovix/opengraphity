@@ -79,7 +79,7 @@ describe('WorkflowEngine', () => {
       const engine = new WorkflowEngine()
       const result = await engine.transition(
         session as never,
-        { instanceId: 'wi-123', toStepName: 'nonexistent', notes: null },
+        { instanceId: 'wi-123', toStepName: 'nonexistent', triggeredBy: 'user-1', triggerType: 'manual' },
         { userId: 'user-1' },
       )
       expect(result.success).toBe(false)
@@ -104,7 +104,7 @@ describe('WorkflowEngine', () => {
       const engine = new WorkflowEngine()
       const result = await engine.transition(
         session as never,
-        { instanceId: 'wi-123', toStepName: 'resolved', notes: null },
+        { instanceId: 'wi-123', toStepName: 'resolved', triggeredBy: 'user-1', triggerType: 'manual' },
         { userId: 'user-1' },
       )
       expect(result.success).toBe(false)

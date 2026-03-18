@@ -11,6 +11,7 @@ import { healthRouter } from './rest/health.js'
 import { sseRouter } from './rest/sse.js'
 import { reportStreamRouter } from './rest/report-stream.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
+import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import http from 'http'
 
 const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
@@ -30,6 +31,22 @@ app.use(cors({
 }))
 
 app.use(express.json())
+
+// ── HTTP request logging ───────────────────────────────────────────────────
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now()
+  res.on('finish', () => {
+    httpLogger.info({
+      method:    req.method,
+      url:       req.url,
+      status:    res.statusCode,
+      duration:  Date.now() - start,
+      userAgent: req.headers['user-agent'],
+    }, 'HTTP request')
+  })
+  next()
+})
 
 // ── Slack routes — express.raw() per-route, dopo express.json() ───────────────
 
@@ -57,7 +74,20 @@ app.use('/api', reportStreamRouter)
 
 // ── Apollo Server ─────────────────────────────────────────────────────────────
 
-const apolloServer = new ApolloServer<GraphQLContext>({ typeDefs, resolvers })
+const apolloServer = new ApolloServer<GraphQLContext>({
+  typeDefs,
+  resolvers,
+  formatError: (error) => {
+    if (error.extensions?.['code'] !== 'UNAUTHORIZED') {
+      graphqlLogger.error({
+        message: error.message,
+        code:    error.extensions?.['code'],
+        path:    error.path,
+      }, 'GraphQL error')
+    }
+    return error
+  },
+})
 
 // ── startServer ───────────────────────────────────────────────────────────────
 
@@ -74,9 +104,7 @@ export async function startServer(): Promise<http.Server> {
   return new Promise((resolve) => {
     const httpServer = http.createServer(app)
     httpServer.listen(PORT, () => {
-      console.log(`🚀 OpenGraphity API ready at http://localhost:${PORT}/graphql`)
-      console.log(`🏥 Health check: http://localhost:${PORT}/health`)
-      console.log(`📡 SSE endpoint: http://localhost:${PORT}/api/sse`)
+      logger.info({ port: PORT }, 'OpenGraphity API ready')
       resolve(httpServer)
     })
   })

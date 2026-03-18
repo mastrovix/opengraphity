@@ -3,6 +3,7 @@ import type express from 'express'
 import { GraphQLError } from 'graphql'
 import { getSession } from '@opengraphity/neo4j'
 import { verifyKeycloakToken } from './auth/keycloak.js'
+import { authLogger } from './lib/logger.js'
 
 const JWT_SECRET =
   process.env['JWT_SECRET'] ?? 'opengraphity_dev_secret_change_in_production'
@@ -76,8 +77,8 @@ export async function buildContext(req: express.Request): Promise<GraphQLContext
       userEmail: decoded.email  ?? decoded.preferred_username,
       role:      (user?.role    ?? kcRole) as GraphQLContext['role'],
     }
-  } catch {
-    // Not a Keycloak token — fall through to legacy JWT
+  } catch (err) {
+    authLogger.warn({ err }, 'Keycloak token invalid, trying JWT fallback')
   }
 
   // Fallback: legacy dev JWT
