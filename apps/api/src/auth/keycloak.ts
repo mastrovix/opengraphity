@@ -27,8 +27,8 @@ export async function verifyKeycloakToken(token: string): Promise<KeycloakTokenP
       token,
       getKey,
       {
+        algorithms: ['RS256'],
         issuer: `${process.env['KEYCLOAK_URL']}/realms/${process.env['KEYCLOAK_REALM']}`,
-        // audience check removed — Keycloak tokens may not include client_id as audience
       },
       (err, decoded) => {
         if (err) {

@@ -4,12 +4,14 @@ import helmet from 'helmet'
 import { rateLimit } from 'express-rate-limit'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@apollo/server/express4'
+import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
 import { typeDefs } from './graphql/schema.js'
 import { resolvers } from './graphql/resolvers/index.js'
 import { buildContext, type GraphQLContext } from './context.js'
 import { healthRouter } from './rest/health.js'
 import { sseRouter } from './rest/sse.js'
 import { reportStreamRouter } from './rest/report-stream.js'
+import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import http from 'http'
@@ -21,7 +23,6 @@ const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
 export const app: Application = express()
 
 app.use(helmet({
-  // Disable CSP for GraphQL playground in development
   contentSecurityPolicy: process.env['NODE_ENV'] === 'production',
 }))
 
@@ -48,7 +49,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next()
 })
 
-// ── Slack routes — express.raw() per-route, dopo express.json() ───────────────
+// ── Slack routes ───────────────────────────────────────────────────────────
 
 app.post('/api/slack/commands',
   express.raw({ type: '*/*' }),
@@ -60,7 +61,7 @@ app.post('/api/slack/actions',
 )
 
 app.use(rateLimit({
-  windowMs: 15 * 60 * 1_000, // 15 minutes
+  windowMs: 15 * 60 * 1_000,
   max:      100,
   standardHeaders: true,
   legacyHeaders:   false,
@@ -71,22 +72,44 @@ app.use(rateLimit({
 app.use('/',    healthRouter)
 app.use('/api', sseRouter)
 app.use('/api', reportStreamRouter)
+app.use('/api', clientLogRouter)
 
 // ── Apollo Server ─────────────────────────────────────────────────────────────
 
 const apolloServer = new ApolloServer<GraphQLContext>({
   typeDefs,
   resolvers,
-  formatError: (error) => {
-    if (error.extensions?.['code'] !== 'UNAUTHORIZED') {
+  formatError: (formattedError, error) => {
+    if (formattedError.extensions?.['code'] !== 'UNAUTHORIZED') {
       graphqlLogger.error({
-        message: error.message,
-        code:    error.extensions?.['code'],
-        path:    error.path,
+        message:   formattedError.message,
+        code:      formattedError.extensions?.['code'],
+        path:      formattedError.path,
+        operation: (error as { source?: { body?: string } })?.source?.body?.slice(0, 200),
       }, 'GraphQL error')
     }
-    return error
+    return formattedError
   },
+  plugins: [
+    {
+      async requestDidStart() {
+        return {
+          async didEncounterErrors(ctx: GraphQLRequestContextDidEncounterErrors<GraphQLContext>) {
+            ctx.errors.forEach((err) => {
+              const e = err as { extensions?: { code?: string }; message?: string; path?: unknown }
+              if (e.extensions?.['code'] !== 'UNAUTHORIZED') {
+                graphqlLogger.error({
+                  operation:     ctx.operation?.operation,
+                  message:       e.message,
+                  path:          e.path,
+                }, 'GraphQL operation error')
+              }
+            })
+          },
+        }
+      },
+    },
+  ],
 })
 
 // ── startServer ───────────────────────────────────────────────────────────────

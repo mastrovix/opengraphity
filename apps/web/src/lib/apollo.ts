@@ -5,18 +5,36 @@ import { onError } from '@apollo/client/link/error'
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { getToken as _getToken, removeToken as _removeToken, isTokenExpired as _isTokenExpired } from './auth'
 import { keycloak } from './keycloak'
+import { clientLogger } from './clientLogger'
 
 const httpLink = createHttpLink({
   uri: import.meta.env['VITE_API_URL'] ?? '/graphql',
 })
 
-const errorLink = onError(({ error, operation }) => {
-  console.error('[Apollo error] operation:', operation.operationName, '| error:', error)
+const errorLink = onError((errResponse) => {
+  const { operation } = errResponse
+  const graphQLErrors = (errResponse as { graphQLErrors?: Array<{ message: string; path?: unknown }> }).graphQLErrors
+  const networkError  = (errResponse as { networkError?: { message: string } }).networkError
+
+  if (graphQLErrors) {
+    graphQLErrors.forEach(({ message, path }) => {
+      if (!message.toLowerCase().includes('unauthorized')) {
+        clientLogger.error(`GraphQL error: ${message}`, {
+          path:      path as Record<string, unknown> | undefined,
+          operation: operation.operationName,
+        })
+      }
+    })
+  }
+  if (networkError) {
+    clientLogger.error(`Network error: ${networkError.message}`, {
+      operation: operation.operationName,
+    })
+  }
 })
 
 const authLink = setContext((_, { headers }) => {
   const token = keycloak.token ?? localStorage.getItem('og_token') ?? ''
-  console.log('[APOLLO] token presente:', !!token, token?.slice(0, 30))
   return {
     headers: {
       ...headers,

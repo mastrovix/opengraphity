@@ -36,6 +36,7 @@ import { TeamDetailPage } from '@/pages/teams/TeamDetailPage'
 import { UsersPage } from '@/pages/users/UsersPage'
 import { UserDetailPage } from '@/pages/users/UserDetailPage'
 import { LogsPage } from '@/pages/logs/LogsPage'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
@@ -123,10 +124,12 @@ initKeycloak().then((authenticated) => {
 
   createRoot(root).render(
     <StrictMode>
-      <ApolloProvider client={apolloClient}>
-        <RouterProvider router={router} />
-        <Toaster richColors position="top-right" />
-      </ApolloProvider>
+      <ErrorBoundary>
+        <ApolloProvider client={apolloClient}>
+          <RouterProvider router={router} />
+          <Toaster richColors position="top-right" />
+        </ApolloProvider>
+      </ErrorBoundary>
     </StrictMode>,
   )
 })
