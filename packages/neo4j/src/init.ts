@@ -90,6 +90,50 @@ const INDEXES: SchemaStatement[] = [
     label: 'ServiceRequest(tenant_id, status)',
     cypher: 'CREATE INDEX service_request_tenant_status IF NOT EXISTS FOR (n:ServiceRequest) ON (n.tenant_id, n.status)',
   },
+  // User
+  { label: 'User(email)',               cypher: 'CREATE INDEX user_email IF NOT EXISTS FOR (u:User) ON (u.email)' },
+  { label: 'User(tenant_id)',           cypher: 'CREATE INDEX user_tenant IF NOT EXISTS FOR (u:User) ON (u.tenant_id)' },
+  { label: 'User(tenant_id, email)',    cypher: 'CREATE INDEX user_tenant_email IF NOT EXISTS FOR (u:User) ON (u.tenant_id, u.email)' },
+  // Team
+  { label: 'Team(tenant_id)',           cypher: 'CREATE INDEX team_tenant IF NOT EXISTS FOR (t:Team) ON (t.tenant_id)' },
+  { label: 'Team(tenant_id, type)',     cypher: 'CREATE INDEX team_type IF NOT EXISTS FOR (t:Team) ON (t.tenant_id, t.type)' },
+  // Change
+  { label: 'Change(tenant_id, status)', cypher: 'CREATE INDEX change_tenant_status IF NOT EXISTS FOR (c:Change) ON (c.tenant_id, c.status)' },
+  { label: 'Change(tenant_id, type)',   cypher: 'CREATE INDEX change_tenant_type IF NOT EXISTS FOR (c:Change) ON (c.tenant_id, c.type)' },
+  // Application
+  { label: 'Application(tenant_id)',                    cypher: 'CREATE INDEX app_tenant IF NOT EXISTS FOR (n:Application) ON (n.tenant_id)' },
+  { label: 'Application(tenant_id, status)',            cypher: 'CREATE INDEX app_tenant_status IF NOT EXISTS FOR (n:Application) ON (n.tenant_id, n.status)' },
+  { label: 'Application(tenant_id, environment)',       cypher: 'CREATE INDEX app_tenant_env IF NOT EXISTS FOR (n:Application) ON (n.tenant_id, n.environment)' },
+  { label: 'Application(tenant_id, name)',              cypher: 'CREATE INDEX app_name IF NOT EXISTS FOR (n:Application) ON (n.tenant_id, n.name)' },
+  // Database
+  { label: 'Database(tenant_id)',                       cypher: 'CREATE INDEX db_tenant IF NOT EXISTS FOR (n:Database) ON (n.tenant_id)' },
+  { label: 'Database(tenant_id, status)',               cypher: 'CREATE INDEX db_tenant_status IF NOT EXISTS FOR (n:Database) ON (n.tenant_id, n.status)' },
+  { label: 'Database(tenant_id, name)',                 cypher: 'CREATE INDEX db_name IF NOT EXISTS FOR (n:Database) ON (n.tenant_id, n.name)' },
+  // DatabaseInstance
+  { label: 'DatabaseInstance(tenant_id)',               cypher: 'CREATE INDEX dbi_tenant IF NOT EXISTS FOR (n:DatabaseInstance) ON (n.tenant_id)' },
+  { label: 'DatabaseInstance(tenant_id, status)',       cypher: 'CREATE INDEX dbi_tenant_status IF NOT EXISTS FOR (n:DatabaseInstance) ON (n.tenant_id, n.status)' },
+  { label: 'DatabaseInstance(tenant_id, name)',         cypher: 'CREATE INDEX dbi_name IF NOT EXISTS FOR (n:DatabaseInstance) ON (n.tenant_id, n.name)' },
+  // Server
+  { label: 'Server(tenant_id)',                         cypher: 'CREATE INDEX srv_tenant IF NOT EXISTS FOR (n:Server) ON (n.tenant_id)' },
+  { label: 'Server(tenant_id, status)',                 cypher: 'CREATE INDEX srv_tenant_status IF NOT EXISTS FOR (n:Server) ON (n.tenant_id, n.status)' },
+  { label: 'Server(tenant_id, os_version)',             cypher: 'CREATE INDEX srv_tenant_os IF NOT EXISTS FOR (n:Server) ON (n.tenant_id, n.os_version)' },
+  { label: 'Server(tenant_id, name)',                   cypher: 'CREATE INDEX srv_name IF NOT EXISTS FOR (n:Server) ON (n.tenant_id, n.name)' },
+  // Certificate
+  { label: 'Certificate(tenant_id)',                    cypher: 'CREATE INDEX cert_tenant IF NOT EXISTS FOR (n:Certificate) ON (n.tenant_id)' },
+  { label: 'Certificate(tenant_id, status)',            cypher: 'CREATE INDEX cert_tenant_status IF NOT EXISTS FOR (n:Certificate) ON (n.tenant_id, n.status)' },
+  { label: 'Certificate(tenant_id, expires_at)',        cypher: 'CREATE INDEX cert_expires IF NOT EXISTS FOR (n:Certificate) ON (n.tenant_id, n.expires_at)' },
+  { label: 'Certificate(tenant_id, name)',              cypher: 'CREATE INDEX cert_name IF NOT EXISTS FOR (n:Certificate) ON (n.tenant_id, n.name)' },
+  // WorkflowDefinition
+  { label: 'WorkflowDefinition(tenant_id, entity_type)', cypher: 'CREATE INDEX wf_tenant_type IF NOT EXISTS FOR (w:WorkflowDefinition) ON (w.tenant_id, w.entity_type)' },
+  { label: 'WorkflowDefinition(tenant_id, active)',       cypher: 'CREATE INDEX wf_tenant_active IF NOT EXISTS FOR (w:WorkflowDefinition) ON (w.tenant_id, w.active)' },
+  // AssessmentTask / DeployStep
+  { label: 'AssessmentTask(change_id)',                 cypher: 'CREATE INDEX task_change IF NOT EXISTS FOR (t:AssessmentTask) ON (t.change_id)' },
+  { label: 'AssessmentTask(tenant_id, status)',         cypher: 'CREATE INDEX task_tenant_status IF NOT EXISTS FOR (t:AssessmentTask) ON (t.tenant_id, t.status)' },
+  { label: 'DeployStep(change_id)',                     cypher: 'CREATE INDEX step_change IF NOT EXISTS FOR (s:DeployStep) ON (s.change_id)' },
+  // ReportConversation
+  { label: 'ReportConversation(tenant_id)',             cypher: 'CREATE INDEX report_tenant IF NOT EXISTS FOR (r:ReportConversation) ON (r.tenant_id)' },
+  // NotificationChannel
+  { label: 'NotificationChannel(tenant_id)',            cypher: 'CREATE INDEX notif_tenant IF NOT EXISTS FOR (n:NotificationChannel) ON (n.tenant_id)' },
 ]
 
 async function runStatements(statements: SchemaStatement[], kind: string): Promise<void> {
