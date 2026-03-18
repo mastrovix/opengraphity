@@ -263,6 +263,7 @@ function buildCITypesResolver() {
           icon:  t['icon'],
           color: t['color'],
           active: t['active'],
+          validationScript: t['validation_script'] ?? null,
           fields: (rec.get('fields') as Array<{ properties: Props }>)
             .filter(f => f?.properties)
             .map(f => f.properties)
@@ -272,6 +273,9 @@ function buildCITypesResolver() {
               defaultValue: f['default_value'] ?? null,
               enumValues: f['enum_values'] ? JSON.parse(f['enum_values'] as string) as string[] : [],
               order: f['order'] ?? 0,
+              validationScript: f['validation_script'] ?? null,
+              visibilityScript: f['visibility_script'] ?? null,
+              defaultScript:    f['default_script']    ?? null,
             })),
           relations: (rec.get('relations') as Array<{ properties: Props }>)
             .filter(r => r?.properties)

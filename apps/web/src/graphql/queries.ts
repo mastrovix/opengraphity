@@ -421,3 +421,27 @@ export const GET_CI_INCIDENTS = gql`
     }
   }
 `
+
+export const GET_CI_TYPES = gql`
+  query GetCITypes {
+    ciTypes {
+      id name label icon color active
+      validationScript
+      fields {
+        id name label fieldType
+        required enumValues order
+        validationScript
+        visibilityScript
+        defaultScript
+      }
+      relations {
+        id name label relationshipType
+        targetType cardinality direction order
+      }
+      systemRelations {
+        id name label relationshipType
+        targetEntity required order
+      }
+    }
+  }
+`

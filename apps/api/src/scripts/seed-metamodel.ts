@@ -5,13 +5,16 @@ const TENANT_ID = 'system'
 const now = new Date().toISOString()
 
 interface FieldDef {
-  name:          string
-  label:         string
-  field_type:    string
-  required?:     boolean
-  default_value?: string
-  enum_values?:  string[]
-  order:         number
+  name:               string
+  label:              string
+  field_type:         string
+  required?:          boolean
+  default_value?:     string
+  enum_values?:       string[]
+  order:              number
+  validation_script?: string
+  visibility_script?: string
+  default_script?:    string
 }
 
 interface RelationDef {
@@ -34,21 +37,29 @@ interface SystemRelDef {
 }
 
 interface CIType {
-  name:        string
-  label:       string
-  icon:        string
-  color:       string
-  neo4j_label: string
-  fields:      FieldDef[]
-  relations:   RelationDef[]
-  systemRels:  SystemRelDef[]
+  name:               string
+  label:              string
+  icon:               string
+  color:              string
+  neo4j_label:        string
+  fields:             FieldDef[]
+  relations:          RelationDef[]
+  systemRels:         SystemRelDef[]
+  validation_script?: string
 }
 
 const CI_TYPES: CIType[] = [
   {
     name: 'application', label: 'Application', icon: 'box', color: '#4f46e5', neo4j_label: 'Application',
     fields: [
-      { name: 'url',         label: 'URL',         field_type: 'string', order: 1 },
+      { name: 'url', label: 'URL', field_type: 'string', order: 1,
+        validation_script: `
+          if (value && !value.startsWith('http'))
+            throw "L'URL deve iniziare con http/https"
+          if (input.environment === 'production' && value && !value.startsWith('https'))
+            throw "In production l'URL deve essere HTTPS"
+        `,
+        visibility_script: `return true` },
       { name: 'description', label: 'Descrizione', field_type: 'string', order: 2 },
       { name: 'notes',       label: 'Note',        field_type: 'string', order: 3 },
       { name: 'status',      label: 'Stato',       field_type: 'enum',   order: 4, enum_values: ['active', 'inactive', 'maintenance'] },
@@ -86,9 +97,23 @@ const CI_TYPES: CIType[] = [
     name: 'database_instance', label: 'Database Instance', icon: 'server', color: '#0e7490', neo4j_label: 'DatabaseInstance',
     fields: [
       { name: 'ipAddress',    label: 'IP Address',    field_type: 'string', order: 1 },
-      { name: 'port',         label: 'Porta',         field_type: 'string', order: 2 },
-      { name: 'instanceType', label: 'Instance Type', field_type: 'enum',   order: 3, enum_values: ['PostgreSQL', 'Oracle', 'SQL Server'] },
-      { name: 'version',      label: 'Versione',      field_type: 'string', order: 4 },
+      { name: 'port', label: 'Porta', field_type: 'string', order: 2,
+        visibility_script: `return input.instanceType !== null && input.instanceType !== undefined`,
+        default_script: `
+          if (input.instanceType === 'PostgreSQL') return '5432'
+          if (input.instanceType === 'Oracle')     return '1521'
+          if (input.instanceType === 'SQL Server') return '1433'
+          return null
+        ` },
+      { name: 'instanceType', label: 'Instance Type', field_type: 'enum', order: 3, enum_values: ['PostgreSQL', 'Oracle', 'SQL Server'] },
+      { name: 'version', label: 'Versione', field_type: 'string', order: 4,
+        visibility_script: `return input.instanceType !== null && input.instanceType !== undefined`,
+        default_script: `
+          if (input.instanceType === 'PostgreSQL') return '14.5'
+          if (input.instanceType === 'Oracle')     return '19c'
+          if (input.instanceType === 'SQL Server') return '2022'
+          return null
+        ` },
       { name: 'description',  label: 'Descrizione',   field_type: 'string', order: 5 },
       { name: 'notes',        label: 'Note',          field_type: 'string', order: 6 },
       { name: 'status',       label: 'Stato',         field_type: 'enum',   order: 7, enum_values: ['active', 'inactive', 'maintenance'] },
@@ -106,7 +131,18 @@ const CI_TYPES: CIType[] = [
   {
     name: 'server', label: 'Server', icon: 'monitor', color: '#059669', neo4j_label: 'Server',
     fields: [
-      { name: 'ipAddress',   label: 'IP Address',  field_type: 'string', order: 1 },
+      { name: 'ipAddress', label: 'IP Address', field_type: 'string', order: 1, validation_script: `
+        if (value) {
+          const ipRegex = /^(\\d{1,3}\\.){3}\\d{1,3}$/
+          if (!ipRegex.test(value)) {
+            throw "Formato IP non valido (es. 192.168.1.1)"
+          }
+          const parts = value.split('.').map(Number)
+          if (parts.some(p => p > 255)) {
+            throw "Ogni ottetto IP deve essere tra 0 e 255"
+          }
+        }
+      ` },
       { name: 'location',    label: 'Location',    field_type: 'string', order: 2 },
       { name: 'vendor',      label: 'Vendor',      field_type: 'string', order: 3 },
       { name: 'os',          label: 'OS',          field_type: 'enum',   order: 4, enum_values: ['Windows', 'Linux'] },
@@ -127,10 +163,21 @@ const CI_TYPES: CIType[] = [
   },
   {
     name: 'certificate', label: 'Certificate', icon: 'shield', color: '#d97706', neo4j_label: 'Certificate',
+    validation_script: `
+      if (input.expiresAt && new Date(input.expiresAt) < new Date()) {
+        throw 'La data di scadenza deve essere futura'
+      }
+    `,
     fields: [
-      { name: 'serialNumber',      label: 'Numero Seriale', field_type: 'string', required: true, order: 1 },
-      { name: 'expiresAt',         label: 'Scadenza',       field_type: 'date',   required: true, order: 2 },
-      { name: 'certificateType',   label: 'Tipo',           field_type: 'enum',   required: true, order: 3, enum_values: ['public', 'external'] },
+      { name: 'serialNumber', label: 'Numero Seriale', field_type: 'string', required: true, order: 1 },
+      { name: 'expiresAt', label: 'Scadenza', field_type: 'date', required: true, order: 2,
+        validation_script: `
+          if (!value) throw 'Data obbligatoria'
+          if (new Date(value) < new Date()) throw 'La data deve essere futura'
+        ` },
+      { name: 'certificateType', label: 'Tipo', field_type: 'enum', required: true, order: 3,
+        enum_values: ['public', 'external'],
+        default_script: `return 'public'` },
       { name: 'description',       label: 'Descrizione',    field_type: 'string', order: 4 },
       { name: 'notes',             label: 'Note',           field_type: 'string', order: 5 },
       { name: 'status',            label: 'Stato',          field_type: 'enum',   order: 6, enum_values: ['active', 'expired', 'revoked'] },
@@ -163,21 +210,25 @@ async function main() {
         tx.run(
           `MERGE (t:CITypeDefinition {name: $name, tenant_id: $tenantId})
            ON CREATE SET
-             t.id         = $id,
-             t.label      = $label,
-             t.icon       = $icon,
-             t.color      = $color,
-             t.scope      = 'base',
-             t.neo4j_label = $neo4jLabel,
-             t.active     = true,
-             t.created_at = $now
+             t.id                = $id,
+             t.label             = $label,
+             t.icon              = $icon,
+             t.color             = $color,
+             t.scope             = 'base',
+             t.neo4j_label       = $neo4jLabel,
+             t.active            = true,
+             t.validation_script = $validationScript,
+             t.created_at        = $now
            ON MATCH SET
-             t.label      = $label,
-             t.icon       = $icon,
-             t.color      = $color,
-             t.neo4j_label = $neo4jLabel,
-             t.active     = true`,
-          { id: typeId, name: ci.name, label: ci.label, icon: ci.icon, color: ci.color, neo4jLabel: ci.neo4j_label, tenantId: TENANT_ID, now },
+             t.label             = $label,
+             t.icon              = $icon,
+             t.color             = $color,
+             t.neo4j_label       = $neo4jLabel,
+             t.active            = true,
+             t.validation_script = $validationScript`,
+          { id: typeId, name: ci.name, label: ci.label, icon: ci.icon, color: ci.color,
+            neo4jLabel: ci.neo4j_label, validationScript: ci.validation_script ?? null,
+            tenantId: TENANT_ID, now },
         ),
       )
       typesCount++
@@ -191,21 +242,27 @@ async function main() {
              MERGE (f:CIFieldDefinition {name: $name, tenant_id: $tenantId})
                -[:BELONGS_TO]->(t)
              ON CREATE SET
-               f.id            = $id,
-               f.label         = $label,
-               f.field_type    = $fieldType,
-               f.required      = $required,
-               f.default_value = $defaultValue,
-               f.enum_values   = $enumValues,
-               f.order         = $order,
-               f.scope         = 'base',
-               f.created_at    = $now
+               f.id                = $id,
+               f.label             = $label,
+               f.field_type        = $fieldType,
+               f.required          = $required,
+               f.default_value     = $defaultValue,
+               f.enum_values       = $enumValues,
+               f.order             = $order,
+               f.scope             = 'base',
+               f.validation_script = $validationScript,
+               f.visibility_script = $visibilityScript,
+               f.default_script    = $defaultScript,
+               f.created_at        = $now
              ON MATCH SET
-               f.label         = $label,
-               f.field_type    = $fieldType,
-               f.required      = $required,
-               f.enum_values   = $enumValues,
-               f.order         = $order
+               f.label             = $label,
+               f.field_type        = $fieldType,
+               f.required          = $required,
+               f.enum_values       = $enumValues,
+               f.order             = $order,
+               f.validation_script = $validationScript,
+               f.visibility_script = $visibilityScript,
+               f.default_script    = $defaultScript
              WITH t, f
              MERGE (t)-[:HAS_FIELD]->(f)`,
             {
@@ -214,6 +271,9 @@ async function main() {
               required: f.required ?? false,
               defaultValue: f.default_value ?? null,
               enumValues: f.enum_values ? JSON.stringify(f.enum_values) : null,
+              validationScript: f.validation_script ?? null,
+              visibilityScript: f.visibility_script ?? null,
+              defaultScript:    f.default_script    ?? null,
               order: f.order, now,
             },
           ),

@@ -8,6 +8,7 @@ export interface CITypeDefinition {
   tenantId: string
   active: boolean
   neo4jLabel: string
+  validationScript: string | null
 }
 
 export interface CIFieldDefinition {
@@ -21,6 +22,9 @@ export interface CIFieldDefinition {
   order: number
   scope: 'base' | 'tenant'
   tenantId: string
+  validationScript: string | null
+  visibilityScript: string | null
+  defaultScript: string | null
 }
 
 export interface CIRelationDefinition {

@@ -40,15 +40,16 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
         .sort((a, b) => a.order - b.order)
 
       return {
-        id:           t['id'] as string,
-        name:         t['name'] as string,
-        label:        t['label'] as string,
-        icon:         t['icon'] as string,
-        color:        t['color'] as string,
-        scope:        t['scope'] as 'base' | 'tenant',
-        tenantId:     t['tenant_id'] as string,
-        active:       t['active'] as boolean,
-        neo4jLabel:   t['neo4j_label'] as string,
+        id:               t['id'] as string,
+        name:             t['name'] as string,
+        label:            t['label'] as string,
+        icon:             t['icon'] as string,
+        color:            t['color'] as string,
+        scope:            t['scope'] as 'base' | 'tenant',
+        tenantId:         t['tenant_id'] as string,
+        active:           t['active'] as boolean,
+        neo4jLabel:       t['neo4j_label'] as string,
+        validationScript: (t['validation_script'] as string | null) ?? null,
         fields,
         relations,
         systemRelations,
@@ -61,16 +62,19 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
 
 function mapField(f: Record<string, unknown>): CIFieldDefinition {
   return {
-    id:           f['id'] as string,
-    name:         f['name'] as string,
-    label:        f['label'] as string,
-    fieldType:    f['field_type'] as CIFieldDefinition['fieldType'],
-    required:     (f['required'] as boolean) ?? false,
-    defaultValue: (f['default_value'] as string | null) ?? null,
-    enumValues:   f['enum_values'] ? JSON.parse(f['enum_values'] as string) as string[] : [],
-    order:        (f['order'] as number) ?? 0,
-    scope:        f['scope'] as 'base' | 'tenant',
-    tenantId:     f['tenant_id'] as string,
+    id:               f['id'] as string,
+    name:             f['name'] as string,
+    label:            f['label'] as string,
+    fieldType:        f['field_type'] as CIFieldDefinition['fieldType'],
+    required:         (f['required'] as boolean) ?? false,
+    defaultValue:     (f['default_value'] as string | null) ?? null,
+    enumValues:       f['enum_values'] ? JSON.parse(f['enum_values'] as string) as string[] : [],
+    order:            (f['order'] as number) ?? 0,
+    scope:            f['scope'] as 'base' | 'tenant',
+    tenantId:         f['tenant_id'] as string,
+    validationScript: (f['validation_script'] as string | null) ?? null,
+    visibilityScript: (f['visibility_script'] as string | null) ?? null,
+    defaultScript:    (f['default_script']    as string | null) ?? null,
   }
 }
 

@@ -185,6 +185,7 @@ export function buildBaseSDL(): string {
     icon: String
     color: String
     active: Boolean!
+    validationScript: String
     fields: [CIFieldDef!]!
     relations: [CIRelationDef!]!
     systemRelations: [CISystemRelationDef!]!
@@ -199,6 +200,9 @@ export function buildBaseSDL(): string {
     defaultValue: String
     enumValues: [String!]!
     order: Int!
+    validationScript: String
+    visibilityScript: String
+    defaultScript: String
   }
 
   type CIRelationDef {

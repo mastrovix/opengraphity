@@ -18,6 +18,8 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
+import { useMetamodel } from '@/contexts/MetamodelContext'
+import { CIIcon } from '@/lib/ciIcon'
 
 const NAV_ITEMS = [
   { to: '/dashboard',              label: 'Dashboard',  icon: LayoutDashboard },
@@ -45,6 +47,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { pathname } = useLocation()
   const [cmdbOpen, setCmdbOpen] = useState(true)
   const [teamsOpen, setTeamsOpen] = useState(false)
+  const { ciTypes } = useMetamodel()
 
   const navItemStyle = (isActive: boolean, isCollapsed: boolean): React.CSSProperties => ({
     display:         'flex',
@@ -81,7 +84,10 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     marginBottom:   1,
   })
 
-  const cmdbActive = pathname.startsWith('/cmdb') || pathname.startsWith('/applications') || pathname.startsWith('/databases') || pathname.startsWith('/database-instances') || pathname.startsWith('/servers') || pathname.startsWith('/certificates')
+  const cmdbActive = pathname.startsWith('/cmdb') || pathname.startsWith('/ci/')
+    || pathname.startsWith('/applications') || pathname.startsWith('/databases')
+    || pathname.startsWith('/database-instances') || pathname.startsWith('/servers')
+    || pathname.startsWith('/certificates')
 
   return (
     <aside
@@ -245,21 +251,18 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 <NavLink to="/cmdb" end style={({ isActive }) => subItemStyle(isActive)}>
                   <span>Tutti</span>
                 </NavLink>
-                <NavLink to="/applications" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Applicazioni</span>
-                </NavLink>
-                <NavLink to="/databases" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Database</span>
-                </NavLink>
-                <NavLink to="/database-instances" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>DB Instance</span>
-                </NavLink>
-                <NavLink to="/servers" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Server</span>
-                </NavLink>
-                <NavLink to="/certificates" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Certificati</span>
-                </NavLink>
+                {ciTypes.map(ct => {
+                  const to = `/ci/${ct.name}`
+                  const isActive = pathname === to || pathname.startsWith(`${to}/`)
+                  return (
+                    <NavLink key={ct.name} to={to} style={() => subItemStyle(isActive)}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CIIcon icon={ct.icon} size={12} color={isActive ? '#4f46e5' : '#6b7280'} />
+                        {ct.label}
+                      </span>
+                    </NavLink>
+                  )
+                })}
               </div>
             )}
           </div>

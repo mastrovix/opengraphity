@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApolloProvider } from '@apollo/client/react'
-import { createBrowserRouter, RouterProvider, useRouteError } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, useRouteError, Navigate, useParams } from 'react-router-dom'
 import { Toaster } from '@/components/ui/sonner'
 import { apolloClient } from '@/lib/apollo'
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -16,6 +16,8 @@ import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
 import { RequestListPage } from '@/pages/requests/RequestListPage'
 import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestPage'
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
+import { CIListPage } from '@/pages/ci/CIListPage'
+import { CIDetailPage } from '@/pages/ci/CIDetailPage'
 import { ApplicationsPage } from '@/pages/applications/ApplicationsPage'
 import { ApplicationDetailPage } from '@/pages/applications/ApplicationDetailPage'
 import { DatabasesPage } from '@/pages/databases/DatabasesPage'
@@ -26,6 +28,10 @@ import { ServersPage } from '@/pages/servers/ServersPage'
 import { ServerDetailPage } from '@/pages/servers/ServerDetailPage'
 import { CertificatesPage } from '@/pages/certificates/CertificatesPage'
 import { CertificateDetailPage } from '@/pages/certificates/CertificateDetailPage'
+function CIDetailRedirect({ typeName }: { typeName: string }) {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/ci/${typeName}/${id}`} replace />
+}
 import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
 import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
 import NotificationsPage from '@/pages/settings/NotificationsPage'
@@ -37,6 +43,7 @@ import { UsersPage } from '@/pages/users/UsersPage'
 import { UserDetailPage } from '@/pages/users/UserDetailPage'
 import { LogsPage } from '@/pages/logs/LogsPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
@@ -85,16 +92,31 @@ const router = createBrowserRouter([
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
       { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
       { path: 'cmdb',                          element: <CMDBPage />,                    errorElement: <RouteError /> },
-      { path: 'applications',                  element: <ApplicationsPage />,            errorElement: <RouteError /> },
-      { path: 'applications/:id',              element: <ApplicationDetailPage />,       errorElement: <RouteError /> },
-      { path: 'databases',                     element: <DatabasesPage />,               errorElement: <RouteError /> },
-      { path: 'databases/:id',                 element: <DatabaseDetailPage />,          errorElement: <RouteError /> },
-      { path: 'database-instances',            element: <DatabaseInstancesPage />,       errorElement: <RouteError /> },
-      { path: 'database-instances/:id',        element: <DatabaseInstanceDetailPage />,  errorElement: <RouteError /> },
-      { path: 'servers',                       element: <ServersPage />,                 errorElement: <RouteError /> },
-      { path: 'servers/:id',                   element: <ServerDetailPage />,            errorElement: <RouteError /> },
-      { path: 'certificates',                  element: <CertificatesPage />,            errorElement: <RouteError /> },
-      { path: 'certificates/:id',              element: <CertificateDetailPage />,       errorElement: <RouteError /> },
+      // Dynamic CI routes
+      { path: 'ci/:typeName',                  element: <CIListPage />,                  errorElement: <RouteError /> },
+      { path: 'ci/:typeName/:id',              element: <CIDetailPage />,                errorElement: <RouteError /> },
+      // Backward-compat redirects
+      { path: 'applications',                  element: <Navigate to="/ci/application" replace /> },
+      { path: 'applications/:id',              element: <CIDetailRedirect typeName="application" /> },
+      { path: 'databases',                     element: <Navigate to="/ci/database" replace /> },
+      { path: 'databases/:id',                 element: <CIDetailRedirect typeName="database" /> },
+      { path: 'database-instances',            element: <Navigate to="/ci/database_instance" replace /> },
+      { path: 'database-instances/:id',        element: <CIDetailRedirect typeName="database_instance" /> },
+      { path: 'servers',                       element: <Navigate to="/ci/server" replace /> },
+      { path: 'servers/:id',                   element: <CIDetailRedirect typeName="server" /> },
+      { path: 'certificates',                  element: <Navigate to="/ci/certificate" replace /> },
+      { path: 'certificates/:id',              element: <CIDetailRedirect typeName="certificate" /> },
+      // Keep old static pages as fallback (unused, but no dead imports)
+      { path: 'applications-legacy',           element: <ApplicationsPage />,            errorElement: <RouteError /> },
+      { path: 'applications-legacy/:id',       element: <ApplicationDetailPage />,       errorElement: <RouteError /> },
+      { path: 'databases-legacy',              element: <DatabasesPage />,               errorElement: <RouteError /> },
+      { path: 'databases-legacy/:id',          element: <DatabaseDetailPage />,          errorElement: <RouteError /> },
+      { path: 'database-instances-legacy',     element: <DatabaseInstancesPage />,       errorElement: <RouteError /> },
+      { path: 'database-instances-legacy/:id', element: <DatabaseInstanceDetailPage />,  errorElement: <RouteError /> },
+      { path: 'servers-legacy',                element: <ServersPage />,                 errorElement: <RouteError /> },
+      { path: 'servers-legacy/:id',            element: <ServerDetailPage />,            errorElement: <RouteError /> },
+      { path: 'certificates-legacy',           element: <CertificatesPage />,            errorElement: <RouteError /> },
+      { path: 'certificates-legacy/:id',       element: <CertificateDetailPage />,       errorElement: <RouteError /> },
       { path: 'workflow',                      element: <WorkflowListPage />,            errorElement: <RouteError /> },
       { path: 'workflow/:id',                  element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
@@ -126,8 +148,10 @@ initKeycloak().then((authenticated) => {
     <StrictMode>
       <ErrorBoundary>
         <ApolloProvider client={apolloClient}>
-          <RouterProvider router={router} />
-          <Toaster richColors position="top-right" />
+          <MetamodelProvider>
+            <RouterProvider router={router} />
+            <Toaster richColors position="top-right" />
+          </MetamodelProvider>
         </ApolloProvider>
       </ErrorBoundary>
     </StrictMode>,
