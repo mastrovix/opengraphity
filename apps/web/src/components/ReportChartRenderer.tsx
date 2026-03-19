@@ -1,4 +1,5 @@
 import ReactECharts from 'echarts-for-react'
+import { BarChart2 } from 'lucide-react'
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -46,24 +47,25 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+function EmptyChart() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', minHeight: 200, gap: 8 }}>
+      <BarChart2 size={28} color="#94a3b8" />
+      <span style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>
+        Grafico non disponibile con i parametri selezionati
+      </span>
+    </div>
+  )
+}
+
 export function ReportChartRenderer({ chartType, data, title, error }: Props) {
-  if (error) {
-    return (
-      <div style={{
-        padding: 16, borderRadius: 6,
-        background: '#fef2f2', border: '1px solid #fecaca',
-        color: '#dc2626', fontSize: 13,
-      }}>
-        {error}
-      </div>
-    )
-  }
+  if (error || !data) return <EmptyChart />
 
   let parsed: unknown
   try {
     parsed = JSON.parse(data)
   } catch {
-    return <div style={{ color: '#8892a4', fontSize: 13 }}>Dati non disponibili</div>
+    return <EmptyChart />
   }
 
   const echartsProps = { style: { height: 320, width: '100%' }, opts: { renderer: 'svg' as const }, theme: 'light' }
@@ -314,6 +316,6 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
     }
 
     default:
-      return <div style={{ color: '#8892a4', fontSize: 13 }}>Tipo grafico non supportato: {chartType}</div>
+      return <EmptyChart />
   }
 }

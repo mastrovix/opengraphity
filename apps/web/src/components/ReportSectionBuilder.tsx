@@ -2,8 +2,11 @@ import { useState, useCallback, useEffect } from 'react'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import {
   ReactFlow, Background, Controls, Handle, Position,
+  ConnectionMode, MarkerType, reconnectEdge,
+  BaseEdge, EdgeLabelRenderer, getSmoothStepPath,
   useNodesState, useEdgesState,
   type Node, type Edge,
+  type EdgeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -37,6 +40,7 @@ interface NodeData {
   onRemoveFilter:  (i: number) => void
   onFilterChange:  (i: number, key: keyof FilterState, val: string) => void
   onConnect:       () => void
+  onDelete:        () => void
   [key: string]:   unknown
 }
 
@@ -96,7 +100,8 @@ const WIZARD_STEPS: { n: 1 | 2 | 3 | 4; label: string }[] = [
   { n: 4, label: 'Titolo e salva' },
 ]
 
-const ITSM_TYPES = ['Incident', 'Change']
+const ITSM_TYPES       = ['Incident', 'Change']
+const DATE_FIELD_NAMES = ['created_at', 'updated_at', 'resolved_at', 'expires_at', 'scheduled_start', 'scheduled_end', 'implemented_at']
 const ORG_TYPES  = ['Team', 'User']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -115,46 +120,65 @@ function getEntityIcon(entityType: string, size = 24): React.ReactNode {
 
 function ReportEntityNode({ data }: { id: string; data: NodeData }) {
   const d = data
-  const borderStyle = d.isRoot
-    ? '2px solid #4f46e5'
-    : d.isResult
-      ? '2px solid #10b981'
-      : '2px dashed #c4b5fd'
-  const bg = d.isResult || d.isRoot ? '#ffffff' : '#faf5ff'
 
   return (
     <div style={{
-      border: borderStyle, borderRadius: 12, background: bg,
-      minWidth: 220, maxWidth: 280, boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-      fontFamily: 'system-ui, sans-serif',
+      width: 'fit-content', minWidth: 200, maxWidth: 320,
+      background: d.isResult || d.isRoot ? '#fff' : '#faf5ff',
+      border: d.isRoot ? '2px solid #4f46e5' : d.isResult ? '1.5px solid #4f46e5' : '1.5px dashed #c4b5fd',
+      borderRadius: 10,
+      fontSize: 11,
+      fontFamily: 'Arial',
+      overflow: 'hidden',
     }}>
-      <Handle type="target" position={Position.Top} style={{ background: '#c4b5fd' }} />
+      {/* Handles — hidden by default, visible during edge reconnect drag */}
+      <Handle type="source" position={Position.Top}    id="top-source"    style={{ opacity: 0, width: 8, height: 8 }} />
+      <Handle type="target" position={Position.Top}    id="top-target"    style={{ opacity: 0, width: 8, height: 8, left: '40%' }} />
+      <Handle type="source" position={Position.Bottom} id="bottom-source" style={{ opacity: 0, width: 8, height: 8 }} />
+      <Handle type="target" position={Position.Bottom} id="bottom-target" style={{ opacity: 0, width: 8, height: 8, left: '40%' }} />
+      <Handle type="source" position={Position.Left}   id="left-source"   style={{ opacity: 0, width: 8, height: 8 }} />
+      <Handle type="target" position={Position.Left}   id="left-target"   style={{ opacity: 0, width: 8, height: 8, top: '40%' }} />
+      <Handle type="source" position={Position.Right}  id="right-source"  style={{ opacity: 0, width: 8, height: 8 }} />
+      <Handle type="target" position={Position.Right}  id="right-target"  style={{ opacity: 0, width: 8, height: 8, top: '40%' }} />
 
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', flex: 1 }}>{d.label}</span>
+      {/* Drag handle — solo l'header trascina il nodo */}
+      <div className="node-drag-handle" style={{ padding: '8px 10px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 4, cursor: 'grab' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', flex: 1, whiteSpace: 'nowrap' }}>{d.label}</span>
         {d.isRoot && (
-          <span style={{ fontSize: 10, background: '#ede9fe', color: '#7c3aed', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
+          <span style={{ fontSize: 9, background: '#ede9fe', color: '#7c3aed', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
             Radice
           </span>
         )}
         <button
+          onMouseDown={e => e.stopPropagation()}
           onClick={d.onToggleResult}
           title={d.isResult ? 'Rimuovi dal risultato' : 'Includi nel risultato'}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: d.isResult ? '#4f46e5' : '#d1d5db' }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 1, color: d.isResult ? '#4f46e5' : '#d1d5db' }}
         >
-          <Star size={16} fill={d.isResult ? '#4f46e5' : 'none'} />
+          <Star size={12} fill={d.isResult ? '#4f46e5' : 'none'} />
         </button>
+        {!d.isRoot && (
+          <button
+            className="nodrag nopan"
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); d.onDelete() }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}
+          >×</button>
+        )}
       </div>
 
-      <div style={{ padding: '8px 14px' }}>
+      {/* Body — stopPropagation evita che ReactFlow catturi i click */}
+      <div className="nodrag nopan" onMouseDown={e => e.stopPropagation()} style={{ padding: '6px 12px' }}>
         {d.filters.length > 0 && (
           <div style={{ marginBottom: 6 }}>
             {d.filters.map((f: FilterState, i: number) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                 <select
+                  className="nodrag nopan"
+                  onMouseDown={e => e.stopPropagation()}
                   value={f.field}
                   onChange={e => d.onFilterChange(i, 'field', e.target.value)}
-                  style={{ fontSize: 11, padding: '2px 4px', border: '1px solid #e5e7eb', borderRadius: 4, flex: 1 }}
+                  style={{ fontSize: 11, padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, flex: 1 }}
                 >
                   <option value="">-- campo --</option>
                   {(d.fields as NavigableField[]).filter(fld => fld.fieldType === 'enum' || fld.fieldType === 'date').map(fld => (
@@ -163,9 +187,11 @@ function ReportEntityNode({ data }: { id: string; data: NodeData }) {
                 </select>
                 {(d.fields as NavigableField[]).find(fld => fld.name === f.field)?.fieldType === 'enum' ? (
                   <select
+                    className="nodrag nopan"
+                    onMouseDown={e => e.stopPropagation()}
                     value={f.value}
                     onChange={e => d.onFilterChange(i, 'value', e.target.value)}
-                    style={{ fontSize: 11, padding: '2px 4px', border: '1px solid #e5e7eb', borderRadius: 4, flex: 1 }}
+                    style={{ fontSize: 11, padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, flex: 1 }}
                   >
                     <option value="">-- valore --</option>
                     {((d.fields as NavigableField[]).find(fld => fld.name === f.field)?.enumValues ?? []).map(v => (
@@ -174,13 +200,20 @@ function ReportEntityNode({ data }: { id: string; data: NodeData }) {
                   </select>
                 ) : (
                   <input
+                    className="nodrag nopan"
+                    onMouseDown={e => e.stopPropagation()}
                     value={f.value}
                     onChange={e => d.onFilterChange(i, 'value', e.target.value)}
                     placeholder="valore"
-                    style={{ fontSize: 11, padding: '2px 4px', border: '1px solid #e5e7eb', borderRadius: 4, width: 60 }}
+                    style={{ fontSize: 11, padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, width: 60 }}
                   />
                 )}
-                <button onClick={() => d.onRemoveFilter(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0 }}>
+                <button
+                  className="nodrag nopan"
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={() => d.onRemoveFilter(i)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0 }}
+                >
                   <X size={12} />
                 </button>
               </div>
@@ -188,25 +221,72 @@ function ReportEntityNode({ data }: { id: string; data: NodeData }) {
           </div>
         )}
         <button
+          className="nodrag nopan"
+          onMouseDown={e => e.stopPropagation()}
           onClick={d.onAddFilter}
-          style={{ fontSize: 11, color: '#6b7280', background: 'none', border: '1px dashed #d1d5db', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', width: '100%', marginBottom: 4 }}
+          style={{ fontSize: 10, color: '#6b7280', background: 'none', border: '1px dashed #d1d5db', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', width: '100%', marginBottom: 4 }}
         >
           + filtro
         </button>
         <button
+          className="nodrag nopan"
+          onMouseDown={e => e.stopPropagation()}
           onClick={d.onConnect}
-          style={{ fontSize: 11, color: '#4f46e5', background: 'none', border: '1px solid #c4b5fd', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', width: '100%' }}
+          style={{ fontSize: 10, color: '#4f46e5', background: 'none', border: '1px solid #c4b5fd', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', width: '100%' }}
         >
           + Connetti a...
         </button>
       </div>
 
-      <Handle type="source" position={Position.Bottom} style={{ background: '#c4b5fd' }} />
     </div>
   )
 }
 
 const nodeTypes = { reportEntity: ReportEntityNode }
+
+// ── Custom Edge ───────────────────────────────────────────────────────────────
+
+function ReportEdgeComponent({
+  sourceX, sourceY, targetX, targetY,
+  sourcePosition, targetPosition,
+  data, markerEnd, style,
+}: EdgeProps) {
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX, sourceY, sourcePosition,
+    targetX, targetY, targetPosition,
+  })
+
+  return (
+    <>
+      <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: '#c4b5fd', strokeWidth: 2 }} />
+      <EdgeLabelRenderer>
+        <div
+          className="nodrag nopan"
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            pointerEvents: 'all',
+            background: '#ede9fe',
+            border: '1px solid #c4b5fd',
+            borderRadius: 20,
+            padding: '2px 10px',
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#7c3aed',
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+            cursor: 'default',
+          }}
+        >
+          {(data as { label?: string; relationshipType?: string } | undefined)?.label
+            ?? (data as { label?: string; relationshipType?: string } | undefined)?.relationshipType}
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}
+
+const edgeTypes = { reportEdge: ReportEdgeComponent }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
@@ -230,15 +310,91 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const deleteNode = useCallback((nodeId: string) => {
+    setNodes(nds => nds.filter(n => n.id !== nodeId))
+    setEdges(eds => eds.filter(e => e.source !== nodeId && e.target !== nodeId))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null)
 
   const { data: entitiesData } = useQuery<{ navigableEntities: NavigableEntity[] }>(GET_NAVIGABLE_ENTITIES)
   const entities: NavigableEntity[] = entitiesData?.navigableEntities ?? []
 
+  const getNodeFields = (neo4jLabel: string): NavigableField[] => {
+    const entity     = entities.find(e => e.neo4jLabel === neo4jLabel)
+    const typeFields = entity?.fields ?? []
+    const isCIEntity = !['Incident', 'Change', 'Team', 'User'].includes(entity?.entityType ?? '')
+
+    if (!isCIEntity) return typeFields
+
+    const baseFields: NavigableField[] = [
+      { name: 'name',        label: 'Nome',        fieldType: 'string', enumValues: [] },
+      { name: 'status',      label: 'Stato',       fieldType: 'enum',   enumValues: ['active', 'inactive', 'maintenance'] },
+      { name: 'environment', label: 'Ambiente',    fieldType: 'enum',   enumValues: ['production', 'staging', 'development'] },
+      { name: 'description', label: 'Descrizione', fieldType: 'string', enumValues: [] },
+    ]
+    const merged = [...baseFields]
+    typeFields.forEach(f => {
+      if (!merged.find(b => b.name === f.name)) merged.push(f)
+    })
+    return merged
+  }
+
   const [fetchReachable, { data: reachableData, loading: reachableLoading }] = useLazyQuery<
     { reachableEntities: ReachableEntity[] }
   >(GET_REACHABLE_ENTITIES, { fetchPolicy: 'network-only' })
+
+  // ── Reconstruct graph from initialValues (editing mode) ──────────────────────
+
+  useEffect(() => {
+    if (!initialValues?.nodes?.length || !entities.length || nodes.length > 0) return
+
+    const newNodeDataMap: Record<string, {
+      entityType: string; neo4jLabel: string; label: string
+      isResult: boolean; isRoot: boolean
+      filters: FilterState[]; selectedFields: string[]
+      fields: NavigableField[]
+    }> = {}
+
+    const newNodes: Node[] = initialValues.nodes.map(n => {
+      let filters: FilterState[] = []
+      try { if (n.filters) filters = JSON.parse(n.filters) } catch { /* ignore */ }
+      const nd = {
+        entityType: n.entityType, neo4jLabel: n.neo4jLabel, label: n.label,
+        isResult: n.isResult, isRoot: n.isRoot,
+        filters, selectedFields: n.selectedFields ?? [],
+        fields: getNodeFields(n.neo4jLabel),
+      }
+      newNodeDataMap[n.id] = nd
+      return {
+        id: n.id, type: 'reportEntity', dragHandle: '.node-drag-handle',
+        position: { x: n.positionX, y: n.positionY },
+        data: {
+          ...nd,
+          onToggleResult: () => toggleResult(n.id),
+          onAddFilter:    () => addFilter(n.id),
+          onRemoveFilter: (i: number) => removeFilter(n.id, i),
+          onFilterChange: (i: number, k: keyof FilterState, v: string) => updateFilter(n.id, i, k, v),
+          onConnect: () => {
+            setConnectingNodeId(n.id)
+            fetchReachable({ variables: { fromNeo4jLabel: n.neo4jLabel } })
+          },
+          onDelete: () => deleteNode(n.id),
+        },
+      }
+    })
+
+    const newEdges: Edge[] = initialValues.edges.map(e => ({
+      id: e.id, type: 'reportEdge',
+      source: e.sourceNodeId, target: e.targetNodeId,
+      data: { relationshipType: e.relationshipType, direction: e.direction, label: e.label },
+    }))
+
+    setNodeDataMap(newNodeDataMap)
+    setNodes(newNodes)
+    setEdges(newEdges)
+    setWizardStep(2)
+  }, [entities.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [runPreview, { loading: previewLoading, data: previewQueryData }] = useLazyQuery<
     { previewReportSection: SectionResult }
@@ -296,10 +452,11 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           onAddFilter:    () => addFilter(n.id),
           onRemoveFilter: (i: number) => removeFilter(n.id, i),
           onFilterChange: (i: number, k: keyof FilterState, v: string) => updateFilter(n.id, i, k, v),
-          onConnect:      () => {
+          onConnect: () => {
             setConnectingNodeId(n.id)
             fetchReachable({ variables: { fromNeo4jLabel: nd.neo4jLabel } })
           },
+          onDelete: () => deleteNode(n.id),
         },
       }
     }))
@@ -322,6 +479,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     setNodes(prev => [...prev, {
       id,
       type: 'reportEntity',
+      dragHandle: '.node-drag-handle',
       position,
       data: {
         ...nd,
@@ -329,14 +487,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         onAddFilter:    () => addFilter(id),
         onRemoveFilter: (i: number) => removeFilter(id, i),
         onFilterChange: (i: number, k: keyof FilterState, v: string) => updateFilter(id, i, k, v),
-        onConnect:      () => {
+        onConnect: () => {
           setConnectingNodeId(id)
           fetchReachable({ variables: { fromNeo4jLabel: neo4jLabel } })
         },
+        onDelete: () => deleteNode(id),
       },
     }])
     return id
-  }, [toggleResult, addFilter, removeFilter, updateFilter, fetchReachable]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [toggleResult, addFilter, removeFilter, updateFilter, fetchReachable, deleteNode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Connect reachable ───────────────────────────────────────────────────────
 
@@ -348,17 +507,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       y: (sourceNode?.position.y ?? 100) + 200,
     }
 
-    const entityFull = entities.find(e => e.neo4jLabel === re.neo4jLabel || e.entityType === re.entityType)
-    const newNodeId = addNode(re.entityType, re.neo4jLabel, re.label, entityFull?.fields ?? re.fields, false, newPos)
+    const newNodeId = addNode(re.entityType, re.neo4jLabel, re.label, getNodeFields(re.neo4jLabel), false, newPos)
 
     const edgeId = `edge_${Date.now()}`
     setEdges(prev => [...prev, {
       id: edgeId,
+      type: 'reportEdge',
       source: re.direction === 'outgoing' ? connectingNodeId : newNodeId,
       target: re.direction === 'outgoing' ? newNodeId : connectingNodeId,
-      label: `${re.direction === 'outgoing' ? '→' : '←'} ${re.relationshipType}`,
-      style: { stroke: '#c4b5fd', strokeWidth: 2 },
-      data: { relationshipType: re.relationshipType, direction: re.direction },
+      data: { relationshipType: re.relationshipType, direction: re.direction, label: `${re.direction === 'outgoing' ? '→' : '←'} ${re.relationshipType}` },
     }])
 
     setConnectingNodeId(null)
@@ -436,7 +593,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   // ── Progress bar ────────────────────────────────────────────────────────────
 
   const renderProgressBar = () => (
-    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 36 }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start' }}>
       {WIZARD_STEPS.map((s, i) => (
         <div key={s.n} style={{ display: 'flex', alignItems: 'flex-start', flex: i < WIZARD_STEPS.length - 1 ? 1 : 0 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
@@ -475,7 +632,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     nextLabel = 'Avanti',
     isLastStep = false,
   ) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 28 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
       {onBack ? (
         <button onClick={onBack} style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px',
@@ -536,7 +693,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                     const nId = `node_${Date.now()}`
                     const nd = {
                       entityType: e.entityType, neo4jLabel: e.neo4jLabel, label: e.label,
-                      isResult: true, isRoot: true, filters: [], selectedFields: [], fields: e.fields,
+                      isResult: true, isRoot: true, filters: [], selectedFields: [], fields: getNodeFields(e.neo4jLabel),
                     }
                     setNodeDataMap({ [nId]: nd })
                     setNodes([{
@@ -547,10 +704,11 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                         onAddFilter:    () => addFilter(nId),
                         onRemoveFilter: (i: number) => removeFilter(nId, i),
                         onFilterChange: (i: number, k: keyof FilterState, v: string) => updateFilter(nId, i, k, v),
-                        onConnect:      () => {
+                        onConnect: () => {
                           setConnectingNodeId(nId)
                           fetchReachable({ variables: { fromNeo4jLabel: e.neo4jLabel } })
                         },
+                        onDelete: () => deleteNode(nId),
                       },
                     }])
                   }, 0)
@@ -584,7 +742,6 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         {renderEntityGroup('ITSM', itsmEntities)}
         {renderEntityGroup('Organizzazione', orgEntities)}
         {renderEntityGroup('CI', ciEntities)}
-        {renderNavButtons(null, () => setWizardStep(2), nodes.length === 0)}
       </div>
     )
   }
@@ -592,22 +749,44 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   // ── STEP 2 — Grafo e filtri ───────────────────────────────────────────────
 
   const renderStep2 = () => (
-    <div>
-      <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: '#0f1629' }}>
-        Grafo e filtri
-      </h3>
-      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
-        Visualizza e configura le entità collegate.
-      </p>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      <div style={{ flexShrink: 0, padding: '0 32px 12px' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: '#0f1629' }}>
+          Grafo e filtri
+        </h3>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+          Visualizza e configura le entità collegate.
+        </p>
+      </div>
 
-      <div style={{ height: 500, border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', position: 'relative' }}>
+      <div style={{ flex: 1, border: '0', overflow: 'hidden', position: 'relative' }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onConnect={() => {}}
+          connectOnClick={false}
+          nodesConnectable={false}
+          deleteKeyCode={null}
           nodeTypes={nodeTypes}
-          fitView
+          edgeTypes={edgeTypes}
+          connectionMode={ConnectionMode.Loose}
+          reconnectRadius={10}
+          nodesDraggable={true}
+          defaultViewport={{ x: 100, y: 80, zoom: 1 }}
+          zoomOnScroll={false}
+          zoomOnPinch={false}
+          zoomOnDoubleClick={false}
+          preventScrolling={false}
+          edgesReconnectable={true}
+          onReconnect={(oldEdge, newConnection) => setEdges(eds => reconnectEdge(oldEdge, newConnection, eds))}
+          defaultEdgeOptions={{
+            type: 'reportEdge',
+            animated: false,
+            style: { stroke: '#c4b5fd', strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#c4b5fd' },
+          }}
           proOptions={{ hideAttribution: true }}
         >
           <Background />
@@ -657,12 +836,16 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         )}
       </div>
 
-      <p style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
-        Clicca <strong>+ Connetti a...</strong> su un nodo per aggiungere entità collegate.
-        Usa <Star size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> per marcare le entità da includere nel risultato.
-      </p>
-
-      {renderNavButtons(() => setWizardStep(1), () => setWizardStep(3))}
+      {orphan ? (
+        <div style={{ fontSize: 12, color: '#dc2626', padding: '8px 32px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          ⚠ Ci sono nodi non collegati. Collega o elimina i nodi isolati prima di continuare.
+        </div>
+      ) : (
+        <p style={{ fontSize: 12, color: '#6b7280', padding: '6px 32px 0', flexShrink: 0 }}>
+          Clicca <strong>+ Connetti a...</strong> su un nodo per aggiungere entità collegate.
+          Usa <Star size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> per marcare le entità da includere nel risultato.
+        </p>
+      )}
     </div>
   )
 
@@ -717,16 +900,23 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                   <select value={groupByField} onChange={e => setGroupByField(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
                     <option value="">Campo...</option>
                     {groupByNodeId && nodeDataMap[groupByNodeId]
-                      ? nodeDataMap[groupByNodeId].fields.map(f => (
-                          <option key={f.name} value={f.name}>{f.label}</option>
-                        ))
+                      ? nodeDataMap[groupByNodeId].fields
+                          .filter(f => !isTimeSeries || f.fieldType === 'date' || DATE_FIELD_NAMES.includes(f.name))
+                          .map(f => (
+                            <option key={f.name} value={f.name}>{f.label}</option>
+                          ))
                       : null}
                   </select>
                 </div>
+                {isTimeSeries && step3DateFields.length === 0 && (
+                  <div style={{ color: '#dc2626', fontSize: 12, marginTop: 8 }}>
+                    ⚠ Il grafico a linea richiede un campo data. Nessun campo data disponibile per questa entità. Scegli un altro tipo di grafico.
+                  </div>
+                )}
               </div>
             )}
 
-            {!isKpi && (
+            {!isKpi && !isTable && (
               <div style={{ display: 'flex', gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Metrica</label>
@@ -820,13 +1010,6 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           </div>
         </div>
 
-        {renderNavButtons(() => setWizardStep(2), () => {
-          if (!title) {
-            const rootEntry = Object.values(nodeDataMap).find(nd => nd.isRoot)
-            if (rootEntry) setTitle(`${rootEntry.label} - ${CHART_TYPES.find(c => c.value === chartType)?.label ?? chartType}`)
-          }
-          setWizardStep(4)
-        })}
       </div>
     )
   }
@@ -916,25 +1099,85 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           </div>
         </div>
 
-        {renderNavButtons(
-          () => setWizardStep(3),
-          () => onSave(buildInput()),
-          !title,
-          'Salva sezione',
-          true,
-        )}
       </div>
     )
   }
 
+  // ── Orphan check ─────────────────────────────────────────────────────────
+
+  const hasOrphanNodes = (): boolean => {
+    if (nodes.length <= 1) return false
+    const rootNode = nodes.find(n => (n.data as NodeData).isRoot)
+    if (!rootNode) return false
+    const connected = new Set<string>()
+    const visit = (id: string) => {
+      if (connected.has(id)) return
+      connected.add(id)
+      edges
+        .filter(e => e.source === id || e.target === id)
+        .forEach(e => { visit(e.source); visit(e.target) })
+    }
+    visit(rootNode.id)
+    return nodes.some(n => !connected.has(n.id))
+  }
+
+  const orphan = hasOrphanNodes()
+
+  // ── Step 3 validation ────────────────────────────────────────────────────
+
+  const lastNode       = nodes[nodes.length - 1]
+  const lastEntity     = entities.find(e => e.neo4jLabel === (lastNode?.data as NodeData | undefined)?.neo4jLabel)
+  const step3DateFields = (lastEntity?.fields ?? []).filter(f => f.fieldType === 'date' || DATE_FIELD_NAMES.includes(f.name))
+  const canProceedStep3 = !isTimeSeries || step3DateFields.length > 0
+
+  // ── Nav config per step ───────────────────────────────────────────────────
+
+  const navConfig = (() => {
+    switch (wizardStep) {
+      case 1: return { onBack: null, onNext: () => setWizardStep(2), nextDisabled: nodes.length === 0 }
+      case 2: return { onBack: () => setWizardStep(1), onNext: () => setWizardStep(3), nextDisabled: orphan }
+      case 3: return {
+        onBack: () => setWizardStep(2),
+        onNext: () => {
+          if (!title) {
+            const rootEntry = Object.values(nodeDataMap).find(nd => nd.isRoot)
+            if (rootEntry) setTitle(`${rootEntry.label} - ${CHART_TYPES.find(c => c.value === chartType)?.label ?? chartType}`)
+          }
+          setWizardStep(4)
+        },
+        nextDisabled: !canProceedStep3,
+      }
+      case 4: return { onBack: () => setWizardStep(3), onNext: () => onSave(buildInput()), nextDisabled: !title, nextLabel: 'Salva sezione', isLastStep: true }
+    }
+  })()
+
   // ── Main render ───────────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
-      {renderProgressBar()}
-      {wizardStep === 1 && renderStep1()}
-      {wizardStep === 2 && renderStep2()}
-      {wizardStep === 3 && renderStep3()}
-      {wizardStep === 4 && renderStep4()}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+
+      {/* Progress bar — fixed top */}
+      <div style={{ flexShrink: 0, padding: '16px 32px', borderBottom: '1px solid #f3f4f6' }}>
+        {renderProgressBar()}
+      </div>
+
+      {/* Step content — fills remaining height */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {wizardStep === 2 ? (
+          renderStep2()
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+            {wizardStep === 1 && renderStep1()}
+            {wizardStep === 3 && renderStep3()}
+            {wizardStep === 4 && renderStep4()}
+          </div>
+        )}
+      </div>
+
+      {/* Footer nav — fixed bottom */}
+      <div style={{ flexShrink: 0, padding: '12px 32px', borderTop: '1px solid #e5e7eb', background: '#fff' }}>
+        {navConfig && renderNavButtons(navConfig.onBack, navConfig.onNext, navConfig.nextDisabled, (navConfig as { nextLabel?: string }).nextLabel, (navConfig as { isLastStep?: boolean }).isLastStep)}
+      </div>
+
     </div>
   )
 }

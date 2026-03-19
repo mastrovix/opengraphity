@@ -10,13 +10,31 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 
 const LABELS: Record<string, string> = {
-  dashboard: 'Dashboard',
-  incidents: 'Incidents',
-  problems:  'Problems',
-  changes:   'Changes',
-  requests:  'Requests',
-  cmdb:      'CMDB',
-  new:       'New',
+  dashboard:          'Dashboard',
+  incidents:          'Incidents',
+  problems:           'Problems',
+  changes:            'Changes',
+  requests:           'Requests',
+  workflow:           'Workflow',
+  reports:            'Report AI',
+  'custom-reports':   'Report Builder',
+  cmdb:               'CMDB',
+  ci:                 'CI',
+  teams:              'Teams',
+  users:              'Users',
+  logs:               'Logs',
+  settings:           'Settings',
+  notifications:      'Notifiche',
+  profile:            'Profilo',
+  'ci-types':         'Tipi CI',
+  new:                'Nuovo',
+}
+
+const formatSegment = (part: string): string => {
+  if (LABELS[part]) return LABELS[part]
+  if (/^[0-9a-f-]{20,}$/i.test(part)) return 'Dettaglio'
+  if (/^\d+$/.test(part)) return 'Dettaglio'
+  return part.charAt(0).toUpperCase() + part.slice(1).replace(/_/g, ' ')
 }
 
 function Breadcrumb() {
@@ -32,7 +50,7 @@ function Breadcrumb() {
       {parts.map((part, i) => {
         const isLast = i === parts.length - 1
         const path   = '/' + parts.slice(0, i + 1).join('/')
-        const label  = LABELS[part] ?? part
+        const label  = formatSegment(part)
         return (
           <span key={path} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {i > 0 && <span style={{ color: '#c8cfe0' }}>/</span>}

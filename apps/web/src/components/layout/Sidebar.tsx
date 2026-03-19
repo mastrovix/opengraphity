@@ -30,7 +30,7 @@ const NAV_ITEMS = [
   { to: '/requests',               label: 'Requests',   icon: Inbox },
   { to: '/workflow',               label: 'Workflow',   icon: GitBranch },
   { to: '/reports',                label: 'Report AI',      icon: BarChart2 },
-  { to: '/custom-reports',         label: 'Report Custom',  icon: BarChart2 },
+  { to: '/custom-reports',         label: 'Report Builder', icon: BarChart2 },
   { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
   { to: '/settings/profile',       label: 'Profilo',    icon: User },
 ]
@@ -138,8 +138,9 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           </span>
         </div>
         {!collapsed && (
-          <span style={{ color: '#0f1629', fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
-            OpenGrafo
+          <span style={{ fontFamily: 'Arial', fontSize: 18, letterSpacing: '0.02em' }}>
+            <span style={{ fontWeight: 400 }}>OPEN</span>
+            <span style={{ fontWeight: 700 }}>GRAFO</span>
           </span>
         )}
       </div>
