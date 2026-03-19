@@ -74,6 +74,42 @@ const FIXED_ENTITIES: NavigableEntity[] = [
     ],
     relations: [],
   },
+  {
+    entityType: 'ChangeTask',
+    label:      'Change Task',
+    neo4jLabel: 'ChangeTask',
+    fields: [
+      { name: 'task_type',         label: 'Tipo task',            fieldType: 'enum',    enumValues: ['assessment', 'deploy', 'validation'] },
+      { name: 'title',             label: 'Titolo',               fieldType: 'string',  enumValues: [] },
+      { name: 'status',            label: 'Stato',                fieldType: 'enum',    enumValues: ['pending', 'in_progress', 'completed', 'failed', 'skipped', 'rejected'] },
+      { name: 'order',             label: 'Ordine',               fieldType: 'number',  enumValues: [] },
+      { name: 'risk_level',        label: 'Livello rischio',      fieldType: 'enum',    enumValues: ['low', 'medium', 'high', 'critical'] },
+      { name: 'notes',             label: 'Note',                 fieldType: 'string',  enumValues: [] },
+      { name: 'has_validation',    label: 'Ha validazione',       fieldType: 'boolean', enumValues: [] },
+      { name: 'validation_status', label: 'Stato validazione',    fieldType: 'enum',    enumValues: ['pending', 'passed', 'failed'] },
+      { name: 'scheduled_start',   label: 'Inizio pianificato',   fieldType: 'date',    enumValues: [] },
+      { name: 'scheduled_end',     label: 'Fine pianificata',     fieldType: 'date',    enumValues: [] },
+      { name: 'created_at',        label: 'Creato il',            fieldType: 'date',    enumValues: [] },
+    ],
+    relations: [
+      {
+        relationshipType: 'HAS_CHANGE_TASK',
+        direction:        'incoming',
+        label:            'Change',
+        targetEntityType: 'Change',
+        targetLabel:      'Change',
+        targetNeo4jLabel: 'Change',
+      },
+      {
+        relationshipType: 'ASSESSES',
+        direction:        'outgoing',
+        label:            'CI Valutato',
+        targetEntityType: 'any',
+        targetLabel:      'CI',
+        targetNeo4jLabel: 'any',
+      },
+    ],
+  },
 ]
 
 // ── Fixed relations ──────────────────────────────────────────────────────────
@@ -132,6 +168,15 @@ const FIXED_RELATIONS: Array<NavigableRelation & { sourceEntityType: string }> =
     targetEntityType: 'User',
     targetLabel:      'User',
     targetNeo4jLabel: 'User',
+  },
+  {
+    sourceEntityType: 'Change',
+    relationshipType: 'HAS_CHANGE_TASK',
+    direction:        'outgoing',
+    label:            'Change Task',
+    targetEntityType: 'ChangeTask',
+    targetLabel:      'Change Task',
+    targetNeo4jLabel: 'ChangeTask',
   },
 ]
 

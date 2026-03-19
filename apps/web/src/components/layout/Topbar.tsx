@@ -19,7 +19,7 @@ const LABELS: Record<string, string> = {
   reports:            'Report AI',
   'custom-reports':   'Report Builder',
   cmdb:               'CMDB',
-  ci:                 'CI',
+  ci:                 'CMDB',
   teams:              'Teams',
   users:              'Users',
   logs:               'Logs',

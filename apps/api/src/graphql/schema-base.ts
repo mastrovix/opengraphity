@@ -13,6 +13,7 @@ export function buildBaseSDL(): string {
     # Changes
     changes(status: String, type: String, priority: String, search: String, limit: Int, offset: Int): ChangesResult!
     change(id: ID!): Change
+    changeTasks(changeId: ID!, taskType: String): [ChangeTask!]!
     changeImpactAnalysis(ciIds: [ID!]!): ImpactAnalysis!
 
     # Service Requests
@@ -102,20 +103,20 @@ export function buildBaseSDL(): string {
     addChangeComment(changeId: ID!, text: String!): ChangeComment!
     saveDeploySteps(changeId: ID!, steps: [CreateDeployStepInput!]!): Change!
     saveChangeValidation(changeId: ID!, scheduledStart: String!, scheduledEnd: String!): Change!
-    updateAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): AssessmentTask!
-    completeAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): AssessmentTask!
-    rejectAssessmentTask(taskId: ID!, reason: String!): AssessmentTask!
-    assignDeployStepToTeam(stepId: ID!, teamId: ID!): DeployStep!
-    assignDeployStepToUser(stepId: ID!, userId: ID!): DeployStep!
-    assignDeployStepValidationTeam(stepId: ID!, teamId: ID!): DeployStep!
-    assignDeployStepValidationUser(stepId: ID!, userId: ID!): DeployStep!
-    updateDeployStepStatus(stepId: ID!, status: String!, notes: String, skipReason: String): DeployStep!
-    updateDeployStepValidation(stepId: ID!, status: String!, notes: String): DeployStep!
+    updateAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): ChangeTask!
+    completeAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): ChangeTask!
+    rejectAssessmentTask(taskId: ID!, reason: String!): ChangeTask!
+    assignDeployStepToTeam(stepId: ID!, teamId: ID!): ChangeTask!
+    assignDeployStepToUser(stepId: ID!, userId: ID!): ChangeTask!
+    assignDeployStepValidationTeam(stepId: ID!, teamId: ID!): ChangeTask!
+    assignDeployStepValidationUser(stepId: ID!, userId: ID!): ChangeTask!
+    updateDeployStepStatus(stepId: ID!, status: String!, notes: String, skipReason: String): ChangeTask!
+    updateDeployStepValidation(stepId: ID!, status: String!, notes: String): ChangeTask!
     executeChangeTransition(instanceId: ID!, toStep: String!, notes: String): TransitionResult!
-    completeChangeValidation(changeId: ID!, notes: String): ChangeValidation!
-    failChangeValidation(changeId: ID!): ChangeValidation!
-    assignAssessmentTaskTeam(taskId: ID!, teamId: ID!): AssessmentTask!
-    assignAssessmentTaskUser(taskId: ID!, userId: ID!): AssessmentTask!
+    completeChangeValidation(changeId: ID!, notes: String): ChangeTask!
+    failChangeValidation(changeId: ID!): ChangeTask!
+    assignAssessmentTaskTeam(taskId: ID!, teamId: ID!): ChangeTask!
+    assignAssessmentTaskUser(taskId: ID!, userId: ID!): ChangeTask!
 
     # Service Requests
     createServiceRequest(input: CreateServiceRequestInput!): ServiceRequest!
@@ -311,9 +312,7 @@ export function buildBaseSDL(): string {
     assignee:           User
     affectedCIs:        [CIBase!]!
     relatedIncidents:   [Incident!]!
-    deploySteps:        [DeployStep!]!
-    assessmentTasks:    [AssessmentTask!]!
-    validation:         ChangeValidation
+    changeTasks:        [ChangeTask!]!
     workflowInstance:   WorkflowInstance
     availableTransitions: [WorkflowTransition!]!
     workflowHistory:    [WorkflowStepExecution!]!
@@ -378,57 +377,35 @@ export function buildBaseSDL(): string {
     createdAt: String!
   }
 
-  type DeployStep {
-    id:               ID!
-    changeId:         String!
-    order:            Int!
-    title:            String!
-    description:      String
-    status:           String!
-    scheduledStart:   String!
-    durationDays:     Int!
-    scheduledEnd:     String!
-    hasValidation:    Boolean!
-    validationStart:  String
-    validationEnd:    String
-    validationStatus: String
-    validationNotes:  String
-    skipReason:       String
-    notes:            String
-    completedAt:      String
-    createdAt:        String!
-    assignedTeam:     Team
-    assignee:         User
-    validationTeam:   Team
-    validationUser:   User
-  }
-
-  type AssessmentTask {
+  type ChangeTask {
     id:                ID!
+    taskType:          String!
     changeId:          String!
     status:            String!
+    title:             String
+    order:             Int
+    description:       String
+    notes:             String
     riskLevel:         String
     impactDescription: String
     mitigation:        String
-    notes:             String
+    skipReason:        String
     completedAt:       String
-    createdAt:         String!
+    scheduledStart:    String
+    scheduledEnd:      String
+    durationDays:      Int
+    hasValidation:     Boolean
+    validationStatus:  String
+    validationStart:   String
+    validationEnd:     String
+    validationNotes:   String
+    type:              String
+    createdAt:         String
     ci:                CIBase
     assignedTeam:      Team
     assignee:          User
-  }
-
-  type ChangeValidation {
-    id:             ID!
-    changeId:       String!
-    type:           String!
-    scheduledStart: String!
-    scheduledEnd:   String!
-    status:         String!
-    notes:          String
-    completedAt:    String
-    assignedTeam:   Team
-    assignee:       User
+    validationTeam:    Team
+    validationUser:    User
   }
 
   type ServiceRequest {

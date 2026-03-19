@@ -44,24 +44,18 @@ interface WorkflowTransition {
 interface WorkflowInstance { id: string; currentStep: string; status: string }
 interface WorkflowHistory { id: string; stepName: string; enteredAt: string; exitedAt: string | null; durationMs: number | null; triggeredBy: string; triggerType: string; notes: string | null }
 
-interface AssessmentTask {
-  id: string; status: string; riskLevel: string | null; impactDescription: string | null
-  mitigation: string | null; notes: string | null; completedAt: string | null
-  ci: CI | null; assignedTeam: Team | null; assignee: User | null
-}
 
-interface DeployStep {
-  id: string; order: number; title: string; description: string | null; status: string
-  scheduledStart: string; durationDays: number; scheduledEnd: string
-  hasValidation: boolean; validationStart: string | null; validationEnd: string | null
-  validationStatus: string | null; validationNotes: string | null
+interface ChangeTask {
+  id: string; taskType: string; changeId: string; status: string
+  order: number | null; title: string | null; description: string | null
+  scheduledStart: string | null; scheduledEnd: string | null; durationDays: number | null
+  hasValidation: boolean | null; validationStatus: string | null
+  validationStart: string | null; validationEnd: string | null; validationNotes: string | null
   skipReason: string | null; notes: string | null; completedAt: string | null
-  assignedTeam: Team | null; assignee: User | null; validationTeam: Team | null; validationUser: User | null
-}
-
-interface ChangeValidation {
-  id: string; type: string; scheduledStart: string; scheduledEnd: string; status: string
-  notes: string | null; completedAt: string | null; assignedTeam: Team | null; assignee: User | null
+  riskLevel: string | null; impactDescription: string | null; mitigation: string | null
+  type: string | null; createdAt: string | null
+  ci: CI | null; assignedTeam: Team | null; assignee: User | null
+  validationTeam: Team | null; validationUser: User | null
 }
 
 interface Change {
@@ -73,9 +67,7 @@ interface Change {
   workflowInstance: WorkflowInstance | null
   availableTransitions: WorkflowTransition[]
   workflowHistory: WorkflowHistory[]
-  deploySteps: DeployStep[]
-  assessmentTasks: AssessmentTask[]
-  validation: ChangeValidation | null
+  changeTasks: ChangeTask[]
   comments: ChangeComment[]
   impactAnalysis: ImpactAnalysis | null
 }
@@ -366,6 +358,9 @@ export function ChangeDetailPage() {
   if (!data?.change) return <div style={{ color: '#8892a4', fontSize: 14, padding: 40 }}>Change non trovato.</div>
 
   const change = data.change
+  const deploySteps   = (change.changeTasks ?? []).filter((t: { taskType: string }) => t.taskType === 'deploy')
+  const assessmentTasks = (change.changeTasks ?? []).filter((t: { taskType: string }) => t.taskType === 'assessment')
+  const validationTask  = (change.changeTasks ?? []).find((t: { taskType: string }) => t.taskType === 'validation') ?? null
   const currentStep = change.workflowInstance?.currentStep ?? change.status
   const instanceId = change.workflowInstance?.id ?? ''
 
@@ -600,16 +595,16 @@ export function ChangeDetailPage() {
           )}
 
           {/* Assessment Tasks — table */}
-          {showAssessmentTasks && change.assessmentTasks.length > 0 && (() => {
-            const totalCount     = change.assessmentTasks.length
-            const completedCount = change.assessmentTasks.filter((t) => ['completed', 'skipped', 'rejected'].includes(t.status)).length
+          {showAssessmentTasks && assessmentTasks.length > 0 && (() => {
+            const totalCount     = assessmentTasks.length
+            const completedCount = assessmentTasks.filter((t) => ['completed', 'skipped', 'rejected'].includes(t.status)).length
             return (
               <div style={{ ...cardStyle, padding: 0 }}>
                 <div onClick={() => setAssessmentOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: assessmentOpen ? '1px solid #e5e7eb' : 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Assessment Tasks</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {change.assessmentTasks.map((task) => (
+                      {assessmentTasks.map((task) => (
                         <div key={task.id} style={{
                           width: 8, height: 8, borderRadius: '50%',
                           background:
@@ -638,7 +633,7 @@ export function ChangeDetailPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {change.assessmentTasks.map((task) => (
+                          {assessmentTasks.map((task) => (
                             <tr
                               key={task.id}
                               onClick={() => setAssessmentTaskPopup(task.id)}
@@ -684,10 +679,10 @@ export function ChangeDetailPage() {
 
           {/* Validation Card */}
           {(['cab_approval', 'scheduled', 'validation', 'deployment', 'completed', 'failed'].includes(currentStep) &&
-            (change.deploySteps.some((s) => s.hasValidation) || !!change.validation)) && (() => {
+            (deploySteps.some((s) => s.hasValidation) || !!validationTask)) && (() => {
             const allValItems: { status: string }[] = [
-              ...(change.validation ? [change.validation] : []),
-              ...change.deploySteps.filter((s) => s.hasValidation).map((s) => ({ status: s.validationStatus ?? 'pending' })),
+              ...(validationTask ? [validationTask] : []),
+              ...deploySteps.filter((s) => s.hasValidation).map((s) => ({ status: s.validationStatus ?? 'pending' })),
             ]
             const totalValCount  = allValItems.length
             const passedValCount = allValItems.filter((v) => v.status === 'passed').length
@@ -724,7 +719,7 @@ export function ChangeDetailPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {change.validation && (
+                          {validationTask && (
                             <tr
                               onClick={() => { setGlobalValidationPopup(true); setGlobalValNotes('') }}
                               style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
@@ -735,24 +730,24 @@ export function ChangeDetailPage() {
                                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, backgroundColor: '#f1f5f9', color: '#64748b' }}>Globale</span>
                               </td>
                               <td style={{ padding: '10px 12px' }}>
-                                {change.validation.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
+                                {validationTask.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
                               </td>
                               <td style={{ padding: '10px 12px' }}>
-                                {change.validation.assignee ? (
+                                {validationTask.assignee ? (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                     <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                      {change.validation.assignee.name.charAt(0).toUpperCase()}
+                                      {validationTask.assignee.name.charAt(0).toUpperCase()}
                                     </div>
-                                    <span style={{ fontSize: 12 }}>{change.validation.assignee.name}</span>
+                                    <span style={{ fontSize: 12 }}>{validationTask.assignee.name}</span>
                                   </div>
                                 ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
                               </td>
-                              <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(change.validation.scheduledStart)}</td>
-                              <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(change.validation.scheduledEnd)}</td>
-                              <td style={{ padding: '10px 12px' }}><Badge value={change.validation.status} map={{ ...TASK_STATUS_COLORS, passed: { bg: '#ecfdf5', color: '#059669' }, failed: { bg: '#fef2f2', color: '#dc2626' } }} /></td>
+                              <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(validationTask.scheduledStart ?? '')}</td>
+                              <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(validationTask.scheduledEnd ?? '')}</td>
+                              <td style={{ padding: '10px 12px' }}><Badge value={validationTask.status} map={{ ...TASK_STATUS_COLORS, passed: { bg: '#ecfdf5', color: '#059669' }, failed: { bg: '#fef2f2', color: '#dc2626' } }} /></td>
                             </tr>
                           )}
-                          {change.deploySteps.filter((s) => s.hasValidation).map((step) => (
+                          {deploySteps.filter((s) => s.hasValidation).map((step) => (
                             <tr
                               key={step.id}
                               onClick={() => { setValidationStepPopup(step.id); setValPopupNotes(''); setValPopupShowReassign(false); setValPopupReassignTeamId(''); setValPopupUserId('') }}
@@ -790,8 +785,8 @@ export function ChangeDetailPage() {
 
           {/* Deploy Tasks — table */}
           {showDeploySteps && !deployStepsEditable && (() => {
-            const totalDeployCount     = change.deploySteps.length
-            const completedDeployCount = change.deploySteps.filter((s) => s.status === 'completed').length
+            const totalDeployCount     = deploySteps.length
+            const completedDeployCount = deploySteps.filter((s) => s.status === 'completed').length
             return (
               <div style={{ ...cardStyle, padding: 0 }}>
                 <div onClick={() => setDeployOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: deployOpen ? '1px solid #e5e7eb' : 'none' }}>
@@ -799,7 +794,7 @@ export function ChangeDetailPage() {
                     <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Deploy Tasks</span>
                     {totalDeployCount > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {change.deploySteps.map((s) => (
+                        {deploySteps.map((s) => (
                           <div key={s.id} style={{
                             width: 8, height: 8, borderRadius: '50%',
                             background:
@@ -819,7 +814,7 @@ export function ChangeDetailPage() {
                 </div>
                 {deployOpen && (
                   <div style={{ padding: '0 0 4px' }}>
-                    {change.deploySteps.length === 0 ? (
+                    {deploySteps.length === 0 ? (
                       <div style={{ padding: '16px 20px', fontSize: 13, color: '#8892a4' }}>Nessuno step pianificato.</div>
                     ) : (
                       <div style={{ overflowX: 'auto' }}>
@@ -832,7 +827,7 @@ export function ChangeDetailPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {change.deploySteps.map((step) => (
+                            {deploySteps.map((step) => (
                               <tr
                                 key={step.id}
                                 onClick={() => { setDeployStepPopup(step.id); setDeployPopupNotes(''); setDeployPopupShowSkip(false); setDeployPopupSkipReason(''); setDeployPopupShowFail(false); setDeployPopupFailReason(''); setDeployPopupShowReassign(false); setDeployPopupReassignTeamId(''); setDeployPopupUserId('') }}
@@ -854,8 +849,8 @@ export function ChangeDetailPage() {
                                     </div>
                                   ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
                                 </td>
-                                <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledStart)}</td>
-                                <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledEnd)}</td>
+                                <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledStart ?? '')}</td>
+                                <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledEnd ?? '')}</td>
                                 <td style={{ padding: '10px 12px' }}><Badge value={step.status} map={STATUS_STEP_COLORS} /></td>
                               </tr>
                             ))}
@@ -974,7 +969,7 @@ export function ChangeDetailPage() {
 
       {/* Reassign Task Dialog */}
       {reassignTaskId && (() => {
-        const taskToReassign = change.assessmentTasks.find((t) => t.id === reassignTaskId)
+        const taskToReassign = assessmentTasks.find((t) => t.id === reassignTaskId)
         const ownerGroup    = taskToReassign?.ci?.owner   ?? null
         const supportGroup  = taskToReassign?.ci?.supportGroup ?? null
         const currentTeamId = taskToReassign?.assignedTeam?.id ?? null
@@ -1174,7 +1169,7 @@ export function ChangeDetailPage() {
 
       {/* Deploy Step Popup Drawer */}
       {deployStepPopup && (() => {
-        const step = change.deploySteps.find((s) => s.id === deployStepPopup)
+        const step = deploySteps.find((s) => s.id === deployStepPopup)
         if (!step) return null
         const stepDone = ['completed', 'skipped', 'failed'].includes(step.status)
         const canAct = currentStep === 'deployment' && !stepDone
@@ -1212,11 +1207,11 @@ export function ChangeDetailPage() {
                 <div style={{ display: 'flex', gap: 24, marginBottom: 20, fontSize: 13 }}>
                   <div>
                     <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 2 }}>Inizio</div>
-                    <div style={{ fontWeight: 500 }}>{formatDate(step.scheduledStart)}</div>
+                    <div style={{ fontWeight: 500 }}>{formatDate(step.scheduledStart ?? '')}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 2 }}>Fine</div>
-                    <div style={{ fontWeight: 500 }}>{formatDate(step.scheduledEnd)}</div>
+                    <div style={{ fontWeight: 500 }}>{formatDate(step.scheduledEnd ?? '')}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 2 }}>Durata</div>
@@ -1422,7 +1417,7 @@ export function ChangeDetailPage() {
 
       {/* Validation Step Popup Drawer */}
       {validationStepPopup && (() => {
-        const step = change.deploySteps.find((s) => s.id === validationStepPopup)
+        const step = deploySteps.find((s) => s.id === validationStepPopup)
         if (!step) return null
         const valDone = step.validationStatus === 'passed' || step.validationStatus === 'failed'
         const canAct = currentStep === 'validation' && !valDone
@@ -1604,8 +1599,8 @@ export function ChangeDetailPage() {
       })()}
 
       {/* Global Validation Popup Drawer */}
-      {globalValidationPopup && change.validation && (() => {
-        const val = change.validation
+      {globalValidationPopup && validationTask && (() => {
+        const val = validationTask
         const valDone = val.status === 'passed' || val.status === 'failed'
         const canAct  = currentStep === 'validation' && !valDone
         return (
@@ -1727,7 +1722,7 @@ export function ChangeDetailPage() {
 
       {/* Assessment Task Popup Drawer */}
       {assessmentTaskPopup && (() => {
-        const task = change.assessmentTasks.find((t) => t.id === assessmentTaskPopup)
+        const task = assessmentTasks.find((t) => t.id === assessmentTaskPopup)
         if (!task) return null
         const taskForm = getTaskForm(task.id)
         const isEditable = task.status === 'open'
@@ -1884,7 +1879,7 @@ export function ChangeDetailPage() {
                     )}
                     {task.assignedTeam && (
                       <>
-                        {change.deploySteps.length === 0 && (
+                        {deploySteps.length === 0 && (
                           <div style={{ fontSize: 12, color: '#ca8a04', padding: '8px 12px', borderRadius: 6, backgroundColor: 'rgba(234,179,8,0.08)', marginBottom: 8 }}>
                             ⚠ Aggiungi almeno uno step di deployment prima di completare il task
                           </div>
@@ -1895,8 +1890,8 @@ export function ChangeDetailPage() {
                               completeTask({ variables: { taskId: task.id, input: { riskLevel: taskForm.riskLevel, impactDescription: taskForm.impactDescription, mitigation: taskForm.mitigation || null, notes: taskForm.notes || null } } })
                               setAssessmentTaskPopup(null)
                             }}
-                            disabled={completingTask || !taskForm.impactDescription.trim() || !taskForm.riskLevel || change.deploySteps.length === 0}
-                            style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 600, cursor: taskForm.impactDescription.trim() && taskForm.riskLevel && change.deploySteps.length > 0 && !completingTask ? 'pointer' : 'not-allowed', backgroundColor: taskForm.impactDescription.trim() && taskForm.riskLevel && change.deploySteps.length > 0 && !completingTask ? '#059669' : '#e2e6f0', color: taskForm.impactDescription.trim() && taskForm.riskLevel && change.deploySteps.length > 0 && !completingTask ? '#fff' : '#8892a4' }}
+                            disabled={completingTask || !taskForm.impactDescription.trim() || !taskForm.riskLevel || deploySteps.length === 0}
+                            style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 600, cursor: taskForm.impactDescription.trim() && taskForm.riskLevel && deploySteps.length > 0 && !completingTask ? 'pointer' : 'not-allowed', backgroundColor: taskForm.impactDescription.trim() && taskForm.riskLevel && deploySteps.length > 0 && !completingTask ? '#059669' : '#e2e6f0', color: taskForm.impactDescription.trim() && taskForm.riskLevel && deploySteps.length > 0 && !completingTask ? '#fff' : '#8892a4' }}
                           >
                             {completingTask ? 'Completamento…' : '✓ Completa task'}
                           </button>
@@ -1923,15 +1918,15 @@ export function ChangeDetailPage() {
                     </div>
 
                     {/* Existing steps list */}
-                    {change.deploySteps.length > 0 ? (
+                    {deploySteps.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-                        {change.deploySteps.map((step) => (
+                        {deploySteps.map((step) => (
                           <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', backgroundColor: '#f8f9fc', borderRadius: 7 }}>
                             <span style={{ backgroundColor: '#4f46e5', color: '#fff', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{step.order}</span>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 13, fontWeight: 500, color: '#0f1629' }}>{step.title}</div>
                               <div style={{ fontSize: 11, color: '#8892a4' }}>
-                                {formatDate(step.scheduledStart)} → {formatDate(step.scheduledEnd)}
+                                {formatDate(step.scheduledStart ?? '')} → {formatDate(step.scheduledEnd ?? '')}
                                 {step.assignedTeam && <span style={{ marginLeft: 8 }}>· {step.assignedTeam.name}</span>}
                               </div>
                             </div>
@@ -2040,7 +2035,7 @@ export function ChangeDetailPage() {
                         <button
                           disabled={!newStepForm.title.trim() || !newStepForm.scheduledStart || savingSteps}
                           onClick={() => {
-                            const existingSteps = change.deploySteps.map((s) => ({
+                            const existingSteps = deploySteps.map((s) => ({
                               order: s.order, title: s.title, description: s.description ?? null,
                               scheduledStart: s.scheduledStart, durationDays: s.durationDays,
                               hasValidation: s.hasValidation,
@@ -2051,7 +2046,7 @@ export function ChangeDetailPage() {
                               variables: {
                                 changeId: change.id,
                                 steps: [...existingSteps, {
-                                  order: change.deploySteps.length + 1,
+                                  order: deploySteps.length + 1,
                                   title: newStepForm.title.trim(),
                                   description: null,
                                   scheduledStart: newStepForm.scheduledStart,
@@ -2077,15 +2072,15 @@ export function ChangeDetailPage() {
                     )}
 
                     {/* Global validation form — when no step has own validation and there are steps */}
-                    {deployStepsEditable && change.deploySteps.length > 0 && !change.deploySteps.some((s) => s.hasValidation) && (
+                    {deployStepsEditable && deploySteps.length > 0 && !deploySteps.some((s) => s.hasValidation) && (
                       <div style={{ marginTop: 16, padding: 16, borderRadius: 8, border: '1px solid #fde68a', backgroundColor: 'rgba(234,179,8,0.05)' }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: '#ca8a04', marginBottom: 12 }}>
                           ⚠ Nessuno step ha validazione propria — definisci la finestra di validazione globale
                         </div>
-                        {change.validation ? (
+                        {validationTask ? (
                           <div style={{ fontSize: 13, color: '#4a5468' }}>
-                            Pianificata: {formatDate(change.validation.scheduledStart)} → {formatDate(change.validation.scheduledEnd)}
-                            {' '}<Badge value={change.validation.status} map={TASK_STATUS_COLORS} />
+                            Pianificata: {formatDate(validationTask.scheduledStart ?? '')} → {formatDate(validationTask.scheduledEnd ?? '')}
+                            {' '}<Badge value={validationTask.status} map={TASK_STATUS_COLORS} />
                           </div>
                         ) : (
                           <>

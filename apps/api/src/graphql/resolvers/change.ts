@@ -36,73 +36,48 @@ function mapChange(props: Props) {
     // populated by field resolvers
     assignedTeam: null, assignee: null,
     affectedCIs: [], relatedIncidents: [],
-    deploySteps: [], assessmentTasks: [],
-    validation: null, createdBy: null, comments: [],
+    changeTasks: [],
+    createdBy: null, comments: [],
   }
 }
 
-function mapDeployStep(
+function mapChangeTask(
   props: Props,
+  ci?: Props | null,
   team?: Props | null,
   user?: Props | null,
   vTeam?: Props | null,
   vUser?: Props | null,
 ) {
   return {
-    id:               props['id']               as string,
-    changeId:         props['change_id']         as string,
-    order:            props['order']             as number,
-    title:            props['title']             as string,
-    description:      (props['description']      ?? null) as string | null,
-    status:           props['status']            as string,
-    scheduledStart:   props['scheduled_start']   as string,
-    durationDays:     props['duration_days']     as number,
-    scheduledEnd:     props['scheduled_end']     as string,
-    hasValidation:    props['has_validation']    as boolean,
-    validationStart:  (props['validation_start']  ?? null) as string | null,
-    validationEnd:    (props['validation_end']    ?? null) as string | null,
-    validationStatus: (props['validation_status'] ?? null) as string | null,
-    validationNotes:  (props['validation_notes']  ?? null) as string | null,
-    skipReason:       (props['skip_reason']       ?? null) as string | null,
-    notes:            (props['notes']             ?? null) as string | null,
-    completedAt:      (props['completed_at']      ?? null) as string | null,
-    createdAt:        props['created_at']         as string,
-    assignedTeam:     team   ? mapTeam(team)   : null,
-    assignee:         user   ? mapUser(user)   : null,
-    validationTeam:   vTeam  ? mapTeam(vTeam)  : null,
-    validationUser:   vUser  ? mapUser(vUser)  : null,
-  }
-}
-
-function mapAssessmentTask(props: Props, ci?: Props | null, team?: Props | null, user?: Props | null) {
-  return {
     id:                props['id']                 as string,
+    taskType:          props['task_type']           as string,
     changeId:          props['change_id']           as string,
     status:            props['status']              as string,
-    riskLevel:         (props['risk_level']          ?? null) as string | null,
-    impactDescription: (props['impact_description']  ?? null) as string | null,
-    mitigation:        (props['mitigation']          ?? null) as string | null,
-    notes:             (props['notes']               ?? null) as string | null,
-    completedAt:       (props['completed_at']        ?? null) as string | null,
-    createdAt:         props['created_at']           as string,
-    ci:                ci   ? mapCI(ci)     : null,
-    assignedTeam:      team ? mapTeam(team) : null,
-    assignee:          user ? mapUser(user) : null,
-  }
-}
-
-function mapChangeValidation(props: Props, team?: Props | null, user?: Props | null) {
-  return {
-    id:             props['id']             as string,
-    changeId:       props['change_id']      as string,
-    type:           props['type']           as string,
-    scheduledStart: props['scheduled_start'] as string,
-    scheduledEnd:   props['scheduled_end']  as string,
-    status:         props['status']         as string,
-    notes:          (props['notes']         ?? null) as string | null,
-    completedAt:    (props['completed_at']  ?? null) as string | null,
-    assignedTeam:   team ? mapTeam(team) : null,
-    assignee:       user ? mapUser(user) : null,
+    title:             (props['title']              ?? null) as string | null,
+    order:             (props['order']              ?? null) as number | null,
+    description:       (props['description']        ?? null) as string | null,
+    notes:             (props['notes']              ?? null) as string | null,
+    riskLevel:         (props['risk_level']         ?? null) as string | null,
+    impactDescription: (props['impact_description'] ?? null) as string | null,
+    mitigation:        (props['mitigation']         ?? null) as string | null,
+    skipReason:        (props['skip_reason']        ?? null) as string | null,
+    completedAt:       (props['completed_at']       ?? null) as string | null,
+    scheduledStart:    (props['scheduled_start']    ?? null) as string | null,
+    scheduledEnd:      (props['scheduled_end']      ?? null) as string | null,
+    durationDays:      (props['duration_days']      ?? null) as number | null,
+    hasValidation:     (props['has_validation']     ?? null) as boolean | null,
+    validationStatus:  (props['validation_status']  ?? null) as string | null,
+    validationStart:   (props['validation_start']   ?? null) as string | null,
+    validationEnd:     (props['validation_end']     ?? null) as string | null,
+    validationNotes:   (props['validation_notes']   ?? null) as string | null,
+    type:              (props['type']               ?? null) as string | null,
+    createdAt:         (props['created_at']         ?? null) as string | null,
+    ci:                ci    ? mapCI(ci)    : null,
+    assignedTeam:      team  ? mapTeam(team)  : null,
+    assignee:          user  ? mapUser(user)  : null,
+    validationTeam:    vTeam ? mapTeam(vTeam) : null,
+    validationUser:    vUser ? mapUser(vUser) : null,
   }
 }
 
@@ -365,7 +340,8 @@ async function addAffectedCIToChange(
     if (wiResult.records[0]?.get('step') === 'assessment') {
       // Check no task already exists for this CI on this change
       const existingTask = await session.executeRead((tx) => tx.run(`
-        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)-[:ASSESSES]->(ci {id: $ciId})
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(t:ChangeTask)-[:ASSESSES]->(ci {id: $ciId})
+        WHERE t.task_type = 'assessment'
         RETURN t.id AS taskId LIMIT 1
       `, { changeId: args.changeId, tenantId: ctx.tenantId, ciId: args.ciId }))
 
@@ -383,8 +359,9 @@ async function addAffectedCIToChange(
           await session.executeWrite((tx) => tx.run(`
             MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
             MATCH (ci {id: $ciId})
-            CREATE (t:AssessmentTask {
+            CREATE (t:ChangeTask {
               id:         $taskId,
+              task_type:  'assessment',
               tenant_id:  $tenantId,
               change_id:  $changeId,
               ci_id:      $ciId,
@@ -392,14 +369,14 @@ async function addAffectedCIToChange(
               created_at: $now,
               updated_at: $now
             })
-            CREATE (c)-[:HAS_ASSESSMENT_TASK]->(t)
+            CREATE (c)-[:HAS_CHANGE_TASK]->(t)
             CREATE (t)-[:ASSESSES]->(ci)
           `, { changeId: args.changeId, tenantId: ctx.tenantId, ciId: args.ciId, taskId, now }))
 
           if (ownerTeam) {
             const teamId = (ownerTeam.properties as Record<string, unknown>)['id'] as string
             await session.executeWrite((tx) => tx.run(`
-              MATCH (t:AssessmentTask {id: $taskId})
+              MATCH (t:ChangeTask {id: $taskId})
               MATCH (team:Team {id: $teamId, tenant_id: $tenantId})
               MERGE (t)-[:ASSIGNED_TO_TEAM]->(team)
             `, { taskId, teamId, tenantId: ctx.tenantId }))
@@ -449,8 +426,8 @@ async function removeAffectedCIFromChange(
     // If in assessment: skip AssessmentTask for this CI
     if (currentStep === 'assessment') {
       await session.executeWrite((tx) => tx.run(`
-        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)-[:ASSESSES]->(ci {id: $ciId})
-        WHERE t.status = 'open'
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(t:ChangeTask)-[:ASSESSES]->(ci {id: $ciId})
+        WHERE t.task_type = 'assessment' AND t.status = 'open'
         SET t.status     = 'skipped',
             t.notes      = $reason,
             t.updated_at = $now
@@ -508,7 +485,8 @@ async function saveDeploySteps(
   return withSession(async (session) => {
     // Delete existing deploy steps
     await session.executeWrite((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_DEPLOY_STEP]->(s:DeployStep)
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(s:ChangeTask)
+      WHERE s.task_type = 'deploy'
       DETACH DELETE s
     `, { changeId: args.changeId, tenantId: ctx.tenantId }))
 
@@ -542,8 +520,9 @@ async function saveDeploySteps(
 
       await session.executeWrite((tx) => tx.run(`
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-        CREATE (s:DeployStep {
+        CREATE (s:ChangeTask {
           id:               $stepId,
+          task_type:        'deploy',
           tenant_id:        $tenantId,
           change_id:        $changeId,
           order:            $order,
@@ -560,7 +539,7 @@ async function saveDeploySteps(
           created_at:       $now,
           updated_at:       $now
         })
-        CREATE (c)-[:HAS_DEPLOY_STEP]->(s)
+        CREATE (c)-[:HAS_CHANGE_TASK]->(s)
       `, {
         changeId: args.changeId, tenantId: ctx.tenantId,
         stepId, order: step.order, title: step.title,
@@ -573,24 +552,24 @@ async function saveDeploySteps(
 
       if (step.assignedTeamId) {
         await session.executeWrite((tx) => tx.run(`
-          MATCH (s:DeployStep {id: $stepId}), (t:Team {id: $teamId, tenant_id: $tenantId})
+          MATCH (s:ChangeTask {id: $stepId}), (t:Team {id: $teamId, tenant_id: $tenantId})
           MERGE (s)-[:ASSIGNED_TO_TEAM]->(t)
         `, { stepId, teamId: step.assignedTeamId, tenantId: ctx.tenantId }))
       } else if (defaultDeployTeamId) {
         await session.executeWrite((tx) => tx.run(`
-          MATCH (s:DeployStep {id: $stepId})
+          MATCH (s:ChangeTask {id: $stepId})
           MATCH (team:Team {id: $teamId, tenant_id: $tenantId})
           MERGE (s)-[:ASSIGNED_TO_TEAM]->(team)
         `, { stepId, teamId: defaultDeployTeamId, tenantId: ctx.tenantId }))
       }
       if (step.validationTeamId) {
         await session.executeWrite((tx) => tx.run(`
-          MATCH (s:DeployStep {id: $stepId}), (t:Team {id: $teamId, tenant_id: $tenantId})
+          MATCH (s:ChangeTask {id: $stepId}), (t:Team {id: $teamId, tenant_id: $tenantId})
           MERGE (s)-[:VALIDATION_ASSIGNED_TO_TEAM]->(t)
         `, { stepId, teamId: step.validationTeamId, tenantId: ctx.tenantId }))
       } else if (step.hasValidation && defaultValidationTeamId) {
         await session.executeWrite((tx) => tx.run(`
-          MATCH (s:DeployStep {id: $stepId})
+          MATCH (s:ChangeTask {id: $stepId})
           MATCH (team:Team {id: $teamId, tenant_id: $tenantId})
           MERGE (s)-[:VALIDATION_ASSIGNED_TO_TEAM]->(team)
         `, { stepId, teamId: defaultValidationTeamId, tenantId: ctx.tenantId }))
@@ -630,7 +609,8 @@ async function saveChangeValidation(
   return withSession(async (session) => {
     // Validate: validation must end before first deploy step starts
     const firstStepRes = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_DEPLOY_STEP]->(s:DeployStep)
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(s:ChangeTask)
+      WHERE s.task_type = 'deploy'
       RETURN s.scheduled_start AS start ORDER BY s.order ASC LIMIT 1
     `, { changeId: args.changeId, tenantId: ctx.tenantId }))
 
@@ -644,7 +624,7 @@ async function saveChangeValidation(
     const valId = uuidv4()
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-      MERGE (v:ChangeValidation {change_id: $changeId, tenant_id: $tenantId})
+      MERGE (v:ChangeTask {change_id: $changeId, tenant_id: $tenantId, task_type: 'validation'})
       ON CREATE SET
         v.id             = $valId,
         v.created_at     = $now
@@ -654,7 +634,7 @@ async function saveChangeValidation(
         v.scheduled_end  = $scheduledEnd,
         v.status         = 'pending',
         v.updated_at     = $now
-      MERGE (c)-[:HAS_VALIDATION]->(v)
+      MERGE (c)-[:HAS_CHANGE_TASK]->(v)
     `, { changeId: args.changeId, tenantId: ctx.tenantId, valId, scheduledStart: args.scheduledStart, scheduledEnd: args.scheduledEnd, now }))
 
     const result = await session.executeRead((tx) => tx.run(
@@ -675,7 +655,7 @@ async function updateAssessmentTask(
   const now = new Date().toISOString()
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       SET t.risk_level          = $riskLevel,
           t.impact_description  = $impactDescription,
           t.mitigation          = $mitigation,
@@ -686,7 +666,7 @@ async function updateAssessmentTask(
 
     if (args.input.assignedTeamId) {
       await session.executeWrite((tx) => tx.run(`
-        MATCH (t:AssessmentTask {id: $taskId})
+        MATCH (t:ChangeTask {id: $taskId})
         OPTIONAL MATCH (t)-[old:ASSIGNED_TO_TEAM]->() DELETE old
         WITH t MATCH (team:Team {id: $teamId, tenant_id: $tenantId})
         CREATE (t)-[:ASSIGNED_TO_TEAM]->(team)
@@ -694,15 +674,15 @@ async function updateAssessmentTask(
     }
 
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
       RETURN properties(t) AS tProps, properties(ci) AS ciProps, properties(team) AS teamProps, properties(u) AS uProps
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('AssessmentTask not found')
-    return mapAssessmentTask(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
       row.get('teamProps') as Props | null,
@@ -719,7 +699,7 @@ async function completeAssessmentTask(
   const now = new Date().toISOString()
   return withSession(async (session) => {
     const teamCheck = await session.executeRead((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId})
+      MATCH (t:ChangeTask {id: $taskId})
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       RETURN team
     `, { taskId: args.taskId }))
@@ -727,14 +707,15 @@ async function completeAssessmentTask(
       throw new GraphQLError('Assegna un team prima di completare il task')
 
     const taskData = await session.executeRead((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       RETURN t.change_id AS changeId
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const changeId = taskData.records[0]?.get('changeId') as string | null
     if (changeId) {
       const stepsResult = await session.executeRead((tx) => tx.run(`
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-              -[:HAS_DEPLOY_STEP]->(s:DeployStep)
+              -[:HAS_CHANGE_TASK]->(s:ChangeTask)
+        WHERE s.task_type = 'deploy'
         RETURN count(s) AS total
       `, { changeId, tenantId: ctx.tenantId }))
       const totalSteps = (stepsResult.records[0]?.get('total') as { toNumber(): number } | null)?.toNumber() ?? 0
@@ -743,7 +724,7 @@ async function completeAssessmentTask(
     }
 
     await session.executeWrite((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       SET t.risk_level          = $riskLevel,
           t.impact_description  = $impactDescription,
           t.mitigation          = $mitigation,
@@ -754,22 +735,22 @@ async function completeAssessmentTask(
     `, { taskId: args.taskId, tenantId: ctx.tenantId, riskLevel: args.input.riskLevel, impactDescription: args.input.impactDescription, mitigation: args.input.mitigation ?? null, notes: args.input.notes ?? null, now }))
 
     await session.executeWrite((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId})
+      MATCH (t:ChangeTask {id: $taskId})
       WHERE NOT (t)-[:ASSIGNED_TO]->()
       MATCH (u:User {id: $userId, tenant_id: $tenantId})
       CREATE (t)-[:ASSIGNED_TO]->(u)
     `, { taskId: args.taskId, userId: ctx.userId, tenantId: ctx.tenantId }))
 
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
       RETURN properties(t) AS tProps, properties(ci) AS ciProps, properties(team) AS teamProps, properties(u) AS uProps
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('AssessmentTask not found')
-    return mapAssessmentTask(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
       row.get('teamProps') as Props | null,
@@ -786,7 +767,7 @@ async function rejectAssessmentTask(
   return withSession(async (session) => {
     // 1. Recupera task + CI + change_id
     const taskResult = await session.executeRead((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       MATCH (t)-[:ASSESSES]->(ci)
       RETURN t, ci.id AS ciId, ci.name AS ciName, t.change_id AS changeId
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
@@ -799,7 +780,7 @@ async function rejectAssessmentTask(
 
     // 2. Setta task status = skipped con skip_reason
     await session.executeWrite((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       SET t.status       = 'skipped',
           t.skip_reason  = $reason,
           t.completed_at = $now,
@@ -808,7 +789,7 @@ async function rejectAssessmentTask(
 
     // 3. Auto-assegna utente se non assegnato
     await session.executeWrite((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId})
+      MATCH (t:ChangeTask {id: $taskId})
       WHERE NOT (t)-[:ASSIGNED_TO]->()
       MATCH (u:User {id: $userId, tenant_id: $tenantId})
       CREATE (t)-[:ASSIGNED_TO]->(u)
@@ -830,7 +811,7 @@ async function rejectAssessmentTask(
 
     // 6. Ritorna task aggiornato
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId})
+      MATCH (t:ChangeTask {id: $taskId})
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
@@ -842,8 +823,8 @@ async function rejectAssessmentTask(
              properties(supportTeam) AS supportTeamProps
     `, { taskId: args.taskId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('AssessmentTask not found')
-    const task = mapAssessmentTask(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    const task = mapChangeTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
       row.get('teamProps') as Props | null,
@@ -865,15 +846,15 @@ async function assignDeployStepToTeam(
 ) {
   return withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       OPTIONAL MATCH (s)-[old:ASSIGNED_TO_TEAM]->() DELETE old
       WITH s MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       CREATE (s)-[:ASSIGNED_TO_TEAM]->(t)
       RETURN properties(s) AS props, properties(t) AS teamProps
     `, { stepId: args.stepId, teamId: args.teamId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('DeployStep not found')
-    return mapDeployStep(row.get('props') as Props, row.get('teamProps') as Props)
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(row.get('props') as Props, null, row.get('teamProps') as Props)
   }, true)
 }
 
@@ -882,15 +863,15 @@ async function assignDeployStepToUser(
 ) {
   return withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       OPTIONAL MATCH (s)-[old:ASSIGNED_TO]->() DELETE old
       WITH s MATCH (u:User {id: $userId, tenant_id: $tenantId})
       CREATE (s)-[:ASSIGNED_TO]->(u)
       RETURN properties(s) AS props, properties(u) AS uProps
     `, { stepId: args.stepId, userId: args.userId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('DeployStep not found')
-    return mapDeployStep(row.get('props') as Props, null, row.get('uProps') as Props)
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(row.get('props') as Props, null, row.get('uProps') as Props)
   }, true)
 }
 
@@ -899,7 +880,7 @@ async function assignDeployStepValidationTeam(
 ) {
   return withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       OPTIONAL MATCH (s)-[old:VALIDATION_ASSIGNED_TO_TEAM]->() DELETE old
       WITH s MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       CREATE (s)-[:VALIDATION_ASSIGNED_TO_TEAM]->(t)
@@ -910,8 +891,8 @@ async function assignDeployStepValidationTeam(
              properties(t) AS vtProps, properties(vu) AS vuProps
     `, { stepId: args.stepId, teamId: args.teamId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('DeployStep not found')
-    return mapDeployStep(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
       row.get('props') as Props,
       row.get('tProps') as Props | null,
       row.get('uProps') as Props | null,
@@ -926,7 +907,7 @@ async function assignDeployStepValidationUser(
 ) {
   return withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       OPTIONAL MATCH (s)-[old:VALIDATION_ASSIGNED_TO]->() DELETE old
       WITH s MATCH (u:User {id: $userId, tenant_id: $tenantId})
       CREATE (s)-[:VALIDATION_ASSIGNED_TO]->(u)
@@ -937,8 +918,8 @@ async function assignDeployStepValidationUser(
              properties(vt) AS vtProps, properties(u) AS vuProps
     `, { stepId: args.stepId, userId: args.userId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('DeployStep not found')
-    return mapDeployStep(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
       row.get('props') as Props,
       row.get('tProps') as Props | null,
       row.get('uProps') as Props | null,
@@ -957,7 +938,7 @@ async function updateDeployStepStatus(
   return withSession(async (session) => {
     if (['in_progress', 'completed'].includes(args.status)) {
       const teamCheck = await session.executeRead((tx) => tx.run(`
-        MATCH (s:DeployStep {id: $stepId})
+        MATCH (s:ChangeTask {id: $stepId})
         OPTIONAL MATCH (s)-[:ASSIGNED_TO_TEAM]->(team:Team)
         RETURN team
       `, { stepId: args.stepId }))
@@ -966,7 +947,7 @@ async function updateDeployStepStatus(
     }
 
     await session.executeWrite((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       SET s.status       = $status,
           s.notes        = coalesce($notes, s.notes),
           s.skip_reason  = coalesce($skipReason, s.skip_reason),
@@ -975,7 +956,7 @@ async function updateDeployStepStatus(
     `, { stepId: args.stepId, tenantId: ctx.tenantId, status: args.status, notes: args.notes ?? null, skipReason: args.skipReason ?? null, now }))
 
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       OPTIONAL MATCH (s)-[:ASSIGNED_TO_TEAM]->(t:Team)
       OPTIONAL MATCH (s)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (s)-[:VALIDATION_ASSIGNED_TO_TEAM]->(vt:Team)
@@ -984,7 +965,7 @@ async function updateDeployStepStatus(
              properties(vt) AS vtProps, properties(vu) AS vuProps
     `, { stepId: args.stepId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('DeployStep not found')
+    if (!row) throw new GraphQLError('ChangeTask not found')
     const stepProps = row.get('props') as Props
     if (args.status === 'skipped') {
       const changeId = stepProps['change_id'] as string
@@ -995,7 +976,7 @@ async function updateDeployStepStatus(
         'step_skipped', ctx.userId,
       )
     }
-    return mapDeployStep(
+    return mapChangeTask(
       stepProps,
       row.get('tProps') as Props | null,
       row.get('uProps') as Props | null,
@@ -1012,7 +993,7 @@ async function updateDeployStepValidation(
 ) {
   return withSession(async (session) => {
     const teamCheck = await session.executeRead((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId})
+      MATCH (s:ChangeTask {id: $stepId})
       OPTIONAL MATCH (s)-[:VALIDATION_ASSIGNED_TO_TEAM]->(team:Team)
       RETURN team
     `, { stepId: args.stepId }))
@@ -1020,7 +1001,7 @@ async function updateDeployStepValidation(
       throw new GraphQLError('Assegna un team di validazione prima di procedere')
 
     const stepResult = await session.executeRead((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       RETURN s.change_id AS changeId, s.order AS order, s.title AS title
     `, { stepId: args.stepId, tenantId: ctx.tenantId }))
     if (!stepResult.records.length) throw new GraphQLError('Deploy step non trovato')
@@ -1029,7 +1010,7 @@ async function updateDeployStepValidation(
     const title    = stepResult.records[0].get('title')    as string
 
     await session.executeWrite((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       SET s.validation_status = $status,
           s.validation_notes  = $notes,
           s.updated_at        = $now
@@ -1043,7 +1024,7 @@ async function updateDeployStepValidation(
     )
 
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (s:DeployStep {id: $stepId, tenant_id: $tenantId})
+      MATCH (s:ChangeTask {id: $stepId, tenant_id: $tenantId})
       OPTIONAL MATCH (s)-[:ASSIGNED_TO_TEAM]->(t:Team)
       OPTIONAL MATCH (s)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (s)-[:VALIDATION_ASSIGNED_TO_TEAM]->(vt:Team)
@@ -1052,8 +1033,8 @@ async function updateDeployStepValidation(
              properties(vt) AS vtProps, properties(vu) AS vuProps
     `, { stepId: args.stepId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('DeployStep not found')
-    return mapDeployStep(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
       row.get('props') as Props,
       row.get('tProps') as Props | null,
       row.get('uProps') as Props | null,
@@ -1085,7 +1066,8 @@ async function executeChangeTransition(
     if (args.toStep === 'cab_approval') {
       const tasksResult = await session.executeRead((tx) => tx.run(`
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-              -[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)
+              -[:HAS_CHANGE_TASK]->(t:ChangeTask)
+        WHERE t.task_type = 'assessment'
         RETURN t.status AS status
       `, { changeId, tenantId }))
       const tasks = tasksResult.records.map((r) => r.get('status') as string)
@@ -1100,7 +1082,8 @@ async function executeChangeTransition(
       }
 
       const stepsResult = await session.executeRead((tx) => tx.run(`
-        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_DEPLOY_STEP]->(s:DeployStep)
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(s:ChangeTask)
+        WHERE s.task_type = 'deploy'
         RETURN count(s) AS total
       `, { changeId, tenantId }))
       const totalSteps = (stepsResult.records[0]?.get('total') as { low: number } | null)?.low ?? 0
@@ -1112,8 +1095,8 @@ async function executeChangeTransition(
     // Guard: deployment→completed requires all DeploySteps completed or skipped
     if (args.toStep === 'completed') {
       const pendingRes = await session.executeRead((tx) => tx.run(`
-        MATCH (c:Change {id: $changeId})-[:HAS_DEPLOY_STEP]->(s:DeployStep)
-        WHERE NOT s.status IN ['completed', 'skipped']
+        MATCH (c:Change {id: $changeId})-[:HAS_CHANGE_TASK]->(s:ChangeTask)
+        WHERE s.task_type = 'deploy' AND NOT s.status IN ['completed', 'skipped']
         RETURN count(s) AS pending
       `, { changeId }))
       const pending = (pendingRes.records[0]?.get('pending') as { low: number })?.low ?? 0
@@ -1131,8 +1114,9 @@ async function executeChangeTransition(
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
               -[:AFFECTS]->(ci)
         OPTIONAL MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
-        CREATE (t:AssessmentTask {
+        CREATE (t:ChangeTask {
           id:         randomUUID(),
+          task_type:  'assessment',
           tenant_id:  $tenantId,
           change_id:  $changeId,
           ci_id:      ci.id,
@@ -1140,7 +1124,7 @@ async function executeChangeTransition(
           created_at: $now,
           updated_at: $now
         })
-        CREATE (c)-[:HAS_ASSESSMENT_TASK]->(t)
+        CREATE (c)-[:HAS_CHANGE_TASK]->(t)
         CREATE (t)-[:ASSESSES]->(ci)
         RETURN t.id AS taskId, ownerTeam.id AS teamId,
                ci.name AS ciName, ownerTeam.name AS teamName, c.title AS changeTitle
@@ -1152,7 +1136,7 @@ async function executeChangeTransition(
         const teamId = record.get('teamId') as string | null
         if (teamId) {
           await session.executeWrite((tx) => tx.run(`
-            MATCH (t:AssessmentTask {id: $taskId})
+            MATCH (t:ChangeTask {id: $taskId})
             MATCH (team:Team {id: $teamId, tenant_id: $tenantId})
             CREATE (t)-[:ASSIGNED_TO_TEAM]->(team)
           `, { taskId, teamId, tenantId }))
@@ -1254,7 +1238,7 @@ async function assignAssessmentTaskTeam(
 ) {
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       OPTIONAL MATCH (t)-[old:ASSIGNED_TO_TEAM]->()
       DELETE old
       WITH t
@@ -1263,7 +1247,7 @@ async function assignAssessmentTaskTeam(
     `, { taskId: args.taskId, teamId: args.teamId, tenantId: ctx.tenantId }))
 
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
@@ -1271,8 +1255,8 @@ async function assignAssessmentTaskTeam(
              properties(ci) AS ciProps, properties(u) AS uProps
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('AssessmentTask not found')
-    return mapAssessmentTask(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
       row.get('teamProps') as Props | null,
@@ -1286,7 +1270,7 @@ async function assignAssessmentTaskUser(
 ) {
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       OPTIONAL MATCH (t)-[old:ASSIGNED_TO]->()
       DELETE old
       WITH t
@@ -1295,7 +1279,7 @@ async function assignAssessmentTaskUser(
     `, { taskId: args.taskId, userId: args.userId, tenantId: ctx.tenantId }))
 
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+      MATCH (t:ChangeTask {id: $taskId, tenant_id: $tenantId})
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
@@ -1307,8 +1291,8 @@ async function assignAssessmentTaskUser(
              properties(supportTeam) AS supportTeamProps
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('AssessmentTask not found')
-    const task = mapAssessmentTask(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    const task = mapChangeTask(
       row.get('tProps') as Props,
       row.get('ciProps') as Props | null,
       row.get('teamProps') as Props | null,
@@ -1333,22 +1317,25 @@ async function completeChangeValidation(
   const now = new Date().toISOString()
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_VALIDATION]->(v:ChangeValidation)
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(v:ChangeTask)
+      WHERE v.task_type = 'validation'
       SET v.status       = 'passed',
           v.notes        = coalesce($notes, v.notes),
           v.completed_at = $now,
           v.updated_at   = $now
     `, { changeId: args.changeId, tenantId: ctx.tenantId, notes: args.notes ?? null, now }))
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_VALIDATION]->(v:ChangeValidation)
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(v:ChangeTask)
+      WHERE v.task_type = 'validation'
       OPTIONAL MATCH (v)-[:ASSIGNED_TO_TEAM]->(t:Team)
       OPTIONAL MATCH (v)-[:ASSIGNED_TO]->(u:User)
       RETURN properties(v) AS vProps, properties(t) AS tProps, properties(u) AS uProps
     `, { changeId: args.changeId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('ChangeValidation not found')
-    return mapChangeValidation(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
       row.get('vProps') as Props,
+      null,
       row.get('tProps') as Props | null,
       row.get('uProps') as Props | null,
     )
@@ -1361,21 +1348,24 @@ async function failChangeValidation(
   const now = new Date().toISOString()
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_VALIDATION]->(v:ChangeValidation)
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(v:ChangeTask)
+      WHERE v.task_type = 'validation'
       SET v.status       = 'failed',
           v.completed_at = $now,
           v.updated_at   = $now
     `, { changeId: args.changeId, tenantId: ctx.tenantId, now }))
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_VALIDATION]->(v:ChangeValidation)
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(v:ChangeTask)
+      WHERE v.task_type = 'validation'
       OPTIONAL MATCH (v)-[:ASSIGNED_TO_TEAM]->(t:Team)
       OPTIONAL MATCH (v)-[:ASSIGNED_TO]->(u:User)
       RETURN properties(v) AS vProps, properties(t) AS tProps, properties(u) AS uProps
     `, { changeId: args.changeId, tenantId: ctx.tenantId }))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('ChangeValidation not found')
-    return mapChangeValidation(
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
       row.get('vProps') as Props,
+      null,
       row.get('tProps') as Props | null,
       row.get('uProps') as Props | null,
     )
@@ -1492,79 +1482,41 @@ async function changeRelatedIncidents(parent: { id: string }, _: unknown, ctx: G
   })
 }
 
-async function changeDeploySteps(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+async function changeChangeTasks(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_DEPLOY_STEP]->(s:DeployStep)
-      OPTIONAL MATCH (s)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      OPTIONAL MATCH (s)-[:ASSIGNED_TO]->(u:User)
-      OPTIONAL MATCH (s)-[:VALIDATION_ASSIGNED_TO_TEAM]->(vt:Team)
-      OPTIONAL MATCH (s)-[:VALIDATION_ASSIGNED_TO]->(vu:User)
-      RETURN properties(s) AS sProps, properties(t) AS tProps, properties(u) AS uProps,
-             properties(vt) AS vtProps, properties(vu) AS vuProps
-      ORDER BY s.order ASC
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    return r.records.map((rec) =>
-      mapDeployStep(
-        rec.get('sProps') as Props,
-        rec.get('tProps') as Props | null,
-        rec.get('uProps') as Props | null,
-        rec.get('vtProps') as Props | null,
-        rec.get('vuProps') as Props | null,
-      ),
-    )
-  })
-}
-
-async function changeAssessmentTasks(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_ASSESSMENT_TASK]->(t:AssessmentTask)
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(t:ChangeTask)
       OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
+      OPTIONAL MATCH (t)-[:VALIDATION_ASSIGNED_TO_TEAM]->(vt:Team)
+      OPTIONAL MATCH (t)-[:VALIDATION_ASSIGNED_TO]->(vu:User)
       OPTIONAL MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
       OPTIONAL MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       RETURN properties(t) AS tProps, properties(ci) AS ciProps,
              properties(team) AS teamProps, properties(u) AS uProps,
-             properties(ownerTeam) AS ownerTeamProps,
-             properties(supportTeam) AS supportTeamProps
-      ORDER BY ci.name ASC
+             properties(vt) AS vtProps, properties(vu) AS vuProps,
+             properties(ownerTeam) AS ownerTeamProps, properties(supportTeam) AS supportTeamProps
+      ORDER BY t.task_type ASC, t.order ASC
     `, { id: parent.id, tenantId: ctx.tenantId }))
     return r.records.map((rec) => {
-      const task = mapAssessmentTask(
+      const task = mapChangeTask(
         rec.get('tProps') as Props,
         rec.get('ciProps') as Props | null,
         rec.get('teamProps') as Props | null,
         rec.get('uProps') as Props | null,
+        rec.get('vtProps') as Props | null,
+        rec.get('vuProps') as Props | null,
       )
-      const ownerTeamProps   = rec.get('ownerTeamProps')   as Props | null
-      const supportTeamProps = rec.get('supportTeamProps') as Props | null
       if (task.ci) {
         const ci = task.ci as Record<string, unknown>
-        ci['owner']        = ownerTeamProps   ? { id: ownerTeamProps['id'],   name: ownerTeamProps['name']   } : null
+        const ownerTeamProps   = rec.get('ownerTeamProps')   as Props | null
+        const supportTeamProps = rec.get('supportTeamProps') as Props | null
+        ci['ownerGroup']   = ownerTeamProps   ? { id: ownerTeamProps['id'],   name: ownerTeamProps['name']   } : null
         ci['supportGroup'] = supportTeamProps ? { id: supportTeamProps['id'], name: supportTeamProps['name'] } : null
       }
       return task
     })
-  })
-}
-
-async function changeValidationField(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_VALIDATION]->(v:ChangeValidation)
-      OPTIONAL MATCH (v)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      OPTIONAL MATCH (v)-[:ASSIGNED_TO]->(u:User)
-      RETURN properties(v) AS vProps, properties(t) AS tProps, properties(u) AS uProps
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    if (!r.records.length) return null
-    const rec = r.records[0]
-    return mapChangeValidation(
-      rec.get('vProps') as Props,
-      rec.get('tProps') as Props | null,
-      rec.get('uProps') as Props | null,
-    )
   })
 }
 
@@ -1799,10 +1751,43 @@ async function changeImpactAnalysisField(
   })
 }
 
+async function changeTasksQuery(
+  _: unknown,
+  args: { changeId: string; taskType?: string },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const filter = args.taskType ? 'AND t.task_type = $taskType' : ''
+    const r = await session.executeRead((tx) => tx.run(`
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(t:ChangeTask)
+      WHERE true ${filter}
+      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
+      OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
+      OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
+      OPTIONAL MATCH (t)-[:VALIDATION_ASSIGNED_TO_TEAM]->(vt:Team)
+      OPTIONAL MATCH (t)-[:VALIDATION_ASSIGNED_TO]->(vu:User)
+      RETURN properties(t) AS tProps, properties(ci) AS ciProps,
+             properties(team) AS teamProps, properties(u) AS uProps,
+             properties(vt) AS vtProps, properties(vu) AS vuProps
+      ORDER BY t.task_type ASC, t.order ASC
+    `, { changeId: args.changeId, tenantId: ctx.tenantId, taskType: args.taskType ?? null }))
+    return r.records.map((rec) =>
+      mapChangeTask(
+        rec.get('tProps') as Props,
+        rec.get('ciProps') as Props | null,
+        rec.get('teamProps') as Props | null,
+        rec.get('uProps') as Props | null,
+        rec.get('vtProps') as Props | null,
+        rec.get('vuProps') as Props | null,
+      ),
+    )
+  })
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const changeResolvers = {
-  Query: { changes, change, changeImpactAnalysis: changeImpactAnalysisQuery },
+  Query: { changes, change, changeTasks: changeTasksQuery, changeImpactAnalysis: changeImpactAnalysisQuery },
   Mutation: {
     createChange, approveChange, rejectChange, deployChange, failChange,
     addAffectedCIToChange, removeAffectedCIFromChange, addChangeComment,
@@ -1819,9 +1804,7 @@ export const changeResolvers = {
     assignee:             changeAssignee,
     affectedCIs:          changeAffectedCIs,
     relatedIncidents:     changeRelatedIncidents,
-    deploySteps:          changeDeploySteps,
-    assessmentTasks:      changeAssessmentTasks,
-    validation:           changeValidationField,
+    changeTasks:          changeChangeTasks,
     workflowInstance:     changeWorkflowInstance,
     availableTransitions: changeAvailableTransitions,
     workflowHistory:      changeWorkflowHistory,

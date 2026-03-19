@@ -126,10 +126,10 @@ const INDEXES: SchemaStatement[] = [
   // WorkflowDefinition
   { label: 'WorkflowDefinition(tenant_id, entity_type)', cypher: 'CREATE INDEX wf_tenant_type IF NOT EXISTS FOR (w:WorkflowDefinition) ON (w.tenant_id, w.entity_type)' },
   { label: 'WorkflowDefinition(tenant_id, active)',       cypher: 'CREATE INDEX wf_tenant_active IF NOT EXISTS FOR (w:WorkflowDefinition) ON (w.tenant_id, w.active)' },
-  // AssessmentTask / DeployStep
-  { label: 'AssessmentTask(change_id)',                 cypher: 'CREATE INDEX task_change IF NOT EXISTS FOR (t:AssessmentTask) ON (t.change_id)' },
-  { label: 'AssessmentTask(tenant_id, status)',         cypher: 'CREATE INDEX task_tenant_status IF NOT EXISTS FOR (t:AssessmentTask) ON (t.tenant_id, t.status)' },
-  { label: 'DeployStep(change_id)',                     cypher: 'CREATE INDEX step_change IF NOT EXISTS FOR (s:DeployStep) ON (s.change_id)' },
+  // ChangeTask
+  { label: 'ChangeTask(change_id)',                     cypher: 'CREATE INDEX change_task_change IF NOT EXISTS FOR (t:ChangeTask) ON (t.change_id)' },
+  { label: 'ChangeTask(tenant_id, status)',              cypher: 'CREATE INDEX change_task_tenant_status IF NOT EXISTS FOR (t:ChangeTask) ON (t.tenant_id, t.status)' },
+  { label: 'ChangeTask(tenant_id, task_type)',           cypher: 'CREATE INDEX change_task_type IF NOT EXISTS FOR (t:ChangeTask) ON (t.tenant_id, t.task_type)' },
   // ReportConversation
   { label: 'ReportConversation(tenant_id)',             cypher: 'CREATE INDEX report_tenant IF NOT EXISTS FOR (r:ReportConversation) ON (r.tenant_id)' },
   // NotificationChannel

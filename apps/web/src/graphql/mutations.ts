@@ -197,12 +197,11 @@ export const COMPLETE_SERVICE_REQUEST = gql`
 export const SAVE_DEPLOY_STEPS = gql`
   mutation SaveDeploySteps($changeId: ID!, $steps: [CreateDeployStepInput!]!) {
     saveDeploySteps(changeId: $changeId, steps: $steps) {
-      id deploySteps {
-        id order title scheduledStart scheduledEnd durationDays
+      id changeTasks {
+        id taskType order title scheduledStart scheduledEnd durationDays
         hasValidation validationStart validationEnd
         assignedTeam { id name }
       }
-      validation { id scheduledStart scheduledEnd }
     }
   }
 `
@@ -210,7 +209,9 @@ export const SAVE_DEPLOY_STEPS = gql`
 export const SAVE_CHANGE_VALIDATION = gql`
   mutation SaveChangeValidation($changeId: ID!, $scheduledStart: String!, $scheduledEnd: String!) {
     saveChangeValidation(changeId: $changeId, scheduledStart: $scheduledStart, scheduledEnd: $scheduledEnd) {
-      id validation { id scheduledStart scheduledEnd status }
+      id changeTasks {
+        id taskType scheduledStart scheduledEnd status
+      }
     }
   }
 `

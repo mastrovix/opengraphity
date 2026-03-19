@@ -8,8 +8,6 @@ import {
   Inbox,
   Server,
   GitBranch,
-  Bell,
-  User,
   Users,
   BarChart2,
   ScrollText,
@@ -17,22 +15,21 @@ import {
   ChevronRight,
   ChevronDown,
   Layers,
+  Settings,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
 
 const NAV_ITEMS = [
-  { to: '/dashboard',              label: 'Dashboard',  icon: LayoutDashboard },
-  { to: '/incidents',              label: 'Incidents',  icon: AlertCircle },
-  { to: '/problems',               label: 'Problems',   icon: Bug },
-  { to: '/changes',                label: 'Changes',    icon: GitPullRequest },
-  { to: '/requests',               label: 'Requests',   icon: Inbox },
-  { to: '/workflow',               label: 'Workflow',   icon: GitBranch },
-  { to: '/reports',                label: 'Report AI',      icon: BarChart2 },
-  { to: '/custom-reports',         label: 'Report Builder', icon: BarChart2 },
-  { to: '/settings/notifications', label: 'Notifiche',  icon: Bell },
-  { to: '/settings/profile',       label: 'Profilo',    icon: User },
+  { to: '/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
+  { to: '/incidents',      label: 'Incidents',      icon: AlertCircle },
+  { to: '/problems',       label: 'Problems',       icon: Bug },
+  { to: '/changes',        label: 'Changes',        icon: GitPullRequest },
+  { to: '/requests',       label: 'Requests',       icon: Inbox },
+  { to: '/workflow',       label: 'Workflow',       icon: GitBranch },
+  { to: '/reports',        label: 'Report AI',      icon: BarChart2 },
+  { to: '/custom-reports', label: 'Report Builder', icon: BarChart2 },
 ]
 
 const ADMIN_NAV_ITEMS = [
@@ -49,6 +46,10 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { pathname } = useLocation()
   const [cmdbOpen, setCmdbOpen] = useState(true)
   const [teamsOpen, setTeamsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  const isAdmin = keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin')
+  const settingsActive = pathname.startsWith('/settings')
   const { ciTypes } = useMetamodel()
 
   const navItemStyle = (isActive: boolean, isCollapsed: boolean): React.CSSProperties => ({
@@ -312,29 +313,80 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             )}
           </div>
         )}
-        {/* CI Type Designer — admin only */}
-        {keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin') && !collapsed && (
+        {/* Settings — collapsible */}
+        {!collapsed ? (
+          <div style={{ marginBottom: 2 }}>
+            <div
+              onClick={() => setSettingsOpen((p) => !p)}
+              style={{
+                display:         'flex',
+                alignItems:      'center',
+                justifyContent:  'space-between',
+                padding:         '7px 10px',
+                borderRadius:    6,
+                cursor:          'pointer',
+                backgroundColor: settingsActive ? '#eef2ff' : 'transparent',
+                borderLeft:      settingsActive ? '2px solid #4f46e5' : '2px solid transparent',
+                transition:      'background 150ms',
+                margin:          '1px 0',
+              }}
+              onMouseEnter={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+              onMouseLeave={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? '#4f46e5' : '#4a5468' }} />
+                <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? '#4f46e5' : '#4a5468' }}>
+                  Settings
+                </span>
+              </div>
+              {settingsOpen
+                ? <ChevronDown size={12} color="#8892a4" />
+                : <ChevronRight size={12} color="#8892a4" />}
+            </div>
+
+            {settingsOpen && (
+              <div style={{ paddingLeft: 28, marginTop: 2 }}>
+                <NavLink to="/settings/notifications" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>Notifiche</span>
+                </NavLink>
+                <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
+                  <span>Profilo</span>
+                </NavLink>
+                {isAdmin && (
+                  <NavLink to="/settings/ci-types" style={({ isActive }) => subItemStyle(isActive)}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Layers size={12} color={pathname === '/settings/ci-types' ? '#4f46e5' : '#6b7280'} />
+                      Tipi CI
+                    </span>
+                  </NavLink>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
           <NavLink
-            to="/settings/ci-types"
-            style={({ isActive }) => navItemStyle(isActive, false)}
+            to="/settings/notifications"
+            title="Settings"
+            style={navItemStyle(settingsActive, true)}
             onMouseEnter={(e) => {
-              const el = e.currentTarget as HTMLElement
-              const isActive = pathname === '/settings/ci-types'
-              if (!isActive) { el.style.backgroundColor = '#f1f3f9'; el.style.color = '#0f1629' }
+              if (!settingsActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
+                ;(e.currentTarget as HTMLElement).style.color = '#0f1629'
+              }
             }}
             onMouseLeave={(e) => {
-              const el = e.currentTarget as HTMLElement
-              const isActive = pathname === '/settings/ci-types'
-              if (!isActive) { el.style.backgroundColor = 'transparent'; el.style.color = '#4a5468' }
+              if (!settingsActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                ;(e.currentTarget as HTMLElement).style.color = '#4a5468'
+              }
             }}
           >
-            <Layers size={16} style={{ flexShrink: 0 }} />
-            Tipi CI
+            <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? '#4f46e5' : 'inherit' }} />
           </NavLink>
         )}
 
         {/* Admin items */}
-        {keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin') && (
+        {isAdmin && (
           <>
             {!collapsed && (
               <p style={{ color: '#8892a4', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>

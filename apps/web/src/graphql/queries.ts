@@ -167,27 +167,18 @@ export const GET_CHANGE = gql`
       workflowInstance { id currentStep status }
       availableTransitions { toStep label requiresInput inputField condition }
       workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
-      deploySteps {
-        id order title description status
-        scheduledStart durationDays scheduledEnd
-        hasValidation validationStart validationEnd
-        validationStatus validationNotes
+      changeTasks {
+        id taskType changeId status order title description
+        scheduledStart scheduledEnd durationDays
+        hasValidation validationStatus validationStart validationEnd validationNotes
         skipReason notes completedAt
+        riskLevel impactDescription mitigation
+        type createdAt
+        ci { id name type environment ownerGroup { id name } supportGroup { id name } }
         assignedTeam { id name }
         assignee { id name }
         validationTeam { id name }
         validationUser { id name }
-      }
-      assessmentTasks {
-        id status riskLevel impactDescription mitigation notes completedAt
-        ci { id name type environment ownerGroup { id name } supportGroup { id name } }
-        assignedTeam { id name }
-        assignee { id name }
-      }
-      validation {
-        id type scheduledStart scheduledEnd status notes completedAt
-        assignedTeam { id name }
-        assignee { id name }
       }
       comments {
         id text type createdAt
