@@ -10,6 +10,8 @@ import { IncidentListPage } from '@/pages/incidents/IncidentListPage'
 import { IncidentDetailPage } from '@/pages/incidents/IncidentDetailPage'
 import { CreateIncidentPage } from '@/pages/incidents/CreateIncidentPage'
 import { ProblemListPage } from '@/pages/problems/ProblemListPage'
+import { ProblemsPage } from '@/pages/problems/ProblemsPage'
+import { ProblemDetailPage } from '@/pages/problems/ProblemDetailPage'
 import { ChangeListPage } from '@/pages/changes/ChangeListPage'
 import { CreateChangePage } from '@/pages/changes/CreateChangePage'
 import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
@@ -77,7 +79,9 @@ const router = createBrowserRouter([
       { path: 'incidents',         element: <IncidentListPage />,        errorElement: <RouteError /> },
       { path: 'incidents/new',     element: <CreateIncidentPage />,      errorElement: <RouteError /> },
       { path: 'incidents/:id',     element: <IncidentDetailPage />,      errorElement: <RouteError /> },
-      { path: 'problems',          element: <ProblemListPage />,         errorElement: <RouteError /> },
+      { path: 'problems',          element: <ProblemsPage />,            errorElement: <RouteError /> },
+      { path: 'problems/:id',      element: <ProblemDetailPage />,       errorElement: <RouteError /> },
+      { path: 'problems/list',     element: <ProblemListPage />,         errorElement: <RouteError /> },
       { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
       { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },
       { path: 'changes/:id',       element: <ChangeDetailPage />,        errorElement: <RouteError /> },

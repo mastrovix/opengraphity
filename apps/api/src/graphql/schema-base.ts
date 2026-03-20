@@ -7,7 +7,7 @@ export function buildBaseSDL(): string {
     incident(id: ID!): Incident
 
     # Problems
-    problems(status: String, limit: Int, offset: Int): [Problem!]!
+    problems(limit: Int, offset: Int, status: String, priority: String, search: String): ProblemsResult!
     problem(id: ID!): Problem
 
     # Changes
@@ -89,8 +89,16 @@ export function buildBaseSDL(): string {
     # Problems
     createProblem(input: CreateProblemInput!): Problem!
     updateProblem(id: ID!, input: UpdateProblemInput!): Problem!
-    resolveProblem(id: ID!, resolution: String!): Problem!
-    linkIncidentToProblem(incidentId: ID!, problemId: ID!): Problem!
+    deleteProblem(id: ID!): Boolean!
+    linkIncidentToProblem(problemId: ID!, incidentId: ID!): Problem!
+    unlinkIncidentFromProblem(problemId: ID!, incidentId: ID!): Problem!
+    linkChangeToProblem(problemId: ID!, changeId: ID!): Problem!
+    addCIToProblem(problemId: ID!, ciId: ID!): Problem!
+    removeCIFromProblem(problemId: ID!, ciId: ID!): Problem!
+    assignProblemToTeam(problemId: ID!, teamId: ID!): Problem!
+    assignProblemToUser(problemId: ID!, userId: ID!): Problem!
+    executeProblemTransition(problemId: ID!, toStep: String!, notes: String): Problem!
+    addProblemComment(problemId: ID!, text: String!): ProblemComment!
 
     # Changes
     createChange(input: CreateChangeInput!): Change!
@@ -280,18 +288,41 @@ export function buildBaseSDL(): string {
 
   type Problem {
     id: ID!
-    tenantId: String!
     title: String!
     description: String
+    priority: String!
     status: String!
-    impact: String!
     rootCause: String
     workaround: String
+    affectedUsers: Int
     createdAt: String!
-    updatedAt: String!
+    updatedAt: String
     resolvedAt: String
+    closedAt: String
+    createdBy: User
+    assignee: User
+    assignedTeam: Team
+    affectedCIs: [CIBase!]!
     relatedIncidents: [Incident!]!
-    resolvedByChange: Change
+    relatedChanges: [Change!]!
+    workflowInstance: WorkflowInstance
+    availableTransitions: [WorkflowTransition!]!
+    workflowHistory: [WorkflowStepExecution!]!
+    comments: [ProblemComment!]!
+  }
+
+  type ProblemComment {
+    id: ID!
+    text: String!
+    type: String!
+    createdAt: String!
+    updatedAt: String
+    author: User
+  }
+
+  type ProblemsResult {
+    items: [Problem!]!
+    total: Int!
   }
 
   type Change {
@@ -493,15 +524,19 @@ export function buildBaseSDL(): string {
   input CreateProblemInput {
     title: String!
     description: String
-    impact: String!
+    priority: String!
+    affectedCIs: [ID!]
+    relatedIncidents: [ID!]
+    workaround: String
   }
 
   input UpdateProblemInput {
     title: String
     description: String
-    status: String
+    priority: String
     rootCause: String
     workaround: String
+    affectedUsers: Int
   }
 
   input CreateChangeInput {
