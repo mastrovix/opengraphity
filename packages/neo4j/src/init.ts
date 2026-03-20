@@ -134,6 +134,11 @@ const INDEXES: SchemaStatement[] = [
   { label: 'ReportConversation(tenant_id)',             cypher: 'CREATE INDEX report_tenant IF NOT EXISTS FOR (r:ReportConversation) ON (r.tenant_id)' },
   // NotificationChannel
   { label: 'NotificationChannel(tenant_id)',            cypher: 'CREATE INDEX notif_tenant IF NOT EXISTS FOR (n:NotificationChannel) ON (n.tenant_id)' },
+  // DashboardConfig
+  { label: 'DashboardConfig(tenant_id)',                cypher: 'CREATE INDEX dashboard_tenant IF NOT EXISTS FOR (d:DashboardConfig) ON (d.tenant_id)' },
+  { label: 'DashboardConfig(tenant_id, user_id)',       cypher: 'CREATE INDEX dashboard_user IF NOT EXISTS FOR (d:DashboardConfig) ON (d.tenant_id, d.user_id)' },
+  // DashboardWidget
+  { label: 'DashboardWidget(dashboard_id)',             cypher: 'CREATE INDEX widget_dashboard IF NOT EXISTS FOR (w:DashboardWidget) ON (w.dashboard_id)' },
 ]
 
 async function runStatements(statements: SchemaStatement[], kind: string): Promise<void> {

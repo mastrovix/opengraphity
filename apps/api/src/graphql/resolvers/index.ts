@@ -12,6 +12,7 @@ import { reportResolvers } from './report.js'
 import { customReportResolvers } from './customReports.js'
 import { ciResolvers } from './ci.js'
 import { logsResolvers } from './logs.js'
+import { dashboardResolvers } from './dashboard.js'
 import { buildDynamicCIResolvers } from './dynamic-ci.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
@@ -108,6 +109,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...reportResolvers.Query,
       ...customReportResolvers.Query,
       ...logsResolvers.Query,
+      ...dashboardResolvers.Query,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
       ...meStub,
@@ -124,6 +126,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...notificationChannelResolvers.Mutation,
       ...reportResolvers.Mutation,
       ...customReportResolvers.Mutation,
+      ...dashboardResolvers.Mutation,
     },
     Incident: {
       ...incidentResolvers.Incident,
@@ -137,6 +140,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     ChangeTask:         {},
     ServiceRequest:     serviceRequestResolvers.ServiceRequest,
     ReportConversation: reportResolvers.ReportConversation,
+    DashboardConfig:    { ...dashboardResolvers.DashboardConfig },
+    DashboardWidget:    { ...dashboardResolvers.DashboardWidget },
   }
 
   return mergeResolvers([dynamicCI as IResolvers, staticResolvers as IResolvers])

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
-import { getToken } from '@/lib/auth'
+import { keycloak } from '@/lib/keycloak'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
@@ -103,6 +103,7 @@ export default function ReportsPage() {
 
   const handleSend = useCallback(async (question: string) => {
     if (!question.trim() || isStreaming) return
+    console.log('[REPORT] submit', { question, activeId })
     setInput('')
 
     const isNewConv = !activeId
@@ -122,7 +123,7 @@ export default function ReportsPage() {
     abortRef.current = abort
 
     const apiUrl = import.meta.env['VITE_API_BASE_URL'] ?? 'http://localhost:4000'
-    const token = getToken()
+    const token = keycloak.token ?? ''
 
     try {
       const res = await fetch(`${apiUrl}/api/report/stream`, {

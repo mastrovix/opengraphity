@@ -555,3 +555,64 @@ export const REORDER_REPORT_SECTIONS = gql`
     }
   }
 `
+
+export const CREATE_DASHBOARD = gql`
+  mutation CreateDashboard($input: CreateDashboardInput!) {
+    createDashboard(input: $input) {
+      id name isDefault isPersonal visibility createdAt
+      sharedWith { id name }
+    }
+  }
+`
+
+export const UPDATE_DASHBOARD = gql`
+  mutation UpdateDashboard($id: ID!, $input: UpdateDashboardInput!) {
+    updateDashboard(id: $id, input: $input) {
+      id name isDefault isPersonal visibility
+      sharedWith { id name }
+    }
+  }
+`
+
+export const DELETE_DASHBOARD = gql`
+  mutation DeleteDashboard($id: ID!) {
+    deleteDashboard(id: $id)
+  }
+`
+
+export const ADD_DASHBOARD_WIDGET = gql`
+  mutation AddDashboardWidget($input: AddDashboardWidgetInput!) {
+    addDashboardWidget(input: $input) {
+      id name widgets {
+        id order colSpan reportTemplateId reportSectionId
+        data error
+        reportSection { id title chartType }
+        reportTemplate { id name }
+      }
+    }
+  }
+`
+
+export const REMOVE_DASHBOARD_WIDGET = gql`
+  mutation RemoveDashboardWidget($widgetId: ID!) {
+    removeDashboardWidget(widgetId: $widgetId) {
+      id widgets { id order colSpan reportTemplateId reportSectionId }
+    }
+  }
+`
+
+export const UPDATE_DASHBOARD_WIDGET = gql`
+  mutation UpdateDashboardWidget($widgetId: ID!, $input: UpdateDashboardWidgetInput!) {
+    updateDashboardWidget(widgetId: $widgetId, input: $input) {
+      id widgets { id order colSpan }
+    }
+  }
+`
+
+export const REORDER_DASHBOARD_WIDGETS = gql`
+  mutation ReorderDashboardWidgets($dashboardId: ID!, $widgetIds: [ID!]!) {
+    reorderDashboardWidgets(dashboardId: $dashboardId, widgetIds: $widgetIds) {
+      id widgets { id order colSpan }
+    }
+  }
+`

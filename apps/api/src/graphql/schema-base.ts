@@ -54,6 +54,10 @@ export function buildBaseSDL(): string {
     executeReport(templateId: ID!): ReportResult!
     previewReportSection(input: ReportSectionInput!): ReportSectionResult!
 
+    # Dashboard
+    myDashboards: [DashboardConfig!]!
+    dashboard(id: ID!): DashboardConfig
+
     # Logs
     logs(level: String, module: String, search: String, limit: Int, offset: Int): LogsResult!
 
@@ -178,6 +182,15 @@ export function buildBaseSDL(): string {
     updateReportSection(sectionId: ID!, input: ReportSectionInput!): ReportTemplate!
     removeReportSection(templateId: ID!, sectionId: ID!): ReportTemplate!
     reorderReportSections(templateId: ID!, sectionIds: [ID!]!): ReportTemplate!
+
+    # Dashboard
+    createDashboard(input: CreateDashboardInput!): DashboardConfig!
+    updateDashboard(id: ID!, input: UpdateDashboardInput!): DashboardConfig!
+    deleteDashboard(id: ID!): Boolean!
+    addDashboardWidget(input: AddDashboardWidgetInput!): DashboardConfig!
+    removeDashboardWidget(widgetId: ID!): DashboardConfig!
+    updateDashboardWidget(widgetId: ID!, input: UpdateDashboardWidgetInput!): DashboardConfig!
+    reorderDashboardWidgets(dashboardId: ID!, widgetIds: [ID!]!): DashboardConfig!
   }
 
   # ── CMDB — interface & base types ────────────────────────────────────────────
@@ -849,6 +862,59 @@ export function buildBaseSDL(): string {
   type LogsResult {
     entries: [LogEntry!]!
     total:   Int!
+  }
+
+  # ── Dashboard Configuration ────────────────────────────────────────────────
+
+  type DashboardConfig {
+    id: ID!
+    name: String!
+    isDefault: Boolean!
+    isPersonal: Boolean!
+    visibility: String!
+    createdBy: User
+    sharedWith: [Team!]!
+    createdAt: String!
+    updatedAt: String
+    widgets: [DashboardWidget!]!
+  }
+
+  type DashboardWidget {
+    id: ID!
+    order: Int!
+    colSpan: Int!
+    reportTemplateId: ID!
+    reportSectionId: ID!
+    reportTemplate: ReportTemplate
+    reportSection: ReportSection
+    data: String
+    error: String
+  }
+
+  input CreateDashboardInput {
+    name: String!
+    visibility: String!
+    sharedWithTeamIds: [ID!]
+  }
+
+  input UpdateDashboardInput {
+    name: String
+    visibility: String
+    sharedWithTeamIds: [ID!]
+    isDefault: Boolean
+  }
+
+  input AddDashboardWidgetInput {
+    dashboardId: ID!
+    reportTemplateId: ID!
+    reportSectionId: ID!
+    colSpan: Int!
+    order: Int
+  }
+
+  input UpdateDashboardWidgetInput {
+    colSpan: Int
+    order: Int
   }
 `
 }

@@ -450,3 +450,32 @@ export const PREVIEW_REPORT_SECTION = gql`
     }
   }
 `
+
+export const GET_MY_DASHBOARDS = gql`
+  query GetMyDashboards {
+    myDashboards {
+      id name isDefault isPersonal
+      visibility createdAt
+      createdBy { id name }
+      sharedWith { id name }
+    }
+  }
+`
+
+export const GET_DASHBOARD = gql`
+  query GetDashboard($id: ID!) {
+    dashboard(id: $id) {
+      id name isDefault isPersonal
+      visibility
+      createdBy { id name }
+      sharedWith { id name }
+      widgets {
+        id order colSpan
+        reportTemplateId reportSectionId
+        data error
+        reportSection { id title chartType }
+        reportTemplate { id name }
+      }
+    }
+  }
+`
