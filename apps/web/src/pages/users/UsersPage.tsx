@@ -52,10 +52,9 @@ export function UsersPage() {
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
 
-  const { data, loading, error } = useQuery<{ users: UserRow[] }>(GET_USERS, {
+  const { data, loading } = useQuery<{ users: UserRow[] }>(GET_USERS, {
     fetchPolicy: 'cache-and-network',
   })
-  console.log('[USERS]', { loading, error: error?.message, count: data?.users?.length })
 
   const users      = data?.users ?? []
   const total      = users.length

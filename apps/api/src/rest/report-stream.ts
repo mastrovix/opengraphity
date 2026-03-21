@@ -93,12 +93,10 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
       historyWithoutLast,
       question,
       (chunk) => {
-        console.log('[STREAM] sending chunk:', chunk)
         fullText += chunk
         send('chunk', { text: chunk })
       },
       (description) => {
-        console.log('[STREAM] tool use:', description)
         send('tool', { description })
       },
     )
@@ -131,7 +129,6 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
     )
 
     // 7. Send done event
-    console.log('[STREAM] done, convId:', convId)
     send('done', {
       message: {
         id:        asstMsgId,

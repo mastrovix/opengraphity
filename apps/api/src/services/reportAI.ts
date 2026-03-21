@@ -45,11 +45,7 @@ async function buildSchemaContext(session: ReturnType<typeof getSession>, tenant
     schema += `- (${r.get('from') as string})-[:${r.get('rel') as string}]->(${r.get('to') as string})\n`
   }
 
-  console.log(
-    '[reportAI] schema generato:',
-    nodesResult.records.length, 'nodi,',
-    relsResult.records.length, 'relazioni',
-  )
+
 
   return schema
 }
@@ -273,8 +269,6 @@ REGOLE:
     if (!toolUse?.id || !toolUse.input) break
 
     onToolUse(toolUse.input.description)
-    console.log(`[streamReportAI] tool_use: ${toolUse.input.description}`)
-    console.log('[STREAM TOOL] assistantContent:', JSON.stringify(lastAsst.content, null, 2))
 
     let toolResult: string
     const querySession = getSession(undefined, 'READ')
@@ -301,12 +295,6 @@ REGOLE:
     } finally {
       await querySession.close()
     }
-
-    console.log('[STREAM TOOL] tool_result:', {
-      tool_use_id: toolUse.id,
-      content: toolResult.slice(0, 100),
-    })
-    console.log('[STREAM TOOL] messages count before next turn:', messages.length)
 
     messages.push({
       role: 'user',
@@ -384,8 +372,6 @@ REGOLE:
   while (response.stop_reason === 'tool_use') {
     const toolUse = response.content.find((b) => b.type === 'tool_use')
     if (!toolUse?.id || !toolUse.input) break
-
-    console.log(`[reportAI] tool_use: ${toolUse.input.description}`)
 
     let toolResult: string
     const querySession = getSession(undefined, 'READ')

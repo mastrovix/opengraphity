@@ -8,7 +8,6 @@ export const keycloak = new Keycloak({
 
 export async function initKeycloak(): Promise<boolean> {
   const redirectUri = window.location.href
-  console.log('[KEYCLOAK] using redirectUri:', redirectUri)
 
   const authenticated = await keycloak.init({
     onLoad:           'login-required',
@@ -16,9 +15,6 @@ export async function initKeycloak(): Promise<boolean> {
     pkceMethod:       'S256',
     redirectUri,
   })
-
-  console.log('[KEYCLOAK] authenticated:', authenticated)
-  console.log('[KEYCLOAK] token:', keycloak.token?.slice(0, 50))
 
   return authenticated
 }

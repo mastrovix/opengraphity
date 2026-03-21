@@ -103,7 +103,6 @@ export default function ReportsPage() {
 
   const handleSend = useCallback(async (question: string) => {
     if (!question.trim() || isStreaming) return
-    console.log('[REPORT] submit', { question, activeId })
     setInput('')
 
     const isNewConv = !activeId
@@ -202,15 +201,10 @@ export default function ReportsPage() {
         const { done, value } = await reader.read()
         if (done) break
         const chunk = decoder.decode(value, { stream: true })
-        console.log('[SSE] raw chunk:', chunk)
         buffer += chunk
         const blocks = buffer.split('\n\n')
         buffer = blocks.pop() ?? ''
         for (const block of blocks) {
-          const dataLine = block.split('\n').find((l) => l.startsWith('data: '))
-          if (dataLine) {
-            try { console.log('[SSE] parsed data:', JSON.parse(dataLine.slice(6))) } catch { /* ignore */ }
-          }
           processSSEChunk(block)
         }
       }

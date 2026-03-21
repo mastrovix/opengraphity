@@ -160,12 +160,10 @@ export function ChangeDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
-  const { data, loading, error, refetch } = useQuery<{ change: Change | null }>(GET_CHANGE, {
+  const { data, loading, refetch } = useQuery<{ change: Change | null }>(GET_CHANGE, {
     variables: { id },
     fetchPolicy: 'cache-and-network',
   })
-
-  console.log('[CHANGE DETAIL]', { id, data: data?.change, loading, error })
 
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
   const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
