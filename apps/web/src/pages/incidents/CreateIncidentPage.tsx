@@ -1,59 +1,34 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { ArrowLeft, X } from 'lucide-react'
+import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { CREATE_INCIDENT } from '@/graphql/mutations'
-import { GET_INCIDENTS, GET_ALL_CIS } from '@/graphql/queries'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
+import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
+interface Team  { id: string; name: string }
 
-// ── Shared style constants ────────────────────────────────────────────────────
+// ── Style helpers ─────────────────────────────────────────────────────────────
+
+const fieldLabel: React.CSSProperties = {
+  display: 'block', fontSize: 11, fontWeight: 600, color: '#8892a4',
+  textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
+}
 
 const inputBase: React.CSSProperties = {
-  width:           '100%',
-  padding:         '10px 14px',
-  border:          '1px solid #e5e7eb',
-  borderRadius:    6,
-  fontSize:        14,
-  color:           '#0f1629',
-  outline:         'none',
-  backgroundColor: '#ffffff',
-  boxSizing:       'border-box',
-  transition:      'border-color 150ms, box-shadow 150ms',
+  width: '100%', padding: '10px 14px',
+  border: '1.5px solid #e5e7eb', borderRadius: 8,
+  fontSize: 13, color: '#0f1629', outline: 'none',
+  backgroundColor: '#fff', boxSizing: 'border-box',
+  fontFamily: 'inherit', transition: 'border-color 150ms',
 }
 
-const selectBase: React.CSSProperties = {
-  ...inputBase,
-  appearance:          'none',
-  backgroundImage:     `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat:    'no-repeat',
-  backgroundPosition:  'right 12px center',
-  paddingRight:        36,
-  cursor:              'pointer',
-}
-
-function focusHandlers(hasError: boolean) {
-  return {
-    onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = '#4f46e5'
-      e.currentTarget.style.boxShadow   = '0 0 0 3px #eef2ff'
-    },
-    onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = hasError ? '#dc2626' : '#e5e7eb'
-      e.currentTarget.style.boxShadow   = 'none'
-    },
-  }
-}
-
-// Dot colors for severity
-const SEV_DOT: Record<string, string> = {
-  critical: '#dc2626',
-  high:     '#d97706',
-  medium:   '#0284c7',
-  low:      '#8892a4',
+const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: string }> = {
+  critical: { bg: '#fef2f2', border: '#ef4444', color: '#dc2626' },
+  high:     { bg: '#fff7ed', border: '#f97316', color: '#ea580c' },
+  medium:   { bg: '#fefce8', border: '#eab308', color: '#b45309' },
+  low:      { bg: '#f0fdf4', border: '#22c55e', color: '#15803d' },
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -61,37 +36,50 @@ const SEV_DOT: Record<string, string> = {
 export function CreateIncidentPage() {
   const navigate = useNavigate()
 
-  const [title, setTitle]             = useState('')
-  const [severity, setSeverity]       = useState('medium')
+  const [title,       setTitle]       = useState('')
+  const [severity,    setSeverity]    = useState('medium')
   const [description, setDescription] = useState('')
-  const [submitted, setSubmitted]     = useState(false)
-  const [ciSearch, setCiSearch]       = useState('')
+  const [selectedTeam,      setSelectedTeam]      = useState<{ id: string; name: string } | null>(null)
+  const [teamSearch,        setTeamSearch]        = useState('')
+  const [teamDropdownOpen,  setTeamDropdownOpen]  = useState(false)
+  const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
-
-  const titleError = submitted && !title.trim() ? 'This field is required' : ''
 
   const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
     variables: { search: ciSearch, limit: 20 },
     skip: ciSearch.length < 2,
   })
-  const ciResults = ciData?.allCIs?.items ?? []
+  const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
-  const [createIncident, { loading }] = useMutation(CREATE_INCIDENT, {
-    refetchQueries: [{ query: GET_INCIDENTS }],
-    onCompleted: () => { toast.success('Incident created'); navigate('/incidents') },
-    onError:     (err) => toast.error(err.message),
+  const ciResults     = (ciData?.allCIs?.items ?? []).filter(ci => !selectedCIs.find(s => s.id === ci.id))
+  const teams         = teamsData?.teams ?? []
+  const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
+  const canSubmit     = title.trim().length > 0
+
+  const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
+    onError: (err) => toast.error(`Team assignment: ${err.message}`),
   })
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSubmitted(true)
-    if (!title.trim()) return
-    await createIncident({
+  const [createIncident, { loading }] = useMutation<{ createIncident: { id: string } }>(CREATE_INCIDENT, {
+    refetchQueries: [{ query: GET_INCIDENTS }],
+    onCompleted: async (data) => {
+      if (selectedTeam) {
+        await assignToTeam({ variables: { id: data.createIncident.id, teamId: selectedTeam.id } })
+      }
+      toast.success('Incident creato')
+      navigate('/incidents', { state: { refresh: true } })
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const handleSubmit = () => {
+    if (!canSubmit || loading) return
+    void createIncident({
       variables: {
         input: {
           title:         title.trim(),
           severity,
-          description:   description || undefined,
+          description:   description.trim() || undefined,
           affectedCIIds: selectedCIs.map(ci => ci.id),
         },
       },
@@ -99,216 +87,245 @@ export function CreateIncidentPage() {
   }
 
   return (
-    <div style={{ maxWidth: 680, margin: '0 auto', paddingTop: 32 }}>
+    <div style={{ minHeight: '100%', backgroundColor: '#f8fafc', padding: '32px 16px 64px' }}>
+      <div style={{ maxWidth: 580, margin: '0 auto' }}>
 
-      {/* Back link */}
-      <button
-        onClick={() => navigate('/incidents')}
-        style={{
-          display:         'flex',
-          alignItems:      'center',
-          gap:             6,
-          background:      'none',
-          border:          'none',
-          cursor:          'pointer',
-          fontSize:        13,
-          color:           '#8892a4',
-          marginBottom:    32,
-          padding:         0,
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#4f46e5' }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#8892a4' }}
-      >
-        <ArrowLeft size={14} />
-        Back to incidents
-      </button>
+        {/* Header */}
+        <button
+          onClick={() => navigate('/incidents')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9ca3af', marginBottom: 16, padding: 0 }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#4f46e5' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#9ca3af' }}
+        >
+          ← Incidents
+        </button>
 
-      {/* Page header */}
-      <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f1629', letterSpacing: '-0.02em', margin: 0 }}>
-          New Incident
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+          Nuovo Incident
         </h1>
-        <p style={{ fontSize: 14, color: '#8892a4', marginTop: 6, marginBottom: 0 }}>
-          Fill in the fields to open a new incident
+        <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 24px' }}>
+          Compila i dettagli dell'incident da aprire
         </p>
-      </div>
 
-      {/* Form card */}
-      <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 32 }}>
-        <form onSubmit={handleSubmit} noValidate>
+        {/* Card */}
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
 
-          {/* Title */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
-              Title <span style={{ color: '#dc2626' }}>*</span>
+          {/* TITOLO */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>
+              Titolo <span style={{ color: '#dc2626' }}>*</span>
             </label>
             <input
               type="text"
               value={title}
-              onChange={(e) => { setTitle(e.target.value); if (submitted) setSubmitted(false) }}
-              placeholder="Brief description of the incident"
-              style={{ ...inputBase, borderColor: titleError ? '#dc2626' : '#e5e7eb' }}
-              {...focusHandlers(!!titleError)}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Es. Database produzione non raggiungibile"
+              style={inputBase}
+              autoFocus
+              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = '#4f46e5' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
-            {titleError && (
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#dc2626' }}>{titleError}</p>
-            )}
           </div>
 
-          {/* Severity */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
+          {/* SEVERITY */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>
               Severity <span style={{ color: '#dc2626' }}>*</span>
             </label>
-            <div style={{ position: 'relative' }}>
-              <span style={{
-                position:        'absolute',
-                left:            13,
-                top:             '50%',
-                transform:       'translateY(-50%)',
-                width:           8,
-                height:          8,
-                borderRadius:    '50%',
-                backgroundColor: SEV_DOT[severity] ?? '#8892a4',
-                pointerEvents:   'none',
-                zIndex:          1,
-              }} />
-              <select
-                value={severity}
-                onChange={(e) => setSeverity(e.target.value)}
-                style={{ ...selectBase, paddingLeft: 30 }}
-                {...focusHandlers(false)}
-              >
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(['critical', 'high', 'medium', 'low'] as const).map(s => {
+                const sel = severity === s
+                const c   = SEVERITY_STYLES[s]!
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSeverity(s)}
+                    style={{
+                      padding: '7px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                      border: `1.5px solid ${sel ? c.border : '#e5e7eb'}`,
+                      background: sel ? c.bg : '#f8fafc',
+                      color: sel ? c.color : '#6b7280',
+                      fontWeight: sel ? 600 : 400,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* Description */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
-              Description
+          {/* DESCRIZIONE */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>
+              Descrizione{' '}
+              <span style={{ fontSize: 11, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#9ca3af' }}>(opzionale)</span>
             </label>
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Detailed description of the incident…"
-              rows={5}
-              style={{ ...inputBase, minHeight: 120, resize: 'vertical' }}
-              {...focusHandlers(false)}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Descrivi cosa sta succedendo..."
+              rows={3}
+              style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
+              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = '#4f46e5' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
           </div>
 
-          {/* CI Impattati */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
-              CI Impattati
+          {/* CI IMPATTATI */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>
+              CI Impattati{' '}
+              <span style={{ fontSize: 11, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#9ca3af' }}>(opzionale)</span>
             </label>
 
-            {/* Badge CI selezionati */}
+            {/* Search input with icon */}
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: '#9ca3af' }}>
+                🔍
+              </span>
+              <input
+                type="text"
+                value={ciSearch}
+                onChange={e => setCiSearch(e.target.value)}
+                placeholder="Cerca per nome..."
+                style={{ ...inputBase, paddingLeft: 36 }}
+                onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = '#4f46e5' }}
+                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+              />
+
+              {/* Dropdown */}
+              {ciResults.length > 0 && ciSearch.length >= 2 && (
+                <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
+                  {ciResults.map(ci => (
+                    <div
+                      key={ci.id}
+                      onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
+                      style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#0f1629', flex: 1 }}>{ci.name}</span>
+                      <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: '#6b7280' }}>
+                        {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Selected tags */}
             {selectedCIs.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                 {selectedCIs.map(ci => (
-                  <span key={ci.id} style={{
-                    display:         'inline-flex',
-                    alignItems:      'center',
-                    gap:             4,
-                    padding:         '3px 10px',
-                    borderRadius:    999,
-                    backgroundColor: '#eef2ff',
-                    color:           '#4f46e5',
-                    fontSize:        12,
-                    fontWeight:      500,
-                  }}>
+                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4338ca', fontSize: 11 }}>
                     {ci.name}
                     <button
                       type="button"
-                      onClick={() => setSelectedCIs(prev => prev.filter(c => c.id !== ci.id))}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4f46e5', fontSize: 14, lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center' }}
-                    ><X size={14} /></button>
+                      onClick={() => setSelectedCIs(p => p.filter(c => c.id !== ci.id))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4338ca', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
+                    >
+                      <X size={12} />
+                    </button>
                   </span>
                 ))}
               </div>
             )}
+          </div>
 
-            {/* Input ricerca */}
-            <input
-              type="text"
-              value={ciSearch}
-              onChange={e => setCiSearch(e.target.value)}
-              placeholder="Cerca CI per nome (min. 2 caratteri)..."
-              style={{ ...inputBase }}
-              {...focusHandlers(false)}
-            />
+          {/* TEAM */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>
+              Team{' '}
+              <span style={{ fontSize: 11, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#9ca3af' }}>(opzionale)</span>
+            </label>
 
-            {/* Dropdown risultati */}
-            {ciResults.length > 0 && ciSearch.length >= 2 && (
-              <div style={{
-                border:          '1px solid #e5e7eb',
-                borderRadius:    8,
-                marginTop:       4,
-                maxHeight:       200,
-                overflowY:       'auto',
-                backgroundColor: '#fff',
-                boxShadow:       '0 4px 12px rgba(0,0,0,0.1)',
-              }}>
-                {ciResults
-                  .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-                  .map(ci => (
-                    <div
-                      key={ci.id}
-                      onClick={() => {
-                        setSelectedCIs(prev => [...prev, { id: ci.id, name: ci.name, type: ci.type }])
-                        setCiSearch('')
-                      }}
-                      style={{
-                        padding:       '8px 12px',
-                        cursor:        'pointer',
-                        fontSize:      13,
-                        display:       'flex',
-                        justifyContent:'space-between',
-                        borderBottom:  '1px solid #f1f3f9',
-                      }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f7f8fb' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
-                    >
-                      <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                      <span style={{ color: '#8892a4', fontSize: 11 }}>
-                        {ci.type} · {ci.environment}
-                      </span>
-                    </div>
-                  ))
-                }
+            {/* Tag team selezionato */}
+            {selectedTeam && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', fontSize: 11 }}>
+                  {selectedTeam.name}
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedTeam(null); setTeamSearch('') }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {/* Search input */}
+            {!selectedTeam && (
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: '#9ca3af' }}>
+                  🔍
+                </span>
+                <input
+                  type="text"
+                  value={teamSearch}
+                  onChange={e => { setTeamSearch(e.target.value); setTeamDropdownOpen(true) }}
+                  onFocus={() => setTeamDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setTeamDropdownOpen(false), 150)}
+                  placeholder="Cerca team per nome..."
+                  style={{ ...inputBase, paddingLeft: 36 }}
+                  onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = '#4f46e5' }}
+                  onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+                />
+
+                {/* Dropdown */}
+                {teamDropdownOpen && filteredTeams.length > 0 && (
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
+                    {filteredTeams.map(t => (
+                      <div
+                        key={t.id}
+                        onMouseDown={() => { setSelectedTeam(t); setTeamSearch(''); setTeamDropdownOpen(false) }}
+                        style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+                      >
+                        <Users size={14} color="#9ca3af" />
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#0f1629' }}>{t.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div style={{ borderTop: '1px solid #f1f3f9', marginTop: 8, paddingTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+          <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button
               type="button"
               onClick={() => navigate('/incidents')}
-              style={{ padding: '8px 20px', border: '1px solid #e5e7eb', backgroundColor: '#ffffff', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', color: '#4a5468' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#ffffff' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', padding: 0 }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#374151' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#6b7280' }}
             >
-              Cancel
+              Annulla
             </button>
             <button
-              type="submit"
-              disabled={loading}
-              style={{ padding: '8px 20px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}
-              onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = '#4338ca' }}
-              onMouseLeave={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = '#4f46e5' }}
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit || loading}
+              style={{
+                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '10px 24px', fontSize: 13, fontWeight: 600,
+                cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
+                opacity: canSubmit && !loading ? 1 : 0.5,
+                transition: 'opacity 150ms',
+              }}
             >
-              {loading ? 'Creating…' : 'Create Incident'}
+              {loading ? 'Creazione…' : 'Crea Incident'}
             </button>
           </div>
 
-        </form>
+        </div>
       </div>
     </div>
   )

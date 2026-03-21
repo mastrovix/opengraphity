@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
@@ -71,10 +71,11 @@ const PAGE_SIZE = 50
 
 export function IncidentListPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [page, setPage] = useState(0)
   const [queryFilters, setQueryFilters] = useState<Record<string, string>>({})
 
-  const { data, loading } = useQuery<{
+  const { data, loading, refetch } = useQuery<{
     incidents: { items: Incident[]; total: number }
   }>(GET_INCIDENTS, {
     variables: {
@@ -88,6 +89,12 @@ export function IncidentListPage() {
   const items = data?.incidents?.items ?? []
   const total = data?.incidents?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
+
+  useEffect(() => {
+    if ((location.state as { refresh?: boolean } | null)?.refresh) {
+      void refetch()
+    }
+  }, [location.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFiltersChange = (filters: Record<string, string>) => {
     setQueryFilters(filters)
