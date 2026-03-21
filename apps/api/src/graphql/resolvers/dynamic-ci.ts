@@ -819,7 +819,12 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
       }, true)
 
     // ── Field resolvers ────────────────────────────────────────────────────
-    typeResolvers[typeName] = buildFieldResolvers(ciType, types)
+    const fieldResolvers = buildFieldResolvers(ciType, types)
+    const typeNameLower  = ciType.name.toLowerCase()
+    typeResolvers[typeName] = {
+      ...fieldResolvers,
+      type: (parent: Record<string, unknown>) => parent['type'] ?? parent['ciType'] ?? typeNameLower,
+    }
   }
 
   // Generic queries
@@ -837,9 +842,12 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
     Query,
     Mutation,
     CIBase: {
-      __resolveType(obj: { type?: string }) {
+      __resolveType(obj: { type?: string; __typename?: string; ciType?: string; neo4j_label?: string }) {
+        if (obj.__typename) return obj.__typename
+        if (obj.ciType) return obj.ciType.charAt(0).toUpperCase() + obj.ciType.slice(1)
+        if (obj.neo4j_label) return obj.neo4j_label
         const t = types.find(t => t.name === obj.type)
-        return t ? toPascalCase(t.name) : null
+        return t ? toPascalCase(t.name) : 'Application'
       },
     },
     ...typeResolvers,

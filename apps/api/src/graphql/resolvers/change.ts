@@ -27,7 +27,6 @@ function mapChange(props: Props) {
     type:           props['type']           as string,
     priority:       (props['priority']      ?? 'medium') as string,
     status:         props['status']         as string,
-    rollbackPlan:   (props['rollback_plan'] ?? '') as string,
     scheduledStart: (props['scheduled_start'] ?? null) as string | null,
     scheduledEnd:   (props['scheduled_end']   ?? null) as string | null,
     implementedAt:  (props['implemented_at']  ?? null) as string | null,
@@ -72,7 +71,9 @@ function mapChangeTask(
     validationEnd:     (props['validation_end']     ?? null) as string | null,
     validationNotes:   (props['validation_notes']   ?? null) as string | null,
     type:              (props['type']               ?? null) as string | null,
+    rollbackPlan:      (props['rollback_plan']      ?? null) as string | null,
     createdAt:         (props['created_at']         ?? null) as string | null,
+    ciId:              (props['ci_id']              ?? null) as string | null,
     ci:                ci    ? mapCI(ci)    : null,
     assignedTeam:      team  ? mapTeam(team)  : null,
     assignee:          user  ? mapUser(user)  : null,
@@ -222,7 +223,7 @@ async function createChange(
   _: unknown,
   args: { input: {
     title: string; description?: string; type: string; priority: string
-    rollbackPlan: string; affectedCIIds?: string[]; relatedIncidentIds?: string[]
+    affectedCIIds?: string[]; relatedIncidentIds?: string[]
   } },
   ctx: GraphQLContext,
 ) {
@@ -240,7 +241,6 @@ async function createChange(
         type:         $type,
         priority:     $priority,
         status:       'draft',
-        rollback_plan: $rollbackPlan,
         created_at:   $now,
         updated_at:   $now
       })
@@ -248,8 +248,7 @@ async function createChange(
     `, {
       id, tenantId: ctx.tenantId,
       title: input.title, description: input.description ?? null,
-      type: input.type, priority: input.priority,
-      rollbackPlan: input.rollbackPlan, now,
+      type: input.type, priority: input.priority, now,
     })
     const row = rows[0]
     if (!row) throw new GraphQLError('Failed to create change')
@@ -1309,6 +1308,41 @@ async function assignAssessmentTaskUser(
   }, true)
 }
 
+// ── updateChangeTask ──────────────────────────────────────────────────────────
+
+async function updateChangeTask(
+  _: unknown, args: { id: string; input: { rollbackPlan?: string | null } }, ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    await session.executeWrite((tx) => tx.run(`
+      MATCH (t:ChangeTask {id: $id, tenant_id: $tenantId})
+      SET t.rollback_plan = $rollbackPlan, t.updated_at = $now
+    `, {
+      id: args.id,
+      tenantId: ctx.tenantId,
+      rollbackPlan: args.input.rollbackPlan ?? null,
+      now: new Date().toISOString(),
+    }))
+
+    const r = await session.executeRead((tx) => tx.run(`
+      MATCH (t:ChangeTask {id: $id, tenant_id: $tenantId})
+      OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
+      OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
+      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
+      RETURN properties(t) AS props, properties(team) AS teamProps,
+             properties(u) AS uProps, properties(ci) AS ciProps
+    `, { id: args.id, tenantId: ctx.tenantId }))
+    const row = r.records[0]
+    if (!row) throw new GraphQLError('ChangeTask not found')
+    return mapChangeTask(
+      row.get('props') as Props,
+      row.get('ciProps') as Props | null,
+      row.get('teamProps') as Props | null,
+      row.get('uProps') as Props | null,
+    )
+  }, true)
+}
+
 // ── Change Validation mutations ───────────────────────────────────────────────
 
 async function completeChangeValidation(
@@ -1460,8 +1494,12 @@ async function changeAffectedCIs(parent: { id: string }, _: unknown, ctx: GraphQ
       RETURN properties(ci) AS props, labels(ci)[0] AS label
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      r.props['type'] = labelToType(r.label)
-      return mapCI(r.props)
+      const t = labelToType(r.label)
+      r.props['type']  = t
+      const ci = mapCI(r.props) as Record<string, unknown>
+      ci['ciType']     = t
+      ci['__typename'] = r.label || 'Application'
+      return ci
     })
   })
 }
@@ -1792,12 +1830,41 @@ export const changeResolvers = {
     createChange, approveChange, rejectChange, deployChange, failChange,
     addAffectedCIToChange, removeAffectedCIFromChange, addChangeComment,
     saveDeploySteps, saveChangeValidation,
+    updateChangeTask,
     updateAssessmentTask, completeAssessmentTask, rejectAssessmentTask,
     assignDeployStepToTeam, assignDeployStepToUser, updateDeployStepStatus, updateDeployStepValidation,
     assignDeployStepValidationTeam, assignDeployStepValidationUser,
     executeChangeTransition,
     completeChangeValidation, failChangeValidation,
     assignAssessmentTaskTeam, assignAssessmentTaskUser,
+  },
+  ChangeTask: {
+    ci: async (parent: { ciId?: string | null }, _: unknown, ctx: GraphQLContext) => {
+      if (!parent.ciId) return null
+      return withSession(async (session) => {
+        const r = await session.executeRead((tx) => tx.run(`
+          MATCH (ci {id: $ciId, tenant_id: $tenantId})
+          RETURN properties(ci) AS props, labels(ci) AS labels
+        `, { ciId: parent.ciId, tenantId: ctx.tenantId }))
+        if (!r.records.length) return null
+        const props  = r.records[0].get('props') as Props
+        const labels = r.records[0].get('labels') as string[]
+        const ciType = labels.find((l) => l !== 'ConfigurationItem') ?? 'Application'
+        return {
+          id:          props['id'],
+          name:        props['name'] ?? '',
+          type:        ciType.toLowerCase(),
+          ciType:      ciType.toLowerCase(),
+          status:      props['status']      ?? null,
+          environment: props['environment'] ?? null,
+          description: props['description'] ?? null,
+          createdAt:   props['created_at']  ?? null,
+          updatedAt:   props['updated_at']  ?? null,
+          notes:       props['notes']       ?? null,
+          __typename:  ciType,
+        }
+      })
+    },
   },
   Change: {
     assignedTeam:         changeAssignedTeam,

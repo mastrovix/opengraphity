@@ -456,8 +456,12 @@ async function problemAffectedCIs(
       RETURN properties(ci) as props, labels(ci)[0] AS label
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      r.props['type'] = labelToType(r.label)
-      return mapCI(r.props)
+      const t = labelToType(r.label)
+      r.props['type'] = t
+      const ci = mapCI(r.props) as Record<string, unknown>
+      ci['ciType']     = t
+      ci['__typename'] = r.label || 'Application'
+      return ci
     })
   })
 }
@@ -509,7 +513,6 @@ async function problemRelatedChanges(
       type:           r.props['type']            as string,
       status:         r.props['status']          as string,
       priority:       (r.props['priority']       ?? 'medium') as string,
-      rollbackPlan:   (r.props['rollback_plan']  ?? '') as string,
       scheduledStart: (r.props['scheduled_start'] ?? null) as string | null,
       scheduledEnd:   (r.props['scheduled_end']   ?? null) as string | null,
       implementedAt:  (r.props['implemented_at']  ?? null) as string | null,

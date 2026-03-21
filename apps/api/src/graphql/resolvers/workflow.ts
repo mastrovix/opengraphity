@@ -127,7 +127,8 @@ async function workflowDefinition(
                tr.id AS id, tr.trigger AS trigger, tr.label AS label,
                tr.requires_input AS requiresInput,
                tr.input_field AS inputField,
-               tr.condition AS condition
+               tr.condition AS condition,
+               tr.timer_hours AS timerHours
       `, { defId: wd['id'] }),
     )
 
@@ -154,6 +155,7 @@ async function workflowDefinition(
         requiresInput: r.get('requiresInput') as boolean,
         inputField:    (r.get('inputField')   ?? null) as string | null,
         condition:     (r.get('condition')    ?? null) as string | null,
+        timerHours:    (r.get('timerHours')   ?? null) as number | null,
       })),
     }
   })
@@ -185,7 +187,8 @@ async function workflowDefinitionById(
                tr.id AS id, tr.trigger AS trigger, tr.label AS label,
                tr.requires_input AS requiresInput,
                tr.input_field AS inputField,
-               tr.condition AS condition
+               tr.condition AS condition,
+               tr.timer_hours AS timerHours
       `, { defId: id }),
     )
 
@@ -212,6 +215,7 @@ async function workflowDefinitionById(
         requiresInput: r.get('requiresInput') as boolean,
         inputField:    (r.get('inputField')   ?? null) as string | null,
         condition:     (r.get('condition')    ?? null) as string | null,
+        timerHours:    (r.get('timerHours')   ?? null) as number | null,
       })),
     }
   })
@@ -246,7 +250,8 @@ async function workflowDefinitions(
                  tr.id AS id, tr.trigger AS trigger, tr.label AS label,
                  tr.requires_input AS requiresInput,
                  tr.input_field AS inputField,
-                 tr.condition AS condition
+                 tr.condition AS condition,
+                 tr.timer_hours AS timerHours
         `, { defId: wd['id'] }),
       )
 
@@ -273,6 +278,7 @@ async function workflowDefinitions(
           requiresInput: r.get('requiresInput') as boolean,
           inputField:    (r.get('inputField')   ?? null) as string | null,
           condition:     (r.get('condition')    ?? null) as string | null,
+          timerHours:    (r.get('timerHours')   ?? null) as number | null,
         })),
       })
     }
@@ -312,39 +318,88 @@ async function updateWorkflowStep(
 
 async function updateWorkflowTransition(
   _: unknown,
-  { definitionId, transitionId, label, requiresInput, inputField }: {
-    definitionId: string; transitionId: string; label: string
-    requiresInput: boolean; inputField?: string | null
+  { definitionId, transitionId, input }: {
+    definitionId: string
+    transitionId: string
+    input: {
+      label?: string | null
+      trigger?: string | null
+      requiresInput: boolean
+      inputField?: string | null
+      condition?: string | null
+      timerHours?: number | null
+    }
   },
   ctx: GraphQLContext,
 ) {
+  const { label, trigger, requiresInput, inputField, condition, timerHours } = input
   return withSession(async (session) => {
-    const result = await session.executeWrite((tx) =>
+    await session.executeWrite((tx) =>
       tx.run(`
-        MATCH (from:WorkflowStep {definition_id: $definitionId, tenant_id: $tenantId})
-              -[tr:TRANSITIONS_TO {id: $transitionId}]->
-              (to:WorkflowStep)
-        SET tr.label         = $label,
-            tr.requires_input = $requiresInput,
-            tr.input_field    = $inputField
+        MATCH ()-[t:TRANSITIONS_TO {id: $transitionId}]->()
+        SET t.label          = coalesce($label, t.label),
+            t.trigger        = coalesce($trigger, t.trigger),
+            t.requires_input = $requiresInput,
+            t.input_field    = coalesce($inputField, t.input_field),
+            t.condition      = coalesce($condition, t.condition),
+            t.timer_hours    = coalesce($timerHours, t.timer_hours)
+      `, {
+        transitionId,
+        label:         label         ?? null,
+        trigger:       trigger       ?? null,
+        requiresInput,
+        inputField:    inputField    ?? null,
+        condition:     condition     ?? null,
+        timerHours:    timerHours    ?? null,
+      }),
+    )
+    const wdResult = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+        RETURN wd, collect(s) AS steps
+        LIMIT 1
+      `, { definitionId, tenantId: ctx.tenantId }),
+    )
+    if (!wdResult.records.length) throw new Error('WorkflowDefinition non trovata')
+    const wd    = wdResult.records[0].get('wd').properties    as Record<string, unknown>
+    const steps = wdResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
+    const trResult = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
         RETURN from.name AS fromStep, to.name AS toStep,
                tr.id AS id, tr.trigger AS trigger, tr.label AS label,
                tr.requires_input AS requiresInput,
                tr.input_field AS inputField,
-               tr.condition AS condition
-      `, { definitionId, tenantId: ctx.tenantId, transitionId, label, requiresInput, inputField: inputField ?? null }),
+               tr.condition AS condition,
+               tr.timer_hours AS timerHours
+      `, { defId: definitionId }),
     )
-    if (!result.records.length) throw new Error('Transizione non trovata')
-    const r = result.records[0]
     return {
-      id:            r.get('id')            as string,
-      fromStepName:  r.get('fromStep')      as string,
-      toStepName:    r.get('toStep')        as string,
-      trigger:       r.get('trigger')       as string,
-      label:         r.get('label')         as string,
-      requiresInput: r.get('requiresInput') as boolean,
-      inputField:    (r.get('inputField')   ?? null) as string | null,
-      condition:     (r.get('condition')    ?? null) as string | null,
+      id:         wd['id']          as string,
+      name:       wd['name']        as string,
+      entityType: wd['entity_type'] as string,
+      version:    wd['version']     as number,
+      active:     wd['active']      as boolean,
+      steps: steps.map((s) => ({
+        id:           s.properties['id']             as string,
+        name:         s.properties['name']           as string,
+        label:        s.properties['label']          as string,
+        type:         s.properties['type']           as string,
+        enterActions: (s.properties['enter_actions'] ?? null) as string | null,
+        exitActions:  (s.properties['exit_actions']  ?? null) as string | null,
+      })),
+      transitions: trResult.records.map((r) => ({
+        id:            r.get('id')            as string,
+        fromStepName:  r.get('fromStep')      as string,
+        toStepName:    r.get('toStep')        as string,
+        trigger:       r.get('trigger')       as string,
+        label:         r.get('label')         as string,
+        requiresInput: r.get('requiresInput') as boolean,
+        inputField:    (r.get('inputField')   ?? null) as string | null,
+        condition:     (r.get('condition')    ?? null) as string | null,
+        timerHours:    (r.get('timerHours')   ?? null) as number | null,
+      })),
     }
   }, true)
 }
@@ -494,6 +549,135 @@ async function incidentWorkflowHistoryField(
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
+async function saveWorkflowChanges(
+  _: unknown,
+  { definitionId, transitions, positions }: {
+    definitionId: string
+    transitions: Array<{
+      transitionId:  string
+      label?:        string | null
+      trigger?:      string | null
+      requiresInput: boolean
+      inputField?:   string | null
+      condition?:    string | null
+      timerHours?:   number | null
+    }>
+    positions: Array<{ stepId: string; positionX: number; positionY: number }>
+  },
+  ctx: GraphQLContext,
+) {
+  const now = new Date().toISOString()
+  return withSession(async (session) => {
+    // Update each transition
+    if (transitions.length > 0) {
+      await session.executeWrite((tx) =>
+        tx.run(`
+          UNWIND $transitions AS tr
+          MATCH ()-[t:TRANSITIONS_TO {id: tr.transitionId}]->()
+          SET t.label          = coalesce(tr.label, t.label),
+              t.trigger        = coalesce(tr.trigger, t.trigger),
+              t.requires_input = tr.requiresInput,
+              t.input_field    = tr.inputField,
+              t.condition      = tr.condition,
+              t.timer_hours    = tr.timerHours
+        `, { transitions }),
+      )
+    }
+    // Update step positions
+    if (positions.length > 0) {
+      await session.executeWrite((tx) =>
+        tx.run(`
+          UNWIND $positions AS pos
+          MATCH (s:WorkflowStep {id: pos.stepId})<-[:HAS_STEP]-(wd:WorkflowDefinition {
+            id: $definitionId, tenant_id: $tenantId
+          })
+          SET s.position_x = pos.positionX,
+              s.position_y = pos.positionY
+        `, { definitionId, tenantId: ctx.tenantId, positions }),
+      )
+    }
+    // Increment version and return full definition
+    const wdResult = await session.executeWrite((tx) =>
+      tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        SET wd.version    = wd.version + 1,
+            wd.updated_at = $now
+        RETURN wd
+      `, { definitionId, tenantId: ctx.tenantId, now }),
+    )
+    if (!wdResult.records.length) throw new Error('WorkflowDefinition non trovata')
+    const wd = wdResult.records[0].get('wd').properties as Record<string, unknown>
+
+    const stepsResult = await session.executeRead((tx) =>
+      tx.run(`MATCH (wd:WorkflowDefinition {id: $definitionId})-[:HAS_STEP]->(s:WorkflowStep) RETURN collect(s) AS steps`,
+        { definitionId }),
+    )
+    const steps = stepsResult.records[0]?.get('steps') as Array<{ properties: Record<string, unknown> }> ?? []
+
+    const trResult = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
+        RETURN from.name AS fromStep, to.name AS toStep,
+               tr.id AS id, tr.trigger AS trigger, tr.label AS label,
+               tr.requires_input AS requiresInput,
+               tr.input_field AS inputField,
+               tr.condition AS condition,
+               tr.timer_hours AS timerHours
+      `, { defId: definitionId }),
+    )
+
+    return {
+      id:         wd['id']          as string,
+      name:       wd['name']        as string,
+      entityType: wd['entity_type'] as string,
+      version:    wd['version']     as number,
+      active:     wd['active']      as boolean,
+      steps: steps.map((s) => ({
+        id:           s.properties['id']             as string,
+        name:         s.properties['name']           as string,
+        label:        s.properties['label']          as string,
+        type:         s.properties['type']           as string,
+        enterActions: (s.properties['enter_actions'] ?? null) as string | null,
+        exitActions:  (s.properties['exit_actions']  ?? null) as string | null,
+      })),
+      transitions: trResult.records.map((r) => ({
+        id:            r.get('id')            as string,
+        fromStepName:  r.get('fromStep')      as string,
+        toStepName:    r.get('toStep')        as string,
+        trigger:       r.get('trigger')       as string,
+        label:         r.get('label')         as string,
+        requiresInput: r.get('requiresInput') as boolean,
+        inputField:    (r.get('inputField')   ?? null) as string | null,
+        condition:     (r.get('condition')    ?? null) as string | null,
+        timerHours:    (r.get('timerHours')   ?? null) as number | null,
+      })),
+    }
+  }, true)
+}
+
+async function saveWorkflowLayout(
+  _: unknown,
+  { definitionId, positions }: {
+    definitionId: string
+    positions: Array<{ stepId: string; positionX: number; positionY: number }>
+  },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    await session.executeWrite((tx) =>
+      tx.run(`
+        UNWIND $positions AS pos
+        MATCH (s:WorkflowStep {id: pos.stepId})<-[:HAS_STEP]-(wd:WorkflowDefinition {
+          id: $definitionId, tenant_id: $tenantId
+        })
+        SET s.position_x = pos.positionX,
+            s.position_y = pos.positionY
+      `, { definitionId, tenantId: ctx.tenantId, positions }),
+    )
+    return true
+  }, true)
+}
+
 export const workflowResolvers = {
   Query: {
     incidentWorkflow,
@@ -507,6 +691,8 @@ export const workflowResolvers = {
     updateWorkflowStep,
     updateWorkflowTransition,
     executeWorkflowTransition,
+    saveWorkflowLayout,
+    saveWorkflowChanges,
   },
   Incident: {
     workflowInstance:     incidentWorkflowInstance,

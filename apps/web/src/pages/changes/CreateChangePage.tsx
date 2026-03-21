@@ -136,11 +136,8 @@ export function CreateChangePage() {
   const [title,          setTitle]         = useState('')
   const [description,    setDescription]   = useState('')
   const [priority,       setPriority]      = useState('medium')
-  const [rollbackPlan,   setRollback]      = useState('')
   const [ciSearch,       setCiSearch]      = useState('')
   const [selectedCIs,    setSelectedCIs]   = useState<CI[]>([])
-  const [scheduledStart, setScheduledStart] = useState('')
-  const [scheduledEnd,   setScheduledEnd]   = useState('')
   const [emergencyReason, setEmergencyReason] = useState('')
   const [submitted,      setSubmitted]     = useState(false)
 
@@ -167,9 +164,8 @@ export function CreateChangePage() {
 
   const availableCIs     = (cisData?.allCIs?.items ?? []).filter(ci => !selectedCIs.find(s => s.id === ci.id))
   const titleMissing     = !title.trim()
-  const rollbackInvalid  = rollbackPlan.trim().length < 20
   const emergencyMissing = changeType === 'emergency' && !emergencyReason.trim()
-  const step2Valid       = !titleMissing && !rollbackInvalid && !emergencyMissing
+  const step2Valid       = !titleMissing && !emergencyMissing
 
   function handleNext() {
     if (step === 1) {
@@ -187,7 +183,6 @@ export function CreateChangePage() {
           description:   description.trim() || null,
           type:          changeType,
           priority,
-          rollbackPlan:  rollbackPlan.trim(),
           affectedCIIds: selectedCIs.map(c => c.id),
         },
       },
@@ -321,29 +316,6 @@ export function CreateChangePage() {
               </div>
             </div>
 
-            {/* ROLLBACK PLAN */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={fieldLabel}>
-                Piano di Rollback <span style={{ color: '#dc2626' }}>*</span>
-                {' '}<span style={{ fontSize: 10, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#b0b8c5' }}>(min. 20 caratteri)</span>
-              </label>
-              <textarea
-                value={rollbackPlan}
-                onChange={e => setRollback(e.target.value)}
-                placeholder="Descrivi i passi per ripristinare il sistema allo stato precedente…"
-                rows={3}
-                style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6, borderColor: rollbackPlan.length > 0 && rollbackPlan.length < 20 ? '#ef4444' : '#e5e7eb' }}
-                onFocus={onFocus}
-                onBlur={e => { (e.currentTarget as HTMLElement).style.borderColor = rollbackPlan.length > 0 && rollbackPlan.length < 20 ? '#ef4444' : '#e5e7eb' }}
-              />
-              {rollbackPlan.length > 0 && rollbackPlan.length < 20 && (
-                <span style={{ fontSize: 12, color: '#ef4444', marginTop: 4, display: 'block' }}>{rollbackPlan.length}/20 caratteri</span>
-              )}
-              {submitted && rollbackInvalid && rollbackPlan.length === 0 && (
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#dc2626' }}>Campo obbligatorio (min. 20 caratteri)</p>
-              )}
-            </div>
-
             {/* CI IMPATTATI */}
             <div style={{ marginBottom: 20 }}>
               <label style={fieldLabel}>
@@ -399,21 +371,6 @@ export function CreateChangePage() {
               )}
             </div>
 
-            {/* DATA SCHEDULATA */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-              <div>
-                <label style={fieldLabel}>Data Schedulata <span style={{ color: '#dc2626' }}>*</span></label>
-                <input type="datetime-local" value={scheduledStart} onChange={e => setScheduledStart(e.target.value)} style={inputBase} onFocus={onFocus} onBlur={onBlur} />
-              </div>
-              <div>
-                <label style={fieldLabel}>
-                  Fine Schedulata{' '}
-                  <span style={{ fontSize: 10, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#b0b8c5' }}>(opzionale)</span>
-                </label>
-                <input type="datetime-local" value={scheduledEnd} onChange={e => setScheduledEnd(e.target.value)} style={inputBase} onFocus={onFocus} onBlur={onBlur} />
-              </div>
-            </div>
-
             {/* MOTIVO EMERGENZA */}
             {changeType === 'emergency' && (
               <div style={{ marginBottom: 20 }}>
@@ -458,7 +415,6 @@ export function CreateChangePage() {
                   {prioConf.label}
                 </span>
               } />
-              <SummaryRow label="Piano di Rollback" value={<span style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{rollbackPlan}</span>} />
               <SummaryRow label="CI Impattati" value={
                 selectedCIs.length === 0 ? '—' : (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -470,8 +426,6 @@ export function CreateChangePage() {
                   </div>
                 )
               } />
-              <SummaryRow label="Data Schedulata" value={scheduledStart ? new Date(scheduledStart).toLocaleString('it-IT') : '—'} />
-              <SummaryRow label="Fine Schedulata"  value={scheduledEnd   ? new Date(scheduledEnd).toLocaleString('it-IT')   : '—'} />
               {changeType === 'emergency' && (
                 <SummaryRow label="Motivo Emergenza" value={<span style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{emergencyReason}</span>} />
               )}

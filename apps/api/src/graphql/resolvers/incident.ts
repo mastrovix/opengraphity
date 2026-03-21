@@ -638,8 +638,12 @@ async function incidentAffectedCIs(
       id: parent.id, tenantId: ctx.tenantId,
     })
     return rows.map((r) => {
-      r.props['type'] = labelToType(r.label)
-      return mapCI(r.props)
+      const t = labelToType(r.label)
+      r.props['type'] = t
+      const ci = mapCI(r.props) as Record<string, unknown>
+      ci['ciType']     = t
+      ci['__typename'] = r.label || 'Application'
+      return ci
     })
   })
 }

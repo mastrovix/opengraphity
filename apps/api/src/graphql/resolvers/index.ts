@@ -137,7 +137,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     Problem:            { ...problemResolvers.Problem },
     ProblemComment:     {},
     Change:             { ...changeResolvers.Change },
-    ChangeTask:         {},
+    ChangeTask:         { ...changeResolvers.ChangeTask },
     ServiceRequest:     serviceRequestResolvers.ServiceRequest,
     ReportConversation: reportResolvers.ReportConversation,
     DashboardConfig:    { ...dashboardResolvers.DashboardConfig },

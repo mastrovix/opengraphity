@@ -191,7 +191,6 @@ async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext
       type:           r.props['type']            as string,
       priority:       (r.props['priority']       ?? 'medium') as string,
       status:         r.props['status']          as string,
-      rollbackPlan:   (r.props['rollback_plan']  ?? '') as string,
       scheduledStart: (r.props['scheduled_start'] ?? null) as string | null,
       scheduledEnd:   (r.props['scheduled_end']   ?? null) as string | null,
       implementedAt:  (r.props['implemented_at']  ?? null) as string | null,

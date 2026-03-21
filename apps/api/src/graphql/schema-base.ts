@@ -115,6 +115,7 @@ export function buildBaseSDL(): string {
     addChangeComment(changeId: ID!, text: String!): ChangeComment!
     saveDeploySteps(changeId: ID!, steps: [CreateDeployStepInput!]!): Change!
     saveChangeValidation(changeId: ID!, scheduledStart: String!, scheduledEnd: String!): Change!
+    updateChangeTask(id: ID!, input: UpdateChangeTaskInput!): ChangeTask!
     updateAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): ChangeTask!
     completeAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): ChangeTask!
     rejectAssessmentTask(taskId: ID!, reason: String!): ChangeTask!
@@ -148,12 +149,21 @@ export function buildBaseSDL(): string {
     ): WorkflowStep!
 
     updateWorkflowTransition(
-      definitionId:  ID!
-      transitionId:  ID!
-      label:         String!
-      requiresInput: Boolean!
-      inputField:    String
-    ): WorkflowTransitionDef!
+      definitionId: ID!
+      transitionId: ID!
+      input:        UpdateTransitionInput!
+    ): WorkflowDefinition!
+
+    saveWorkflowLayout(
+      definitionId: ID!
+      positions:    [StepPositionInput!]!
+    ): Boolean!
+
+    saveWorkflowChanges(
+      definitionId: ID!
+      transitions:  [TransitionChangeInput!]!
+      positions:    [StepPositionInput!]!
+    ): WorkflowDefinition!
 
     executeWorkflowTransition(
       instanceId: ID!
@@ -203,7 +213,7 @@ export function buildBaseSDL(): string {
   interface CIBase {
     id: ID!
     name: String!
-    type: String!
+    type: String
     status: String
     environment: String
     description: String
@@ -346,7 +356,6 @@ export function buildBaseSDL(): string {
     type:           String!
     priority:       String!
     status:         String!
-    rollbackPlan:   String!
     scheduledStart: String
     scheduledEnd:   String
     implementedAt:  String
@@ -444,6 +453,7 @@ export function buildBaseSDL(): string {
     validationEnd:     String
     validationNotes:   String
     type:              String
+    rollbackPlan:      String
     createdAt:         String
     ci:                CIBase
     assignedTeam:      Team
@@ -512,6 +522,31 @@ export function buildBaseSDL(): string {
     createdAt: String!
   }
 
+  input UpdateTransitionInput {
+    label:         String
+    trigger:       String
+    requiresInput: Boolean!
+    inputField:    String
+    condition:     String
+    timerHours:    Int
+  }
+
+  input TransitionChangeInput {
+    transitionId:  ID!
+    label:         String
+    trigger:       String
+    requiresInput: Boolean!
+    inputField:    String
+    condition:     String
+    timerHours:    Int
+  }
+
+  input StepPositionInput {
+    stepId:    String!
+    positionX: Float!
+    positionY: Float!
+  }
+
   input CreateNotificationChannelInput {
     platform: String!
     name: String!
@@ -557,7 +592,6 @@ export function buildBaseSDL(): string {
     description:        String
     type:               String!
     priority:           String!
-    rollbackPlan:       String!
     affectedCIIds:      [ID!]
     relatedIncidentIds: [ID!]
   }
@@ -573,6 +607,10 @@ export function buildBaseSDL(): string {
     validationEnd:    String
     assignedTeamId:   ID
     validationTeamId: ID
+  }
+
+  input UpdateChangeTaskInput {
+    rollbackPlan: String
   }
 
   input UpdateAssessmentTaskInput {
@@ -657,6 +695,7 @@ export function buildBaseSDL(): string {
     requiresInput: Boolean!
     inputField:    String
     condition:     String
+    timerHours:    Int
   }
 
   type WorkflowDefinition {

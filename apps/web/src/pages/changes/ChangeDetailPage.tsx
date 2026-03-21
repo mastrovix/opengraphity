@@ -24,11 +24,13 @@ import {
   ASSIGN_DEPLOY_STEP_TO_USER,
   ASSIGN_DEPLOY_STEP_VALIDATION_TEAM,
   ASSIGN_DEPLOY_STEP_VALIDATION_USER,
+  UPDATE_CHANGE_TASK,
 } from '@/graphql/mutations'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { ImpactPanel } from '@/components/ImpactPanel'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
+import { DetailField } from '@/components/ui/DetailField'
 import type { ImpactAnalysis } from '@/components/ImpactPanel'
 
 function groupByField<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
@@ -42,8 +44,8 @@ function groupByField<T>(items: T[], key: (item: T) => string): Record<string, T
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Team { id: string; name: string }
-interface User { id: string; name: string; email?: string; teamId?: string | null }
-interface CI { id: string; name: string; type: string; status: string; environment: string; owner?: { id: string; name: string } | null; supportGroup?: { id: string; name: string } | null }
+interface User { id: string; name: string; email?: string; teamId?: string | null; teams?: { id: string; name: string }[] }
+interface CI { id: string; name: string; type: string; ciType?: string; status: string; environment: string; owner?: { id: string; name: string } | null; supportGroup?: { id: string; name: string } | null }
 interface Incident { id: string; title: string; status: string; severity: string }
 interface ChangeComment { id: string; text: string; type: string; createdAt: string; createdBy: { id: string; name: string } | null }
 
@@ -62,14 +64,14 @@ interface ChangeTask {
   validationStart: string | null; validationEnd: string | null; validationNotes: string | null
   skipReason: string | null; notes: string | null; completedAt: string | null
   riskLevel: string | null; impactDescription: string | null; mitigation: string | null
-  type: string | null; createdAt: string | null
+  type: string | null; rollbackPlan: string | null; createdAt: string | null
   ci: CI | null; assignedTeam: Team | null; assignee: User | null
   validationTeam: Team | null; validationUser: User | null
 }
 
 interface Change {
   id: string; title: string; description: string | null; type: string; priority: string
-  status: string; rollbackPlan: string; scheduledStart: string | null; scheduledEnd: string | null
+  status: string; scheduledStart: string | null; scheduledEnd: string | null
   implementedAt: string | null; createdAt: string; updatedAt: string
   assignedTeam: Team | null; assignee: User | null; createdBy: User | null
   affectedCIs: CI[]; relatedIncidents: Incident[]
@@ -158,10 +160,12 @@ export function ChangeDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
-  const { data, loading, refetch } = useQuery<{ change: Change | null }>(GET_CHANGE, {
+  const { data, loading, error, refetch } = useQuery<{ change: Change | null }>(GET_CHANGE, {
     variables: { id },
     fetchPolicy: 'cache-and-network',
   })
+
+  console.log('[CHANGE DETAIL]', { id, data: data?.change, loading, error })
 
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
   const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
@@ -359,6 +363,11 @@ export function ChangeDetailPage() {
     onError: (e) => toast.error(e.message),
   })
 
+  const [updateChangeTask] = useMutation(UPDATE_CHANGE_TASK, {
+    onCompleted: () => { toast.success('Task aggiornato'); void refetch() },
+    onError: (e) => toast.error(e.message),
+  })
+
   const ciResults = ciSearchData?.allCIs?.items ?? []
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []
@@ -370,21 +379,47 @@ export function ChangeDetailPage() {
   const deploySteps   = (change.changeTasks ?? []).filter((t: { taskType: string }) => t.taskType === 'deploy')
   const assessmentTasks = (change.changeTasks ?? []).filter((t: { taskType: string }) => t.taskType === 'assessment')
   const validationTask  = (change.changeTasks ?? []).find((t: { taskType: string }) => t.taskType === 'validation') ?? null
-  const currentStep = change.workflowInstance?.currentStep ?? change.status
+  const currentStep = change.workflowInstance?.currentStep ?? ''
   const instanceId = change.workflowInstance?.id ?? ''
 
-  const showDeploySteps = ['assessment', 'cab_approval', 'scheduled', 'validation', 'deployment', 'completed', 'failed'].includes(currentStep)
-  const deployStepsEditable = currentStep === 'assessment'
+  const showAssessmentTasks = [
+    'assessment', 'cab_approval', 'scheduled',
+    'validation', 'deployment', 'completed',
+    'failed', 'post_review',
+  ].includes(currentStep)
 
-  const STEPS_ORDER = [
-    'draft', 'assessment', 'cab_approval',
+  const showDeploySteps = [
     'scheduled', 'validation', 'deployment',
-    'completed', 'failed', 'rejected',
-    'emergency_approval', 'post_review',
-  ]
-  const currentStepIndex  = STEPS_ORDER.indexOf(currentStep)
-  const assessmentIndex   = STEPS_ORDER.indexOf('assessment')
-  const showAssessmentTasks = currentStepIndex >= assessmentIndex
+    'completed', 'failed', 'post_review',
+  ].includes(currentStep)
+
+  const showValidation = [
+    'scheduled', 'validation', 'deployment',
+    'completed', 'failed', 'post_review',
+  ].includes(currentStep)
+
+  const deployStepsEditable  = currentStep === 'assessment'
+  const canEditAssessment    = currentStep === 'assessment'
+  const canEditDeploy        = currentStep === 'deployment'
+  const canEditValidation    = currentStep === 'validation'
+
+  const taskCardStyle = (taskType: string): React.CSSProperties => {
+    const isActive =
+      (taskType === 'assessment' && canEditAssessment) ||
+      (taskType === 'deploy'     && canEditDeploy)     ||
+      (taskType === 'validation' && canEditValidation)
+    const colors: Record<string, string> = {
+      assessment: '#4f46e5',
+      deploy:     '#0891b2',
+      validation: '#059669',
+    }
+    return {
+      borderLeft: isActive ? `4px solid ${colors[taskType]}` : '4px solid #e5e7eb',
+      borderRadius: '0 10px 10px 0',
+      background: isActive ? '#fff' : '#fafafa',
+      transition: 'all 0.2s',
+    }
+  }
 
   // Compute scheduledEnd for a form step
   function calcEnd(start: string, days: number): string {
@@ -430,7 +465,13 @@ export function ChangeDetailPage() {
             return (
               <button
                 key={tr.toStep}
-                onClick={() => { setPendingTransition(tr); setTransitionNotes(''); setIsTransitionOpen(true) }}
+                onClick={() => {
+                  if (!tr.requiresInput) {
+                    if (instanceId) execTransition({ variables: { instanceId, toStep: tr.toStep, notes: null } })
+                  } else {
+                    setPendingTransition(tr); setTransitionNotes(''); setIsTransitionOpen(true)
+                  }
+                }}
                 style={{ padding: '8px 16px', backgroundColor: colors.bg, color: colors.color, border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
               >
                 {tr.label}
@@ -474,10 +515,6 @@ export function ChangeDetailPage() {
                 ) : (
                   <p style={{ fontSize: 13, color: '#8892a4', margin: 0, marginBottom: 16 }}>Nessuna descrizione.</p>
                 )}
-                <div style={{ borderTop: '1px solid #f1f3f8', paddingTop: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Piano di Rollback</div>
-                  <p style={{ fontSize: 13, color: '#0f1629', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{change.rollbackPlan || '—'}</p>
-                </div>
               </div>
             )}
           </div>
@@ -617,7 +654,7 @@ export function ChangeDetailPage() {
             const totalCount     = assessmentTasks.length
             const completedCount = assessmentTasks.filter((t) => ['completed', 'skipped', 'rejected'].includes(t.status)).length
             return (
-              <div style={{ ...cardStyle, padding: 0 }}>
+              <div style={{ ...cardStyle, ...taskCardStyle('assessment'), padding: 0 }}>
                 <div onClick={() => setAssessmentOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: assessmentOpen ? '1px solid #e5e7eb' : 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Assessment Tasks</span>
@@ -641,7 +678,7 @@ export function ChangeDetailPage() {
                 </div>
                 {assessmentOpen && (
                   <div style={{ padding: '8px 20px 12px' }}>
-                    {Object.entries(groupByField(assessmentTasks, (t) => t.ci?.type ?? 'unknown')).map(([ciType, tasks]) => (
+                    {Object.entries(groupByField(assessmentTasks, (t) => t.assignedTeam?.name ?? 'Non assegnato')).map(([ciType, tasks]) => (
                       <CollapsibleGroup key={ciType} title={ciType.replace(/_/g, ' ')} count={tasks.length}>
                         <div style={{ overflowX: 'auto' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -699,16 +736,16 @@ export function ChangeDetailPage() {
           })()}
 
           {/* Validation Card */}
-          {(['cab_approval', 'scheduled', 'validation', 'deployment', 'completed', 'failed'].includes(currentStep) &&
-            (deploySteps.some((s) => s.hasValidation) || !!validationTask)) && (() => {
+          {showValidation && (() => {
             const allValItems: { status: string }[] = [
               ...(validationTask ? [validationTask] : []),
               ...deploySteps.filter((s) => s.hasValidation).map((s) => ({ status: s.validationStatus ?? 'pending' })),
             ]
             const totalValCount  = allValItems.length
             const passedValCount = allValItems.filter((v) => v.status === 'passed').length
+            const noTasks        = totalValCount === 0
             return (
-              <div style={{ ...cardStyle, padding: 0 }}>
+              <div style={{ ...cardStyle, ...taskCardStyle('validation'), padding: 0 }}>
                 <div onClick={() => setValidationOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: validationOpen ? '1px solid #e5e7eb' : 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Validation Tasks</span>
@@ -728,7 +765,24 @@ export function ChangeDetailPage() {
                   </div>
                   {validationOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
                 </div>
-                {validationOpen && (
+                {validationOpen && noTasks && (
+                  <div style={{ padding: '16px 20px 20px' }}>
+                    <div style={{ fontSize: 13, color: '#8892a4', marginBottom: 14, lineHeight: 1.5 }}>
+                      Nessun task di validazione definito.<br />
+                      Puoi completare la validazione direttamente.
+                    </div>
+                    {canEditValidation && (
+                      <button
+                        onClick={() => { if (instanceId) execTransition({ variables: { instanceId, toStep: 'completed', notes: null } }) }}
+                        disabled={transitioning}
+                        style={{ padding: '9px 20px', backgroundColor: transitioning ? '#e2e6f0' : '#059669', color: transitioning ? '#8892a4' : '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: transitioning ? 'not-allowed' : 'pointer' }}
+                      >
+                        {transitioning ? 'Esecuzione…' : 'Valida e prosegui'}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {validationOpen && !noTasks && (
                   <div style={{ padding: '0 0 4px' }}>
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -809,7 +863,7 @@ export function ChangeDetailPage() {
             const totalDeployCount     = deploySteps.length
             const completedDeployCount = deploySteps.filter((s) => s.status === 'completed').length
             return (
-              <div style={{ ...cardStyle, padding: 0 }}>
+              <div style={{ ...cardStyle, ...taskCardStyle('deploy'), padding: 0 }}>
                 <div onClick={() => setDeployOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: deployOpen ? '1px solid #e5e7eb' : 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Deploy Tasks</span>
@@ -838,7 +892,7 @@ export function ChangeDetailPage() {
                     {deploySteps.length === 0 ? (
                       <div style={{ fontSize: 13, color: '#8892a4' }}>Nessuno step pianificato.</div>
                     ) : (
-                      Object.entries(groupByField(deploySteps, (s) => s.status)).map(([status, steps]) => (
+                      Object.entries(groupByField(deploySteps, (s) => s.assignedTeam?.name ?? 'Non assegnato')).map(([status, steps]) => (
                         <CollapsibleGroup key={status} title={status.replace(/_/g, ' ')} count={steps.length}>
                           <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -1155,31 +1209,27 @@ export function ChangeDetailPage() {
         </>
       )}
 
-      {/* Transition Dialog */}
+      {/* Transition Dialog — only shown when requiresInput === true */}
       {isTransitionOpen && pendingTransition && (
         <>
           <div onClick={() => setIsTransitionOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000 }} />
           <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 420, zIndex: 1001, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0f1629', margin: '0 0 6px' }}>{pendingTransition.label}</h2>
-            <p style={{ fontSize: 13, color: '#8892a4', margin: '0 0 16px' }}>
-              {pendingTransition.requiresInput ? 'Inserisci le informazioni richieste.' : 'Conferma la transizione.'}
-            </p>
-            {pendingTransition.requiresInput && (
-              <textarea
-                value={transitionNotes}
-                onChange={(e) => setTransitionNotes(e.target.value)}
-                style={{ ...textareaStyle, minHeight: 90, marginBottom: 16 }}
-                placeholder={pendingTransition.inputField === 'rootCause' ? 'Root cause…' : 'Note…'}
-              />
-            )}
+            <p style={{ fontSize: 13, color: '#8892a4', margin: '0 0 16px' }}>Inserisci le informazioni richieste.</p>
+            <textarea
+              value={transitionNotes}
+              onChange={(e) => setTransitionNotes(e.target.value)}
+              style={{ ...textareaStyle, minHeight: 90, marginBottom: 16 }}
+              placeholder={pendingTransition.inputField === 'rootCause' ? 'Root cause…' : 'Note…'}
+            />
             <div style={{ display: 'flex', gap: 10 }}>
               <button
                 onClick={() => {
                   if (!instanceId) return
                   execTransition({ variables: { instanceId, toStep: pendingTransition.toStep, notes: transitionNotes || null } })
                 }}
-                disabled={transitioning || (pendingTransition.requiresInput && !transitionNotes.trim())}
-                style={{ flex: 1, padding: '9px 0', backgroundColor: transitioning ? '#e2e6f0' : '#4f46e5', color: transitioning ? '#8892a4' : '#fff', border: 'none', borderRadius: 7, fontSize: 14, fontWeight: 600, cursor: transitioning ? 'not-allowed' : 'pointer' }}
+                disabled={transitioning || !transitionNotes.trim()}
+                style={{ flex: 1, padding: '9px 0', backgroundColor: transitioning || !transitionNotes.trim() ? '#e2e6f0' : '#4f46e5', color: transitioning || !transitionNotes.trim() ? '#8892a4' : '#fff', border: 'none', borderRadius: 7, fontSize: 14, fontWeight: 600, cursor: transitioning || !transitionNotes.trim() ? 'not-allowed' : 'pointer' }}
               >
                 {transitioning ? 'Esecuzione…' : 'Conferma'}
               </button>
@@ -1196,8 +1246,8 @@ export function ChangeDetailPage() {
         const step = deploySteps.find((s) => s.id === deployStepPopup)
         if (!step) return null
         const stepDone = ['completed', 'skipped', 'failed'].includes(step.status)
-        const canAct = currentStep === 'deployment' && !stepDone
-        const stepTeamUsers = users.filter((u) => u.teamId === step.assignedTeam?.id)
+        const canAct = canEditDeploy && !stepDone
+        const stepTeamUsers = users.filter((u) => u.teams?.some((t: { id: string }) => t.id === step.assignedTeam?.id))
 
         return (
           <>
@@ -1221,6 +1271,11 @@ export function ChangeDetailPage() {
 
               {/* Body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                {!canEditDeploy && (
+                  <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e6f0', fontSize: 12, color: '#8892a4' }}>
+                    Sola lettura — questa fase non è ancora attiva
+                  </div>
+                )}
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
                   <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>{step.id}</div>
@@ -1241,6 +1296,16 @@ export function ChangeDetailPage() {
                     <div style={{ fontSize: 11, color: '#8892a4', marginBottom: 2 }}>Durata</div>
                     <div style={{ fontWeight: 500 }}>{step.durationDays} {step.durationDays === 1 ? 'giorno' : 'giorni'}</div>
                   </div>
+                </div>
+
+                {/* Rollback Plan */}
+                <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16, marginBottom: 4 }}>
+                  <DetailField
+                    label="Rollback Plan"
+                    value={step.rollbackPlan}
+                    editable={true}
+                    onSave={(value) => { void updateChangeTask({ variables: { id: step.id, input: { rollbackPlan: value } } }) }}
+                  />
                 </div>
 
                 {/* Assegnazione */}
@@ -1444,8 +1509,8 @@ export function ChangeDetailPage() {
         const step = deploySteps.find((s) => s.id === validationStepPopup)
         if (!step) return null
         const valDone = step.validationStatus === 'passed' || step.validationStatus === 'failed'
-        const canAct = currentStep === 'validation' && !valDone
-        const valTeamUsers = users.filter((u) => u.teamId === step.validationTeam?.id)
+        const canAct = canEditValidation && !valDone
+        const valTeamUsers = users.filter((u) => u.teams?.some((t: { id: string }) => t.id === step.validationTeam?.id))
 
         return (
           <>
@@ -1466,6 +1531,11 @@ export function ChangeDetailPage() {
 
               {/* Body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                {!canEditValidation && (
+                  <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e6f0', fontSize: 12, color: '#8892a4' }}>
+                    Sola lettura — questa fase non è ancora attiva
+                  </div>
+                )}
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
                   <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>{step.id}</div>
@@ -1626,7 +1696,7 @@ export function ChangeDetailPage() {
       {globalValidationPopup && validationTask && (() => {
         const val = validationTask
         const valDone = val.status === 'passed' || val.status === 'failed'
-        const canAct  = currentStep === 'validation' && !valDone
+        const canAct  = canEditValidation && !valDone
         return (
           <>
             <div onClick={() => setGlobalValidationPopup(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.35)' }} />
@@ -1646,6 +1716,11 @@ export function ChangeDetailPage() {
 
               {/* Body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                {!canEditValidation && (
+                  <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e6f0', fontSize: 12, color: '#8892a4' }}>
+                    Sola lettura — questa fase non è ancora attiva
+                  </div>
+                )}
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
                   <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>{val.id}</div>
@@ -1749,9 +1824,9 @@ export function ChangeDetailPage() {
         const task = assessmentTasks.find((t) => t.id === assessmentTaskPopup)
         if (!task) return null
         const taskForm = getTaskForm(task.id)
-        const isEditable = task.status === 'open'
+        const isEditable = task.status === 'open' && canEditAssessment
         const isDone = ['completed', 'rejected'].includes(task.status)
-        const taskTeamUsers = users.filter((u) => u.teamId === task.assignedTeam?.id)
+        const taskTeamUsers = users.filter((u) => u.teams?.some((t: { id: string }) => t.id === task.assignedTeam?.id))
 
         return (
           <>
@@ -1776,6 +1851,11 @@ export function ChangeDetailPage() {
 
               {/* Scrollable body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                {!canEditAssessment && (
+                  <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e6f0', fontSize: 12, color: '#8892a4' }}>
+                    Sola lettura — questa fase non è ancora attiva
+                  </div>
+                )}
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
                   <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>{task.id}</div>

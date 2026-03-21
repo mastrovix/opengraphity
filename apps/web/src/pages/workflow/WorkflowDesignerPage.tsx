@@ -20,7 +20,7 @@ import {
 } from '@xyflow/react'
 import type { NodeProps, EdgeProps, Node, Edge } from '@xyflow/react'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
-import { UPDATE_WORKFLOW_STEP, UPDATE_WORKFLOW_TRANSITION } from '@/graphql/mutations'
+import { UPDATE_WORKFLOW_STEP, SAVE_WORKFLOW_CHANGES } from '@/graphql/mutations'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,17 @@ interface WFTransition {
   requiresInput: boolean
   inputField:    string | null
   condition:     string | null
+  timerHours:    number | null
+}
+
+interface PendingTransitionChange {
+  transitionId:  string
+  label:         string
+  trigger:       string
+  requiresInput: boolean
+  inputField:    string | null
+  condition:     string | null
+  timerHours:    number | null
 }
 
 interface WorkflowDefinition {
@@ -381,39 +392,52 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
 }
 
 interface EdgePanelProps {
-  transition:   WFTransition
-  definitionId: string
-  onClose:      () => void
-  onSaved:      (updated: Partial<WFTransition>) => void
+  transition:    WFTransition
+  onClose:       () => void
+  onSaved:       (updated: Partial<WFTransition>) => void
+  onSaveLocally: (change: PendingTransitionChange) => void
 }
 
-function EdgePanel({ transition, definitionId, onClose, onSaved }: EdgePanelProps) {
+function EdgePanel({ transition, onClose, onSaved, onSaveLocally }: EdgePanelProps) {
   const [label,         setLabel]         = useState(transition.label)
+  const [trigger,       setTrigger]       = useState(transition.trigger)
   const [requiresInput, setRequiresInput] = useState(transition.requiresInput)
   const [inputField,    setInputField]    = useState(transition.inputField ?? '')
-
-  const [save, { loading }] = useMutation(UPDATE_WORKFLOW_TRANSITION, {
-    onCompleted: () => {
-      toast.success('Transizione aggiornata')
-      onSaved({ label, requiresInput, inputField: inputField || null })
-    },
-    onError: (e) => toast.error(e.message),
-  })
+  const [condition,     setCondition]     = useState(transition.condition ?? '')
+  const [timerHours,    setTimerHours]    = useState<string>(transition.timerHours != null ? String(transition.timerHours) : '')
 
   const unchanged =
-    label === transition.label &&
+    label         === transition.label         &&
+    trigger       === transition.trigger       &&
     requiresInput === transition.requiresInput &&
-    (inputField || null) === transition.inputField
+    (inputField  || null) === transition.inputField &&
+    (condition   || null) === transition.condition  &&
+    (timerHours ? parseInt(timerHours, 10) : null) === transition.timerHours
 
   return (
     <div style={panelStyle}>
       <PanelHeader title="Modifica Transizione" onClose={onClose} />
 
+      <PanelField label="From → To">
+        <span style={{ fontSize: 12, color: '#4a5468' }}>
+          <code>{transition.fromStepName}</code> → <code>{transition.toStepName}</code>
+        </span>
+      </PanelField>
+
       <PanelField label="Label">
         <input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
       </PanelField>
 
-      <PanelField label="Requires Input">
+      <PanelField label="Trigger">
+        <select value={trigger} onChange={(e) => setTrigger(e.target.value)} style={inputStyle}>
+          <option value="manual">manual</option>
+          <option value="automatic">automatic</option>
+          <option value="timer">timer</option>
+          <option value="sla_breach">sla_breach</option>
+        </select>
+      </PanelField>
+
+      <PanelField label="Richiede Input">
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
           <input
             type="checkbox"
@@ -425,7 +449,7 @@ function EdgePanel({ transition, definitionId, onClose, onSaved }: EdgePanelProp
       </PanelField>
 
       {requiresInput && (
-        <PanelField label="Input Field">
+        <PanelField label="Campo Input">
           <select value={inputField} onChange={(e) => setInputField(e.target.value)} style={inputStyle}>
             <option value="">— nessuno —</option>
             <option value="rootCause">rootCause</option>
@@ -434,32 +458,47 @@ function EdgePanel({ transition, definitionId, onClose, onSaved }: EdgePanelProp
         </PanelField>
       )}
 
-      <PanelField label="From → To">
-        <span style={{ fontSize: 12, color: '#4a5468' }}>
-          <code>{transition.fromStepName}</code> → <code>{transition.toStepName}</code>
-        </span>
+      <PanelField label="Condizione (opzionale)">
+        <input
+          value={condition}
+          onChange={(e) => setCondition(e.target.value)}
+          placeholder="es. has_linked_change"
+          style={inputStyle}
+        />
       </PanelField>
 
-      <PanelField label="Trigger">
-        <span style={{
-          display:         'inline-block',
-          padding:         '2px 8px',
-          borderRadius:    4,
-          backgroundColor: `${TRIGGER_COLOR[transition.trigger] ?? '#8892a4'}18`,
-          color:           TRIGGER_COLOR[transition.trigger] ?? '#8892a4',
-          fontSize:        11,
-          fontWeight:      600,
-        }}>
-          {transition.trigger}
-        </span>
-      </PanelField>
+      {trigger === 'timer' && (
+        <PanelField label="Timer (ore)">
+          <input
+            type="number"
+            min={1}
+            value={timerHours}
+            onChange={(e) => setTimerHours(e.target.value)}
+            placeholder="ore"
+            style={inputStyle}
+          />
+        </PanelField>
+      )}
 
       <button
-        onClick={() => save({ variables: { definitionId, transitionId: transition.id, label, requiresInput, inputField: inputField || null } })}
-        disabled={loading || unchanged}
-        style={saveButtonStyle(loading || unchanged)}
+        onClick={() => {
+          const change: PendingTransitionChange = {
+            transitionId:  transition.id,
+            label,
+            trigger,
+            requiresInput,
+            inputField:  inputField  || null,
+            condition:   condition   || null,
+            timerHours:  timerHours  ? parseInt(timerHours, 10) : null,
+          }
+          onSaveLocally(change)
+          onSaved({ label, trigger, requiresInput, inputField: change.inputField, condition: change.condition, timerHours: change.timerHours })
+          toast.success('Modifica salvata localmente')
+        }}
+        disabled={unchanged}
+        style={saveButtonStyle(unchanged)}
       >
-        {loading ? 'Salvataggio…' : 'Salva'}
+        Salva
       </button>
     </div>
   )
@@ -567,7 +606,7 @@ export function WorkflowDesignerPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
-  const { data, loading } = useQuery<{ workflowDefinitionById: WorkflowDefinition | null }>(
+  const { data, loading, refetch } = useQuery<{ workflowDefinitionById: WorkflowDefinition | null }>(
     GET_WORKFLOW_DEFINITION_BY_ID,
     { variables: { id }, skip: !id },
   )
@@ -581,6 +620,24 @@ export function WorkflowDesignerPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hasChanges,     setHasChanges]     = useState(false)
+  const [pendingChanges, setPendingChanges] = useState<PendingTransitionChange[]>([])
+
+  const [saveWorkflowChanges] = useMutation<{ saveWorkflowChanges: { id: string; name: string; version: number } }>(SAVE_WORKFLOW_CHANGES, {
+    onError: (e) => toast.error(e.message),
+  })
+
+  const handleSaveLocally = useCallback((change: PendingTransitionChange) => {
+    setPendingChanges((prev) => {
+      const idx = prev.findIndex((c) => c.transitionId === change.transitionId)
+      if (idx >= 0) {
+        const updated = [...prev]
+        updated[idx] = change
+        return updated
+      }
+      return [...prev, change]
+    })
+    setHasChanges(true)
+  }, [])
 
   // ── Build nodes / edges from definition ───────────────────────────────────
   useEffect(() => {
@@ -761,19 +818,54 @@ export function WorkflowDesignerPage() {
         </div>
 
         <button
-          disabled={!hasChanges}
+          disabled={(!hasChanges && pendingChanges.length === 0) || !def}
+          onClick={async () => {
+            if (!def) return
+            const positions = nodes.map((n) => ({
+              stepId:    n.id,
+              positionX: n.position.x,
+              positionY: n.position.y,
+            }))
+            const result = await saveWorkflowChanges({
+              variables: {
+                definitionId: def.id,
+                transitions:  pendingChanges,
+                positions,
+              },
+            })
+            const newVersion = result.data?.saveWorkflowChanges?.version ?? (def.version + 1)
+            setPendingChanges([])
+            setHasChanges(false)
+            toast.success(`Workflow salvato — v${newVersion}`)
+            refetch()
+          }}
           style={{
             padding:         '8px 18px',
-            backgroundColor: hasChanges ? accentColor : '#e2e6f0',
-            color:           hasChanges ? '#ffffff' : '#8892a4',
+            backgroundColor: (hasChanges || pendingChanges.length > 0) && def ? accentColor : '#e2e6f0',
+            color:           (hasChanges || pendingChanges.length > 0) && def ? '#ffffff' : '#8892a4',
             border:          'none',
             borderRadius:    7,
             fontSize:        13,
             fontWeight:      600,
-            cursor:          hasChanges ? 'pointer' : 'not-allowed',
+            cursor:          (hasChanges || pendingChanges.length > 0) && def ? 'pointer' : 'not-allowed',
+            display:         'flex',
+            alignItems:      'center',
+            gap:             8,
           }}
         >
           Salva modifiche
+          {pendingChanges.length > 0 && (
+            <span style={{
+              fontSize:        11,
+              fontWeight:      700,
+              padding:         '1px 7px',
+              borderRadius:    100,
+              backgroundColor: '#f97316',
+              color:           '#fff',
+            }}>
+              {pendingChanges.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -851,9 +943,9 @@ export function WorkflowDesignerPage() {
             {selectedTr && def && (
               <EdgePanel
                 transition={selectedTr}
-                definitionId={def.id}
                 onClose={() => setSelectedEdgeId(null)}
-                onSaved={(u) => { onEdgeSaved(u); setHasChanges(true) }}
+                onSaved={(u) => onEdgeSaved(u)}
+                onSaveLocally={handleSaveLocally}
               />
             )}
           </div>

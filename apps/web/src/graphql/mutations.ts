@@ -184,22 +184,58 @@ export const UPDATE_WORKFLOW_STEP = gql`
   }
 `
 
+export const SAVE_WORKFLOW_CHANGES = gql`
+  mutation SaveWorkflowChanges(
+    $definitionId: ID!
+    $transitions: [TransitionChangeInput!]!
+    $positions: [StepPositionInput!]!
+  ) {
+    saveWorkflowChanges(
+      definitionId: $definitionId
+      transitions: $transitions
+      positions: $positions
+    ) {
+      id name version
+    }
+  }
+`
+
+export const SAVE_WORKFLOW_LAYOUT = gql`
+  mutation SaveWorkflowLayout(
+    $definitionId: ID!
+    $positions: [StepPositionInput!]!
+  ) {
+    saveWorkflowLayout(
+      definitionId: $definitionId
+      positions: $positions
+    )
+  }
+`
+
 export const UPDATE_WORKFLOW_TRANSITION = gql`
   mutation UpdateWorkflowTransition(
     $definitionId: ID!
     $transitionId: ID!
-    $label: String!
+    $label: String
+    $trigger: String
     $requiresInput: Boolean!
     $inputField: String
+    $condition: String
+    $timerHours: Int
   ) {
     updateWorkflowTransition(
       definitionId: $definitionId
       transitionId: $transitionId
-      label: $label
-      requiresInput: $requiresInput
-      inputField: $inputField
+      input: {
+        label: $label
+        trigger: $trigger
+        requiresInput: $requiresInput
+        inputField: $inputField
+        condition: $condition
+        timerHours: $timerHours
+      }
     ) {
-      id fromStepName toStepName trigger label requiresInput inputField
+      id name
     }
   }
 `
@@ -305,6 +341,14 @@ export const REJECT_ASSESSMENT_TASK = gql`
   mutation RejectAssessmentTask($taskId: ID!, $reason: String!) {
     rejectAssessmentTask(taskId: $taskId, reason: $reason) {
       id status notes
+    }
+  }
+`
+
+export const UPDATE_CHANGE_TASK = gql`
+  mutation UpdateChangeTask($id: ID!, $input: UpdateChangeTaskInput!) {
+    updateChangeTask(id: $id, input: $input) {
+      id rollbackPlan
     }
   }
 `

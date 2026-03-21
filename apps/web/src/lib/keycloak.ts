@@ -7,7 +7,7 @@ export const keycloak = new Keycloak({
 })
 
 export async function initKeycloak(): Promise<boolean> {
-  const redirectUri = window.location.origin + '/'
+  const redirectUri = window.location.href
   console.log('[KEYCLOAK] using redirectUri:', redirectUri)
 
   const authenticated = await keycloak.init({

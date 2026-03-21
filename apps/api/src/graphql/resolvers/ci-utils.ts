@@ -25,8 +25,8 @@ export async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => P
 export function mapBase(props: Props) {
   return {
     id:          props['id']          as string,
-    name:        props['name']        as string,
-    type:        props['type']        as string,
+    name:        (props['name']       ?? '') as string,
+    type:        (props['type']       ?? null) as string | null,
     status:      props['status']      as string | null ?? null,
     environment: props['environment'] as string | null ?? null,
     description: props['description'] as string | null ?? null,

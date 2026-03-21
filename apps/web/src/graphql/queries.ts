@@ -181,7 +181,7 @@ export const GET_CHANGE = gql`
   query GetChange($id: ID!) {
     change(id: $id) {
       id title description type priority status
-      rollbackPlan scheduledStart scheduledEnd
+      scheduledStart scheduledEnd
       implementedAt createdAt updatedAt
       assignedTeam { id name }
       assignee { id name email }
@@ -245,7 +245,7 @@ export const GET_WORKFLOW_DEFINITION_BY_ID = gql`
       id name entityType version active
       steps { id name label type enterActions exitActions }
       transitions {
-        id fromStepName toStepName trigger label requiresInput inputField condition
+        id fromStepName toStepName trigger label requiresInput inputField condition timerHours
       }
     }
   }
