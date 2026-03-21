@@ -28,7 +28,16 @@ import {
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { ImpactPanel } from '@/components/ImpactPanel'
 import { CountBadge } from '@/components/ui/CountBadge'
+import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import type { ImpactAnalysis } from '@/components/ImpactPanel'
+
+function groupByField<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
+  return items.reduce<Record<string, T[]>>((acc, item) => {
+    const k = key(item)
+    ;(acc[k] ??= []).push(item)
+    return acc
+  }, {})
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -553,19 +562,28 @@ export function ChangeDetailPage() {
                     )}
                   </div>
                 )}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {change.affectedCIs.map((ci) => (
-                    <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 500 }}>
-                      {ci.name} <span style={{ opacity: 0.7, fontSize: 10 }}>({ci.type})</span>
-                      <button
-                        type="button"
-                        onClick={() => { setRemoveCIDialog({ ciId: ci.id, ciName: ci.name }); setRemoveCIReason('') }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 0, lineHeight: 1, fontSize: 14 }}
-                      >×</button>
-                    </span>
-                  ))}
-                  {change.affectedCIs.length === 0 && <span style={{ fontSize: 13, color: '#8892a4' }}>Nessun CI associato</span>}
-                </div>
+                {change.affectedCIs.length === 0 ? (
+                  <span style={{ fontSize: 13, color: '#8892a4' }}>Nessun CI associato</span>
+                ) : (
+                  <div>
+                    {Object.entries(groupByField(change.affectedCIs, (ci) => ci.type)).map(([type, cis]) => (
+                      <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={cis.length}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '4px 0' }}>
+                          {cis.map((ci) => (
+                            <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 500 }}>
+                              {ci.name}
+                              <button
+                                type="button"
+                                onClick={() => { setRemoveCIDialog({ ciId: ci.id, ciName: ci.name }); setRemoveCIReason('') }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 0, lineHeight: 1, fontSize: 14 }}
+                              >×</button>
+                            </span>
+                          ))}
+                        </div>
+                      </CollapsibleGroup>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -622,55 +640,58 @@ export function ChangeDetailPage() {
                   {assessmentOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
                 </div>
                 {assessmentOpen && (
-                  <div style={{ padding: '0 0 4px' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                            {['CI', 'Tipo', 'Team', 'Assegnato a', 'Risk', 'Status'].map((h) => (
-                              <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {assessmentTasks.map((task) => (
-                            <tr
-                              key={task.id}
-                              onClick={() => setAssessmentTaskPopup(task.id)}
-                              style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                            >
-                              <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>{task.ci?.name ?? '—'}</td>
-                              <td style={{ padding: '10px 12px', color: '#8892a4', fontSize: 12 }}>{task.ci?.type ?? '—'}</td>
-                              <td style={{ padding: '10px 12px' }}>
-                                {task.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
-                              </td>
-                              <td style={{ padding: '10px 12px' }}>
-                                {task.assignee ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      {task.assignee.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <span style={{ fontSize: 12 }}>{task.assignee.name}</span>
-                                  </div>
-                                ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
-                              </td>
-                              <td style={{ padding: '10px 12px' }}>
-                                {task.riskLevel ? (
-                                  <span style={{
-                                    fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-                                    backgroundColor: task.riskLevel === 'critical' ? 'rgba(239,68,68,0.1)' : task.riskLevel === 'high' ? 'rgba(249,115,22,0.1)' : task.riskLevel === 'medium' ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)',
-                                    color: task.riskLevel === 'critical' ? '#dc2626' : task.riskLevel === 'high' ? '#ea580c' : task.riskLevel === 'medium' ? '#ca8a04' : '#16a34a',
-                                  }}>{task.riskLevel.toUpperCase()}</span>
-                                ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
-                              </td>
-                              <td style={{ padding: '10px 12px' }}><Badge value={task.status} map={TASK_STATUS_COLORS} /></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                  <div style={{ padding: '8px 20px 12px' }}>
+                    {Object.entries(groupByField(assessmentTasks, (t) => t.ci?.type ?? 'unknown')).map(([ciType, tasks]) => (
+                      <CollapsibleGroup key={ciType} title={ciType.replace(/_/g, ' ')} count={tasks.length}>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                            <thead>
+                              <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
+                                {['CI', 'Team', 'Assegnato a', 'Risk', 'Status'].map((h) => (
+                                  <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tasks.map((task) => (
+                                <tr
+                                  key={task.id}
+                                  onClick={() => setAssessmentTaskPopup(task.id)}
+                                  style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
+                                  onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
+                                  onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
+                                >
+                                  <td style={{ padding: '8px 12px', fontWeight: 500, color: '#0f1629' }}>{task.ci?.name ?? '—'}</td>
+                                  <td style={{ padding: '8px 12px' }}>
+                                    {task.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
+                                  </td>
+                                  <td style={{ padding: '8px 12px' }}>
+                                    {task.assignee ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                          {task.assignee.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <span style={{ fontSize: 12 }}>{task.assignee.name}</span>
+                                      </div>
+                                    ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
+                                  </td>
+                                  <td style={{ padding: '8px 12px' }}>
+                                    {task.riskLevel ? (
+                                      <span style={{
+                                        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+                                        backgroundColor: task.riskLevel === 'critical' ? 'rgba(239,68,68,0.1)' : task.riskLevel === 'high' ? 'rgba(249,115,22,0.1)' : task.riskLevel === 'medium' ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)',
+                                        color: task.riskLevel === 'critical' ? '#dc2626' : task.riskLevel === 'high' ? '#ea580c' : task.riskLevel === 'medium' ? '#ca8a04' : '#16a34a',
+                                      }}>{task.riskLevel.toUpperCase()}</span>
+                                    ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
+                                  </td>
+                                  <td style={{ padding: '8px 12px' }}><Badge value={task.status} map={TASK_STATUS_COLORS} /></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CollapsibleGroup>
+                    ))}
                   </div>
                 )}
               </div>
@@ -813,50 +834,53 @@ export function ChangeDetailPage() {
                   {deployOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
                 </div>
                 {deployOpen && (
-                  <div style={{ padding: '0 0 4px' }}>
+                  <div style={{ padding: '8px 20px 12px' }}>
                     {deploySteps.length === 0 ? (
-                      <div style={{ padding: '16px 20px', fontSize: 13, color: '#8892a4' }}>Nessuno step pianificato.</div>
+                      <div style={{ fontSize: 13, color: '#8892a4' }}>Nessuno step pianificato.</div>
                     ) : (
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                          <thead>
-                            <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                              {['Titolo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
-                                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {deploySteps.map((step) => (
-                              <tr
-                                key={step.id}
-                                onClick={() => { setDeployStepPopup(step.id); setDeployPopupNotes(''); setDeployPopupShowSkip(false); setDeployPopupSkipReason(''); setDeployPopupShowFail(false); setDeployPopupFailReason(''); setDeployPopupShowReassign(false); setDeployPopupReassignTeamId(''); setDeployPopupUserId('') }}
-                                style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                                onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                                onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                              >
-                                <td style={{ padding: '10px 12px', fontWeight: 500, color: '#0f1629' }}>{step.title}</td>
-                                <td style={{ padding: '10px 12px' }}>
-                                  {step.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
-                                </td>
-                                <td style={{ padding: '10px 12px' }}>
-                                  {step.assignee ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        {step.assignee.name.charAt(0).toUpperCase()}
-                                      </div>
-                                      <span style={{ fontSize: 12 }}>{step.assignee.name}</span>
-                                    </div>
-                                  ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
-                                </td>
-                                <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledStart ?? '')}</td>
-                                <td style={{ padding: '10px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledEnd ?? '')}</td>
-                                <td style={{ padding: '10px 12px' }}><Badge value={step.status} map={STATUS_STEP_COLORS} /></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      Object.entries(groupByField(deploySteps, (s) => s.status)).map(([status, steps]) => (
+                        <CollapsibleGroup key={status} title={status.replace(/_/g, ' ')} count={steps.length}>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                              <thead>
+                                <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
+                                  {['Titolo', 'Team', 'Assegnato a', 'Inizio', 'Fine'].map((h) => (
+                                    <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {steps.map((step) => (
+                                  <tr
+                                    key={step.id}
+                                    onClick={() => { setDeployStepPopup(step.id); setDeployPopupNotes(''); setDeployPopupShowSkip(false); setDeployPopupSkipReason(''); setDeployPopupShowFail(false); setDeployPopupFailReason(''); setDeployPopupShowReassign(false); setDeployPopupReassignTeamId(''); setDeployPopupUserId('') }}
+                                    style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
+                                    onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
+                                    onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
+                                  >
+                                    <td style={{ padding: '8px 12px', fontWeight: 500, color: '#0f1629' }}>{step.title}</td>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      {step.assignedTeam?.name ?? <span style={{ color: '#dc2626', fontSize: 12 }}>Non assegnato</span>}
+                                    </td>
+                                    <td style={{ padding: '8px 12px' }}>
+                                      {step.assignee ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#4f46e5', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            {step.assignee.name.charAt(0).toUpperCase()}
+                                          </div>
+                                          <span style={{ fontSize: 12 }}>{step.assignee.name}</span>
+                                        </div>
+                                      ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>}
+                                    </td>
+                                    <td style={{ padding: '8px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledStart ?? '')}</td>
+                                    <td style={{ padding: '8px 12px', fontSize: 12, color: '#8892a4' }}>{formatDate(step.scheduledEnd ?? '')}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </CollapsibleGroup>
+                      ))
                     )}
                   </div>
                 )}

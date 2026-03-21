@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { CountBadge } from '@/components/ui/CountBadge'
+import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_INCIDENTS, GET_CHANGES } from '@/graphql/queries'
 import { ciPath } from '@/lib/ciPath'
 import {
@@ -21,6 +22,16 @@ import {
   EXECUTE_PROBLEM_TRANSITION,
   ADD_PROBLEM_COMMENT,
 } from '@/graphql/mutations'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function groupByField<T>(items: T[], key: keyof T): Record<string, T[]> {
+  return items.reduce<Record<string, T[]>>((acc, item) => {
+    const k = String(item[key])
+    ;(acc[k] ??= []).push(item)
+    return acc
+  }, {})
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -483,15 +494,20 @@ export function ProblemDetailPage() {
                 {problem.affectedCIs.length === 0 ? (
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {problem.affectedCIs.map((ci) => (
-                      <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <button onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
-                        <MicroBadge>{ci.type.replace(/_/g, ' ')}</MicroBadge>
-                        <MicroBadge>{ci.status}</MicroBadge>
-                        <MicroBadge>{ci.environment}</MicroBadge>
-                        <button onClick={() => void removeCI({ variables: { problemId: problem.id, ciId: ci.id } })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
-                      </div>
+                  <div>
+                    {Object.entries(groupByField(problem.affectedCIs, 'type')).map(([type, cis]) => (
+                      <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={cis.length}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {cis.map((ci) => (
+                            <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
+                              <button onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
+                              <MicroBadge>{ci.status}</MicroBadge>
+                              <MicroBadge>{ci.environment}</MicroBadge>
+                              <button onClick={() => void removeCI({ variables: { problemId: problem.id, ciId: ci.id } })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleGroup>
                     ))}
                   </div>
                 )}
@@ -533,14 +549,19 @@ export function ProblemDetailPage() {
                 {problem.relatedIncidents.length === 0 ? (
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessun incident correlato.</p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {problem.relatedIncidents.map((inc) => (
-                      <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <button onClick={() => navigate(`/incidents/${inc.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{inc.title}</button>
-                        <MicroBadge>{inc.status}</MicroBadge>
-                        <MicroBadge>{inc.severity}</MicroBadge>
-                        <button onClick={() => void unlinkIncident({ variables: { problemId: problem.id, incidentId: inc.id } })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 'auto' }} title="Scollega"><X size={14} /></button>
-                      </div>
+                  <div>
+                    {Object.entries(groupByField(problem.relatedIncidents, 'status')).map(([status, incidents]) => (
+                      <CollapsibleGroup key={status} title={status.replace(/_/g, ' ')} count={incidents.length}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {incidents.map((inc) => (
+                            <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                              <button onClick={() => navigate(`/incidents/${inc.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{inc.title}</button>
+                              <MicroBadge>{inc.severity}</MicroBadge>
+                              <button onClick={() => void unlinkIncident({ variables: { problemId: problem.id, incidentId: inc.id } })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 'auto' }} title="Scollega"><X size={14} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleGroup>
                     ))}
                   </div>
                 )}
@@ -582,13 +603,18 @@ export function ProblemDetailPage() {
                 {problem.relatedChanges.length === 0 ? (
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna change correlata.</p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {problem.relatedChanges.map((ch) => (
-                      <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <button onClick={() => navigate(`/changes/${ch.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ch.title}</button>
-                        <MicroBadge>{ch.type}</MicroBadge>
-                        <MicroBadge>{ch.status}</MicroBadge>
-                      </div>
+                  <div>
+                    {Object.entries(groupByField(problem.relatedChanges, 'type')).map(([type, changes]) => (
+                      <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={changes.length}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {changes.map((ch) => (
+                            <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                              <button onClick={() => navigate(`/changes/${ch.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ch.title}</button>
+                              <MicroBadge>{ch.status}</MicroBadge>
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleGroup>
                     ))}
                   </div>
                 )}

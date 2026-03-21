@@ -13,6 +13,7 @@ import { StatusBadge }   from '@/components/StatusBadge'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
 import { ciPath } from '@/lib/ciPath'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI } from '@/graphql/mutations'
+import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,15 @@ interface Comment {
 }
 
 interface User { id: string; name: string; email: string; teams: { id: string; name: string }[] }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function groupByType<T extends { type: string }>(items: T[]): Record<string, T[]> {
+  return items.reduce<Record<string, T[]>>((acc, item) => {
+    ;(acc[item.type] ??= []).push(item)
+    return acc
+  }, {})
+}
 
 // ── Utility functions ─────────────────────────────────────────────────────────
 
@@ -662,28 +672,33 @@ export function IncidentDetailPage() {
                 {incident.affectedCIs.length === 0 ? (
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {incident.affectedCIs.map((ci) => (
-                      <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <button
-                          onClick={() => navigate(ciPath(ci))}
-                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
-                        >
-                          {ci.name}
-                        </button>
-                        <MicroBadge>{ci.type.replace(/_/g, ' ')}</MicroBadge>
-                        <MicroBadge color={
-                          ci.status === 'active'         ? '#dcfce7' :
-                          ci.status === 'maintenance'    ? '#fef9c3' :
-                          ci.status === 'decommissioned' ? '#fee2e2' : undefined
-                        }>{ci.status}</MicroBadge>
-                        <MicroBadge>{ci.environment}</MicroBadge>
-                        <button
-                          onClick={() => void removeCI({ variables: { incidentId: incident.id, ciId: ci.id } })}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}
-                          title="Rimuovi CI"
-                        ><X size={14} /></button>
-                      </div>
+                  <div>
+                    {Object.entries(groupByType(incident.affectedCIs)).map(([type, cis]) => (
+                      <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={cis.length}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {cis.map((ci) => (
+                            <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
+                              <button
+                                onClick={() => navigate(ciPath(ci))}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                              >
+                                {ci.name}
+                              </button>
+                              <MicroBadge color={
+                                ci.status === 'active'         ? '#dcfce7' :
+                                ci.status === 'maintenance'    ? '#fef9c3' :
+                                ci.status === 'decommissioned' ? '#fee2e2' : undefined
+                              }>{ci.status}</MicroBadge>
+                              <MicroBadge>{ci.environment}</MicroBadge>
+                              <button
+                                onClick={() => void removeCI({ variables: { incidentId: incident.id, ciId: ci.id } })}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}
+                                title="Rimuovi CI"
+                              ><X size={14} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleGroup>
                     ))}
                   </div>
                 )}

@@ -6,6 +6,7 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DetailField } from '@/components/ui/DetailField'
 import { CollapsibleCard } from '@/components/ui/CollapsibleCard'
+import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { CIGraph } from '@/components/CIGraph'
 import { CIIncidentsCard } from '@/components/CIIncidentsCard'
 import { CIChangesCard } from '@/components/CIChangesCard'
@@ -61,34 +62,25 @@ function RelationList({
   return (
     <>
       {Object.entries(grouped).map(([relation, rels]) => (
-        <div key={relation} style={{ marginBottom: 12 }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, color: '#64748b',
-            textTransform: 'uppercase', letterSpacing: '0.06em',
-            padding: '8px 0 4px', marginBottom: 6,
-          }}>
-            {relation.replace(/_/g, ' ')}
-          </div>
-          <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
-            {rels.map(rel => (
-              <div
-                key={rel.ci.id}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
-                onClick={() => navigate(ciPath(rel.ci))}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {rel.ci.name}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' }}>
-                    {rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}
-                  </div>
+        <CollapsibleGroup key={relation} title={relation.replace(/_/g, ' ')} count={rels.length}>
+          {rels.map(rel => (
+            <div
+              key={rel.ci.id}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
+              onClick={() => navigate(ciPath(rel.ci))}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {rel.ci.name}
                 </div>
-                {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+                <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' }}>
+                  {rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
+              {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+            </div>
+          ))}
+        </CollapsibleGroup>
       ))}
     </>
   )
@@ -177,31 +169,33 @@ export function CIDetailPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
         {/* Left column */}
         <div>
-          {ci.description && (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
-              <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 8px' }}>
-                Descrizione
-              </h3>
-              <p style={{ fontSize: 14, color: '#374151', margin: 0, lineHeight: 1.6 }}>{ci.description}</p>
-            </div>
-          )}
+          <CollapsibleCard title="Informazioni" defaultOpen={true}>
+            {ci.description && (
+              <DetailField
+                label="Descrizione"
+                value={ci.description}
+              />
+            )}
 
-          {specificFields.length > 0 && (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
-              <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>
-                Dettagli {ciType.label}
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px' }}>
-                {specificFields.map(field => (
-                  <DetailField
-                    key={field.name}
-                    label={field.label}
-                    value={ci[field.name] !== null && ci[field.name] !== undefined ? String(ci[field.name]) : null}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+            {ci.description && specificFields.length > 0 && (
+              <div style={{ borderTop: '1px solid #f3f4f6', marginBottom: 16 }} />
+            )}
+
+            {specificFields.map(f => (
+              <DetailField
+                key={f.name}
+                label={f.label}
+                value={ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : null}
+              />
+            ))}
+
+            {ci.notes && (
+              <>
+                <div style={{ borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
+                <DetailField label="Note" value={ci.notes as string} />
+              </>
+            )}
+          </CollapsibleCard>
 
           <CollapsibleCard title="Mappa Dipendenze">
             <CIGraph
@@ -226,16 +220,37 @@ export function CIDetailPage() {
             />
           </CollapsibleCard>
 
-          <CollapsibleCard title="Dipendenze" count={(ci.dependencies as CIRelation[]).length}>
-            {(ci.dependencies as CIRelation[]).length === 0
-              ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna dipendenza.</p>
-              : <RelationList relations={ci.dependencies as CIRelation[]} navigate={navigate} />}
-          </CollapsibleCard>
+          <CollapsibleCard
+            title={`Relazioni (${(ci.dependencies as CIRelation[]).length + (ci.dependents as CIRelation[]).length})`}
+            defaultOpen={false}
+          >
+            {(ci.dependencies as CIRelation[]).length === 0 && (ci.dependents as CIRelation[]).length === 0 ? (
+              <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna relazione.</p>
+            ) : (
+              <>
+                {(ci.dependencies as CIRelation[]).length > 0 && (
+                  <div style={{ marginBottom: (ci.dependents as CIRelation[]).length > 0 ? 16 : 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                      Dipendenze
+                    </div>
+                    <RelationList relations={ci.dependencies as CIRelation[]} navigate={navigate} />
+                  </div>
+                )}
 
-          <CollapsibleCard title="Dipendenti" count={(ci.dependents as CIRelation[]).length}>
-            {(ci.dependents as CIRelation[]).length === 0
-              ? <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessun dipendente.</p>
-              : <RelationList relations={ci.dependents as CIRelation[]} navigate={navigate} />}
+                {(ci.dependencies as CIRelation[]).length > 0 && (ci.dependents as CIRelation[]).length > 0 && (
+                  <div style={{ borderTop: '1px solid #f3f4f6', margin: '8px 0 16px 0' }} />
+                )}
+
+                {(ci.dependents as CIRelation[]).length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                      Dipendenti
+                    </div>
+                    <RelationList relations={ci.dependents as CIRelation[]} navigate={navigate} />
+                  </div>
+                )}
+              </>
+            )}
           </CollapsibleCard>
 
           <CIIncidentsCard ciId={ci.id} />
