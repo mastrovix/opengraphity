@@ -146,6 +146,55 @@
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
+
+  /* ── Semantic brand aliases → text-brand, bg-brand, border-brand … */
+  --color-brand:        var(--color-brand);
+  --color-brand-light:  var(--color-brand-light);
+  --color-brand-hover:  var(--color-brand-hover);
+
+  /* ── Slate semantic scale → text-slate, text-slate-dark, text-slate-light … */
+  --color-slate:        var(--color-slate);
+  --color-slate-dark:   var(--color-slate-dark);
+  --color-slate-light:  var(--color-slate-light);
+  --color-slate-bg:     var(--color-slate-bg);
+
+  /* ── Severity scale → bg-severity-low-bg, text-severity-high-text … */
+  --color-severity-low-bg:           var(--color-severity-low-bg);
+  --color-severity-low-text:         var(--color-severity-low-text);
+  --color-severity-low-border:       var(--color-severity-low-border);
+  --color-severity-medium-bg:        var(--color-severity-medium-bg);
+  --color-severity-medium-text:      var(--color-severity-medium-text);
+  --color-severity-medium-border:    var(--color-severity-medium-border);
+  --color-severity-high-bg:          var(--color-severity-high-bg);
+  --color-severity-high-text:        var(--color-severity-high-text);
+  --color-severity-high-border:      var(--color-severity-high-border);
+  --color-severity-critical-bg:      var(--color-severity-critical-bg);
+  --color-severity-critical-text:    var(--color-severity-critical-text);
+  --color-severity-critical-border:  var(--color-severity-critical-border);
+
+  /* ── Trigger types → text-trigger-manual, text-trigger-automatic … */
+  --color-trigger-manual:      var(--color-trigger-manual);
+  --color-trigger-automatic:   var(--color-trigger-automatic);
+  --color-trigger-sla-breach:  var(--color-trigger-sla-breach);
+  --color-trigger-timer:       var(--color-trigger-timer);
+
+  /* ── Status feedback → text-status-success, bg-status-danger … */
+  --color-status-success: var(--color-success);
+  --color-status-warning: var(--color-warning);
+  --color-status-danger:  var(--color-danger);
+
+  /* ── Font family → font-sans resolves via CSS variable */
+  --font-sans: var(--font-family);
+
+  /* ── Semantic font sizes → text-page-title, text-body, text-sidebar … */
+  --text-page-title:    var(--font-size-page-title);
+  --text-section-title: var(--font-size-section-title);
+  --text-card-title:    var(--font-size-card-title);
+  --text-body:          var(--font-size-body);
+  --text-sidebar:       var(--font-size-sidebar);
+  --text-table:         var(--font-size-table);
+  --text-label:         var(--font-size-label);
+  --text-small:         var(--font-size-small);
 }
 
 @layer base {
