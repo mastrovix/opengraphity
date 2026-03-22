@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
+import { useQuery } from '@apollo/client/react'
+import { GET_ANOMALY_STATS } from '@/graphql/queries'
 import {
   LayoutDashboard,
   AlertCircle,
@@ -16,6 +18,7 @@ import {
   ChevronDown,
   Layers,
   Settings,
+  ShieldAlert,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -28,6 +31,7 @@ const NAV_ITEMS = [
   { to: '/changes',        label: 'Changes',        icon: GitPullRequest },
   { to: '/requests',       label: 'Requests',       icon: Inbox },
   { to: '/workflow',       label: 'Workflow',       icon: GitBranch },
+  { to: '/anomalies',      label: 'Anomalie',       icon: ShieldAlert },
   { to: '/reports',        label: 'Report AI',      icon: BarChart2 },
   { to: '/custom-reports', label: 'Report Builder', icon: BarChart2 },
 ]
@@ -51,6 +55,12 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const isAdmin = keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin')
   const settingsActive = pathname.startsWith('/settings')
   const { ciTypes } = useMetamodel()
+
+  const { data: anomalyStatsData } = useQuery<{ anomalyStats: { critical: number; open: number } }>(
+    GET_ANOMALY_STATS,
+    { pollInterval: 60_000, fetchPolicy: 'cache-and-network' },
+  )
+  const anomalyCritical = anomalyStatsData?.anomalyStats?.critical ?? 0
 
   const navItemStyle = (isActive: boolean, isCollapsed: boolean): React.CSSProperties => ({
     display:         'flex',
@@ -175,7 +185,20 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               }}
             >
               <Icon size={16} style={{ flexShrink: 0, color: isActive ? 'var(--color-brand)' : 'inherit' }} />
-              {!collapsed && label}
+              {!collapsed && (
+                <>
+                  <span style={{ flex: 1 }}>{label}</span>
+                  {to === '/anomalies' && anomalyCritical > 0 && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, lineHeight: 1,
+                      padding: '2px 5px', borderRadius: 8,
+                      background: 'var(--danger)', color: '#fff',
+                    }}>
+                      {anomalyCritical}
+                    </span>
+                  )}
+                </>
+              )}
             </NavLink>
           )
         })}

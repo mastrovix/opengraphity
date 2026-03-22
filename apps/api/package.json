@@ -21,6 +21,8 @@
     "seed:app-relations": "tsx src/scripts/seed-app-relations.ts",
     "seed:certificates": "tsx src/scripts/seed-certificates.ts",
     "seed:metamodel": "tsx src/scripts/seed-metamodel.ts",
+    "seed:anomaly-scenarios": "tsx src/scripts/seed-anomaly-scenarios.ts",
+    "scan:anomalies": "tsx src/scripts/run-anomaly-scan.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

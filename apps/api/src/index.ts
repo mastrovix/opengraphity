@@ -3,6 +3,7 @@ import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine } from '@opengraphity/sla'
 import { closeConnection } from '@opengraphity/events'
 import { startReportScheduler } from './jobs/reportScheduler.js'
+import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 
 async function main() {
   const httpServer = await startServer()
@@ -13,6 +14,9 @@ async function main() {
 
   // Start report scheduler (BullMQ, every 60s)
   startReportScheduler()
+
+  // Start anomaly scanner (BullMQ, every 1h)
+  startAnomalyScanner()
 
   console.log('[api] All consumers started')
 

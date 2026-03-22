@@ -479,3 +479,48 @@ export const GET_DASHBOARD = gql`
     }
   }
 `
+
+export const GET_ANOMALIES = gql`
+  query GetAnomalies($status: String, $severity: String, $ruleKey: String, $limit: Int, $offset: Int) {
+    anomalies(status: $status, severity: $severity, ruleKey: $ruleKey, limit: $limit, offset: $offset) {
+      total
+      items {
+        id ruleKey title severity status
+        entityId entityType entitySubtype entityName
+        description detectedAt resolvedAt
+        resolutionStatus resolutionNote resolvedBy
+      }
+    }
+  }
+`
+
+export const GET_ANOMALY_STATS = gql`
+  query GetAnomalyStats {
+    anomalyStats {
+      total open critical high medium low falsePositive acceptedRisk
+    }
+  }
+`
+
+export const RESOLVE_ANOMALY = gql`
+  mutation ResolveAnomaly($id: ID!, $resolutionStatus: ResolutionStatus!, $note: String!) {
+    resolveAnomaly(id: $id, resolutionStatus: $resolutionStatus, note: $note) {
+      id status resolutionStatus resolutionNote resolvedBy resolvedAt
+    }
+  }
+`
+
+export const RUN_ANOMALY_SCANNER = gql`
+  mutation RunAnomalyScanner {
+    runAnomalyScanner
+  }
+`
+
+export const GET_ANOMALY_SCAN_STATUS = gql`
+  query GetAnomalyScanStatus {
+    anomalyScanStatus {
+      lastScanAt
+      totalScans
+    }
+  }
+`
