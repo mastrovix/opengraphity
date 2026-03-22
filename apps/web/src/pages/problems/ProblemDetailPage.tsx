@@ -146,25 +146,19 @@ function formatDuration(ms: number): string {
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
-  critical: '#dc2626', high: '#0284c7', medium: '#ca8a04', low: '#16a34a',
+  critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: '#ca8a04', low: '#16a34a',
 }
 
 const STATUS_BG: Record<string, string> = {
-  new: '#ecfeff', under_investigation: '#ecfeff', change_requested: '#ecfeff',
-  change_in_progress: '#ecfeff', resolved: '#ecfeff', closed: '#ecfeff',
-  rejected: '#ecfeff', deferred: '#ecfeff',
+  new: 'var(--color-brand-light)', under_investigation: 'var(--color-brand-light)', change_requested: 'var(--color-brand-light)',
+  change_in_progress: 'var(--color-brand-light)', resolved: 'var(--color-brand-light)', closed: 'var(--color-brand-light)',
+  rejected: 'var(--color-brand-light)', deferred: 'var(--color-brand-light)',
 }
 
 const STATUS_FG: Record<string, string> = {
-  new: '#0284c7', under_investigation: '#0284c7', change_requested: '#0284c7',
-  change_in_progress: '#0284c7', resolved: '#0284c7', closed: '#0284c7',
-  rejected: '#0284c7', deferred: '#0284c7',
-}
-
-const STEP_DOT: Record<string, string> = {
-  new: '#94a3b8', under_investigation: '#3b82f6', change_requested: '#7c3aed',
-  change_in_progress: '#0284c7', resolved: '#059669', closed: '#94a3b8',
-  rejected: '#dc2626', deferred: '#d97706',
+  new: 'var(--color-brand)', under_investigation: 'var(--color-brand)', change_requested: 'var(--color-brand)',
+  change_in_progress: 'var(--color-brand)', resolved: 'var(--color-brand)', closed: 'var(--color-brand)',
+  rejected: 'var(--color-brand)', deferred: 'var(--color-brand)',
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -196,8 +190,8 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProperties {
   const base: React.CSSProperties = { padding: '6px 14px', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, border: '1px solid transparent', transition: 'opacity 0.15s' }
-  if (toStep === 'resolved') return { ...base, backgroundColor: '#059669', color: '#fff', borderColor: '#059669' }
-  if (toStep === 'rejected') return { ...base, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626' }
+  if (toStep === 'resolved') return { ...base, backgroundColor: 'var(--color-trigger-automatic)', color: '#fff', borderColor: 'var(--color-trigger-automatic)' }
+  if (toStep === 'rejected') return { ...base, backgroundColor: 'var(--color-trigger-sla-breach)', color: '#fff', borderColor: 'var(--color-trigger-sla-breach)' }
   if (toStep === 'closed')   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
 }
@@ -364,10 +358,10 @@ export function ProblemDetailPage() {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>
-          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : '#f3f4f6', color: PRIORITY_COLOR[problem.priority] ?? '#64748b', fontSize: 12, fontWeight: 600, border: `1px solid ${PRIORITY_COLOR[problem.priority] ?? '#e5e7eb'}` }}>
+          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : '#f3f4f6', color: PRIORITY_COLOR[problem.priority] ?? 'var(--color-slate)', fontSize: 12, fontWeight: 600, border: `1px solid ${PRIORITY_COLOR[problem.priority] ?? '#e5e7eb'}` }}>
             {problem.priority}
           </span>
-          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? '#64748b', fontSize: 12, fontWeight: 500 }}>
+          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? 'var(--color-slate)', fontSize: 12, fontWeight: 500 }}>
             {problem.status.replace(/_/g, ' ')}
           </span>
         </div>
@@ -394,8 +388,8 @@ export function ProblemDetailPage() {
           {/* Descrizione */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Descrizione</span>
-              {descOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
+              {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {descOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -411,8 +405,8 @@ export function ProblemDetailPage() {
           {/* Root Cause */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setRootCauseOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: rootCauseOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Root Cause</span>
-              {rootCauseOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Root Cause</span>
+              {rootCauseOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {rootCauseOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -437,8 +431,8 @@ export function ProblemDetailPage() {
           {/* Workaround */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setWorkaroundOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: workaroundOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Workaround</span>
-              {workaroundOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Workaround</span>
+              {workaroundOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {workaroundOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -464,14 +458,14 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCiOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>CI Impattati</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
                 <CountBadge count={problem.affectedCIs.length} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={(e) => { e.stopPropagation(); setShowCISearch((s) => !s); if (!ciOpen) setCiOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
                   {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
                 </button>
-                {ciOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+                {ciOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
               </div>
             </div>
             {ciOpen && (
@@ -519,14 +513,14 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setIncidentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Incident Correlati</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Incident Correlati</span>
                 <CountBadge count={problem.relatedIncidents.length} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={(e) => { e.stopPropagation(); setShowIncidentSearch((s) => !s); if (!incidentsOpen) setIncidentsOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
                   {showIncidentSearch ? 'Chiudi' : '+ Collega Incident'}
                 </button>
-                {incidentsOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+                {incidentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
               </div>
             </div>
             {incidentsOpen && (
@@ -573,14 +567,14 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setChangesOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: changesOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Change Correlate</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Change Correlate</span>
                 <CountBadge count={problem.relatedChanges.length} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={(e) => { e.stopPropagation(); setShowChangeSearch((s) => !s); if (!changesOpen) setChangesOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
                   {showChangeSearch ? 'Chiudi' : '+ Collega Change'}
                 </button>
-                {changesOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+                {changesOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
               </div>
             </div>
             {changesOpen && (
@@ -625,8 +619,8 @@ export function ProblemDetailPage() {
           {/* Timeline */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setTimelineOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Timeline workflow</span>
-              {timelineOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline workflow</span>
+              {timelineOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {timelineOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -639,16 +633,16 @@ export function ProblemDetailPage() {
                       return (
                       <div key={exec.id} style={{ display: 'flex', gap: 12, paddingBottom: idx < historyDesc.length - 1 ? 16 : 0, position: 'relative' }}>
                         {idx < historyDesc.length - 1 && (
-                          <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: '#64748b', opacity: 0.3 }} />
+                          <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: 'var(--color-slate)', opacity: 0.3 }} />
                         )}
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? '#0284c7' : '#64748b', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
+                        <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? 'var(--color-brand)' : 'var(--color-slate)', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{exec.stepName.replace(/_/g, ' ')}</div>
-                          <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
+                          <div style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'flex', gap: 6 }}>
                             <span>{timeAgo(exec.enteredAt)}</span>
                             {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
                           </div>
-                          {exec.notes && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
+                          {exec.notes && <div style={{ fontSize: 12, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
                         </div>
                       </div>
                       )
@@ -663,10 +657,10 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Commenti</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Commenti</span>
                 <CountBadge count={problem.comments.length} />
               </div>
-              {commentsOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              {commentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {commentsOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -677,7 +671,7 @@ export function ProblemDetailPage() {
                     {problem.comments.slice().reverse().map((c, i) => (
                       <div key={c.id}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#ecfeff', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'var(--color-brand-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                             {c.author ? c.author.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
                           </div>
                           <div style={{ flex: 1 }}>
@@ -717,13 +711,13 @@ export function ProblemDetailPage() {
 
           {/* Dettagli */}
           <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dettagli</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dettagli</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <DetailRow label="Priorità">
-                <span style={{ fontWeight: 600, color: PRIORITY_COLOR[problem.priority] ?? '#64748b' }}>{problem.priority}</span>
+                <span style={{ fontWeight: 600, color: PRIORITY_COLOR[problem.priority] ?? 'var(--color-slate)' }}>{problem.priority}</span>
               </DetailRow>
               <DetailRow label="Step workflow">
-                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? '#64748b', fontSize: 12, fontWeight: 500 }}>
+                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? 'var(--color-slate)', fontSize: 12, fontWeight: 500 }}>
                   {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
                 </span>
               </DetailRow>
@@ -813,7 +807,7 @@ export function ProblemDetailPage() {
       {isTransitionDialogOpen && pendingTransition && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 480, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', margin: '0 0 12px 0' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 12px 0' }}>
               {`Transizione → ${pendingTransition.toStep.replace(/_/g, ' ')}`}
             </h2>
             <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>

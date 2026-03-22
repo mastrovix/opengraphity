@@ -42,7 +42,7 @@ const VIS_LABELS: Record<string, string> = { private: 'Privato', groups: 'Gruppi
 const VIS_COLORS: Record<string, { bg: string; fg: string }> = {
   all:     { bg: '#dcfce7', fg: '#15803d' },
   groups:  { bg: '#fef3c7', fg: '#92400e' },
-  private: { bg: '#f3f4f6', fg: '#64748b' },
+  private: { bg: '#f3f4f6', fg: 'var(--color-slate)' },
 }
 
 const CHART_ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
@@ -54,7 +54,7 @@ const CHART_ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?
 function getReportIcon(template: ReportTemplate) {
   const chartType = template.sections?.[0]?.chartType ?? 'bar'
   const Icon = CHART_ICON_MAP[chartType] ?? BarChart2
-  return <Icon size={20} color="#0284c7" />
+  return <Icon size={20} color="var(--color-brand)" />
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
@@ -220,9 +220,9 @@ export function CustomReportsPage() {
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }
-  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600 as const, color: '#64748b', textTransform: 'uppercase' as const, marginBottom: 4, display: 'block' as const }
-  const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: '#0284c7', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600 }
-  const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 14, color: '#64748b' }
+  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600 as const, color: 'var(--color-slate)', textTransform: 'uppercase' as const, marginBottom: 4, display: 'block' as const }
+  const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600 }
+  const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)' }
 
   // ── RENDER ──────────────────────────────────────────────────────────────────
 
@@ -237,8 +237,8 @@ export function CustomReportsPage() {
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Report Builder</h1>
-              <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--color-slate-dark)' }}>Report Builder</h1>
+              <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--color-slate)' }}>
                 {templates.length} report{templates.length !== 1 ? '' : ''}
               </p>
             </div>
@@ -247,9 +247,9 @@ export function CustomReportsPage() {
 
           {/* Empty state */}
           {templates.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '80px 0', color: '#94a3b8' }}>
+            <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--color-slate-light)' }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>📊</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Nessun report ancora</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>Nessun report ancora</div>
               <div style={{ fontSize: 14, marginBottom: 20 }}>Crea il tuo primo report personalizzato</div>
               <button onClick={() => setShowNewDialog(true)} style={btnPrimary}>+ Nuovo report</button>
             </div>
@@ -270,12 +270,12 @@ export function CustomReportsPage() {
                   <div style={{ padding: '14px 14px 10px', flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getReportIcon(t)}</span>
-                      <span style={{ fontWeight: 600, fontSize: 14, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                      <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-slate-dark)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
                       {/* ⋮ Menu */}
                       <div style={{ position: 'relative', flexShrink: 0 }}>
                         <button
                           onClick={e => { e.stopPropagation(); setMenuOpenId(isMenuOpen ? null : t.id) }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 5px', fontSize: 14, color: '#94a3b8', lineHeight: 1, borderRadius: 4 }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 5px', fontSize: 14, color: 'var(--color-slate-light)', lineHeight: 1, borderRadius: 4 }}
                         >⋮</button>
                         {isMenuOpen && (
                           <div style={{
@@ -292,7 +292,7 @@ export function CustomReportsPage() {
                                 display: 'block', width: '100%', textAlign: 'left',
                                 padding: '10px 14px', border: 'none', background: 'none',
                                 cursor: 'pointer', fontSize: 14,
-                                color: item.danger ? '#dc2626' : '#64748b',
+                                color: item.danger ? 'var(--color-trigger-sla-breach)' : 'var(--color-slate)',
                               }}
                                 onMouseEnter={e => (e.currentTarget.style.background = item.danger ? '#fef2f2' : '#f9fafb')}
                                 onMouseLeave={e => (e.currentTarget.style.background = 'none')}
@@ -309,7 +309,7 @@ export function CustomReportsPage() {
                         {VIS_LABELS[t.visibility] ?? t.visibility}
                       </span>
                       {t.createdBy && (
-                        <span style={{ fontSize: 10, color: '#94a3b8' }}>· {t.createdBy.name}</span>
+                        <span style={{ fontSize: 10, color: 'var(--color-slate-light)' }}>· {t.createdBy.name}</span>
                       )}
                     </div>
                   </div>
@@ -344,8 +344,8 @@ export function CustomReportsPage() {
             </button>
             <span style={{ display: 'flex', alignItems: 'center' }}>{getReportIcon(selected)}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 18, color: '#0f172a' }}>{selected.name}</div>
-              {selected.description && <div style={{ fontSize: 12, color: '#64748b' }}>{selected.description}</div>}
+              <div style={{ fontWeight: 600, fontSize: 18, color: 'var(--color-slate-dark)' }}>{selected.name}</div>
+              {selected.description && <div style={{ fontSize: 12, color: 'var(--color-slate)' }}>{selected.description}</div>}
             </div>
             <button onClick={() => openSettings(selected)} style={{ ...btnGhost, fontSize: 12 }}>⚙ Impostazioni</button>
             <button
@@ -359,7 +359,7 @@ export function CustomReportsPage() {
           {/* Sections */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
             {selected.sections.length === 0 && (
-              <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, paddingTop: 60 }}>
+              <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 14, paddingTop: 60 }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>📋</div>
                 Nessuna sezione. Clicca "+ Sezione" per iniziare.
               </div>
@@ -370,21 +370,21 @@ export function CustomReportsPage() {
                 <div key={sec.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
                   <div style={{ padding: '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>{sec.title}</span>
-                      <span style={{ fontSize: 12, color: '#64748b', background: '#e5e7eb', padding: '2px 6px', borderRadius: 4 }}>{sec.chartType}</span>
+                      <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-slate-dark)' }}>{sec.title}</span>
+                      <span style={{ fontSize: 12, color: 'var(--color-slate)', background: '#e5e7eb', padding: '2px 6px', borderRadius: 4 }}>{sec.chartType}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => { setEditSection(sec); setView('edit-section') }}
                         style={{ ...btnGhost, padding: '4px 10px', fontSize: 12 }}>✏ Modifica sezione</button>
                       <button onClick={() => { if (confirm('Rimuovere la sezione?')) removeSection({ variables: { templateId: selected.id, sectionId: sec.id } }) }}
-                        style={{ ...btnGhost, padding: '4px 10px', fontSize: 12, color: '#dc2626' }}>🗑</button>
+                        style={{ ...btnGhost, padding: '4px 10px', fontSize: 12, color: 'var(--color-trigger-sla-breach)' }}>🗑</button>
                     </div>
                   </div>
                   <div style={{ padding: 16 }}>
                     {result ? (
                       <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} />
                     ) : (
-                      <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, padding: 24 }}>
+                      <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 14, padding: 24 }}>
                         Clicca "▶ Esegui" per caricare i dati
                       </div>
                     )}
@@ -403,7 +403,7 @@ export function CustomReportsPage() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: '12px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <button onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 12 }}>← Indietro</button>
-            <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>Aggiungi sezione — {selected.name}</span>
+            <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--color-slate-dark)' }}>Aggiungi sezione — {selected.name}</span>
           </div>
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <ReportSectionBuilder onSave={handleAddSection} onCancel={() => setView('detail')} />
@@ -418,7 +418,7 @@ export function CustomReportsPage() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: '12px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <button onClick={() => { setView('detail'); setEditSection(null) }} style={{ ...btnGhost, padding: '6px 12px', fontSize: 12 }}>← Indietro</button>
-            <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>Modifica sezione: {editSection.title}</span>
+            <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--color-slate-dark)' }}>Modifica sezione: {editSection.title}</span>
           </div>
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <ReportSectionBuilder
@@ -438,7 +438,7 @@ export function CustomReportsPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
               <button onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 12 }}>← Indietro</button>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Impostazioni — {selected.name}</h2>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Impostazioni — {selected.name}</h2>
             </div>
 
             <div style={{ marginBottom: 14 }}>
@@ -478,7 +478,7 @@ export function CustomReportsPage() {
             <div style={{ marginBottom: 20, padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: settingsSched ? 14 : 0 }}>
                 <input type="checkbox" checked={settingsSched} onChange={e => setSettingsSched(e.target.checked)} />
-                <span style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>Abilita schedulazione</span>
+                <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-slate-dark)' }}>Abilita schedulazione</span>
               </label>
               {settingsSched && (
                 <>
@@ -524,7 +524,7 @@ export function CustomReportsPage() {
       {showNewDialog && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-            <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 20, color: '#0f172a' }}>Nuovo report</div>
+            <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 20, color: 'var(--color-slate-dark)' }}>Nuovo report</div>
 
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Nome *</label>

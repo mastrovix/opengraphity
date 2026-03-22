@@ -48,12 +48,12 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: M
           justifyContent: 'space-between',
           flexShrink:     0,
         }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{title}</span>
+          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4 }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#64748b' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#94a3b8' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-slate)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-slate-light)' }}
           >
             <X size={16} />
           </button>

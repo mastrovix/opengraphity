@@ -20,6 +20,7 @@ import {
 } from '@xyflow/react'
 import type { NodeProps, EdgeProps, Node, Edge } from '@xyflow/react'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
+import { colors } from '@/lib/tokens'
 import { UPDATE_WORKFLOW_STEP, SAVE_WORKFLOW_CHANGES } from '@/graphql/mutations'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ type EdgeNodeData  = { transition: WFTransition; color: string }
 
 // ── Workflow Colors ────────────────────────────────────────────────────────────
 
-const ACCENT_COLOR = '#0284c7'
+const ACCENT_COLOR = colors.brand
 
 // ── Per-workflow positions ─────────────────────────────────────────────────────
 
@@ -181,10 +182,10 @@ const STEP_BG: Record<string, string> = {
 }
 
 const TRIGGER_COLOR: Record<string, string> = {
-  manual:     '#0284c7',
-  automatic:  '#059669',
-  sla_breach: '#DC2626',
-  timer:      '#D97706',
+  manual:     colors.trigger.manual,
+  automatic:  colors.trigger.automatic,
+  sla_breach: colors.trigger.slaBreach,
+  timer:      colors.trigger.timer,
 }
 
 // ── Custom Node ───────────────────────────────────────────────────────────────
@@ -203,9 +204,9 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         minHeight:       80,
         padding:         12,
         borderRadius:    10,
-        border:          `2px solid ${selected ? accentColor : hovered ? accentColor : accentColor + '88'}`,
+        border:          `2px solid ${selected || hovered ? accentColor : 'var(--color-brand-a53)'}`,
         backgroundColor: bg,
-        boxShadow:       selected ? `0 0 0 3px ${accentColor}33` : '0 2px 8px rgba(0,0,0,0.08)',
+        boxShadow:       selected ? '0 0 0 3px var(--color-brand-a20)' : '0 2px 8px rgba(0,0,0,0.08)',
         position:        'relative',
         transition:      'box-shadow 0.15s, border-color 0.15s',
         cursor:          'default',
@@ -223,7 +224,7 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         letterSpacing:   '0.07em',
         textTransform:   'uppercase',
         color:           accentColor,
-        backgroundColor: bg === '#FFFFFF' ? `${accentColor}15` : `${accentColor}22`,
+        backgroundColor: bg === '#FFFFFF' ? 'var(--color-brand-a08)' : 'var(--color-brand-a13)',
         padding:         '1px 6px',
         borderRadius:    4,
         marginBottom:    6,
@@ -231,11 +232,11 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         {step.type === 'start' ? 'START' : step.type === 'end' ? 'END' : step.name.replace(/_/g, ' ')}
       </div>
 
-      <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', lineHeight: 1.3, marginBottom: 4 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-slate-dark)', lineHeight: 1.3, marginBottom: 4 }}>
         {step.label}
       </div>
 
-      <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+      <div style={{ fontSize: 10, color: 'var(--color-slate-light)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
         {step.name}
       </div>
 
@@ -269,7 +270,7 @@ const WorkflowEdge = memo(function WorkflowEdge({
     borderRadius: 8,
   })
 
-  const strokeColor = color ?? '#64748b'
+  const strokeColor = color ?? 'var(--color-slate)'
 
   return (
     <>
@@ -352,11 +353,11 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
       </PanelField>
 
       <PanelField label="Name">
-        <code style={{ fontSize: 12, color: '#64748b' }}>{step.name}</code>
+        <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.name}</code>
       </PanelField>
 
       <PanelField label="Type">
-        <code style={{ fontSize: 12, color: '#64748b' }}>{step.type}</code>
+        <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.type}</code>
       </PanelField>
 
       {enterActions.length > 0 && (
@@ -414,7 +415,7 @@ function EdgePanel({ transition, onClose, onSaved, onSaveLocally }: EdgePanelPro
       <PanelHeader title="Modifica Transizione" onClose={onClose} />
 
       <PanelField label="From → To">
-        <span style={{ fontSize: 12, color: '#64748b' }}>
+        <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>
           <code>{transition.fromStepName}</code> → <code>{transition.toStepName}</code>
         </span>
       </PanelField>
@@ -519,7 +520,7 @@ const inputStyle: React.CSSProperties = {
   border:          '1px solid #e2e6f0',
   borderRadius:    6,
   fontSize:        13,
-  color:           '#0f172a',
+  color:           'var(--color-slate-dark)',
   outline:         'none',
   backgroundColor: '#fafafa',
   boxSizing:       'border-box',
@@ -528,8 +529,8 @@ const inputStyle: React.CSSProperties = {
 function saveButtonStyle(disabled: boolean): React.CSSProperties {
   return {
     padding:         '8px 0',
-    backgroundColor: disabled ? '#e2e6f0' : '#0284c7',
-    color:           disabled ? '#94a3b8' : '#ffffff',
+    backgroundColor: disabled ? '#e2e6f0' : colors.brand,
+    color:           disabled ? colors.slateLight : colors.white,
     border:          'none',
     borderRadius:    6,
     fontSize:        13,
@@ -542,8 +543,8 @@ function saveButtonStyle(disabled: boolean): React.CSSProperties {
 function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{title}</span>
-      <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-slate-dark)' }}>{title}</span>
+      <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}>
         <X size={16} />
       </button>
     </div>
@@ -553,7 +554,7 @@ function PanelHeader({ title, onClose }: { title: string; onClose: () => void })
 function PanelField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         {label}
       </span>
       {children}
@@ -567,8 +568,8 @@ function ActionBadge({ type }: { type: string }) {
       fontSize:        10,
       padding:         '2px 6px',
       borderRadius:    4,
-      backgroundColor: '#ecfeff',
-      color:           '#0284c7',
+      backgroundColor: colors.brandLight,
+      color:           colors.brand,
       fontWeight:      500,
     }}>
       {type}
@@ -663,7 +664,7 @@ export function WorkflowDesignerPage() {
     }))
 
     const newEdges: Edge[] = def.transitions.map((tr) => {
-      const edgeColor  = TRIGGER_COLOR[tr.trigger] ?? '#64748b'
+      const edgeColor  = TRIGGER_COLOR[tr.trigger] ?? 'var(--color-slate)'
       const baseKey    = `${tr.fromStepName}→${tr.toStepName}`
       const triggerKey = `${tr.fromStepName}→${tr.toStepName}→${tr.trigger}`
       const isBack     = backTransitions.has(baseKey)
@@ -694,7 +695,7 @@ export function WorkflowDesignerPage() {
         animated:            false,
         style:               { stroke: edgeColor, strokeWidth: 2 },
         markerEnd:           { type: MarkerType.ArrowClosed, width: 16, height: 16, color: edgeColor },
-        labelStyle:          { fontSize: 12, fontWeight: 500, fill: '#64748b' },
+        labelStyle:          { fontSize: 12, fontWeight: 500, fill: 'var(--color-slate)' },
         labelBgStyle:        { fill: '#ffffff', fillOpacity: 1, stroke: edgeColor, strokeWidth: 1 },
         labelBgPadding:      [6, 4] as [number, number],
         labelBgBorderRadius: 4,
@@ -784,7 +785,7 @@ export function WorkflowDesignerPage() {
               background:   'none',
               border:       'none',
               cursor:       'pointer',
-              color:        '#94a3b8',
+              color:        'var(--color-slate-light)',
               fontSize:     12,
               padding:      0,
             }}
@@ -794,7 +795,7 @@ export function WorkflowDesignerPage() {
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', margin: 0 }}>
+            <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
               {WORKFLOW_LABELS[selectedWorkflow]}
             </h1>
             {def && (
@@ -803,7 +804,7 @@ export function WorkflowDesignerPage() {
                 fontWeight:      600,
                 padding:         '2px 8px',
                 borderRadius:    100,
-                backgroundColor: `${accentColor}15`,
+                backgroundColor: 'var(--color-brand-a08)',
                 color:           accentColor,
               }}>
                 v{def.version} · Attivo
@@ -837,7 +838,7 @@ export function WorkflowDesignerPage() {
           style={{
             padding:         '8px 18px',
             backgroundColor: (hasChanges || pendingChanges.length > 0) && def ? accentColor : '#e2e6f0',
-            color:           (hasChanges || pendingChanges.length > 0) && def ? '#ffffff' : '#94a3b8',
+            color:           (hasChanges || pendingChanges.length > 0) && def ? '#ffffff' : 'var(--color-slate-light)',
             border:          'none',
             borderRadius:    7,
             fontSize:        13,
@@ -855,8 +856,8 @@ export function WorkflowDesignerPage() {
               fontWeight:      700,
               padding:         '1px 7px',
               borderRadius:    100,
-              backgroundColor: '#0284c7',
-              color:           '#fff',
+              backgroundColor: colors.brand,
+              color:           colors.white,
             }}>
               {pendingChanges.length}
             </span>
@@ -867,11 +868,11 @@ export function WorkflowDesignerPage() {
       {/* Canvas area */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden', width: '100%', height: 'calc(100vh - 120px)' }}>
         {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 14 }}>
             Caricamento workflow…
           </div>
         ) : !def ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 14 }}>
             Nessun workflow trovato per questo tenant.
           </div>
         ) : (
@@ -962,18 +963,18 @@ export function WorkflowDesignerPage() {
             gap:             6,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: '#0284c7' }} />
-              <span style={{ fontSize: 12, color: '#64748b' }}>Nodo / Step</span>
+              <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: colors.brand }} />
+              <span style={{ fontSize: 12, color: colors.slate }}>Nodo / Step</span>
             </div>
             {[
-              { color: '#0284c7', label: 'Manuale' },
-              { color: '#059669', label: 'Automatico' },
-              { color: '#DC2626', label: 'SLA Breach' },
-              { color: '#D97706', label: 'Timer (auto-close)' },
+              { color: colors.trigger.manual,    label: 'Manuale' },
+              { color: colors.trigger.automatic,  label: 'Automatico' },
+              { color: colors.trigger.slaBreach,  label: 'SLA Breach' },
+              { color: colors.trigger.timer,      label: 'Timer (auto-close)' },
             ].map(({ color, label }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ width: 20, height: 2, backgroundColor: color, borderRadius: 1 }} />
-                <span style={{ fontSize: 12, color: '#64748b' }}>{label}</span>
+                <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{label}</span>
               </div>
             ))}
           </div>

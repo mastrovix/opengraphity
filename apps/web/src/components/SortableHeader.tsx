@@ -1,4 +1,5 @@
 import { ChevronUp, ChevronDown } from 'lucide-react'
+import { colors } from '@/lib/tokens'
 
 interface SortableHeaderProps<T> {
   label:       string
@@ -30,14 +31,14 @@ export function SortableHeader<T>({
         cursor:         'pointer',
         fontSize:       11,
         fontWeight:     500,
-        color:          isActive ? '#0284c7' : '#94a3b8',
+        color:          isActive ? colors.brand : colors.slateLight,
         textTransform:  'uppercase',
         letterSpacing:  '0.5px',
         whiteSpace:     'nowrap',
       }}
     >
       {label}
-      <span style={{ opacity: isActive ? 1 : 0.35, color: isActive ? '#0284c7' : '#94a3b8' }}>
+      <span style={{ opacity: isActive ? 1 : 0.35, color: isActive ? colors.brand : colors.slateLight }}>
         {isActive && currentDir === 'asc'
           ? <ChevronUp  size={12} />
           : <ChevronDown size={12} />

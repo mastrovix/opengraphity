@@ -60,7 +60,7 @@ const columns: ColumnDef<Incident>[] = [
     width:    '120px',
     sortable: true,
     render:   (v) => (
-      <span style={{ color: "#94a3b8" }}>
+      <span style={{ color: "var(--color-slate-light)" }}>
         {new Date(String(v)).toLocaleDateString()}
       </span>
     ),
@@ -105,16 +105,16 @@ export function IncidentListPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
             Incidents
           </h1>
-          <p style={{ fontSize: 14, color: '#94a3b8', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} total`}
           </p>
         </div>
         <button
           onClick={() => navigate('/incidents/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
         >
           <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
           New Incident
@@ -131,7 +131,7 @@ export function IncidentListPage() {
       />
 
       {total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: "12px 0", fontSize: 12, color: '#94a3b8' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: "12px 0", fontSize: 12, color: 'var(--color-slate-light)' }}>
           <span>
             {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} incidents
           </span>
@@ -139,17 +139,17 @@ export function IncidentListPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : '#64748b', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
               ← Prev
             </button>
-            <span style={{ padding: '4px 8px', fontSize: 12, color: "#64748b" }}>
+            <span style={{ padding: '4px 8px', fontSize: 12, color: "var(--color-slate)" }}>
               {page + 1} / {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : '#64748b', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
               Next →
             </button>

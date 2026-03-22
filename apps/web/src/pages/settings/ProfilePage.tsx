@@ -45,7 +45,7 @@ export default function ProfilePage() {
     display:    'block',
     fontSize:   12,
     fontWeight: 600,
-    color:      '#64748b',
+    color:      'var(--color-slate)',
     marginBottom: 6,
   }
   const inputStyle: React.CSSProperties = {
@@ -61,7 +61,7 @@ export default function ProfilePage() {
     padding:      '8px 18px',
     borderRadius: 6,
     border:       'none',
-    background:   '#0284c7',
+    background:   'var(--color-brand)',
     color:        '#fff',
     fontSize:     13,
     fontWeight:   600,
@@ -71,20 +71,20 @@ export default function ProfilePage() {
     ...btn,
     background: 'transparent',
     border:     '1px solid #d1d5db',
-    color:      '#64748b',
+    color:      'var(--color-slate)',
   }
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: 640 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: '0 0 24px' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 24px' }}>
         Profilo
       </h1>
 
       <div style={card}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', margin: '0 0 6px' }}>
+        <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>
           Integrazione Slack
         </h2>
-        <p style={{ fontSize: 14, color: '#94a3b8', margin: '0 0 20px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 14, color: 'var(--color-slate-light)', margin: '0 0 20px', lineHeight: 1.5 }}>
           Collega il tuo account Slack per poter eseguire azioni sugli incident
           direttamente da Slack.
         </p>
@@ -122,7 +122,7 @@ export default function ProfilePage() {
               onChange={(e) => { setInput(e.target.value); setSaved(false) }}
               placeholder="U0123456789"
             />
-            <p style={{ fontSize: 12, color: '#94a3b8', margin: '5px 0 16px' }}>
+            <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '5px 0 16px' }}>
               Trovalo in Slack → click sul tuo avatar → Profilo → ⋮ → Copia ID membro
             </p>
             {saved && (

@@ -60,7 +60,7 @@ const columns: ColumnDef<ServiceRequest>[] = [
     width:    '120px',
     sortable: true,
     render:   (v) => (
-      <span style={{ color: "#94a3b8" }}>
+      <span style={{ color: "var(--color-slate-light)" }}>
         {new Date(String(v)).toLocaleDateString()}
       </span>
     ),
@@ -75,16 +75,16 @@ export function RequestListPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
             Service Requests
           </h1>
-          <p style={{ fontSize: 14, color: '#94a3b8', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${data?.serviceRequests?.length ?? 0} total`}
           </p>
         </div>
         <button
           onClick={() => navigate('/requests/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
         >
           <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
           New Request

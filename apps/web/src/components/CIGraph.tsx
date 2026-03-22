@@ -46,16 +46,16 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 }
 
 const COLORS: Record<NodeRole, { fill: string; stroke: string; r: number }> = {
-  center:     { fill: '#0284c7', stroke: '#ffffff', r: 28 },
-  dependency: { fill: '#ffffff', stroke: '#0284c7', r: 22 },
-  dependent:  { fill: '#ffffff', stroke: '#059669', r: 22 },
-  blast:      { fill: '#ffffff', stroke: '#d97706', r: 18 },
+  center:     { fill: 'var(--color-brand)', stroke: '#ffffff', r: 28 },
+  dependency: { fill: '#ffffff', stroke: 'var(--color-brand)', r: 22 },
+  dependent:  { fill: '#ffffff', stroke: 'var(--color-trigger-automatic)', r: 22 },
+  blast:      { fill: '#ffffff', stroke: 'var(--color-trigger-timer)', r: 18 },
 }
 
 const LINK_STYLE: Record<string, { stroke: string; opacity: number; dash?: string }> = {
-  dependency: { stroke: '#0284c7', opacity: 0.6 },
-  dependent:  { stroke: '#059669', opacity: 0.6 },
-  blast:      { stroke: '#d97706', opacity: 0.4, dash: '4' },
+  dependency: { stroke: 'var(--color-brand)', opacity: 0.6 },
+  dependent:  { stroke: 'var(--color-trigger-automatic)', opacity: 0.6 },
+  blast:      { stroke: 'var(--color-trigger-timer)', opacity: 0.4, dash: '4' },
 }
 
 const TYPE_ICON: Record<string, string> = {
@@ -166,9 +166,9 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
     // Arrow markers
     const defs = root.append('defs')
     const markerDefs: Array<{ id: string; color: string }> = [
-      { id: 'arrow-dependency', color: '#0284c7' },
-      { id: 'arrow-dependent',  color: '#059669' },
-      { id: 'arrow-blast',      color: '#d97706' },
+      { id: 'arrow-dependency', color: 'var(--color-brand)' },
+      { id: 'arrow-dependent',  color: 'var(--color-trigger-automatic)' },
+      { id: 'arrow-blast',      color: 'var(--color-trigger-timer)' },
     ]
     markerDefs.forEach(({ id, color }) => {
       defs.append('marker')
@@ -278,7 +278,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .attr('y',                 (d) => COLORS[d.role].r + 14)
       .attr('font-size',         11)
       .attr('font-weight',       600)
-      .attr('fill',              '#0f172a')
+      .attr('fill',              'var(--color-slate-dark)')
       .text((d) => d.name.length > 14 ? d.name.slice(0, 13) + '…' : d.name)
 
     // Type label (row 2)
@@ -287,7 +287,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .attr('dominant-baseline', 'hanging')
       .attr('y',                 (d) => COLORS[d.role].r + 25)
       .attr('font-size',         10)
-      .attr('fill',              '#94a3b8')
+      .attr('fill',              'var(--color-slate-light)')
       .text((d) => d.type.replace(/_/g, ' '))
 
     // Relation type label (row 3 — only for non-center nodes)
@@ -298,7 +298,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .attr('y',                 (d) => COLORS[d.role].r + 35)
       .attr('font-size',         9)
       .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
-      .attr('fill',              '#0284c7')
+      .attr('fill',              'var(--color-brand)')
       .text((d) => (d.relationType ?? '').replace(/_/g, ' '))
 
     // ── Drag ────────────────────────────────────────────────────────────────
@@ -371,12 +371,12 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           onChange={e => setShowBlastRadius(e.target.checked)}
           style={{ cursor: 'pointer' }}
         />
-        <label htmlFor="showBlast" style={{ fontSize: 12, color: '#64748b', cursor: 'pointer', userSelect: 'none' }}>
+        <label htmlFor="showBlast" style={{ fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none' }}>
           Mostra blast radius
         </label>
         {showBlastRadius && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
-            <label style={{ fontSize: 12, color: '#64748b' }}>Profondità max</label>
+            <label style={{ fontSize: 12, color: 'var(--color-slate)' }}>Profondità max</label>
             <select
               value={maxDepth}
               onChange={e => setMaxDepth(Number(e.target.value))}
@@ -389,7 +389,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
-          <label style={{ fontSize: 12, color: '#64748b' }}>Distanza</label>
+          <label style={{ fontSize: 12, color: 'var(--color-slate)' }}>Distanza</label>
           <input
             type="range"
             min={0.5}
@@ -419,11 +419,11 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           pointerEvents: 'none',
           whiteSpace:   'nowrap',
         }}>
-          <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>{tooltip.node.name}</div>
-          <div style={{ color: '#64748b' }}>Type: <span style={{ color: '#0f172a' }}>{tooltip.node.type.replace(/_/g, ' ')}</span></div>
-          <div style={{ color: '#64748b' }}>Status: <span style={{ color: '#0f172a' }}>{tooltip.node.status}</span></div>
+          <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>{tooltip.node.name}</div>
+          <div style={{ color: 'var(--color-slate)' }}>Type: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.type.replace(/_/g, ' ')}</span></div>
+          <div style={{ color: 'var(--color-slate)' }}>Status: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.status}</span></div>
           {tooltip.node.environment && (
-            <div style={{ color: '#64748b' }}>Env: <span style={{ color: '#0f172a' }}>{tooltip.node.environment}</span></div>
+            <div style={{ color: 'var(--color-slate)' }}>Env: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.environment}</span></div>
           )}
         </div>
       )}
@@ -431,11 +431,11 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       {/* Legend */}
       <div style={{ position: 'absolute', bottom: 12, left: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {[
-          { color: '#0284c7', label: 'Dipendenze (questo CI dipende da)' },
-          { color: '#059669', label: 'Dipendenti (dipendono da questo CI)' },
-          { color: '#d97706', label: 'Blast radius (impatto indiretto)' },
+          { color: 'var(--color-brand)', label: 'Dipendenze (questo CI dipende da)' },
+          { color: 'var(--color-trigger-automatic)', label: 'Dipendenti (dipendono da questo CI)' },
+          { color: 'var(--color-trigger-timer)', label: 'Blast radius (impatto indiretto)' },
         ].map(({ color, label }) => (
-          <div key={color} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+          <div key={color} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-slate)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0, display: 'inline-block' }} />
             {label}
           </div>

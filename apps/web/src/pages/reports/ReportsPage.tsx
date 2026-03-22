@@ -298,10 +298,10 @@ export default function ReportsPage() {
         borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column',
       }}>
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Report</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-slate-dark)' }}>Report</span>
           <button
             onClick={handleNewConversation}
-            style={{ fontSize: 18, fontWeight: 400, color: '#0284c7', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
+            style={{ fontSize: 18, fontWeight: 400, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
             title="Nuova conversazione"
           >+</button>
         </div>
@@ -324,10 +324,10 @@ export default function ReportsPage() {
                 onMouseLeave={(e) => { if (activeId !== c.id) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, color: '#0f172a', fontWeight: activeId === c.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+                  <div style={{ fontSize: 14, color: 'var(--color-slate-dark)', fontWeight: activeId === c.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
                     {c.title.length > 40 ? c.title.slice(0, 40) + '…' : c.title}
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>{relativeTime(c.updatedAt)}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 1 }}>{relativeTime(c.updatedAt)}</div>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); void handleDelete(c.id) }}
@@ -348,8 +348,8 @@ export default function ReportsPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16 }}>
             <BarChart2 size={48} color="#d1d5db" strokeWidth={1.5} />
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>Analisi ITSM</div>
-              <div style={{ fontSize: 14, color: '#94a3b8' }}>Fai domande sui tuoi dati in linguaggio naturale</div>
+              <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6 }}>Analisi ITSM</div>
+              <div style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>Fai domande sui tuoi dati in linguaggio naturale</div>
             </div>
           </div>
         ) : (
@@ -366,7 +366,7 @@ export default function ReportsPage() {
                 <div style={{
                   maxWidth: msg.role === 'user' ? '70%' : '85%',
                   background: msg.role === 'user' ? '#1e3a5f' : '#f9fafb',
-                  color: msg.role === 'user' ? '#fff' : '#0f172a',
+                  color: msg.role === 'user' ? '#fff' : 'var(--color-slate-dark)',
                   border: msg.role === 'user' ? 'none' : '1px solid #e5e7eb',
                   borderRadius: 12,
                   padding: '10px 14px',
@@ -388,29 +388,29 @@ export default function ReportsPage() {
                           thead: ({ children }) => <thead style={{ background: '#f8fafc' }}>{children}</thead>,
                           tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
                           th: ({ children }) => (
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
                           ),
                           td: ({ children }) => (
                             <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 14, verticalAlign: 'top' }}>{children}</td>
                           ),
                           p: ({ children }) => (
-                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: '#64748b', fontSize: 14 }}>{children}</p>
+                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: 'var(--color-slate)', fontSize: 14 }}>{children}</p>
                           ),
                           strong: ({ children }) => (
-                            <strong style={{ fontWeight: 600, color: '#0f172a' }}>{children}</strong>
+                            <strong style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{children}</strong>
                           ),
                           h2: ({ children }) => (
                             <h2 style={{ fontSize: 15, fontWeight: 600, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
                           ),
                           h3: ({ children }) => (
-                            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '12px 0 6px 0' }}>{children}</h3>
+                            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate)', margin: '12px 0 6px 0' }}>{children}</h3>
                           ),
                           ul: ({ children }) => (
-                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: '#64748b', fontSize: 14 }}>{children}</ul>
+                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: 'var(--color-slate)', fontSize: 14 }}>{children}</ul>
                           ),
                           li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
                           code: ({ children }) => (
-                            <code style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
+                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
                           ),
                         }}
                       >
@@ -427,7 +427,7 @@ export default function ReportsPage() {
                 <div style={{
                   maxWidth: '85%',
                   background: '#f9fafb',
-                  color: '#0f172a',
+                  color: 'var(--color-slate-dark)',
                   border: '1px solid #e5e7eb',
                   borderRadius: 12,
                   padding: '10px 14px',
@@ -435,7 +435,7 @@ export default function ReportsPage() {
                   lineHeight: 1.6,
                 }}>
                   {toolStatus && !streamingText && (
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ animation: 'pulse 1.5s infinite' }}>⚙</span>
                       {toolStatus}
                     </div>
@@ -453,29 +453,29 @@ export default function ReportsPage() {
                           thead: ({ children }) => <thead style={{ background: '#f8fafc' }}>{children}</thead>,
                           tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
                           th: ({ children }) => (
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
                           ),
                           td: ({ children }) => (
                             <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 14, verticalAlign: 'top' }}>{children}</td>
                           ),
                           p: ({ children }) => (
-                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: '#64748b', fontSize: 14 }}>{children}</p>
+                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: 'var(--color-slate)', fontSize: 14 }}>{children}</p>
                           ),
                           strong: ({ children }) => (
-                            <strong style={{ fontWeight: 600, color: '#0f172a' }}>{children}</strong>
+                            <strong style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{children}</strong>
                           ),
                           h2: ({ children }) => (
                             <h2 style={{ fontSize: 15, fontWeight: 600, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
                           ),
                           h3: ({ children }) => (
-                            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '12px 0 6px 0' }}>{children}</h3>
+                            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate)', margin: '12px 0 6px 0' }}>{children}</h3>
                           ),
                           ul: ({ children }) => (
-                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: '#64748b', fontSize: 14 }}>{children}</ul>
+                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: 'var(--color-slate)', fontSize: 14 }}>{children}</ul>
                           ),
                           li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
                           code: ({ children }) => (
-                            <code style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
+                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
                           ),
                         }}
                       >
@@ -529,8 +529,8 @@ export default function ReportsPage() {
               disabled={loading || !input.trim()}
               style={{
                 fontSize: 14, fontWeight: 600, padding: '10px 18px',
-                background: loading || !input.trim() ? '#e5e7eb' : '#0284c7',
-                color: loading || !input.trim() ? '#94a3b8' : '#fff',
+                background: loading || !input.trim() ? '#e5e7eb' : 'var(--color-brand)',
+                color: loading || !input.trim() ? 'var(--color-slate-light)' : '#fff',
                 border: 'none', borderRadius: 8, cursor: loading || !input.trim() ? 'default' : 'pointer',
                 whiteSpace: 'nowrap', transition: 'background 0.15s',
               }}
@@ -538,7 +538,7 @@ export default function ReportsPage() {
               {loading ? '…' : 'Invia'}
             </button>
           </div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>Enter per inviare · Shift+Enter per andare a capo</div>
+          <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 6 }}>Enter per inviare · Shift+Enter per andare a capo</div>
         </div>
       </div>
 
@@ -563,7 +563,7 @@ export default function ReportsPage() {
 }
 
 const exportBtnStyle: React.CSSProperties = {
-  fontSize: 12, color: '#94a3b8', background: '#f9fafb',
+  fontSize: 12, color: 'var(--color-slate-light)', background: '#f9fafb',
   border: '1px solid #e5e7eb', borderRadius: 5,
   padding: '4px 10px', cursor: 'pointer',
 }

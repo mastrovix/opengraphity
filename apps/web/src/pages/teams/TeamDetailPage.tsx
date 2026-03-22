@@ -35,12 +35,12 @@ interface Team {
 }
 
 function TypeBadge({ type }: { type: string | null }) {
-  if (!type) return <span style={{ color: '#94a3b8', fontSize: 14 }}>—</span>
+  if (!type) return <span style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
     owner:   { bg: '#eff6ff', color: '#2563eb' },
     support: { bg: '#f0fdf4', color: '#16a34a' },
   }
-  const s = styles[type] ?? { bg: '#f1f5f9', color: '#64748b' }
+  const s = styles[type] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
   return (
     <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {type}
@@ -82,8 +82,8 @@ function CollapsibleCard({
         onClick={() => setOpen((p) => !p)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: open ? 16 : 0 }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{title}</span>
-        {open ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#94a3b8" />}
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
+        {open ? <ChevronDown size={14} color="var(--color-slate-light)" /> : <ChevronRight size={14} color="var(--color-slate-light)" />}
       </div>
       {open && children}
     </Card>
@@ -94,14 +94,14 @@ function CollapsibleCard({
 
 function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: (ci: CIRef) => void; emptyMsg: string }) {
   if (items.length === 0) {
-    return <EmptyState icon={<Users size={24} color="#94a3b8" />} title={emptyMsg} />
+    return <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title={emptyMsg} />
   }
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
       <thead>
         <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
           {['Nome', 'Tipo', 'Environment', 'Status'].map((h) => (
-            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: '#64748b', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
           ))}
         </tr>
       </thead>
@@ -114,8 +114,8 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8f9fc' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
           >
-            <td style={{ padding: '8px 8px', fontWeight: 500, color: '#0f172a' }}>{ci.name}</td>
-            <td style={{ padding: '8px 8px', color: '#64748b', textTransform: 'capitalize' }}>{ci.type.replace(/_/g, ' ')}</td>
+            <td style={{ padding: '8px 8px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{ci.name}</td>
+            <td style={{ padding: '8px 8px', color: 'var(--color-slate)', textTransform: 'capitalize' }}>{ci.type.replace(/_/g, ' ')}</td>
             <td style={{ padding: '8px 8px' }}><EnvBadge environment={ci.environment} /></td>
             <td style={{ padding: '8px 8px' }}><StatusBadge value={ci.status} /></td>
           </tr>
@@ -140,22 +140,22 @@ export function TeamDetailPage() {
   const team = data?.team
 
   if (loading && !team) {
-    return <div style={{ padding: '32px 40px', color: '#94a3b8', fontSize: 14 }}>Caricamento...</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento...</div>
   }
 
   if (!team) {
-    return <div style={{ padding: '32px 40px', color: '#94a3b8', fontSize: 14 }}>Team non trovato.</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 14 }}>Team non trovato.</div>
   }
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: 1200 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/teams')}>
+        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/teams')}>
           ← Teams
         </div>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: 0 }}>{team.name}</h1>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
+        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 4 }}>
           Creato il {new Date(team.createdAt).toLocaleDateString('it-IT')}
         </div>
       </div>
@@ -166,8 +166,8 @@ export function TeamDetailPage() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Description */}
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>Descrizione</div>
-            <div style={{ fontSize: 14, color: team.description ? '#64748b' : '#94a3b8' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 8 }}>Descrizione</div>
+            <div style={{ fontSize: 14, color: team.description ? 'var(--color-slate)' : 'var(--color-slate-light)' }}>
               {team.description ?? 'Nessuna descrizione'}
             </div>
           </Card>
@@ -175,22 +175,22 @@ export function TeamDetailPage() {
           {/* Members */}
           <CollapsibleCard title={`Membri (${team.members.length})`} defaultOpen>
             {team.members.length === 0 ? (
-              <EmptyState icon={<Users size={24} color="#94a3b8" />} title="Nessun membro" />
+              <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title="Nessun membro" />
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                     {['Nome', 'Email', 'Ruolo'].map((h) => (
-                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: '#64748b', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {team.members.map((m) => (
                     <tr key={m.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: '8px 8px', fontWeight: 500, color: '#0f172a' }}>{m.name}</td>
-                      <td style={{ padding: '8px 8px', color: '#64748b' }}>{m.email}</td>
-                      <td style={{ padding: '8px 8px', color: '#64748b', textTransform: 'capitalize' }}>{m.role}</td>
+                      <td style={{ padding: '8px 8px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{m.name}</td>
+                      <td style={{ padding: '8px 8px', color: 'var(--color-slate)' }}>{m.email}</td>
+                      <td style={{ padding: '8px 8px', color: 'var(--color-slate)', textTransform: 'capitalize' }}>{m.role}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -212,19 +212,19 @@ export function TeamDetailPage() {
         {/* Right column */}
         <div style={{ width: 340, flexShrink: 0 }}>
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Dettagli</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 16 }}>Dettagli</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#64748b', wordBreak: 'break-all' }}>{team.id}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
+                <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--color-slate)', wordBreak: 'break-all' }}>{team.id}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Tipo</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Tipo</div>
                 <TypeBadge type={team.type} />
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Creato il</div>
-                <div style={{ fontSize: 14, color: '#64748b' }}>{new Date(team.createdAt).toLocaleString('it-IT')}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Creato il</div>
+                <div style={{ fontSize: 14, color: 'var(--color-slate)' }}>{new Date(team.createdAt).toLocaleString('it-IT')}</div>
               </div>
             </div>
           </Card>

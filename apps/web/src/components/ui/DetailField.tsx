@@ -8,7 +8,7 @@ interface DetailFieldProps {
   onSave?: (value: string) => void
 }
 
-export function DetailField({ label, value, mono, editable, onSave }: DetailFieldProps) {
+export function DetailField({ label, value, editable, onSave }: DetailFieldProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
 
@@ -27,7 +27,7 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <div style={{
           fontSize: 12, fontWeight: 600,
-          color: '#94a3b8', textTransform: 'uppercase',
+          color: 'var(--color-slate-light)', textTransform: 'uppercase',
           letterSpacing: '0.04em',
         }}>
           {label}
@@ -36,7 +36,7 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
           <button
             type="button"
             onClick={startEdit}
-            style={{ fontSize: 12, padding: '1px 7px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: '#94a3b8' }}
+            style={{ fontSize: 12, padding: '1px 7px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}
           >
             Modifica
           </button>
@@ -56,14 +56,14 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
             <button
               type="button"
               onClick={handleSave}
-              style={{ padding: '5px 14px', borderRadius: 6, border: 'none', backgroundColor: '#0284c7', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              style={{ padding: '5px 14px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
               Salva
             </button>
             <button
               type="button"
               onClick={() => setEditing(false)}
-              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'transparent', fontSize: 12, cursor: 'pointer', color: '#64748b' }}
+              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'transparent', fontSize: 12, cursor: 'pointer', color: 'var(--color-slate)' }}
             >
               Annulla
             </button>
@@ -72,7 +72,7 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
       ) : (
         <div style={{
           fontSize: 14,
-          color: value ? '#0f172a' : '#c4c9d4',
+          color: value ? 'var(--color-slate-dark)' : '#c4c9d4',
           fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
           whiteSpace: 'pre-wrap',
           lineHeight: 1.6,

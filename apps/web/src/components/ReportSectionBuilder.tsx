@@ -108,11 +108,11 @@ const ORG_TYPES  = ['Team', 'User']
 
 function getEntityIcon(entityType: string, size = 24): React.ReactNode {
   switch (entityType) {
-    case 'Incident': return <AlertCircle    size={size} color="#ef4444" />
+    case 'Incident': return <AlertCircle    size={size} color="var(--color-danger)" />
     case 'Change':   return <GitPullRequest  size={size} color="#3b82f6" />
     case 'Team':     return <Users           size={size} color="#8b5cf6" />
     case 'User':     return <User            size={size} color="#10b981" />
-    default:         return <Box             size={size} color="#0284c7" />
+    default:         return <Box             size={size} color="var(--color-brand)" />
   }
 }
 
@@ -143,7 +143,7 @@ function ReportEntityNode({ data }: { id: string; data: NodeData }) {
 
       {/* Drag handle — solo l'header trascina il nodo */}
       <div className="node-drag-handle" style={{ padding: '8px 10px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 4, cursor: 'grab' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', flex: 1, whiteSpace: 'nowrap' }}>{d.label}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-dark)', flex: 1, whiteSpace: 'nowrap' }}>{d.label}</span>
         {d.isRoot && (
           <span style={{ fontSize: 9, background: '#ede9fe', color: '#7c3aed', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
             Radice
@@ -153,16 +153,16 @@ function ReportEntityNode({ data }: { id: string; data: NodeData }) {
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onToggleResult}
           title={d.isResult ? 'Rimuovi dal risultato' : 'Includi nel risultato'}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 1, color: d.isResult ? '#0284c7' : '#d1d5db' }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 1, color: d.isResult ? 'var(--color-brand)' : '#d1d5db' }}
         >
-          <Star size={12} fill={d.isResult ? '#0284c7' : 'none'} />
+          <Star size={12} fill={d.isResult ? 'var(--color-brand)' : 'none'} />
         </button>
         {!d.isRoot && (
           <button
             className="nodrag nopan"
             onMouseDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); d.onDelete() }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}
           >×</button>
         )}
       </div>
@@ -212,7 +212,7 @@ function ReportEntityNode({ data }: { id: string; data: NodeData }) {
                   className="nodrag nopan"
                   onMouseDown={e => e.stopPropagation()}
                   onClick={() => d.onRemoveFilter(i)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}
                 >
                   <X size={12} />
                 </button>
@@ -224,7 +224,7 @@ function ReportEntityNode({ data }: { id: string; data: NodeData }) {
           className="nodrag nopan"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onAddFilter}
-          style={{ fontSize: 10, color: '#64748b', background: 'none', border: '1px dashed #d1d5db', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', width: '100%', marginBottom: 4 }}
+          style={{ fontSize: 10, color: 'var(--color-slate)', background: 'none', border: '1px dashed #d1d5db', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', width: '100%', marginBottom: 4 }}
         >
           + filtro
         </button>
@@ -232,7 +232,7 @@ function ReportEntityNode({ data }: { id: string; data: NodeData }) {
           className="nodrag nopan"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onConnect}
-          style={{ fontSize: 10, color: '#0284c7', background: 'none', border: '1px solid #c4b5fd', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', width: '100%' }}
+          style={{ fontSize: 10, color: 'var(--color-brand)', background: 'none', border: '1px solid #c4b5fd', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', width: '100%' }}
         >
           + Connetti a...
         </button>
@@ -586,7 +586,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   }
   const selectStyle: React.CSSProperties = { ...inputStyle, background: '#fff' }
   const labelStyle: React.CSSProperties  = {
-    fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase',
+    fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase',
     letterSpacing: '0.05em', marginBottom: 6, display: 'block',
   }
 
@@ -603,8 +603,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                 width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 14, fontWeight: 700,
-                background: wizardStep > s.n ? '#10b981' : wizardStep === s.n ? '#0284c7' : '#e5e7eb',
-                color:      wizardStep >= s.n ? '#fff' : '#94a3b8',
+                background: wizardStep > s.n ? '#10b981' : wizardStep === s.n ? 'var(--color-brand)' : '#e5e7eb',
+                color:      wizardStep >= s.n ? '#fff' : 'var(--color-slate-light)',
                 cursor:     wizardStep > s.n ? 'pointer' : 'default',
               }}
             >
@@ -612,7 +612,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
             </div>
             <span style={{
               fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
-              color: wizardStep === s.n ? '#0284c7' : wizardStep > s.n ? '#10b981' : '#94a3b8',
+              color: wizardStep === s.n ? 'var(--color-brand)' : wizardStep > s.n ? '#10b981' : 'var(--color-slate-light)',
             }}>
               {s.label}
             </span>
@@ -637,7 +637,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         <button onClick={onBack} style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px',
           borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff',
-          cursor: 'pointer', fontSize: 14, color: '#64748b',
+          cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)',
         }}>
           <ChevronLeft size={18} /> Indietro
         </button>
@@ -646,7 +646,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         {isLastStep && (
           <button onClick={onCancel} style={{
             padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb',
-            background: '#fff', cursor: 'pointer', fontSize: 14, color: '#64748b',
+            background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)',
           }}>
             Annulla
           </button>
@@ -654,7 +654,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         <button onClick={onNext} disabled={nextDisabled} style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '10px 24px',
           borderRadius: 8, border: 'none',
-          background: nextDisabled ? '#c7d2fe' : '#0284c7',
+          background: nextDisabled ? '#c7d2fe' : 'var(--color-brand)',
           color: '#fff', cursor: nextDisabled ? 'not-allowed' : 'pointer',
           fontSize: 14, fontWeight: 600,
         }}>
@@ -677,7 +677,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       if (!items.length) return null
       return (
         <div style={{ marginBottom: 24 }} key={groupLabel}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
             {groupLabel}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 12 }}>
@@ -717,10 +717,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                   gap: 10, padding: '20px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
                   transition: 'all 0.15s',
                   border:     isSelected ? '2px solid #0284c7' : '1px solid #e5e7eb',
-                  background: isSelected ? '#ecfeff' : '#fff',
+                  background: isSelected ? 'var(--color-brand-light)' : '#fff',
                 }}>
                   {getEntityIcon(e.entityType, 28)}
-                  <span style={{ fontSize: 14, fontWeight: 600, color: isSelected ? '#0284c7' : '#64748b' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                     {e.label}
                   </span>
                 </div>
@@ -733,10 +733,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
     return (
       <div>
-        <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+        <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
           Cosa vuoi analizzare?
         </h3>
-        <p style={{ margin: '0 0 24px', fontSize: 14, color: '#64748b' }}>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: 'var(--color-slate)' }}>
           Scegli il tipo di dato su cui costruire la sezione del report.
         </p>
         {renderEntityGroup('ITSM', itsmEntities)}
@@ -751,10 +751,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const renderStep2 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '0 32px 12px' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
           Grafo e filtri
         </h3>
-        <p style={{ margin: 0, fontSize: 14, color: '#64748b' }}>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--color-slate)' }}>
           Visualizza e configura le entità collegate.
         </p>
       </div>
@@ -800,15 +800,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
             overflowY: 'auto', padding: 16, zIndex: 10,
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#64748b' }}>Connetti a...</span>
-              <button onClick={() => setConnectingNodeId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate)' }}>Connetti a...</span>
+              <button onClick={() => setConnectingNodeId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
                 <X size={16} />
               </button>
             </div>
             {reachableLoading ? (
-              <p style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center' }}>Caricamento...</p>
+              <p style={{ color: 'var(--color-slate-light)', fontSize: 12, textAlign: 'center' }}>Caricamento...</p>
             ) : (reachableData?.reachableEntities ?? []).length === 0 ? (
-              <p style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center' }}>Nessuna connessione trovata</p>
+              <p style={{ color: 'var(--color-slate-light)', fontSize: 12, textAlign: 'center' }}>Nessuna connessione trovata</p>
             ) : (
               (reachableData?.reachableEntities ?? []).map((re, i) => (
                 <div
@@ -819,12 +819,12 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                     border: '1px solid #cffafe', borderRadius: 8, cursor: 'pointer',
                     background: '#fafafe', marginBottom: 6,
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#ecfeff' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-brand-light)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = '#fafafe' }}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{re.label}</div>
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{re.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>
                       {re.direction === 'outgoing' ? '→' : '←'} {re.relationshipType}
                     </div>
                   </div>
@@ -837,11 +837,11 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       </div>
 
       {orphan ? (
-        <div style={{ fontSize: 12, color: '#dc2626', padding: '8px 32px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ fontSize: 12, color: 'var(--color-trigger-sla-breach)', padding: '8px 32px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
           ⚠ Ci sono nodi non collegati. Collega o elimina i nodi isolati prima di continuare.
         </div>
       ) : (
-        <p style={{ fontSize: 12, color: '#64748b', padding: '6px 32px 0', flexShrink: 0 }}>
+        <p style={{ fontSize: 12, color: 'var(--color-slate)', padding: '6px 32px 0', flexShrink: 0 }}>
           Clicca <strong>+ Connetti a...</strong> su un nodo per aggiungere entità collegate.
           Usa <Star size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> per marcare le entità da includere nel risultato.
         </p>
@@ -856,10 +856,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
     return (
       <div>
-        <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+        <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
           Come vuoi vedere i dati?
         </h3>
-        <p style={{ margin: '0 0 24px', fontSize: 14, color: '#64748b' }}>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: 'var(--color-slate)' }}>
           Configura la visualizzazione della sezione.
         </p>
 
@@ -874,13 +874,13 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                     display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
                     borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s',
                     border:     chartType === ct.value ? '2px solid #0284c7' : '1px solid #e5e7eb',
-                    background: chartType === ct.value ? '#ecfeff' : '#fff',
-                    color:      chartType === ct.value ? '#0284c7' : '#64748b',
+                    background: chartType === ct.value ? 'var(--color-brand-light)' : '#fff',
+                    color:      chartType === ct.value ? 'var(--color-brand)' : 'var(--color-slate)',
                   }}>
                     {ct.icon}
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>{ct.label}</div>
-                      <div style={{ fontSize: 12, color: chartType === ct.value ? '#22d3ee' : '#94a3b8', marginTop: 2 }}>{ct.desc}</div>
+                      <div style={{ fontSize: 12, color: chartType === ct.value ? '#22d3ee' : 'var(--color-slate-light)', marginTop: 2 }}>{ct.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -909,7 +909,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                   </select>
                 </div>
                 {isTimeSeries && step3DateFields.length === 0 && (
-                  <div style={{ color: '#dc2626', fontSize: 12, marginTop: 8 }}>
+                  <div style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 12, marginTop: 8 }}>
                     ⚠ Il grafico a linea richiede un campo data. Nessun campo data disponibile per questa entità. Scegli un altro tipo di grafico.
                   </div>
                 )}
@@ -961,7 +961,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                 <label style={labelStyle}>Colonne da mostrare (per nodo risultato)</label>
                 {resultNodes.map(([nid, nd]) => (
                   <div key={nid} style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>{nd.label}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>{nd.label}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
                       {nd.fields.map(f => (
                         <label key={f.name} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, cursor: 'pointer' }}>
@@ -998,11 +998,11 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               justifyContent: previewLoading || !previewData ? 'center' : 'flex-start',
             }}>
               {previewLoading ? (
-                <div style={{ color: '#94a3b8', fontSize: 14 }}>Caricamento anteprima...</div>
+                <div style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento anteprima...</div>
               ) : previewData ? (
                 <ReportChartRenderer chartType={previewData.chartType} data={previewData.data} title={previewData.title} error={previewData.error} />
               ) : (
-                <div style={{ color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>
+                <div style={{ color: 'var(--color-slate-light)', fontSize: 14, textAlign: 'center' }}>
                   Configura il grafico per vedere l'anteprima
                 </div>
               )}
@@ -1025,10 +1025,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
     return (
       <div>
-        <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+        <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
           Dai un nome alla sezione
         </h3>
-        <p style={{ margin: '0 0 24px', fontSize: 14, color: '#64748b' }}>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: 'var(--color-slate)' }}>
           Scegli un titolo descrittivo per questa sezione del report.
         </p>
 
@@ -1040,7 +1040,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               {suggestedTitle && title !== suggestedTitle && (
                 <button onClick={() => setTitle(suggestedTitle)} style={{
                   marginTop: 6, background: 'none', border: 'none', cursor: 'pointer',
-                  color: '#0284c7', fontSize: 12, padding: 0, textAlign: 'left',
+                  color: 'var(--color-brand)', fontSize: 12, padding: 0, textAlign: 'left',
                 }}>
                   Usa: "{suggestedTitle}"
                 </button>
@@ -1048,28 +1048,28 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
             </div>
 
             <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                 Riepilogo
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rootEntry && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>Analisi</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textAlign: 'right' }}>{rootEntry.label}</span>
+                    <span style={{ fontSize: 12, color: 'var(--color-slate)', flexShrink: 0 }}>Analisi</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{rootEntry.label}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>Nodi</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textAlign: 'right' }}>{nodes.length}</span>
+                  <span style={{ fontSize: 12, color: 'var(--color-slate)', flexShrink: 0 }}>Nodi</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{nodes.length}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>Visualizzazione</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textAlign: 'right' }}>{chartDef?.label ?? chartType}</span>
+                  <span style={{ fontSize: 12, color: 'var(--color-slate)', flexShrink: 0 }}>Visualizzazione</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{chartDef?.label ?? chartType}</span>
                 </div>
                 {needsLimit && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>Top</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textAlign: 'right' }}>{limit}</span>
+                    <span style={{ fontSize: 12, color: 'var(--color-slate)', flexShrink: 0 }}>Top</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{limit}</span>
                   </div>
                 )}
               </div>
@@ -1084,7 +1084,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               justifyContent: previewLoading || !previewData ? 'center' : 'flex-start',
             }}>
               {previewLoading ? (
-                <div style={{ color: '#94a3b8', fontSize: 14 }}>Caricamento...</div>
+                <div style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento...</div>
               ) : previewData ? (
                 <ReportChartRenderer
                   chartType={previewData.chartType}
@@ -1093,7 +1093,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                   error={previewData.error}
                 />
               ) : (
-                <div style={{ color: '#94a3b8', fontSize: 14 }}>Nessuna anteprima disponibile</div>
+                <div style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessuna anteprima disponibile</div>
               )}
             </div>
           </div>

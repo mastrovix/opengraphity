@@ -24,13 +24,13 @@ interface User {
 // ── Badges ────────────────────────────────────────────────────────────────────
 
 const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin:    { bg: '#fef2f2', color: '#dc2626' },
+  admin:    { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
   operator: { bg: '#eff6ff', color: '#2563eb' },
-  viewer:   { bg: '#f1f5f9', color: '#64748b' },
+  viewer:   { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' },
 }
 
 function RoleBadge({ role }: { role: string }) {
-  const s = ROLE_STYLES[role] ?? { bg: '#f1f5f9', color: '#64748b' }
+  const s = ROLE_STYLES[role] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
   return (
     <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {role}
@@ -44,8 +44,8 @@ const TEAM_TYPE_STYLES: Record<string, { bg: string; color: string }> = {
 }
 
 function TeamTypeBadge({ type }: { type: string | null }) {
-  if (!type) return <span style={{ color: '#94a3b8', fontSize: 12 }}>—</span>
-  const s = TEAM_TYPE_STYLES[type] ?? { bg: '#f1f5f9', color: '#64748b' }
+  if (!type) return <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>—</span>
+  const s = TEAM_TYPE_STYLES[type] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
   return (
     <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {type}
@@ -71,8 +71,8 @@ function CollapsibleCard({ title, defaultOpen = true, children }: { title: strin
         onClick={() => setOpen((p) => !p)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: open ? 16 : 0 }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{title}</span>
-        {open ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#94a3b8" />}
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
+        {open ? <ChevronDown size={14} color="var(--color-slate-light)" /> : <ChevronRight size={14} color="var(--color-slate-light)" />}
       </div>
       {open && children}
     </Card>
@@ -94,22 +94,22 @@ export function UserDetailPage() {
   const user = data?.user
 
   if (loading && !user) {
-    return <div style={{ padding: '32px 40px', color: '#94a3b8', fontSize: 14 }}>Caricamento...</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento...</div>
   }
 
   if (!user) {
-    return <div style={{ padding: '32px 40px', color: '#94a3b8', fontSize: 14 }}>Utente non trovato.</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 14 }}>Utente non trovato.</div>
   }
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: 1200 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/users')}>
+        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/users')}>
           ← Users
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: 0 }}>{user.name}</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
           <RoleBadge role={user.role} />
         </div>
       </div>
@@ -120,13 +120,13 @@ export function UserDetailPage() {
         <div style={{ flex: 1 }}>
           <CollapsibleCard title={`Team (${user.teams.length})`} defaultOpen>
             {user.teams.length === 0 ? (
-              <EmptyState icon={<Users size={24} color="#94a3b8" />} title="Nessun team assegnato" />
+              <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title="Nessun team assegnato" />
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                     {['Nome', 'Tipo'].map((h) => (
-                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: '#64748b', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -139,7 +139,7 @@ export function UserDetailPage() {
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8f9fc' }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                     >
-                      <td style={{ padding: '8px 8px', fontWeight: 500, color: '#0f172a' }}>{t.name}</td>
+                      <td style={{ padding: '8px 8px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</td>
                       <td style={{ padding: '8px 8px' }}><TeamTypeBadge type={t.type} /></td>
                     </tr>
                   ))}
@@ -152,23 +152,23 @@ export function UserDetailPage() {
         {/* Right column */}
         <div style={{ width: 340, flexShrink: 0 }}>
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Dettagli</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 16 }}>Dettagli</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#64748b', wordBreak: 'break-all' }}>{user.id}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
+                <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--color-slate)', wordBreak: 'break-all' }}>{user.id}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Email</div>
-                <div style={{ fontSize: 14, color: '#64748b' }}>{user.email}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Email</div>
+                <div style={{ fontSize: 14, color: 'var(--color-slate)' }}>{user.email}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Ruolo</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Ruolo</div>
                 <RoleBadge role={user.role} />
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Creato il</div>
-                <div style={{ fontSize: 14, color: '#64748b' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Creato il</div>
+                <div style={{ fontSize: 14, color: 'var(--color-slate)' }}>
                   {user.createdAt ? new Date(user.createdAt).toLocaleString('it-IT') : '—'}
                 </div>
               </div>

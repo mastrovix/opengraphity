@@ -1,9 +1,10 @@
 // ── Shared ITSM badge components ──────────────────────────────────────────────
 
 import type { CSSProperties } from 'react'
+import { colors } from '@/lib/tokens'
 
 const PLAIN: CSSProperties = {
-  color: '#64748b',
+  color: colors.slate,
 }
 
 export function TypeBadge({ type }: { type: string }) {

@@ -21,11 +21,11 @@ interface ProblemItem {
 }
 
 function PriorityBadge({ value }: { value: string }) {
-  return <span style={{ color: '#64748b', fontSize: 12 }}>{value}</span>
+  return <span style={{ color: 'var(--color-slate)', fontSize: 12 }}>{value}</span>
 }
 
 function StatusBadge({ value }: { value: string }) {
-  return <span style={{ color: '#64748b', fontSize: 12 }}>{value.replace(/_/g, ' ')}</span>
+  return <span style={{ color: 'var(--color-slate)', fontSize: 12 }}>{value.replace(/_/g, ' ')}</span>
 }
 
 const PAGE_SIZE = 50
@@ -77,16 +77,16 @@ export function ProblemsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
             Problems
           </h1>
-          <p style={{ fontSize: 14, color: '#94a3b8', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} total`}
           </p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
         >
           <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
           Nuovo Problem
@@ -135,18 +135,18 @@ export function ProblemsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8' }}>Titolo</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', width: 120 }}>Priorità</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', width: 160 }}>Status</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', width: 80 }}>CI</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', width: 150 }}>Team</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', width: 120 }}>Creato il</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)' }}>Titolo</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 120 }}>Priorità</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 160 }}>Status</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 80 }}>CI</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 150 }}>Team</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 120 }}>Creato il</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>Caricamento...</td>
+                <td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 12 }}>Caricamento...</td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
@@ -163,12 +163,12 @@ export function ProblemsPage() {
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f9fafb' }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                 >
-                  <td style={{ padding: '10px 16px', fontSize: 12, fontWeight: 500, color: '#0f172a' }}>{item.title}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 12, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{item.title}</td>
                   <td style={{ padding: '10px 16px', fontSize: 12 }}><PriorityBadge value={item.priority} /></td>
                   <td style={{ padding: '10px 16px', fontSize: 12 }}><StatusBadge value={item.status} /></td>
-                  <td style={{ padding: '10px 16px', fontSize: 12, color: '#64748b' }}>{item.affectedCIs.length}</td>
-                  <td style={{ padding: '10px 16px', fontSize: 12, color: '#64748b' }}>{item.assignedTeam?.name ?? '—'}</td>
-                  <td style={{ padding: '10px 16px', fontSize: 12, color: '#94a3b8' }}>{new Date(item.createdAt).toLocaleDateString()}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--color-slate)' }}>{item.affectedCIs.length}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--color-slate)' }}>{item.assignedTeam?.name ?? '—'}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--color-slate-light)' }}>{new Date(item.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))
             )}
@@ -177,12 +177,12 @@ export function ProblemsPage() {
       </div>
 
       {total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: '#94a3b8' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
           <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total}</span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : '#64748b', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>← Prev</button>
-            <span style={{ padding: '4px 8px', fontSize: 12, color: '#64748b' }}>{page + 1} / {totalPages}</span>
-            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : '#64748b', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>Next →</button>
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>← Prev</button>
+            <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>{page + 1} / {totalPages}</span>
+            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>Next →</button>
           </div>
         </div>
       )}
@@ -191,10 +191,10 @@ export function ProblemsPage() {
       {showCreate && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 480, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', margin: '0 0 20px 0' }}>Nuovo Problem</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 20px 0' }}>Nuovo Problem</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: '#64748b', display: 'block', marginBottom: 4 }}>Titolo *</label>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Titolo *</label>
                 <input
                   type="text"
                   value={newTitle}
@@ -204,7 +204,7 @@ export function ProblemsPage() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: '#64748b', display: 'block', marginBottom: 4 }}>Descrizione</label>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Descrizione</label>
                 <textarea
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
@@ -214,7 +214,7 @@ export function ProblemsPage() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: '#64748b', display: 'block', marginBottom: 4 }}>Priorità</label>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Priorità</label>
                 <select
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value)}
@@ -227,7 +227,7 @@ export function ProblemsPage() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: '#64748b', display: 'block', marginBottom: 4 }}>Workaround</label>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Workaround</label>
                 <textarea
                   value={newWorkaround}
                   onChange={(e) => setNewWorkaround(e.target.value)}
@@ -259,7 +259,7 @@ export function ProblemsPage() {
                     },
                   })
                 }}
-                style={{ padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: (!newTitle.trim() || creating) ? '#e5e7eb' : '#0284c7', color: (!newTitle.trim() || creating) ? '#94a3b8' : '#fff', fontSize: 14, fontWeight: 500, cursor: (!newTitle.trim() || creating) ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: (!newTitle.trim() || creating) ? '#e5e7eb' : 'var(--color-brand)', color: (!newTitle.trim() || creating) ? 'var(--color-slate-light)' : '#fff', fontSize: 14, fontWeight: 500, cursor: (!newTitle.trim() || creating) ? 'not-allowed' : 'pointer' }}
               >
                 {creating ? 'Creazione...' : 'Crea Problem'}
               </button>

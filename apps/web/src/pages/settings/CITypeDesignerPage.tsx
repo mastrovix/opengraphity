@@ -18,7 +18,7 @@ import type { CITypeDef, CIFieldDef, CIRelationDef } from '@/contexts/MetamodelC
 
 const inputS: React.CSSProperties = {
   width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 14, color: '#0f172a', outline: 'none',
+  borderRadius: 6, fontSize: 14, color: 'var(--color-slate-dark)', outline: 'none',
   backgroundColor: '#fff', boxSizing: 'border-box',
 }
 
@@ -34,22 +34,22 @@ const textareaS: React.CSSProperties = {
 }
 
 const labelS: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 4,
+  display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
 }
 
 const btnPrimary: React.CSSProperties = {
-  padding: '8px 16px', border: 'none', borderRadius: 6, background: '#0284c7',
+  padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
   color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
 }
 
 const btnSecondary: React.CSSProperties = {
   padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: '#64748b', fontSize: 14, cursor: 'pointer',
+  color: 'var(--color-slate)', fontSize: 14, cursor: 'pointer',
 }
 
 const btnDanger: React.CSSProperties = {
   padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: '#dc2626', fontSize: 12, cursor: 'pointer',
+  color: 'var(--color-trigger-sla-breach)', fontSize: 12, cursor: 'pointer',
 }
 
 // ── Available icons ────────────────────────────────────────────────────────────
@@ -168,8 +168,8 @@ function FieldModal({
           {(['validation', 'visibility', 'default'] as const).map(tab => (
             <button key={tab} onClick={() => setScriptTab(tab)}
               style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 12, cursor: 'pointer',
-                background: scriptTab === tab ? '#ecfeff' : '#f9fafb',
-                color: scriptTab === tab ? '#0284c7' : '#64748b',
+                background: scriptTab === tab ? 'var(--color-brand-light)' : '#f9fafb',
+                color: scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
                 fontWeight: scriptTab === tab ? 600 : 400 }}>
               {tab}Script
             </button>
@@ -178,7 +178,7 @@ function FieldModal({
 
         {scriptTab === 'validation' && (
           <div>
-            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'messaggio'</code> per errore.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.validationScript}
@@ -188,7 +188,7 @@ function FieldModal({
         )}
         {scriptTab === 'visibility' && (
           <div>
-            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               Variabili: <code>input</code>. Ritorna <code>true/false</code>.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.visibilityScript}
@@ -198,7 +198,7 @@ function FieldModal({
         )}
         {scriptTab === 'default' && (
           <div>
-            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               Variabili: <code>input</code>. Ritorna il valore di default.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.defaultScript}
@@ -293,7 +293,7 @@ function CreateTypeDialog({
   open: boolean; onClose: () => void
   onSave: (form: { name: string; label: string; icon: string; color: string }) => Promise<void>
 }) {
-  const [form, setForm] = useState({ name: '', label: '', icon: 'box', color: '#0284c7' })
+  const [form, setForm] = useState({ name: '', label: '', icon: 'box', color: 'var(--color-brand)' })
   const [saving, setSaving] = useState(false)
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
@@ -334,7 +334,7 @@ function CreateTypeDialog({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="color" value={form.color} onChange={e => set('color', e.target.value)}
             style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
-          <span style={{ fontSize: 12, color: '#64748b' }}>{form.color}</span>
+          <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{form.color}</span>
         </div>
       </Field>
     </Modal>
@@ -377,7 +377,7 @@ export function CITypeDesignerPage() {
     setSettingsForm({
       label: t.label,
       icon: t.icon ?? 'box',
-      color: t.color ?? '#0284c7',
+      color: t.color ?? 'var(--color-brand)',
       validationScript: t.validationScript ?? '',
     })
   }
@@ -397,8 +397,8 @@ export function CITypeDesignerPage() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-        <Layers size={22} color="#0284c7" />
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: 0 }}>CI Type Designer</h1>
+        <Layers size={22} color="var(--color-brand)" />
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>CI Type Designer</h1>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
@@ -406,14 +406,14 @@ export function CITypeDesignerPage() {
         {/* ── Left: type list ─────────────────────────────────────────── */}
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #e5e7eb' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Tipi CI</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Tipi CI</span>
             <button onClick={() => setShowCreate(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', border: 'none', borderRadius: 5, background: '#0284c7', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', border: 'none', borderRadius: 5, background: 'var(--color-brand)', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
               <Plus size={12} /> Nuovo
             </button>
           </div>
 
-          {loading && <div style={{ padding: 20, color: '#94a3b8', fontSize: 14 }}>Caricamento…</div>}
+          {loading && <div style={{ padding: 20, color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento…</div>}
 
           <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
             {/* ── Campi Base special entry ── */}
@@ -422,23 +422,23 @@ export function CITypeDesignerPage() {
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '10px 16px', cursor: 'pointer',
                 borderBottom: '1px solid #e5e7eb',
-                background: selectedBase ? '#ecfeff' : '#f9fafb',
+                background: selectedBase ? 'var(--color-brand-light)' : '#f9fafb',
                 borderLeft: selectedBase ? '3px solid #0284c7' : '3px solid transparent',
               }}>
-              <Layout size={16} color="#0284c7" />
+              <Layout size={16} color="var(--color-brand)" />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: selectedBase ? 600 : 400, color: selectedBase ? '#0284c7' : '#64748b' }}>
+                <div style={{ fontSize: 14, fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   Campi Base
                 </div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>Condivisi da tutti i tipi</div>
+                <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Condivisi da tutti i tipi</div>
               </div>
               <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 600,
-                background: '#cffafe', color: '#0284c7' }}>
+                background: '#cffafe', color: 'var(--color-brand)' }}>
                 Sistema
               </span>
             </div>
             {/* ── Separator ── */}
-            <div style={{ padding: '6px 16px 4px', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
+            <div style={{ padding: '6px 16px 4px', fontSize: 10, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
               Tipi CI
             </div>
 
@@ -450,19 +450,19 @@ export function CITypeDesignerPage() {
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '10px 16px', cursor: 'pointer',
                     borderBottom: '1px solid #f3f4f6',
-                    background: isSelected ? '#ecfeff' : 'transparent',
+                    background: isSelected ? 'var(--color-brand-light)' : 'transparent',
                     borderLeft: isSelected ? '3px solid #0284c7' : '3px solid transparent',
                   }}>
-                  <CIIcon icon={t.icon} size={16} color={t.color ?? '#0284c7'} />
+                  <CIIcon icon={t.icon} size={16} color={t.color ?? 'var(--color-brand)'} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: isSelected ? 600 : 400, color: isSelected ? '#0284c7' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 14, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {t.label}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>{t.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{t.name}</div>
                   </div>
                   <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 500,
                     background: t.active ? '#dcfce7' : '#f3f4f6',
-                    color: t.active ? '#16a34a' : '#94a3b8' }}>
+                    color: t.active ? '#16a34a' : 'var(--color-slate-light)' }}>
                     {t.active ? 'active' : 'inactive'}
                   </span>
                 </div>
@@ -478,22 +478,22 @@ export function CITypeDesignerPage() {
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
-                <Layout size={22} color="#0284c7" />
+                <Layout size={22} color="var(--color-brand)" />
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Campi Base</div>
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>Ereditati da tutti i tipi CI</div>
+                  <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Campi Base</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Ereditati da tutti i tipi CI</div>
                 </div>
               </div>
               {/* Description */}
               <div style={{ padding: '12px 24px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb' }}>
-                <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+                <p style={{ fontSize: 14, color: 'var(--color-slate)', margin: 0 }}>
                   Questi campi sono presenti in tutti i tipi CI e non possono essere eliminati.
                 </p>
               </div>
               {/* Fields */}
               <div style={{ padding: '20px 24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     Campi ({baseType.fields.length})
                   </span>
                   <button style={btnPrimary} onClick={() => { setEditingField(null); setShowFieldModal(true) }}>
@@ -504,17 +504,17 @@ export function CITypeDesignerPage() {
                   <thead>
                     <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                       {['#', 'name', 'label', 'tipo', 'req', ''].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                        <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {[...baseType.fields].sort((a, b) => a.order - b.order).map(f => (
                       <tr key={f.id} style={{ borderBottom: '1px solid #f3f4f6', background: '#f9fafb' }}>
-                        <td style={{ padding: '8px', color: '#94a3b8', fontSize: 12 }}>{f.order}</td>
+                        <td style={{ padding: '8px', color: 'var(--color-slate-light)', fontSize: 12 }}>{f.order}</td>
                         <td style={{ padding: '8px' }}>
                           <span style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12 }}>{f.name}</span>
-                          <span style={{ marginLeft: 6, padding: '1px 5px', fontSize: 10, borderRadius: 3, background: '#cffafe', color: '#0284c7', fontWeight: 600 }}>Sistema</span>
+                          <span style={{ marginLeft: 6, padding: '1px 5px', fontSize: 10, borderRadius: 3, background: '#cffafe', color: 'var(--color-brand)', fontWeight: 600 }}>Sistema</span>
                         </td>
                         <td style={{ padding: '8px' }}>{f.label}</td>
                         <td style={{ padding: '8px' }}>
@@ -537,22 +537,22 @@ export function CITypeDesignerPage() {
             </div>
           ) : !selected ? (
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 40 }}>
-              <EmptyState icon={<Layers size={32} color="#94a3b8" />} title="Seleziona un tipo per modificarlo" />
+              <EmptyState icon={<Layers size={32} color="var(--color-slate-light)" />} title="Seleziona un tipo per modificarlo" />
             </div>
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <CIIcon icon={selected.icon} size={22} color={selected.color ?? '#0284c7'} />
+                  <CIIcon icon={selected.icon} size={22} color={selected.color ?? 'var(--color-brand)'} />
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>{selected.label}</div>
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>{selected.name}</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selected.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{selected.name}</div>
                   </div>
                   {/* Active toggle */}
                   <button
                     onClick={() => updateType({ variables: { id: selected.id, input: { active: !selected.active } } })}
-                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 100, fontSize: 12, cursor: 'pointer', background: selected.active ? '#dcfce7' : '#f3f4f6', color: selected.active ? '#16a34a' : '#94a3b8', fontWeight: 500 }}>
+                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 100, fontSize: 12, cursor: 'pointer', background: selected.active ? '#dcfce7' : '#f3f4f6', color: selected.active ? '#16a34a' : 'var(--color-slate-light)', fontWeight: 500 }}>
                     {selected.active ? '● active' : '○ inactive'}
                   </button>
                 </div>
@@ -569,7 +569,7 @@ export function CITypeDesignerPage() {
               <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', padding: '0 20px' }}>
                 {(['settings', 'fields', 'relations', 'preview'] as Tab[]).map(tab => (
                   <button key={tab} onClick={() => setActiveTab(tab)}
-                    style={{ padding: '10px 14px', border: 'none', borderBottom: activeTab === tab ? '2px solid #0284c7' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 14, cursor: 'pointer', color: activeTab === tab ? '#0284c7' : '#64748b', fontWeight: activeTab === tab ? 600 : 400 }}>
+                    style={{ padding: '10px 14px', border: 'none', borderBottom: activeTab === tab ? '2px solid #0284c7' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 14, cursor: 'pointer', color: activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: activeTab === tab ? 600 : 400 }}>
                     {tab === 'settings' ? 'Impostazioni' : tab === 'fields' ? 'Campi' : tab === 'relations' ? 'Relazioni CI' : 'Preview'}
                   </button>
                 ))}
@@ -600,11 +600,11 @@ export function CITypeDesignerPage() {
                         <input type="color" value={settingsForm.color}
                           onChange={e => setSettingsForm(p => p && ({ ...p, color: e.target.value }))}
                           style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
-                        <span style={{ fontSize: 12, color: '#64748b' }}>{settingsForm.color}</span>
+                        <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{settingsForm.color}</span>
                       </div>
                     </Field>
                     <Field label="Validation script (opzionale)">
-                      <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+                      <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                         Variabili: <code>input</code>. Usa <code>throw 'msg'</code> per errore globale.
                       </p>
                       <textarea style={{ ...textareaS, minHeight: 100 }} value={settingsForm.validationScript}
@@ -641,18 +641,18 @@ export function CITypeDesignerPage() {
                       <thead>
                         <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                           {['#', 'name', 'label', 'tipo', 'req', ''].map(h => (
-                            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {fields.map(f => (
                           <tr key={f.id} style={{ borderBottom: '1px solid #f3f4f6', background: f.isSystem ? '#f9fafb' : 'transparent' }}>
-                            <td style={{ padding: '8px', color: '#94a3b8', fontSize: 12 }}>{f.order}</td>
+                            <td style={{ padding: '8px', color: 'var(--color-slate-light)', fontSize: 12 }}>{f.order}</td>
                             <td style={{ padding: '8px' }}>
                               <span style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12 }}>{f.name}</span>
                               {f.isSystem && (
-                                <span style={{ marginLeft: 6, padding: '1px 5px', fontSize: 10, borderRadius: 3, background: '#cffafe', color: '#0284c7', fontWeight: 600 }}>Sistema</span>
+                                <span style={{ marginLeft: 6, padding: '1px 5px', fontSize: 10, borderRadius: 3, background: '#cffafe', color: 'var(--color-brand)', fontWeight: 600 }}>Sistema</span>
                               )}
                             </td>
                             <td style={{ padding: '8px' }}>{f.label}</td>
@@ -690,13 +690,13 @@ export function CITypeDesignerPage() {
                       {/* Campi base */}
                       <div style={{ marginBottom: 20 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             Campi base ({systemFields.length})
                           </span>
-                          <span style={{ fontSize: 12, color: '#94a3b8' }}>Ereditati da __base__ — non modificabili</span>
+                          <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Ereditati da __base__ — non modificabili</span>
                         </div>
                         {systemFields.length === 0 ? (
-                          <p style={{ color: '#94a3b8', fontSize: 14 }}>Nessun campo base.</p>
+                          <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessun campo base.</p>
                         ) : (
                           <FieldTable fields={systemFields} showActions={false} />
                         )}
@@ -705,7 +705,7 @@ export function CITypeDesignerPage() {
                       {/* Campi specifici */}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             Campi specifici ({specificFields.length})
                           </span>
                           <button style={btnPrimary} onClick={() => { setEditingField(null); setShowFieldModal(true) }}>
@@ -713,7 +713,7 @@ export function CITypeDesignerPage() {
                           </button>
                         </div>
                         {specificFields.length === 0 ? (
-                          <p style={{ color: '#94a3b8', fontSize: 14 }}>Nessun campo specifico. Clicca "Aggiungi campo" per crearne uno.</p>
+                          <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessun campo specifico. Clicca "Aggiungi campo" per crearne uno.</p>
                         ) : (
                           <FieldTable fields={specificFields} showActions={true} />
                         )}
@@ -732,13 +732,13 @@ export function CITypeDesignerPage() {
                     </div>
 
                     {selected.relations.length === 0 ? (
-                      <p style={{ color: '#94a3b8', fontSize: 14 }}>Nessuna relazione CI configurata.</p>
+                      <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessuna relazione CI configurata.</p>
                     ) : (
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                             {['name', 'label', 'tipo Neo4j', 'target', 'card.', 'dir.', ''].map(h => (
-                              <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                              <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
@@ -771,11 +771,11 @@ export function CITypeDesignerPage() {
                 {/* ── Tab: Preview ─────────────────────────────────── */}
                 {activeTab === 'preview' && (
                   <div style={{ maxWidth: 520 }}>
-                    <p style={{ fontSize: 14, color: '#94a3b8', marginBottom: 16 }}>
+                    <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 16 }}>
                       Anteprima del form di creazione CI — campi specifici del tipo.
                     </p>
                     {selected.fields.length === 0 ? (
-                      <p style={{ fontSize: 14, color: '#94a3b8' }}>Nessun campo specifico da mostrare. Aggiungi campi nella tab "Campi".</p>
+                      <p style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>Nessun campo specifico da mostrare. Aggiungi campi nella tab "Campi".</p>
                     ) : (
                       <CIDynamicForm
                         ciType={selected}

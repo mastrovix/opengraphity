@@ -10,7 +10,7 @@ const inputBase: React.CSSProperties = {
   border:          '1px solid #e5e7eb',
   borderRadius:    6,
   fontSize:        14,
-  color:           '#0f172a',
+  color:           'var(--color-slate-dark)',
   outline:         'none',
   backgroundColor: '#ffffff',
   boxSizing:       'border-box',
@@ -30,11 +30,11 @@ const selectBase: React.CSSProperties = {
 function focusHandlers(hasError: boolean) {
   return {
     onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = '#0284c7'
+      e.currentTarget.style.borderColor = 'var(--color-brand)'
       e.currentTarget.style.boxShadow   = '0 0 0 3px #ecfeff'
     },
     onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = hasError ? '#dc2626' : '#e5e7eb'
+      e.currentTarget.style.borderColor = hasError ? 'var(--color-trigger-sla-breach)' : '#e5e7eb'
       e.currentTarget.style.boxShadow   = 'none'
     },
   }
@@ -64,7 +64,7 @@ function FieldRenderer({
   onChange: (val: unknown) => void
 }) {
   const hasError = Boolean(error)
-  const borderColor = hasError ? '#dc2626' : '#e5e7eb'
+  const borderColor = hasError ? 'var(--color-trigger-sla-breach)' : '#e5e7eb'
 
   switch (field.fieldType) {
     case 'boolean':
@@ -77,7 +77,7 @@ function FieldRenderer({
             onChange={e => onChange(e.target.checked)}
             style={{ width: 16, height: 16, cursor: 'pointer' }}
           />
-          <label htmlFor={field.name} style={{ fontSize: 14, color: '#64748b', cursor: 'pointer' }}>
+          <label htmlFor={field.name} style={{ fontSize: 14, color: 'var(--color-slate)', cursor: 'pointer' }}>
             {field.label}
           </label>
         </div>
@@ -234,7 +234,7 @@ export function CIDynamicForm({
           background:   '#fef2f2',
           border:       '1px solid #fecaca',
           borderRadius: 6,
-          color:        '#dc2626',
+          color:        'var(--color-trigger-sla-breach)',
           fontSize:     14,
         }}>
           {globalError}
@@ -256,11 +256,11 @@ export function CIDynamicForm({
                 display:      'block',
                 fontSize:     13,
                 fontWeight:   500,
-                color:        '#64748b',
+                color:        'var(--color-slate)',
                 marginBottom: 6,
               }}>
                 {field.label}
-                {field.required && <span style={{ color: '#dc2626', marginLeft: 2 }}>*</span>}
+                {field.required && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 2 }}>*</span>}
               </label>
             )}
 
@@ -272,7 +272,7 @@ export function CIDynamicForm({
             />
 
             {error && (
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#dc2626' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-trigger-sla-breach)' }}>
                 {error}
               </p>
             )}
@@ -292,7 +292,7 @@ export function CIDynamicForm({
             background:   '#ffffff',
             fontSize:     14,
             cursor:       'pointer',
-            color:        '#64748b',
+            color:        'var(--color-slate)',
           }}
         >
           Annulla
@@ -304,7 +304,7 @@ export function CIDynamicForm({
             padding:      '9px 20px',
             border:       'none',
             borderRadius: 6,
-            background:   submitting || loading ? '#67e8f9' : '#0284c7',
+            background:   submitting || loading ? '#67e8f9' : 'var(--color-brand)',
             color:        '#ffffff',
             fontSize:     14,
             fontWeight:   500,

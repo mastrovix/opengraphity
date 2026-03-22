@@ -4,9 +4,9 @@ import { BarChart2 } from 'lucide-react'
 // ── Palette ───────────────────────────────────────────────────────────────────
 
 const COLORS = [
-  '#0284c7', '#0891b2', '#059669',
-  '#d97706', '#dc2626', '#7c3aed',
-  '#0284c7', '#16a34a', '#0284c7',
+  'var(--color-brand)', '#0891b2', 'var(--color-trigger-automatic)',
+  'var(--color-trigger-timer)', 'var(--color-trigger-sla-breach)', '#7c3aed',
+  'var(--color-brand)', '#16a34a', 'var(--color-brand)',
   '#0d9488',
 ]
 
@@ -17,13 +17,13 @@ const BASE_TOOLTIP = {
   backgroundColor: '#1e293b',
   borderColor: '#334155',
   borderWidth: 1,
-  textStyle: { color: '#f1f5f9', fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" },
+  textStyle: { color: 'var(--color-slate-bg)', fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" },
   padding: [8, 12] as [number, number],
 }
 
 const BASE_LEGEND = {
   bottom: 0,
-  textStyle: { color: '#64748b', fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" },
+  textStyle: { color: 'var(--color-slate)', fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" },
   icon: 'circle',
   itemWidth: 8,
   itemHeight: 8,
@@ -50,8 +50,8 @@ interface Props {
 function EmptyChart() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', minHeight: 200, gap: 8 }}>
-      <BarChart2 size={28} color="#64748b" />
-      <span style={{ fontSize: 14, color: '#64748b', fontWeight: 500 }}>
+      <BarChart2 size={28} color="var(--color-slate)" />
+      <span style={{ fontSize: 14, color: 'var(--color-slate)', fontWeight: 500 }}>
         Grafico non disponibile con i parametri selezionati
       </span>
     </div>
@@ -76,10 +76,10 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
       const d = parsed as KpiData
       return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', gap: 8 }}>
-          <div style={{ fontSize: 56, fontWeight: 800, color: '#0284c7', lineHeight: 1, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+          <div style={{ fontSize: 56, fontWeight: 800, color: 'var(--color-brand)', lineHeight: 1, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
             {d.value?.toLocaleString('it-IT')}
           </div>
-          <div style={{ fontSize: 14, color: '#64748b', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+          <div style={{ fontSize: 14, color: 'var(--color-slate)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
             {d.label ?? title}
           </div>
         </div>
@@ -100,7 +100,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
             value: item.value,
             itemStyle: { color: COLORS[i % COLORS.length], borderRadius: 4, borderWidth: 2, borderColor: '#fff' },
           })),
-          label: { show: true, formatter: '{b}\n{d}%', fontSize: 12, color: '#64748b' },
+          label: { show: true, formatter: '{b}\n{d}%', fontSize: 12, color: 'var(--color-slate)' },
           emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
         }],
       }
@@ -120,7 +120,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
           },
           {
             type: 'text', left: 'center', top: '50%',
-            style: { text: 'totale', fontSize: 12, fill: '#64748b' },
+            style: { text: 'totale', fontSize: 12, fill: 'var(--color-slate)' },
           },
         ],
         series: [{
@@ -132,7 +132,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
             value: item.value,
             itemStyle: { color: COLORS[i % COLORS.length], borderRadius: 4, borderWidth: 2, borderColor: '#fff' },
           })),
-          label: { show: true, formatter: '{b}\n{d}%', fontSize: 12, color: '#64748b' },
+          label: { show: true, formatter: '{b}\n{d}%', fontSize: 12, color: 'var(--color-slate)' },
           emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
         }],
       }
@@ -147,14 +147,14 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
         xAxis: {
           type: 'category' as const,
           data: d.map(item => item.name ?? item.label ?? '—'),
-          axisLabel: { color: '#64748b', fontSize: 12, interval: 0, rotate: d.length > 6 ? 30 : 0 },
+          axisLabel: { color: 'var(--color-slate)', fontSize: 12, interval: 0, rotate: d.length > 6 ? 30 : 0 },
           axisLine: { lineStyle: { color: '#e2e8f0' } },
           axisTick: { show: false },
         },
         yAxis: {
           type: 'value' as const,
-          axisLabel: { color: '#64748b', fontSize: 12 },
-          splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' as const } },
+          axisLabel: { color: 'var(--color-slate)', fontSize: 12 },
+          splitLine: { lineStyle: { color: 'var(--color-slate-bg)', type: 'dashed' as const } },
           axisLine: { show: false },
           axisTick: { show: false },
         },
@@ -165,7 +165,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
             itemStyle: { color: COLORS[i % COLORS.length], borderRadius: [4, 4, 0, 0] },
           })),
           barMaxWidth: 48,
-          label: { show: true, position: 'top' as const, color: '#64748b', fontSize: 12, fontWeight: 600 },
+          label: { show: true, position: 'top' as const, color: 'var(--color-slate)', fontSize: 12, fontWeight: 600 },
         }],
       }
       return <ReactECharts option={option} {...echartsProps} />
@@ -178,15 +178,15 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
         grid: { left: 16, right: 60, bottom: 16, top: 16, containLabel: true },
         xAxis: {
           type: 'value' as const,
-          axisLabel: { color: '#64748b', fontSize: 12 },
-          splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' as const } },
+          axisLabel: { color: 'var(--color-slate)', fontSize: 12 },
+          splitLine: { lineStyle: { color: 'var(--color-slate-bg)', type: 'dashed' as const } },
           axisLine: { show: false },
           axisTick: { show: false },
         },
         yAxis: {
           type: 'category' as const,
           data: d.map(item => item.name ?? item.label ?? '—').reverse(),
-          axisLabel: { color: '#64748b', fontSize: 12 },
+          axisLabel: { color: 'var(--color-slate)', fontSize: 12 },
           axisLine: { lineStyle: { color: '#e2e8f0' } },
           axisTick: { show: false },
         },
@@ -197,7 +197,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
             itemStyle: { color: COLORS[i % COLORS.length], borderRadius: [0, 4, 4, 0] },
           })).reverse(),
           barMaxWidth: 32,
-          label: { show: true, position: 'right' as const, color: '#64748b', fontSize: 12, fontWeight: 600 },
+          label: { show: true, position: 'right' as const, color: 'var(--color-slate)', fontSize: 12, fontWeight: 600 },
         }],
       }
       return <ReactECharts option={option} {...echartsProps} />
@@ -211,14 +211,14 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
         xAxis: {
           type: 'category' as const,
           data: d.map(item => item.date ?? item.label),
-          axisLabel: { color: '#64748b', fontSize: 12 },
+          axisLabel: { color: 'var(--color-slate)', fontSize: 12 },
           axisLine: { lineStyle: { color: '#e2e8f0' } },
           axisTick: { show: false },
         },
         yAxis: {
           type: 'value' as const,
-          axisLabel: { color: '#64748b', fontSize: 12 },
-          splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' as const } },
+          axisLabel: { color: 'var(--color-slate)', fontSize: 12 },
+          splitLine: { lineStyle: { color: 'var(--color-slate-bg)', type: 'dashed' as const } },
           axisLine: { show: false },
           axisTick: { show: false },
         },
@@ -228,8 +228,8 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
           smooth: true,
           symbol: 'circle',
           symbolSize: 6,
-          lineStyle: { color: '#0284c7', width: 2.5 },
-          itemStyle: { color: '#0284c7', borderWidth: 2, borderColor: '#fff' },
+          lineStyle: { color: 'var(--color-brand)', width: 2.5 },
+          itemStyle: { color: 'var(--color-brand)', borderWidth: 2, borderColor: '#fff' },
         }],
       }
       return <ReactECharts option={option} {...echartsProps} />
@@ -243,14 +243,14 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
         xAxis: {
           type: 'category' as const,
           data: d.map(item => item.date ?? item.label),
-          axisLabel: { color: '#64748b', fontSize: 12 },
+          axisLabel: { color: 'var(--color-slate)', fontSize: 12 },
           axisLine: { lineStyle: { color: '#e2e8f0' } },
           axisTick: { show: false },
         },
         yAxis: {
           type: 'value' as const,
-          axisLabel: { color: '#64748b', fontSize: 12 },
-          splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' as const } },
+          axisLabel: { color: 'var(--color-slate)', fontSize: 12 },
+          splitLine: { lineStyle: { color: 'var(--color-slate-bg)', type: 'dashed' as const } },
           axisLine: { show: false },
           axisTick: { show: false },
         },
@@ -260,8 +260,8 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
           smooth: true,
           symbol: 'circle',
           symbolSize: 6,
-          lineStyle: { color: '#0284c7', width: 2.5 },
-          itemStyle: { color: '#0284c7', borderWidth: 2, borderColor: '#fff' },
+          lineStyle: { color: 'var(--color-brand)', width: 2.5 },
+          itemStyle: { color: 'var(--color-brand)', borderWidth: 2, borderColor: '#fff' },
           areaStyle: {
             color: {
               type: 'linear' as const,
@@ -287,7 +287,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
                 {d.columns.map(col => (
                   <th key={col} style={{
                     textAlign: 'left', padding: '10px 14px',
-                    fontSize: 12, fontWeight: 700, color: '#64748b',
+                    fontSize: 12, fontWeight: 700, color: 'var(--color-slate)',
                     textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                   }}>
                     {col}
@@ -301,7 +301,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
                   {(row as unknown[]).map((cell, j) => (
                     <td key={j} style={{
                       padding: '10px 14px', fontSize: 14,
-                      color: j === 0 ? '#1e293b' : '#64748b',
+                      color: j === 0 ? '#1e293b' : 'var(--color-slate)',
                       fontWeight: j === 0 ? 500 : 400,
                     }}>
                       {String(cell ?? '—')}

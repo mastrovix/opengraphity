@@ -12,23 +12,23 @@ interface Team  { id: string; name: string }
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
 const fieldLabel: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8',
+  display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)',
   textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
 }
 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '10px 14px',
   border: '1.5px solid #e5e7eb', borderRadius: 8,
-  fontSize: 14, color: '#0f172a', outline: 'none',
+  fontSize: 14, color: 'var(--color-slate-dark)', outline: 'none',
   backgroundColor: '#fff', boxSizing: 'border-box',
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
 }
 
 const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: string }> = {
-  critical: { bg: '#fef2f2', border: '#ef4444', color: '#dc2626' },
-  high:     { bg: '#fff7ed', border: '#0284c7', color: '#0284c7' },
-  medium:   { bg: '#fefce8', border: '#eab308', color: '#b45309' },
-  low:      { bg: '#f0fdf4', border: '#22c55e', color: '#15803d' },
+  critical: { bg: '#fef2f2', border: 'var(--color-danger)', color: 'var(--color-trigger-sla-breach)' },
+  high:     { bg: '#fff7ed', border: 'var(--color-brand)', color: 'var(--color-brand)' },
+  medium:   { bg: '#fefce8', border: 'var(--color-warning)', color: '#b45309' },
+  low:      { bg: '#f0fdf4', border: 'var(--color-success)', color: '#15803d' },
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -93,17 +93,17 @@ export function CreateIncidentPage() {
         {/* Header */}
         <button
           onClick={() => navigate('/incidents')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#94a3b8', marginBottom: 16, padding: 0 }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#0284c7' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8' }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
         >
           ← Incidents
         </button>
 
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
           Nuovo Incident
         </h1>
-        <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 24px' }}>
+        <p style={{ fontSize: 14, color: 'var(--color-slate)', margin: '0 0 24px' }}>
           Compila i dettagli dell'incident da aprire
         </p>
 
@@ -113,7 +113,7 @@ export function CreateIncidentPage() {
           {/* TITOLO */}
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
-              Titolo <span style={{ color: '#dc2626' }}>*</span>
+              Titolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <input
               type="text"
@@ -122,7 +122,7 @@ export function CreateIncidentPage() {
               placeholder="Es. Database produzione non raggiungibile"
               style={inputBase}
               autoFocus
-              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = '#0284c7' }}
+              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
           </div>
@@ -130,7 +130,7 @@ export function CreateIncidentPage() {
           {/* SEVERITY */}
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
-              Severity <span style={{ color: '#dc2626' }}>*</span>
+              Severity <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {(['critical', 'high', 'medium', 'low'] as const).map(s => {
@@ -145,7 +145,7 @@ export function CreateIncidentPage() {
                       padding: '7px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
                       border: `1.5px solid ${sel ? c.border : '#e5e7eb'}`,
                       background: sel ? c.bg : '#f8fafc',
-                      color: sel ? c.color : '#64748b',
+                      color: sel ? c.color : 'var(--color-slate)',
                       fontWeight: sel ? 600 : 400,
                       transition: 'all 0.15s',
                     }}
@@ -161,7 +161,7 @@ export function CreateIncidentPage() {
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
               Descrizione{' '}
-              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#94a3b8' }}>(opzionale)</span>
+              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
             </label>
             <textarea
               value={description}
@@ -169,7 +169,7 @@ export function CreateIncidentPage() {
               placeholder="Descrivi cosa sta succedendo..."
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
-              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = '#0284c7' }}
+              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
           </div>
@@ -178,12 +178,12 @@ export function CreateIncidentPage() {
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
               CI Impattati{' '}
-              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#94a3b8' }}>(opzionale)</span>
+              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
             </label>
 
             {/* Search input with icon */}
             <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: '#94a3b8' }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
                 🔍
               </span>
               <input
@@ -192,7 +192,7 @@ export function CreateIncidentPage() {
                 onChange={e => setCiSearch(e.target.value)}
                 placeholder="Cerca per nome..."
                 style={{ ...inputBase, paddingLeft: 36 }}
-                onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = '#0284c7' }}
+                onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
                 onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
               />
 
@@ -207,8 +207,8 @@ export function CreateIncidentPage() {
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 500, color: '#0f172a', flex: 1 }}>{ci.name}</span>
-                      <span style={{ fontSize: 12, padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: '#64748b' }}>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
+                      <span style={{ fontSize: 12, padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: 'var(--color-slate)' }}>
                         {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
                       </span>
                     </div>
@@ -221,12 +221,12 @@ export function CreateIncidentPage() {
             {selectedCIs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                 {selectedCIs.map(ci => (
-                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#ecfeff', border: '1px solid #c7d2fe', color: '#0369a1', fontSize: 12 }}>
+                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: '1px solid #c7d2fe', color: 'var(--color-brand-hover)', fontSize: 12 }}>
                     {ci.name}
                     <button
                       type="button"
                       onClick={() => setSelectedCIs(p => p.filter(c => c.id !== ci.id))}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0369a1', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand-hover)', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
                     >
                       <X size={12} />
                     </button>
@@ -240,7 +240,7 @@ export function CreateIncidentPage() {
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
               Team{' '}
-              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#94a3b8' }}>(opzionale)</span>
+              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
             </label>
 
             {/* Tag team selezionato */}
@@ -262,7 +262,7 @@ export function CreateIncidentPage() {
             {/* Search input */}
             {!selectedTeam && (
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: '#94a3b8' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
                   🔍
                 </span>
                 <input
@@ -273,7 +273,7 @@ export function CreateIncidentPage() {
                   onBlur={() => setTimeout(() => setTeamDropdownOpen(false), 150)}
                   placeholder="Cerca team per nome..."
                   style={{ ...inputBase, paddingLeft: 36 }}
-                  onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = '#0284c7' }}
+                  onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
                   onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
                 />
 
@@ -288,8 +288,8 @@ export function CreateIncidentPage() {
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                       >
-                        <Users size={14} color="#94a3b8" />
-                        <span style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{t.name}</span>
+                        <Users size={14} color="var(--color-slate-light)" />
+                        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
                       </div>
                     ))}
                   </div>
@@ -303,9 +303,9 @@ export function CreateIncidentPage() {
             <button
               type="button"
               onClick={() => navigate('/incidents')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#64748b', padding: 0 }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#64748b' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#64748b' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)', padding: 0 }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
             >
               Annulla
             </button>
@@ -314,7 +314,7 @@ export function CreateIncidentPage() {
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
               style={{
-                background: '#0284c7', color: '#fff', border: 'none', borderRadius: 8,
+                background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8,
                 padding: '10px 24px', fontSize: 14, fontWeight: 600,
                 cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
                 opacity: canSubmit && !loading ? 1 : 0.5,

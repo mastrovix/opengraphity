@@ -25,13 +25,13 @@ export function CollapsibleCard({ title, count, defaultOpen = false, children }:
           borderBottom: open ? '1px solid #e5e7eb' : 'none',
         }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', display: 'flex', alignItems: 'center' }}>
           {title}
           {count !== undefined && <CountBadge count={count} />}
         </span>
         {open
-          ? <ChevronDown size={16} color="#94a3b8" />
-          : <ChevronRight size={16} color="#94a3b8" />}
+          ? <ChevronDown size={16} color="var(--color-slate-light)" />
+          : <ChevronRight size={16} color="var(--color-slate-light)" />}
       </div>
       {open && <div style={{ padding: '16px 20px' }}>{children}</div>}
     </div>

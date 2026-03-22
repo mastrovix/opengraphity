@@ -30,6 +30,59 @@
   --sidebar-collapsed: 56px;
   --topbar-height:     56px;
 
+  /* ── Semantic color aliases (used via tokens.ts + inline styles) ─── */
+  --color-brand:        var(--accent);
+  --color-brand-hover:  var(--accent-hover);
+  --color-brand-light:  var(--accent-light);
+  --color-slate:        var(--text-secondary);
+  --color-slate-dark:   var(--text-primary);
+  --color-slate-light:  var(--text-muted);
+  --color-slate-bg:     #f1f5f9;
+  --color-white:        var(--surface);
+  --color-border:       var(--border);
+
+  /* Brand alpha variants (for hex+opacity patterns in React Flow nodes) */
+  --color-brand-a08:    rgba(2, 132, 199, 0.08);
+  --color-brand-a13:    rgba(2, 132, 199, 0.13);
+  --color-brand-a20:    rgba(2, 132, 199, 0.20);
+  --color-brand-a53:    rgba(2, 132, 199, 0.53);
+
+  /* Semantic feedback */
+  --color-success:      #22c55e;
+  --color-warning:      #eab308;
+  --color-danger:       #ef4444;
+
+  /* Severity scales */
+  --color-severity-low-bg:         #f0fdf4;
+  --color-severity-low-text:       #15803d;
+  --color-severity-low-border:     #bbf7d0;
+  --color-severity-medium-bg:      #fefce8;
+  --color-severity-medium-text:    #a16207;
+  --color-severity-medium-border:  #fef08a;
+  --color-severity-high-bg:        #fff7ed;
+  --color-severity-high-text:      #c2410c;
+  --color-severity-high-border:    #fed7aa;
+  --color-severity-critical-bg:    #fef2f2;
+  --color-severity-critical-text:  #b91c1c;
+  --color-severity-critical-border:#fecaca;
+
+  /* Workflow trigger types */
+  --color-trigger-manual:    #0284c7;
+  --color-trigger-automatic: #059669;
+  --color-trigger-sla-breach:#DC2626;
+  --color-trigger-timer:     #D97706;
+
+  /* Typography */
+  --font-family:              'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-size-page-title:     24px;
+  --font-size-section-title:  18px;
+  --font-size-card-title:     15px;
+  --font-size-body:           14px;
+  --font-size-sidebar:        13px;
+  --font-size-table:          12px;
+  --font-size-label:          12px;
+  --font-size-small:          11px;
+
   /* ── shadcn variable overrides ─────────────────────── */
   --background-shadcn: var(--background);
   --foreground:        var(--text-primary);
@@ -120,8 +173,8 @@
 /* ── SortableFilterTable: font-size canonical source ───── */
 /* All td cells inherit 12px — children must NOT override it */
 .sft-td {
-  font-size: 12px !important;
-  color: #0f172a;
+  font-size: var(--font-size-table) !important;
+  color: var(--color-slate-dark);
 }
 
 /* ── Utility classes ───────────────────────────────────── */

@@ -16,10 +16,10 @@ interface Incident {
 }
 
 const SEVERITY_DOT: Record<string, string> = {
-  critical: '#dc2626',
-  high:     '#0284c7',
-  medium:   '#eab308',
-  low:      '#22c55e',
+  critical: 'var(--color-trigger-sla-breach)',
+  high:     'var(--color-brand)',
+  medium:   'var(--color-warning)',
+  low:      'var(--color-success)',
 }
 
 const CLOSED_STATUSES = new Set(['resolved', 'closed'])
@@ -56,11 +56,11 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
           height:       8,
           borderRadius: '50%',
           flexShrink:   0,
-          backgroundColor: SEVERITY_DOT[inc.severity] ?? '#64748b',
+          backgroundColor: SEVERITY_DOT[inc.severity] ?? 'var(--color-slate)',
           display:      'inline-block',
         }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {inc.title}
           </div>
         </div>
@@ -73,7 +73,7 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
     if (items.length === 0) return null
     return (
       <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
           {label}
         </div>
         <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
@@ -89,15 +89,15 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
         onClick={() => setOpen(p => !p)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? '1px solid #e5e7eb' : 'none' }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', display: 'flex', alignItems: 'center' }}>
           Incident <CountBadge count={incidents.length} />
         </span>
-        {open ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+        {open ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
       </div>
       {open && (
         <div style={{ padding: '0 20px 16px' }}>
           {incidents.length === 0
-            ? <p style={{ fontSize: 14, color: '#94a3b8', margin: '12px 0 0' }}>Nessun incident su questo CI.</p>
+            ? <p style={{ fontSize: 14, color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Nessun incident su questo CI.</p>
             : (
               <>
                 {renderGroup('In corso', open_incidents)}

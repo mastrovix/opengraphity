@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
+import { colors } from '@/lib/tokens'
 
 export interface ColumnDef<T> {
   key:           keyof T
@@ -25,7 +26,7 @@ interface Props<T> {
 
 const thStyle: React.CSSProperties = {
   background:    '#f9fafb',
-  borderBottom:  '2px solid #e5e7eb',
+  borderBottom:  `2px solid ${colors.border}`,
   padding:       '8px 12px 6px',
   verticalAlign: 'top',
   textAlign:     'left',
@@ -38,11 +39,11 @@ const filterInputBase: React.CSSProperties = {
   height:      28,
   fontSize:    11,
   width:       '100%',
-  border:      '1px solid #e5e7eb',
+  border:      `1px solid ${colors.border}`,
   borderRadius: 4,
   padding:     '2px 6px',
-  background:  'white',
-  color:       '#0f172a',
+  background:  colors.white,
+  color:       colors.slateDark,
   outline:     'none',
   boxSizing:   'border-box',
 }
@@ -104,7 +105,7 @@ export function SortableFilterTable<T extends object>({
       })
 
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <colgroup>
           {columns.map((col) => (
@@ -128,7 +129,7 @@ export function SortableFilterTable<T extends object>({
                       fontWeight:    500,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
-                      color:         isActive ? '#0284c7' : '#94a3b8',
+                      color:         isActive ? colors.brand : colors.slateLight,
                       marginBottom:  col.filterable ? 4 : 0,
                       cursor:        col.sortable ? 'pointer' : 'default',
                     }}
@@ -136,7 +137,7 @@ export function SortableFilterTable<T extends object>({
                   >
                     {col.label}
                     {col.sortable && (
-                      <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? '#0284c7' : '#94a3b8', display: 'flex' }}>
+                      <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? colors.brand : colors.slateLight, display: 'flex' }}>
                         {isActive && sortDir === 'asc'
                           ? <ChevronUp  size={12} />
                           : <ChevronDown size={12} />
@@ -189,7 +190,7 @@ export function SortableFilterTable<T extends object>({
             <tr>
               <td colSpan={columns.length}>
                 {emptyComponent ?? (
-                  <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 20px', fontSize: 12 }}>
+                  <div style={{ textAlign: 'center', color: colors.slateLight, padding: '40px 20px', fontSize: 12 }}>
                     {emptyMessage}
                   </div>
                 )}
@@ -205,14 +206,14 @@ export function SortableFilterTable<T extends object>({
                   style={{
                     borderBottom:    '1px solid #f1f3f9',
                     cursor:          onRowClick ? 'pointer' : 'default',
-                    backgroundColor: 'white',
+                    backgroundColor: colors.white,
                     transition:      'background 100ms',
                   }}
                   onMouseEnter={(e) => {
                     if (onRowClick) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f5f7ff'
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'white'
+                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = colors.white
                   }}
                 >
                   {columns.map((col) => (

@@ -122,18 +122,6 @@ function formatDuration(ms: number): string {
   return `${Math.floor(ms / 86_400_000)} giorni`
 }
 
-// ── Step colours for timeline dot ─────────────────────────────────────────────
-
-const STEP_DOT: Record<string, string> = {
-  new:         '#94a3b8',
-  assigned:    '#3b82f6',
-  in_progress: '#7c3aed',
-  pending:     '#d97706',
-  escalated:   '#dc2626',
-  resolved:    '#059669',
-  closed:      '#94a3b8',
-}
-
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
@@ -191,8 +179,8 @@ function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProp
     border:       '1px solid transparent',
     transition:   'opacity 0.15s',
   }
-  if (toStep === 'resolved')  return { ...base, backgroundColor: '#059669', color: '#fff', borderColor: '#059669' }
-  if (toStep === 'escalated') return { ...base, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626' }
+  if (toStep === 'resolved')  return { ...base, backgroundColor: 'var(--color-trigger-automatic)', color: '#fff', borderColor: 'var(--color-trigger-automatic)' }
+  if (toStep === 'escalated') return { ...base, backgroundColor: 'var(--color-trigger-sla-breach)', color: '#fff', borderColor: 'var(--color-trigger-sla-breach)' }
   if (toStep === 'closed')    return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
 }
@@ -455,9 +443,9 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Descrizione</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
               </div>
-              {descOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {descOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -476,9 +464,9 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDetailsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: detailsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Dettagli</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Dettagli</span>
               </div>
-              {detailsOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              {detailsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {detailsOpen && (
             <div style={{ padding: '16px 20px 20px' }}>
@@ -487,7 +475,7 @@ export function IncidentDetailPage() {
                 <SeverityBadge value={incident.severity} />
               </DetailRow>
               <DetailRow label="Step workflow">
-                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfeff', color: '#0284c7', fontSize: 12, fontWeight: 600, textTransform: 'capitalize' }}>
+                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 12, fontWeight: 600, textTransform: 'capitalize' }}>
                   {incident.workflowInstance?.currentStep.replace(/_/g, ' ') ?? 'N/D'}
                 </span>
               </DetailRow>
@@ -622,7 +610,7 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCiOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>CI Impattati</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
                 <CountBadge count={incident.affectedCIs.length} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -632,7 +620,7 @@ export function IncidentDetailPage() {
                 >
                   {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
                 </button>
-                {ciOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+                {ciOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
               </div>
             </div>
             {ciOpen && (
@@ -710,10 +698,10 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Commenti</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Commenti</span>
                 <CountBadge count={incident.comments.length} />
               </div>
-              {commentsOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              {commentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {commentsOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -727,7 +715,7 @@ export function IncidentDetailPage() {
                     {incident.comments.slice().reverse().map((c, i) => (
                       <div key={c.id}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#ecfeff', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'var(--color-brand-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                             {c.author ? c.author.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
                           </div>
                           <div style={{ flex: 1 }}>
@@ -773,9 +761,9 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setTimelineOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Timeline workflow</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline workflow</span>
               </div>
-              {timelineOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
+              {timelineOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {timelineOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -788,16 +776,16 @@ export function IncidentDetailPage() {
                       return (
                       <div key={exec.id} style={{ display: 'flex', gap: 12, paddingBottom: idx < historyDesc.length - 1 ? 16 : 0, position: 'relative' }}>
                         {idx < historyDesc.length - 1 && (
-                          <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: '#64748b', opacity: 0.3 }} />
+                          <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: 'var(--color-slate)', opacity: 0.3 }} />
                         )}
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? '#0284c7' : '#64748b', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
+                        <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? 'var(--color-brand)' : 'var(--color-slate)', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{exec.stepName.replace(/_/g, ' ')}</div>
-                          <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
+                          <div style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'flex', gap: 6 }}>
                             <span>{timeAgo(exec.enteredAt)}</span>
                             {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
                           </div>
-                          {exec.notes && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
+                          {exec.notes && <div style={{ fontSize: 12, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
                         </div>
                       </div>
                       )
@@ -909,7 +897,7 @@ export function IncidentDetailPage() {
               autoFocus
             />
             {notesError && (
-              <p style={{ fontSize: 12, color: '#dc2626', margin: '6px 0 0 0' }}>{notesError}</p>
+              <p style={{ fontSize: 12, color: 'var(--color-trigger-sla-breach)', margin: '6px 0 0 0' }}>{notesError}</p>
             )}
           </>
         )}

@@ -42,7 +42,7 @@ function Breadcrumb() {
   const parts = pathname.split('/').filter(Boolean)
 
   if (parts.length === 0) {
-    return <span style={{ color: '#0f172a', fontWeight: 600, fontSize: 14 }}>Dashboard</span>
+    return <span style={{ color: 'var(--color-slate-dark)', fontWeight: 600, fontSize: 14 }}>Dashboard</span>
   }
 
   return (
@@ -55,13 +55,13 @@ function Breadcrumb() {
           <span key={path} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {i > 0 && <span style={{ color: '#c8cfe0' }}>/</span>}
             {isLast ? (
-              <span style={{ color: '#0f172a', fontWeight: 600 }}>{label}</span>
+              <span style={{ color: 'var(--color-slate-dark)', fontWeight: 600 }}>{label}</span>
             ) : (
               <Link
                 to={path}
-                style={{ color: '#94a3b8', textDecoration: 'none' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#0f172a' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#94a3b8' }}
+                style={{ color: 'var(--color-slate-light)', textDecoration: 'none' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
               >
                 {label}
               </Link>
@@ -109,7 +109,7 @@ export function Topbar() {
             borderRadius:    6,
             border:          'none',
             backgroundColor: 'transparent',
-            color:           '#94a3b8',
+            color:           'var(--color-slate-light)',
             cursor:          'pointer',
           }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
@@ -125,7 +125,7 @@ export function Topbar() {
                 width:           6,
                 height:          6,
                 borderRadius:    '50%',
-                backgroundColor: '#dc2626',
+                backgroundColor: 'var(--color-trigger-sla-breach)',
               }}
             />
           )}
@@ -155,7 +155,7 @@ export function Topbar() {
                 width:           32,
                 height:          32,
                 borderRadius:    '50%',
-                backgroundColor: '#0284c7',
+                backgroundColor: 'var(--color-brand)',
                 color:           '#fff',
                 fontSize:        11,
                 fontWeight:      700,
@@ -168,7 +168,7 @@ export function Topbar() {
             >
               AD
             </div>
-            <span style={{ fontSize: 14, color: '#0f172a', fontWeight: 500 }}>
+            <span style={{ fontSize: 14, color: 'var(--color-slate-dark)', fontWeight: 500 }}>
               admin@demo
             </span>
           </DropdownMenuTrigger>
@@ -179,7 +179,7 @@ export function Topbar() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={logout}
-              style={{ fontSize: 14, color: '#dc2626' }}
+              style={{ fontSize: 14, color: 'var(--color-trigger-sla-breach)' }}
             >
               Logout
             </DropdownMenuItem>
