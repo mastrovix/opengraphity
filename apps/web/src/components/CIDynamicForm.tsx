@@ -10,7 +10,7 @@ const inputBase: React.CSSProperties = {
   border:          '1px solid #e5e7eb',
   borderRadius:    6,
   fontSize:        14,
-  color:           '#0f1629',
+  color:           '#0f172a',
   outline:         'none',
   backgroundColor: '#ffffff',
   boxSizing:       'border-box',
@@ -30,8 +30,8 @@ const selectBase: React.CSSProperties = {
 function focusHandlers(hasError: boolean) {
   return {
     onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = '#4f46e5'
-      e.currentTarget.style.boxShadow   = '0 0 0 3px #eef2ff'
+      e.currentTarget.style.borderColor = '#0284c7'
+      e.currentTarget.style.boxShadow   = '0 0 0 3px #ecfeff'
     },
     onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
       e.currentTarget.style.borderColor = hasError ? '#dc2626' : '#e5e7eb'
@@ -77,7 +77,7 @@ function FieldRenderer({
             onChange={e => onChange(e.target.checked)}
             style={{ width: 16, height: 16, cursor: 'pointer' }}
           />
-          <label htmlFor={field.name} style={{ fontSize: 14, color: '#374151', cursor: 'pointer' }}>
+          <label htmlFor={field.name} style={{ fontSize: 14, color: '#64748b', cursor: 'pointer' }}>
             {field.label}
           </label>
         </div>
@@ -256,7 +256,7 @@ export function CIDynamicForm({
                 display:      'block',
                 fontSize:     13,
                 fontWeight:   500,
-                color:        '#374151',
+                color:        '#64748b',
                 marginBottom: 6,
               }}>
                 {field.label}
@@ -292,7 +292,7 @@ export function CIDynamicForm({
             background:   '#ffffff',
             fontSize:     14,
             cursor:       'pointer',
-            color:        '#374151',
+            color:        '#64748b',
           }}
         >
           Annulla
@@ -304,7 +304,7 @@ export function CIDynamicForm({
             padding:      '9px 20px',
             border:       'none',
             borderRadius: 6,
-            background:   submitting || loading ? '#a5b4fc' : '#4f46e5',
+            background:   submitting || loading ? '#67e8f9' : '#0284c7',
             color:        '#ffffff',
             fontSize:     14,
             fontWeight:   500,

@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return this.props.fallback ?? (
         <div style={{ padding: 40, textAlign: 'center', color: '#dc2626' }}>
           <h2>Qualcosa è andato storto</h2>
-          <p style={{ color: '#8892a4', fontSize: 14 }}>
+          <p style={{ color: '#94a3b8', fontSize: 14 }}>
             {this.state.error?.message}
           </p>
           <button
@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
             style={{
               marginTop:    16,
               padding:      '8px 16px',
-              background:   '#4f46e5',
+              background:   '#0284c7',
               color:        '#fff',
               border:       'none',
               borderRadius: 6,

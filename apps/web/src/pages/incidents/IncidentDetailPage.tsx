@@ -125,13 +125,13 @@ function formatDuration(ms: number): string {
 // ── Step colours for timeline dot ─────────────────────────────────────────────
 
 const STEP_DOT: Record<string, string> = {
-  new:         '#8892a4',
+  new:         '#94a3b8',
   assigned:    '#3b82f6',
   in_progress: '#7c3aed',
   pending:     '#d97706',
   escalated:   '#dc2626',
   resolved:    '#059669',
-  closed:      '#8892a4',
+  closed:      '#94a3b8',
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -173,7 +173,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
       <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </span>
-      <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{children}</div>
+      <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{children}</div>
     </div>
   )
 }
@@ -370,11 +370,11 @@ export function IncidentDetailPage() {
 
   if (!incident) {
     return (
-      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 14 }}>
         Incident non trovato.{' '}
         <button
           onClick={() => navigate('/incidents')}
-          style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13 }}
+          style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}
         >
           Torna alla lista
         </button>
@@ -416,7 +416,7 @@ export function IncidentDetailPage() {
 
         {/* Row 2 — title + badges */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>
             {incident.title}
           </h1>
           <SeverityBadge value={incident.severity} />
@@ -424,7 +424,7 @@ export function IncidentDetailPage() {
         </div>
 
         {/* Row 3 — ID */}
-        <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+        <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--text-muted)' }}>
           {incident.id}
         </div>
       </div>
@@ -455,18 +455,18 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Descrizione</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Descrizione</span>
               </div>
-              {descOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              {descOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {descOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {incident.description ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
+                  <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
                     {incident.description}
                   </p>
                 ) : (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
                 )}
               </div>
             )}
@@ -476,9 +476,9 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDetailsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: detailsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Dettagli</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Dettagli</span>
               </div>
-              {detailsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              {detailsOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {detailsOpen && (
             <div style={{ padding: '16px 20px 20px' }}>
@@ -487,7 +487,7 @@ export function IncidentDetailPage() {
                 <SeverityBadge value={incident.severity} />
               </DetailRow>
               <DetailRow label="Step workflow">
-                <span style={{ fontWeight: 600 }}>
+                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfeff', color: '#0284c7', fontSize: 12, fontWeight: 600, textTransform: 'capitalize' }}>
                   {incident.workflowInstance?.currentStep.replace(/_/g, ' ') ?? 'N/D'}
                 </span>
               </DetailRow>
@@ -495,7 +495,7 @@ export function IncidentDetailPage() {
                 {incident.assignee ? (
                   <div>
                     <div style={{ fontWeight: 500 }}>{incident.assignee.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{incident.assignee.email}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{incident.assignee.email}</div>
                   </div>
                 ) : (
                   <span style={{ color: 'var(--text-muted)' }}>Non assegnato</span>
@@ -554,7 +554,7 @@ export function IncidentDetailPage() {
                     <select
                       value={selectedTeamId}
                       onChange={(e) => setSelectedTeamId(e.target.value)}
-                      style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-primary)', backgroundColor: 'var(--surface)', outline: 'none' }}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, color: 'var(--text-primary)', backgroundColor: 'var(--surface)', outline: 'none' }}
                     >
                       <option value="">Seleziona team…</option>
                       {teams.map((t) => (
@@ -574,7 +574,7 @@ export function IncidentDetailPage() {
                           void assignToTeam({ variables: { id: incident.id, teamId: selectedTeamId } })
                           setShowReassign(false)
                         }}
-                        style={{ flex: 1, padding: '7px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}
+                        style={{ flex: 1, padding: '7px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}
                       >
                         {assigningTeam ? 'Assegnazione…' : 'Assegna team'}
                       </button>
@@ -594,7 +594,7 @@ export function IncidentDetailPage() {
                   <select
                     value={selectedUserId}
                     onChange={(e) => setSelectedUserId(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-primary)', backgroundColor: 'var(--surface)', outline: 'none' }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, color: 'var(--text-primary)', backgroundColor: 'var(--surface)', outline: 'none' }}
                   >
                     <option value="">Seleziona utente…</option>
                     {teamUsers.map((u) => (
@@ -607,7 +607,7 @@ export function IncidentDetailPage() {
                       if (!selectedUserId) return
                       void assignToUser({ variables: { id: incident.id, userId: selectedUserId } })
                     }}
-                    style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
+                    style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
                   >
                     {assigningUser ? 'Assegnazione…' : 'Prendi in carico'}
                   </button>
@@ -622,7 +622,7 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCiOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>CI Impattati</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>CI Impattati</span>
                 <CountBadge count={incident.affectedCIs.length} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -632,7 +632,7 @@ export function IncidentDetailPage() {
                 >
                   {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
                 </button>
-                {ciOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+                {ciOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
               </div>
             </div>
             {ciOpen && (
@@ -646,7 +646,7 @@ export function IncidentDetailPage() {
                       onChange={e => setCiSearch(e.target.value)}
                       placeholder="Cerca CI per nome (min. 2 caratteri)..."
                       autoFocus
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, outline: 'none' }}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }}
                     />
                     {ciResults.length > 0 && (
                       <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
@@ -656,12 +656,12 @@ export function IncidentDetailPage() {
                             <div
                               key={ci.id}
                               onClick={() => void addCI({ variables: { incidentId: incident.id, ciId: ci.id } })}
-                              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }}
+                              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }}
                               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }}
                               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                             >
                               <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{ci.type} · {ci.environment}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{ci.type} · {ci.environment}</span>
                             </div>
                           ))
                         }
@@ -670,7 +670,7 @@ export function IncidentDetailPage() {
                   </div>
                 )}
                 {incident.affectedCIs.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
                 ) : (
                   <div>
                     {Object.entries(groupByType(incident.affectedCIs)).map(([type, cis]) => (
@@ -680,7 +680,7 @@ export function IncidentDetailPage() {
                             <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
                               <button
                                 onClick={() => navigate(ciPath(ci))}
-                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
                               >
                                 {ci.name}
                               </button>
@@ -710,16 +710,16 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Commenti</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Commenti</span>
                 <CountBadge count={incident.comments.length} />
               </div>
-              {commentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              {commentsOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {commentsOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {/* Lista commenti */}
                 {incident.comments.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
                     Nessun commento ancora.
                   </p>
                 ) : (
@@ -727,17 +727,17 @@ export function IncidentDetailPage() {
                     {incident.comments.slice().reverse().map((c, i) => (
                       <div key={c.id}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#eef2ff', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#ecfeff', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                             {c.author ? c.author.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
                           </div>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
                                 {c.author?.name ?? 'Utente sconosciuto'}
                               </span>
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                             </div>
-                            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{c.text}</p>
+                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{c.text}</p>
                           </div>
                         </div>
                         {i < incident.comments.length - 1 && (
@@ -755,7 +755,7 @@ export function IncidentDetailPage() {
                     <button
                       disabled={!commentText.trim() || addingComment}
                       onClick={() => void addComment({ variables: { id: incident.id, text: commentText.trim() } })}
-                      style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
+                      style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
                     >
                       {addingComment ? 'Invio…' : 'Invia commento'}
                     </button>
@@ -773,36 +773,35 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setTimelineOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Timeline workflow</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Timeline workflow</span>
               </div>
-              {timelineOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              {timelineOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {timelineOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {historyDesc.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
                 ) : (
-                  <div style={{ position: 'relative' }}>
-                    <div style={{ position: 'absolute', left: 2, top: 8, bottom: 8, width: 2, backgroundColor: 'var(--border)' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      {historyDesc.map((exec) => (
-                        <div key={exec.id} style={{ display: 'flex', gap: 12, paddingLeft: 0 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: STEP_DOT[exec.stepName] ?? '#8892a4', flexShrink: 0, marginTop: 4, position: 'relative', zIndex: 1 }} />
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                              {exec.stepName.replace(/_/g, ' ')}
-                            </div>
-                            {exec.notes && (
-                              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 1 }}>{exec.notes}</div>
-                            )}
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 6 }}>
-                              <span>{timeAgo(exec.enteredAt)}</span>
-                              {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
-                            </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {historyDesc.map((exec, idx) => {
+                      const isCurrent = idx === 0
+                      return (
+                      <div key={exec.id} style={{ display: 'flex', gap: 12, paddingBottom: idx < historyDesc.length - 1 ? 16 : 0, position: 'relative' }}>
+                        {idx < historyDesc.length - 1 && (
+                          <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: '#64748b', opacity: 0.3 }} />
+                        )}
+                        <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? '#0284c7' : '#64748b', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{exec.stepName.replace(/_/g, ' ')}</div>
+                          <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 6 }}>
+                            <span>{timeAgo(exec.enteredAt)}</span>
+                            {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
                           </div>
+                          {exec.notes && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -830,7 +829,7 @@ export function IncidentDetailPage() {
                 padding: '8px 16px', borderRadius: 8,
                 border: '1px solid var(--border)',
                 background: 'transparent', cursor: 'pointer',
-                fontSize: 13, fontWeight: 500,
+                fontSize: 14, fontWeight: 500,
               }}
             >
               Annulla
@@ -869,7 +868,7 @@ export function IncidentDetailPage() {
               style={{
                 padding: '8px 16px', borderRadius: 8,
                 border: 'none', cursor: 'pointer',
-                fontSize: 13, fontWeight: 500,
+                fontSize: 14, fontWeight: 500,
                 backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)',
                 color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)',
               }}
@@ -881,7 +880,7 @@ export function IncidentDetailPage() {
       >
         {pendingTransition && (
           <>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
+            <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
               {pendingTransition.inputField === 'rootCause'
                 ? 'Descrivi la causa radice prima di risolvere (minimo 10 caratteri).'
                 : 'Aggiungi una nota per questa transizione (minimo 10 caratteri).'}
@@ -902,9 +901,9 @@ export function IncidentDetailPage() {
                 padding: '10px 12px',
                 borderRadius: 8,
                 border: '1px solid var(--border)',
-                fontSize: 13,
+                fontSize: 14,
                 lineHeight: 1.6,
-                fontFamily: 'inherit',
+                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
                 outline: 'none',
               }}
               autoFocus

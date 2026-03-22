@@ -65,9 +65,9 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     textDecoration:  'none',
     fontWeight:      isActive ? 600 : 400,
     fontSize:        13,
-    color:           isActive ? '#4f46e5' : '#4a5468',
-    backgroundColor: isActive ? '#eef2ff' : 'transparent',
-    borderLeft:      isActive ? '2px solid #4f46e5' : '2px solid transparent',
+    color:           isActive ? '#0284c7' : '#64748b',
+    backgroundColor: isActive ? 'rgba(2,132,199,0.12)' : 'transparent',
+    borderLeft:      isActive ? '2px solid #0284c7' : '2px solid transparent',
     transition:      'background 150ms, color 150ms',
     cursor:          'pointer',
     boxSizing:       'border-box' as const,
@@ -80,7 +80,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     padding:        '5px 8px',
     borderRadius:   4,
     fontSize:       12,
-    color:          isActive ? '#4f46e5' : '#6b7280',
+    color:          isActive ? '#0284c7' : '#64748b',
     fontWeight:     isActive ? 600 : 400,
     textDecoration: 'none',
     cursor:         'pointer',
@@ -122,27 +122,10 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           flexShrink:      0,
         }}
       >
-        <div
-          style={{
-            width:           32,
-            height:          32,
-            borderRadius:    8,
-            backgroundColor: '#4f46e5',
-            display:         'flex',
-            alignItems:      'center',
-            justifyContent:  'center',
-            flexShrink:      0,
-          }}
-        >
-          <span style={{ color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: '-0.03em' }}>
-            OG
-          </span>
-        </div>
-        {!collapsed && (
-          <span style={{ fontFamily: 'Arial', fontSize: 18, letterSpacing: '0.02em' }}>
-            <span style={{ fontWeight: 400 }}>OPEN</span>
-            <span style={{ fontWeight: 700 }}>GRAFO</span>
-          </span>
+        {collapsed ? (
+          <img src="/opengrafo-icon.svg" alt="OPENGRAFO" style={{ width: 32, height: 32 }} />
+        ) : (
+          <img src="/opengrafo-logo.svg" alt="OPENGRAFO" style={{ height: 36, width: 'auto' }} />
         )}
       </div>
 
@@ -157,7 +140,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {!collapsed && (
           <p
             style={{
-              color:         '#8892a4',
+              color:         '#94a3b8',
               fontSize:      10,
               fontWeight:    600,
               letterSpacing: '0.08em',
@@ -181,17 +164,17 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseEnter={(e) => {
                 if (!isActive) {
                   (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                  ;(e.currentTarget as HTMLElement).style.color = '#0f1629'
+                  ;(e.currentTarget as HTMLElement).style.color = '#0f172a'
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                  ;(e.currentTarget as HTMLElement).style.color = '#4a5468'
+                  ;(e.currentTarget as HTMLElement).style.color = '#64748b'
                 }
               }}
             >
-              <Icon size={16} style={{ flexShrink: 0, color: isActive ? '#4f46e5' : 'inherit' }} />
+              <Icon size={16} style={{ flexShrink: 0, color: isActive ? '#0284c7' : 'inherit' }} />
               {!collapsed && label}
             </NavLink>
           )
@@ -206,17 +189,17 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             onMouseEnter={(e) => {
               if (!cmdbActive) {
                 (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                ;(e.currentTarget as HTMLElement).style.color = '#0f1629'
+                ;(e.currentTarget as HTMLElement).style.color = '#0f172a'
               }
             }}
             onMouseLeave={(e) => {
               if (!cmdbActive) {
                 (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.color = '#4a5468'
+                ;(e.currentTarget as HTMLElement).style.color = '#64748b'
               }
             }}
           >
-            <Server size={16} style={{ flexShrink: 0, color: cmdbActive ? '#4f46e5' : 'inherit' }} />
+            <Server size={16} style={{ flexShrink: 0, color: cmdbActive ? '#0284c7' : 'inherit' }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -230,8 +213,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 padding:         '7px 10px',
                 borderRadius:    6,
                 cursor:          'pointer',
-                backgroundColor: cmdbActive ? '#eef2ff' : 'transparent',
-                borderLeft:      cmdbActive ? '2px solid #4f46e5' : '2px solid transparent',
+                backgroundColor: cmdbActive ? 'rgba(2,132,199,0.12)' : 'transparent',
+                borderLeft:      cmdbActive ? '2px solid #0284c7' : '2px solid transparent',
                 transition:      'background 150ms',
                 margin:          '1px 0',
               }}
@@ -239,14 +222,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { if (!cmdbActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Server size={16} style={{ flexShrink: 0, color: cmdbActive ? '#4f46e5' : '#4a5468' }} />
-                <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? '#4f46e5' : '#4a5468' }}>
+                <Server size={16} style={{ flexShrink: 0, color: cmdbActive ? '#0284c7' : '#64748b' }} />
+                <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? '#0284c7' : '#64748b' }}>
                   CMDB
                 </span>
               </div>
               {cmdbOpen
-                ? <ChevronDown size={12} color="#8892a4" />
-                : <ChevronRight size={12} color="#8892a4" />}
+                ? <ChevronDown size={12} color="#94a3b8" />
+                : <ChevronRight size={12} color="#94a3b8" />}
             </div>
 
             {/* Sub-items */}
@@ -261,7 +244,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   return (
                     <NavLink key={ct.name} to={to} style={() => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CIIcon icon={ct.icon} size={12} color={isActive ? '#4f46e5' : '#6b7280'} />
+                        <CIIcon icon={ct.icon} size={12} color={isActive ? '#0284c7' : '#64748b'} />
                         {ct.label}
                       </span>
                     </NavLink>
@@ -293,12 +276,12 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Users size={16} style={{ flexShrink: 0, color: '#4a5468' }} />
-                <span style={{ fontSize: 13, fontWeight: 400, color: '#4a5468' }}>Teams & Users</span>
+                <Users size={16} style={{ flexShrink: 0, color: '#64748b' }} />
+                <span style={{ fontSize: 13, fontWeight: 400, color: '#64748b' }}>Teams & Users</span>
               </div>
               {teamsOpen
-                ? <ChevronDown size={12} color="#8892a4" />
-                : <ChevronRight size={12} color="#8892a4" />}
+                ? <ChevronDown size={12} color="#94a3b8" />
+                : <ChevronRight size={12} color="#94a3b8" />}
             </div>
 
             {teamsOpen && (
@@ -325,8 +308,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 padding:         '7px 10px',
                 borderRadius:    6,
                 cursor:          'pointer',
-                backgroundColor: settingsActive ? '#eef2ff' : 'transparent',
-                borderLeft:      settingsActive ? '2px solid #4f46e5' : '2px solid transparent',
+                backgroundColor: settingsActive ? 'rgba(2,132,199,0.12)' : 'transparent',
+                borderLeft:      settingsActive ? '2px solid #0284c7' : '2px solid transparent',
                 transition:      'background 150ms',
                 margin:          '1px 0',
               }}
@@ -334,14 +317,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? '#4f46e5' : '#4a5468' }} />
-                <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? '#4f46e5' : '#4a5468' }}>
+                <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? '#0284c7' : '#64748b' }} />
+                <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? '#0284c7' : '#64748b' }}>
                   Settings
                 </span>
               </div>
               {settingsOpen
-                ? <ChevronDown size={12} color="#8892a4" />
-                : <ChevronRight size={12} color="#8892a4" />}
+                ? <ChevronDown size={12} color="#94a3b8" />
+                : <ChevronRight size={12} color="#94a3b8" />}
             </div>
 
             {settingsOpen && (
@@ -355,7 +338,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {isAdmin && (
                   <NavLink to="/settings/ci-types" style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Layers size={12} color={pathname === '/settings/ci-types' ? '#4f46e5' : '#6b7280'} />
+                      <Layers size={12} color={pathname === '/settings/ci-types' ? '#0284c7' : '#64748b'} />
                       Tipi CI
                     </span>
                   </NavLink>
@@ -371,17 +354,17 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             onMouseEnter={(e) => {
               if (!settingsActive) {
                 (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                ;(e.currentTarget as HTMLElement).style.color = '#0f1629'
+                ;(e.currentTarget as HTMLElement).style.color = '#0f172a'
               }
             }}
             onMouseLeave={(e) => {
               if (!settingsActive) {
                 (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.color = '#4a5468'
+                ;(e.currentTarget as HTMLElement).style.color = '#64748b'
               }
             }}
           >
-            <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? '#4f46e5' : 'inherit' }} />
+            <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? '#0284c7' : 'inherit' }} />
           </NavLink>
         )}
 
@@ -389,7 +372,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {isAdmin && (
           <>
             {!collapsed && (
-              <p style={{ color: '#8892a4', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
+              <p style={{ color: '#94a3b8', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
                 ADMIN
               </p>
             )}
@@ -404,17 +387,17 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   onMouseEnter={(e) => {
                     if (!isActive) {
                       (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                      ;(e.currentTarget as HTMLElement).style.color = '#0f1629'
+                      ;(e.currentTarget as HTMLElement).style.color = '#0f172a'
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isActive) {
                       (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                      ;(e.currentTarget as HTMLElement).style.color = '#4a5468'
+                      ;(e.currentTarget as HTMLElement).style.color = '#64748b'
                     }
                   }}
                 >
-                  <Icon size={16} style={{ flexShrink: 0, color: isActive ? '#4f46e5' : 'inherit' }} />
+                  <Icon size={16} style={{ flexShrink: 0, color: isActive ? '#0284c7' : 'inherit' }} />
                   {!collapsed && label}
                 </NavLink>
               )
@@ -435,7 +418,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           background:      'none',
           border:          'none',
           borderTop:       '1px solid #e5e7eb',
-          color:           '#8892a4',
+          color:           '#94a3b8',
           cursor:          'pointer',
           width:           '100%',
           flexShrink:      0,

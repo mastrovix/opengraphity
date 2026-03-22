@@ -14,7 +14,7 @@ const inputBase: React.CSSProperties = {
   border:          '1px solid #e2e6f0',
   borderRadius:    6,
   fontSize:        14,
-  color:           '#0f1629',
+  color:           '#0f172a',
   outline:         'none',
   backgroundColor: '#ffffff',
   boxSizing:       'border-box',
@@ -34,8 +34,8 @@ const selectBase: React.CSSProperties = {
 function focusHandlers(hasError: boolean) {
   return {
     onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = '#4f46e5'
-      e.currentTarget.style.boxShadow   = '0 0 0 3px #eef2ff'
+      e.currentTarget.style.borderColor = '#0284c7'
+      e.currentTarget.style.boxShadow   = '0 0 0 3px #ecfeff'
     },
     onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       e.currentTarget.style.borderColor = hasError ? '#dc2626' : '#e2e6f0'
@@ -48,7 +48,7 @@ const PRIORITY_DOT: Record<string, string> = {
   critical: '#dc2626',
   high:     '#d97706',
   medium:   '#0284c7',
-  low:      '#8892a4',
+  low:      '#94a3b8',
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -91,9 +91,9 @@ export function CreateServiceRequestPage() {
       {/* Back link */}
       <button
         onClick={() => navigate('/requests')}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#8892a4', marginBottom: 32, padding: 0 }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#4f46e5' }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#8892a4' }}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#94a3b8', marginBottom: 32, padding: 0 }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#0284c7' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#94a3b8' }}
       >
         <ArrowLeft size={14} />
         Back to service requests
@@ -101,10 +101,10 @@ export function CreateServiceRequestPage() {
 
       {/* Page header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f1629', letterSpacing: '-0.02em', margin: 0 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>
           New Service Request
         </h1>
-        <p style={{ fontSize: 14, color: '#8892a4', marginTop: 6, marginBottom: 0 }}>
+        <p style={{ fontSize: 14, color: '#94a3b8', marginTop: 6, marginBottom: 0 }}>
           Submit a request for IT services or support
         </p>
       </div>
@@ -115,7 +115,7 @@ export function CreateServiceRequestPage() {
 
           {/* Title */}
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
+            <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 6, letterSpacing: '0.01em' }}>
               Title <span style={{ color: '#dc2626' }}>*</span>
             </label>
             <input
@@ -136,11 +136,11 @@ export function CreateServiceRequestPage() {
 
             {/* Priority */}
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 6, letterSpacing: '0.01em' }}>
                 Priority <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: PRIORITY_DOT[priority] ?? '#8892a4', pointerEvents: 'none', zIndex: 1 }} />
+                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: PRIORITY_DOT[priority] ?? '#94a3b8', pointerEvents: 'none', zIndex: 1 }} />
                 <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
                   <option value="critical">Critical</option>
                   <option value="high">High</option>
@@ -152,7 +152,7 @@ export function CreateServiceRequestPage() {
 
             {/* Due date */}
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 6, letterSpacing: '0.01em' }}>
                 Due Date
               </label>
               <input
@@ -168,7 +168,7 @@ export function CreateServiceRequestPage() {
 
           {/* Description */}
           <div style={{ marginBottom: 0 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5468', marginBottom: 6, letterSpacing: '0.01em' }}>
+            <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 6, letterSpacing: '0.01em' }}>
               Description
             </label>
             <textarea
@@ -186,7 +186,7 @@ export function CreateServiceRequestPage() {
             <button
               type="button"
               onClick={() => navigate('/requests')}
-              style={{ padding: '8px 20px', border: '1px solid #e2e6f0', backgroundColor: '#ffffff', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', color: '#4a5468' }}
+              style={{ padding: '8px 20px', border: '1px solid #e2e6f0', backgroundColor: '#ffffff', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', color: '#64748b' }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#ffffff' }}
             >
@@ -195,9 +195,9 @@ export function CreateServiceRequestPage() {
             <button
               type="submit"
               disabled={loading}
-              style={{ padding: '8px 20px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}
-              onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = '#4338ca' }}
-              onMouseLeave={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = '#4f46e5' }}
+              style={{ padding: '8px 20px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}
+              onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = '#0369a1' }}
+              onMouseLeave={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = '#0284c7' }}
             >
               {loading ? 'Creating…' : 'Create Request'}
             </button>

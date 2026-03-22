@@ -23,7 +23,7 @@ const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
 function RoleBadge({ role }: { role: string }) {
   const s = ROLE_STYLES[role] ?? { bg: '#f1f5f9', color: '#64748b' }
   return (
-    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {role}
     </span>
   )
@@ -66,9 +66,9 @@ export function UsersPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: 0 }}>Users</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: 0 }}>Users</h1>
           {total > 0 && (
-            <span style={{ fontSize: 13, color: '#8892a4' }}>{total} totali</span>
+            <span style={{ fontSize: 14, color: '#94a3b8' }}>{total} totali</span>
           )}
         </div>
       </div>
@@ -76,7 +76,7 @@ export function UsersPage() {
       {/* Table */}
       {!loading && users.length === 0 ? (
         <EmptyState
-          icon={<User size={32} color="#8892a4" />}
+          icon={<User size={32} color="#94a3b8" />}
           title="Nessun utente"
           description="Non ci sono utenti per questo tenant."
         />
@@ -91,7 +91,7 @@ export function UsersPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 13, color: '#4a5468' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 12, color: "#64748b" }}>
           <button
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}

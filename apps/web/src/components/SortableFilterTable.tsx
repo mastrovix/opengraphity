@@ -36,13 +36,13 @@ const thStyle: React.CSSProperties = {
 
 const filterInputBase: React.CSSProperties = {
   height:      28,
-  fontSize:    12,
+  fontSize:    11,
   width:       '100%',
   border:      '1px solid #e5e7eb',
   borderRadius: 4,
   padding:     '2px 6px',
   background:  'white',
-  color:       '#0f1629',
+  color:       '#0f172a',
   outline:     'none',
   boxSizing:   'border-box',
 }
@@ -125,10 +125,10 @@ export function SortableFilterTable<T extends object>({
                       alignItems:    'center',
                       gap:           4,
                       fontSize:      11,
-                      fontWeight:    600,
+                      fontWeight:    500,
                       textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      color:         isActive ? '#4f46e5' : '#8892a4',
+                      letterSpacing: '0.5px',
+                      color:         isActive ? '#0284c7' : '#94a3b8',
                       marginBottom:  col.filterable ? 4 : 0,
                       cursor:        col.sortable ? 'pointer' : 'default',
                     }}
@@ -136,7 +136,7 @@ export function SortableFilterTable<T extends object>({
                   >
                     {col.label}
                     {col.sortable && (
-                      <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? '#4f46e5' : '#8892a4', display: 'flex' }}>
+                      <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? '#0284c7' : '#94a3b8', display: 'flex' }}>
                         {isActive && sortDir === 'asc'
                           ? <ChevronUp  size={12} />
                           : <ChevronDown size={12} />
@@ -189,7 +189,7 @@ export function SortableFilterTable<T extends object>({
             <tr>
               <td colSpan={columns.length}>
                 {emptyComponent ?? (
-                  <div style={{ textAlign: 'center', color: '#8892a4', padding: '40px 20px', fontSize: 13 }}>
+                  <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 20px', fontSize: 12 }}>
                     {emptyMessage}
                   </div>
                 )}
@@ -218,11 +218,12 @@ export function SortableFilterTable<T extends object>({
                   {columns.map((col) => (
                     <td
                       key={String(col.key)}
+                      className="sft-td"
                       style={{ padding: '11px 12px', verticalAlign: 'middle' }}
                     >
                       {col.render
                         ? col.render(getVal(row, col.key), row)
-                        : <span style={{ fontSize: 13, color: '#0f1629' }}>{String(getVal(row, col.key) ?? '')}</span>
+                        : String(getVal(row, col.key) ?? '')
                       }
                     </td>
                   ))}

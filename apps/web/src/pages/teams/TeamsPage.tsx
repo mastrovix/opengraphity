@@ -15,14 +15,14 @@ interface Team {
 }
 
 function TypeBadge({ type }: { type: string | null }) {
-  if (!type) return <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>
+  if (!type) return <span style={{ color: '#94a3b8' }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
     owner:   { bg: '#eff6ff', color: '#2563eb' },
     support: { bg: '#f0fdf4', color: '#16a34a' },
   }
   const s = styles[type] ?? { bg: '#f1f5f9', color: '#64748b' }
   return (
-    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <span style={{ fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {type}
     </span>
   )
@@ -64,12 +64,12 @@ export function TeamsPage() {
     <div style={{ padding: '32px 40px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: 0 }}>Teams</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: 0 }}>Teams</h1>
         <button
           disabled
           style={{
             padding:         '8px 16px',
-            background:      '#4f46e5',
+            background:      '#0284c7',
             color:           '#fff',
             border:          'none',
             borderRadius:    6,
@@ -86,7 +86,7 @@ export function TeamsPage() {
       {/* Table */}
       {!loading && teams.length === 0 ? (
         <EmptyState
-          icon={<Users size={32} color="#8892a4" />}
+          icon={<Users size={32} color="#94a3b8" />}
           title="Nessun team"
           description="Non ci sono team per questo tenant."
         />
@@ -101,7 +101,7 @@ export function TeamsPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 13, color: '#4a5468' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 12, color: "#64748b" }}>
           <button
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}

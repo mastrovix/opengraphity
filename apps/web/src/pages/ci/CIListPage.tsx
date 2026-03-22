@@ -100,7 +100,7 @@ export function CIListPage() {
   ]
 
   if (metamodelLoading) {
-    return <div style={{ padding: 40, color: '#8892a4', fontSize: 14 }}>Caricamento metamodello…</div>
+    return <div style={{ padding: 40, color: '#94a3b8', fontSize: 14 }}>Caricamento metamodello…</div>
   }
   if (!ciType) {
     return <div style={{ padding: 40, color: '#dc2626', fontSize: 14 }}>Tipo CI "{typeName}" non trovato.</div>
@@ -111,14 +111,14 @@ export function CIListPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <CIIcon icon={ciType.icon} size={22} color={ciType.color} />
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: 0 }}>{ciType.label}</h1>
-          {total > 0 && <span style={{ fontSize: 13, color: '#8892a4' }}>{total} totali</span>}
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: 0 }}>{ciType.label}</h1>
+          {total > 0 && <span style={{ fontSize: 14, color: '#94a3b8' }}>{total} totali</span>}
         </div>
       </div>
 
       {!loading && items.length === 0 ? (
         <EmptyState
-          icon={<CIIcon icon={ciType.icon} size={32} color="#8892a4" />}
+          icon={<CIIcon icon={ciType.icon} size={32} color="#94a3b8" />}
           title={`Nessun ${ciType.label}`}
         />
       ) : (
@@ -132,7 +132,7 @@ export function CIListPage() {
       )}
 
       {totalPages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 13, color: '#4a5468' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 12, color: '#64748b' }}>
           <button
             onClick={() => setPage(p => Math.max(0, p - 1))}
             disabled={page === 0}

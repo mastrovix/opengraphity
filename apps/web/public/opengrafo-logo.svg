@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80">
+<line x1="25.7" y1="29.4" x2="18.8" y2="22.5" stroke="#64748b" stroke-width="1.8" opacity="0.4"/>
+  <line x1="54.7" y1="29.4" x2="61.4" y2="22.0" stroke="#0284c7" stroke-width="1.8" opacity="0.55"/>
+  <line x1="54.4" y1="51.0" x2="60.2" y2="57.4" stroke="#64748b" stroke-width="1.8" opacity="0.4"/>
+  <line x1="25.2" y1="51.4" x2="20.1" y2="57.0" stroke="#0284c7" stroke-width="1.8" opacity="0.4"/>
+  <line x1="40" y1="24" x2="40" y2="15" stroke="#0284c7" stroke-width="1.8" opacity="0.45"/>
+  <circle cx="13" cy="17" r="6"  fill="#64748b"/>
+  <circle cx="69" cy="14" r="9"  fill="#0284c7" opacity="0.75"/>
+  <circle cx="67" cy="65" r="9"  fill="#64748b" opacity="0.5"/>
+  <circle cx="14" cy="63" r="7"  fill="#0284c7" opacity="0.55"/>
+  <circle cx="40" cy="9"  r="5"  fill="#0284c7" opacity="0.5"/>
+  <circle cx="40" cy="40" r="16" fill="#0284c7"/>
+  <text x="92" y="48" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="28" letter-spacing="3">
+    <tspan font-weight="200" fill="#64748b">OPEN</tspan><tspan font-weight="600" fill="#0284c7">GRAFO</tspan>
+  </text>
+</svg>

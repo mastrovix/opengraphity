@@ -70,10 +70,10 @@ function RelationList({
               onClick={() => navigate(ciPath(rel.ci))}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {rel.ci.name}
                 </div>
-                <div style={{ fontSize: 12, color: '#8892a4', textTransform: 'capitalize' }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', textTransform: 'capitalize' }}>
                   {rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}
                 </div>
               </div>
@@ -132,7 +132,7 @@ export function CIDetailPage() {
   const ci = typeName && data ? data[typeName] : undefined
 
   if (metamodelLoading || loading) {
-    return <div style={{ padding: 40, color: '#8892a4', fontSize: 14 }}>Caricamento…</div>
+    return <div style={{ padding: 40, color: '#94a3b8', fontSize: 14 }}>Caricamento…</div>
   }
   if (!ciType) {
     return <div style={{ padding: 40, color: '#dc2626', fontSize: 14 }}>Tipo CI "{typeName}" non trovato.</div>
@@ -140,10 +140,10 @@ export function CIDetailPage() {
   if (!ci) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 12 }}>
-        <p style={{ color: '#8892a4', fontSize: 14 }}>CI non trovato.</p>
+        <p style={{ color: '#94a3b8', fontSize: 14 }}>CI non trovato.</p>
         <button
           onClick={() => navigate(`/ci/${typeName}`)}
-          style={{ color: '#4f46e5', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer' }}
+          style={{ color: '#0284c7', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer' }}
         >
           ← Torna a {ciType.label}
         </button>
@@ -155,14 +155,14 @@ export function CIDetailPage() {
     <div>
       <button
         onClick={() => navigate(`/ci/${typeName}`)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#8892a4', background: 'none', border: 'none', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 12 }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#94a3b8', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 12 }}
       >
         ← {ciType.label}
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
         <CIIcon icon={ciType.icon} size={24} color={ciType.color} />
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: 0 }}>{ci.name}</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: 0 }}>{ci.name}</h1>
         {ci.status && <StatusBadge value={ci.status} />}
       </div>
 
@@ -225,12 +225,12 @@ export function CIDetailPage() {
             defaultOpen={false}
           >
             {(ci.dependencies as CIRelation[]).length === 0 && (ci.dependents as CIRelation[]).length === 0 ? (
-              <p style={{ fontSize: 13, color: '#8892a4', margin: 0 }}>Nessuna relazione.</p>
+              <p style={{ fontSize: 14, color: '#94a3b8', margin: 0 }}>Nessuna relazione.</p>
             ) : (
               <>
                 {(ci.dependencies as CIRelation[]).length > 0 && (
                   <div style={{ marginBottom: (ci.dependents as CIRelation[]).length > 0 ? 16 : 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                       Dipendenze
                     </div>
                     <RelationList relations={ci.dependencies as CIRelation[]} navigate={navigate} />
@@ -243,7 +243,7 @@ export function CIDetailPage() {
 
                 {(ci.dependents as CIRelation[]).length > 0 && (
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                       Dipendenti
                     </div>
                     <RelationList relations={ci.dependents as CIRelation[]} navigate={navigate} />
@@ -260,7 +260,7 @@ export function CIDetailPage() {
         {/* Right column */}
         <div>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px' }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>
               Dettagli
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -269,15 +269,15 @@ export function CIDetailPage() {
               <DetailField label="Environment" value={ci.environment ?? null} />
               {ci.ownerGroup && (
                 <div>
-                  <div style={{ fontSize: 11, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Owner Group</div>
-                  <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#eef2ff', fontSize: 12, fontWeight: 500, color: '#4f46e5' }}>
+                  <div style={{ fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Owner Group</div>
+                  <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfeff', fontSize: 12, fontWeight: 500, color: '#0284c7' }}>
                     {(ci.ownerGroup as Team).name}
                   </span>
                 </div>
               )}
               {ci.supportGroup && (
                 <div>
-                  <div style={{ fontSize: 11, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Support Group</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Support Group</div>
                   <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 12, fontWeight: 500, color: '#059669' }}>
                     {(ci.supportGroup as Team).name}
                   </span>

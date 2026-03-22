@@ -13,7 +13,7 @@ export function CountBadge({ count }: CountBadgeProps) {
       padding:         '1px 7px',
       borderRadius:    100,
       backgroundColor: '#f1f3f8',
-      color:           '#8892a4',
+      color:           '#94a3b8',
       marginLeft:      6,
       verticalAlign:   'middle',
       lineHeight:      1,

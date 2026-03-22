@@ -131,7 +131,7 @@ function SortableItem({ widget, onRemove, onUpdateColSpan }: SortableItemProps) 
   return (
     <div ref={setNodeRef} style={style} {...attributes}>
       <div style={{
-        border: '2px dashed #818cf8',
+        border: '2px dashed #0284c7',
         borderRadius: 10,
         background: '#fff',
         overflow: 'hidden',
@@ -140,27 +140,27 @@ function SortableItem({ widget, onRemove, onUpdateColSpan }: SortableItemProps) 
         <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span
             {...listeners}
-            style={{ cursor: 'grab', fontSize: 16, color: '#9ca3af', userSelect: 'none', lineHeight: 1 }}
+            style={{ cursor: 'grab', fontSize: 14, color: '#94a3b8', userSelect: 'none', lineHeight: 1 }}
             title="Trascina per riordinare"
           >
             ⠿
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {widget.reportSection?.title ?? 'Widget'}
               {widget.isNew && (
-                <span style={{ marginLeft: 6, fontSize: 10, color: '#6366f1', fontWeight: 400 }}>nuovo</span>
+                <span style={{ marginLeft: 6, fontSize: 10, color: '#0284c7', fontWeight: 400 }}>nuovo</span>
               )}
             </div>
             {widget.reportTemplate?.name && (
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{widget.reportTemplate.name}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>{widget.reportTemplate.name}</div>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <select
               value={widget.colSpan}
               onChange={(e) => onUpdateColSpan(widget.tempId, Number(e.target.value))}
-              style={{ fontSize: 11, padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#374151', cursor: 'pointer' }}
+              style={{ fontSize: 12, padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', cursor: 'pointer' }}
             >
               {[2, 3, 4, 6, 12].map((s) => (
                 <option key={s} value={s}>{s} col</option>
@@ -240,23 +240,23 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 16 }}>Nuova dashboard</h2>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Nuova dashboard</h2>
 
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Nome</label>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Nome</label>
         <input
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Es. Operations Overview"
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, marginBottom: 12, boxSizing: 'border-box' }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 12, boxSizing: 'border-box' }}
           onKeyDown={(e) => e.key === 'Enter' && void handleCreate()}
         />
 
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Visibilità</label>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Visibilità</label>
         <select
           value={visibility}
           onChange={(e) => setVisibility(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, marginBottom: 12 }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 12 }}
         >
           <option value="private">Privata (solo io)</option>
           <option value="teams">Condivisa con team</option>
@@ -265,7 +265,7 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
 
         {visibility === 'teams' && (
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Team</label>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Team</label>
             <div style={{ border: '1px solid #d1d5db', borderRadius: 6, maxHeight: 120, overflowY: 'auto' }}>
               {teams.map((t) => (
                 <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
@@ -275,22 +275,22 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
                     onChange={() => toggleTeam(t.id)}
                     style={{ margin: 0 }}
                   />
-                  <span style={{ fontSize: 12, color: '#374151' }}>{t.name}</span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>{t.name}</span>
                 </label>
               ))}
-              {teams.length === 0 && <div style={{ padding: '8px 10px', fontSize: 12, color: '#9ca3af' }}>Nessun team</div>}
+              {teams.length === 0 && <div style={{ padding: '8px 10px', fontSize: 12, color: '#94a3b8' }}>Nessun team</div>}
             </div>
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button onClick={onClose} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={onClose} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', fontSize: 14, cursor: 'pointer' }}>
             Annulla
           </button>
           <button
             onClick={() => void handleCreate()}
             disabled={creating || !name.trim()}
-            style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: creating || !name.trim() ? '#a5b4fc' : '#6366f1', color: '#fff', fontSize: 13, fontWeight: 600, cursor: creating || !name.trim() ? 'not-allowed' : 'pointer' }}
+            style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: creating || !name.trim() ? '#67e8f9' : '#0284c7', color: '#fff', fontSize: 14, fontWeight: 600, cursor: creating || !name.trim() ? 'not-allowed' : 'pointer' }}
           >
             {creating ? 'Creazione…' : 'Crea'}
           </button>
@@ -378,20 +378,20 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 16 }}>Impostazioni dashboard</h2>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Impostazioni dashboard</h2>
 
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Nome</label>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Nome</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, marginBottom: 12, boxSizing: 'border-box' }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 12, boxSizing: 'border-box' }}
         />
 
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Visibilità</label>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Visibilità</label>
         <select
           value={visibility}
           onChange={(e) => setVisibility(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, marginBottom: 12 }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 12 }}
         >
           <option value="private">Privata (solo io)</option>
           <option value="teams">Condivisa con team</option>
@@ -400,7 +400,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
 
         {visibility === 'teams' && (
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Team</label>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Team</label>
             <div style={{ border: '1px solid #d1d5db', borderRadius: 6, maxHeight: 120, overflowY: 'auto' }}>
               {teams.map((t) => (
                 <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
@@ -410,7 +410,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
                     onChange={() => toggleTeam(t.id)}
                     style={{ margin: 0 }}
                   />
-                  <span style={{ fontSize: 12, color: '#374151' }}>{t.name}</span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>{t.name}</span>
                 </label>
               ))}
             </div>
@@ -420,7 +420,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
         {!dashboard.isDefault && (
           <button
             onClick={() => void handleSetDefault()}
-            style={{ width: '100%', padding: '7px 14px', borderRadius: 6, border: '1px solid #6366f1', background: '#eef2ff', color: '#6366f1', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: 8 }}
+            style={{ width: '100%', padding: '7px 14px', borderRadius: 6, border: '1px solid #0284c7', background: '#ecfeff', color: '#0284c7', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 8 }}
           >
             ★ Imposta come default
           </button>
@@ -431,7 +431,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
             {canDelete && !confirmDelete && (
               <button
                 onClick={() => setConfirmDelete(true)}
-                style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#ef4444', fontSize: 13, cursor: 'pointer' }}
+                style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#ef4444', fontSize: 14, cursor: 'pointer' }}
               >
                 Elimina
               </button>
@@ -440,20 +440,20 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
               <button
                 onClick={() => void handleDelete()}
                 disabled={deleting}
-                style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
               >
                 {deleting ? 'Eliminazione…' : 'Conferma eliminazione'}
               </button>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onClose} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 13, cursor: 'pointer' }}>
+            <button onClick={onClose} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', fontSize: 14, cursor: 'pointer' }}>
               Annulla
             </button>
             <button
               onClick={() => void handleSave()}
               disabled={saving}
-              style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: saving ? '#67e8f9' : '#0284c7', color: '#fff', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}
             >
               {saving ? 'Salvataggio…' : 'Salva'}
             </button>
@@ -633,7 +633,7 @@ export function DashboardPage() {
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', letterSpacing: '-0.01em', margin: 0 }}>Dashboard</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>Dashboard</h1>
 
         {/* Dashboard selector dropdown */}
         <div style={{ position: 'relative' }}>
@@ -642,12 +642,12 @@ export function DashboardPage() {
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '5px 10px', borderRadius: 6, border: '1px solid #d1d5db',
-              background: '#fff', color: '#374151', fontSize: 13, fontWeight: 500,
+              background: '#fff', color: '#64748b', fontSize: 14, fontWeight: 500,
               cursor: 'pointer',
             }}
           >
             <span>{activeDashName}</span>
-            <span style={{ fontSize: 10, color: '#9ca3af' }}>▼</span>
+            <span style={{ fontSize: 10, color: '#94a3b8' }}>▼</span>
           </button>
 
           {dropdownOpen && (
@@ -663,15 +663,15 @@ export function DashboardPage() {
                   style={{
                     width: '100%', padding: '8px 12px', textAlign: 'left',
                     background: d.id === activeDashboardId ? '#f0f9ff' : 'none',
-                    border: 'none', cursor: 'pointer', fontSize: 13,
-                    color: d.id === activeDashboardId ? '#0369a1' : '#374151',
+                    border: 'none', cursor: 'pointer', fontSize: 14,
+                    color: d.id === activeDashboardId ? '#0369a1' : '#64748b',
                     display: 'flex', alignItems: 'center', gap: 6,
                   }}
                 >
                   {d.isDefault && <span style={{ fontSize: 10, color: '#f59e0b' }}>★</span>}
                   <span>{d.name}</span>
                   {d.visibility !== 'private' && (
-                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#9ca3af' }}>
+                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#94a3b8' }}>
                       {d.visibility === 'all' ? 'tutti' : 'team'}
                     </span>
                   )}
@@ -683,7 +683,7 @@ export function DashboardPage() {
                   style={{
                     width: '100%', padding: '7px 12px', textAlign: 'left',
                     background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 13, color: '#6366f1', fontWeight: 500,
+                    fontSize: 14, color: '#0284c7', fontWeight: 500,
                   }}
                 >
                   + Nuova dashboard
@@ -700,14 +700,14 @@ export function DashboardPage() {
             <button
               onClick={() => void handleSave()}
               disabled={saving}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #6366f1', background: saving ? '#a5b4fc' : '#6366f1', color: '#fff', fontSize: 13, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #0284c7', background: saving ? '#67e8f9' : '#0284c7', color: '#fff', fontSize: 14, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}
             >
               {saving ? 'Salvataggio…' : '✓ Salva'}
             </button>
             <button
               onClick={cancelEditMode}
               disabled={saving}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
             >
               ✕ Annulla
             </button>
@@ -716,13 +716,13 @@ export function DashboardPage() {
           <>
             <button
               onClick={enterEditMode}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
             >
               ✏ Personalizza
             </button>
             <button
               onClick={() => setShowSettings(true)}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
             >
               ⚙ Impostazioni
             </button>
@@ -735,7 +735,7 @@ export function DashboardPage() {
   // ── Loading ──────────────────────────────────────────────────────────────────
 
   if (listLoading || (activeDashboardId && dashLoading && !dashData)) {
-    return <div style={{ padding: 32, color: '#6b7280', fontSize: 14 }}>Caricamento…</div>
+    return <div style={{ padding: 32, color: '#64748b', fontSize: 14 }}>Caricamento…</div>
   }
 
   // ── VIEW MODE ────────────────────────────────────────────────────────────────
@@ -746,7 +746,7 @@ export function DashboardPage() {
       <div>
         {header}
         {viewWidgets.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#8892a4', fontSize: 14 }}>
+          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
             La dashboard è vuota. Clicca <strong>Personalizza</strong> per aggiungere i tuoi report.
           </div>
         ) : (
@@ -755,11 +755,11 @@ export function DashboardPage() {
               <div key={widget.id} style={{ gridColumn: `span ${widget.colSpan}` }}>
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
                   <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>
                       {widget.reportSection?.title ?? 'Widget'}
                     </div>
                     {widget.reportTemplate?.name && (
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{widget.reportTemplate.name}</div>
+                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>{widget.reportTemplate.name}</div>
                     )}
                   </div>
                   <ReportChartRenderer
@@ -813,7 +813,7 @@ export function DashboardPage() {
         {/* Draggable grid */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {visiblePending.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#8892a4', fontSize: 14, border: '2px dashed #e5e7eb', borderRadius: 10 }}>
+            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14, border: '2px dashed #e5e7eb', borderRadius: 10 }}>
               Nessun widget. Aggiungi un report dal pannello a destra.
             </div>
           ) : (
@@ -836,12 +836,12 @@ export function DashboardPage() {
 
         {/* Add widget sidebar */}
         <div style={{ width: 280, flexShrink: 0, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 13, fontWeight: 600, color: '#374151' }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 14, fontWeight: 600, color: '#64748b' }}>
             Aggiungi widget
           </div>
           <div style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
             {templates.length === 0 && (
-              <div style={{ padding: 16, fontSize: 12, color: '#9ca3af' }}>Nessun template disponibile.</div>
+              <div style={{ padding: 16, fontSize: 12, color: '#94a3b8' }}>Nessun template disponibile.</div>
             )}
             {templates.map((template) => (
               <div key={template.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
@@ -850,25 +850,25 @@ export function DashboardPage() {
                   style={{
                     width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center',
                     justifyContent: 'space-between', background: 'none', border: 'none',
-                    cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151', textAlign: 'left',
+                    cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#64748b', textAlign: 'left',
                   }}
                 >
                   <span>{template.name}</span>
-                  <span style={{ color: '#9ca3af', fontSize: 10 }}>{expandedTemplates.has(template.id) ? '▲' : '▼'}</span>
+                  <span style={{ color: '#94a3b8', fontSize: 10 }}>{expandedTemplates.has(template.id) ? '▲' : '▼'}</span>
                 </button>
                 {expandedTemplates.has(template.id) && (
                   <div style={{ background: '#f9fafb', paddingBottom: 4 }}>
                     {(template.sections ?? []).length === 0 && (
-                      <div style={{ padding: '6px 14px', fontSize: 11, color: '#9ca3af' }}>Nessuna sezione</div>
+                      <div style={{ padding: '6px 14px', fontSize: 12, color: '#94a3b8' }}>Nessuna sezione</div>
                     )}
                     {(template.sections ?? []).map((section) => (
                       <div key={section.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px', gap: 8 }}>
-                        <span style={{ fontSize: 11, color: '#4b5563', flex: 1, minWidth: 0 }}>{section.title}</span>
+                        <span style={{ fontSize: 12, color: '#4b5563', flex: 1, minWidth: 0 }}>{section.title}</span>
                         <button
                           onClick={() => handleAddWidget(template, section)}
                           style={{
-                            padding: '3px 8px', borderRadius: 4, border: '1px solid #6366f1',
-                            background: '#eef2ff', color: '#6366f1', fontSize: 11, fontWeight: 600,
+                            padding: '3px 8px', borderRadius: 4, border: '1px solid #0284c7',
+                            background: '#ecfeff', color: '#0284c7', fontSize: 12, fontWeight: 600,
                             cursor: 'pointer', whiteSpace: 'nowrap',
                           }}
                         >

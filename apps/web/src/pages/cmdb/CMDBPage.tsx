@@ -48,7 +48,7 @@ const columns: ColumnDef<CI>[] = [
     filterType:    'select',
     filterOptions: TYPE_OPTIONS,
     render: (v) => (
-      <span style={{ fontSize: 13, color: '#4a5468', textTransform: 'capitalize' }}>
+      <span style={{ color: "#64748b", textTransform: 'capitalize' }}>
         {String(v).replace(/_/g, ' ')}
       </span>
     ),
@@ -89,7 +89,7 @@ const columns: ColumnDef<CI>[] = [
     width:    '120px',
     sortable: true,
     render:   (v) => (
-      <span style={{ color: '#8892a4', fontSize: 13 }}>
+      <span style={{ color: "#94a3b8" }}>
         {new Date(String(v)).toLocaleDateString()}
       </span>
     ),
@@ -143,16 +143,16 @@ export function CMDBPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', letterSpacing: '-0.01em', margin: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>
             {pageTitle}
           </h1>
-          <p style={{ fontSize: 13, color: '#8892a4', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 14, color: '#94a3b8', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} configuration items`}
           </p>
         </div>
         <button
           disabled
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#4f46e5', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'not-allowed', opacity: 0.6 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'not-allowed', opacity: 0.6 }}
         >
           New
         </button>
@@ -177,7 +177,7 @@ export function CMDBPage() {
       />
 
       {total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 13, color: '#8892a4' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: "12px 0", fontSize: 12, color: '#94a3b8' }}>
           <span>
             {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} CI
           </span>
@@ -185,17 +185,17 @@ export function CMDBPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              style={{ padding: '4px 12px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : '#374151', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : '#64748b', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
               ← Prev
             </button>
-            <span style={{ padding: '4px 8px', fontSize: 13, color: '#6b7280' }}>
+            <span style={{ padding: '4px 8px', fontSize: 12, color: "#64748b" }}>
               {page + 1} / {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              style={{ padding: '4px 12px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : '#374151', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : '#64748b', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
               Next →
             </button>

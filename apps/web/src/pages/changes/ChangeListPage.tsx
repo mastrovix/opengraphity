@@ -34,8 +34,8 @@ const columns: ColumnDef<Change>[] = [
     filterType: 'text',
     render: (v, row) => (
       <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1629', marginBottom: 2 }}>{String(v)}</div>
-        <div style={{ fontSize: 11, color: '#8892a4', fontFamily: 'monospace' }}>{row.id.slice(0, 8)}</div>
+        <div style={{ fontWeight: 600, color: "#0f172a", marginBottom: 2 }}>{String(v)}</div>
+        <div style={{ color: '#94a3b8' }}>{row.id.slice(0, 8)}</div>
       </div>
     ),
   },
@@ -88,14 +88,14 @@ const columns: ColumnDef<Change>[] = [
     ],
     render: (_v, row) => row.workflowInstance
       ? <StepBadge step={row.workflowInstance.currentStep} />
-      : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>,
+      : <span style={{ color: '#94a3b8' }}>—</span>,
   },
   {
     key:      'assignedTeam' as keyof Change,
     label:    'Team',
     width:    '140px',
     render:   (_v, row) => (
-      <span style={{ fontSize: 13, color: '#4a5468' }}>{(row as Change).assignedTeam?.name ?? '—'}</span>
+      <span style={{ color: "#64748b" }}>{(row as Change).assignedTeam?.name ?? '—'}</span>
     ),
   },
   {
@@ -104,7 +104,7 @@ const columns: ColumnDef<Change>[] = [
     width:    '130px',
     sortable: true,
     render:   (v) => (
-      <span style={{ fontSize: 12, color: '#8892a4', whiteSpace: 'nowrap' }}>
+      <span style={{ color: "#94a3b8", whiteSpace: 'nowrap' }}>
         {v ? new Date(String(v)).toLocaleDateString('it-IT') : '—'}
       </span>
     ),
@@ -114,10 +114,10 @@ const columns: ColumnDef<Change>[] = [
     label:    'CI',
     width:    '70px',
     render:   (_v, row) => row.affectedCIs.length > 0 ? (
-      <span style={{ backgroundColor: '#eff6ff', color: '#4f46e5', padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600 }}>
+      <span style={{ color: "#64748b" }}>
         {row.affectedCIs.length} CI
       </span>
-    ) : <span style={{ color: '#8892a4', fontSize: 12 }}>—</span>,
+    ) : <span style={{ color: '#94a3b8' }}>—</span>,
   },
   {
     key:      'createdAt',
@@ -125,7 +125,7 @@ const columns: ColumnDef<Change>[] = [
     width:    '110px',
     sortable: true,
     render:   (v) => (
-      <span style={{ fontSize: 12, color: '#8892a4', whiteSpace: 'nowrap' }}>
+      <span style={{ color: "#94a3b8", whiteSpace: 'nowrap' }}>
         {new Date(String(v)).toLocaleDateString('it-IT')}
       </span>
     ),
@@ -164,16 +164,16 @@ export function ChangeListPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: 0 }}>Changes</h1>
-          <p style={{ fontSize: 13, color: '#8892a4', marginTop: 4, marginBottom: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: 0 }}>Changes</h1>
+          <p style={{ fontSize: 14, color: '#94a3b8', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} change${total !== 1 ? 's' : ''}`}
           </p>
         </div>
         <button
           onClick={() => navigate('/changes/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
         >
-          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
           Nuovo Change
         </button>
       </div>
@@ -188,7 +188,7 @@ export function ChangeListPage() {
       />
 
       {total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 13, color: '#8892a4' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: "12px 0", fontSize: 12, color: '#94a3b8' }}>
           <span>
             {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} changes
           </span>
@@ -196,17 +196,17 @@ export function ChangeListPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              style={{ padding: '4px 12px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : '#374151', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : '#64748b', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
               ← Prev
             </button>
-            <span style={{ padding: '4px 8px', fontSize: 13, color: '#6b7280' }}>
+            <span style={{ padding: '4px 8px', fontSize: 12, color: "#64748b" }}>
               {page + 1} / {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              style={{ padding: '4px 12px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : '#374151', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : '#64748b', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
               Next →
             </button>

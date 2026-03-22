@@ -146,24 +146,24 @@ function formatDuration(ms: number): string {
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
-  critical: '#dc2626', high: '#ea580c', medium: '#ca8a04', low: '#16a34a',
+  critical: '#dc2626', high: '#0284c7', medium: '#ca8a04', low: '#16a34a',
 }
 
 const STATUS_BG: Record<string, string> = {
-  new: '#f3f4f6', under_investigation: '#dbeafe', change_requested: '#f3e8ff',
-  change_in_progress: '#e0e7ff', resolved: '#dcfce7', closed: '#1f2937',
-  rejected: '#fee2e2', deferred: '#fef9c3',
+  new: '#ecfeff', under_investigation: '#ecfeff', change_requested: '#ecfeff',
+  change_in_progress: '#ecfeff', resolved: '#ecfeff', closed: '#ecfeff',
+  rejected: '#ecfeff', deferred: '#ecfeff',
 }
 
 const STATUS_FG: Record<string, string> = {
-  new: '#6b7280', under_investigation: '#1d4ed8', change_requested: '#7e22ce',
-  change_in_progress: '#3730a3', resolved: '#15803d', closed: '#f9fafb',
-  rejected: '#dc2626', deferred: '#a16207',
+  new: '#0284c7', under_investigation: '#0284c7', change_requested: '#0284c7',
+  change_in_progress: '#0284c7', resolved: '#0284c7', closed: '#0284c7',
+  rejected: '#0284c7', deferred: '#0284c7',
 }
 
 const STEP_DOT: Record<string, string> = {
-  new: '#8892a4', under_investigation: '#3b82f6', change_requested: '#7c3aed',
-  change_in_progress: '#4f46e5', resolved: '#059669', closed: '#8892a4',
+  new: '#94a3b8', under_investigation: '#3b82f6', change_requested: '#7c3aed',
+  change_in_progress: '#0284c7', resolved: '#059669', closed: '#94a3b8',
   rejected: '#dc2626', deferred: '#d97706',
 }
 
@@ -179,7 +179,7 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 
 function MicroBadge({ children, color }: { children: React.ReactNode; color?: string }) {
   return (
-    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: color ?? 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 11, fontWeight: 500 }}>
+    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: color ?? 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 500 }}>
       {children}
     </span>
   )
@@ -189,13 +189,13 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-      <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{children}</div>
+      <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{children}</div>
     </div>
   )
 }
 
 function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProperties {
-  const base: React.CSSProperties = { padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, border: '1px solid transparent', transition: 'opacity 0.15s' }
+  const base: React.CSSProperties = { padding: '6px 14px', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, border: '1px solid transparent', transition: 'opacity 0.15s' }
   if (toStep === 'resolved') return { ...base, backgroundColor: '#059669', color: '#fff', borderColor: '#059669' }
   if (toStep === 'rejected') return { ...base, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626' }
   if (toStep === 'closed')   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
@@ -341,9 +341,9 @@ export function ProblemDetailPage() {
 
   if (!problem) {
     return (
-      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 14 }}>
         Problem non trovato.{' '}
-        <button onClick={() => navigate('/problems')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13 }}>
+        <button onClick={() => navigate('/problems')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}>
           Torna alla lista
         </button>
       </div>
@@ -358,20 +358,20 @@ export function ProblemDetailPage() {
 
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <button onClick={() => navigate(-1)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, padding: 0 }}>
+        <button onClick={() => navigate(-1)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, padding: 0 }}>
           <ArrowLeft size={14} />
           Indietro
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>
-          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : '#f3f4f6', color: PRIORITY_COLOR[problem.priority] ?? '#6b7280', fontSize: 12, fontWeight: 600, border: `1px solid ${PRIORITY_COLOR[problem.priority] ?? '#e5e7eb'}` }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>
+          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : '#f3f4f6', color: PRIORITY_COLOR[problem.priority] ?? '#64748b', fontSize: 12, fontWeight: 600, border: `1px solid ${PRIORITY_COLOR[problem.priority] ?? '#e5e7eb'}` }}>
             {problem.priority}
           </span>
-          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? '#6b7280', fontSize: 12, fontWeight: 500 }}>
+          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? '#64748b', fontSize: 12, fontWeight: 500 }}>
             {problem.status.replace(/_/g, ' ')}
           </span>
         </div>
-        <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{problem.id}</div>
+        <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--text-muted)' }}>{problem.id}</div>
       </div>
 
       {/* Workflow action buttons */}
@@ -394,15 +394,15 @@ export function ProblemDetailPage() {
           {/* Descrizione */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Descrizione</span>
-              {descOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Descrizione</span>
+              {descOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {descOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {problem.description ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{problem.description}</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{problem.description}</p>
                 ) : (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
                 )}
               </div>
             )}
@@ -411,8 +411,8 @@ export function ProblemDetailPage() {
           {/* Root Cause */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setRootCauseOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: rootCauseOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Root Cause</span>
-              {rootCauseOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Root Cause</span>
+              {rootCauseOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {rootCauseOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -428,7 +428,7 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="Descrivi la causa radice del problema..."
                   rows={4}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
                 />
               </div>
             )}
@@ -437,8 +437,8 @@ export function ProblemDetailPage() {
           {/* Workaround */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setWorkaroundOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: workaroundOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Workaround</span>
-              {workaroundOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Workaround</span>
+              {workaroundOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {workaroundOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
@@ -454,7 +454,7 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="Descrivi il workaround temporaneo..."
                   rows={3}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
                 />
               </div>
             )}
@@ -464,27 +464,27 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCiOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>CI Impattati</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>CI Impattati</span>
                 <CountBadge count={problem.affectedCIs.length} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={(e) => { e.stopPropagation(); setShowCISearch((s) => !s); if (!ciOpen) setCiOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
                   {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
                 </button>
-                {ciOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+                {ciOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
               </div>
             </div>
             {ciOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {showCISearch && (
                   <div style={{ marginBottom: 12, position: 'relative' }}>
-                    <input type="text" value={ciSearch} onChange={(e) => setCiSearch(e.target.value)} placeholder="Cerca CI (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, outline: 'none' }} />
+                    <input type="text" value={ciSearch} onChange={(e) => setCiSearch(e.target.value)} placeholder="Cerca CI (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
                     {ciResults.length > 0 && (
                       <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                         {ciResults.filter((ci) => !problem.affectedCIs.find((a) => a.id === ci.id)).map((ci) => (
-                          <div key={ci.id} onClick={() => void addCI({ variables: { problemId: problem.id, ciId: ci.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
+                          <div key={ci.id} onClick={() => void addCI({ variables: { problemId: problem.id, ciId: ci.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
                             <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{ci.type} · {ci.environment}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{ci.type} · {ci.environment}</span>
                           </div>
                         ))}
                       </div>
@@ -492,7 +492,7 @@ export function ProblemDetailPage() {
                   </div>
                 )}
                 {problem.affectedCIs.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
                 ) : (
                   <div>
                     {Object.entries(groupByField(problem.affectedCIs, 'type')).map(([type, cis]) => (
@@ -500,7 +500,7 @@ export function ProblemDetailPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {cis.map((ci) => (
                             <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
-                              <button onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
+                              <button onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
                               <MicroBadge>{ci.status}</MicroBadge>
                               <MicroBadge>{ci.environment}</MicroBadge>
                               <button onClick={() => void removeCI({ variables: { problemId: problem.id, ciId: ci.id } })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
@@ -519,27 +519,27 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setIncidentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Incident Correlati</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Incident Correlati</span>
                 <CountBadge count={problem.relatedIncidents.length} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={(e) => { e.stopPropagation(); setShowIncidentSearch((s) => !s); if (!incidentsOpen) setIncidentsOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
                   {showIncidentSearch ? 'Chiudi' : '+ Collega Incident'}
                 </button>
-                {incidentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+                {incidentsOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
               </div>
             </div>
             {incidentsOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {showIncidentSearch && (
                   <div style={{ marginBottom: 12 }}>
-                    <input type="text" value={incidentSearch} onChange={(e) => setIncidentSearch(e.target.value)} placeholder="Filtra incident per titolo..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, outline: 'none' }} />
+                    <input type="text" value={incidentSearch} onChange={(e) => setIncidentSearch(e.target.value)} placeholder="Filtra incident per titolo..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
                     {incidentResults.length > 0 && (
                       <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                         {incidentResults.filter((i) => !problem.relatedIncidents.find((r) => r.id === i.id) && (incidentSearch.length < 2 || i.title.toLowerCase().includes(incidentSearch.toLowerCase()))).map((inc) => (
-                          <div key={inc.id} onClick={() => void linkIncident({ variables: { problemId: problem.id, incidentId: inc.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
+                          <div key={inc.id} onClick={() => void linkIncident({ variables: { problemId: problem.id, incidentId: inc.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
                             <span style={{ fontWeight: 500 }}>{inc.title}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{inc.status}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{inc.status}</span>
                           </div>
                         ))}
                       </div>
@@ -547,7 +547,7 @@ export function ProblemDetailPage() {
                   </div>
                 )}
                 {problem.relatedIncidents.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessun incident correlato.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessun incident correlato.</p>
                 ) : (
                   <div>
                     {Object.entries(groupByField(problem.relatedIncidents, 'status')).map(([status, incidents]) => (
@@ -555,7 +555,7 @@ export function ProblemDetailPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {incidents.map((inc) => (
                             <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                              <button onClick={() => navigate(`/incidents/${inc.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{inc.title}</button>
+                              <button onClick={() => navigate(`/incidents/${inc.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{inc.title}</button>
                               <MicroBadge>{inc.severity}</MicroBadge>
                               <button onClick={() => void unlinkIncident({ variables: { problemId: problem.id, incidentId: inc.id } })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 'auto' }} title="Scollega"><X size={14} /></button>
                             </div>
@@ -573,27 +573,27 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setChangesOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: changesOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Change Correlate</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Change Correlate</span>
                 <CountBadge count={problem.relatedChanges.length} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={(e) => { e.stopPropagation(); setShowChangeSearch((s) => !s); if (!changesOpen) setChangesOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
                   {showChangeSearch ? 'Chiudi' : '+ Collega Change'}
                 </button>
-                {changesOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+                {changesOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
               </div>
             </div>
             {changesOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {showChangeSearch && (
                   <div style={{ marginBottom: 12 }}>
-                    <input type="text" value={changeSearch} onChange={(e) => setChangeSearch(e.target.value)} placeholder="Cerca change (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, outline: 'none' }} />
+                    <input type="text" value={changeSearch} onChange={(e) => setChangeSearch(e.target.value)} placeholder="Cerca change (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
                     {changeResults.length > 0 && (
                       <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                         {changeResults.filter((c) => !problem.relatedChanges.find((r) => r.id === c.id)).map((ch) => (
-                          <div key={ch.id} onClick={() => void linkChange({ variables: { problemId: problem.id, changeId: ch.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
+                          <div key={ch.id} onClick={() => void linkChange({ variables: { problemId: problem.id, changeId: ch.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
                             <span style={{ fontWeight: 500 }}>{ch.title}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{ch.type} · {ch.status}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{ch.type} · {ch.status}</span>
                           </div>
                         ))}
                       </div>
@@ -601,7 +601,7 @@ export function ProblemDetailPage() {
                   </div>
                 )}
                 {problem.relatedChanges.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna change correlata.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna change correlata.</p>
                 ) : (
                   <div>
                     {Object.entries(groupByField(problem.relatedChanges, 'type')).map(([type, changes]) => (
@@ -609,7 +609,7 @@ export function ProblemDetailPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {changes.map((ch) => (
                             <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                              <button onClick={() => navigate(`/changes/${ch.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ch.title}</button>
+                              <button onClick={() => navigate(`/changes/${ch.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ch.title}</button>
                               <MicroBadge>{ch.status}</MicroBadge>
                             </div>
                           ))}
@@ -625,31 +625,34 @@ export function ProblemDetailPage() {
           {/* Timeline */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setTimelineOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Timeline workflow</span>
-              {timelineOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Timeline workflow</span>
+              {timelineOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {timelineOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {historyDesc.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
                 ) : (
-                  <div style={{ position: 'relative' }}>
-                    <div style={{ position: 'absolute', left: 2, top: 8, bottom: 8, width: 2, backgroundColor: 'var(--border)' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      {historyDesc.map((exec) => (
-                        <div key={exec.id} style={{ display: 'flex', gap: 12 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: STEP_DOT[exec.stepName] ?? '#8892a4', flexShrink: 0, marginTop: 4, position: 'relative', zIndex: 1 }} />
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{exec.stepName.replace(/_/g, ' ')}</div>
-                            {exec.notes && <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 1 }}>{exec.notes}</div>}
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 6 }}>
-                              <span>{timeAgo(exec.enteredAt)}</span>
-                              {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
-                            </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {historyDesc.map((exec, idx) => {
+                      const isCurrent = idx === 0
+                      return (
+                      <div key={exec.id} style={{ display: 'flex', gap: 12, paddingBottom: idx < historyDesc.length - 1 ? 16 : 0, position: 'relative' }}>
+                        {idx < historyDesc.length - 1 && (
+                          <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: '#64748b', opacity: 0.3 }} />
+                        )}
+                        <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? '#0284c7' : '#64748b', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{exec.stepName.replace(/_/g, ' ')}</div>
+                          <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 6 }}>
+                            <span>{timeAgo(exec.enteredAt)}</span>
+                            {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
                           </div>
+                          {exec.notes && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -660,29 +663,29 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Commenti</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Commenti</span>
                 <CountBadge count={problem.comments.length} />
               </div>
-              {commentsOpen ? <ChevronDown size={16} color="#8892a4" /> : <ChevronRight size={16} color="#8892a4" />}
+              {commentsOpen ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronRight size={16} color="#94a3b8" />}
             </div>
             {commentsOpen && (
               <div style={{ padding: '16px 20px 20px' }}>
                 {problem.comments.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Nessun commento ancora.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Nessun commento ancora.</p>
                 ) : (
                   <div style={{ marginBottom: 16 }}>
                     {problem.comments.slice().reverse().map((c, i) => (
                       <div key={c.id}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#eef2ff', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#ecfeff', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                             {c.author ? c.author.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
                           </div>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? 'Utente sconosciuto'}</span>
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? 'Utente sconosciuto'}</span>
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                             </div>
-                            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{c.text}</p>
+                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{c.text}</p>
                           </div>
                         </div>
                         {i < problem.comments.length - 1 && <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />}
@@ -698,7 +701,7 @@ export function ProblemDetailPage() {
                     <button
                       disabled={!commentText.trim() || addingComment}
                       onClick={() => void addComment({ variables: { problemId: problem.id, text: commentText.trim() } })}
-                      style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
+                      style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
                     >
                       {addingComment ? 'Invio…' : 'Invia commento'}
                     </button>
@@ -714,13 +717,13 @@ export function ProblemDetailPage() {
 
           {/* Dettagli */}
           <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dettagli</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dettagli</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <DetailRow label="Priorità">
-                <span style={{ fontWeight: 600, color: PRIORITY_COLOR[problem.priority] ?? '#6b7280' }}>{problem.priority}</span>
+                <span style={{ fontWeight: 600, color: PRIORITY_COLOR[problem.priority] ?? '#64748b' }}>{problem.priority}</span>
               </DetailRow>
               <DetailRow label="Step workflow">
-                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? '#6b7280', fontSize: 12, fontWeight: 500 }}>
+                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? '#64748b', fontSize: 12, fontWeight: 500 }}>
                   {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
                 </span>
               </DetailRow>
@@ -734,7 +737,7 @@ export function ProblemDetailPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, backgroundColor: 'var(--surface)', outline: 'none' }}>
+                    <select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, backgroundColor: 'var(--surface)', outline: 'none' }}>
                       <option value="">Seleziona team…</option>
                       {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
@@ -755,11 +758,11 @@ export function ProblemDetailPage() {
                 {problem.assignee ? (
                   <div>
                     <div style={{ fontWeight: 500 }}>{problem.assignee.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, backgroundColor: 'var(--surface)', outline: 'none' }}>
+                    <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, backgroundColor: 'var(--surface)', outline: 'none' }}>
                       <option value="">Seleziona utente…</option>
                       {(problem.assignedTeam ? users.filter((u) => u.teams?.some((t) => t.id === problem.assignedTeam!.id)) : users).map((u) => (
                         <option key={u.id} value={u.id}>{u.name}</option>
@@ -788,7 +791,7 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="0"
                   min={0}
-                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none' }}
+                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }}
                 />
               </DetailRow>
 
@@ -810,10 +813,10 @@ export function ProblemDetailPage() {
       {isTransitionDialogOpen && pendingTransition && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 480, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 12px 0' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', margin: '0 0 12px 0' }}>
               {`Transizione → ${pendingTransition.toStep.replace(/_/g, ' ')}`}
             </h2>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
+            <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
               Aggiungi una nota per questa transizione (minimo 10 caratteri).
             </p>
             <textarea
@@ -822,10 +825,10 @@ export function ProblemDetailPage() {
               placeholder="Note sulla transizione..."
               rows={4}
               autoFocus
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.6, fontFamily: 'inherit', outline: 'none' }}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, lineHeight: 1.6, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
             />
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-              <button onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+              <button onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>
                 Annulla
               </button>
               <button
@@ -833,7 +836,7 @@ export function ProblemDetailPage() {
                   if (transitionNotes.trim().length < 10) { toast.error('Note troppo brevi (minimo 10 caratteri)'); return }
                   void execTransition({ variables: { problemId: problem.id, toStep: pendingTransition.toStep, notes: transitionNotes.trim() } })
                 }}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
               >
                 {transitioning ? 'Esecuzione...' : 'Conferma'}
               </button>

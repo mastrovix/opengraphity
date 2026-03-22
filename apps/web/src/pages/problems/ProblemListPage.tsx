@@ -59,7 +59,7 @@ const columns: ColumnDef<Problem>[] = [
     width:    '120px',
     sortable: true,
     render:   (v) => (
-      <span style={{ color: '#8892a4', fontSize: 13 }}>
+      <span style={{ color: "#94a3b8" }}>
         {new Date(String(v)).toLocaleDateString()}
       </span>
     ),
@@ -73,10 +73,10 @@ export function ProblemListPage() {
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', letterSpacing: '-0.01em', margin: 0 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>
           Problems
         </h1>
-        <p style={{ fontSize: 13, color: '#8892a4', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 14, color: '#94a3b8', marginTop: 4, marginBottom: 0 }}>
           {loading ? '—' : `${data?.problems?.length ?? 0} total`}
         </p>
       </div>

@@ -20,7 +20,7 @@ export function WorkflowListPage() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: '0 0 24px 0' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: '0 0 24px 0' }}>
         Workflow
       </h1>
 
@@ -31,12 +31,12 @@ export function WorkflowListPage() {
           ))}
         </div>
       ) : defs.length === 0 ? (
-        <p style={{ color: '#8892a4', fontSize: 13 }}>Nessun workflow trovato.</p>
+        <p style={{ color: '#94a3b8', fontSize: 14 }}>Nessun workflow trovato.</p>
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           {defs.map((def) => {
             const isIncident = def.entityType === 'incident'
-            const color = isIncident ? '#4f46e5' : '#16a34a'
+            const color = '#0284c7'
             const Icon  = isIncident ? AlertCircle : GitPullRequest
 
             return (
@@ -65,10 +65,10 @@ export function WorkflowListPage() {
                 <Icon size={22} color={color} />
 
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: '#0f1629' }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
                     {def.name}
                   </div>
-                  <div style={{ fontSize: 12, color: '#8892a4', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
                     {def.entityType}
                   </div>
                 </div>
@@ -79,12 +79,13 @@ export function WorkflowListPage() {
                     fontWeight:      600,
                     padding:         '2px 8px',
                     borderRadius:    100,
-                    backgroundColor: def.active ? '#f0fdf4' : '#f9fafb',
-                    color:           def.active ? '#16a34a' : '#8892a4',
+                    backgroundColor: def.active ? '#ecfeff' : '#f9fafb',
+                    color:           def.active ? '#0284c7' : '#94a3b8',
+                    border:          def.active ? '1px solid #a5f3fc' : '1px solid transparent',
                   }}>
                     {def.active ? 'Attivo' : 'Inattivo'}
                   </span>
-                  <span style={{ fontSize: 12, color: '#8892a4' }}>v{def.version}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>v{def.version}</span>
                 </div>
               </div>
             )

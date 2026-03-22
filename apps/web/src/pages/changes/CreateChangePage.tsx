@@ -22,7 +22,7 @@ const TYPE_CONFIG = {
 
 const PRIORITY_CONFIG = [
   { value: 'critical', label: 'Critical', color: '#dc2626', bg: '#fef2f2', border: '#ef4444' },
-  { value: 'high',     label: 'High',     color: '#ea580c', bg: '#fff7ed', border: '#f97316' },
+  { value: 'high',     label: 'High',     color: '#0284c7', bg: '#fff7ed', border: '#0284c7' },
   { value: 'medium',   label: 'Medium',   color: '#b45309', bg: '#fefce8', border: '#eab308' },
   { value: 'low',      label: 'Low',      color: '#15803d', bg: '#f0fdf4', border: '#22c55e' },
 ]
@@ -32,20 +32,20 @@ const STEPS = ['Tipo', 'Dettagli', 'Riepilogo'] as const
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const fieldLabel: React.CSSProperties = {
-  display: 'block', fontSize: 11, fontWeight: 600, color: '#8892a4',
+  display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8',
   textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
 }
 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '10px 14px',
   border: '1.5px solid #e5e7eb', borderRadius: 8,
-  fontSize: 13, color: '#0f1629', outline: 'none',
+  fontSize: 14, color: '#0f172a', outline: 'none',
   backgroundColor: '#fff', boxSizing: 'border-box',
-  fontFamily: 'inherit', transition: 'border-color 150ms',
+  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
 }
 
 function onFocus(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  (e.currentTarget as HTMLElement).style.borderColor = '#4f46e5'
+  (e.currentTarget as HTMLElement).style.borderColor = '#0284c7'
 }
 function onBlur(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
   (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'
@@ -65,18 +65,18 @@ function ProgressBar({ current }: { current: number }) {
               <div style={{
                 width: 24, height: 24, borderRadius: '50%',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                backgroundColor: done || active ? '#4f46e5' : '#e5e7eb',
-                color: done || active ? '#fff' : '#8892a4',
-                fontSize: 11, fontWeight: 700, flexShrink: 0,
+                backgroundColor: done || active ? '#0284c7' : '#e5e7eb',
+                color: done || active ? '#fff' : '#94a3b8',
+                fontSize: 12, fontWeight: 700, flexShrink: 0,
               }}>
                 {done ? '✓' : i + 1}
               </div>
-              <span style={{ fontSize: 11, fontWeight: active ? 600 : 400, color: active ? '#4f46e5' : done ? '#4f46e5' : '#8892a4', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: active ? '#0284c7' : done ? '#0284c7' : '#94a3b8', whiteSpace: 'nowrap' }}>
                 {name}
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div style={{ flex: 1, height: 1, backgroundColor: done ? '#4f46e5' : '#e5e7eb', margin: '0 8px', marginBottom: 18 }} />
+              <div style={{ flex: 1, height: 1, backgroundColor: done ? '#0284c7' : '#e5e7eb', margin: '0 8px', marginBottom: 18 }} />
             )}
           </div>
         )
@@ -91,8 +91,8 @@ function SummaryRow({ label, value }: { label: string; value: React.ReactNode })
   if (!value) return null
   return (
     <div style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: 150, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 13, color: '#374151' }}>{value}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: 150, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 14, color: '#64748b' }}>{value}</span>
     </div>
   )
 }
@@ -104,9 +104,9 @@ function BackBtn({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', padding: 0 }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#374151' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#6b7280' }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#64748b', padding: 0 }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#64748b' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#64748b' }}
     >
       <ArrowLeft size={13} /> Indietro
     </button>
@@ -119,7 +119,7 @@ function NextBtn({ onClick, label = 'Avanti →', disabled = false }: { onClick:
       type="button"
       onClick={onClick}
       disabled={disabled}
-      style={{ padding: '10px 24px', backgroundColor: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.7 : 1 }}
+      style={{ padding: '10px 24px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.7 : 1 }}
     >
       {label}
     </button>
@@ -199,17 +199,17 @@ export function CreateChangePage() {
         {/* Header */}
         <button
           onClick={() => navigate('/changes')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#8892a4', marginBottom: 16, padding: 0 }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#4f46e5' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#8892a4' }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#94a3b8', marginBottom: 16, padding: 0 }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#0284c7' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8' }}
         >
           ← Changes
         </button>
 
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1629', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#0f172a', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
           Nuovo Change
         </h1>
-        <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 24px' }}>
+        <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 24px' }}>
           Compila i dettagli del change da aprire
         </p>
 
@@ -239,8 +239,8 @@ export function CreateChangePage() {
                 >
                   <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: sel ? c.color : '#d1d5db' }} />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: sel ? c.color : '#374151' }}>{c.label}</div>
-                    <div style={{ fontSize: 11, color: '#8892a4', marginTop: 2 }}>{c.desc}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: sel ? c.color : '#64748b' }}>{c.label}</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{c.desc}</div>
                   </div>
                 </div>
               )
@@ -304,7 +304,7 @@ export function CreateChangePage() {
                         padding: '7px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
                         border: `1.5px solid ${sel ? p.border : '#e5e7eb'}`,
                         background: sel ? p.bg : '#f8fafc',
-                        color: sel ? p.color : '#6b7280',
+                        color: sel ? p.color : '#64748b',
                         fontWeight: sel ? 600 : 400,
                         transition: 'all 0.15s',
                       }}
@@ -326,9 +326,9 @@ export function CreateChangePage() {
               {selectedCIs.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                   {selectedCIs.map(ci => (
-                    <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4338ca', fontSize: 11 }}>
+                    <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#ecfeff', border: '1px solid #c7d2fe', color: '#0369a1', fontSize: 12 }}>
                       {ci.name}
-                      <button type="button" onClick={() => setSelectedCIs(s => s.filter(x => x.id !== ci.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4338ca', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
+                      <button type="button" onClick={() => setSelectedCIs(s => s.filter(x => x.id !== ci.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0369a1', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
                         <X size={12} />
                       </button>
                     </span>
@@ -337,7 +337,7 @@ export function CreateChangePage() {
               )}
 
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, pointerEvents: 'none', color: '#9ca3af' }}>🔍</span>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: '#94a3b8' }}>🔍</span>
                 <input
                   value={ciSearch}
                   onChange={e => setCiSearch(e.target.value)}
@@ -352,12 +352,12 @@ export function CreateChangePage() {
                       <div
                         key={ci.id}
                         onClick={() => { setSelectedCIs(s => [...s, ci]); setCiSearch('') }}
-                        style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6', fontSize: 13 }}
+                        style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6', fontSize: 14 }}
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                       >
                         <span style={{ fontWeight: 500, flex: 1 }}>{ci.name}</span>
-                        <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: '#6b7280' }}>{ci.type}{ci.environment ? ` · ${ci.environment}` : ''}</span>
+                        <span style={{ fontSize: 12, padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: '#64748b' }}>{ci.type}{ci.environment ? ` · ${ci.environment}` : ''}</span>
                       </div>
                     ))}
                   </div>
@@ -399,7 +399,7 @@ export function CreateChangePage() {
         {step === 2 && (
           <div>
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-              <h2 style={{ fontSize: 13, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>
+              <h2 style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>
                 Riepilogo
               </h2>
 
@@ -419,7 +419,7 @@ export function CreateChangePage() {
                 selectedCIs.length === 0 ? '—' : (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {selectedCIs.map(ci => (
-                      <span key={ci.id} style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: '#eef2ff', color: '#4338ca', fontSize: 11, fontWeight: 500 }}>
+                      <span key={ci.id} style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: '#ecfeff', color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
                         {ci.name}
                       </span>
                     ))}
@@ -437,7 +437,7 @@ export function CreateChangePage() {
             </div>
 
             <div style={{ textAlign: 'center', marginTop: 16 }}>
-              <button type="button" onClick={() => navigate('/changes')} style={{ background: 'none', border: 'none', fontSize: 13, color: '#6b7280', cursor: 'pointer' }}>
+              <button type="button" onClick={() => navigate('/changes')} style={{ background: 'none', border: 'none', fontSize: 14, color: '#64748b', cursor: 'pointer' }}>
                 Annulla
               </button>
             </div>

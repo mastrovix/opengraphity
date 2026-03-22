@@ -29,15 +29,15 @@ export function SortableHeader<T>({
         padding:        0,
         cursor:         'pointer',
         fontSize:       11,
-        fontWeight:     isActive ? 700 : 700,
-        color:          isActive ? '#4f46e5' : '#8892a4',
+        fontWeight:     500,
+        color:          isActive ? '#0284c7' : '#94a3b8',
         textTransform:  'uppercase',
-        letterSpacing:  '0.06em',
+        letterSpacing:  '0.5px',
         whiteSpace:     'nowrap',
       }}
     >
       {label}
-      <span style={{ opacity: isActive ? 1 : 0.35, color: isActive ? '#4f46e5' : '#8892a4' }}>
+      <span style={{ opacity: isActive ? 1 : 0.35, color: isActive ? '#0284c7' : '#94a3b8' }}>
         {isActive && currentDir === 'asc'
           ? <ChevronUp  size={12} />
           : <ChevronDown size={12} />
