@@ -25,6 +25,7 @@ function CIDetailRedirect({ typeName }: { typeName: string }) {
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
 }
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
+import { TopologyPage } from '@/pages/topology/TopologyPage'
 import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
 import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
 import NotificationsPage from '@/pages/settings/NotificationsPage'
@@ -104,6 +105,7 @@ const router = createBrowserRouter([
       { path: 'certificates',                  element: <Navigate to="/ci/certificate" replace /> },
       { path: 'certificates/:id',              element: <CIDetailRedirect typeName="certificate" /> },
       { path: 'anomalies',                     element: <AnomalyPage />,                 errorElement: <RouteError /> },
+      { path: 'topology',                      element: <TopologyPage />,                errorElement: <RouteError /> },
       { path: 'workflow',                      element: <WorkflowListPage />,            errorElement: <RouteError /> },
       { path: 'workflow/:id',                  element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },

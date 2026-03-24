@@ -40,7 +40,7 @@ async function seed() {
 
   // Load SRV-xxx servers only
   const serversResult = await session.run(
-    `MATCH (c:ConfigurationItem {tenant_id: $tenantId, type: 'server'})
+    `MATCH (c:Server {tenant_id: $tenantId})
      WHERE c.name STARTS WITH 'SRV-'
      RETURN c.id AS id`,
     { tenantId: TENANT_ID }
@@ -62,10 +62,9 @@ async function seed() {
     const serverId      = pick(serverIds)
 
     const result = await session.run(
-      `MERGE (c:ConfigurationItem {name: $name, tenant_id: $tenantId})
+      `MERGE (c:DatabaseInstance {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,
-         c.type        = 'database_instance',
          c.environment = $environment,
          c.status      = $status,
          c.description = $description,
@@ -91,19 +90,19 @@ async function seed() {
     if (wasCreated) { created++ } else { skipped++ }
 
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
+      `MATCH (c:DatabaseInstance {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:OWNED_BY]->(t)`,
       { ciId, teamId: ownerTeamId }
     )
 
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
+      `MATCH (c:DatabaseInstance {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:SUPPORTED_BY]->(t)`,
       { ciId, teamId: supportTeamId }
     )
 
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (s:ConfigurationItem {id: $serverId})
+      `MATCH (c:DatabaseInstance {id: $ciId}), (s:Server {id: $serverId})
        MERGE (c)-[:HOSTED_ON]->(s)`,
       { ciId, serverId }
     )

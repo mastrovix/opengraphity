@@ -67,6 +67,9 @@ export function buildBaseSDL(): string {
     anomalyStats: AnomalyStats!
     anomalyScanStatus: AnomalyScanStatus!
 
+    # Topology
+    topology(types: [String!], environment: String, status: String, selectedCiId: ID, maxHops: Int): TopologyData!
+
     # Workflow
     incidentWorkflow(incidentId: ID!): WorkflowInstance
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
@@ -1012,6 +1015,29 @@ export function buildBaseSDL(): string {
   type AnomalyScanStatus {
     lastScanAt:  String
     totalScans:  Int!
+  }
+
+  type TopologyNode {
+    id:            ID!
+    name:          String!
+    type:          String!
+    status:        String!
+    environment:   String
+    ownerGroup:    String
+    incidentCount: Int!
+    changeCount:   Int!
+  }
+
+  type TopologyEdge {
+    source: ID!
+    target: ID!
+    type:   String!
+  }
+
+  type TopologyData {
+    nodes:     [TopologyNode!]!
+    edges:     [TopologyEdge!]!
+    truncated: Boolean!
   }
 `
 }

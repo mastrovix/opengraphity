@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { mapCI, labelToType } from './ci-utils.js'
+import { mapCI, ciTypeFromLabels } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Props = Record<string, unknown>
@@ -101,7 +101,7 @@ async function assignCIOwner(
     })
     const row = rows[0]
     if (!row) throw new Error('ConfigurationItem or Team not found')
-    row.props['type'] = labelToType(row.label)
+    row.props['type'] = ciTypeFromLabels([row.label])
     return mapCI(row.props)
   }, true)
 }
@@ -124,7 +124,7 @@ async function assignCISupportGroup(
     })
     const row = rows[0]
     if (!row) throw new Error('ConfigurationItem or Team not found')
-    row.props['type'] = labelToType(row.label)
+    row.props['type'] = ciTypeFromLabels([row.label])
     return mapCI(row.props)
   }, true)
 }
@@ -175,7 +175,7 @@ async function teamOwnedCIs(parent: { id: string }, _: unknown, ctx: GraphQLCont
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      r.props['type'] = labelToType(r.label)
+      r.props['type'] = ciTypeFromLabels([r.label])
       return mapCI(r.props)
     })
   })
@@ -191,7 +191,7 @@ async function teamSupportedCIs(parent: { id: string }, _: unknown, ctx: GraphQL
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      r.props['type'] = labelToType(r.label)
+      r.props['type'] = ciTypeFromLabels([r.label])
       return mapCI(r.props)
     })
   })

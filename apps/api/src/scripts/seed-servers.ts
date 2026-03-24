@@ -51,10 +51,9 @@ async function seed() {
     const supportTeamId = pick(teamIds)
 
     const result = await session.run(
-      `MERGE (c:ConfigurationItem {name: $name, tenant_id: $tenantId})
+      `MERGE (c:Server {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,
-         c.type        = 'server',
          c.environment = $environment,
          c.status      = $status,
          c.description = $description,
@@ -81,14 +80,14 @@ async function seed() {
 
     // OWNED_BY
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
+      `MATCH (c:Server {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:OWNED_BY]->(t)`,
       { ciId, teamId: ownerTeamId }
     )
 
     // SUPPORTED_BY
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
+      `MATCH (c:Server {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:SUPPORTED_BY]->(t)`,
       { ciId, teamId: supportTeamId }
     )

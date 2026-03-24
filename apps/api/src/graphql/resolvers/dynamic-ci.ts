@@ -136,11 +136,11 @@ function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CITypeWith
 function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
   return async (
     _: unknown,
-    args: { limit?: number; offset?: number; ciType?: string; status?: string; environment?: string; search?: string },
+    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string },
     ctx: GraphQLContext,
   ) => {
-    const { limit = 50, offset = 0, ciType, status, environment, search } = args
-    const filteredTypes = ciType ? types.filter(t => t.name === ciType) : types
+    const { limit = 50, offset = 0, type, status, environment, search } = args
+    const filteredTypes = type ? types.filter(t => t.name === type) : types
     if (!filteredTypes.length) return { items: [], total: 0 }
 
     const labelFilter = filteredTypes.map(t => `n:${t.neo4jLabel}`).join(' OR ')
@@ -740,7 +740,6 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
         const props: Record<string, unknown> = {
           id, tenant_id: ctx.tenantId,
           name:        input['name'],
-          type:        ciType.name,
           status:      input['status']      ?? 'active',
           environment: input['environment'] ?? null,
           description: input['description'] ?? null,

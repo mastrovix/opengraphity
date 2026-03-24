@@ -2,7 +2,7 @@ import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
-import { mapCI, labelToType } from './ci-utils.js'
+import { mapCI, ciTypeFromLabels } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Props = Record<string, unknown>
@@ -456,7 +456,7 @@ async function problemAffectedCIs(
       RETURN properties(ci) as props, labels(ci)[0] AS label
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      const t = labelToType(r.label)
+      const t = ciTypeFromLabels([r.label])
       r.props['type'] = t
       const ci = mapCI(r.props) as Record<string, unknown>
       ci['ciType']     = t

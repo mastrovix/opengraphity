@@ -15,6 +15,7 @@ import { logsResolvers } from './logs.js'
 import { dashboardResolvers } from './dashboard.js'
 import { buildDynamicCIResolvers } from './dynamic-ci.js'
 import { anomalyResolvers } from './anomaly.js'
+import { topologyResolvers } from './topology.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -112,6 +113,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...logsResolvers.Query,
       ...dashboardResolvers.Query,
       ...anomalyResolvers.Query,
+      ...topologyResolvers.Query,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
       ...meStub,

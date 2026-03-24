@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
 import { workflowEngine } from '@opengraphity/workflow'
-import { mapCI, labelToType } from './ci-utils.js'
+import { mapCI, ciTypeFromLabels } from './ci-utils.js'
 import type { DomainEvent, IncidentCreatedPayload, IncidentResolvedPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 
@@ -638,7 +638,7 @@ async function incidentAffectedCIs(
       id: parent.id, tenantId: ctx.tenantId,
     })
     return rows.map((r) => {
-      const t = labelToType(r.label)
+      const t = ciTypeFromLabels([r.label])
       r.props['type'] = t
       const ci = mapCI(r.props) as Record<string, unknown>
       ci['ciType']     = t

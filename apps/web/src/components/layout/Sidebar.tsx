@@ -19,6 +19,7 @@ import {
   Layers,
   Settings,
   ShieldAlert,
+  Share2,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { to: '/requests',       label: 'Requests',       icon: Inbox },
   { to: '/workflow',       label: 'Workflow',       icon: GitBranch },
   { to: '/anomalies',      label: 'Anomalie',       icon: ShieldAlert },
+  { to: '/topology',       label: 'Topology',       icon: Share2 },
   { to: '/reports',        label: 'Report AI',      icon: BarChart2 },
   { to: '/custom-reports', label: 'Report Builder', icon: BarChart2 },
 ]

@@ -46,8 +46,8 @@ async function seed() {
 
   // Load servers
   const serversResult = await session.run(
-    `MATCH (c:ConfigurationItem {tenant_id: $tenantId})
-     WHERE c.type IN ['server', 'virtual_machine']
+    `MATCH (c {tenant_id: $tenantId})
+     WHERE (c:Server OR c:VirtualMachine)
      RETURN c.id AS id`,
     { tenantId: TENANT_ID }
   )
@@ -68,10 +68,9 @@ async function seed() {
     const depServerIds  = randomSubset(serverIds, 1, 2)
 
     const result = await session.run(
-      `MERGE (c:ConfigurationItem {name: $name, tenant_id: $tenantId})
+      `MERGE (c:Database {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,
-         c.type        = 'database',
          c.environment = $environment,
          c.status      = $status,
          c.description = $description,
@@ -98,14 +97,14 @@ async function seed() {
 
     // OWNED_BY
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
+      `MATCH (c:Database {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:OWNED_BY]->(t)`,
       { ciId, teamId: ownerTeamId }
     )
 
     // SUPPORTED_BY
     await session.run(
-      `MATCH (c:ConfigurationItem {id: $ciId}), (t:Team {id: $teamId})
+      `MATCH (c:Database {id: $ciId}), (t:Team {id: $teamId})
        MERGE (c)-[:SUPPORTED_BY]->(t)`,
       { ciId, teamId: supportTeamId }
     )
@@ -113,7 +112,7 @@ async function seed() {
     // DEPENDS_ON servers
     for (const serverId of depServerIds) {
       await session.run(
-        `MATCH (c:ConfigurationItem {id: $ciId}), (s:ConfigurationItem {id: $serverId})
+        `MATCH (c:Database {id: $ciId}), (s:Server {id: $serverId})
          MERGE (c)-[:DEPENDS_ON]->(s)`,
         { ciId, serverId }
       )

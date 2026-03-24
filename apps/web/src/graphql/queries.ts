@@ -524,3 +524,17 @@ export const GET_ANOMALY_SCAN_STATUS = gql`
     }
   }
 `
+
+export const GET_TOPOLOGY = gql`
+  query GetTopology($types: [String!], $environment: String, $status: String, $selectedCiId: ID, $maxHops: Int) {
+    topology(types: $types, environment: $environment, status: $status, selectedCiId: $selectedCiId, maxHops: $maxHops) {
+      nodes {
+        id name type status environment ownerGroup incidentCount changeCount
+      }
+      edges {
+        source target type
+      }
+      truncated
+    }
+  }
+`

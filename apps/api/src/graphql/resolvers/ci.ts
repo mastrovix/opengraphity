@@ -1,31 +1,43 @@
-import { withSession, mapCI, labelToType, runQuery, runQueryOne } from './ci-utils.js'
+import { withSession, mapCI, ciTypeFromLabels, runQuery, runQueryOne } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
 
+// Whitelist: type string → Neo4j label (prevents Cypher injection)
+const TYPE_TO_LABEL: Record<string, string> = {
+  application:      'Application',
+  database:         'Database',
+  database_instance: 'DatabaseInstance',
+  db_instance:      'DatabaseInstance',
+  server:           'Server',
+  certificate:      'Certificate',
+  ssl_certificate:  'SslCertificate',
+  virtual_machine:  'VirtualMachine',
+  network_device:   'NetworkDevice',
+  storage:          'Storage',
+  cloud_service:    'CloudService',
+  api_endpoint:     'ApiEndpoint',
+  microservice:     'Microservice',
+}
+
+const ALL_CI_LABELS = Object.values(TYPE_TO_LABEL).filter((v, i, a) => a.indexOf(v) === i)
+
 async function allCIs(_: unknown, args: { limit?: number; offset?: number; type?: string; environment?: string; status?: string; search?: string }, ctx: GraphQLContext) {
-  const limit = args.limit ?? 50
+  const limit  = args.limit  ?? 50
   const offset = args.offset ?? 0
   const params = { tenantId: ctx.tenantId, environment: args.environment ?? null, status: args.status ?? null, search: args.search ?? null, limit, offset }
 
   return withSession(async (session) => {
-    // If a specific type filter is requested, use a simple single-label query
     if (args.type) {
-      const labelMap: Record<string, string> = {
-        application: 'Application',
-        database: 'Database',
-        database_instance: 'DatabaseInstance',
-        server: 'Server',
-        certificate: 'Certificate',
-      }
-      const label = labelMap[args.type] ?? 'Application'
-      const typeParams = { ...params, type: args.type }
-      const items = await runQuery<{ props: Props }>(session,
+      // Use the Neo4j label directly — type is derived from label, never from a property
+      const label = TYPE_TO_LABEL[args.type.toLowerCase()] ?? args.type
+      const items = await runQuery<{ props: Props; label: string }>(session,
         `MATCH (n:${label} {tenant_id: $tenantId})
          WHERE ($environment IS NULL OR n.environment = $environment)
            AND ($status IS NULL OR n.status = $status)
            AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
-         RETURN properties(n) AS props ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
-        typeParams
+         RETURN properties(n) AS props, labels(n)[0] AS label
+         ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
+        params,
       )
       const countResult = await runQuery<{ total: unknown }>(session,
         `MATCH (n:${label} {tenant_id: $tenantId})
@@ -33,84 +45,58 @@ async function allCIs(_: unknown, args: { limit?: number; offset?: number; type?
            AND ($status IS NULL OR n.status = $status)
            AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
          RETURN count(n) AS total`,
-        typeParams
+        params,
       )
       const total = (countResult[0]?.total as { toNumber(): number })?.toNumber?.() ?? Number(countResult[0]?.total ?? 0)
-      const typedItems = items.map((r) => {
-        r.props['type'] = args.type!
-        return mapCI(r.props)
-      })
-      return { items: typedItems, total }
+      return {
+        items: items.map((r) => {
+          r.props['type'] = ciTypeFromLabels([r.label])
+          return mapCI(r.props)
+        }),
+        total,
+      }
     }
 
-    const items = await runQuery<{ props: Props; type: string }>(session,
-      `CALL {
-        MATCH (n:Application {tenant_id: $tenantId})
-        WHERE ($environment IS NULL OR n.environment = $environment)
-          AND ($status IS NULL OR n.status = $status)
-          AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
-        RETURN properties(n) AS props, 'application' AS type
-        UNION ALL
-        MATCH (n:Database {tenant_id: $tenantId})
-        WHERE ($environment IS NULL OR n.environment = $environment)
-          AND ($status IS NULL OR n.status = $status)
-          AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
-        RETURN properties(n) AS props, 'database' AS type
-        UNION ALL
-        MATCH (n:DatabaseInstance {tenant_id: $tenantId})
-        WHERE ($environment IS NULL OR n.environment = $environment)
-          AND ($status IS NULL OR n.status = $status)
-          AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
-        RETURN properties(n) AS props, 'database_instance' AS type
-        UNION ALL
-        MATCH (n:Server {tenant_id: $tenantId})
-        WHERE ($environment IS NULL OR n.environment = $environment)
-          AND ($status IS NULL OR n.status = $status)
-          AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
-        RETURN properties(n) AS props, 'server' AS type
-        UNION ALL
-        MATCH (n:Certificate {tenant_id: $tenantId})
-        WHERE ($environment IS NULL OR n.environment = $environment)
-          AND ($status IS NULL OR n.status = $status)
-          AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
-        RETURN properties(n) AS props, 'certificate' AS type
-      }
-      RETURN props, type
-      ORDER BY props.name ASC
-      SKIP toInteger($offset) LIMIT toInteger($limit)`,
-      params
+    // No type filter — union across all CI labels, return Neo4j label for type derivation
+    const labelFilter = ALL_CI_LABELS.map(l => `n:${l}`).join(' OR ')
+    const items = await runQuery<{ props: Props; label: string }>(session,
+      `MATCH (n) WHERE (${labelFilter}) AND n.tenant_id = $tenantId
+         AND ($environment IS NULL OR n.environment = $environment)
+         AND ($status IS NULL OR n.status = $status)
+         AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
+       RETURN properties(n) AS props, labels(n)[0] AS label
+       ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
+      params,
     )
-
     const countResult = await runQuery<{ total: unknown }>(session,
-      `MATCH (n)
-       WHERE (n:Application OR n:Database OR n:DatabaseInstance OR n:Server OR n:Certificate)
-         AND n.tenant_id = $tenantId
+      `MATCH (n) WHERE (${labelFilter}) AND n.tenant_id = $tenantId
          AND ($environment IS NULL OR n.environment = $environment)
          AND ($status IS NULL OR n.status = $status)
          AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
        RETURN count(n) AS total`,
-      params
+      params,
     )
-
     const total = (countResult[0]?.total as { toNumber(): number })?.toNumber?.() ?? Number(countResult[0]?.total ?? 0)
-    const mappedItems = items.map((r) => {
-      r.props['type'] = r.type
-      return mapCI(r.props)
-    })
-    return { items: mappedItems, total }
+    return {
+      items: items.map((r) => {
+        r.props['type'] = ciTypeFromLabels([r.label])
+        return mapCI(r.props)
+      }),
+      total,
+    }
   })
 }
 
 async function ciById(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
+    const labelFilter = ALL_CI_LABELS.map(l => `n:${l}`).join(' OR ')
     const row = await runQueryOne<{ props: Props; label: string }>(session,
-      `MATCH (n) WHERE (n:Application OR n:Database OR n:DatabaseInstance OR n:Server OR n:Certificate)
-         AND n.id = $id AND n.tenant_id = $tenantId
+      `MATCH (n) WHERE (${labelFilter}) AND n.id = $id AND n.tenant_id = $tenantId
        RETURN properties(n) AS props, labels(n)[0] AS label`,
-      { id: args.id, tenantId: ctx.tenantId }
+      { id: args.id, tenantId: ctx.tenantId },
     )
     if (!row) return null
-    row.props['type'] = labelToType(row.label)
+    row.props['type'] = ciTypeFromLabels([row.label])
     return mapCI(row.props)
   })
 }
@@ -132,10 +118,10 @@ async function blastRadius(_: unknown, args: { id: string }, ctx: GraphQLContext
          distance,
          properties(nodes(shortestPath)[-2]) AS parentProps
        ORDER BY distance ASC, props.name ASC`,
-      { id: args.id, tenantId: ctx.tenantId }
+      { id: args.id, tenantId: ctx.tenantId },
     )
     return rows.map((r) => {
-      r.props['type'] = labelToType(r.label)
+      r.props['type'] = ciTypeFromLabels([r.label])
       const dist = typeof r.distance === 'object' && r.distance !== null && 'toNumber' in r.distance
         ? (r.distance as { toNumber(): number }).toNumber()
         : Number(r.distance)
@@ -151,7 +137,7 @@ async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLConte
       `MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(n {id: $ciId})
        RETURN properties(i) AS props
        ORDER BY i.created_at DESC`,
-      { ciId: args.ciId, tenantId: ctx.tenantId }
+      { ciId: args.ciId, tenantId: ctx.tenantId },
     )
     return rows.map((r) => ({
       id:          r.props['id']          as string,
@@ -181,7 +167,7 @@ async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext
       `MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(n {id: $ciId})
        RETURN properties(c) AS props
        ORDER BY c.created_at DESC`,
-      { ciId: args.ciId, tenantId: ctx.tenantId }
+      { ciId: args.ciId, tenantId: ctx.tenantId },
     )
     return rows.map((r) => ({
       id:             r.props['id']              as string,

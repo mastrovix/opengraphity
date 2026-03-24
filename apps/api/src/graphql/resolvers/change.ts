@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { publish } from '@opengraphity/events'
-import { mapCI, labelToType } from './ci-utils.js'
+import { mapCI, ciTypeFromLabels } from './ci-utils.js'
 import { calculateRiskScore } from '../../lib/riskScore.js'
 import type { WorkflowInstance } from '@opengraphity/workflow'
 import type { DomainEvent } from '@opengraphity/types'
@@ -1494,7 +1494,7 @@ async function changeAffectedCIs(parent: { id: string }, _: unknown, ctx: GraphQ
       RETURN properties(ci) AS props, labels(ci)[0] AS label
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      const t = labelToType(r.label)
+      const t = ciTypeFromLabels([r.label])
       r.props['type']  = t
       const ci = mapCI(r.props) as Record<string, unknown>
       ci['ciType']     = t
@@ -1634,14 +1634,7 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
     WITH impacted, labels(impacted)[0] AS lbl, min(length(path)) AS distance
     RETURN DISTINCT
       impacted.id AS id, impacted.name AS name,
-      CASE lbl
-        WHEN 'Application' THEN 'application'
-        WHEN 'Database' THEN 'database'
-        WHEN 'DatabaseInstance' THEN 'database_instance'
-        WHEN 'Server' THEN 'server'
-        WHEN 'Certificate' THEN 'certificate'
-        ELSE 'application'
-      END AS type,
+      lbl AS label,
       impacted.environment AS environment,
       distance
     ORDER BY distance ASC, impacted.name ASC
@@ -1650,7 +1643,7 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
   const blastRadius = blastResult.records.map((r) => ({
     id:          r.get('id') as string,
     name:        r.get('name') as string,
-    type:        r.get('type') as string,
+    type:        ciTypeFromLabels([r.get('label') as string]),
     environment: (r.get('environment') ?? 'unknown') as string,
     distance:    (r.get('distance') as { toNumber(): number } | null)?.toNumber() ?? 1,
   }))
@@ -1849,12 +1842,12 @@ export const changeResolvers = {
         if (!r.records.length) return null
         const props  = r.records[0].get('props') as Props
         const labels = r.records[0].get('labels') as string[]
-        const ciType = labels.find((l) => l !== 'ConfigurationItem') ?? 'Application'
+        const ciType = ciTypeFromLabels(labels)
         return {
           id:          props['id'],
           name:        props['name'] ?? '',
-          type:        ciType.toLowerCase(),
-          ciType:      ciType.toLowerCase(),
+          type:        ciType,
+          ciType:      ciType,
           status:      props['status']      ?? null,
           environment: props['environment'] ?? null,
           description: props['description'] ?? null,

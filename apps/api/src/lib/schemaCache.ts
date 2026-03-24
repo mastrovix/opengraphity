@@ -5,6 +5,7 @@ import { buildBaseSDL } from '../graphql/schema-base.js'
 import { buildResolvers } from '../graphql/resolvers/index.js'
 import { logger } from './logger.js'
 import { registerSchemaInvalidator } from './schemaInvalidator.js'
+import { registerCITypes } from './ciTypeFromLabels.js'
 
 interface SchemaCacheEntry {
   schema: GraphQLSchema
@@ -33,6 +34,7 @@ export async function regenerateSchema(tenantId: string): Promise<GraphQLSchema>
   logger.info({ tenantId }, 'Rigenerando schema GraphQL')
 
   const types = await loadMetamodel(tenantId)
+  registerCITypes(types)
   const dynamicSDL = generateSDL(types)
   const baseSDL = buildBaseSDL()
   const resolvers = buildResolvers(types)

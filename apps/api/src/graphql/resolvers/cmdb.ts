@@ -3,15 +3,16 @@ import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
+import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 
 type Props = Record<string, unknown>
 
-function mapCI(props: Props) {
+function mapCI(props: Props, label?: string) {
   return {
     id:          props['id']          as string,
     tenantId:    props['tenant_id']   as string,
     name:        props['name']        as string,
-    type:        props['type']        as string,
+    type:        label ? ciTypeFromLabels([label]) : (props['type'] as string ?? 'unknown'),
     status:      props['status']      as string,
     environment: props['environment'] as string,
     createdAt:   props['created_at']  as string,
@@ -48,16 +49,16 @@ async function configurationItems(
   ctx: GraphQLContext,
 ) {
   const { type, environment, status, search, limit = 50, offset = 0 } = args
+  // Type filter: use label directly — ci.type property is never set on CI nodes
+  const labelClause = type ? `:ConfigurationItem:${type}` : ':ConfigurationItem'
   return withSession(async (session) => {
     const whereClause = `
-      WHERE ($type        IS NULL OR ci.type        = $type)
-        AND ($environment IS NULL OR ci.environment = $environment)
+      WHERE ($environment IS NULL OR ci.environment = $environment)
         AND ($status      IS NULL OR ci.status      = $status)
         AND ($search      IS NULL OR toLower(ci.name) CONTAINS toLower($search))
     `
     const params = {
       tenantId:    ctx.tenantId,
-      type:        type        ?? null,
       environment: environment ?? null,
       status:      status      ?? null,
       search:      search      ?? null,
@@ -65,21 +66,21 @@ async function configurationItems(
       limit,
     }
 
-    const itemRows  = await runQuery<{ props: Props }>(session, `
-      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+    const itemRows  = await runQuery<{ props: Props; label: string }>(session, `
+      MATCH (ci${labelClause} {tenant_id: $tenantId})
       ${whereClause}
-      WITH ci ORDER BY ci.name
+      WITH ci, labels(ci)[0] AS label ORDER BY ci.name
       SKIP toInteger($offset) LIMIT toInteger($limit)
-      RETURN properties(ci) as props
+      RETURN properties(ci) as props, label
     `, params)
     const countRows = await runQuery<{ total: number }>(session, `
-      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+      MATCH (ci${labelClause} {tenant_id: $tenantId})
       ${whereClause}
       RETURN count(ci) AS total
     `, params)
 
     return {
-      items: itemRows.map((r) => mapCI(r.props)),
+      items: itemRows.map((r) => mapCI(r.props, r.label)),
       total: (countRows[0]?.total as unknown as { toNumber(): number })?.toNumber?.() ?? Number(countRows[0]?.total ?? 0),
     }
   })
@@ -93,7 +94,7 @@ async function ciTypes(
   return withSession(async (session) => {
     const rows = await runQuery<{ type: string; count: number }>(session, `
       MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
-      RETURN ci.type AS type, count(ci) AS count
+      RETURN labels(ci)[0] AS type, count(ci) AS count
       ORDER BY count DESC
     `, { tenantId: ctx.tenantId })
     return rows.map((r) => ({
@@ -135,14 +136,14 @@ async function blastRadius(
       WITH d, min(length(path)) AS distance
       RETURN
         d.id AS id, d.name AS name,
-        d.type AS type,
+        labels(d)[0] AS label,
         d.environment AS environment,
         d.status AS status,
         distance
       ORDER BY distance ASC, d.name ASC
     `
     const rows = await runQuery<{
-      id: string; name: string; type: string;
+      id: string; name: string; label: string;
       environment: string; status: string;
       distance: number
     }>(session, cypher, {
@@ -151,7 +152,7 @@ async function blastRadius(
     return rows.map((r) => ({
       id:          r.id,
       name:        r.name,
-      type:        r.type,
+      type:        ciTypeFromLabels([r.label]),
       environment: r.environment ?? null,
       status:      r.status ?? null,
       distance:    typeof r.distance === 'object'
