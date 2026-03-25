@@ -11,6 +11,8 @@ import {
   Server,
   GitBranch,
   Users,
+  UsersRound,
+  User,
   BarChart2,
   Bot,
   LayoutGrid,
@@ -388,10 +390,16 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             {teamsOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 <NavLink to="/teams" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Teams</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <UsersRound size={12} />
+                    Teams
+                  </span>
                 </NavLink>
                 <NavLink to="/users" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Users</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <User size={12} />
+                    Users
+                  </span>
                 </NavLink>
               </div>
             )}
