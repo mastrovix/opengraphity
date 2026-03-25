@@ -139,7 +139,9 @@ export default function TopologyGraph({
     edgeTypes.forEach((et) => {
       defs.append('marker')
         .attr('id', `arrow-${et}`)
-        .attr('viewBox', '0 -5 10 10').attr('refX', 28).attr('refY', 0)
+        // refX=10 places the tip of the arrow (x=10 in the path M0,-5L10,0L0,5)
+        // exactly at the line endpoint, which is already clipped to the node border
+        .attr('viewBox', '0 -5 10 10').attr('refX', 10).attr('refY', 0)
         .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
         .append('path').attr('d', 'M0,-5L10,0L0,5')
         .attr('fill', ec(et)).attr('opacity', 0.6)
@@ -316,12 +318,30 @@ export default function TopologyGraph({
     })
 
     // ── Tick ──────────────────────────────────────────────────────────────
+    // Clips each line endpoint to the node border (+2px gap) instead of center.
+    function linkEndpoints(d: SimLink): { x1: number; y1: number; x2: number; y2: number } {
+      if (typeof d.source !== 'object' || typeof d.target !== 'object')
+        return { x1: 0, y1: 0, x2: 0, y2: 0 }
+      const s = d.source as SimNode, t = d.target as SimNode
+      const sx = s.x ?? 0, sy = s.y ?? 0, tx = t.x ?? 0, ty = t.y ?? 0
+      const dx = tx - sx, dy = ty - sy
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist === 0) return { x1: sx, y1: sy, x2: tx, y2: ty }
+      const sr = r(s.type) + 2   // source radius + gap
+      const tr = r(t.type) + 2   // target radius + gap
+      return {
+        x1: sx + (dx / dist) * sr,
+        y1: sy + (dy / dist) * sr,
+        x2: tx - (dx / dist) * tr,
+        y2: ty - (dy / dist) * tr,
+      }
+    }
+
     sim.on('tick', () => {
-      linkEl
-        .attr('x1', (d) => typeof d.source === 'object' ? ((d.source as SimNode).x ?? 0) : 0)
-        .attr('y1', (d) => typeof d.source === 'object' ? ((d.source as SimNode).y ?? 0) : 0)
-        .attr('x2', (d) => typeof d.target === 'object' ? ((d.target as SimNode).x ?? 0) : 0)
-        .attr('y2', (d) => typeof d.target === 'object' ? ((d.target as SimNode).y ?? 0) : 0)
+      linkEl.each(function(d) {
+        const { x1, y1, x2, y2 } = linkEndpoints(d)
+        d3.select(this).attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+      })
       edgeLabelEl
         .attr('x', (d) => typeof d.source === 'object' && typeof d.target === 'object'
           ? (((d.source as SimNode).x ?? 0) + ((d.target as SimNode).x ?? 0)) / 2 : 0)
