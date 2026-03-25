@@ -413,6 +413,13 @@ export default function TopologyGraph({
     })
 
     // ── Tick ─────────────────────────────────────────────────────────────────
+    // Returns the outermost visible radius for a node (node + rings + gap)
+    function outerRadius(n: SimNode): number {
+      if (n.incidentCount > 0) return r + 6 + 3   // outside incident ring (r+6)
+      if (n.changeCount   > 0) return r + 4 + 3   // outside change ring (r+4)
+      return r + 2                                  // just outside node border
+    }
+
     function linkEndpoints(d: SimLink): { x1: number; y1: number; x2: number; y2: number } {
       if (typeof d.source !== 'object' || typeof d.target !== 'object')
         return { x1: 0, y1: 0, x2: 0, y2: 0 }
@@ -421,8 +428,8 @@ export default function TopologyGraph({
       const dx = tx - sx, dy = ty - sy
       const dist = Math.sqrt(dx * dx + dy * dy)
       if (dist === 0) return { x1: sx, y1: sy, x2: tx, y2: ty }
-      const sr = r + 2
-      const tr = r + 2
+      const sr = outerRadius(s)
+      const tr = outerRadius(t)
       return {
         x1: sx + (dx / dist) * sr,
         y1: sy + (dy / dist) * sr,
