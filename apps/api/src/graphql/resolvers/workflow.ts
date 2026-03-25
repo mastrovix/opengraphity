@@ -1,21 +1,10 @@
-import { getSession } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { publish } from '@opengraphity/events'
 import { v4 as uuidv4 } from 'uuid'
 import type { DomainEvent } from '@opengraphity/types'
 import type { IncidentEventPayload } from './incident.js'
 import type { GraphQLContext } from '../../context.js'
-
-type Session = ReturnType<typeof getSession>
-
-async function withSession<T>(fn: (s: Session) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
-  }
-}
+import { withSession } from './ci-utils.js'
 
 function mapWI(wi: Record<string, unknown>) {
   return {

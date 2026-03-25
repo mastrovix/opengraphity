@@ -1,9 +1,10 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
 import { workflowEngine } from '@opengraphity/workflow'
-import { mapCI, ciTypeFromLabels } from './ci-utils.js'
+import { mapCI, ciTypeFromLabels, withSession, getSession } from './ci-utils.js'
+import { mapUser, mapTeam } from '../../lib/mappers.js'
 import type { DomainEvent, IncidentCreatedPayload, IncidentResolvedPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 
@@ -64,27 +65,6 @@ function mapIncident(props: Props) {
   }
 }
 
-function mapUser(props: Props) {
-  return {
-    id:       props['id']        as string,
-    tenantId: props['tenant_id'] as string,
-    email:    props['email']     as string,
-    name:     props['name']      as string,
-    role:     props['role']      as string,
-  }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
-  }
-}
-
 // ── Comment helper ───────────────────────────────────────────────────────────
 
 async function createTransitionComment(
@@ -130,12 +110,16 @@ async function incidents(
       WHERE ($status   IS NULL OR i.status   = $status)
         AND ($severity IS NULL OR i.severity = $severity)
     `
-    const itemRows = await runQuery<{ props: Props }>(session, `
+    const itemRows = await runQuery<{ props: Props; uProps: Props | null; tProps: Props | null; cis: Array<{ props: Props; label: string }> }>(session, `
       MATCH (i:Incident {tenant_id: $tenantId})
       ${whereClause}
-      WITH i ORDER BY i.created_at DESC
+      OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
+      OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
+      WITH i, u, t ORDER BY i.created_at DESC
       SKIP toInteger($offset) LIMIT toInteger($limit)
-      RETURN properties(i) as props
+      OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
+      WITH i, u, t, collect(DISTINCT {props: properties(ci), label: labels(ci)[0]}) AS cis
+      RETURN properties(i) AS props, properties(u) AS uProps, properties(t) AS tProps, cis
     `, params)
     const countRows = await runQuery<{ total: number }>(session, `
       MATCH (i:Incident {tenant_id: $tenantId})
@@ -143,7 +127,23 @@ async function incidents(
       RETURN count(i) AS total
     `, params)
     return {
-      items: itemRows.map((r) => mapIncident(r.props)),
+      items: itemRows.map((r) => {
+        const base = mapIncident(r.props) as ReturnType<typeof mapIncident> & { _prefetched: boolean }
+        base.assignee     = r.uProps ? mapUser(r.uProps) as unknown as null : null
+        base.assignedTeam = r.tProps ? mapTeam(r.tProps) as unknown as null : null
+        base.affectedCIs  = r.cis
+          .filter((c) => c.props && c.props['id'])
+          .map((c) => {
+            const t = ciTypeFromLabels([c.label])
+            c.props['type'] = t
+            const ci = mapCI(c.props) as Record<string, unknown>
+            ci['ciType']     = t
+            ci['__typename'] = c.label || 'Application'
+            return ci
+          }) as unknown as []
+        base._prefetched = true
+        return base
+      }),
       total: (countRows[0]?.total as unknown as { toNumber(): number })?.toNumber?.() ?? Number(countRows[0]?.total ?? 0),
     }
   })
@@ -585,32 +585,28 @@ async function addIncidentComment(
 // ── Field resolvers ──────────────────────────────────────────────────────────
 
 async function incidentAssignedTeam(
-  parent: { id: string; tenantId: string },
+  parent: { id: string; tenantId: string; assignedTeam?: unknown; _prefetched?: boolean },
   _: unknown,
   ctx: GraphQLContext,
 ) {
+  if (parent._prefetched) return parent.assignedTeam ?? null
   return withSession(async (session) => {
     const result = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(t:Team)
       RETURN t
     `, { id: parent.id, tenantId: ctx.tenantId }))
     if (!result.records.length) return null
-    const t = result.records[0]!.get('t').properties as Record<string, unknown>
-    return {
-      id:          t['id']          as string,
-      tenantId:    t['tenant_id']   as string,
-      name:        t['name']        as string,
-      description: (t['description'] ?? null) as string | null,
-      createdAt:   t['created_at']  as string,
-    }
+    const t = result.records[0]!.get('t').properties as Props
+    return mapTeam(t)
   })
 }
 
 async function incidentAssignee(
-  parent: { id: string; tenantId: string },
+  parent: { id: string; tenantId: string; assignee?: unknown; _prefetched?: boolean },
   _: unknown,
   ctx: GraphQLContext,
 ) {
+  if (parent._prefetched) return parent.assignee ?? null
   return withSession(async (session) => {
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO]->(u:User)
@@ -624,10 +620,11 @@ async function incidentAssignee(
 }
 
 async function incidentAffectedCIs(
-  parent: { id: string; tenantId: string },
+  parent: { id: string; tenantId: string; _prefetched?: boolean },
   _: unknown,
   ctx: GraphQLContext,
 ) {
+  if (parent._prefetched) return (parent as unknown as { affectedCIs: unknown[] }).affectedCIs
   return withSession(async (session) => {
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)

@@ -1,18 +1,7 @@
 import { GraphQLError } from 'graphql'
-import { getSession } from '@opengraphity/neo4j'
 import { randomUUID } from 'crypto'
 import type { GraphQLContext } from '../../context.js'
-
-type Session = ReturnType<typeof getSession>
-
-async function withSession<T>(fn: (s: Session) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
-  }
-}
+import { withSession } from './ci-utils.js'
 
 function mapChannel(n: Record<string, unknown>) {
   return {

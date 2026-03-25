@@ -1,29 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { mapCI, ciTypeFromLabels } from './ci-utils.js'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
+import { mapTeam } from '../../lib/mappers.js'
 
 type Props = Record<string, unknown>
 
-function mapTeam(props: Props) {
-  return {
-    id:          props['id']          as string,
-    tenantId:    props['tenant_id']   as string,
-    name:        props['name']        as string,
-    description: props['description'] as string | null,
-    type:        props['type']        as string | null,
-    createdAt:   props['created_at']  as string,
-  }
-}
-
-async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
-  }
-}
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 

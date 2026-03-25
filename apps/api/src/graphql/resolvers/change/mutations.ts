@@ -1,151 +1,20 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { runQuery } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { publish } from '@opengraphity/events'
-import { mapCI, ciTypeFromLabels } from './ci-utils.js'
-import { calculateRiskScore } from '../../lib/riskScore.js'
+import { withSession, getSession } from '../ci-utils.js'
 import type { WorkflowInstance } from '@opengraphity/workflow'
 import type { DomainEvent } from '@opengraphity/types'
-import type { GraphQLContext } from '../../context.js'
+import type { GraphQLContext } from '../../../context.js'
+import { mapChange, mapChangeTask, mapChangeComment, type Props } from './mappers.js'
 
-interface ChangeEventPayload {
-  id: string; title: string; type: string; status: string
-  ciName: string; assignedTo: string
-}
+// ── createChangeComment helper ────────────────────────────────────────────────
 
-type Props = Record<string, unknown>
-
-// ── Mappers ───────────────────────────────────────────────────────────────────
-
-function mapChange(props: Props) {
-  return {
-    id:             props['id']             as string,
-    tenantId:       props['tenant_id']      as string,
-    title:          props['title']          as string,
-    description:    (props['description']   ?? null) as string | null,
-    type:           props['type']           as string,
-    priority:       (props['priority']      ?? 'medium') as string,
-    status:         props['status']         as string,
-    scheduledStart: (props['scheduled_start'] ?? null) as string | null,
-    scheduledEnd:   (props['scheduled_end']   ?? null) as string | null,
-    implementedAt:  (props['implemented_at']  ?? null) as string | null,
-    createdAt:      props['created_at']     as string,
-    updatedAt:      props['updated_at']     as string,
-    // populated by field resolvers
-    assignedTeam: null, assignee: null,
-    affectedCIs: [], relatedIncidents: [],
-    changeTasks: [],
-    createdBy: null, comments: [],
-  }
-}
-
-function mapChangeTask(
-  props: Props,
-  ci?: Props | null,
-  team?: Props | null,
-  user?: Props | null,
-  vTeam?: Props | null,
-  vUser?: Props | null,
-) {
-  return {
-    id:                props['id']                 as string,
-    taskType:          props['task_type']           as string,
-    changeId:          props['change_id']           as string,
-    status:            props['status']              as string,
-    title:             (props['title']              ?? null) as string | null,
-    order:             (props['order']              ?? null) as number | null,
-    description:       (props['description']        ?? null) as string | null,
-    notes:             (props['notes']              ?? null) as string | null,
-    riskLevel:         (props['risk_level']         ?? null) as string | null,
-    impactDescription: (props['impact_description'] ?? null) as string | null,
-    mitigation:        (props['mitigation']         ?? null) as string | null,
-    skipReason:        (props['skip_reason']        ?? null) as string | null,
-    completedAt:       (props['completed_at']       ?? null) as string | null,
-    scheduledStart:    (props['scheduled_start']    ?? null) as string | null,
-    scheduledEnd:      (props['scheduled_end']      ?? null) as string | null,
-    durationDays:      (props['duration_days']      ?? null) as number | null,
-    hasValidation:     (props['has_validation']     ?? null) as boolean | null,
-    validationStatus:  (props['validation_status']  ?? null) as string | null,
-    validationStart:   (props['validation_start']   ?? null) as string | null,
-    validationEnd:     (props['validation_end']     ?? null) as string | null,
-    validationNotes:   (props['validation_notes']   ?? null) as string | null,
-    type:              (props['type']               ?? null) as string | null,
-    rollbackPlan:      (props['rollback_plan']      ?? null) as string | null,
-    createdAt:         (props['created_at']         ?? null) as string | null,
-    ciId:              (props['ci_id']              ?? null) as string | null,
-    ci:                ci    ? mapCI(ci)    : null,
-    assignedTeam:      team  ? mapTeam(team)  : null,
-    assignee:          user  ? mapUser(user)  : null,
-    validationTeam:    vTeam ? mapTeam(vTeam) : null,
-    validationUser:    vUser ? mapUser(vUser) : null,
-  }
-}
-
-function mapUser(props: Props) {
-  return {
-    id: props['id'] as string, tenantId: props['tenant_id'] as string,
-    email: props['email'] as string, name: props['name'] as string, role: props['role'] as string,
-  }
-}
-
-function mapTeam(props: Props) {
-  return {
-    id: props['id'] as string, tenantId: props['tenant_id'] as string,
-    name: props['name'] as string,
-    description: (props['description'] ?? null) as string | null,
-    createdAt: props['created_at'] as string,
-  }
-}
-
-function mapWI(wi: Record<string, unknown>) {
-  return {
-    id:          wi['id']           as string,
-    currentStep: wi['current_step'] as string,
-    status:      wi['status']       as string,
-    createdAt:   wi['created_at']   as string,
-    updatedAt:   wi['updated_at']   as string,
-  }
-}
-
-function mapExec(e: Record<string, unknown>) {
-  return {
-    id: e['id'] as string, stepName: e['step_name'] as string,
-    enteredAt: e['entered_at'] as string, exitedAt: (e['exited_at'] ?? null) as string | null,
-    durationMs: e['duration_ms'] == null ? null : (typeof e['duration_ms'] === 'object' ? (e['duration_ms'] as { toNumber(): number }).toNumber() : Math.round(Number(e['duration_ms']))),
-    triggeredBy: e['triggered_by'] as string, triggerType: e['trigger_type'] as string,
-    notes: (e['notes'] ?? null) as string | null,
-  }
-}
-
-function mapChangeComment(props: Props, user?: Props | null) {
-  return {
-    id:        props['id']         as string,
-    changeId:  props['change_id']  as string,
-    text:      props['text']       as string,
-    type:      props['type']       as string,
-    createdAt: props['created_at'] as string,
-    createdBy: user ? mapUser(user) : null,
-  }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try { return await fn(session) } finally { await session.close() }
-}
-
-function toInt(v: unknown, fallback = 0): number {
-  if (v == null) return fallback
-  if (typeof v === 'number') return v
-  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
-    return (v as { toNumber: () => number }).toNumber()
-  return Number(v)
-}
+type Session = ReturnType<typeof getSession>
 
 async function createChangeComment(
-  session: ReturnType<typeof getSession>,
+  session: Session,
   tenantId: string,
   changeId: string,
   text: string,
@@ -168,66 +37,22 @@ async function createChangeComment(
   `, { changeId, tenantId, text, type, userId, now }))
 }
 
-// ── Query resolvers ───────────────────────────────────────────────────────────
-
-async function changes(
-  _: unknown,
-  args: { status?: string; type?: string; priority?: string; search?: string; limit?: number; offset?: number },
-  ctx: GraphQLContext,
-) {
-  const { status, type, priority, search, limit = 50, offset = 0 } = args
-  return withSession(async (session) => {
-    const params = {
-      tenantId: ctx.tenantId,
-      status:   status   ?? null,
-      type:     type     ?? null,
-      priority: priority ?? null,
-      search:   search   ?? null,
-      offset,
-      limit,
-    }
-    const whereClause = `
-      WHERE ($status   IS NULL OR c.status   = $status)
-        AND ($type     IS NULL OR c.type     = $type)
-        AND ($priority IS NULL OR c.priority = $priority)
-        AND ($search   IS NULL OR toLower(c.title) CONTAINS toLower($search))
-    `
-    const itemRows = await runQuery<{ props: Props }>(session, `
-      MATCH (c:Change {tenant_id: $tenantId})
-      ${whereClause}
-      WITH c ORDER BY c.created_at DESC
-      SKIP toInteger($offset) LIMIT toInteger($limit)
-      RETURN properties(c) as props
-    `, params)
-    const countRows = await runQuery<{ total: number }>(session, `
-      MATCH (c:Change {tenant_id: $tenantId})
-      ${whereClause}
-      RETURN count(c) AS total
-    `, params)
-    return {
-      items: itemRows.map((r) => mapChange(r.props)),
-      total: (countRows[0]?.total as unknown as { toNumber(): number })?.toNumber?.() ?? Number(countRows[0]?.total ?? 0),
-    }
-  })
+function toInt(v: unknown, fallback = 0): number {
+  if (v == null) return fallback
+  if (typeof v === 'number') return v
+  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
+    return (v as { toNumber: () => number }).toNumber()
+  return Number(v)
 }
 
-async function change(
-  _: unknown,
-  args: { id: string },
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const row = await runQueryOne<{ props: Props }>(session, `
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})
-      RETURN properties(c) as props
-    `, { id: args.id, tenantId: ctx.tenantId })
-    return row ? mapChange(row.props) : null
-  })
+interface ChangeEventPayload {
+  id: string; title: string; type: string; status: string
+  ciName: string; assignedTo: string
 }
 
 // ── Mutation resolvers ────────────────────────────────────────────────────────
 
-async function createChange(
+export async function createChange(
   _: unknown,
   args: { input: {
     title: string; description?: string; type: string; priority: string
@@ -325,7 +150,7 @@ async function createChange(
   return created
 }
 
-async function addAffectedCIToChange(
+export async function addAffectedCIToChange(
   _: unknown, args: { changeId: string; ciId: string }, ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
@@ -402,7 +227,7 @@ async function addAffectedCIToChange(
   }, true)
 }
 
-async function removeAffectedCIFromChange(
+export async function removeAffectedCIFromChange(
   _: unknown, args: { changeId: string; ciId: string; reason: string }, ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
@@ -458,7 +283,7 @@ async function removeAffectedCIFromChange(
   }, true)
 }
 
-async function addChangeComment(
+export async function addChangeComment(
   _: unknown, args: { changeId: string; text: string }, ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -475,7 +300,7 @@ async function addChangeComment(
   }, true)
 }
 
-async function saveDeploySteps(
+export async function saveDeploySteps(
   _: unknown,
   args: {
     changeId: string
@@ -607,7 +432,7 @@ async function saveDeploySteps(
   }, true)
 }
 
-async function saveChangeValidation(
+export async function saveChangeValidation(
   _: unknown,
   args: { changeId: string; scheduledStart: string; scheduledEnd: string },
   ctx: GraphQLContext,
@@ -654,7 +479,7 @@ async function saveChangeValidation(
   }, true)
 }
 
-async function updateAssessmentTask(
+export async function updateAssessmentTask(
   _: unknown,
   args: { taskId: string; input: { riskLevel: string; impactDescription: string; mitigation?: string; notes?: string; assignedTeamId?: string; assignedUserId?: string } },
   ctx: GraphQLContext,
@@ -698,7 +523,7 @@ async function updateAssessmentTask(
   }, true)
 }
 
-async function completeAssessmentTask(
+export async function completeAssessmentTask(
   _: unknown,
   args: { taskId: string; input: { riskLevel: string; impactDescription: string; mitigation?: string; notes?: string; assignedTeamId?: string; assignedUserId?: string } },
   ctx: GraphQLContext,
@@ -766,7 +591,7 @@ async function completeAssessmentTask(
   }, true)
 }
 
-async function rejectAssessmentTask(
+export async function rejectAssessmentTask(
   _: unknown,
   args: { taskId: string; reason: string },
   ctx: GraphQLContext,
@@ -848,7 +673,7 @@ async function rejectAssessmentTask(
   }, true)
 }
 
-async function assignDeployStepToTeam(
+export async function assignDeployStepToTeam(
   _: unknown, args: { stepId: string; teamId: string }, ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -865,7 +690,7 @@ async function assignDeployStepToTeam(
   }, true)
 }
 
-async function assignDeployStepToUser(
+export async function assignDeployStepToUser(
   _: unknown, args: { stepId: string; userId: string }, ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -882,7 +707,7 @@ async function assignDeployStepToUser(
   }, true)
 }
 
-async function assignDeployStepValidationTeam(
+export async function assignDeployStepValidationTeam(
   _: unknown, args: { stepId: string; teamId: string }, ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -909,7 +734,7 @@ async function assignDeployStepValidationTeam(
   }, true)
 }
 
-async function assignDeployStepValidationUser(
+export async function assignDeployStepValidationUser(
   _: unknown, args: { stepId: string; userId: string }, ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -936,7 +761,7 @@ async function assignDeployStepValidationUser(
   }, true)
 }
 
-async function updateDeployStepStatus(
+export async function updateDeployStepStatus(
   _: unknown,
   args: { stepId: string; status: string; notes?: string; skipReason?: string },
   ctx: GraphQLContext,
@@ -993,7 +818,7 @@ async function updateDeployStepStatus(
   }, true)
 }
 
-async function updateDeployStepValidation(
+export async function updateDeployStepValidation(
   _: unknown,
   args: { stepId: string; status: string; notes?: string },
   ctx: GraphQLContext,
@@ -1051,7 +876,7 @@ async function updateDeployStepValidation(
   }, true)
 }
 
-async function executeChangeTransition(
+export async function executeChangeTransition(
   _: unknown,
   args: { instanceId: string; toStep: string; notes?: string },
   ctx: GraphQLContext,
@@ -1240,7 +1065,7 @@ async function executeChangeTransition(
 
 // ── AssessmentTask team assignment ────────────────────────────────────────────
 
-async function assignAssessmentTaskTeam(
+export async function assignAssessmentTaskTeam(
   _: unknown, args: { taskId: string; teamId: string }, ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -1272,7 +1097,7 @@ async function assignAssessmentTaskTeam(
   }, true)
 }
 
-async function assignAssessmentTaskUser(
+export async function assignAssessmentTaskUser(
   _: unknown, args: { taskId: string; userId: string }, ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -1318,7 +1143,7 @@ async function assignAssessmentTaskUser(
 
 // ── updateChangeTask ──────────────────────────────────────────────────────────
 
-async function updateChangeTask(
+export async function updateChangeTask(
   _: unknown, args: { id: string; input: { rollbackPlan?: string | null } }, ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -1353,7 +1178,7 @@ async function updateChangeTask(
 
 // ── Change Validation mutations ───────────────────────────────────────────────
 
-async function completeChangeValidation(
+export async function completeChangeValidation(
   _: unknown, args: { changeId: string; notes?: string }, ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
@@ -1384,7 +1209,7 @@ async function completeChangeValidation(
   }, true)
 }
 
-async function failChangeValidation(
+export async function failChangeValidation(
   _: unknown, args: { changeId: string }, ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
@@ -1416,7 +1241,7 @@ async function failChangeValidation(
 
 // ── Backward-compat mutations ─────────────────────────────────────────────────
 
-async function approveChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+export async function approveChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   const now = new Date().toISOString()
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
@@ -1430,7 +1255,7 @@ async function approveChange(_: unknown, args: { id: string }, ctx: GraphQLConte
   }, true)
 }
 
-async function rejectChange(_: unknown, args: { id: string; reason?: string }, ctx: GraphQLContext) {
+export async function rejectChange(_: unknown, args: { id: string; reason?: string }, ctx: GraphQLContext) {
   const now = new Date().toISOString()
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
@@ -1444,7 +1269,7 @@ async function rejectChange(_: unknown, args: { id: string; reason?: string }, c
   }, true)
 }
 
-async function deployChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+export async function deployChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   const now = new Date().toISOString()
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
@@ -1458,7 +1283,7 @@ async function deployChange(_: unknown, args: { id: string }, ctx: GraphQLContex
   }, true)
 }
 
-async function failChange(_: unknown, args: { id: string; reason?: string }, ctx: GraphQLContext) {
+export async function failChange(_: unknown, args: { id: string; reason?: string }, ctx: GraphQLContext) {
   const now = new Date().toISOString()
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
@@ -1472,413 +1297,3 @@ async function failChange(_: unknown, args: { id: string; reason?: string }, ctx
   }, true)
 }
 
-// ── Field resolvers ───────────────────────────────────────────────────────────
-
-async function changeAssignedTeam(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(t:Team)
-      RETURN properties(t) AS props
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    return r.records.length ? mapTeam(r.records[0].get('props') as Props) : null
-  })
-}
-
-async function changeAssignee(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const row = await runQueryOne<{ props: Props }>(session, `
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO]->(u:User)
-      RETURN properties(u) AS props
-    `, { id: parent.id, tenantId: ctx.tenantId })
-    return row ? mapUser(row.props) : null
-  })
-}
-
-async function changeAffectedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const rows = await runQuery<{ props: Props; label: string }>(session, `
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci)
-      WHERE ci.tenant_id = $tenantId
-      RETURN properties(ci) AS props, labels(ci)[0] AS label
-    `, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => {
-      const t = ciTypeFromLabels([r.label])
-      r.props['type']  = t
-      const ci = mapCI(r.props) as Record<string, unknown>
-      ci['ciType']     = t
-      ci['__typename'] = r.label || 'Application'
-      return ci
-    })
-  })
-}
-
-async function changeRelatedIncidents(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:RELATED_TO]->(i:Incident)
-      RETURN properties(i) AS props
-    `, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => ({
-      id: r.props['id'], tenantId: r.props['tenant_id'], title: r.props['title'],
-      description: r.props['description'], severity: r.props['severity'],
-      status: r.props['status'], createdAt: r.props['created_at'], updatedAt: r.props['updated_at'],
-      resolvedAt: r.props['resolved_at'] ?? null, rootCause: r.props['root_cause'] ?? null,
-      assignee: null, assignedTeam: null, affectedCIs: [], causedByProblem: null, comments: [],
-    }))
-  })
-}
-
-async function changeChangeTasks(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(t:ChangeTask)
-      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
-      OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
-      OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
-      OPTIONAL MATCH (t)-[:VALIDATION_ASSIGNED_TO_TEAM]->(vt:Team)
-      OPTIONAL MATCH (t)-[:VALIDATION_ASSIGNED_TO]->(vu:User)
-      OPTIONAL MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
-      OPTIONAL MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
-      RETURN properties(t) AS tProps, properties(ci) AS ciProps,
-             properties(team) AS teamProps, properties(u) AS uProps,
-             properties(vt) AS vtProps, properties(vu) AS vuProps,
-             properties(ownerTeam) AS ownerTeamProps, properties(supportTeam) AS supportTeamProps
-      ORDER BY t.task_type ASC, t.order ASC
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    return r.records.map((rec) => {
-      const task = mapChangeTask(
-        rec.get('tProps') as Props,
-        rec.get('ciProps') as Props | null,
-        rec.get('teamProps') as Props | null,
-        rec.get('uProps') as Props | null,
-        rec.get('vtProps') as Props | null,
-        rec.get('vuProps') as Props | null,
-      )
-      if (task.ci) {
-        const ci = task.ci as Record<string, unknown>
-        const ownerTeamProps   = rec.get('ownerTeamProps')   as Props | null
-        const supportTeamProps = rec.get('supportTeamProps') as Props | null
-        ci['ownerGroup']   = ownerTeamProps   ? { id: ownerTeamProps['id'],   name: ownerTeamProps['name']   } : null
-        ci['supportGroup'] = supportTeamProps ? { id: supportTeamProps['id'], name: supportTeamProps['name'] } : null
-      }
-      return task
-    })
-  })
-}
-
-async function changeWorkflowInstance(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    if (!r.records.length) return null
-    return mapWI(r.records[0].get('wi').properties as Record<string, unknown>)
-  })
-}
-
-async function changeAvailableTransitions(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const wiRes = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    if (!wiRes.records.length) return []
-    const instanceId = wiRes.records[0].get('instanceId') as string
-    return workflowEngine.getAvailableTransitions(session, instanceId)
-  })
-}
-
-async function changeWorkflowHistory(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})
-            -[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-            -[:STEP_HISTORY]->(exec:WorkflowStepExecution)
-      RETURN exec ORDER BY exec.entered_at ASC
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    return r.records.map((rec) => mapExec(rec.get('exec').properties as Record<string, unknown>))
-  })
-}
-
-async function changeCreatedBy(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const row = await runQueryOne<{ props: Props }>(session, `
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:CREATED_BY]->(u:User)
-      RETURN properties(u) AS props
-    `, { id: parent.id, tenantId: ctx.tenantId })
-    return row ? mapUser(row.props) : null
-  })
-}
-
-async function changeComments(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_COMMENT]->(cm:ChangeComment)
-      OPTIONAL MATCH (u:User {id: cm.created_by, tenant_id: $tenantId})
-      RETURN properties(cm) AS cmProps, properties(u) AS uProps
-      ORDER BY cm.created_at ASC
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    return r.records.map((rec) =>
-      mapChangeComment(rec.get('cmProps') as Props, rec.get('uProps') as Props | null),
-    )
-  })
-}
-
-// ── Impact Analysis ───────────────────────────────────────────────────────────
-
-type Session = ReturnType<typeof getSession>
-
-async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: string[]) {
-  // 1. Blast radius
-  const blastResult = await session.executeRead((tx) => tx.run(`
-    UNWIND $ciIds AS ciId
-    MATCH (ci {id: ciId, tenant_id: $tenantId})
-    WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
-    MATCH path = (ci)<-[:DEPENDS_ON|HOSTED_ON*1..5]-(impacted)
-    WHERE (impacted:Application OR impacted:Database OR impacted:DatabaseInstance OR impacted:Server OR impacted:Certificate)
-    AND impacted.tenant_id = $tenantId
-    AND NOT impacted.id IN $ciIds
-    WITH impacted, labels(impacted)[0] AS lbl, min(length(path)) AS distance
-    RETURN DISTINCT
-      impacted.id AS id, impacted.name AS name,
-      lbl AS label,
-      impacted.environment AS environment,
-      distance
-    ORDER BY distance ASC, impacted.name ASC
-  `, { ciIds, tenantId }))
-
-  const blastRadius = blastResult.records.map((r) => ({
-    id:          r.get('id') as string,
-    name:        r.get('name') as string,
-    type:        ciTypeFromLabels([r.get('label') as string]),
-    environment: (r.get('environment') ?? 'unknown') as string,
-    distance:    toInt(r.get('distance'), 1),
-  }))
-
-  // 2a. Open incidents (any date)
-  const openResult = await session.executeRead((tx) => tx.run(`
-    UNWIND $ciIds AS ciId
-    MATCH (i:Incident {tenant_id: $tenantId})
-          -[:AFFECTED_BY]->(ci {id: ciId})
-    WHERE NOT i.status IN ['resolved', 'closed']
-    RETURN DISTINCT i.id AS id, i.title AS title,
-           i.severity AS severity, i.status AS status,
-           ci.name AS ciName, ci.id AS ciId,
-           i.created_at AS createdAt, true AS isOpen
-    ORDER BY i.created_at DESC
-  `, { ciIds, tenantId }))
-
-  // 2b. Recently resolved incidents (last 30 days)
-  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-  const recentIncResult = await session.executeRead((tx) => tx.run(`
-    UNWIND $ciIds AS ciId
-    MATCH (i:Incident {tenant_id: $tenantId})
-          -[:AFFECTED_BY]->(ci {id: ciId})
-    WHERE i.created_at >= $since
-    AND i.status IN ['resolved', 'closed']
-    RETURN DISTINCT i.id AS id, i.title AS title,
-           i.severity AS severity, i.status AS status,
-           ci.name AS ciName, ci.id AS ciId,
-           i.created_at AS createdAt, false AS isOpen
-    ORDER BY i.created_at DESC
-  `, { ciIds, tenantId, since: since30 }))
-
-  const openIncidents = [
-    ...openResult.records,
-    ...recentIncResult.records,
-  ].map((r) => ({
-    id:        r.get('id') as string,
-    title:     r.get('title') as string,
-    severity:  (r.get('severity') ?? 'medium') as string,
-    status:    r.get('status') as string,
-    ciName:    r.get('ciName') as string,
-    ciId:      r.get('ciId') as string,
-    createdAt: r.get('createdAt') as string,
-    isOpen:    r.get('isOpen') as boolean,
-  }))
-
-  const openIncidentsCount = openResult.records.length
-
-  // 3. Recent changes on same CIs (last 60 days)
-  const since60 = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
-  const changeResult = await session.executeRead((tx) => tx.run(`
-    UNWIND $ciIds AS ciId
-    MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci {id: ciId})
-    WHERE c.created_at >= $since
-    AND c.status <> 'draft'
-    RETURN c.id AS id, c.title AS title,
-           c.type AS type, c.status AS status,
-           ci.name AS ciName, ci.id AS ciId,
-           c.created_at AS createdAt
-    ORDER BY c.created_at DESC
-    LIMIT 20
-  `, { ciIds, tenantId, since: since60 }))
-
-  const recentChanges = changeResult.records.map((r) => ({
-    id:        r.get('id') as string,
-    title:     r.get('title') as string,
-    type:      r.get('type') as string,
-    status:    r.get('status') as string,
-    ciName:    r.get('ciName') as string,
-    ciId:      r.get('ciId') as string,
-    createdAt: r.get('createdAt') as string,
-  }))
-
-  // 4. Environments of affected CIs
-  const ciResult = await session.executeRead((tx) => tx.run(`
-    UNWIND $ciIds AS ciId
-    MATCH (ci {id: ciId, tenant_id: $tenantId})
-    WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
-    RETURN ci.environment AS env
-  `, { ciIds, tenantId }))
-
-  const affectedEnvs = ciResult.records.map((r) => r.get('env') as string)
-
-  // 5. Risk score
-  const productionCIs  = affectedEnvs.filter((e) => e === 'production').length
-  const blastRadiusCIs = blastRadius.length
-  const failedChanges  = recentChanges.filter((c) => c.status === 'failed').length
-  const ongoingChanges    = recentChanges.filter((c) => !['completed', 'failed', 'rejected', 'draft'].includes(c.status)).length
-
-  const { score, level: riskLevel, details } = calculateRiskScore({
-    productionCIs,
-    blastRadiusCIs,
-    openIncidents: openIncidentsCount,
-    failedChanges,
-    ongoingChanges,
-  })
-
-  return {
-    riskScore: score,
-    riskLevel,
-    blastRadius,
-    openIncidents,
-    recentChanges,
-    breakdown: {
-      productionCIs,
-      blastRadiusCIs,
-      openIncidents: openIncidentsCount,
-      failedChanges,
-      ongoingChanges,
-      scoreDetails: details.length > 0 ? details.join(' | ') : 'Nessun fattore di rischio rilevato',
-    },
-  }
-}
-
-async function changeImpactAnalysisQuery(
-  _: unknown,
-  { ciIds }: { ciIds: string[] },
-  ctx: GraphQLContext,
-) {
-  return withSession((session) => computeImpactAnalysis(session, ctx.tenantId, ciIds))
-}
-
-async function changeImpactAnalysisField(
-  parent: { id: string },
-  _: unknown,
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci)
-      RETURN ci.id AS ciId
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    const ciIds = r.records.map((rec) => rec.get('ciId') as string)
-    if (ciIds.length === 0) return null
-    return computeImpactAnalysis(session, ctx.tenantId, ciIds)
-  })
-}
-
-async function changeTasksQuery(
-  _: unknown,
-  args: { changeId: string; taskType?: string },
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const filter = args.taskType ? 'AND t.task_type = $taskType' : ''
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_CHANGE_TASK]->(t:ChangeTask)
-      WHERE true ${filter}
-      OPTIONAL MATCH (t)-[:ASSESSES]->(ci)
-      OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
-      OPTIONAL MATCH (t)-[:ASSIGNED_TO]->(u:User)
-      OPTIONAL MATCH (t)-[:VALIDATION_ASSIGNED_TO_TEAM]->(vt:Team)
-      OPTIONAL MATCH (t)-[:VALIDATION_ASSIGNED_TO]->(vu:User)
-      RETURN properties(t) AS tProps, properties(ci) AS ciProps,
-             properties(team) AS teamProps, properties(u) AS uProps,
-             properties(vt) AS vtProps, properties(vu) AS vuProps
-      ORDER BY t.task_type ASC, t.order ASC
-    `, { changeId: args.changeId, tenantId: ctx.tenantId, taskType: args.taskType ?? null }))
-    return r.records.map((rec) =>
-      mapChangeTask(
-        rec.get('tProps') as Props,
-        rec.get('ciProps') as Props | null,
-        rec.get('teamProps') as Props | null,
-        rec.get('uProps') as Props | null,
-        rec.get('vtProps') as Props | null,
-        rec.get('vuProps') as Props | null,
-      ),
-    )
-  })
-}
-
-// ── Export ────────────────────────────────────────────────────────────────────
-
-export const changeResolvers = {
-  Query: { changes, change, changeTasks: changeTasksQuery, changeImpactAnalysis: changeImpactAnalysisQuery },
-  Mutation: {
-    createChange, approveChange, rejectChange, deployChange, failChange,
-    addAffectedCIToChange, removeAffectedCIFromChange, addChangeComment,
-    saveDeploySteps, saveChangeValidation,
-    updateChangeTask,
-    updateAssessmentTask, completeAssessmentTask, rejectAssessmentTask,
-    assignDeployStepToTeam, assignDeployStepToUser, updateDeployStepStatus, updateDeployStepValidation,
-    assignDeployStepValidationTeam, assignDeployStepValidationUser,
-    executeChangeTransition,
-    completeChangeValidation, failChangeValidation,
-    assignAssessmentTaskTeam, assignAssessmentTaskUser,
-  },
-  ChangeTask: {
-    ci: async (parent: { ciId?: string | null }, _: unknown, ctx: GraphQLContext) => {
-      if (!parent.ciId) return null
-      return withSession(async (session) => {
-        const r = await session.executeRead((tx) => tx.run(`
-          MATCH (ci {id: $ciId, tenant_id: $tenantId})
-          RETURN properties(ci) AS props, labels(ci) AS labels
-        `, { ciId: parent.ciId, tenantId: ctx.tenantId }))
-        if (!r.records.length) return null
-        const props      = r.records[0].get('props') as Props
-        const labels     = r.records[0].get('labels') as string[]
-        const ciType     = ciTypeFromLabels(labels)
-        const gqlTypename = labels.find(l => !['ConfigurationItem', 'CIBase', '_BaseNode'].includes(l)) ?? 'Application'
-        return {
-          id:          props['id'],
-          name:        props['name'] ?? '',
-          type:        ciType,
-          ciType:      ciType,
-          status:      props['status']      ?? null,
-          environment: props['environment'] ?? null,
-          description: props['description'] ?? null,
-          createdAt:   props['created_at']  ?? null,
-          updatedAt:   props['updated_at']  ?? null,
-          notes:       props['notes']       ?? null,
-          __typename:  gqlTypename,
-        }
-      })
-    },
-  },
-  Change: {
-    assignedTeam:         changeAssignedTeam,
-    assignee:             changeAssignee,
-    affectedCIs:          changeAffectedCIs,
-    relatedIncidents:     changeRelatedIncidents,
-    changeTasks:          changeChangeTasks,
-    workflowInstance:     changeWorkflowInstance,
-    availableTransitions: changeAvailableTransitions,
-    workflowHistory:      changeWorkflowHistory,
-    createdBy:            changeCreatedBy,
-    comments:             changeComments,
-    impactAnalysis:       changeImpactAnalysisField,
-  },
-}

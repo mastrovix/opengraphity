@@ -1,8 +1,9 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
-import { mapCI, ciTypeFromLabels } from './ci-utils.js'
+import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
+import { mapUser, mapTeam } from '../../lib/mappers.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Props = Record<string, unknown>
@@ -41,22 +42,7 @@ function mapProblemComment(props: Props, authorProps: Props | null) {
     type:      (props['type']      ?? 'manual') as string,
     createdAt: props['created_at'] as string,
     updatedAt: (props['updated_at'] ?? null) as string | null,
-    author:    authorProps ? {
-      id:       authorProps['id']        as string,
-      tenantId: authorProps['tenant_id'] as string,
-      email:    authorProps['email']     as string,
-      name:     authorProps['name']      as string,
-      role:     authorProps['role']      as string,
-    } : null,
-  }
-}
-
-async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
+    author:    authorProps ? mapUser(authorProps) : null,
   }
 }
 
@@ -83,12 +69,16 @@ async function problems(
         AND ($priority IS NULL OR p.priority = $priority)
         AND ($search   IS NULL OR p.title =~ $search)
     `
-    const itemRows = await runQuery<{ props: Props }>(session, `
+    const itemRows = await runQuery<{ props: Props; uProps: Props | null; tProps: Props | null; cis: Array<{ props: Props; label: string }> }>(session, `
       MATCH (p:Problem {tenant_id: $tenantId})
       ${whereClause}
-      WITH p ORDER BY p.created_at DESC
+      OPTIONAL MATCH (p)-[:ASSIGNED_TO]->(u:User)
+      OPTIONAL MATCH (p)-[:ASSIGNED_TO_TEAM]->(t:Team)
+      WITH p, u, t ORDER BY p.created_at DESC
       SKIP toInteger($offset) LIMIT toInteger($limit)
-      RETURN properties(p) as props
+      OPTIONAL MATCH (p)-[:AFFECTS]->(ci)
+      WITH p, u, t, collect(DISTINCT {props: properties(ci), label: labels(ci)[0]}) AS cis
+      RETURN properties(p) AS props, properties(u) AS uProps, properties(t) AS tProps, cis
     `, params)
     const countRows = await runQuery<{ total: unknown }>(session, `
       MATCH (p:Problem {tenant_id: $tenantId})
@@ -96,7 +86,23 @@ async function problems(
       RETURN count(p) AS total
     `, params)
     return {
-      items: itemRows.map((r) => mapProblem(r.props)),
+      items: itemRows.map((r) => {
+        const base = mapProblem(r.props) as ReturnType<typeof mapProblem> & { _prefetched: boolean }
+        base.assignee     = r.uProps ? mapUser(r.uProps) as unknown as null : null
+        base.assignedTeam = r.tProps ? mapTeam(r.tProps) as unknown as null : null
+        base.affectedCIs  = r.cis
+          .filter((c) => c.props && c.props['id'])
+          .map((c) => {
+            const t = ciTypeFromLabels([c.label])
+            c.props['type'] = t
+            const ci = mapCI(c.props) as Record<string, unknown>
+            ci['ciType']     = t
+            ci['__typename'] = c.label || 'Application'
+            return ci
+          }) as unknown as []
+        base._prefetched = true
+        return base
+      }),
       total: (countRows[0]?.total as { toNumber(): number } | undefined)?.toNumber?.() ?? Number(countRows[0]?.total ?? 0),
     }
   })
@@ -445,10 +451,11 @@ async function addProblemComment(
 // ── Field resolvers ──────────────────────────────────────────────────────────
 
 async function problemAffectedCIs(
-  parent: { id: string },
+  parent: { id: string; affectedCIs?: unknown[]; _prefetched?: boolean },
   _: unknown,
   ctx: GraphQLContext,
 ) {
+  if (parent._prefetched) return parent.affectedCIs ?? []
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props; label: string }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci)
@@ -609,31 +616,26 @@ async function problemComments(
 }
 
 async function problemAssignee(
-  parent: { id: string },
+  parent: { id: string; assignee?: unknown; _prefetched?: boolean },
   _: unknown,
   ctx: GraphQLContext,
 ) {
+  if (parent._prefetched) return parent.assignee ?? null
   return withSession(async (session) => {
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO]->(u:User)
       RETURN properties(u) as props
     `, { id: parent.id, tenantId: ctx.tenantId })
-    if (!row) return null
-    return {
-      id:       row.props['id']        as string,
-      tenantId: row.props['tenant_id'] as string,
-      email:    row.props['email']     as string,
-      name:     row.props['name']      as string,
-      role:     row.props['role']      as string,
-    }
+    return row ? mapUser(row.props) : null
   })
 }
 
 async function problemAssignedTeam(
-  parent: { id: string },
+  parent: { id: string; assignedTeam?: unknown; _prefetched?: boolean },
   _: unknown,
   ctx: GraphQLContext,
 ) {
+  if (parent._prefetched) return parent.assignedTeam ?? null
   return withSession(async (session) => {
     const result = await session.executeRead((tx) => tx.run(`
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(t:Team)
@@ -641,13 +643,7 @@ async function problemAssignedTeam(
     `, { id: parent.id, tenantId: ctx.tenantId }))
     if (!result.records.length) return null
     const t = result.records[0]!.get('t').properties as Props
-    return {
-      id:          t['id']          as string,
-      tenantId:    t['tenant_id']   as string,
-      name:        t['name']        as string,
-      description: (t['description'] ?? null) as string | null,
-      createdAt:   t['created_at']  as string,
-    }
+    return mapTeam(t)
   })
 }
 
@@ -661,14 +657,7 @@ async function problemCreatedBy(
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:CREATED_BY]->(u:User)
       RETURN properties(u) as props
     `, { id: parent.id, tenantId: ctx.tenantId })
-    if (!row) return null
-    return {
-      id:       row.props['id']        as string,
-      tenantId: row.props['tenant_id'] as string,
-      email:    row.props['email']     as string,
-      name:     row.props['name']      as string,
-      role:     row.props['role']      as string,
-    }
+    return row ? mapUser(row.props) : null
   })
 }
 

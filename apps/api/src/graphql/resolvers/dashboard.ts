@@ -1,35 +1,25 @@
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
+import { withSession } from './ci-utils.js'
 
 type Props = Record<string, unknown>
 
-// ── Session helper ────────────────────────────────────────────────────────────
-
-async function withSession<T>(fn: (session: ReturnType<typeof getSession>) => Promise<T>): Promise<T> {
-  const session = getSession(undefined, 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
-  }
-}
-
 // ── loadReportSection ─────────────────────────────────────────────────────────
 
-async function loadReportSection(sectionId: string, _tenantId: string) {
+async function loadReportSection(sectionId: string, tenantId: string) {
   return withSession(async (session) => {
     const r = await session.executeRead((tx) =>
       tx.run(
         `
-        MATCH (s:ReportSection {id: $id})
+        MATCH (s:ReportSection {id: $id, tenant_id: $tenantId})
         OPTIONAL MATCH (s)-[:HAS_NODE]->(n:ReportNode)
         OPTIONAL MATCH (n)-[e:REPORT_EDGE]->(m:ReportNode)
         RETURN s,
           collect(DISTINCT n) AS nodes,
           collect(DISTINCT { edge: properties(e), sourceId: n.id, targetId: m.id }) AS edges
         `,
-        { id: sectionId },
+        { id: sectionId, tenantId },
       ),
     )
     if (!r.records.length) return null
@@ -160,14 +150,14 @@ async function dashboard(_: unknown, args: { id: string }, ctx: GraphQLContext) 
 
 // ── Field resolvers: DashboardConfig ─────────────────────────────────────────
 
-async function dashboardWidgets(parent: { id: string }, _: unknown, _ctx: GraphQLContext) {
+async function dashboardWidgets(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   const session = getSession(undefined, 'READ')
   try {
     const result = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (d:DashboardConfig {id: $id})-[:HAS_WIDGET]->(w:DashboardWidget)
+        `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget)
          RETURN properties(w) AS w ORDER BY w.order ASC`,
-        { id: parent.id },
+        { id: parent.id, tenantId: ctx.tenantId },
       ),
     )
     return result.records.map((r) => mapDashboardWidget(r.get('w') as Props))
@@ -176,13 +166,13 @@ async function dashboardWidgets(parent: { id: string }, _: unknown, _ctx: GraphQ
   }
 }
 
-async function dashboardCreatedBy(parent: { id: string }, _: unknown, _ctx: GraphQLContext) {
+async function dashboardCreatedBy(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const result = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (d:DashboardConfig {id: $id})-[:CREATED_BY]->(u:User)
+        `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId})-[:CREATED_BY]->(u:User)
          RETURN properties(u) AS u`,
-        { id: parent.id },
+        { id: parent.id, tenantId: ctx.tenantId },
       ),
     )
     if (!result.records.length) return null
@@ -191,13 +181,13 @@ async function dashboardCreatedBy(parent: { id: string }, _: unknown, _ctx: Grap
   })
 }
 
-async function dashboardSharedWith(parent: { id: string }, _: unknown, _ctx: GraphQLContext) {
+async function dashboardSharedWith(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const result = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (d:DashboardConfig {id: $id})-[:SHARED_WITH]->(t:Team)
+        `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId})-[:SHARED_WITH]->(t:Team)
          RETURN properties(t) AS t`,
-        { id: parent.id },
+        { id: parent.id, tenantId: ctx.tenantId },
       ),
     )
     return result.records.map((r) => {
@@ -388,8 +378,8 @@ async function updateDashboard(
       )
       await session.executeWrite((tx) =>
         tx.run(
-          `MATCH (d:DashboardConfig {id: $id}) SET d.is_default = true`,
-          { id: args.id },
+          `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId}) SET d.is_default = true`,
+          { id: args.id, tenantId: ctx.tenantId },
         ),
       )
     }
@@ -419,7 +409,7 @@ async function updateDashboard(
 
     // Refetch updated props
     const updated = await session.executeRead((tx) =>
-      tx.run(`MATCH (d:DashboardConfig {id: $id}) RETURN properties(d) AS props`, { id: args.id }),
+      tx.run(`MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId}) RETURN properties(d) AS props`, { id: args.id, tenantId: ctx.tenantId }),
     )
     return mapDashboardConfig(updated.records[0].get('props') as Props)
   } finally {
@@ -468,9 +458,9 @@ async function addDashboardWidget(
     // Get max order
     const orderResult = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (d:DashboardConfig {id: $dashId})-[:HAS_WIDGET]->(w:DashboardWidget)
+        `MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget)
          RETURN coalesce(max(w.order), -1) AS maxOrder`,
-        { dashId: dashboardId },
+        { dashId: dashboardId, tenantId: ctx.tenantId },
       ),
     )
     const maxOrderRaw = orderResult.records[0]?.get('maxOrder')
@@ -491,7 +481,7 @@ async function addDashboardWidget(
     await session.executeWrite((tx) =>
       tx.run(
         `
-        MATCH (d:DashboardConfig {id: $dashId})
+        MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})
         CREATE (w:DashboardWidget {
           id: randomUUID(),
           dashboard_id: $dashId,
@@ -503,7 +493,7 @@ async function addDashboardWidget(
         })
         CREATE (d)-[:HAS_WIDGET]->(w)
         `,
-        { dashId: dashboardId, reportTemplateId, reportSectionId, colSpan: Math.round(Number(colSpan ?? 4)), order, now },
+        { dashId: dashboardId, tenantId: ctx.tenantId, reportTemplateId, reportSectionId, colSpan: Math.round(Number(colSpan ?? 4)), order, now },
       ),
     )
 
@@ -523,21 +513,21 @@ async function removeDashboardWidget(
     // Get the dashboard before deleting
     const dashResult = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (d:DashboardConfig)-[:HAS_WIDGET]->(w:DashboardWidget {id: $widgetId})
+        `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget {id: $widgetId})
          RETURN properties(d) AS d`,
-        { widgetId: args.widgetId },
+        { widgetId: args.widgetId, tenantId: ctx.tenantId },
       ),
     )
     const dashProps = dashResult.records.length > 0 ? dashResult.records[0].get('d') as Props : null
 
+    if (!dashProps) throw new Error('Dashboard not found')
+
     await session.executeWrite((tx) =>
       tx.run(
-        `MATCH (w:DashboardWidget {id: $widgetId}) DETACH DELETE w`,
-        { widgetId: args.widgetId },
+        `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget {id: $widgetId}) DETACH DELETE w`,
+        { widgetId: args.widgetId, tenantId: ctx.tenantId },
       ),
     )
-
-    if (!dashProps) throw new Error('Dashboard not found')
     return mapDashboardConfig(dashProps)
   } finally {
     await session.close()
@@ -566,16 +556,16 @@ async function updateDashboardWidget(
   try {
     await session.executeWrite((tx) =>
       tx.run(
-        `MATCH (w:DashboardWidget {id: $widgetId}) SET ${setParts.join(', ')}`,
-        params,
+        `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget {id: $widgetId}) SET ${setParts.join(', ')}`,
+        { ...params, tenantId: ctx.tenantId },
       ),
     )
     // Return the parent dashboard
     const dashResult = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (d:DashboardConfig)-[:HAS_WIDGET]->(w:DashboardWidget {id: $widgetId})
+        `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget {id: $widgetId})
          RETURN properties(d) AS d`,
-        { widgetId: args.widgetId },
+        { widgetId: args.widgetId, tenantId: ctx.tenantId },
       ),
     )
     if (!dashResult.records.length) throw new Error('Dashboard not found')
@@ -597,10 +587,10 @@ async function reorderDashboardWidgets(
       tx.run(
         `
         UNWIND $items AS item
-        MATCH (w:DashboardWidget {id: item.id})
+        MATCH (d:DashboardConfig {id: $dashboardId, tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget {id: item.id})
         SET w.order = item.order
         `,
-        { items },
+        { items, dashboardId: args.dashboardId, tenantId: ctx.tenantId },
       ),
     )
     const dashResult = await session.executeRead((tx) =>

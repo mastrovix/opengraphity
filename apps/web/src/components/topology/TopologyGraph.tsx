@@ -301,7 +301,7 @@ export default function TopologyGraph({
           .attr('stroke-width', (l) =>
             nid(l.source) === d.id || nid(l.target) === d.id ? 2 : 1)
       })
-      .on('mouseout', function(_e, d) {
+      .on('mouseout', function(_e, _d) {
         d3.select(this).select('circle').transition().duration(120)
           .attr('r', r)
         nodeEl.style('opacity', 1)

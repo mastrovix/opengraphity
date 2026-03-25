@@ -1,9 +1,10 @@
 import { v4 as uuidv4 } from 'uuid'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
+import { withSession } from './ci-utils.js'
 
 type Props = Record<string, unknown>
 
@@ -32,14 +33,6 @@ function mapCI(props: Props, label?: string) {
   }
 }
 
-async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
-  }
-}
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 

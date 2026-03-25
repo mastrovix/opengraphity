@@ -1,8 +1,10 @@
 import { v4 as uuidv4 } from 'uuid'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
+import { withSession } from './ci-utils.js'
+import { mapUser } from '../../lib/mappers.js'
 
 type Props = Record<string, unknown>
 
@@ -23,24 +25,6 @@ function mapRequest(props: Props) {
   }
 }
 
-function mapUser(props: Props) {
-  return {
-    id:       props['id']        as string,
-    tenantId: props['tenant_id'] as string,
-    email:    props['email']     as string,
-    name:     props['name']      as string,
-    role:     props['role']      as string,
-  }
-}
-
-async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
-  }
-}
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 

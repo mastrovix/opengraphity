@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import {
-  GET_CHANGE, GET_TEAMS, GET_USERS, GET_ALL_CIS,
+  GET_CHANGE, GET_TEAMS, GET_USERS,
 } from '@/graphql/queries'
 import {
   EXECUTE_CHANGE_TRANSITION,
@@ -26,135 +26,16 @@ import {
   ASSIGN_DEPLOY_STEP_VALIDATION_USER,
   UPDATE_CHANGE_TASK,
 } from '@/graphql/mutations'
-import { ChevronDown, ChevronRight } from 'lucide-react'
-import { ImpactPanel } from '@/components/ImpactPanel'
 import { CountBadge } from '@/components/ui/CountBadge'
-import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
-import { DetailField } from '@/components/ui/DetailField'
-import type { ImpactAnalysis } from '@/components/ImpactPanel'
-
-function groupByField<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
-  return items.reduce<Record<string, T[]>>((acc, item) => {
-    const k = key(item)
-    ;(acc[k] ??= []).push(item)
-    return acc
-  }, {})
-}
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-interface Team { id: string; name: string }
-interface User { id: string; name: string; email?: string; teamId?: string | null; teams?: { id: string; name: string }[] }
-interface CI { id: string; name: string; type: string; ciType?: string; status: string; environment: string; owner?: { id: string; name: string } | null; supportGroup?: { id: string; name: string } | null }
-interface Incident { id: string; title: string; status: string; severity: string }
-interface ChangeComment { id: string; text: string; type: string; createdAt: string; createdBy: { id: string; name: string } | null }
-
-interface WorkflowTransition {
-  toStep: string; label: string; requiresInput: boolean; inputField: string | null; condition: string | null
-}
-interface WorkflowInstance { id: string; currentStep: string; status: string }
-interface WorkflowHistory { id: string; stepName: string; enteredAt: string; exitedAt: string | null; durationMs: number | null; triggeredBy: string; triggerType: string; notes: string | null }
-
-
-interface ChangeTask {
-  id: string; taskType: string; changeId: string; status: string
-  order: number | null; title: string | null; description: string | null
-  scheduledStart: string | null; scheduledEnd: string | null; durationDays: number | null
-  hasValidation: boolean | null; validationStatus: string | null
-  validationStart: string | null; validationEnd: string | null; validationNotes: string | null
-  skipReason: string | null; notes: string | null; completedAt: string | null
-  riskLevel: string | null; impactDescription: string | null; mitigation: string | null
-  type: string | null; rollbackPlan: string | null; createdAt: string | null
-  ci: CI | null; assignedTeam: Team | null; assignee: User | null
-  validationTeam: Team | null; validationUser: User | null
-}
-
-interface Change {
-  id: string; title: string; description: string | null; type: string; priority: string
-  status: string; scheduledStart: string | null; scheduledEnd: string | null
-  implementedAt: string | null; createdAt: string; updatedAt: string
-  assignedTeam: Team | null; assignee: User | null; createdBy: User | null
-  affectedCIs: CI[]; relatedIncidents: Incident[]
-  workflowInstance: WorkflowInstance | null
-  availableTransitions: WorkflowTransition[]
-  workflowHistory: WorkflowHistory[]
-  changeTasks: ChangeTask[]
-  comments: ChangeComment[]
-  impactAnalysis: ImpactAnalysis | null
-}
-
-// ── Style helpers ─────────────────────────────────────────────────────────────
-
-const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
-  standard:  { bg: '#ecfdf5', color: 'var(--color-trigger-automatic)' },
-  normal:    { bg: '#eff6ff', color: '#2563eb' },
-  emergency: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
-}
-const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
-  critical: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
-  high:     { bg: '#fff7ed', color: 'var(--color-brand)' },
-  medium:   { bg: '#fefce8', color: '#ca8a04' },
-  low:      { bg: '#f0fdf4', color: '#16a34a' },
-}
-const STEP_COLORS: Record<string, { bg: string; color: string }> = {
-  draft:              { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  approved:           { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  assessment:         { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  planning:           { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  cab_approval:       { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  scheduled:          { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  validation:         { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  deployment:         { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  completed:          { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  failed:             { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  rejected:           { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  emergency_approval: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  post_review:        { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-}
-const STATUS_STEP_COLORS: Record<string, { bg: string; color: string }> = {
-  pending:     { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  in_progress: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  completed:   { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  failed:      { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  skipped:     { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-}
-const TASK_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  open:      { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  completed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  skipped:   { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  rejected:  { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-}
-
-function Badge({ value, map }: { value: string; map: Record<string, { bg: string; color: string }> }) {
-  const c = map[value] ?? { bg: '#f3f4f6', color: 'var(--color-slate)' }
-  return <span style={{ ...c, padding: '2px 8px', borderRadius: 100, fontSize: 12, fontWeight: 600, textTransform: 'uppercase' as const }}>{value.replace(/_/g, ' ')}</span>
-}
-
-const cardStyle: React.CSSProperties = {
-  backgroundColor: '#fff', border: '1px solid #e2e6f0', borderRadius: 10, padding: 20, marginBottom: 16,
-}
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6,
-  fontSize: 14, color: 'var(--color-slate-dark)', outline: 'none', backgroundColor: '#fafafa', boxSizing: 'border-box' as const,
-}
-const textareaStyle: React.CSSProperties = { ...inputStyle, resize: 'vertical' as const, minHeight: 72, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('it-IT')
-}
-
-// ── Transition button color ───────────────────────────────────────────────────
-
-function transitionBtnColor(toStep: string): { bg: string; color: string; hover: string } {
-  if (['completed', 'approved', 'cab_approval'].includes(toStep)) return { bg: 'var(--color-trigger-automatic)', color: '#fff', hover: '#047857' }
-  if (['failed', 'rejected'].includes(toStep)) return { bg: 'var(--color-trigger-sla-breach)', color: '#fff', hover: '#b91c1c' }
-  if (toStep === 'assessment') return { bg: '#2563eb', color: '#fff', hover: '#1d4ed8' }
-  if (toStep === 'planning') return { bg: 'var(--color-brand-hover)', color: '#fff', hover: '#075985' }
-  if (toStep === 'deployment') return { bg: '#7c3aed', color: '#fff', hover: '#6d28d9' }
-  return { bg: 'var(--color-brand)', color: '#fff', hover: 'var(--color-brand-hover)' }
-}
-
-// ── Main Component ────────────────────────────────────────────────────────────
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import type { Change, Team, User, WorkflowTransition } from './change-types'
+import { Badge, STEP_COLORS, cardStyle, textareaStyle } from './change-types'
+import { ChangeHeader } from './ChangeHeader'
+import { ChangeDetails } from './ChangeDetails'
+import { ChangeImpact } from './ChangeImpact'
+import { ChangeCIList } from './ChangeCIList'
+import { ChangeComments } from './ChangeComments'
+import { ChangeTasks } from './ChangeTasks'
 
 export function ChangeDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -170,107 +51,42 @@ export function ChangeDetailPage() {
 
   // Transition dialog state
   const [pendingTransition, setPendingTransition] = useState<WorkflowTransition | null>(null)
-  const [transitionNotes, setTransitionNotes] = useState('')
-  const [isTransitionOpen, setIsTransitionOpen] = useState(false)
-
-  // CI search state
-  const [ciSearch, setCiSearch]     = useState('')
-  const [showCISearch, setShowCISearch] = useState(false)
-  const { data: ciSearchData } = useQuery<{ allCIs: { items: CI[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch || null, limit: 20 },
-    skip: ciSearch.length < 2,
-  })
-
-  // Reassign task dialog state
-  const [reassignTaskId, setReassignTaskId] = useState<string | null>(null)
-  const [reassignTeamId, setReassignTeamId] = useState('')
-  const [showAllTeams, setShowAllTeams] = useState(false)
-
-  // Task user assignment state
-  const [assignTaskUserId, setAssignTaskUserId] = useState<Record<string, string>>({})
+  const [transitionNotes, setTransitionNotes]     = useState('')
+  const [isTransitionOpen, setIsTransitionOpen]   = useState(false)
 
   // Remove CI dialog state
-  const [removeCIDialog, setRemoveCIDialog] = useState<{ ciId: string; ciName: string } | null>(null)
-  const [removeCIReason, setRemoveCIReason] = useState('')
+  const [removeCIDialog, setRemoveCIDialog]   = useState<{ ciId: string; ciName: string } | null>(null)
+  const [removeCIReason, setRemoveCIReason]   = useState('')
 
-  // Reject task dialog state
-  const [rejectTaskDialog, setRejectTaskDialog] = useState<{ taskId: string; ciName: string } | null>(null)
-  const [rejectTaskReason, setRejectTaskReason] = useState('')
-
-  // Assessment task popup drawer
-  const [assessmentTaskPopup, setAssessmentTaskPopup] = useState<string | null>(null)
-
-  // New step form inside popup drawer
-  const [newStepForm, setNewStepForm] = useState({
-    title: '', scheduledStart: new Date().toISOString().split('T')[0] ?? '',
-    durationDays: 1, scheduledEnd: '', hasValidation: false,
-    validationStart: '', validationEnd: '', assignedTeamId: '', validationTeamId: '',
-  })
-
-  // Global validation form inside popup drawer
-  const [globalValidationStart, setGlobalValidationStart] = useState('')
-  const [globalValidationEnd, setGlobalValidationEnd] = useState('')
-
-  // Deploy step popup drawer
-  const [deployStepPopup, setDeployStepPopup] = useState<string | null>(null)
-  const [deployPopupNotes, setDeployPopupNotes] = useState('')
-  const [deployPopupShowSkip, setDeployPopupShowSkip] = useState(false)
-  const [deployPopupSkipReason, setDeployPopupSkipReason] = useState('')
-  const [deployPopupShowFail, setDeployPopupShowFail] = useState(false)
-  const [deployPopupFailReason, setDeployPopupFailReason] = useState('')
-  const [deployPopupReassignTeamId, setDeployPopupReassignTeamId] = useState('')
-  const [deployPopupShowReassign, setDeployPopupShowReassign] = useState(false)
-  const [deployPopupUserId, setDeployPopupUserId] = useState('')
-
-  // Validation step popup drawer
-  const [validationStepPopup, setValidationStepPopup] = useState<string | null>(null)
-  const [valPopupNotes, setValPopupNotes] = useState('')
-  const [valPopupReassignTeamId, setValPopupReassignTeamId] = useState('')
-  const [valPopupShowReassign, setValPopupShowReassign] = useState(false)
-  const [valPopupUserId, setValPopupUserId] = useState('')
-
-  // Card open/close state
-  const [incidentsOpen,  setIncidentsOpen]  = useState(true)
-  const [timelineOpen,   setTimelineOpen]   = useState(true)
-  const [descOpen,       setDescOpen]       = useState(true)
-  const [detailsOpen,    setDetailsOpen]    = useState(true)
-  const [impactOpen,     setImpactOpen]     = useState(true)
-  const [ciOpen,         setCiOpen]         = useState(true)
+  // Task section open state (controlled here so useEffect can set them)
   const [assessmentOpen, setAssessmentOpen] = useState(false)
   const [deployOpen,     setDeployOpen]     = useState(false)
   const [validationOpen, setValidationOpen] = useState(false)
 
-  // Initialize card open state once change data is available
+  // Related incidents open state
+  const [incidentsOpen, setIncidentsOpen] = useState(true)
+
   useEffect(() => {
     const step = data?.change?.workflowInstance?.currentStep ?? ''
     setAssessmentOpen(step === 'assessment')
     setDeployOpen(['scheduled', 'deployment'].includes(step))
     setValidationOpen(step === 'validation')
   }, [data?.change?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  const [commentsOpen,   setCommentsOpen]   = useState(true)
 
-  // Global validation popup drawer
-  const [globalValidationPopup, setGlobalValidationPopup] = useState(false)
-  const [globalValNotes, setGlobalValNotes] = useState('')
-
-  // Comment state
-  const [newComment, setNewComment] = useState('')
-
-  // Task forms state
-  const [taskForms, setTaskForms] = useState<Record<string, { riskLevel: string; impactDescription: string; mitigation: string; notes: string }>>({})
+  // ── Mutations ─────────────────────────────────────────────
 
   const [execTransition, { loading: transitioning }] = useMutation<{
     executeChangeTransition: { success: boolean; error: string | null; instance: { id: string; currentStep: string; status: string } }
   }>(EXECUTE_CHANGE_TRANSITION, {
-    onCompleted: (data) => {
-      if (data.executeChangeTransition.success) {
+    onCompleted: (d) => {
+      if (d.executeChangeTransition.success) {
         toast.success('Transizione eseguita')
         setIsTransitionOpen(false)
         setTransitionNotes('')
         setPendingTransition(null)
         void refetch()
       } else {
-        toast.error(data.executeChangeTransition.error ?? 'Errore transizione')
+        toast.error(d.executeChangeTransition.error ?? 'Errore transizione')
       }
     },
     onError: (e) => toast.error(e.message),
@@ -327,7 +143,7 @@ export function ChangeDetailPage() {
   })
 
   const [addCI] = useMutation(ADD_AFFECTED_CI_TO_CHANGE, {
-    onCompleted: () => { toast.success('CI aggiunto'); setCiSearch(''); setShowCISearch(false); void refetch() },
+    onCompleted: () => { toast.success('CI aggiunto'); void refetch() },
     onError: (e) => toast.error(e.message),
   })
 
@@ -337,7 +153,7 @@ export function ChangeDetailPage() {
   })
 
   const [addComment, { loading: addingComment }] = useMutation(ADD_CHANGE_COMMENT, {
-    onCompleted: () => { toast.success('Commento aggiunto'); setNewComment(''); void refetch() },
+    onCompleted: () => { toast.success('Commento aggiunto'); void refetch() },
     onError: (e) => toast.error(e.message),
   })
 
@@ -366,77 +182,35 @@ export function ChangeDetailPage() {
     onError: (e) => toast.error(e.message),
   })
 
-  const ciResults = ciSearchData?.allCIs?.items ?? []
+  // ── Derived data ──────────────────────────────────────────
+
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []
 
   if (loading) return <div style={{ color: 'var(--color-slate-light)', fontSize: 14, padding: 40 }}>Caricamento…</div>
   if (!data?.change) return <div style={{ color: 'var(--color-slate-light)', fontSize: 14, padding: 40 }}>Change non trovato.</div>
 
-  const change = data.change
-  const deploySteps   = (change.changeTasks ?? []).filter((t: { taskType: string }) => t.taskType === 'deploy')
-  const assessmentTasks = (change.changeTasks ?? []).filter((t: { taskType: string }) => t.taskType === 'assessment')
-  const validationTask  = (change.changeTasks ?? []).find((t: { taskType: string }) => t.taskType === 'validation') ?? null
+  const change     = data.change
+  const deploySteps     = (change.changeTasks ?? []).filter((t) => t.taskType === 'deploy')
+  const assessmentTasks = (change.changeTasks ?? []).filter((t) => t.taskType === 'assessment')
+  const validationTask  = (change.changeTasks ?? []).find((t) => t.taskType === 'validation') ?? null
   const currentStep = change.workflowInstance?.currentStep ?? ''
-  const instanceId = change.workflowInstance?.id ?? ''
+  const instanceId  = change.workflowInstance?.id ?? ''
 
-  const showAssessmentTasks = [
-    'assessment', 'cab_approval', 'scheduled',
-    'validation', 'deployment', 'completed',
-    'failed', 'post_review',
-  ].includes(currentStep)
+  // ── Handlers for transitions ──────────────────────────────
 
-  const showDeploySteps = [
-    'scheduled', 'validation', 'deployment',
-    'completed', 'failed', 'post_review',
-  ].includes(currentStep)
-
-  const showValidation = [
-    'scheduled', 'validation', 'deployment',
-    'completed', 'failed', 'post_review',
-  ].includes(currentStep)
-
-  const deployStepsEditable  = currentStep === 'assessment'
-  const canEditAssessment    = currentStep === 'assessment'
-  const canEditDeploy        = currentStep === 'deployment'
-  const canEditValidation    = currentStep === 'validation'
-
-  const taskCardStyle = (taskType: string): React.CSSProperties => {
-    const isActive =
-      (taskType === 'assessment' && canEditAssessment) ||
-      (taskType === 'deploy'     && canEditDeploy)     ||
-      (taskType === 'validation' && canEditValidation)
-    const colors: Record<string, string> = {
-      assessment: 'var(--color-brand)',
-      deploy:     '#0891b2',
-      validation: 'var(--color-trigger-automatic)',
-    }
-    return {
-      borderLeft: isActive ? `4px solid ${colors[taskType]}` : '4px solid #e5e7eb',
-      borderRadius: '0 10px 10px 0',
-      background: isActive ? '#fff' : '#fafafa',
-      transition: 'all 0.2s',
+  function handleTransition(tr: WorkflowTransition) {
+    if (!tr.requiresInput) {
+      if (instanceId) execTransition({ variables: { instanceId, toStep: tr.toStep, notes: null } })
+    } else {
+      setPendingTransition(tr); setTransitionNotes(''); setIsTransitionOpen(true)
     }
   }
 
-  // Compute scheduledEnd for a form step
-  function calcEnd(start: string, days: number): string {
-    if (!start || !days) return ''
-    const d = new Date(start)
-    d.setDate(d.getDate() + days)
-    return d.toISOString().split('T')[0] ?? ''
-  }
-
-  function getTaskForm(taskId: string) {
-    return taskForms[taskId] ?? { riskLevel: 'low', impactDescription: '', mitigation: '', notes: '' }
-  }
-  function setTaskForm(taskId: string, patch: Partial<{ riskLevel: string; impactDescription: string; mitigation: string; notes: string }>) {
-    setTaskForms((prev) => ({ ...prev, [taskId]: { ...getTaskForm(taskId), ...patch } }))
-  }
+  // ── Render ────────────────────────────────────────────────
 
   return (
     <div>
-      {/* Back */}
       <button
         onClick={() => navigate('/changes')}
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 14, padding: 0, marginBottom: 16 }}
@@ -444,191 +218,33 @@ export function ChangeDetailPage() {
         ← Torna ai Changes
       </button>
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{change.title}</h1>
-            <Badge value={change.type} map={TYPE_COLORS} />
-            <Badge value={change.priority} map={PRIORITY_COLORS} />
-            {change.workflowInstance && <Badge value={currentStep} map={STEP_COLORS} />}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--color-slate-light)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{change.id}</div>
-        </div>
+      <ChangeHeader
+        change={change}
+        currentStep={currentStep}
+        instanceId={instanceId}
+        transitioning={transitioning}
+        onTransition={handleTransition}
+      />
 
-        {/* Workflow transitions */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {change.availableTransitions.map((tr) => {
-            const colors = transitionBtnColor(tr.toStep)
-            return (
-              <button
-                key={tr.toStep}
-                onClick={() => {
-                  if (!tr.requiresInput) {
-                    if (instanceId) execTransition({ variables: { instanceId, toStep: tr.toStep, notes: null } })
-                  } else {
-                    setPendingTransition(tr); setTransitionNotes(''); setIsTransitionOpen(true)
-                  }
-                }}
-                style={{ padding: '8px 16px', backgroundColor: colors.bg, color: colors.color, border: 'none', borderRadius: 7, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-              >
-                {tr.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Main layout */}
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
 
         {/* Left column */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
-          {/* Impact Analysis */}
-          {change.impactAnalysis && change.affectedCIs.length > 0 && (
-            <div style={{ ...cardStyle, padding: 0 }}>
-              <div onClick={() => setImpactOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: impactOpen ? '1px solid #e5e7eb' : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Impact Analysis</span>
-                </div>
-                {impactOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-              </div>
-              {impactOpen && <ImpactPanel analysis={change.impactAnalysis} compact={false} />}
-            </div>
-          )}
+          <ChangeImpact
+            impactAnalysis={change.impactAnalysis}
+            hasCIs={change.affectedCIs.length > 0}
+          />
 
-          {/* Description + Rollback */}
-          <div style={{ ...cardStyle, padding: 0 }}>
-            <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
-              </div>
-              {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {descOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
-                {change.description ? (
-                  <p style={{ fontSize: 14, color: 'var(--color-slate-dark)', margin: 0, marginBottom: 16, lineHeight: 1.6 }}>{change.description}</p>
-                ) : (
-                  <p style={{ fontSize: 14, color: 'var(--color-slate-light)', margin: 0, marginBottom: 16 }}>Nessuna descrizione.</p>
-                )}
-              </div>
-            )}
-          </div>
+          <ChangeDetails change={change} currentStep={currentStep} />
 
-          {/* Dettagli */}
-          <div style={{ ...cardStyle, padding: 0 }}>
-            <div onClick={() => setDetailsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: detailsOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Dettagli</span>
-              </div>
-              {detailsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {detailsOpen && (
-              <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[
-                  { label: 'Tipo', value: <Badge value={change.type} map={TYPE_COLORS} /> },
-                  { label: 'Priorità', value: <Badge value={change.priority} map={PRIORITY_COLORS} /> },
-                  { label: 'Step', value: change.workflowInstance ? <Badge value={currentStep} map={STEP_COLORS} /> : '—' },
-                  { label: 'Team', value: change.assignedTeam?.name ?? '—' },
-                  { label: 'Assegnato a', value: change.assignee?.name ?? '—' },
-                  { label: 'Creato da', value: change.createdBy?.name ?? '—' },
-                  { label: 'Scheduled Start', value: change.scheduledStart ? new Date(change.scheduledStart).toLocaleDateString('it-IT') : '—' },
-                  { label: 'Scheduled End', value: change.scheduledEnd ? new Date(change.scheduledEnd).toLocaleDateString('it-IT') : '—' },
-                  { label: 'Creato il', value: new Date(change.createdAt).toLocaleString('it-IT') },
-                  { label: 'Aggiornato', value: new Date(change.updatedAt).toLocaleString('it-IT') },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
-                    <span style={{ fontSize: 14, color: 'var(--color-slate-dark)', textAlign: 'right' }}>{value}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* CI Impattati */}
-          <div style={{ ...cardStyle, padding: 0 }}>
-            <div onClick={() => setCiOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
-                <CountBadge count={change.affectedCIs.length} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button
-                  disabled={!['draft', 'assessment'].includes(currentStep)}
-                  onClick={(e) => { e.stopPropagation(); setShowCISearch((v) => !v); if (!ciOpen) setCiOpen(true) }}
-                  style={{
-                    fontSize: 12, fontWeight: 600, borderRadius: 6, padding: '4px 10px', border: '1px solid #e2e6f0', background: 'none',
-                    color:         ['draft', 'assessment'].includes(currentStep) ? 'var(--color-brand)' : 'var(--color-slate-light)',
-                    cursor:        ['draft', 'assessment'].includes(currentStep) ? 'pointer' : 'not-allowed',
-                    opacity:       ['draft', 'assessment'].includes(currentStep) ? 1 : 0.5,
-                    pointerEvents: ['draft', 'assessment'].includes(currentStep) ? 'auto' : 'none',
-                  }}
-                >
-                  {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
-                </button>
-                {ciOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-              </div>
-            </div>
-            {ciOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
-                {showCISearch && (
-                  <div style={{ marginBottom: 12 }}>
-                    <input
-                      type="text"
-                      value={ciSearch}
-                      onChange={(e) => setCiSearch(e.target.value)}
-                      placeholder="Cerca CI per nome (min. 2 caratteri)…"
-                      autoFocus
-                      style={inputStyle}
-                    />
-                    {ciResults.filter((ci) => !change.affectedCIs.find((a) => a.id === ci.id)).length > 0 && (
-                      <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, marginTop: 4, backgroundColor: '#fff', maxHeight: 160, overflowY: 'auto' }}>
-                        {ciResults
-                          .filter((ci) => !change.affectedCIs.find((a) => a.id === ci.id))
-                          .map((ci) => (
-                            <div
-                              key={ci.id}
-                              onClick={() => addCI({ variables: { changeId: change.id, ciId: ci.id } })}
-                              style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f3f8', fontSize: 14 }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#f8f9fc' }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '' }}
-                            >
-                              <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                              <span style={{ color: 'var(--color-slate-light)', fontSize: 12, marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {change.affectedCIs.length === 0 ? (
-                  <span style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>Nessun CI associato</span>
-                ) : (
-                  <div>
-                    {Object.entries(groupByField(change.affectedCIs, (ci) => ci.type)).map(([type, cis]) => (
-                      <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={cis.length}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '4px 0' }}>
-                          {cis.map((ci) => (
-                            <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 500 }}>
-                              {ci.name}
-                              <button
-                                type="button"
-                                onClick={() => { setRemoveCIDialog({ ciId: ci.id, ciName: ci.name }); setRemoveCIReason('') }}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 0, lineHeight: 1, fontSize: 14 }}
-                              >×</button>
-                            </span>
-                          ))}
-                        </div>
-                      </CollapsibleGroup>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <ChangeCIList
+            changeId={change.id}
+            affectedCIs={change.affectedCIs}
+            currentStep={currentStep}
+            onAddCI={(ciId) => addCI({ variables: { changeId: change.id, ciId } })}
+            onRemoveCI={(ciId, ciName) => { setRemoveCIDialog({ ciId, ciName }); setRemoveCIReason('') }}
+          />
 
           {/* Related Incidents */}
           {change.relatedIncidents.length > 0 && (
@@ -654,521 +270,62 @@ export function ChangeDetailPage() {
             </div>
           )}
 
-          {/* Assessment Tasks — table */}
-          {showAssessmentTasks && assessmentTasks.length > 0 && (() => {
-            const totalCount     = assessmentTasks.length
-            const completedCount = assessmentTasks.filter((t) => ['completed', 'skipped', 'rejected'].includes(t.status)).length
-            return (
-              <div style={{ ...cardStyle, ...taskCardStyle('assessment'), padding: 0 }}>
-                <div onClick={() => setAssessmentOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: assessmentOpen ? '1px solid #e5e7eb' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Assessment Tasks</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {assessmentTasks.map((task) => (
-                        <div key={task.id} style={{
-                          width: 8, height: 8, borderRadius: '50%',
-                          background:
-                            task.status === 'completed' ? '#16a34a' :
-                            task.status === 'skipped'   ? 'var(--color-slate-light)' :
-                            task.status === 'rejected'  ? 'var(--color-trigger-sla-breach)' :
-                            '#e5e7eb',
-                        }} />
-                      ))}
-                      <span style={{ fontSize: 12, color: 'var(--color-slate-light)', marginLeft: 2 }}>
-                        {completedCount}/{totalCount} completati
-                      </span>
-                    </div>
-                  </div>
-                  {assessmentOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-                </div>
-                {assessmentOpen && (
-                  <div style={{ padding: '8px 20px 12px' }}>
-                    {Object.entries(groupByField(assessmentTasks, (t) => t.assignedTeam?.name ?? 'Non assegnato')).map(([ciType, tasks]) => (
-                      <CollapsibleGroup key={ciType} title={ciType.replace(/_/g, ' ')} count={tasks.length}>
-                        <div style={{ overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                            <thead>
-                              <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                                {['CI', 'Team', 'Assegnato a', 'Risk', 'Status'].map((h) => (
-                                  <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tasks.map((task) => (
-                                <tr
-                                  key={task.id}
-                                  onClick={() => setAssessmentTaskPopup(task.id)}
-                                  style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                                  onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                                  onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                                >
-                                  <td style={{ padding: '8px 12px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{task.ci?.name ?? '—'}</td>
-                                  <td style={{ padding: '8px 12px' }}>
-                                    {task.assignedTeam?.name ?? <span style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 12 }}>Non assegnato</span>}
-                                  </td>
-                                  <td style={{ padding: '8px 12px' }}>
-                                    {task.assignee ? (
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                          {task.assignee.name.charAt(0).toUpperCase()}
-                                        </div>
-                                        <span style={{ fontSize: 12 }}>{task.assignee.name}</span>
-                                      </div>
-                                    ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>—</span>}
-                                  </td>
-                                  <td style={{ padding: '8px 12px' }}>
-                                    {task.riskLevel ? (
-                                      <span style={{
-                                        fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-                                        backgroundColor: task.riskLevel === 'critical' ? 'rgba(239,68,68,0.1)' : task.riskLevel === 'high' ? 'rgba(2,132,199,0.1)' : task.riskLevel === 'medium' ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)',
-                                        color: task.riskLevel === 'critical' ? 'var(--color-trigger-sla-breach)' : task.riskLevel === 'high' ? 'var(--color-brand)' : task.riskLevel === 'medium' ? '#ca8a04' : '#16a34a',
-                                      }}>{task.riskLevel.toUpperCase()}</span>
-                                    ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>—</span>}
-                                  </td>
-                                  <td style={{ padding: '8px 12px' }}><Badge value={task.status} map={TASK_STATUS_COLORS} /></td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </CollapsibleGroup>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })()}
+          <ChangeTasks
+            changeId={change.id}
+            currentStep={currentStep}
+            instanceId={instanceId}
+            assessmentTasks={assessmentTasks}
+            deploySteps={deploySteps}
+            validationTask={validationTask}
+            teams={teams}
+            users={users}
+            transitioning={transitioning}
+            completingTask={completingTask}
+            rejectingTask={rejectingTask}
+            updatingStep={updatingStep}
+            savingSteps={savingSteps}
+            savingValidation={savingValidation}
+            assessmentOpen={assessmentOpen}
+            deployOpen={deployOpen}
+            validationOpen={validationOpen}
+            onSetAssessmentOpen={setAssessmentOpen}
+            onSetDeployOpen={setDeployOpen}
+            onSetValidationOpen={setValidationOpen}
+            onExecTransition={(iId, toStep, notes) => execTransition({ variables: { instanceId: iId, toStep, notes } })}
+            handlers={{
+              onCompleteTask: (taskId, input) => completeTask({ variables: { taskId, input } }),
+              onRejectTask: (taskId, reason) => rejectTask({ variables: { taskId, reason } }),
+              onAssignTaskTeam: (taskId, teamId) => assignTaskTeam({ variables: { taskId, teamId } }),
+              onAssignTaskUser: (taskId, userId) => assignTaskUser({ variables: { taskId, userId } }),
+              onUpdateStepStatus: (stepId, status, notes, skipReason) => updateStepStatus({ variables: { stepId, status, notes: notes ?? null, skipReason: skipReason ?? null } }),
+              onAssignStepTeam: (stepId, teamId) => assignStepTeam({ variables: { stepId, teamId } }),
+              onAssignStepUser: (stepId, userId) => assignStepUser({ variables: { stepId, userId } }),
+              onUpdateStepValidation: (stepId, status, notes) => updateStepValidation({ variables: { stepId, status, notes } }),
+              onAssignValidationTeam: (stepId, teamId) => assignValidationTeam({ variables: { stepId, teamId } }),
+              onAssignValidationUser: (stepId, userId) => assignValidationUser({ variables: { stepId, userId } }),
+              onUpdateChangeTask: (id, input) => updateChangeTask({ variables: { id, input } }),
+              onCompleteValidation: (changeId, notes) => completeValidation({ variables: { changeId, notes } }),
+              onFailValidation: (changeId) => failValidation({ variables: { changeId } }),
+              onSaveSteps: (changeId, steps) => saveSteps({ variables: { changeId, steps } }),
+              onSaveValidation: (changeId, scheduledStart, scheduledEnd) => saveValidation({ variables: { changeId, scheduledStart, scheduledEnd } }),
+            }}
+          />
 
-          {/* Validation Card */}
-          {showValidation && (() => {
-            const allValItems: { status: string }[] = [
-              ...(validationTask ? [validationTask] : []),
-              ...deploySteps.filter((s) => s.hasValidation).map((s) => ({ status: s.validationStatus ?? 'pending' })),
-            ]
-            const totalValCount  = allValItems.length
-            const passedValCount = allValItems.filter((v) => v.status === 'passed').length
-            const noTasks        = totalValCount === 0
-            return (
-              <div style={{ ...cardStyle, ...taskCardStyle('validation'), padding: 0 }}>
-                <div onClick={() => setValidationOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: validationOpen ? '1px solid #e5e7eb' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Validation Tasks</span>
-                    {totalValCount > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {allValItems.map((v, i) => (
-                          <div key={i} style={{
-                            width: 8, height: 8, borderRadius: '50%',
-                            background: v.status === 'passed' ? '#16a34a' : v.status === 'failed' ? 'var(--color-trigger-sla-breach)' : '#e5e7eb',
-                          }} />
-                        ))}
-                        <span style={{ fontSize: 12, color: 'var(--color-slate-light)', marginLeft: 2 }}>
-                          {passedValCount}/{totalValCount} completati
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  {validationOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-                </div>
-                {validationOpen && noTasks && (
-                  <div style={{ padding: '16px 20px 20px' }}>
-                    <div style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 14, lineHeight: 1.5 }}>
-                      Nessun task di validazione definito.<br />
-                      Puoi completare la validazione direttamente.
-                    </div>
-                    {canEditValidation && (
-                      <button
-                        onClick={() => { if (instanceId) execTransition({ variables: { instanceId, toStep: 'completed', notes: null } }) }}
-                        disabled={transitioning}
-                        style={{ padding: '9px 20px', backgroundColor: transitioning ? '#e2e6f0' : 'var(--color-trigger-automatic)', color: transitioning ? 'var(--color-slate-light)' : '#fff', border: 'none', borderRadius: 7, fontSize: 14, fontWeight: 600, cursor: transitioning ? 'not-allowed' : 'pointer' }}
-                      >
-                        {transitioning ? 'Esecuzione…' : 'Valida e prosegui'}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {validationOpen && !noTasks && (
-                  <div style={{ padding: '0 0 4px' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                            {['Tipo', 'Team', 'Assegnato a', 'Inizio', 'Fine', 'Status'].map((h) => (
-                              <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {validationTask && (
-                            <tr
-                              onClick={() => { setGlobalValidationPopup(true); setGlobalValNotes('') }}
-                              style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                            >
-                              <td style={{ padding: '10px 12px' }}>
-                                <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-slate-bg)', color: 'var(--color-slate)' }}>Globale</span>
-                              </td>
-                              <td style={{ padding: '10px 12px' }}>
-                                {validationTask.assignedTeam?.name ?? <span style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 12 }}>Non assegnato</span>}
-                              </td>
-                              <td style={{ padding: '10px 12px' }}>
-                                {validationTask.assignee ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                      {validationTask.assignee.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <span style={{ fontSize: 12 }}>{validationTask.assignee.name}</span>
-                                  </div>
-                                ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>—</span>}
-                              </td>
-                              <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--color-slate-light)' }}>{formatDate(validationTask.scheduledStart ?? '')}</td>
-                              <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--color-slate-light)' }}>{formatDate(validationTask.scheduledEnd ?? '')}</td>
-                              <td style={{ padding: '10px 12px' }}><Badge value={validationTask.status} map={{ ...TASK_STATUS_COLORS, passed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' }, failed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' } }} /></td>
-                            </tr>
-                          )}
-                          {deploySteps.filter((s) => s.hasValidation).map((step) => (
-                            <tr
-                              key={step.id}
-                              onClick={() => { setValidationStepPopup(step.id); setValPopupNotes(''); setValPopupShowReassign(false); setValPopupReassignTeamId(''); setValPopupUserId('') }}
-                              style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                            >
-                              <td style={{ padding: '10px 12px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>Step {step.order}: {step.title}</td>
-                              <td style={{ padding: '10px 12px' }}>
-                                {step.validationTeam?.name ?? <span style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 12 }}>Non assegnato</span>}
-                              </td>
-                              <td style={{ padding: '10px 12px' }}>
-                                {step.validationUser ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                      {step.validationUser.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <span style={{ fontSize: 12 }}>{step.validationUser.name}</span>
-                                  </div>
-                                ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>—</span>}
-                              </td>
-                              <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--color-slate-light)' }}>{formatDate(step.validationStart ?? '')}</td>
-                              <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--color-slate-light)' }}>{formatDate(step.validationEnd ?? '')}</td>
-                              <td style={{ padding: '10px 12px' }}><Badge value={step.validationStatus ?? 'pending'} map={{ ...STATUS_STEP_COLORS, passed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' }, failed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' } }} /></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-
-          {/* Deploy Tasks — table */}
-          {showDeploySteps && !deployStepsEditable && (() => {
-            const totalDeployCount     = deploySteps.length
-            const completedDeployCount = deploySteps.filter((s) => s.status === 'completed').length
-            return (
-              <div style={{ ...cardStyle, ...taskCardStyle('deploy'), padding: 0 }}>
-                <div onClick={() => setDeployOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: deployOpen ? '1px solid #e5e7eb' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Deploy Tasks</span>
-                    {totalDeployCount > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {deploySteps.map((s) => (
-                          <div key={s.id} style={{
-                            width: 8, height: 8, borderRadius: '50%',
-                            background:
-                              s.status === 'completed' ? '#16a34a' :
-                              s.status === 'failed'    ? 'var(--color-trigger-sla-breach)' :
-                              s.status === 'skipped'   ? 'var(--color-slate-light)' :
-                              '#e5e7eb',
-                          }} />
-                        ))}
-                        <span style={{ fontSize: 12, color: 'var(--color-slate-light)', marginLeft: 2 }}>
-                          {completedDeployCount}/{totalDeployCount} completati
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  {deployOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-                </div>
-                {deployOpen && (
-                  <div style={{ padding: '8px 20px 12px' }}>
-                    {deploySteps.length === 0 ? (
-                      <div style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>Nessuno step pianificato.</div>
-                    ) : (
-                      Object.entries(groupByField(deploySteps, (s) => s.assignedTeam?.name ?? 'Non assegnato')).map(([status, steps]) => (
-                        <CollapsibleGroup key={status} title={status.replace(/_/g, ' ')} count={steps.length}>
-                          <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                              <thead>
-                                <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
-                                  {['Titolo', 'Team', 'Assegnato a', 'Inizio', 'Fine'].map((h) => (
-                                    <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {steps.map((step) => (
-                                  <tr
-                                    key={step.id}
-                                    onClick={() => { setDeployStepPopup(step.id); setDeployPopupNotes(''); setDeployPopupShowSkip(false); setDeployPopupSkipReason(''); setDeployPopupShowFail(false); setDeployPopupFailReason(''); setDeployPopupShowReassign(false); setDeployPopupReassignTeamId(''); setDeployPopupUserId('') }}
-                                    style={{ borderBottom: '1px solid #e2e6f0', cursor: 'pointer' }}
-                                    onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f8f9fc' }}
-                                    onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent' }}
-                                  >
-                                    <td style={{ padding: '8px 12px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{step.title}</td>
-                                    <td style={{ padding: '8px 12px' }}>
-                                      {step.assignedTeam?.name ?? <span style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 12 }}>Non assegnato</span>}
-                                    </td>
-                                    <td style={{ padding: '8px 12px' }}>
-                                      {step.assignee ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                          <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            {step.assignee.name.charAt(0).toUpperCase()}
-                                          </div>
-                                          <span style={{ fontSize: 12 }}>{step.assignee.name}</span>
-                                        </div>
-                                      ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>—</span>}
-                                    </td>
-                                    <td style={{ padding: '8px 12px', fontSize: 12, color: 'var(--color-slate-light)' }}>{formatDate(step.scheduledStart ?? '')}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 12, color: 'var(--color-slate-light)' }}>{formatDate(step.scheduledEnd ?? '')}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </CollapsibleGroup>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-
-          {/* Comments */}
-          <div style={{ ...cardStyle, padding: 0 }}>
-            <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Commenti</span>
-                <CountBadge count={change.comments.length} />
-              </div>
-              {commentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {commentsOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: change.comments.length > 0 ? 14 : 0 }}>
-                  {change.comments.map((cm) => {
-                    const typeColors: Record<string, { bg: string; color: string }> = {
-                      manual:      { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-                      ci_removed:  { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-                      task_skipped:{ bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-                      step_skipped:{ bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-                      rejected:    { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-                      transition:  { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-                    }
-                    const typeLabels: Record<string, string> = {
-                      manual: 'Commento', ci_removed: 'CI Rimosso',
-                      task_skipped: 'Task Saltato', step_skipped: 'Step Saltato',
-                      rejected: 'Rigettato', transition: 'Transizione',
-                    }
-                    const tc = typeColors[cm.type] ?? { bg: '#f3f4f6', color: 'var(--color-slate)' }
-                    return (
-                      <div key={cm.id} style={{ padding: '10px 12px', backgroundColor: '#f8f9fc', borderRadius: 8, borderLeft: `3px solid ${tc.color}` }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                          <span style={{ ...tc, padding: '2px 8px', borderRadius: 100, fontSize: 12, fontWeight: 600 }}>
-                            {typeLabels[cm.type] ?? cm.type}
-                          </span>
-                          <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>
-                            {cm.createdBy?.name ?? '—'} · {new Date(cm.createdAt).toLocaleString('it-IT')}
-                          </span>
-                        </div>
-                        <p style={{ margin: 0, fontSize: 14, color: 'var(--color-slate-dark)', lineHeight: 1.5 }}>{cm.text}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <textarea
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Aggiungi un commento…"
-                    rows={2}
-                    style={{ flex: 1, padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'none', outline: 'none', boxSizing: 'border-box' }}
-                  />
-                  <button
-                    disabled={newComment.trim().length < 3 || addingComment}
-                    onClick={() => addComment({ variables: { changeId: change.id, text: newComment.trim() } })}
-                    style={{
-                      padding: '8px 14px', borderRadius: 6, border: 'none', fontSize: 14, fontWeight: 600,
-                      cursor: newComment.trim().length >= 3 && !addingComment ? 'pointer' : 'not-allowed',
-                      backgroundColor: newComment.trim().length >= 3 && !addingComment ? 'var(--color-brand)' : '#e2e6f0',
-                      color: newComment.trim().length >= 3 && !addingComment ? '#fff' : 'var(--color-slate-light)',
-                      alignSelf: 'flex-end',
-                    }}
-                  >
-                    Invia
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <ChangeComments
+            changeId={change.id}
+            comments={change.comments}
+            addingComment={addingComment}
+            onAddComment={(text) => addComment({ variables: { changeId: change.id, text } })}
+          />
         </div>
 
         {/* Right column */}
         <div style={{ width: 320, flexShrink: 0 }}>
-
-          {/* Timeline */}
-          {change.workflowHistory.length > 0 && (
-            <div style={{ ...cardStyle, padding: 0 }}>
-              <div onClick={() => setTimelineOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline Workflow</span>
-                </div>
-                {timelineOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-              </div>
-              {timelineOpen && (
-                <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 0 }}>
-                  {[...change.workflowHistory].reverse().map((exec, idx, arr) => {
-                    const isCurrent = idx === 0
-                    return (
-                    <div key={exec.id ?? idx} style={{ display: 'flex', gap: 12, paddingBottom: idx < arr.length - 1 ? 16 : 0, position: 'relative' }}>
-                      {idx < arr.length - 1 && (
-                        <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: 'var(--color-slate)', opacity: 0.3 }} />
-                      )}
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? 'var(--color-brand)' : 'var(--color-slate)', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
-                        <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{new Date(exec.enteredAt).toLocaleString('it-IT')}</div>
-                        {exec.notes && <div style={{ fontSize: 12, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
-                      </div>
-                    </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+          <ChangeDetails change={change} currentStep={currentStep} sidebarOnly />
         </div>
       </div>
 
-      {/* Reassign Task Dialog */}
-      {reassignTaskId && (() => {
-        const taskToReassign = assessmentTasks.find((t) => t.id === reassignTaskId)
-        const ownerGroup    = taskToReassign?.ci?.owner   ?? null
-        const supportGroup  = taskToReassign?.ci?.supportGroup ?? null
-        const currentTeamId = taskToReassign?.assignedTeam?.id ?? null
-        const availableTeams = ([ownerGroup, supportGroup] as ({ id: string; name: string } | null)[])
-          .filter(Boolean)
-          .filter((t) => t?.id !== currentTeamId)
-          .filter((t, i, arr) => arr.findIndex((x) => x?.id === t?.id) === i) as { id: string; name: string }[]
-        const teamList = showAllTeams ? teams : availableTeams
-        return (
-          <>
-            <div onClick={() => { setReassignTaskId(null); setShowAllTeams(false) }} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.5)' }} />
-            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 400, zIndex: 1001, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 4px', color: 'var(--color-slate-dark)' }}>Riassegna task</h3>
-              {taskToReassign?.ci && (
-                <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 16px' }}>CI: <strong>{taskToReassign.ci.name}</strong></p>
-              )}
-              {teamList.length > 0 ? (
-                <select
-                  value={reassignTeamId}
-                  onChange={(e) => setReassignTeamId(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, marginBottom: 8, outline: 'none' }}
-                >
-                  <option value="">Seleziona team…</option>
-                  {teamList.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 8 }}>Nessun team alternativo disponibile per questo CI.</p>
-              )}
-              {!showAllTeams && (
-                <button
-                  onClick={() => setShowAllTeams(true)}
-                  style={{ fontSize: 12, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 16 }}
-                >
-                  Scegli da tutti i team →
-                </button>
-              )}
-              {showAllTeams && <div style={{ marginBottom: 16 }} />}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button
-                  onClick={() => { setReassignTaskId(null); setShowAllTeams(false) }}
-                  style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 14 }}
-                >
-                  Annulla
-                </button>
-                <button
-                  disabled={!reassignTeamId}
-                  onClick={() => {
-                    assignTaskTeam({ variables: { taskId: reassignTaskId, teamId: reassignTeamId } })
-                    setAssignTaskUserId((prev) => ({ ...prev, [reassignTaskId]: '' }))
-                    setReassignTaskId(null)
-                    setReassignTeamId('')
-                    setShowAllTeams(false)
-                  }}
-                  style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: reassignTeamId ? 'pointer' : 'not-allowed', backgroundColor: reassignTeamId ? 'var(--color-brand)' : '#e2e6f0', color: reassignTeamId ? '#fff' : 'var(--color-slate-light)', fontSize: 14, fontWeight: 500 }}
-                >
-                  Riassegna
-                </button>
-              </div>
-            </div>
-          </>
-        )
-      })()}
-
-      {/* Reject Task Dialog */}
-      {rejectTaskDialog && (
-        <>
-          <div onClick={() => setRejectTaskDialog(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.5)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 440, zIndex: 1001, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: 'var(--color-slate-dark)' }}>
-              Rigetta task: {rejectTaskDialog.ciName}
-            </h3>
-            <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 16 }}>
-              Il CI verrà rimosso dagli affected e il task sarà marcato come saltato. Motivo obbligatorio (min. 10 caratteri).
-            </p>
-            <textarea
-              value={rejectTaskReason}
-              onChange={(e) => setRejectTaskReason(e.target.value)}
-              placeholder="Es: CI non rilevante per questo change..."
-              rows={3}
-              autoFocus
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button
-                onClick={() => setRejectTaskDialog(null)}
-                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 14 }}
-              >
-                Annulla
-              </button>
-              <button
-                disabled={rejectTaskReason.trim().length < 10}
-                onClick={() => {
-                  rejectTask({ variables: { taskId: rejectTaskDialog.taskId, reason: rejectTaskReason.trim() } })
-                  setRejectTaskDialog(null)
-                  setRejectTaskReason('')
-                }}
-                style={{
-                  padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 500,
-                  cursor: rejectTaskReason.trim().length >= 10 ? 'pointer' : 'not-allowed',
-                  backgroundColor: rejectTaskReason.trim().length >= 10 ? 'var(--color-trigger-sla-breach)' : '#f3f4f6',
-                  color: rejectTaskReason.trim().length >= 10 ? '#fff' : 'var(--color-slate-light)',
-                }}
-              >
-                Conferma rigetto
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Remove CI Dialog */}
+      {/* ── Remove CI Dialog ──────────────────────────────────── */}
       {removeCIDialog && (
         <>
           <div onClick={() => setRemoveCIDialog(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.5)' }} />
@@ -1217,7 +374,7 @@ export function ChangeDetailPage() {
         </>
       )}
 
-      {/* Transition Dialog — only shown when requiresInput === true */}
+      {/* ── Transition Dialog ─────────────────────────────────── */}
       {isTransitionOpen && pendingTransition && (
         <>
           <div onClick={() => setIsTransitionOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000 }} />
@@ -1248,981 +405,6 @@ export function ChangeDetailPage() {
           </div>
         </>
       )}
-
-      {/* Deploy Step Popup Drawer */}
-      {deployStepPopup && (() => {
-        const step = deploySteps.find((s) => s.id === deployStepPopup)
-        if (!step) return null
-        const stepDone = ['completed', 'skipped', 'failed'].includes(step.status)
-        const canAct = canEditDeploy && !stepDone
-        const stepTeamUsers = users.filter((u) => u.teams?.some((t: { id: string }) => t.id === step.assignedTeam?.id))
-
-        return (
-          <>
-            <div onClick={() => setDeployStepPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.35)' }} />
-            <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 520, backgroundColor: '#fff', zIndex: 1001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
-
-              {/* Header */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e6f0', flexShrink: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Deploy Step</div>
-                    <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, backgroundColor: '#f3f4f6', padding: '2px 6px', borderRadius: 4, marginRight: 8 }}>#{step.order}</span>
-                      {step.title}
-                    </h2>
-                    <Badge value={step.status} map={STATUS_STEP_COLORS} />
-                  </div>
-                  <button onClick={() => setDeployStepPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 24, color: 'var(--color-slate-light)', lineHeight: 1, padding: 4 }}>×</button>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-                {!canEditDeploy && (
-                  <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e6f0', fontSize: 12, color: 'var(--color-slate-light)' }}>
-                    Sola lettura — questa fase non è ancora attiva
-                  </div>
-                )}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                  <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--color-slate-light)' }}>{step.id}</div>
-                </div>
-
-                {/* Dettagli */}
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Dettagli</div>
-                <div style={{ display: 'flex', gap: 24, marginBottom: 20, fontSize: 14 }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 2 }}>Inizio</div>
-                    <div style={{ fontWeight: 500 }}>{formatDate(step.scheduledStart ?? '')}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 2 }}>Fine</div>
-                    <div style={{ fontWeight: 500 }}>{formatDate(step.scheduledEnd ?? '')}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 2 }}>Durata</div>
-                    <div style={{ fontWeight: 500 }}>{step.durationDays} {step.durationDays === 1 ? 'giorno' : 'giorni'}</div>
-                  </div>
-                </div>
-
-                {/* Rollback Plan */}
-                <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16, marginBottom: 4 }}>
-                  <DetailField
-                    label="Rollback Plan"
-                    value={step.rollbackPlan}
-                    editable={true}
-                    onSave={(value) => { void updateChangeTask({ variables: { id: step.id, input: { rollbackPlan: value } } }) }}
-                  />
-                </div>
-
-                {/* Assegnazione */}
-                <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16, marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Assegnazione</div>
-
-                  {/* Team */}
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Team</div>
-                    {deployPopupShowReassign ? (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <select
-                          value={deployPopupReassignTeamId}
-                          onChange={(e) => setDeployPopupReassignTeamId(e.target.value)}
-                          style={{ flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                        >
-                          <option value="">Seleziona team…</option>
-                          {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
-                        <button
-                          disabled={!deployPopupReassignTeamId}
-                          onClick={() => {
-                            if (deployPopupReassignTeamId) {
-                              assignStepTeam({ variables: { stepId: step.id, teamId: deployPopupReassignTeamId } })
-                              setDeployPopupShowReassign(false)
-                              setDeployPopupReassignTeamId('')
-                              setDeployPopupUserId('')
-                            }
-                          }}
-                          style={{ padding: '8px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: deployPopupReassignTeamId ? 'pointer' : 'not-allowed', backgroundColor: deployPopupReassignTeamId ? 'var(--color-brand)' : '#e2e6f0', color: deployPopupReassignTeamId ? '#fff' : 'var(--color-slate-light)' }}
-                        >
-                          Salva
-                        </button>
-                        <button onClick={() => setDeployPopupShowReassign(false)} style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 12 }}>✕</button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {step.assignedTeam ? (
-                          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{step.assignedTeam.name}</span>
-                        ) : (
-                          <span style={{ fontSize: 14, color: 'var(--color-trigger-sla-breach)' }}>Non assegnato</span>
-                        )}
-                        <button onClick={() => setDeployPopupShowReassign(true)} style={{ fontSize: 12, padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}>Riassegna</button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Utente */}
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Assegnato a</div>
-                    {step.assignedTeam ? (
-                      step.assignee ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            {step.assignee.name.charAt(0).toUpperCase()}
-                          </div>
-                          <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{step.assignee.name}</span>
-                          <button onClick={() => setDeployPopupUserId('')} style={{ fontSize: 12, padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}>Cambia</button>
-                        </div>
-                      ) : (
-                        <select
-                          value={deployPopupUserId}
-                          onChange={(e) => {
-                            const userId = e.target.value
-                            setDeployPopupUserId(userId)
-                            if (userId) assignStepUser({ variables: { stepId: step.id, userId } })
-                          }}
-                          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                        >
-                          <option value="">Assegna utente...</option>
-                          {stepTeamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                      )
-                    ) : (
-                      <span style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>— (assegna prima un team)</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Azioni — solo deployment step e status attivo */}
-                {canAct && (
-                  <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Azioni</div>
-
-                    {!step.assignedTeam && (
-                      <div style={{ fontSize: 12, color: 'var(--color-trigger-sla-breach)', padding: '8px 12px', borderRadius: 6, backgroundColor: 'rgba(220,38,38,0.06)', marginBottom: 12 }}>⚠ Assegna un team allo step per procedere</div>
-                    )}
-
-                    {(step.status === 'pending' || step.status === 'in_progress') && (
-                      <>
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Note (obbligatorie per completare)</label>
-                          <textarea
-                            value={deployPopupNotes}
-                            onChange={(e) => setDeployPopupNotes(e.target.value)}
-                            rows={3}
-                            placeholder="Descrivi il risultato del deployment..."
-                            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'vertical', outline: 'none' }}
-                          />
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                          <button
-                            disabled={!deployPopupNotes.trim() || !step.assignedTeam || updatingStep}
-                            onClick={() => { updateStepStatus({ variables: { stepId: step.id, status: 'completed', notes: deployPopupNotes.trim() } }); setDeployStepPopup(null) }}
-                            style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: deployPopupNotes.trim() && step.assignedTeam && !updatingStep ? 'pointer' : 'not-allowed', backgroundColor: deployPopupNotes.trim() && step.assignedTeam && !updatingStep ? 'var(--color-trigger-automatic)' : '#e2e6f0', color: deployPopupNotes.trim() && step.assignedTeam && !updatingStep ? '#fff' : 'var(--color-slate-light)' }}
-                          >
-                            ✓ Completa
-                          </button>
-                          <button
-                            onClick={() => { setDeployPopupShowFail(true); setDeployPopupShowSkip(false) }}
-                            style={{ padding: '9px 14px', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', backgroundColor: '#fef2f2', color: 'var(--color-trigger-sla-breach)' }}
-                          >
-                            Fallito
-                          </button>
-                          <button
-                            onClick={() => { setDeployPopupShowSkip(true); setDeployPopupShowFail(false) }}
-                            style={{ padding: '9px 14px', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', backgroundColor: '#f3f4f6', color: 'var(--color-slate)' }}
-                          >
-                            Salta
-                          </button>
-                        </div>
-
-                        {/* Skip inline form */}
-                        {deployPopupShowSkip && (
-                          <div style={{ padding: 14, borderRadius: 8, border: '1px solid #e2e6f0', backgroundColor: '#fafafa', marginBottom: 10 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 8 }}>Motivo del salto (min. 10 caratteri)</div>
-                            <textarea
-                              value={deployPopupSkipReason}
-                              onChange={(e) => setDeployPopupSkipReason(e.target.value)}
-                              rows={3}
-                              autoFocus
-                              placeholder="Es: Step non necessario per questo ambiente..."
-                              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'none', outline: 'none', marginBottom: 8 }}
-                            />
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              <button
-                                disabled={deployPopupSkipReason.trim().length < 10 || updatingStep}
-                                onClick={() => { updateStepStatus({ variables: { stepId: step.id, status: 'skipped', skipReason: deployPopupSkipReason.trim() } }); setDeployStepPopup(null) }}
-                                style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: deployPopupSkipReason.trim().length >= 10 && !updatingStep ? 'pointer' : 'not-allowed', backgroundColor: deployPopupSkipReason.trim().length >= 10 && !updatingStep ? 'var(--color-brand)' : '#e2e6f0', color: deployPopupSkipReason.trim().length >= 10 && !updatingStep ? '#fff' : 'var(--color-slate-light)' }}
-                              >
-                                Conferma salto
-                              </button>
-                              <button onClick={() => setDeployPopupShowSkip(false)} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Annulla</button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Fail inline form */}
-                        {deployPopupShowFail && (
-                          <div style={{ padding: 14, borderRadius: 8, border: '1px solid #fecaca', backgroundColor: 'rgba(254,242,242,0.5)', marginBottom: 10 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-trigger-sla-breach)', marginBottom: 8 }}>Motivo del fallimento (min. 10 caratteri)</div>
-                            <textarea
-                              value={deployPopupFailReason}
-                              onChange={(e) => setDeployPopupFailReason(e.target.value)}
-                              rows={3}
-                              autoFocus
-                              placeholder="Es: Errore di deploy, rollback eseguito..."
-                              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #fecaca', borderRadius: 6, fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'none', outline: 'none', marginBottom: 8 }}
-                            />
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              <button
-                                disabled={deployPopupFailReason.trim().length < 10 || updatingStep}
-                                onClick={() => { updateStepStatus({ variables: { stepId: step.id, status: 'failed', notes: deployPopupFailReason.trim() } }); setDeployStepPopup(null) }}
-                                style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: deployPopupFailReason.trim().length >= 10 && !updatingStep ? 'pointer' : 'not-allowed', backgroundColor: deployPopupFailReason.trim().length >= 10 && !updatingStep ? 'var(--color-trigger-sla-breach)' : '#e2e6f0', color: deployPopupFailReason.trim().length >= 10 && !updatingStep ? '#fff' : 'var(--color-slate-light)' }}
-                              >
-                                Conferma fallimento
-                              </button>
-                              <button onClick={() => setDeployPopupShowFail(false)} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Annulla</button>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Read-only per step completati/saltati/falliti */}
-                {stepDone && (
-                  <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Risultato</div>
-                    {step.skipReason && (
-                      <div style={{ fontSize: 14, color: 'var(--color-slate)', marginBottom: 8, fontStyle: 'italic' }}>Motivo salto: {step.skipReason}</div>
-                    )}
-                    {step.notes && (
-                      <div style={{ fontSize: 14, color: 'var(--color-slate-dark)', marginBottom: 8, lineHeight: 1.5 }}>{step.notes}</div>
-                    )}
-                    {step.completedAt && (
-                      <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Completato il: {new Date(step.completedAt).toLocaleString('it-IT')}</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )
-      })()}
-
-      {/* Validation Step Popup Drawer */}
-      {validationStepPopup && (() => {
-        const step = deploySteps.find((s) => s.id === validationStepPopup)
-        if (!step) return null
-        const valDone = step.validationStatus === 'passed' || step.validationStatus === 'failed'
-        const canAct = canEditValidation && !valDone
-        const valTeamUsers = users.filter((u) => u.teams?.some((t: { id: string }) => t.id === step.validationTeam?.id))
-
-        return (
-          <>
-            <div onClick={() => setValidationStepPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.35)' }} />
-            <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 520, backgroundColor: '#fff', zIndex: 1001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
-
-              {/* Header */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e6f0', flexShrink: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Validazione Step</div>
-                    <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>Step {step.order}: {step.title}</h2>
-                    <Badge value={step.validationStatus ?? 'pending'} map={{ ...STATUS_STEP_COLORS, passed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' }, failed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' } }} />
-                  </div>
-                  <button onClick={() => setValidationStepPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 24, color: 'var(--color-slate-light)', lineHeight: 1, padding: 4 }}>×</button>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-                {!canEditValidation && (
-                  <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e6f0', fontSize: 12, color: 'var(--color-slate-light)' }}>
-                    Sola lettura — questa fase non è ancora attiva
-                  </div>
-                )}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                  <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--color-slate-light)' }}>{step.id}</div>
-                </div>
-
-                {/* Finestra di validazione */}
-                {step.validationStart && step.validationEnd && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Finestra di Validazione</div>
-                    <div style={{ display: 'flex', gap: 24, fontSize: 14 }}>
-                      <div>
-                        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 2 }}>Inizio</div>
-                        <div style={{ fontWeight: 500 }}>{formatDate(step.validationStart)}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 2 }}>Fine</div>
-                        <div style={{ fontWeight: 500 }}>{formatDate(step.validationEnd)}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Assegnazione validazione */}
-                <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16, marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Assegnazione</div>
-
-                  {/* Team validazione */}
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Team Validazione</div>
-                    {valPopupShowReassign ? (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <select
-                          value={valPopupReassignTeamId}
-                          onChange={(e) => setValPopupReassignTeamId(e.target.value)}
-                          style={{ flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                        >
-                          <option value="">Seleziona team…</option>
-                          {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
-                        <button
-                          disabled={!valPopupReassignTeamId}
-                          onClick={() => {
-                            if (valPopupReassignTeamId) {
-                              assignValidationTeam({ variables: { stepId: step.id, teamId: valPopupReassignTeamId } })
-                              setValPopupShowReassign(false)
-                              setValPopupReassignTeamId('')
-                              setValPopupUserId('')
-                            }
-                          }}
-                          style={{ padding: '8px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: valPopupReassignTeamId ? 'pointer' : 'not-allowed', backgroundColor: valPopupReassignTeamId ? 'var(--color-brand)' : '#e2e6f0', color: valPopupReassignTeamId ? '#fff' : 'var(--color-slate-light)' }}
-                        >
-                          Salva
-                        </button>
-                        <button onClick={() => setValPopupShowReassign(false)} style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 12 }}>✕</button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {step.validationTeam ? (
-                          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{step.validationTeam.name}</span>
-                        ) : (
-                          <span style={{ fontSize: 14, color: 'var(--color-trigger-sla-breach)' }}>Non assegnato</span>
-                        )}
-                        {!valDone && <button onClick={() => setValPopupShowReassign(true)} style={{ fontSize: 12, padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}>Riassegna</button>}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Utente validazione */}
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Responsabile Validazione</div>
-                    {step.validationTeam ? (
-                      step.validationUser ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            {step.validationUser.name.charAt(0).toUpperCase()}
-                          </div>
-                          <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{step.validationUser.name}</span>
-                          {!valDone && <button onClick={() => setValPopupUserId('')} style={{ fontSize: 12, padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}>Cambia</button>}
-                        </div>
-                      ) : (
-                        <select
-                          value={valPopupUserId}
-                          onChange={(e) => {
-                            const userId = e.target.value
-                            setValPopupUserId(userId)
-                            if (userId) assignValidationUser({ variables: { stepId: step.id, userId } })
-                          }}
-                          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                        >
-                          <option value="">Assegna responsabile...</option>
-                          {valTeamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                      )
-                    ) : (
-                      <span style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>— (assegna prima un team)</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Azioni */}
-                {canAct && (
-                  <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Azioni</div>
-
-                    {!step.validationTeam && (
-                      <div style={{ fontSize: 12, color: 'var(--color-trigger-sla-breach)', padding: '8px 12px', borderRadius: 6, backgroundColor: 'rgba(220,38,38,0.06)', marginBottom: 12 }}>⚠ Assegna un team di validazione per procedere</div>
-                    )}
-
-                    <div style={{ marginBottom: 10 }}>
-                      <label style={{ fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Note (obbligatorie per fallimento)</label>
-                      <textarea
-                        value={valPopupNotes}
-                        onChange={(e) => setValPopupNotes(e.target.value)}
-                        rows={3}
-                        placeholder="Note della validazione..."
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'vertical', outline: 'none' }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        disabled={!step.validationTeam || updatingStep}
-                        onClick={() => { updateStepValidation({ variables: { stepId: step.id, status: 'passed', notes: valPopupNotes || null } }); setValidationStepPopup(null) }}
-                        style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: step.validationTeam && !updatingStep ? 'pointer' : 'not-allowed', backgroundColor: step.validationTeam && !updatingStep ? 'var(--color-trigger-automatic)' : '#e2e6f0', color: step.validationTeam && !updatingStep ? '#fff' : 'var(--color-slate-light)' }}
-                      >
-                        ✓ Passa
-                      </button>
-                      <button
-                        disabled={!step.validationTeam || !valPopupNotes.trim() || updatingStep}
-                        onClick={() => { updateStepValidation({ variables: { stepId: step.id, status: 'failed', notes: valPopupNotes.trim() } }); setValidationStepPopup(null) }}
-                        style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: step.validationTeam && valPopupNotes.trim() && !updatingStep ? 'pointer' : 'not-allowed', backgroundColor: step.validationTeam && valPopupNotes.trim() && !updatingStep ? 'var(--color-trigger-sla-breach)' : '#e2e6f0', color: step.validationTeam && valPopupNotes.trim() && !updatingStep ? '#fff' : 'var(--color-slate-light)' }}
-                      >
-                        ✗ Fallisce
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Read-only per validazione completata */}
-                {valDone && (
-                  <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Risultato</div>
-                    {step.validationNotes && (
-                      <div style={{ fontSize: 14, color: 'var(--color-slate-dark)', marginBottom: 8, lineHeight: 1.5 }}>{step.validationNotes}</div>
-                    )}
-                    {step.completedAt && (
-                      <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Completato il: {new Date(step.completedAt).toLocaleString('it-IT')}</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )
-      })()}
-
-      {/* Global Validation Popup Drawer */}
-      {globalValidationPopup && validationTask && (() => {
-        const val = validationTask
-        const valDone = val.status === 'passed' || val.status === 'failed'
-        const canAct  = canEditValidation && !valDone
-        return (
-          <>
-            <div onClick={() => setGlobalValidationPopup(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.35)' }} />
-            <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 520, backgroundColor: '#fff', zIndex: 1001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
-
-              {/* Header */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e6f0', flexShrink: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Validazione</div>
-                    <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>Validazione Globale</h2>
-                    <Badge value={val.status} map={{ ...TASK_STATUS_COLORS, passed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' }, failed: { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' } }} />
-                  </div>
-                  <button onClick={() => setGlobalValidationPopup(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 24, color: 'var(--color-slate-light)', lineHeight: 1, padding: 4 }}>×</button>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-                {!canEditValidation && (
-                  <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e6f0', fontSize: 12, color: 'var(--color-slate-light)' }}>
-                    Sola lettura — questa fase non è ancora attiva
-                  </div>
-                )}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                  <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--color-slate-light)' }}>{val.id}</div>
-                </div>
-
-                {/* Finestra di validazione */}
-                {val.scheduledStart && val.scheduledEnd && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Finestra di Validazione</div>
-                    <div style={{ display: 'flex', gap: 24, fontSize: 14 }}>
-                      <div>
-                        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 2 }}>Inizio</div>
-                        <div style={{ fontWeight: 500 }}>{formatDate(val.scheduledStart)}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 2 }}>Fine</div>
-                        <div style={{ fontWeight: 500 }}>{formatDate(val.scheduledEnd)}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Assegnazione */}
-                <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16, marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Assegnazione</div>
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 4 }}>Team</div>
-                    {val.assignedTeam ? (
-                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{val.assignedTeam.name}</span>
-                    ) : (
-                      <span style={{ fontSize: 14, color: 'var(--color-trigger-sla-breach)' }}>Non assegnato</span>
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 4 }}>Responsabile</div>
-                    {val.assignee ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {val.assignee.name.charAt(0).toUpperCase()}
-                        </div>
-                        <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{val.assignee.name}</span>
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>—</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Azioni */}
-                {canAct && (
-                  <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Azioni</div>
-                    <div style={{ marginBottom: 10 }}>
-                      <label style={{ fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Note (obbligatorie per fallimento)</label>
-                      <textarea
-                        value={globalValNotes}
-                        onChange={(e) => setGlobalValNotes(e.target.value)}
-                        rows={3}
-                        placeholder="Note della validazione..."
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'vertical', outline: 'none' }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={() => { completeValidation({ variables: { changeId: change.id, notes: globalValNotes || null } }); setGlobalValidationPopup(false) }}
-                        style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', backgroundColor: 'var(--color-trigger-automatic)', color: '#fff' }}
-                      >
-                        ✓ Passa
-                      </button>
-                      <button
-                        disabled={!globalValNotes.trim()}
-                        onClick={() => { failValidation({ variables: { changeId: change.id } }); setGlobalValidationPopup(false) }}
-                        style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: globalValNotes.trim() ? 'pointer' : 'not-allowed', backgroundColor: globalValNotes.trim() ? 'var(--color-trigger-sla-breach)' : '#e2e6f0', color: globalValNotes.trim() ? '#fff' : 'var(--color-slate-light)' }}
-                      >
-                        ✗ Fallisce
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Read-only per validazione completata */}
-                {valDone && (
-                  <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Risultato</div>
-                    {val.notes && (
-                      <div style={{ fontSize: 14, color: 'var(--color-slate-dark)', marginBottom: 8, lineHeight: 1.5 }}>{val.notes}</div>
-                    )}
-                    {val.completedAt && (
-                      <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Completato il: {new Date(val.completedAt).toLocaleString('it-IT')}</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )
-      })()}
-
-      {/* Assessment Task Popup Drawer */}
-      {assessmentTaskPopup && (() => {
-        const task = assessmentTasks.find((t) => t.id === assessmentTaskPopup)
-        if (!task) return null
-        const taskForm = getTaskForm(task.id)
-        const isEditable = task.status === 'open' && canEditAssessment
-        const isDone = ['completed', 'rejected'].includes(task.status)
-        const taskTeamUsers = users.filter((u) => u.teams?.some((t: { id: string }) => t.id === task.assignedTeam?.id))
-
-        return (
-          <>
-            <div onClick={() => setAssessmentTaskPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.35)' }} />
-            <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 560, backgroundColor: '#fff', zIndex: 1001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
-
-              {/* Header */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e6f0', flexShrink: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Assessment Task</div>
-                    <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{task.ci?.name ?? '—'}</h2>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {task.ci?.type && <span style={{ fontSize: 12, color: 'var(--color-slate-light)', backgroundColor: '#f3f4f6', padding: '2px 8px', borderRadius: 4 }}>{task.ci.type}</span>}
-                      {task.ci?.environment && <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{task.ci.environment}</span>}
-                      <Badge value={task.status} map={TASK_STATUS_COLORS} />
-                    </div>
-                  </div>
-                  <button onClick={() => setAssessmentTaskPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 24, color: 'var(--color-slate-light)', lineHeight: 1, padding: 4 }}>×</button>
-                </div>
-              </div>
-
-              {/* Scrollable body */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-                {!canEditAssessment && (
-                  <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e6f0', fontSize: 12, color: 'var(--color-slate-light)' }}>
-                    Sola lettura — questa fase non è ancora attiva
-                  </div>
-                )}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                  <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--color-slate-light)' }}>{task.id}</div>
-                </div>
-
-                {/* ── Section 1: Assessment ─────────────────────────── */}
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Assessment</div>
-
-                {/* Team */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Team</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {task.assignedTeam ? (
-                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{task.assignedTeam.name}</span>
-                    ) : (
-                      <span style={{ fontSize: 14, color: 'var(--color-trigger-sla-breach)' }}>Non assegnato</span>
-                    )}
-                    {isEditable && (
-                      <button
-                        onClick={() => { setReassignTaskId(task.id); setReassignTeamId(''); setAssessmentTaskPopup(null) }}
-                        style={{ fontSize: 12, padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}
-                      >
-                        Riassegna
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* User — editable */}
-                {isEditable && task.assignedTeam && (
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Assegnato a</div>
-                    {task.assignee ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {task.assignee.name.charAt(0).toUpperCase()}
-                        </div>
-                        <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{task.assignee.name}</span>
-                        <button
-                          onClick={() => setAssignTaskUserId((prev) => ({ ...prev, [task.id]: '' }))}
-                          style={{ fontSize: 12, padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}
-                        >
-                          Cambia
-                        </button>
-                      </div>
-                    ) : (
-                      <select
-                        value={assignTaskUserId[task.id] ?? ''}
-                        onChange={(e) => {
-                          const userId = e.target.value
-                          setAssignTaskUserId((prev) => ({ ...prev, [task.id]: userId }))
-                          if (userId) assignTaskUser({ variables: { taskId: task.id, userId } })
-                        }}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                      >
-                        <option value="">Assegna utente...</option>
-                        {taskTeamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                    )}
-                  </div>
-                )}
-
-                {/* User — read-only for done tasks */}
-                {isDone && task.assignee && (
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Assegnato a</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {task.assignee.name.charAt(0).toUpperCase()}
-                      </div>
-                      <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{task.assignee.name}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Risk Level */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Risk Level</div>
-                  {isEditable ? (
-                    <select value={taskForm.riskLevel} onChange={(e) => setTaskForm(task.id, { riskLevel: e.target.value })} style={inputStyle}>
-                      {['low', 'medium', 'high', 'critical'].map((r) => (
-                        <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{task.riskLevel ?? '—'}</span>
-                  )}
-                </div>
-
-                {/* Impact */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Descrizione impatto</div>
-                  {isEditable ? (
-                    <textarea value={taskForm.impactDescription} onChange={(e) => setTaskForm(task.id, { impactDescription: e.target.value })} rows={3} style={textareaStyle} placeholder="Descrivi l'impatto del change su questo CI..." />
-                  ) : (
-                    <p style={{ fontSize: 14, color: 'var(--color-slate-dark)', margin: 0, lineHeight: 1.5 }}>{task.impactDescription ?? '—'}</p>
-                  )}
-                </div>
-
-                {/* Mitigation */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Mitigazione</div>
-                  {isEditable ? (
-                    <textarea value={taskForm.mitigation} onChange={(e) => setTaskForm(task.id, { mitigation: e.target.value })} rows={2} style={textareaStyle} placeholder="Piano di mitigazione..." />
-                  ) : (
-                    <p style={{ fontSize: 14, color: 'var(--color-slate-dark)', margin: 0, lineHeight: 1.5 }}>{task.mitigation ?? '—'}</p>
-                  )}
-                </div>
-
-                {/* Notes */}
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Note</div>
-                  {isEditable ? (
-                    <textarea value={taskForm.notes} onChange={(e) => setTaskForm(task.id, { notes: e.target.value })} rows={2} style={textareaStyle} placeholder="Note aggiuntive..." />
-                  ) : (
-                    <p style={{ fontSize: 14, color: 'var(--color-slate-dark)', margin: 0, lineHeight: 1.5 }}>{task.notes ?? '—'}</p>
-                  )}
-                </div>
-
-                {/* Action buttons */}
-                {isEditable && (
-                  <div style={{ marginBottom: 24 }}>
-                    {!task.assignedTeam && (
-                      <div style={{ fontSize: 12, color: 'var(--color-trigger-sla-breach)', marginBottom: 8 }}>⚠ Assegna un team prima di completare</div>
-                    )}
-                    {task.assignedTeam && (
-                      <>
-                        {deploySteps.length === 0 && (
-                          <div style={{ fontSize: 12, color: '#ca8a04', padding: '8px 12px', borderRadius: 6, backgroundColor: 'rgba(234,179,8,0.08)', marginBottom: 8 }}>
-                            ⚠ Aggiungi almeno uno step di deployment prima di completare il task
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button
-                            onClick={() => {
-                              completeTask({ variables: { taskId: task.id, input: { riskLevel: taskForm.riskLevel, impactDescription: taskForm.impactDescription, mitigation: taskForm.mitigation || null, notes: taskForm.notes || null } } })
-                              setAssessmentTaskPopup(null)
-                            }}
-                            disabled={completingTask || !taskForm.impactDescription.trim() || !taskForm.riskLevel || deploySteps.length === 0}
-                            style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: taskForm.impactDescription.trim() && taskForm.riskLevel && deploySteps.length > 0 && !completingTask ? 'pointer' : 'not-allowed', backgroundColor: taskForm.impactDescription.trim() && taskForm.riskLevel && deploySteps.length > 0 && !completingTask ? 'var(--color-trigger-automatic)' : '#e2e6f0', color: taskForm.impactDescription.trim() && taskForm.riskLevel && deploySteps.length > 0 && !completingTask ? '#fff' : 'var(--color-slate-light)' }}
-                          >
-                            {completingTask ? 'Completamento…' : '✓ Completa task'}
-                          </button>
-                          <button
-                            onClick={() => { setRejectTaskDialog({ taskId: task.id, ciName: task.ci?.name ?? '—' }); setAssessmentTaskPopup(null) }}
-                            disabled={rejectingTask}
-                            style={{ padding: '9px 16px', borderRadius: 7, border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', backgroundColor: '#fef2f2', color: 'var(--color-trigger-sla-breach)' }}
-                          >
-                            Rigetta
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* ── Section 2: Piano di Deployment ── */}
-                <div style={{ borderTop: '1px solid #e2e6f0', paddingTop: 20, marginTop: 4 }}>
-                    {/* Separator label */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                      <div style={{ flex: 1, height: 1, backgroundColor: '#e2e6f0' }} />
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>Piano di Deployment</span>
-                      <div style={{ flex: 1, height: 1, backgroundColor: '#e2e6f0' }} />
-                    </div>
-
-                    {/* Existing steps list */}
-                    {deploySteps.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-                        {deploySteps.map((step) => (
-                          <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', backgroundColor: '#f8f9fc', borderRadius: 7 }}>
-                            <span style={{ backgroundColor: 'var(--color-brand)', color: '#fff', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{step.order}</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{step.title}</div>
-                              <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>
-                                {formatDate(step.scheduledStart ?? '')} → {formatDate(step.scheduledEnd ?? '')}
-                                {step.assignedTeam && <span style={{ marginLeft: 8 }}>· {step.assignedTeam.name}</span>}
-                              </div>
-                            </div>
-                            <Badge value={step.status} map={STATUS_STEP_COLORS} />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 14 }}>Nessuno step pianificato.</p>
-                    )}
-
-                    {/* Add step form — only when currentStep === 'assessment' */}
-                    {deployStepsEditable && (
-                      <div style={{ marginTop: 8, padding: 16, borderRadius: 8, border: '1px dashed #e2e6f0', backgroundColor: '#fafafa' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Aggiungi step</div>
-
-                        <input
-                          placeholder="Titolo step *"
-                          value={newStepForm.title}
-                          onChange={(e) => setNewStepForm((p) => ({ ...p, title: e.target.value }))}
-                          style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, marginBottom: 8, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
-                        />
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
-                          <div>
-                            <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>DATA INIZIO *</label>
-                            <input
-                              type="date"
-                              value={newStepForm.scheduledStart}
-                              onChange={(e) => {
-                                const start = e.target.value
-                                setNewStepForm((p) => ({ ...p, scheduledStart: start, scheduledEnd: calcEnd(start, p.durationDays) }))
-                              }}
-                              style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>DURATA (GG) *</label>
-                            <input
-                              type="number"
-                              min={1}
-                              value={newStepForm.durationDays}
-                              onChange={(e) => {
-                                const days = parseInt(e.target.value) || 1
-                                setNewStepForm((p) => ({ ...p, durationDays: days, scheduledEnd: calcEnd(p.scheduledStart, days) }))
-                              }}
-                              style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>FINE PREVISTA</label>
-                            <input
-                              readOnly
-                              value={newStepForm.scheduledEnd}
-                              style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, backgroundColor: '#f3f4f6', color: 'var(--color-slate-light)' }}
-                            />
-                          </div>
-                        </div>
-
-                        <div style={{ marginBottom: 8 }}>
-                          <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>TEAM DEPLOY</label>
-                          <select
-                            value={newStepForm.assignedTeamId}
-                            onChange={(e) => setNewStepForm((p) => ({ ...p, assignedTeamId: e.target.value }))}
-                            style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                          >
-                            <option value="">Default (Support Group)</option>
-                            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </select>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: newStepForm.hasValidation ? 8 : 0 }}>
-                          <input
-                            type="checkbox"
-                            id="popupHasValidation"
-                            checked={newStepForm.hasValidation}
-                            onChange={(e) => setNewStepForm((p) => ({ ...p, hasValidation: e.target.checked }))}
-                          />
-                          <label htmlFor="popupHasValidation" style={{ fontSize: 14, cursor: 'pointer' }}>Ha finestra di validazione propria</label>
-                        </div>
-
-                        {newStepForm.hasValidation && (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8, marginTop: 8 }}>
-                            <div>
-                              <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>INIZIO VALIDAZIONE *</label>
-                              <input type="date" value={newStepForm.validationStart} onChange={(e) => setNewStepForm((p) => ({ ...p, validationStart: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }} />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>FINE VALIDAZIONE *</label>
-                              <input type="date" value={newStepForm.validationEnd} onChange={(e) => setNewStepForm((p) => ({ ...p, validationEnd: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }} />
-                            </div>
-                            <div style={{ gridColumn: '1/-1' }}>
-                              <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>TEAM VALIDAZIONE</label>
-                              <select
-                                value={newStepForm.validationTeamId}
-                                onChange={(e) => setNewStepForm((p) => ({ ...p, validationTeamId: e.target.value }))}
-                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }}
-                              >
-                                <option value="">Default (Owner Group)</option>
-                                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                              </select>
-                            </div>
-                          </div>
-                        )}
-
-                        <button
-                          disabled={!newStepForm.title.trim() || !newStepForm.scheduledStart || savingSteps}
-                          onClick={() => {
-                            const existingSteps = deploySteps.map((s) => ({
-                              order: s.order, title: s.title, description: s.description ?? null,
-                              scheduledStart: s.scheduledStart, durationDays: s.durationDays,
-                              hasValidation: s.hasValidation,
-                              validationStart: s.validationStart ?? null, validationEnd: s.validationEnd ?? null,
-                              assignedTeamId: s.assignedTeam?.id ?? null,
-                            }))
-                            saveSteps({
-                              variables: {
-                                changeId: change.id,
-                                steps: [...existingSteps, {
-                                  order: deploySteps.length + 1,
-                                  title: newStepForm.title.trim(),
-                                  description: null,
-                                  scheduledStart: newStepForm.scheduledStart,
-                                  durationDays: newStepForm.durationDays,
-                                  hasValidation: newStepForm.hasValidation,
-                                  validationStart: newStepForm.hasValidation ? newStepForm.validationStart || null : null,
-                                  validationEnd: newStepForm.hasValidation ? newStepForm.validationEnd || null : null,
-                                  assignedTeamId: newStepForm.assignedTeamId || null,
-                                }],
-                              },
-                            })
-                            setNewStepForm({
-                              title: '', scheduledStart: new Date().toISOString().split('T')[0] ?? '',
-                              durationDays: 1, scheduledEnd: '', hasValidation: false,
-                              validationStart: '', validationEnd: '', assignedTeamId: '', validationTeamId: '',
-                            })
-                          }}
-                          style={{ marginTop: 12, width: '100%', padding: '8px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 500, cursor: newStepForm.title.trim() && newStepForm.scheduledStart && !savingSteps ? 'pointer' : 'not-allowed', backgroundColor: newStepForm.title.trim() && newStepForm.scheduledStart && !savingSteps ? 'var(--color-brand)' : '#e2e6f0', color: newStepForm.title.trim() && newStepForm.scheduledStart && !savingSteps ? '#fff' : 'var(--color-slate-light)' }}
-                        >
-                          {savingSteps ? 'Salvataggio…' : '+ Aggiungi step'}
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Global validation form — when no step has own validation and there are steps */}
-                    {deployStepsEditable && deploySteps.length > 0 && !deploySteps.some((s) => s.hasValidation) && (
-                      <div style={{ marginTop: 16, padding: 16, borderRadius: 8, border: '1px solid #fde68a', backgroundColor: 'rgba(234,179,8,0.05)' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#ca8a04', marginBottom: 12 }}>
-                          ⚠ Nessuno step ha validazione propria — definisci la finestra di validazione globale
-                        </div>
-                        {validationTask ? (
-                          <div style={{ fontSize: 14, color: 'var(--color-slate)' }}>
-                            Pianificata: {formatDate(validationTask.scheduledStart ?? '')} → {formatDate(validationTask.scheduledEnd ?? '')}
-                            {' '}<Badge value={validationTask.status} map={TASK_STATUS_COLORS} />
-                          </div>
-                        ) : (
-                          <>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                              <div>
-                                <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>INIZIO VALIDAZIONE *</label>
-                                <input type="date" value={globalValidationStart} onChange={(e) => setGlobalValidationStart(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }} />
-                              </div>
-                              <div>
-                                <label style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'block', marginBottom: 4 }}>FINE VALIDAZIONE *</label>
-                                <input type="date" value={globalValidationEnd} onChange={(e) => setGlobalValidationEnd(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, outline: 'none' }} />
-                              </div>
-                            </div>
-                            <button
-                              disabled={!globalValidationStart || !globalValidationEnd || savingValidation}
-                              onClick={() => saveValidation({ variables: { changeId: change.id, scheduledStart: globalValidationStart, scheduledEnd: globalValidationEnd } })}
-                              style={{ width: '100%', padding: '8px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 500, cursor: globalValidationStart && globalValidationEnd && !savingValidation ? 'pointer' : 'not-allowed', backgroundColor: globalValidationStart && globalValidationEnd && !savingValidation ? 'var(--color-brand)' : '#e2e6f0', color: globalValidationStart && globalValidationEnd && !savingValidation ? '#fff' : 'var(--color-slate-light)' }}
-                            >
-                              {savingValidation ? 'Salvataggio…' : 'Salva validazione globale'}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                </div>
-              </div>
-            </div>
-          </>
-        )
-      })()}
     </div>
   )
 }
