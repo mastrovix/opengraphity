@@ -229,19 +229,31 @@ export default function TopologyGraph({
     linkElRef.current = linkEl as unknown as LinkSel
     nodeElRef.current = nodeEl
 
+    // Layer 1 (outermost): incident ring — r+6, always on top of everything
+    nodeEl.filter((d) => d.incidentCount > 0).append('circle')
+      .attr('class', 'topo-pulse-incident')
+      .attr('r', r + 6).attr('fill', 'none')
+      .attr('stroke', '#dc2626').attr('stroke-width', 2).attr('pointer-events', 'none')
+
+    // Layer 2: change ring — r+4, visible even when incident ring is present
+    nodeEl.filter((d) => d.changeCount > 0).append('circle')
+      .attr('class', 'topo-pulse-change')
+      .attr('r', r + 4).attr('fill', 'none')
+      .attr('stroke', '#f97316').attr('stroke-width', 1.5).attr('pointer-events', 'none')
+
+    // Layer 3: root selection ring — r+2, inside change/incident rings
+    nodeEl.filter((d) => d.id === rootNodeId).append('circle')
+      .attr('r', r + 2).attr('fill', 'none')
+      .attr('stroke', '#ea580c').attr('stroke-width', 2.5).attr('pointer-events', 'none')
+      .attr('filter', 'drop-shadow(0 3px 10px rgba(0,0,0,.25))')
+
+    // Layer 4 (innermost): the node itself — always r, colored by type
     nodeEl.append('circle')
-      .attr('r',      (d) => d.id === rootNodeId ? r + 4 : r)
-      .attr('fill',   (d) => d.id === rootNodeId ? '#f97316'
-                           : d.status === 'inactive' ? '#e5e7eb' : nc(d.type))
-      .attr('stroke', (d) => {
-        if (d.id === rootNodeId) return '#ea580c'
-        const c = nc(d.type)
-        return d3.color(c)?.darker(0.5)?.toString() ?? c
-      })
-      .attr('stroke-width', (d) => d.id === rootNodeId ? 3 : 1.5)
-      .attr('opacity',      (d) => d.status === 'maintenance' ? 0.65 : 1)
-      .attr('filter',       (d) =>
-        d.id === rootNodeId ? 'drop-shadow(0 3px 10px rgba(0,0,0,.25))' : null)
+      .attr('r',      r)
+      .attr('fill',   (d) => d.status === 'inactive' ? '#e5e7eb' : nc(d.type))
+      .attr('stroke', (d) => { const c = nc(d.type); return d3.color(c)?.darker(0.5)?.toString() ?? c })
+      .attr('stroke-width', 1.5)
+      .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
 
     if (rootNodeId) {
       nodeEl.filter((d) => d.id === rootNodeId).append('text')
@@ -252,16 +264,6 @@ export default function TopologyGraph({
         .attr('fill', 'var(--color-slate-dark)').attr('pointer-events', 'none')
         .text((d) => d.name)
     }
-
-    nodeEl.filter((d) => d.incidentCount > 0).append('circle')
-      .attr('class', 'topo-pulse-incident')
-      .attr('r', r + 5).attr('fill', 'none')
-      .attr('stroke', '#dc2626').attr('stroke-width', 2).attr('pointer-events', 'none')
-
-    nodeEl.filter((d) => d.changeCount > 0 && d.incidentCount === 0).append('circle')
-      .attr('class', 'topo-pulse-change')
-      .attr('r', r + 5).attr('fill', 'none')
-      .attr('stroke', '#f97316').attr('stroke-width', 1.5).attr('pointer-events', 'none')
 
     nodeEl.append('text')
       .attr('class', 'node-label')
@@ -305,7 +307,7 @@ export default function TopologyGraph({
       })
       .on('mouseout', function(_e, d) {
         d3.select(this).select('circle').transition().duration(120)
-          .attr('r', d.id === rootNodeId ? r + 4 : r)
+          .attr('r', r)
         nodeEl.style('opacity', 1)
         linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
       })
