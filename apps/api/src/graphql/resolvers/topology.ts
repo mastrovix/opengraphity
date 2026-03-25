@@ -128,10 +128,10 @@ export const topologyResolvers = {
                     AND ($status IS NULL OR ci.status = $status)))
             OPTIONAL MATCH (ci)<-[:AFFECTS]-(i:Incident)
               WHERE i.tenant_id = $tenantId
-                AND i.status IN ['new', 'assigned', 'in_progress', 'escalated', 'pending']
+                AND i.status = 'open'
             OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
               WHERE ch.tenant_id = $tenantId
-                AND NOT ch.current_step IN ['completed', 'failed', 'rejected']
+                AND NOT ch.status IN ['rejected', 'failed']
             WITH ci,
                  count(DISTINCT i)  AS incidentCount,
                  count(DISTINCT ch) AS changeCount
@@ -195,10 +195,10 @@ export const topologyResolvers = {
             ${extraWhere}
           OPTIONAL MATCH (ci)<-[:AFFECTS]-(i:Incident)
             WHERE i.tenant_id = $tenantId
-              AND i.status IN ['new', 'assigned', 'in_progress', 'escalated', 'pending']
+              AND i.status = 'open'
           OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
             WHERE ch.tenant_id = $tenantId
-              AND NOT ch.current_step IN ['completed', 'failed', 'rejected']
+              AND NOT ch.status IN ['rejected', 'failed']
           WITH ci,
                count(DISTINCT i)  AS incidentCount,
                count(DISTINCT ch) AS changeCount
