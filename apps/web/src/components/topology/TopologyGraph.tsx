@@ -38,11 +38,15 @@ const NODE_RADIUS: Record<string, number> = {
   storage: 12, api_endpoint: 12, microservice: 14,
 }
 const NODE_COLOR: Record<string, string> = {
-  server: '#64748b', application: '#0284c7', database: '#059669',
-  database_instance: '#059669', databaseinstance: '#059669',
-  ssl_certificate: '#d97706', sslcertificate: '#d97706', certificate: '#d97706',
-  network_device: '#0891b2', storage: '#94a3b8',
-  api_endpoint: '#0891b2', microservice: '#0284c7',
+  server:            '#64748b',
+  application:       '#0284c7',
+  database:          '#16a34a',
+  database_instance: '#8b5cf6', databaseinstance: '#8b5cf6',
+  ssl_certificate:   '#f97316', sslcertificate: '#f97316', certificate: '#f97316',
+  network_device:    '#0891b2',
+  storage:           '#94a3b8',
+  api_endpoint:      '#0891b2',
+  microservice:      '#0284c7',
 }
 const EDGE_COLOR: Record<string, string> = {
   DEPENDS_ON: '#0284c7', HOSTED_ON: '#64748b', CONNECTS_TO: '#94a3b8',
