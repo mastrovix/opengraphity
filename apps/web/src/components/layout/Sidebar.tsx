@@ -24,8 +24,11 @@ import {
   ChevronDown,
   Layers,
   Settings,
+  Activity,
   ShieldAlert,
   Share2,
+  Bell,
+  CircleUser,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -33,8 +36,11 @@ import { CIIcon } from '@/lib/ciIcon'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/anomalies', label: 'Anomalie',  icon: ShieldAlert },
-  { to: '/topology',  label: 'Topology',  icon: Share2 },
+]
+
+const ANALYSIS_ITEMS = [
+  { to: '/anomalies', label: 'Anomalie',     icon: ShieldAlert },
+  { to: '/topology',  label: 'Topology Map', icon: Share2      },
 ]
 
 const CONFIG_ITEMS = [
@@ -69,12 +75,23 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const [configOpen, setConfigOpen] = useState(
     () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/workflow'),
   )
-  const [itsmOpen, setItsmOpen] = useState(true)
-  const [cmdbOpen, setCmdbOpen] = useState(true)
-  const [teamsOpen, setTeamsOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [itsmOpen, setItsmOpen] = useState(
+    () => ITSM_ITEMS.some(({ to }) => pathname.startsWith(to)),
+  )
+  const [cmdbOpen, setCmdbOpen] = useState(
+    () => pathname.startsWith('/cmdb') || pathname.startsWith('/ci/'),
+  )
+  const [teamsOpen, setTeamsOpen] = useState(
+    () => pathname.startsWith('/teams') || pathname.startsWith('/users'),
+  )
+  const [settingsOpen, setSettingsOpen] = useState(
+    () => pathname.startsWith('/settings'),
+  )
   const [reportingOpen, setReportingOpen] = useState(
     () => pathname.startsWith('/reports') || pathname.startsWith('/custom-reports'),
+  )
+  const [analysisOpen, setAnalysisOpen] = useState(
+    () => pathname.startsWith('/anomalies') || pathname.startsWith('/topology'),
   )
 
   const isAdmin = keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin')
@@ -125,6 +142,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const configActive    = CONFIG_ITEMS.some(({ to }) => pathname.startsWith(to))
   const itsmActive      = ITSM_ITEMS.some(({ to }) => pathname.startsWith(to))
   const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
+  const analysisActive  = ANALYSIS_ITEMS.some(({ to }) => pathname.startsWith(to))
 
   const cmdbActive = pathname.startsWith('/cmdb') || pathname.startsWith('/ci/')
     || pathname.startsWith('/applications') || pathname.startsWith('/databases')
@@ -179,7 +197,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {!collapsed && (
           <p
             style={{
-              color:         'var(--color-slate-light)',
+              color:         'var(--color-slate-dark)',
               fontSize:      10,
               fontWeight:    600,
               letterSpacing: '0.08em',
@@ -213,21 +231,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 }
               }}
             >
-              <Icon size={16} style={{ flexShrink: 0, color: isActive ? 'var(--color-brand)' : 'inherit' }} />
-              {!collapsed && (
-                <>
-                  <span style={{ flex: 1 }}>{label}</span>
-                  {to === '/anomalies' && anomalyCritical > 0 && (
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, lineHeight: 1,
-                      padding: '2px 5px', borderRadius: 8,
-                      background: 'var(--danger)', color: '#fff',
-                    }}>
-                      {anomalyCritical}
-                    </span>
-                  )}
-                </>
-              )}
+              <Icon size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+              {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
             </NavLink>
           )
         })}
@@ -251,7 +256,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               }
             }}
           >
-            <ListChecks size={16} style={{ flexShrink: 0, color: itsmActive ? 'var(--color-brand)' : 'inherit' }} />
+            <ListChecks size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -273,7 +278,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { if (!itsmActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ListChecks size={16} style={{ flexShrink: 0, color: itsmActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <ListChecks size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
                 <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   Processi ITSM
                 </span>
@@ -288,7 +293,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {ITSM_ITEMS.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} />
+                      <Icon size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
                       {label}
                     </span>
                   </NavLink>
@@ -317,7 +322,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               }
             }}
           >
-            <BarChart2 size={16} style={{ flexShrink: 0, color: reportingActive ? 'var(--color-brand)' : 'inherit' }} />
+            <BarChart2 size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -339,7 +344,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { if (!reportingActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <BarChart2 size={16} style={{ flexShrink: 0, color: reportingActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <BarChart2 size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
                 <span style={{ fontSize: 13, fontWeight: reportingActive ? 600 : 400, color: reportingActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   Reporting
                 </span>
@@ -354,9 +359,84 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {REPORTING_ITEMS.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} />
+                      <Icon size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
                       {label}
                     </span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Analysis — collapsible */}
+        {collapsed ? (
+          <NavLink
+            to="/anomalies"
+            title="Analysis"
+            style={navItemStyle(analysisActive, true)}
+            onMouseEnter={(e) => {
+              if (!analysisActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
+                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!analysisActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
+              }
+            }}
+          >
+            <Activity size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+          </NavLink>
+        ) : (
+          <div style={{ marginBottom: 2 }}>
+            <div
+              onClick={() => setAnalysisOpen((p) => !p)}
+              style={{
+                display:         'flex',
+                alignItems:      'center',
+                justifyContent:  'space-between',
+                padding:         '7px 10px',
+                borderRadius:    6,
+                cursor:          'pointer',
+                backgroundColor: analysisActive ? 'rgba(2,132,199,0.12)' : 'transparent',
+                borderLeft:      analysisActive ? '2px solid #0284c7' : '2px solid transparent',
+                transition:      'background 150ms',
+                margin:          '1px 0',
+              }}
+              onMouseEnter={(e) => { if (!analysisActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+              onMouseLeave={(e) => { if (!analysisActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Activity size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+                <span style={{ fontSize: 13, fontWeight: analysisActive ? 600 : 400, color: analysisActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                  Analysis
+                </span>
+              </div>
+              {analysisOpen
+                ? <ChevronDown size={12} color="var(--color-slate-light)" />
+                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+            </div>
+
+            {analysisOpen && (
+              <div style={{ paddingLeft: 28, marginTop: 2 }}>
+                {ANALYSIS_ITEMS.map(({ to, label, icon: Icon }) => (
+                  <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Icon size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                      {label}
+                    </span>
+                    {to === '/anomalies' && anomalyCritical > 0 && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, lineHeight: 1,
+                        padding: '2px 5px', borderRadius: 8,
+                        background: 'var(--danger)', color: '#fff',
+                      }}>
+                        {anomalyCritical}
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </div>
@@ -383,7 +463,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               }
             }}
           >
-            <Server size={16} style={{ flexShrink: 0, color: cmdbActive ? 'var(--color-brand)' : 'inherit' }} />
+            <Server size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -406,7 +486,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { if (!cmdbActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Server size={16} style={{ flexShrink: 0, color: cmdbActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <Server size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
                 <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   CMDB
                 </span>
@@ -421,7 +501,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 <NavLink to="/cmdb" end style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Server size={12} />
+                    <Server size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
                     Tutti
                   </span>
                 </NavLink>
@@ -431,7 +511,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   return (
                     <NavLink key={ct.name} to={to} style={() => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CIIcon icon={ct.icon} size={12} color={isActive ? 'var(--color-brand)' : 'var(--color-slate)'} />
+                        <CIIcon icon={ct.icon} size={12} color='var(--color-brand)' />
                         {ct.label}
                       </span>
                     </NavLink>
@@ -463,7 +543,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Users size={16} style={{ flexShrink: 0, color: 'var(--color-slate)' }} />
+                <Users size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
                 <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--color-slate)' }}>Teams & Users</span>
               </div>
               {teamsOpen
@@ -475,13 +555,13 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 <NavLink to="/teams" style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <UsersRound size={12} />
+                    <UsersRound size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
                     Teams
                   </span>
                 </NavLink>
                 <NavLink to="/users" style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <User size={12} />
+                    <User size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
                     Users
                   </span>
                 </NavLink>
@@ -508,7 +588,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               }
             }}
           >
-            <SlidersHorizontal size={16} style={{ flexShrink: 0, color: configActive ? 'var(--color-brand)' : 'inherit' }} />
+            <SlidersHorizontal size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -530,7 +610,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { if (!configActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <SlidersHorizontal size={16} style={{ flexShrink: 0, color: configActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <SlidersHorizontal size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
                 <span style={{ fontSize: 13, fontWeight: configActive ? 600 : 400, color: configActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   Configuration
                 </span>
@@ -544,7 +624,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {CONFIG_ITEMS.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} />
+                      <Icon size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
                       {label}
                     </span>
                   </NavLink>
@@ -558,7 +638,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {isAdmin && (
           <>
             {!collapsed && (
-              <p style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
+              <p style={{ color: 'var(--color-slate-dark)', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
                 ADMIN
               </p>
             )}
@@ -583,7 +663,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                     }
                   }}
                 >
-                  <Icon size={16} style={{ flexShrink: 0, color: isActive ? 'var(--color-brand)' : 'inherit' }} />
+                  <Icon size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
                   {!collapsed && label}
                 </NavLink>
               )
@@ -608,7 +688,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   }
                 }}
               >
-                <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? 'var(--color-brand)' : 'inherit' }} />
+                <Settings size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
               </NavLink>
             ) : (
               <div style={{ marginBottom: 2 }}>
@@ -630,7 +710,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   onMouseLeave={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                    <Settings size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
                     <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                       Settings
                     </span>
@@ -642,10 +722,16 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {settingsOpen && (
                   <div style={{ paddingLeft: 28, marginTop: 2 }}>
                     <NavLink to="/settings/notifications" style={({ isActive }) => subItemStyle(isActive)}>
-                      <span>Notifiche</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Bell size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                        Notifiche
+                      </span>
                     </NavLink>
                     <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
-                      <span>Profilo</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CircleUser size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                        Profilo
+                      </span>
                     </NavLink>
                   </div>
                 )}
