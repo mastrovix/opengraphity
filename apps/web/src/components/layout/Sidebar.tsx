@@ -12,6 +12,8 @@ import {
   GitBranch,
   Users,
   BarChart2,
+  Sparkles,
+  LayoutGrid,
   ScrollText,
   ChevronLeft,
   ChevronRight,
@@ -37,8 +39,8 @@ const NAV_ITEMS = [
 ]
 
 const REPORTING_ITEMS = [
-  { to: '/reports',        label: 'Analisi ITSM'  },
-  { to: '/custom-reports', label: 'Report Builder' },
+  { to: '/reports',        label: 'Analisi ITSM',   icon: Sparkles    },
+  { to: '/custom-reports', label: 'Report Builder',  icon: LayoutGrid  },
 ]
 
 const ADMIN_NAV_ITEMS = [
@@ -266,9 +268,12 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
             {reportingOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {REPORTING_ITEMS.map(({ to, label }) => (
+                {REPORTING_ITEMS.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
-                    <span>{label}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Icon size={12} />
+                      {label}
+                    </span>
                   </NavLink>
                 ))}
               </div>
