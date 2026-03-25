@@ -39,6 +39,14 @@ function labelFromType(t: string): string {
   return map[t.toLowerCase()] ?? t
 }
 
+function toNum(v: unknown): number {
+  if (v == null) return 0
+  if (typeof v === 'number') return v
+  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
+    return (v as { toNumber: () => number }).toNumber()
+  return Number(v)
+}
+
 function mapNode(r: { get: (k: string) => unknown }) {
   return {
     id:            r.get('id')           as string,
@@ -47,8 +55,8 @@ function mapNode(r: { get: (k: string) => unknown }) {
     status:        r.get('status')       as string,
     environment:   r.get('environment')  as string | null,
     ownerGroup:    r.get('ownerGroup')   as string | null,
-    incidentCount: (r.get('incidentCount') as { toNumber(): number }).toNumber(),
-    changeCount:   (r.get('changeCount')   as { toNumber(): number }).toNumber(),
+    incidentCount: toNum(r.get('incidentCount')),
+    changeCount:   toNum(r.get('changeCount')),
   }
 }
 

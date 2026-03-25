@@ -120,6 +120,10 @@ export default function TopologyGraph({
     const { nodes, edges, showLabels, rootNodeId, onNodeClick } = snap
     if (nodes.length === 0) return
 
+    // TODO: rimuovere dopo debug
+    console.log('NODES WITH INCIDENTS:', nodes.filter(n => n.incidentCount > 0).map(n => ({ name: n.name, incidents: n.incidentCount })))
+    console.log('NODES WITH CHANGES:',  nodes.filter(n => n.changeCount   > 0).map(n => ({ name: n.name, changes:   n.changeCount })))
+
     ensurePulseStyle()
 
     // ── STEP 2: create a brand-new <svg> from scratch ─────────────────────
