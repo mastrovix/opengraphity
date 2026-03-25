@@ -129,11 +129,19 @@ function mapChangeComment(props: Props, user?: Props | null) {
   }
 }
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
   const session = getSession(undefined, write ? 'WRITE' : 'READ')
   try { return await fn(session) } finally { await session.close() }
+}
+
+function toInt(v: unknown, fallback = 0): number {
+  if (v == null) return fallback
+  if (typeof v === 'number') return v
+  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
+    return (v as { toNumber: () => number }).toNumber()
+  return Number(v)
 }
 
 async function createChangeComment(
@@ -717,7 +725,7 @@ async function completeAssessmentTask(
         WHERE s.task_type = 'deploy'
         RETURN count(s) AS total
       `, { changeId, tenantId: ctx.tenantId }))
-      const totalSteps = (stepsResult.records[0]?.get('total') as { toNumber(): number } | null)?.toNumber() ?? 0
+      const totalSteps = toInt(stepsResult.records[0]?.get('total'))
       if (totalSteps === 0)
         throw new GraphQLError('Aggiungi almeno uno step di deployment prima di completare il task')
     }
@@ -1645,7 +1653,7 @@ async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: 
     name:        r.get('name') as string,
     type:        ciTypeFromLabels([r.get('label') as string]),
     environment: (r.get('environment') ?? 'unknown') as string,
-    distance:    (r.get('distance') as { toNumber(): number } | null)?.toNumber() ?? 1,
+    distance:    toInt(r.get('distance'), 1),
   }))
 
   // 2a. Open incidents (any date)
@@ -1840,9 +1848,10 @@ export const changeResolvers = {
           RETURN properties(ci) AS props, labels(ci) AS labels
         `, { ciId: parent.ciId, tenantId: ctx.tenantId }))
         if (!r.records.length) return null
-        const props  = r.records[0].get('props') as Props
-        const labels = r.records[0].get('labels') as string[]
-        const ciType = ciTypeFromLabels(labels)
+        const props      = r.records[0].get('props') as Props
+        const labels     = r.records[0].get('labels') as string[]
+        const ciType     = ciTypeFromLabels(labels)
+        const gqlTypename = labels.find(l => !['ConfigurationItem', 'CIBase', '_BaseNode'].includes(l)) ?? 'Application'
         return {
           id:          props['id'],
           name:        props['name'] ?? '',
@@ -1854,7 +1863,7 @@ export const changeResolvers = {
           createdAt:   props['created_at']  ?? null,
           updatedAt:   props['updated_at']  ?? null,
           notes:       props['notes']       ?? null,
-          __typename:  ciType,
+          __typename:  gqlTypename,
         }
       })
     },
