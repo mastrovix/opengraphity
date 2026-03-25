@@ -328,20 +328,21 @@ export default function TopologyGraph({
     // it was visually indistinguishable from the change ring and confused users.
     // The highlight effect (stroke NODE_SELECTED_COLOR on .node-bg) handles focus emphasis.
 
-    // Layer 4 (innermost): white bg circle — no border when rings are visible
+    // Layer 4 (innermost): root node = cyan fill; others = white fill
     nodeEl.append('circle')
       .attr('class', 'node-bg')
       .attr('r', r)
-      .attr('fill', '#ffffff')
+      .attr('fill', (d) => d.id === rootNodeId ? EDGE_COLOR : '#ffffff')
       .attr('stroke', (d) => (d.incidentCount > 0 || d.changeCount > 0) ? 'none' : NODE_COLOR)
       .attr('stroke-width', 2.5)
       .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
 
-    // Layer 5: lucide icon centered inside the node (always slate)
+    // Layer 5: icon — white on root node (cyan bg), slate on all others
     nodeEl.each(function(d) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sel = d3.select(this) as any
-      appendLucideIcon(sel, nodeIconKey(d.type), NODE_COLOR, 18)
+      const iconColor = d.id === rootNodeId ? '#ffffff' : NODE_COLOR
+      appendLucideIcon(sel, nodeIconKey(d.type), iconColor, 18)
     })
 
     if (rootNodeId) {
