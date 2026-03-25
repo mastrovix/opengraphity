@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 
 const GET_LOGS = gql`
-  query GetLogs($level: String, $module: String, $search: String, $limit: Int, $offset: Int) {
-    logs(level: $level, module: $module, search: $search, limit: $limit, offset: $offset) {
+  query GetLogs($level: String, $module: String, $search: String, $limit: Int, $offset: Int, $filters: String) {
+    logs(level: $level, module: $module, search: $search, limit: $limit, offset: $offset, filters: $filters) {
       total
       entries {
         id timestamp level module message data
@@ -119,6 +120,13 @@ const inputStyle: React.CSSProperties = {
   cursor:          'pointer',
 }
 
+const LOGS_FILTER_FIELDS: FieldConfig[] = [
+  { key: 'message',   label: 'Messaggio', type: 'text' },
+  { key: 'level',     label: 'Livello',   type: 'enum', enumValues: ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] },
+  { key: 'module',    label: 'Modulo',    type: 'text' },
+  { key: 'timestamp', label: 'Data',      type: 'date' },
+]
+
 export function LogsPage() {
   const [level,       setLevel]       = useState('')
   const [module,      setModule]      = useState('')
@@ -126,14 +134,16 @@ export function LogsPage() {
   const [searchInput, setSearchInput] = useState('')
   const [offset,      setOffset]      = useState(0)
   const [autoRefresh, setAutoRefresh] = useState(false)
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
 
   const { data, loading, refetch } = useQuery<{ logs: { entries: LogEntry[]; total: number } }>(GET_LOGS, {
     variables: {
-      level:  level  || null,
-      module: module || null,
-      search: search || null,
-      limit:  PAGE_SIZE,
+      level:   level  || null,
+      module:  module || null,
+      search:  search || null,
+      limit:   PAGE_SIZE,
       offset,
+      filters: filterGroup ? JSON.stringify(filterGroup) : null,
     },
     fetchPolicy: 'network-only',
   })
@@ -228,6 +238,11 @@ export function LogsPage() {
           Auto-refresh 10s
         </label>
       </div>
+
+      <FilterBuilder
+        fields={LOGS_FILTER_FIELDS}
+        onApply={(group) => { setFilterGroup(group); setOffset(0) }}
+      />
 
       {/* Table */}
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>

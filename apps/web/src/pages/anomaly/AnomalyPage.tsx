@@ -8,6 +8,7 @@ import {
   RESOLVE_ANOMALY, RUN_ANOMALY_SCANNER,
 } from '@/graphql/queries'
 import { colors } from '@/lib/tokens'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -412,11 +413,9 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
 
 const columns: ColumnDef<Anomaly>[] = [
   {
-    key:        'title',
-    label:      'Anomalia',
-    sortable:   true,
-    filterable: true,
-    filterType: 'text',
+    key:      'title',
+    label:    'Anomalia',
+    sortable: true,
     render: (v, row) => (
       <div>
         <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{String(v)}</div>
@@ -429,41 +428,23 @@ const columns: ColumnDef<Anomaly>[] = [
     ),
   },
   {
-    key:           'severity',
-    label:         'Severity',
-    width:         '120px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'critical', label: 'Critical' },
-      { value: 'high',     label: 'High' },
-      { value: 'medium',   label: 'Medium' },
-      { value: 'low',      label: 'Low' },
-    ],
-    render: (v) => <SeverityBadge value={String(v)} />,
+    key:      'severity',
+    label:    'Severity',
+    width:    '120px',
+    sortable: true,
+    render:   (v) => <SeverityBadge value={String(v)} />,
   },
   {
-    key:           'status',
-    label:         'Stato',
-    width:         '130px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'open',           label: 'Aperta'          },
-      { value: 'resolved',       label: 'Risolta'         },
-      { value: 'false_positive', label: 'Falso positivo'  },
-      { value: 'accepted_risk',  label: 'Rischio accettato' },
-    ],
-    render: (v) => <AnomalyStatusBadge value={String(v)} />,
+    key:      'status',
+    label:    'Stato',
+    width:    '130px',
+    sortable: true,
+    render:   (v) => <AnomalyStatusBadge value={String(v)} />,
   },
   {
-    key:        'entityName',
-    label:      'Entità',
-    sortable:   true,
-    filterable: true,
-    filterType: 'text',
+    key:      'entityName',
+    label:    'Entità',
+    sortable: true,
     render: (v, row) => (
       <div>
         <div style={{ color: 'var(--color-slate-dark)' }}>{String(v)}</div>
@@ -486,6 +467,14 @@ const columns: ColumnDef<Anomaly>[] = [
   },
 ]
 
+const ANOMALY_FILTER_FIELDS: FieldConfig[] = [
+  { key: 'title',      label: 'Titolo',    type: 'text' },
+  { key: 'severity',   label: 'Severity',  type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
+  { key: 'status',     label: 'Stato',     type: 'enum', enumValues: ['open', 'resolved', 'false_positive', 'accepted_risk'] },
+  { key: 'ruleKey',    label: 'Tipo',      type: 'enum', enumValues: ['orphan_ci', 'spof', 'dependency_cycle', 'missing_owner', 'unauthorized_relation', 'isolated_cluster', 'risk_concentration'] },
+  { key: 'detectedAt', label: 'Rilevata il', type: 'date' },
+]
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function AnomalyPage() {
@@ -493,7 +482,7 @@ export function AnomalyPage() {
   const [mutLoading, setMutLoading]     = useState(false)
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [page, setPage]                 = useState(0)
-  const [queryFilters, setQueryFilters] = useState<Record<string, string>>({})
+  const [filterGroup, setFilterGroup]   = useState<FilterGroup | null>(null)
 
   const { data: statsData, refetch: refetchStats } = useQuery<{ anomalyStats: AnomalyStats }>(
     GET_ANOMALY_STATS,
@@ -505,10 +494,9 @@ export function AnomalyPage() {
     GET_ANOMALIES,
     {
       variables: {
-        limit:    PAGE_SIZE,
-        offset:   page * PAGE_SIZE,
-        status:   queryFilters['status']   || undefined,
-        severity: queryFilters['severity'] || undefined,
+        limit:   PAGE_SIZE,
+        offset:  page * PAGE_SIZE,
+        filters: filterGroup ? JSON.stringify(filterGroup) : null,
       },
     },
   )
@@ -522,10 +510,6 @@ export function AnomalyPage() {
   const total      = data?.anomalies?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
-  const handleFiltersChange = (filters: Record<string, string>) => {
-    setQueryFilters(filters)
-    setPage(0)
-  }
 
   async function handleResolve(id: string, resolutionStatus: string, note: string) {
     setMutLoading(true)
@@ -595,6 +579,12 @@ export function AnomalyPage() {
         </div>
       )}
 
+      {/* Filters */}
+      <FilterBuilder
+        fields={ANOMALY_FILTER_FIELDS}
+        onApply={(group) => { setFilterGroup(group); setPage(0) }}
+      />
+
       {/* Table */}
       <div style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden' }}>
         {!loading && anomalies.length === 0 ? (
@@ -605,7 +595,6 @@ export function AnomalyPage() {
             columns={columns}
             loading={loading}
             onRowClick={(row) => setSelected(row)}
-            onFiltersChange={handleFiltersChange}
           />
         )}
       </div>

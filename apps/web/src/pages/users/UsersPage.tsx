@@ -32,8 +32,8 @@ function RoleBadge({ role }: { role: string }) {
 const PAGE_SIZE = 50
 
 const COLUMNS: ColumnDef<UserRow>[] = [
-  { key: 'name',  label: 'Nome',  sortable: true, filterable: true },
-  { key: 'email', label: 'Email', sortable: true, filterable: true },
+  { key: 'name',  label: 'Nome',  sortable: true },
+  { key: 'email', label: 'Email', sortable: true },
   {
     key:    'role',
     label:  'Ruolo',

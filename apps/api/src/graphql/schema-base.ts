@@ -3,15 +3,15 @@ export function buildBaseSDL(): string {
 
   type Query {
     # Incidents
-    incidents(status: String, severity: String, limit: Int, offset: Int): IncidentsResult!
+    incidents(status: String, severity: String, limit: Int, offset: Int, filters: String): IncidentsResult!
     incident(id: ID!): Incident
 
     # Problems
-    problems(limit: Int, offset: Int, status: String, priority: String, search: String): ProblemsResult!
+    problems(limit: Int, offset: Int, status: String, priority: String, search: String, filters: String): ProblemsResult!
     problem(id: ID!): Problem
 
     # Changes
-    changes(status: String, type: String, priority: String, search: String, limit: Int, offset: Int): ChangesResult!
+    changes(status: String, type: String, priority: String, search: String, limit: Int, offset: Int, filters: String): ChangesResult!
     change(id: ID!): Change
     changeTasks(changeId: ID!, taskType: String): [ChangeTask!]!
     changeImpactAnalysis(ciIds: [ID!]!): ImpactAnalysis!
@@ -21,7 +21,7 @@ export function buildBaseSDL(): string {
     serviceRequest(id: ID!): ServiceRequest
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
-    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String): AllCIsResult!
+    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, filters: String): AllCIsResult!
     ciById(id: ID!): CIBase
     blastRadius(id: ID!): [BlastRadiusItem!]!
     ciIncidents(ciId: ID!): [Incident!]!
@@ -30,7 +30,7 @@ export function buildBaseSDL(): string {
     ciTypes: [CITypeDefinition!]!
 
     # Teams
-    teams: [Team!]!
+    teams(filters: String): [Team!]!
     team(id: ID!): Team
 
     # Users
@@ -59,10 +59,10 @@ export function buildBaseSDL(): string {
     dashboard(id: ID!): DashboardConfig
 
     # Logs
-    logs(level: String, module: String, search: String, limit: Int, offset: Int): LogsResult!
+    logs(level: String, module: String, search: String, limit: Int, offset: Int, filters: String): LogsResult!
 
     # Anomaly Detection
-    anomalies(status: String, severity: String, ruleKey: String, limit: Int, offset: Int): AnomaliesResult!
+    anomalies(status: String, severity: String, ruleKey: String, limit: Int, offset: Int, filters: String): AnomaliesResult!
     anomaly(id: ID!): Anomaly
     anomalyStats: AnomalyStats!
     anomalyScanStatus: AnomalyScanStatus!

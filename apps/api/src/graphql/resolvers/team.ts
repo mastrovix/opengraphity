@@ -3,20 +3,26 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import { mapTeam } from '../../lib/mappers.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 
 type Props = Record<string, unknown>
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
-async function teams(_: unknown, __: unknown, ctx: GraphQLContext) {
+const TEAM_ALLOWED_FIELDS = new Set(['name', 'createdAt'])
+
+async function teams(_: unknown, args: { filters?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
+    const params: Record<string, unknown> = { tenantId: ctx.tenantId }
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, TEAM_ALLOWED_FIELDS, 't') : ''
     const cypher = `
       MATCH (t:Team {tenant_id: $tenantId})
+      ${advWhere ? `WHERE ${advWhere}` : ''}
       RETURN properties(t) as props
       ORDER BY t.name
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, { tenantId: ctx.tenantId })
+    const rows = await runQuery<{ props: Props }>(session, cypher, params)
     return rows.map((r) => mapTeam(r.props))
   })
 }

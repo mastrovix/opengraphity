@@ -5,6 +5,7 @@ import { Users } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_TEAMS } from '@/graphql/queries'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 
 interface Team {
   id:          string
@@ -30,8 +31,13 @@ function TypeBadge({ type }: { type: string | null }) {
 
 const PAGE_SIZE = 50
 
+const FILTER_FIELDS: FieldConfig[] = [
+  { key: 'name',      label: 'Nome',      type: 'text' },
+  { key: 'createdAt', label: 'Creato il', type: 'date' },
+]
+
 const COLUMNS: ColumnDef<Team>[] = [
-  { key: 'name',        label: 'Nome',        sortable: true, filterable: true },
+  { key: 'name',        label: 'Nome',        sortable: true },
   { key: 'description', label: 'Descrizione', sortable: false },
   {
     key:    'type',
@@ -50,8 +56,10 @@ const COLUMNS: ColumnDef<Team>[] = [
 export function TeamsPage() {
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
 
   const { data, loading } = useQuery<{ teams: Team[] }>(GET_TEAMS, {
+    variables: { filters: filterGroup ? JSON.stringify(filterGroup) : null },
     fetchPolicy: 'cache-and-network',
   })
 
@@ -82,6 +90,11 @@ export function TeamsPage() {
           New
         </button>
       </div>
+
+      <FilterBuilder
+        fields={FILTER_FIELDS}
+        onApply={(group) => { setFilterGroup(group); setPage(0) }}
+      />
 
       {/* Table */}
       {!loading && teams.length === 0 ? (

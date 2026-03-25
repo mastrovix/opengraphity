@@ -1,6 +1,7 @@
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { anomalyScannerQueue } from '../../anomaly/anomalyEngine.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 
 type Props = Record<string, unknown>
 
@@ -40,14 +41,16 @@ function mapAnomaly(p: Props) {
   }
 }
 
+const ANOMALY_ALLOWED_FIELDS = new Set(['title', 'severity', 'status', 'ruleKey', 'detectedAt'])
+
 export const anomalyResolvers = {
   Query: {
     anomalies: async (
       _: unknown,
-      args: { status?: string; severity?: string; ruleKey?: string; limit?: number; offset?: number },
+      args: { status?: string; severity?: string; ruleKey?: string; limit?: number; offset?: number; filters?: string },
       ctx: GraphQLContext,
     ) => {
-      const { status, severity, ruleKey, limit = 50, offset = 0 } = args
+      const { status, severity, ruleKey, limit = 50, offset = 0, filters } = args
       const session = getSession()
       try {
         // Build filter clause — same params used for both queries
@@ -55,9 +58,11 @@ export const anomalyResolvers = {
         if (status)   conditions.push('a.status   = $status')
         if (severity) conditions.push('a.severity = $severity')
         if (ruleKey)  conditions.push('a.rule_key = $ruleKey')
-        const where = 'WHERE ' + conditions.join(' AND ')
 
-        const params = { tenantId: ctx.tenantId, status: status ?? null, severity: severity ?? null, ruleKey: ruleKey ?? null, offset, limit }
+        const params: Record<string, unknown> = { tenantId: ctx.tenantId, status: status ?? null, severity: severity ?? null, ruleKey: ruleKey ?? null, offset, limit }
+        const advWhere = filters ? buildAdvancedWhere(filters, params, ANOMALY_ALLOWED_FIELDS, 'a') : ''
+        if (advWhere) conditions.push(`(${advWhere})`)
+        const where = 'WHERE ' + conditions.join(' AND ')
 
         // Two separate queries — same pattern as incident resolver
         const itemRows = await runQuery<{ props: Props }>(session, `

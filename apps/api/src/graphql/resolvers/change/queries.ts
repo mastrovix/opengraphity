@@ -2,15 +2,21 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { withSession, mapCI, ciTypeFromLabels } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapChange, mapChangeTask, mapUser, mapTeam, type Props } from './mappers.js'
+import { buildAdvancedWhere } from '../../../lib/filterBuilder.js'
+
+const CHANGE_ALLOWED_FIELDS = new Set(['title', 'type', 'priority', 'status', 'scheduledStart', 'createdAt', 'assignedTeam'])
+const CHANGE_RELATION_FIELDS = {
+  assignedTeam: { relType: 'ASSIGNED_TO_TEAM', targetLabel: 'Team', searchProp: 'name' },
+}
 
 export async function changes(
   _: unknown,
-  args: { status?: string; type?: string; priority?: string; search?: string; limit?: number; offset?: number },
+  args: { status?: string; type?: string; priority?: string; search?: string; limit?: number; offset?: number; filters?: string },
   ctx: GraphQLContext,
 ) {
-  const { status, type, priority, search, limit = 50, offset = 0 } = args
+  const { status, type, priority, search, limit = 50, offset = 0, filters } = args
   return withSession(async (session) => {
-    const params = {
+    const params: Record<string, unknown> = {
       tenantId: ctx.tenantId,
       status:   status   ?? null,
       type:     type     ?? null,
@@ -19,11 +25,13 @@ export async function changes(
       offset,
       limit,
     }
+    const advWhere = filters ? buildAdvancedWhere(filters, params, CHANGE_ALLOWED_FIELDS, 'c', CHANGE_RELATION_FIELDS) : ''
     const whereClause = `
       WHERE ($status   IS NULL OR c.status   = $status)
         AND ($type     IS NULL OR c.type     = $type)
         AND ($priority IS NULL OR c.priority = $priority)
         AND ($search   IS NULL OR toLower(c.title) CONTAINS toLower($search))
+        ${advWhere ? `AND (${advWhere})` : ''}
     `
     const itemRows = await runQuery<{ props: Props; uProps: Props | null; tProps: Props | null; cis: Array<{ props: Props; label: string }> }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})

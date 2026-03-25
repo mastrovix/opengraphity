@@ -7,6 +7,7 @@ import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_INCIDENTS } from '@/graphql/queries'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 
 interface Incident {
   id:        string
@@ -17,42 +18,20 @@ interface Incident {
 }
 
 const columns: ColumnDef<Incident>[] = [
+  { key: 'title',    label: 'Title',    sortable: true },
   {
-    key:         'title',
-    label:       'Title',
-    sortable:    true,
-    filterable:  true,
-    filterType:  'text',
+    key:     'severity',
+    label:   'Severity',
+    width:   '130px',
+    sortable: true,
+    render:  (v) => <SeverityBadge value={String(v)} />,
   },
   {
-    key:           'severity',
-    label:         'Severity',
-    width:         '130px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'critical', label: 'Critical' },
-      { value: 'high',     label: 'High' },
-      { value: 'medium',   label: 'Medium' },
-      { value: 'low',      label: 'Low' },
-    ],
-    render: (v) => <SeverityBadge value={String(v)} />,
-  },
-  {
-    key:           'status',
-    label:         'Status',
-    width:         '130px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'open',        label: 'Open' },
-      { value: 'in_progress', label: 'In Progress' },
-      { value: 'resolved',    label: 'Resolved' },
-      { value: 'closed',      label: 'Closed' },
-    ],
-    render: (v) => <StatusBadge value={String(v)} />,
+    key:     'status',
+    label:   'Status',
+    width:   '130px',
+    sortable: true,
+    render:  (v) => <StatusBadge value={String(v)} />,
   },
   {
     key:      'createdAt',
@@ -69,21 +48,24 @@ const columns: ColumnDef<Incident>[] = [
 
 const PAGE_SIZE = 50
 
+const FILTER_FIELDS: FieldConfig[] = [
+  { key: 'title',       label: 'Titolo',    type: 'text' },
+  { key: 'severity',    label: 'Severity',  type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
+  { key: 'status',      label: 'Status',    type: 'text' },
+  { key: 'assignedTeam',label: 'Team',      type: 'text' },
+  { key: 'createdAt',   label: 'Creato il', type: 'date' },
+]
+
 export function IncidentListPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [page, setPage] = useState(0)
-  const [queryFilters, setQueryFilters] = useState<Record<string, string>>({})
-
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const { data, loading, refetch } = useQuery<{
     incidents: { items: Incident[]; total: number }
   }>(GET_INCIDENTS, {
-    variables: {
-      limit:    PAGE_SIZE,
-      offset:   page * PAGE_SIZE,
-      status:   queryFilters['status']   || undefined,
-      severity: queryFilters['severity'] || undefined,
-    },
+    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null },
+    fetchPolicy: 'cache-and-network',
   })
 
   const items = data?.incidents?.items ?? []
@@ -95,11 +77,6 @@ export function IncidentListPage() {
       void refetch()
     }
   }, [location.state]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleFiltersChange = (filters: Record<string, string>) => {
-    setQueryFilters(filters)
-    setPage(0)
-  }
 
   return (
     <div>
@@ -121,13 +98,17 @@ export function IncidentListPage() {
         </button>
       </div>
 
+      <FilterBuilder
+        fields={FILTER_FIELDS}
+        onApply={(group) => { setFilterGroup(group); setPage(0) }}
+      />
+
       <SortableFilterTable<Incident>
         columns={columns}
         data={items}
         loading={loading}
         emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title="Nessun incident trovato" description="Apri un nuovo incident o modifica i filtri applicati." />}
         onRowClick={(row) => navigate(`/incidents/${row.id}`)}
-        onFiltersChange={handleFiltersChange}
       />
 
       {total > 0 && (

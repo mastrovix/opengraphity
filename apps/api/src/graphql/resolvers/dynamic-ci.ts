@@ -5,6 +5,7 @@ import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 
 type Props = Record<string, unknown>
 
@@ -133,20 +134,30 @@ function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CITypeWith
   }
 }
 
+// ── Advanced filter — allowed base fields ────────────────────────────────────
+
+// Allowed base field keys (camelCase) — validated before use in Cypher
+const ALLOWED_BASE_FIELDS = new Set([
+  'name', 'status', 'environment', 'description', 'notes',
+  'createdAt', 'updatedAt', 'ownerGroup',
+])
+
 // ── Query generiche ───────────────────────────────────────────────────────────
+
+const ALL_CIS_ALLOWED_FIELDS = new Set(['name', 'status', 'environment', 'createdAt'])
 
 function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
   return async (
     _: unknown,
-    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string },
+    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string; filters?: string },
     ctx: GraphQLContext,
   ) => {
-    const { limit = 50, offset = 0, type, status, environment, search } = args
+    const { limit = 50, offset = 0, type, status, environment, search, filters } = args
     const filteredTypes = type ? types.filter(t => t.name === type) : types
     if (!filteredTypes.length) return { items: [], total: 0 }
 
     const labelFilter = filteredTypes.map(t => `n:${t.neo4jLabel}`).join(' OR ')
-    const params = {
+    const params: Record<string, unknown> = {
       tenantId: ctx.tenantId,
       status: status ?? null,
       environment: environment ?? null,
@@ -154,25 +165,25 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
       limit,
       offset,
     }
+    const advWhere = filters ? buildAdvancedWhere(filters, params, ALL_CIS_ALLOWED_FIELDS, 'n') : ''
+    const baseFilter = `(${labelFilter}) AND n.tenant_id = $tenantId
+           AND ($status IS NULL OR n.status = $status)
+           AND ($environment IS NULL OR n.environment = $environment)
+           AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
+           ${advWhere ? `AND (${advWhere})` : ''}`
 
     const s1 = getSession(undefined, 'READ')
     const s2 = getSession(undefined, 'READ')
     try {
       const [itemsResult, countResult] = await Promise.all([
         s1.executeRead(tx => tx.run(
-          `MATCH (n) WHERE (${labelFilter}) AND n.tenant_id = $tenantId
-           AND ($status IS NULL OR n.status = $status)
-           AND ($environment IS NULL OR n.environment = $environment)
-           AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
+          `MATCH (n) WHERE ${baseFilter}
            RETURN properties(n) AS props, labels(n)[0] AS label
            ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
           params,
         )),
         s2.executeRead(tx => tx.run(
-          `MATCH (n) WHERE (${labelFilter}) AND n.tenant_id = $tenantId
-           AND ($status IS NULL OR n.status = $status)
-           AND ($environment IS NULL OR n.environment = $environment)
-           AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))
+          `MATCH (n) WHERE ${baseFilter}
            RETURN count(n) AS total`,
           params,
         )),
@@ -422,7 +433,7 @@ function buildMetamodelMutations() {
       ctx: GraphQLContext,
     ) => {
       requireAdmin(ctx)
-      const { name, label, icon = 'box', color = '#4f46e5' } = args.input
+      const { name, label, icon = 'box', color = '#0284c7' } = args.input
       const id = crypto.randomUUID()
       const neo4jLabel = toPascalCase(name)
 
@@ -677,11 +688,11 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
     // ── Query: lista ───────────────────────────────────────────────────────
     Query[queryListKey] = async (
       _: unknown,
-      args: { limit?: number; offset?: number; status?: string; environment?: string; search?: string },
+      args: { limit?: number; offset?: number; status?: string; environment?: string; search?: string; filters?: string },
       ctx: GraphQLContext,
     ) => {
-      const { limit = 50, offset = 0, status, environment, search } = args
-      const params = {
+      const { limit = 50, offset = 0, status, environment, search, filters } = args
+      const params: Record<string, unknown> = {
         tenantId: ctx.tenantId,
         status: status ?? null,
         environment: environment ?? null,
@@ -689,9 +700,17 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
         limit,
         offset,
       }
-      const WHERE = `($status IS NULL OR n.status = $status)
+      const baseWhere = `($status IS NULL OR n.status = $status)
         AND ($environment IS NULL OR n.environment = $environment)
         AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))`
+      const allowedFields = new Set([
+        ...ALLOWED_BASE_FIELDS,
+        ...ciType.fields.filter(f => !f.isSystem).map(f => f.name),
+      ])
+      const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'n', {
+        ownerGroup: { relType: 'OWNED_BY', targetLabel: 'Team', searchProp: 'name' },
+      }) : ''
+      const WHERE = advWhere ? `${baseWhere} AND (${advWhere})` : baseWhere
 
       const s1 = getSession(undefined, 'READ')
       const s2 = getSession(undefined, 'READ')

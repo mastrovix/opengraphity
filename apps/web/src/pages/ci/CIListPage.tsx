@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
 import { CIIcon } from '@/lib/ciIcon'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 
 const PAGE_SIZE = 50
 
@@ -36,7 +37,7 @@ export function CIListPage() {
   const navigate = useNavigate()
   const { getCIType, loading: metamodelLoading } = useMetamodel()
   const [page, setPage] = useState(0)
-  const [queryFilters, setQueryFilters] = useState<Record<string, string>>({})
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
 
   const ciType = typeName ? getCIType(typeName) : undefined
 
@@ -48,11 +49,11 @@ export function CIListPage() {
     const query = gql`
       query DynamicList_${pascal}(
         $limit: Int, $offset: Int,
-        $status: String, $environment: String, $search: String
+        $status: String, $environment: String, $search: String, $filters: String
       ) {
         ${key}(
           limit: $limit, offset: $offset,
-          status: $status, environment: $environment, search: $search
+          status: $status, environment: $environment, search: $search, filters: $filters
         ) {
           total
           items {
@@ -68,7 +69,7 @@ export function CIListPage() {
   const { data, loading } = useQuery<Record<string, { total: number; items: CIItem[] }>>(
     listQuery ?? gql`query EmptyCIList { __typename }`,
     {
-      variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, ...queryFilters },
+      variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null },
       fetchPolicy: 'cache-and-network',
       skip: !listQuery || !typeName,
     },
@@ -79,8 +80,28 @@ export function CIListPage() {
   const total = result?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
+  const filterFields = useMemo((): FieldConfig[] => {
+    if (!ciType) return []
+    const base: FieldConfig[] = [
+      { key: 'name',        label: 'Nome',           type: 'text' },
+      { key: 'status',      label: 'Status',          type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
+      { key: 'environment', label: 'Environment',     type: 'enum', enumValues: ['production', 'staging', 'development'] },
+      { key: 'ownerGroup',  label: 'Owner Group',     type: 'text' },
+      { key: 'createdAt',   label: 'Creato il',       type: 'date' },
+    ]
+    const custom: FieldConfig[] = ciType.fields
+      .filter((f) => !f.isSystem)
+      .map((f) => ({
+        key:        f.name,
+        label:      f.label,
+        type:       f.fieldType === 'date' ? 'date' : f.fieldType === 'enum' ? 'enum' : 'text',
+        enumValues: f.enumValues?.length ? f.enumValues : undefined,
+      } as FieldConfig))
+    return [...base, ...custom]
+  }, [ciType])
+
   const COLUMNS: ColumnDef<CIItem>[] = [
-    { key: 'name', label: 'Nome', sortable: true, filterable: true },
+    { key: 'name', label: 'Nome', sortable: true },
     {
       key: 'environment', label: 'Env', sortable: true,
       render: (v) => v ? <EnvBadge environment={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span>,
@@ -90,7 +111,7 @@ export function CIListPage() {
       render: (v) => v ? <StatusBadge value={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span>,
     },
     {
-      key: 'ownerGroup', label: 'Owner Group', sortable: false,
+      key: 'ownerGroup', label: 'Owner Group', sortable: true,
       render: (v) => (v as CIItem['ownerGroup'])?.name ?? <span style={{ color: '#c4cad4' }}>—</span>,
     },
     {
@@ -112,9 +133,14 @@ export function CIListPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <CIIcon icon={ciType.icon} size={22} color={ciType.color} />
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{ciType.label}</h1>
-          {total > 0 && <span style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>{total} totali</span>}
+          {total > 0 && <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{total} totali</span>}
         </div>
       </div>
+
+      <FilterBuilder
+        fields={filterFields}
+        onApply={(group) => { setFilterGroup(group); setPage(0) }}
+      />
 
       {!loading && items.length === 0 ? (
         <EmptyState
@@ -127,7 +153,6 @@ export function CIListPage() {
           data={items}
           loading={loading}
           onRowClick={(row) => navigate(`/ci/${typeName}/${row.id}`)}
-          onFiltersChange={(f) => { setQueryFilters(f); setPage(0) }}
         />
       )}
 

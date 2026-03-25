@@ -5,6 +5,7 @@ import { publish } from '@opengraphity/events'
 import { workflowEngine } from '@opengraphity/workflow'
 import { mapCI, ciTypeFromLabels, withSession, getSession } from './ci-utils.js'
 import { mapUser, mapTeam } from '../../lib/mappers.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import type { DomainEvent, IncidentCreatedPayload, IncidentResolvedPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 
@@ -91,24 +92,31 @@ async function createTransitionComment(
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
+const INCIDENT_ALLOWED_FIELDS = new Set(['title', 'severity', 'status', 'createdAt', 'assignedTeam'])
+const INCIDENT_RELATION_FIELDS = {
+  assignedTeam: { relType: 'ASSIGNED_TO_TEAM', targetLabel: 'Team', searchProp: 'name' },
+}
+
 async function incidents(
   _: unknown,
-  args: { status?: string; severity?: string; limit?: number; offset?: number },
+  args: { status?: string; severity?: string; limit?: number; offset?: number; filters?: string },
   ctx: GraphQLContext,
 ) {
-  const { status, severity, limit = 50, offset = 0 } = args
+  const { status, severity, limit = 50, offset = 0, filters } = args
 
   return withSession(async (session) => {
-    const params = {
+    const params: Record<string, unknown> = {
       tenantId: ctx.tenantId,
       status:   status   ?? null,
       severity: severity ?? null,
       offset,
       limit,
     }
+    const advWhere = filters ? buildAdvancedWhere(filters, params, INCIDENT_ALLOWED_FIELDS, 'i', INCIDENT_RELATION_FIELDS) : ''
     const whereClause = `
       WHERE ($status   IS NULL OR i.status   = $status)
         AND ($severity IS NULL OR i.severity = $severity)
+        ${advWhere ? `AND (${advWhere})` : ''}
     `
     const itemRows = await runQuery<{ props: Props; uProps: Props | null; tProps: Props | null; cis: Array<{ props: Props; label: string }> }>(session, `
       MATCH (i:Incident {tenant_id: $tenantId})

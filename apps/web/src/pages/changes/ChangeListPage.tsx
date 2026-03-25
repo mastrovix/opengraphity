@@ -6,6 +6,7 @@ import { GET_CHANGES } from '@/graphql/queries'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { TypeBadge, PriorityBadge, StepBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 
 interface WorkflowInstance { id: string; currentStep: string; status: string }
 interface Team { id: string; name: string }
@@ -27,11 +28,9 @@ interface Change {
 
 const columns: ColumnDef<Change>[] = [
   {
-    key:        'title',
-    label:      'Titolo',
-    sortable:   true,
-    filterable: true,
-    filterType: 'text',
+    key:      'title',
+    label:    'Titolo',
+    sortable: true,
     render: (v, row) => (
       <div>
         <div style={{ fontWeight: 600, color: "var(--color-slate-dark)", marginBottom: 2 }}>{String(v)}</div>
@@ -40,52 +39,24 @@ const columns: ColumnDef<Change>[] = [
     ),
   },
   {
-    key:           'type',
-    label:         'Tipo',
-    width:         '120px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'standard',  label: 'Standard' },
-      { value: 'normal',    label: 'Normal' },
-      { value: 'emergency', label: 'Emergency' },
-    ],
-    render: (v) => <TypeBadge type={String(v)} />,
+    key:      'type',
+    label:    'Tipo',
+    width:    '120px',
+    sortable: true,
+    render:   (v) => <TypeBadge type={String(v)} />,
   },
   {
-    key:           'priority',
-    label:         'Priorità',
-    width:         '110px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'low',      label: 'Low' },
-      { value: 'medium',   label: 'Medium' },
-      { value: 'high',     label: 'High' },
-      { value: 'critical', label: 'Critical' },
-    ],
-    render: (v) => <PriorityBadge priority={String(v)} />,
+    key:      'priority',
+    label:    'Priorità',
+    width:    '110px',
+    sortable: true,
+    render:   (v) => <PriorityBadge priority={String(v)} />,
   },
   {
-    key:           'status',
-    label:         'Step',
-    width:         '140px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'draft',        label: 'Draft' },
-      { value: 'assessment',   label: 'Assessment' },
-      { value: 'cab_approval', label: 'CAB Approval' },
-      { value: 'scheduled',    label: 'Scheduled' },
-      { value: 'validation',   label: 'Validation' },
-      { value: 'deployment',   label: 'Deployment' },
-      { value: 'completed',    label: 'Completed' },
-      { value: 'failed',       label: 'Failed' },
-      { value: 'rejected',     label: 'Rejected' },
-    ],
+    key:      'status',
+    label:    'Step',
+    width:    '140px',
+    sortable: true,
     render: (_v, row) => row.workflowInstance
       ? <StepBadge step={row.workflowInstance.currentStep} />
       : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
@@ -134,31 +105,28 @@ const columns: ColumnDef<Change>[] = [
 
 const PAGE_SIZE = 50
 
+const FILTER_FIELDS: FieldConfig[] = [
+  { key: 'title',        label: 'Titolo',          type: 'text' },
+  { key: 'type',         label: 'Tipo',            type: 'enum', enumValues: ['standard', 'normal', 'emergency'] },
+  { key: 'priority',     label: 'Priorità',        type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
+  { key: 'status',       label: 'Status',          type: 'text' },
+  { key: 'assignedTeam', label: 'Team',            type: 'text' },
+  { key: 'scheduledStart', label: 'Scheduled Start', type: 'date' },
+  { key: 'createdAt',    label: 'Creato il',       type: 'date' },
+]
+
 export function ChangeListPage() {
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
-  const [queryFilters, setQueryFilters] = useState<Record<string, string>>({})
-
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const { data, loading } = useQuery<{ changes: { items: Change[]; total: number } }>(GET_CHANGES, {
-    variables: {
-      limit:    PAGE_SIZE,
-      offset:   page * PAGE_SIZE,
-      type:     queryFilters['type']     || undefined,
-      priority: queryFilters['priority'] || undefined,
-      status:   queryFilters['status']   || undefined,
-      search:   queryFilters['title']    || undefined,
-    },
+    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null },
     fetchPolicy: 'cache-and-network',
   })
 
   const items      = data?.changes?.items ?? []
   const total      = data?.changes?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
-
-  const handleFiltersChange = (filters: Record<string, string>) => {
-    setQueryFilters(filters)
-    setPage(0)
-  }
 
   return (
     <div>
@@ -178,13 +146,17 @@ export function ChangeListPage() {
         </button>
       </div>
 
+      <FilterBuilder
+        fields={FILTER_FIELDS}
+        onApply={(group) => { setFilterGroup(group); setPage(0) }}
+      />
+
       <SortableFilterTable<Change>
         columns={columns}
         data={items}
         loading={loading}
         emptyComponent={<EmptyState icon={<GitPullRequest size={32} />} title="Nessun change trovato" description="Crea il primo change o modifica i filtri applicati." />}
         onRowClick={(row) => navigate(`/changes/${row.id}`)}
-        onFiltersChange={handleFiltersChange}
       />
 
       {total > 0 && (

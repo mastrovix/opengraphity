@@ -4,6 +4,7 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { mapUser, mapTeam } from '../../lib/mappers.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Props = Record<string, unknown>
@@ -48,15 +49,20 @@ function mapProblemComment(props: Props, authorProps: Props | null) {
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
+const PROBLEM_ALLOWED_FIELDS = new Set(['title', 'priority', 'status', 'createdAt', 'assignedTeam'])
+const PROBLEM_RELATION_FIELDS = {
+  assignedTeam: { relType: 'ASSIGNED_TO_TEAM', targetLabel: 'Team', searchProp: 'name' },
+}
+
 async function problems(
   _: unknown,
-  args: { limit?: number; offset?: number; status?: string; priority?: string; search?: string },
+  args: { limit?: number; offset?: number; status?: string; priority?: string; search?: string; filters?: string },
   ctx: GraphQLContext,
 ) {
-  const { limit = 50, offset = 0, status, priority, search } = args
+  const { limit = 50, offset = 0, status, priority, search, filters } = args
 
   return withSession(async (session) => {
-    const params = {
+    const params: Record<string, unknown> = {
       tenantId: ctx.tenantId,
       status:   status   ?? null,
       priority: priority ?? null,
@@ -64,10 +70,12 @@ async function problems(
       offset,
       limit,
     }
+    const advWhere = filters ? buildAdvancedWhere(filters, params, PROBLEM_ALLOWED_FIELDS, 'p', PROBLEM_RELATION_FIELDS) : ''
     const whereClause = `
       WHERE ($status   IS NULL OR p.status   = $status)
         AND ($priority IS NULL OR p.priority = $priority)
         AND ($search   IS NULL OR p.title =~ $search)
+        ${advWhere ? `AND (${advWhere})` : ''}
     `
     const itemRows = await runQuery<{ props: Props; uProps: Props | null; tProps: Props | null; cis: Array<{ props: Props; label: string }> }>(session, `
       MATCH (p:Problem {tenant_id: $tenantId})

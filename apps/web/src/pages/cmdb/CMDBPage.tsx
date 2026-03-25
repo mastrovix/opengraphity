@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_ALL_CIS } from '@/graphql/queries'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 
 interface CI {
   id:          string
@@ -32,56 +33,31 @@ const TYPE_OPTIONS = [
 ]
 
 const columns: ColumnDef<CI>[] = [
+  { key: 'name', label: 'Name', sortable: true },
   {
-    key:        'name',
-    label:      'Name',
-    sortable:   true,
-    filterable: true,
-    filterType: 'text',
-  },
-  {
-    key:           'type',
-    label:         'Type',
-    width:         '160px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: TYPE_OPTIONS,
-    render: (v) => (
+    key:      'type',
+    label:    'Type',
+    width:    '160px',
+    sortable: true,
+    render:   (v) => (
       <span style={{ color: "var(--color-slate)", textTransform: 'capitalize' }}>
         {String(v).replace(/_/g, ' ')}
       </span>
     ),
   },
   {
-    key:           'status',
-    label:         'Status',
-    width:         '130px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'active',         label: 'Active' },
-      { value: 'inactive',       label: 'Inactive' },
-      { value: 'maintenance',    label: 'Maintenance' },
-      { value: 'decommissioned', label: 'Decommissioned' },
-    ],
-    render: (v) => <StatusBadge value={String(v)} />,
+    key:      'status',
+    label:    'Status',
+    width:    '130px',
+    sortable: true,
+    render:   (v) => <StatusBadge value={String(v)} />,
   },
   {
-    key:           'environment',
-    label:         'Environment',
-    width:         '140px',
-    sortable:      true,
-    filterable:    true,
-    filterType:    'select',
-    filterOptions: [
-      { value: 'production',  label: 'Production' },
-      { value: 'staging',     label: 'Staging' },
-      { value: 'development', label: 'Development' },
-      { value: 'dr',          label: 'DR' },
-    ],
-    render: (v) => <EnvBadge environment={String(v)} />,
+    key:      'environment',
+    label:    'Environment',
+    width:    '140px',
+    sortable: true,
+    render:   (v) => <EnvBadge environment={String(v)} />,
   },
   {
     key:      'createdAt',
@@ -98,6 +74,13 @@ const columns: ColumnDef<CI>[] = [
 
 const PAGE_SIZE = 50
 
+const FILTER_FIELDS: FieldConfig[] = [
+  { key: 'name',        label: 'Nome',        type: 'text' },
+  { key: 'status',      label: 'Status',      type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
+  { key: 'environment', label: 'Environment', type: 'enum', enumValues: ['production', 'staging', 'development'] },
+  { key: 'createdAt',   label: 'Creato il',   type: 'date' },
+]
+
 export function CMDBPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -108,12 +91,8 @@ export function CMDBPage() {
     : 'CMDB'
 
   const [page, setPage] = useState(0)
-  const [queryFilters, setQueryFilters] = useState<Record<string, string>>(
-    typeFromUrl ? { type: typeFromUrl } : {}
-  )
-
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   useEffect(() => {
-    setQueryFilters(typeFromUrl ? { type: typeFromUrl } : {})
     setPage(0)
   }, [typeFromUrl])
 
@@ -121,23 +100,17 @@ export function CMDBPage() {
     allCIs: { items: CI[]; total: number }
   }>(GET_ALL_CIS, {
     variables: {
-      limit:       PAGE_SIZE,
-      offset:      page * PAGE_SIZE,
-      type:        queryFilters['type']        || undefined,
-      environment: queryFilters['environment'] || undefined,
-      status:      queryFilters['status']      || undefined,
-      search:      queryFilters['name']        || undefined,
+      limit:   PAGE_SIZE,
+      offset:  page * PAGE_SIZE,
+      type:    typeFromUrl || undefined,
+      filters: filterGroup ? JSON.stringify(filterGroup) : null,
     },
+    fetchPolicy: 'cache-and-network',
   })
 
   const items = data?.allCIs?.items ?? []
   const total = data?.allCIs?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
-
-  const handleFiltersChange = (filters: Record<string, string>) => {
-    setQueryFilters(filters)
-    setPage(0)
-  }
 
   return (
     <div>
@@ -158,6 +131,11 @@ export function CMDBPage() {
         </button>
       </div>
 
+      <FilterBuilder
+        fields={FILTER_FIELDS}
+        onApply={(group) => { setFilterGroup(group); setPage(0) }}
+      />
+
       <SortableFilterTable<CI>
         columns={columns}
         data={items}
@@ -173,7 +151,6 @@ export function CMDBPage() {
             default:                  navigate(`/cmdb/${row.id}`)
           }
         }}
-        onFiltersChange={handleFiltersChange}
       />
 
       {total > 0 && (

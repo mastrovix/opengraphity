@@ -4,48 +4,30 @@ import { SkeletonLine } from '@/components/SkeletonLoader'
 import { colors } from '@/lib/tokens'
 
 export interface ColumnDef<T> {
-  key:           keyof T
-  label:         string
-  sortable?:     boolean
-  filterable?:   boolean
-  filterType?:   'text' | 'select'
-  filterOptions?: { value: string; label: string }[]
-  width?:        string
-  render?:       (value: unknown, row: T) => React.ReactNode
+  key:      keyof T
+  label:    string
+  sortable?: boolean
+  width?:   string
+  render?:  (value: unknown, row: T) => React.ReactNode
 }
 
 interface Props<T> {
-  columns:          ColumnDef<T>[]
-  data:             T[]
-  onRowClick?:      (row: T) => void
-  loading?:         boolean
-  emptyMessage?:    string
-  emptyComponent?:  React.ReactNode
-  onFiltersChange?: (filters: Record<string, string>) => void
+  columns:         ColumnDef<T>[]
+  data:            T[]
+  onRowClick?:     (row: T) => void
+  loading?:        boolean
+  emptyMessage?:   string
+  emptyComponent?: React.ReactNode
 }
 
 const thStyle: React.CSSProperties = {
   background:    '#f9fafb',
   borderBottom:  `2px solid ${colors.border}`,
   padding:       '8px 12px 6px',
-  verticalAlign: 'top',
   textAlign:     'left',
   whiteSpace:    'nowrap',
   userSelect:    'none',
   boxSizing:     'border-box',
-}
-
-const filterInputBase: React.CSSProperties = {
-  height:      28,
-  fontSize:    11,
-  width:       '100%',
-  border:      `1px solid ${colors.border}`,
-  borderRadius: 4,
-  padding:     '2px 6px',
-  background:  colors.white,
-  color:       colors.slateDark,
-  outline:     'none',
-  boxSizing:   'border-box',
 }
 
 export function SortableFilterTable<T extends object>({
@@ -55,11 +37,9 @@ export function SortableFilterTable<T extends object>({
   loading = false,
   emptyMessage = 'Nessun risultato',
   emptyComponent,
-  onFiltersChange,
 }: Props<T>) {
   const [sortKey, setSortKey] = useState<keyof T | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [filters, setFilters] = useState<Record<string, string>>({})
 
   const handleSort = (key: keyof T) => {
     if (sortKey === key) {
@@ -70,34 +50,21 @@ export function SortableFilterTable<T extends object>({
     }
   }
 
-  const handleFilter = (key: string, value: string) => {
-    const next = { ...filters, [key]: value }
-    setFilters(next)
-    onFiltersChange?.(next)
-  }
-
-  const getVal = (row: T, key: keyof T): unknown =>
+  const getRawVal = (row: T, key: keyof T): unknown =>
     (row as Record<string, unknown>)[String(key)]
 
-  // filter
-  const filtered = data.filter((row) =>
-    columns.every((col) => {
-      if (!col.filterable) return true
-      const fv = filters[String(col.key)]
-      if (!fv) return true
-      const cv = String(getVal(row, col.key) ?? '').toLowerCase()
-      return col.filterType === 'text'
-        ? cv.includes(fv.toLowerCase())
-        : cv === fv
-    })
-  )
+  const getSortVal = (row: T, key: keyof T): unknown => {
+    const v = getRawVal(row, key)
+    if (v && typeof v === 'object' && !Array.isArray(v) && 'name' in v)
+      return (v as { name: string }).name
+    return v
+  }
 
-  // sort
   const sorted = sortKey == null
-    ? filtered
-    : [...filtered].sort((a, b) => {
-        const av = getVal(a, sortKey)
-        const bv = getVal(b, sortKey)
+    ? data
+    : [...data].sort((a, b) => {
+        const av = getSortVal(a, sortKey)
+        const bv = getSortVal(b, sortKey)
         if (av == null) return 1
         if (bv == null) return -1
         const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
@@ -119,7 +86,6 @@ export function SortableFilterTable<T extends object>({
               const isActive = sortKey === col.key
               return (
                 <th key={String(col.key)} style={thStyle}>
-                  {/* Label row */}
                   <div
                     style={{
                       display:       'flex',
@@ -129,46 +95,18 @@ export function SortableFilterTable<T extends object>({
                       fontWeight:    500,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
-                      color:         isActive ? colors.brand : colors.slateLight,
-                      marginBottom:  col.filterable ? 4 : 0,
+                      color:         isActive ? colors.brand : colors.slateDark,
                       cursor:        col.sortable ? 'pointer' : 'default',
                     }}
                     onClick={() => col.sortable && handleSort(col.key)}
                   >
                     {col.label}
                     {col.sortable && (
-                      <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? colors.brand : colors.slateLight, display: 'flex' }}>
-                        {isActive && sortDir === 'asc'
-                          ? <ChevronUp  size={12} />
-                          : <ChevronDown size={12} />
-                        }
+                      <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? colors.brand : colors.slateDark, display: 'flex' }}>
+                        {isActive && sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </span>
                     )}
                   </div>
-
-                  {/* Filter row */}
-                  {col.filterable && (
-                    col.filterType === 'select' ? (
-                      <select
-                        value={filters[String(col.key)] ?? ''}
-                        onChange={(e) => handleFilter(String(col.key), e.target.value)}
-                        style={{ ...filterInputBase, cursor: 'pointer', appearance: 'auto' }}
-                      >
-                        <option value="">All</option>
-                        {col.filterOptions?.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={filters[String(col.key)] ?? ''}
-                        onChange={(e) => handleFilter(String(col.key), e.target.value)}
-                        placeholder="Filter…"
-                        style={filterInputBase}
-                      />
-                    )
-                  )}
                 </th>
               )
             })}
@@ -223,8 +161,8 @@ export function SortableFilterTable<T extends object>({
                       style={{ padding: '11px 12px', verticalAlign: 'middle' }}
                     >
                       {col.render
-                        ? col.render(getVal(row, col.key), row)
-                        : String(getVal(row, col.key) ?? '')
+                        ? col.render(getRawVal(row, col.key), row)
+                        : String(getRawVal(row, col.key) ?? '')
                       }
                     </td>
                   ))}
