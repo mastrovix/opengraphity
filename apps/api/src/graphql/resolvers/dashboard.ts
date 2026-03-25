@@ -12,7 +12,7 @@ async function loadReportSection(sectionId: string, tenantId: string) {
     const r = await session.executeRead((tx) =>
       tx.run(
         `
-        MATCH (s:ReportSection {id: $id, tenant_id: $tenantId})
+        MATCH (r:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $id})
         OPTIONAL MATCH (s)-[:HAS_NODE]->(n:ReportNode)
         OPTIONAL MATCH (n)-[e:REPORT_EDGE]->(m:ReportNode)
         RETURN s,
