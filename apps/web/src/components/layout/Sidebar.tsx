@@ -11,7 +11,7 @@ import {
   Server,
   GitBranch,
   Users,
-  BarChart2,
+  FileBarChart,
   ScrollText,
   ChevronLeft,
   ChevronRight,
@@ -34,8 +34,11 @@ const NAV_ITEMS = [
   { to: '/workflow',       label: 'Workflow',       icon: GitBranch },
   { to: '/anomalies',      label: 'Anomalie',       icon: ShieldAlert },
   { to: '/topology',       label: 'Topology',       icon: Share2 },
-  { to: '/reports',        label: 'Report AI',      icon: BarChart2 },
-  { to: '/custom-reports', label: 'Report Builder', icon: BarChart2 },
+]
+
+const REPORTING_ITEMS = [
+  { to: '/reports',        label: 'Analisi ITSM'  },
+  { to: '/custom-reports', label: 'Report Builder' },
 ]
 
 const ADMIN_NAV_ITEMS = [
@@ -53,6 +56,9 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const [cmdbOpen, setCmdbOpen] = useState(true)
   const [teamsOpen, setTeamsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [reportingOpen, setReportingOpen] = useState(
+    () => pathname.startsWith('/reports') || pathname.startsWith('/custom-reports'),
+  )
 
   const isAdmin = keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin')
   const settingsActive = pathname.startsWith('/settings')
@@ -98,6 +104,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     cursor:         'pointer',
     marginBottom:   1,
   })
+
+  const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
 
   const cmdbActive = pathname.startsWith('/cmdb') || pathname.startsWith('/ci/')
     || pathname.startsWith('/applications') || pathname.startsWith('/databases')
@@ -204,6 +212,69 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             </NavLink>
           )
         })}
+
+        {/* Reporting — collapsible */}
+        {collapsed ? (
+          <NavLink
+            to="/reports"
+            title="Reporting"
+            style={navItemStyle(reportingActive, true)}
+            onMouseEnter={(e) => {
+              if (!reportingActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
+                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!reportingActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
+              }
+            }}
+          >
+            <FileBarChart size={16} style={{ flexShrink: 0, color: reportingActive ? 'var(--color-brand)' : 'inherit' }} />
+          </NavLink>
+        ) : (
+          <div style={{ marginBottom: 2 }}>
+            <div
+              onClick={() => setReportingOpen((p) => !p)}
+              style={{
+                display:         'flex',
+                alignItems:      'center',
+                justifyContent:  'space-between',
+                padding:         '7px 10px',
+                borderRadius:    6,
+                cursor:          'pointer',
+                backgroundColor: reportingActive ? 'rgba(2,132,199,0.12)' : 'transparent',
+                borderLeft:      reportingActive ? '2px solid #0284c7' : '2px solid transparent',
+                transition:      'background 150ms',
+                margin:          '1px 0',
+              }}
+              onMouseEnter={(e) => { if (!reportingActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+              onMouseLeave={(e) => { if (!reportingActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <FileBarChart size={16} style={{ flexShrink: 0, color: reportingActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <span style={{ fontSize: 13, fontWeight: reportingActive ? 600 : 400, color: reportingActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                  Reporting
+                </span>
+              </div>
+              {reportingOpen
+                ? <ChevronDown size={12} color="var(--color-slate-light)" />
+                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+            </div>
+
+            {reportingOpen && (
+              <div style={{ paddingLeft: 28, marginTop: 2 }}>
+                {REPORTING_ITEMS.map(({ to, label }) => (
+                  <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
+                    <span>{label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* CMDB — collapsible with sub-items */}
         {collapsed ? (
