@@ -523,15 +523,15 @@ interface LegendProps {
   ciTypes?: CITypeMeta[]
 }
 
-// Mini icon SVG for legend — renders lucide icon paths inline
+// Bare icon SVG for legend — just the lucide paths, no circle wrapper
 function LegendIconSvg({ iconKey, color }: { iconKey: string; color: string }) {
   const nodes = ICON_NODES[iconKey] ?? ICON_NODES['box']!
-  // 16×16 container, icon scaled from 24→11 centered inside 16×16 circle (cx=8,cy=8)
-  const scale  = 11 / 24
-  const offset = 8 - (11 / 2)
+  // 16×16 container, icon scaled from 24→14 and centered (offset = (16-14)/2 = 1)
+  const size   = 14
+  const scale  = size / 24
+  const offset = (16 - size) / 2
   return (
     <svg width={16} height={16}>
-      <circle cx={8} cy={8} r={7} fill="white" stroke={color} strokeWidth={1.5} />
       <g
         transform={`translate(${offset},${offset}) scale(${scale})`}
         fill="none"
