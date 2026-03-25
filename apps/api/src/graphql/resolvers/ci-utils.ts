@@ -1,5 +1,6 @@
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
+import { neo4jDateToISO } from '../../lib/mappers.js'
 
 export { ciTypeFromLabels }
 
@@ -31,8 +32,8 @@ export function mapBase(props: Props) {
     status:       props['status']      as string | null ?? null,
     environment:  props['environment'] as string | null ?? null,
     description:  props['description'] as string | null ?? null,
-    createdAt:    props['created_at']  as string,
-    updatedAt:    props['updated_at']  as string | null ?? null,
+    createdAt:    neo4jDateToISO(props['created_at']) ?? '',
+    updatedAt:    neo4jDateToISO(props['updated_at']),
     notes:        props['notes']       as string | null ?? null,
     ownerGroup:   null,
     supportGroup: null,

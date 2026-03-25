@@ -1,5 +1,6 @@
 import { withSession } from './ci-utils.js'
 import { getSession } from '@opengraphity/neo4j'
+import { neo4jDateToISO } from '../../lib/mappers.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
@@ -17,8 +18,8 @@ function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unkn
     status:       props['status']       ?? null,
     environment:  props['environment']  ?? null,
     description:  props['description']  ?? null,
-    createdAt:    props['created_at'],
-    updatedAt:    props['updated_at']   ?? null,
+    createdAt:    neo4jDateToISO(props['created_at']) ?? '',
+    updatedAt:    neo4jDateToISO(props['updated_at']),
     notes:        props['notes']        ?? null,
     ownerGroup:   null,  // field resolver
     supportGroup: null,  // field resolver
@@ -27,6 +28,7 @@ function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unkn
   }
 
   for (const field of ciType.fields) {
+    if (field.isSystem) continue  // already mapped in base object above (with proper date conversion)
     const snakeKey = toSnakeCase(field.name)
     base[field.name] = props[snakeKey] ?? props[field.name] ?? null
   }
@@ -64,7 +66,7 @@ function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CITypeWith
         const p = r.records[0].get('p') as Props
         return { id: p['id'], tenantId: p['tenant_id'], name: p['name'],
           description: p['description'] ?? null, type: p['type'] ?? null,
-          createdAt: p['created_at'] }
+          createdAt: neo4jDateToISO(p['created_at']) }
       }),
 
     supportGroup: async (parent: { id: string }) =>
@@ -77,7 +79,7 @@ function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CITypeWith
         const p = r.records[0].get('p') as Props
         return { id: p['id'], tenantId: p['tenant_id'], name: p['name'],
           description: p['description'] ?? null, type: p['type'] ?? null,
-          createdAt: p['created_at'] }
+          createdAt: neo4jDateToISO(p['created_at']) }
       }),
 
     dependencies: async (parent: { id: string }, _: unknown, ctx: GraphQLContext) =>

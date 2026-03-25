@@ -22,6 +22,7 @@ import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 // ── me + users stubs ──────────────────────────────────────────────────────────
 
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { neo4jDateToISO } from '../../lib/mappers.js'
 
 function mapUser(props: Record<string, unknown>) {
   return {
@@ -31,7 +32,7 @@ function mapUser(props: Record<string, unknown>) {
     name:      props['name']       as string,
     role:      props['role']       as string,
     teamId:    null,
-    createdAt: props['created_at'] as string | null,
+    createdAt: neo4jDateToISO(props['created_at']),
   }
 }
 
@@ -87,7 +88,7 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
       name:        r.props['name']        as string,
       description: r.props['description'] as string | null,
       type:        r.props['type']        as string | null,
-      createdAt:   r.props['created_at']  as string,
+      createdAt:   neo4jDateToISO(r.props['created_at']) ?? '',
     }))
   } finally {
     await session.close()
