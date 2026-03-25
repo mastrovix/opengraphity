@@ -8,6 +8,7 @@ import {
   Bug,
   GitPullRequest,
   Inbox,
+  ClipboardList,
   Server,
   GitBranch,
   Users,
@@ -30,14 +31,17 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
 
 const NAV_ITEMS = [
-  { to: '/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
-  { to: '/incidents',      label: 'Incidents',      icon: AlertCircle },
-  { to: '/problems',       label: 'Problems',       icon: Bug },
-  { to: '/changes',        label: 'Changes',        icon: GitPullRequest },
-  { to: '/requests',       label: 'Requests',       icon: Inbox },
-  { to: '/workflow',       label: 'Workflow',       icon: GitBranch },
-  { to: '/anomalies',      label: 'Anomalie',       icon: ShieldAlert },
-  { to: '/topology',       label: 'Topology',       icon: Share2 },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/workflow',  label: 'Workflow',  icon: GitBranch },
+  { to: '/anomalies', label: 'Anomalie',  icon: ShieldAlert },
+  { to: '/topology',  label: 'Topology',  icon: Share2 },
+]
+
+const ITSM_ITEMS = [
+  { to: '/incidents', label: 'Incidents', icon: AlertCircle    },
+  { to: '/problems',  label: 'Problems',  icon: Bug            },
+  { to: '/changes',   label: 'Changes',   icon: GitPullRequest },
+  { to: '/requests',  label: 'Requests',  icon: Inbox          },
 ]
 
 const REPORTING_ITEMS = [
@@ -57,6 +61,7 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { pathname } = useLocation()
+  const [itsmOpen, setItsmOpen] = useState(true)
   const [cmdbOpen, setCmdbOpen] = useState(true)
   const [teamsOpen, setTeamsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -109,6 +114,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     marginBottom:   1,
   })
 
+  const itsmActive      = ITSM_ITEMS.some(({ to }) => pathname.startsWith(to))
   const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
 
   const cmdbActive = pathname.startsWith('/cmdb') || pathname.startsWith('/ci/')
@@ -216,6 +222,72 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             </NavLink>
           )
         })}
+
+        {/* Processi ITSM — collapsible, default espanso */}
+        {collapsed ? (
+          <NavLink
+            to="/incidents"
+            title="Processi ITSM"
+            style={navItemStyle(itsmActive, true)}
+            onMouseEnter={(e) => {
+              if (!itsmActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
+                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!itsmActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
+              }
+            }}
+          >
+            <ClipboardList size={16} style={{ flexShrink: 0, color: itsmActive ? 'var(--color-brand)' : 'inherit' }} />
+          </NavLink>
+        ) : (
+          <div style={{ marginBottom: 2 }}>
+            <div
+              onClick={() => setItsmOpen((p) => !p)}
+              style={{
+                display:         'flex',
+                alignItems:      'center',
+                justifyContent:  'space-between',
+                padding:         '7px 10px',
+                borderRadius:    6,
+                cursor:          'pointer',
+                backgroundColor: itsmActive ? 'rgba(2,132,199,0.12)' : 'transparent',
+                borderLeft:      itsmActive ? '2px solid #0284c7' : '2px solid transparent',
+                transition:      'background 150ms',
+                margin:          '1px 0',
+              }}
+              onMouseEnter={(e) => { if (!itsmActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+              onMouseLeave={(e) => { if (!itsmActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ClipboardList size={16} style={{ flexShrink: 0, color: itsmActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                  Processi ITSM
+                </span>
+              </div>
+              {itsmOpen
+                ? <ChevronDown size={12} color="var(--color-slate-light)" />
+                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+            </div>
+
+            {itsmOpen && (
+              <div style={{ paddingLeft: 28, marginTop: 2 }}>
+                {ITSM_ITEMS.map(({ to, label, icon: Icon }) => (
+                  <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Icon size={12} />
+                      {label}
+                    </span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Reporting — collapsible */}
         {collapsed ? (
