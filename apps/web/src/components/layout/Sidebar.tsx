@@ -10,7 +10,6 @@ import {
   Inbox,
   ListChecks,
   SlidersHorizontal,
-  Boxes,
   Route,
   Server,
   Users,
@@ -23,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Layers,
   Settings,
   ShieldAlert,
   Share2,
@@ -38,7 +38,7 @@ const NAV_ITEMS = [
 ]
 
 const CONFIG_ITEMS = [
-  { to: '/settings/ci-types', label: 'CI Type Designer',  icon: Boxes },
+  { to: '/settings/ci-types', label: 'CI Type Designer',  icon: Layers },
   { to: '/workflow',          label: 'Workflow Designer', icon: Route },
 ]
 
