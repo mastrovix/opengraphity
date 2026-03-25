@@ -339,7 +339,10 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             {cmdbOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 <NavLink to="/cmdb" end style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Tutti</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Server size={12} />
+                    Tutti
+                  </span>
                 </NavLink>
                 {ciTypes.map(ct => {
                   const to = `/ci/${ct.name}`
