@@ -20,6 +20,13 @@ export interface TopologyEdge {
   type:   string
 }
 
+export interface CITypeMeta {
+  name:  string
+  label: string
+  icon:  string
+  color: string
+}
+
 interface Props {
   nodes:            TopologyNode[]
   edges:            TopologyEdge[]
@@ -27,12 +34,13 @@ interface Props {
   showLabels:       boolean
   highlightNodeId?: string | null
   rootNodeId?:      string | null
+  ciTypes?:         CITypeMeta[]
 }
 
-// ── Look-up tables ───────────────────────────────────────────────────────────
+// ── Fallback color table (used when ciTypes prop has no match) ────────────────
 
-const NODE_RADIUS = 12
-const NODE_COLOR: Record<string, string> = {
+const NODE_RADIUS = 16
+const NODE_COLOR_FALLBACK: Record<string, string> = {
   server:            '#64748b',
   application:       '#0284c7',
   database:          '#16a34a',
@@ -43,6 +51,7 @@ const NODE_COLOR: Record<string, string> = {
   api_endpoint:      '#0891b2',
   microservice:      '#0284c7',
 }
+
 const EDGE_COLOR: Record<string, string> = {
   DEPENDS_ON: '#0284c7', HOSTED_ON: '#64748b', CONNECTS_TO: '#94a3b8',
   RUNS_ON: '#64748b', USES: '#0284c7', CONTAINS: '#059669',
@@ -51,14 +60,114 @@ const EDGE_DIST: Record<string, number> = {
   HOSTED_ON: 80, DEPENDS_ON: 120, CONNECTS_TO: 100,
 }
 
+// ── Lucide icon node data (raw SVG primitives from lucide-react v0.577) ───────
+// Each entry: [tagName, {attribute: value, ...}]
+
+type IconNode = [string, Record<string, string>]
+const ICON_NODES: Record<string, IconNode[]> = {
+  box: [
+    ['path', { d: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }],
+    ['path', { d: 'm3.3 7 8.7 5 8.7-5' }],
+    ['path', { d: 'M12 22V12' }],
+  ],
+  database: [
+    ['ellipse', { cx: '12', cy: '5', rx: '9', ry: '3' }],
+    ['path', { d: 'M3 5V19A9 3 0 0 0 21 19V5' }],
+    ['path', { d: 'M3 12A9 3 0 0 0 21 12' }],
+  ],
+  server: [
+    ['rect', { width: '20', height: '8', x: '2', y: '2', rx: '2', ry: '2' }],
+    ['rect', { width: '20', height: '8', x: '2', y: '14', rx: '2', ry: '2' }],
+    ['line', { x1: '6', x2: '6.01', y1: '6', y2: '6' }],
+    ['line', { x1: '6', x2: '6.01', y1: '18', y2: '18' }],
+  ],
+  shield: [
+    ['path', { d: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z' }],
+  ],
+  'hard-drive': [
+    ['path', { d: 'M10 16h.01' }],
+    ['path', { d: 'M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z' }],
+    ['path', { d: 'M21.946 12.013H2.054' }],
+    ['path', { d: 'M6 16h.01' }],
+  ],
+  cloud: [
+    ['path', { d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z' }],
+  ],
+  globe: [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20' }],
+    ['path', { d: 'M2 12h20' }],
+  ],
+  cpu: [
+    ['path', { d: 'M12 20v2' }], ['path', { d: 'M12 2v2' }],
+    ['path', { d: 'M17 20v2' }], ['path', { d: 'M17 2v2' }],
+    ['path', { d: 'M2 12h2' }],  ['path', { d: 'M2 17h2' }], ['path', { d: 'M2 7h2' }],
+    ['path', { d: 'M20 12h2' }], ['path', { d: 'M20 17h2' }], ['path', { d: 'M20 7h2' }],
+    ['path', { d: 'M7 20v2' }],  ['path', { d: 'M7 2v2' }],
+    ['rect', { x: '4', y: '4', width: '16', height: '16', rx: '2' }],
+    ['rect', { x: '8', y: '8', width: '8', height: '8', rx: '1' }],
+  ],
+  network: [
+    ['rect', { x: '16', y: '16', width: '6', height: '6', rx: '1' }],
+    ['rect', { x: '2', y: '16', width: '6', height: '6', rx: '1' }],
+    ['rect', { x: '9', y: '2', width: '6', height: '6', rx: '1' }],
+    ['path', { d: 'M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3' }],
+    ['path', { d: 'M12 12V8' }],
+  ],
+  monitor: [
+    ['rect', { width: '20', height: '14', x: '2', y: '3', rx: '2' }],
+    ['line', { x1: '8', x2: '16', y1: '21', y2: '21' }],
+    ['line', { x1: '12', x2: '12', y1: '17', y2: '21' }],
+  ],
+  lock: [
+    ['rect', { width: '18', height: '11', x: '3', y: '11', rx: '2', ry: '2' }],
+    ['path', { d: 'M7 11V7a5 5 0 0 1 10 0v4' }],
+  ],
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+// Normalize CI type name for comparison: "DatabaseInstance" → "databaseinstance"
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[_\s]/g, '')
+}
+
 const r   = NODE_RADIUS
-const nc  = (t: string) => NODE_COLOR[t.toLowerCase()]  ?? '#94a3b8'
-const ec  = (t: string) => EDGE_COLOR[t]                ?? '#94a3b8'
-const ed  = (t: string) => EDGE_DIST[t]                 ?? 110
+const ec  = (t: string) => EDGE_COLOR[t]   ?? '#94a3b8'
+const ed  = (t: string) => EDGE_DIST[t]    ?? 110
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const nid = (x: any)   => typeof x === 'object' ? (x as { id: string }).id : String(x)
 
-// ── Pulse CSS (injected once) ────────────────────────────────────────────────
+// Appends lucide icon SVG elements to a D3 g selection, centered at (0,0).
+// Icon is scaled from 24×24 to `size`×`size` px.
+function appendLucideIcon(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sel: d3.Selection<SVGGElement, any, any, any>,
+  iconKey: string,
+  color: string,
+  size = 18,
+): void {
+  const nodes = ICON_NODES[iconKey] ?? ICON_NODES['box']!
+  const scale  = size / 24
+  const offset = -(size / 2)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g = (sel as any).append('g')
+    .attr('class', 'node-icon')
+    .attr('transform', `translate(${offset},${offset}) scale(${scale})`)
+    .attr('pointer-events', 'none')
+  for (const [tag, attrs] of nodes) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const el = (g as any).append(tag)
+    for (const [k, v] of Object.entries(attrs)) { el.attr(k, v) }
+    el.attr('fill', 'none')
+      .attr('stroke', color)
+      .attr('stroke-width', 2)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-linejoin', 'round')
+  }
+}
+
+// ── Pulse CSS (injected once) ─────────────────────────────────────────────────
 
 function ensurePulseStyle() {
   if (document.getElementById('topo-pulse-style')) return
@@ -72,65 +181,62 @@ function ensurePulseStyle() {
   document.head.appendChild(s)
 }
 
-// ── D3 sim types ─────────────────────────────────────────────────────────────
+// ── D3 sim types ──────────────────────────────────────────────────────────────
 
 interface SimNode extends d3.SimulationNodeDatum, TopologyNode {}
 interface SimLink extends d3.SimulationLinkDatum<SimNode> { relType: string }
 
-// ── Component ───────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TopologyGraph({
-  nodes, edges, onNodeClick, showLabels, highlightNodeId, rootNodeId,
+  nodes, edges, onNodeClick, showLabels, highlightNodeId, rootNodeId, ciTypes,
 }: Props) {
 
-  // Container div — D3 creates/destroys the <svg> inside it
   const containerRef = useRef<HTMLDivElement>(null)
   const simRef       = useRef<d3.Simulation<SimNode, SimLink> | null>(null)
 
-  // Selections shared with the lightweight highlight effect
   type NodeSel = d3.Selection<SVGGElement,    SimNode, SVGGElement, unknown>
   type LinkSel = d3.Selection<SVGLineElement,  SimLink, SVGGElement, unknown>
   const nodeElRef = useRef<NodeSel | null>(null)
   const linkElRef = useRef<LinkSel | null>(null)
 
-  // Single stable dep — fires only when real graph data changes
   const snap = useMemo(
-    () => ({ nodes, edges, showLabels, rootNodeId, onNodeClick }),
+    () => ({ nodes, edges, showLabels, rootNodeId, onNodeClick, ciTypes }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, edges, showLabels, rootNodeId, onNodeClick],
+    [nodes, edges, showLabels, rootNodeId, onNodeClick, ciTypes],
   )
 
-  // ── Graph build effect ────────────────────────────────────────────────────
+  // ── Graph build effect ─────────────────────────────────────────────────────
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
-    // ── STEP 1: destroy everything that existed before ────────────────────
-    if (simRef.current) {
-      simRef.current.stop()
-      simRef.current = null
-    }
-    // Physically remove all child nodes (including any previous <svg>)
-    while (container.firstChild) {
-      container.removeChild(container.firstChild)
-    }
+    if (simRef.current) { simRef.current.stop(); simRef.current = null }
+    while (container.firstChild) { container.removeChild(container.firstChild) }
     nodeElRef.current = null
     linkElRef.current = null
 
-    const { nodes, edges, showLabels, rootNodeId, onNodeClick } = snap
+    const { nodes, edges, showLabels, rootNodeId, onNodeClick, ciTypes } = snap
     if (nodes.length === 0) return
+
+    // Build ciType lookup from prop
+    const ciTypeMap = new Map<string, { icon: string; color: string }>()
+    for (const ct of (ciTypes ?? [])) {
+      ciTypeMap.set(normalize(ct.name), { icon: ct.icon, color: ct.color })
+    }
+    const nodeColor = (type: string) =>
+      ciTypeMap.get(normalize(type))?.color ?? NODE_COLOR_FALLBACK[type.toLowerCase()] ?? '#94a3b8'
+    const nodeIconKey = (type: string) =>
+      ciTypeMap.get(normalize(type))?.icon ?? 'box'
 
     ensurePulseStyle()
 
-    // ── STEP 2: create a brand-new <svg> from scratch ─────────────────────
     const W = container.clientWidth  || 1000
     const H = container.clientHeight || 600
 
     const svg = d3.select(container)
       .append('svg')
-      .attr('width', '100%')
-      .attr('height', '100%')
-      .style('display', 'block')
+      .attr('width', '100%').attr('height', '100%').style('display', 'block')
 
     // Arrow markers
     const defs = svg.append('defs')
@@ -138,15 +244,12 @@ export default function TopologyGraph({
     edgeTypes.forEach((et) => {
       defs.append('marker')
         .attr('id', `arrow-${et}`)
-        // refX=10 places the tip of the arrow (x=10 in the path M0,-5L10,0L0,5)
-        // exactly at the line endpoint, which is already clipped to the node border
         .attr('viewBox', '0 -5 10 10').attr('refX', 10).attr('refY', 0)
         .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
         .append('path').attr('d', 'M0,-5L10,0L0,5')
         .attr('fill', ec(et)).attr('opacity', 0.6)
     })
 
-    // Single <g> — zoom target
     const g = svg.append('g').attr('class', 'topo-root')
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -165,7 +268,7 @@ export default function TopologyGraph({
       ),
     )
 
-    // ── Sim data ──────────────────────────────────────────────────────────
+    // ── Sim data ────────────────────────────────────────────────────────────
     const nodeIds    = new Set(nodes.map((n) => n.id))
     const validEdges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
 
@@ -181,7 +284,7 @@ export default function TopologyGraph({
       source: e.source, target: e.target, relType: e.type,
     }))
 
-    // ── Simulation ────────────────────────────────────────────────────────
+    // ── Simulation ──────────────────────────────────────────────────────────
     const sim = d3.forceSimulation<SimNode>(simNodes)
       .force('link',
         d3.forceLink<SimNode, SimLink>(simLinks)
@@ -196,7 +299,7 @@ export default function TopologyGraph({
       .alphaDecay(0.02)
     simRef.current = sim
 
-    // ── Edges ─────────────────────────────────────────────────────────────
+    // ── Edges ───────────────────────────────────────────────────────────────
     const linkEl = g.append('g').attr('class', 'links')
       .selectAll<SVGLineElement, SimLink>('line')
       .data(simLinks).enter().append('line')
@@ -215,13 +318,12 @@ export default function TopologyGraph({
       .style('display', 'none')
       .text((d) => d.relType.replace(/_/g, ' '))
 
-    // ── Nodes ─────────────────────────────────────────────────────────────
+    // ── Nodes ────────────────────────────────────────────────────────────────
     const nodeEl = g.append('g').attr('class', 'nodes')
       .selectAll<SVGGElement, SimNode>('g')
       .data(simNodes).enter().append('g')
       .attr('cursor', 'pointer')
 
-    // Store for highlight effect
     linkElRef.current = linkEl as unknown as LinkSel
     nodeElRef.current = nodeEl
 
@@ -231,25 +333,33 @@ export default function TopologyGraph({
       .attr('r', r + 6).attr('fill', 'none')
       .attr('stroke', '#dc2626').attr('stroke-width', 2).attr('pointer-events', 'none')
 
-    // Layer 2: change ring — r+4, visible even when incident ring is present
+    // Layer 2: change ring — r+4
     nodeEl.filter((d) => d.changeCount > 0).append('circle')
       .attr('class', 'topo-pulse-change')
       .attr('r', r + 4).attr('fill', 'none')
       .attr('stroke', '#f97316').attr('stroke-width', 1.5).attr('pointer-events', 'none')
 
-    // Layer 3: root selection ring — r+2, inside change/incident rings
+    // Layer 3: root selection ring — r+2
     nodeEl.filter((d) => d.id === rootNodeId).append('circle')
       .attr('r', r + 2).attr('fill', 'none')
       .attr('stroke', '#ea580c').attr('stroke-width', 2.5).attr('pointer-events', 'none')
       .attr('filter', 'drop-shadow(0 3px 10px rgba(0,0,0,.25))')
 
-    // Layer 4 (innermost): the node itself — always r, colored by type
+    // Layer 4 (innermost): white bg circle with colored border
     nodeEl.append('circle')
-      .attr('r',      r)
-      .attr('fill',   (d) => d.status === 'inactive' ? '#e5e7eb' : nc(d.type))
-      .attr('stroke', (d) => { const c = nc(d.type); return d3.color(c)?.darker(0.5)?.toString() ?? c })
-      .attr('stroke-width', 1.5)
+      .attr('class', 'node-bg')
+      .attr('r', r)
+      .attr('fill', (d) => d.status === 'inactive' ? '#f8fafc' : '#ffffff')
+      .attr('stroke', (d) => nodeColor(d.type))
+      .attr('stroke-width', 2.5)
       .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
+
+    // Layer 5: lucide icon centered inside the node
+    nodeEl.each(function(d) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sel = d3.select(this) as any
+      appendLucideIcon(sel, nodeIconKey(d.type), nodeColor(d.type), 18)
+    })
 
     if (rootNodeId) {
       nodeEl.filter((d) => d.id === rootNodeId).append('text')
@@ -270,7 +380,7 @@ export default function TopologyGraph({
       .style('display', showLabels ? 'block' : 'none')
       .text((d) => d.name.length > 12 ? d.name.slice(0, 11) + '…' : d.name)
 
-    // ── Interactions ──────────────────────────────────────────────────────
+    // ── Interactions ─────────────────────────────────────────────────────────
     linkEl
       .on('mouseover', function(_e, d) {
         d3.select(this).attr('stroke-opacity', 0.9).attr('stroke-width', 2)
@@ -287,7 +397,7 @@ export default function TopologyGraph({
     nodeEl
       .on('click', (_e, d) => onNodeClick(d))
       .on('mouseover', function(_e, d) {
-        d3.select(this).select('circle').transition().duration(120)
+        d3.select(this).select<SVGCircleElement>('.node-bg').transition().duration(120)
           .attr('r', r * 1.3)
         const conn = new Set<string>([d.id])
         simLinks.forEach((l) => {
@@ -301,8 +411,8 @@ export default function TopologyGraph({
           .attr('stroke-width', (l) =>
             nid(l.source) === d.id || nid(l.target) === d.id ? 2 : 1)
       })
-      .on('mouseout', function(_e, _d) {
-        d3.select(this).select('circle').transition().duration(120)
+      .on('mouseout', function() {
+        d3.select(this).select<SVGCircleElement>('.node-bg').transition().duration(120)
           .attr('r', r)
         nodeEl.style('opacity', 1)
         linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
@@ -318,8 +428,7 @@ export default function TopologyGraph({
       if (d.id !== rootNodeId) { d.fx = null; d.fy = null }
     })
 
-    // ── Tick ──────────────────────────────────────────────────────────────
-    // Clips each line endpoint to the node border (+2px gap) instead of center.
+    // ── Tick ─────────────────────────────────────────────────────────────────
     function linkEndpoints(d: SimLink): { x1: number; y1: number; x2: number; y2: number } {
       if (typeof d.source !== 'object' || typeof d.target !== 'object')
         return { x1: 0, y1: 0, x2: 0, y2: 0 }
@@ -328,7 +437,7 @@ export default function TopologyGraph({
       const dx = tx - sx, dy = ty - sy
       const dist = Math.sqrt(dx * dx + dy * dy)
       if (dist === 0) return { x1: sx, y1: sy, x2: tx, y2: ty }
-      const sr = r + 2   // radius + gap
+      const sr = r + 2
       const tr = r + 2
       return {
         x1: sx + (dx / dist) * sr,
@@ -360,21 +469,15 @@ export default function TopologyGraph({
       )
     })
 
-    // ── STEP 3: cleanup — physically remove the <svg> from the DOM ────────
     return () => {
-      if (simRef.current) {
-        simRef.current.stop()
-        simRef.current = null
-      }
-      while (container.firstChild) {
-        container.removeChild(container.firstChild)
-      }
+      if (simRef.current) { simRef.current.stop(); simRef.current = null }
+      while (container.firstChild) { container.removeChild(container.firstChild) }
       nodeElRef.current = null
       linkElRef.current = null
     }
-  }, [snap])   // ← single stable dep
+  }, [snap])
 
-  // ── Highlight effect (no rebuild, just style tweaks) ──────────────────────
+  // ── Highlight effect (no rebuild) ─────────────────────────────────────────
   useEffect(() => {
     const nodeEl = nodeElRef.current
     const linkEl = linkElRef.current
@@ -382,7 +485,9 @@ export default function TopologyGraph({
 
     if (!highlightNodeId) {
       nodeEl.style('opacity', 1)
-      nodeEl.select('circle:first-child').attr('stroke-width', 1.5)
+      nodeEl.select<SVGCircleElement>('.node-bg')
+        .attr('stroke-width', 2.5)
+        .attr('stroke', null)   // restore to data-bound stroke handled by D3
       linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
       return
     }
@@ -401,9 +506,10 @@ export default function TopologyGraph({
     })
 
     nodeEl.style('opacity', (n) => connected.has(n.id) ? 1 : 0.08)
-    nodeEl.select('circle:first-child')
-      .attr('stroke-width', (n) => n.id === highlightNodeId ? 4 : 1.5)
-      .attr('r',            (n) => n.id === highlightNodeId ? r * 1.5 : r)
+    nodeEl.select<SVGCircleElement>('.node-bg')
+      .attr('stroke-width', (n) => n.id === highlightNodeId ? 4 : 2.5)
+      .attr('stroke', (n) => n.id === highlightNodeId ? '#f97316' : null)
+      .attr('r', (n) => n.id === highlightNodeId ? r * 1.5 : r)
     linkEl
       .attr('stroke-opacity', (l) =>
         nid(l.source) === highlightNodeId || nid(l.target) === highlightNodeId ? 0.85 : 0.06)
@@ -419,21 +525,58 @@ export default function TopologyGraph({
   )
 }
 
-// ── Legend ──────────────────────────────────────────────────────────────────
+// ── Legend ───────────────────────────────────────────────────────────────────
 
-// Converts "database_instance" → "Database Instance", "DEPENDS_ON" → "Depends On"
 function typeLabel(t: string): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 interface LegendProps {
-  nodes: TopologyNode[]
-  edges: TopologyEdge[]
+  nodes:    TopologyNode[]
+  edges:    TopologyEdge[]
+  ciTypes?: CITypeMeta[]
 }
 
-export function TopologyLegend({ nodes, edges }: LegendProps) {
+// Mini icon SVG for legend — renders lucide icon paths inline
+function LegendIconSvg({ iconKey, color }: { iconKey: string; color: string }) {
+  const nodes = ICON_NODES[iconKey] ?? ICON_NODES['box']!
+  // 16×16 container, icon scaled from 24→11 centered inside 16×16 circle (cx=8,cy=8)
+  const scale  = 11 / 24
+  const offset = 8 - (11 / 2)
+  return (
+    <svg width={16} height={16}>
+      <circle cx={8} cy={8} r={7} fill="white" stroke={color} strokeWidth={1.5} />
+      <g
+        transform={`translate(${offset},${offset}) scale(${scale})`}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {nodes.map(([tag, attrs], i) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const Tag = tag as any
+          return <Tag key={i} {...attrs} />
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
   const presentNodeTypes = [...new Set(nodes.map((n) => n.type))].sort()
   const presentEdgeTypes = [...new Set(edges.map((e) => e.type))].sort()
+
+  // Build lookup from ciTypes
+  const ciTypeMap = new Map<string, { icon: string; color: string }>()
+  for (const ct of (ciTypes ?? [])) {
+    ciTypeMap.set(normalize(ct.name), { icon: ct.icon, color: ct.color })
+  }
+  const nodeColor  = (type: string) =>
+    ciTypeMap.get(normalize(type))?.color ?? NODE_COLOR_FALLBACK[type.toLowerCase()] ?? '#94a3b8'
+  const nodeIconKey = (type: string) =>
+    ciTypeMap.get(normalize(type))?.icon ?? 'box'
 
   return (
     <div style={{
@@ -451,7 +594,7 @@ export function TopologyLegend({ nodes, edges }: LegendProps) {
           <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>NODI</div>
           {presentNodeTypes.map((type) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <svg width={16} height={16}><circle cx={8} cy={8} r={6} fill={nc(type)} /></svg>
+              <LegendIconSvg iconKey={nodeIconKey(type)} color={nodeColor(type)} />
               <span style={{ color: 'var(--color-slate)' }}>{typeLabel(type)}</span>
             </div>
           ))}

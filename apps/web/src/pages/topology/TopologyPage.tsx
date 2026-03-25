@@ -24,6 +24,8 @@ interface CIListData {
 interface CITypeItem {
   name:  string
   label: string
+  icon:  string
+  color: string
 }
 
 interface Filters {
@@ -280,10 +282,11 @@ export function TopologyPage() {
               showLabels={showLabels}
               highlightNodeId={focusNodeId}
               rootNodeId={focusNodeId}
+              ciTypes={ciTypeOptions}
             />
           )}
 
-          <TopologyLegend nodes={nodes} edges={edges} />
+          <TopologyLegend nodes={nodes} edges={edges} ciTypes={ciTypeOptions} />
 
           {/* Truncation warning */}
           {data?.topology.truncated && (
