@@ -12,7 +12,7 @@ import {
   GitBranch,
   Users,
   BarChart2,
-  Sparkles,
+  BrainCircuit,
   LayoutGrid,
   ScrollText,
   ChevronLeft,
@@ -39,7 +39,7 @@ const NAV_ITEMS = [
 ]
 
 const REPORTING_ITEMS = [
-  { to: '/reports',        label: 'Analisi ITSM',   icon: Sparkles    },
+  { to: '/reports',        label: 'Analisi ITSM',   icon: BrainCircuit },
   { to: '/custom-reports', label: 'Report Builder',  icon: LayoutGrid  },
 ]
 
