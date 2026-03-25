@@ -345,24 +345,17 @@ export default function TopologyGraph({
       appendLucideIcon(sel, nodeIconKey(d.type), iconColor, 18)
     })
 
-    if (rootNodeId) {
-      nodeEl.filter((d) => d.id === rootNodeId).append('text')
-        .attr('text-anchor', 'middle').attr('dominant-baseline', 'hanging')
-        .attr('y', r * 1.6 + 5)
-        .attr('font-size', 11).attr('font-weight', 700)
-        .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
-        .attr('fill', 'var(--color-slate-dark)').attr('pointer-events', 'none')
-        .text((d) => d.name)
-    }
-
     nodeEl.append('text')
       .attr('class', 'node-label')
       .attr('text-anchor', 'middle').attr('dominant-baseline', 'hanging')
-      .attr('y', r + 4).attr('font-size', 10)
+      .attr('y', (d) => d.id === rootNodeId ? r * 1.6 + 5 : r + 4)
+      .attr('font-size', (d) => d.id === rootNodeId ? 11 : 10)
+      .attr('font-weight', (d) => d.id === rootNodeId ? 700 : 400)
       .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
-      .attr('fill', 'var(--color-slate)').attr('pointer-events', 'none')
+      .attr('fill', (d) => d.id === rootNodeId ? 'var(--color-slate-dark)' : 'var(--color-slate)')
+      .attr('pointer-events', 'none')
       .style('display', showLabels ? 'block' : 'none')
-      .text((d) => d.name.length > 12 ? d.name.slice(0, 11) + '…' : d.name)
+      .text((d) => d.id === rootNodeId ? d.name : (d.name.length > 12 ? d.name.slice(0, 11) + '…' : d.name))
 
     // ── Interactions ─────────────────────────────────────────────────────────
     linkEl
