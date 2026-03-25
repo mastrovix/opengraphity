@@ -324,11 +324,9 @@ export default function TopologyGraph({
       .attr('r', r + 4).attr('fill', 'none')
       .attr('stroke', '#0284c7').attr('stroke-width', 1.5).attr('pointer-events', 'none')
 
-    // Layer 3: root selection ring — r+2
-    nodeEl.filter((d) => d.id === rootNodeId).append('circle')
-      .attr('r', r + 2).attr('fill', 'none')
-      .attr('stroke', '#ea580c').attr('stroke-width', 2.5).attr('pointer-events', 'none')
-      .attr('filter', 'drop-shadow(0 3px 10px rgba(0,0,0,.25))')
+    // Layer 3 (removed): root selection ring was #ea580c at r+2 — removed because
+    // it was visually indistinguishable from the change ring and confused users.
+    // The highlight effect (stroke NODE_SELECTED_COLOR on .node-bg) handles focus emphasis.
 
     // Layer 4 (innermost): white bg circle — no border when rings are visible
     nodeEl.append('circle')
