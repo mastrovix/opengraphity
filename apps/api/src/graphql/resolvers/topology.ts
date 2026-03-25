@@ -136,7 +136,7 @@ export const topologyResolvers = {
                     AND ($status IS NULL OR ci.status = $status)))
             OPTIONAL MATCH (i:Incident)-[:AFFECTED_BY]->(ci)
               WHERE i.tenant_id = $tenantId
-                AND i.status NOT IN ['resolved', 'closed']
+                AND NOT i.status IN ['resolved', 'closed']
             OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
               WHERE ch.tenant_id = $tenantId
                 AND NOT ch.status IN ['rejected', 'failed']
@@ -203,7 +203,7 @@ export const topologyResolvers = {
             ${extraWhere}
           OPTIONAL MATCH (i:Incident)-[:AFFECTED_BY]->(ci)
             WHERE i.tenant_id = $tenantId
-              AND i.status NOT IN ['resolved', 'closed']
+              AND NOT i.status IN ['resolved', 'closed']
           OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
             WHERE ch.tenant_id = $tenantId
               AND NOT ch.status IN ['rejected', 'failed']
