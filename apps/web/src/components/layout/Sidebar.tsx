@@ -9,8 +9,10 @@ import {
   GitPullRequest,
   Inbox,
   ListChecks,
+  SlidersHorizontal,
+  Boxes,
+  Route,
   Server,
-  GitBranch,
   Users,
   UsersRound,
   User,
@@ -21,7 +23,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Layers,
   Settings,
   ShieldAlert,
   Share2,
@@ -32,9 +33,13 @@ import { CIIcon } from '@/lib/ciIcon'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/workflow',  label: 'Workflow',  icon: GitBranch },
   { to: '/anomalies', label: 'Anomalie',  icon: ShieldAlert },
   { to: '/topology',  label: 'Topology',  icon: Share2 },
+]
+
+const CONFIG_ITEMS = [
+  { to: '/settings/ci-types', label: 'CI Type Designer',  icon: Boxes },
+  { to: '/workflow',          label: 'Workflow Designer', icon: Route },
 ]
 
 const ITSM_ITEMS = [
@@ -61,6 +66,9 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { pathname } = useLocation()
+  const [configOpen, setConfigOpen] = useState(
+    () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/workflow'),
+  )
   const [itsmOpen, setItsmOpen] = useState(true)
   const [cmdbOpen, setCmdbOpen] = useState(true)
   const [teamsOpen, setTeamsOpen] = useState(false)
@@ -114,6 +122,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     marginBottom:   1,
   })
 
+  const configActive    = CONFIG_ITEMS.some(({ to }) => pathname.startsWith(to))
   const itsmActive      = ITSM_ITEMS.some(({ to }) => pathname.startsWith(to))
   const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
 
@@ -480,6 +489,71 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             )}
           </div>
         )}
+        {/* Configuration — collapsible, default collassato */}
+        {collapsed ? (
+          <NavLink
+            to="/workflow"
+            title="Configuration"
+            style={navItemStyle(configActive, true)}
+            onMouseEnter={(e) => {
+              if (!configActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
+                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!configActive) {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
+              }
+            }}
+          >
+            <SlidersHorizontal size={16} style={{ flexShrink: 0, color: configActive ? 'var(--color-brand)' : 'inherit' }} />
+          </NavLink>
+        ) : (
+          <div style={{ marginBottom: 2 }}>
+            <div
+              onClick={() => setConfigOpen((p) => !p)}
+              style={{
+                display:         'flex',
+                alignItems:      'center',
+                justifyContent:  'space-between',
+                padding:         '7px 10px',
+                borderRadius:    6,
+                cursor:          'pointer',
+                backgroundColor: configActive ? 'rgba(2,132,199,0.12)' : 'transparent',
+                borderLeft:      configActive ? '2px solid #0284c7' : '2px solid transparent',
+                transition:      'background 150ms',
+                margin:          '1px 0',
+              }}
+              onMouseEnter={(e) => { if (!configActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+              onMouseLeave={(e) => { if (!configActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <SlidersHorizontal size={16} style={{ flexShrink: 0, color: configActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <span style={{ fontSize: 13, fontWeight: configActive ? 600 : 400, color: configActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                  Configuration
+                </span>
+              </div>
+              {configOpen
+                ? <ChevronDown size={12} color="var(--color-slate-light)" />
+                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+            </div>
+            {configOpen && (
+              <div style={{ paddingLeft: 28, marginTop: 2 }}>
+                {CONFIG_ITEMS.map(({ to, label, icon: Icon }) => (
+                  <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Icon size={12} />
+                      {label}
+                    </span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Admin items + Settings */}
         {isAdmin && (
           <>
@@ -572,12 +646,6 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                     </NavLink>
                     <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
                       <span>Profilo</span>
-                    </NavLink>
-                    <NavLink to="/settings/ci-types" style={({ isActive }) => subItemStyle(isActive)}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Layers size={12} color={pathname === '/settings/ci-types' ? 'var(--color-brand)' : 'var(--color-slate)'} />
-                        Tipi CI
-                      </span>
                     </NavLink>
                   </div>
                 )}
