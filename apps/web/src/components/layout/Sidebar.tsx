@@ -11,7 +11,7 @@ import {
   Server,
   GitBranch,
   Users,
-  FileBarChart,
+  BarChart2,
   ScrollText,
   ChevronLeft,
   ChevronRight,
@@ -232,7 +232,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               }
             }}
           >
-            <FileBarChart size={16} style={{ flexShrink: 0, color: reportingActive ? 'var(--color-brand)' : 'inherit' }} />
+            <BarChart2 size={16} style={{ flexShrink: 0, color: reportingActive ? 'var(--color-brand)' : 'inherit' }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -254,7 +254,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { if (!reportingActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FileBarChart size={16} style={{ flexShrink: 0, color: reportingActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <BarChart2 size={16} style={{ flexShrink: 0, color: reportingActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
                 <span style={{ fontSize: 13, fontWeight: reportingActive ? 600 : 400, color: reportingActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   Reporting
                 </span>
