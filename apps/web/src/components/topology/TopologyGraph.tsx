@@ -31,12 +31,7 @@ interface Props {
 
 // ── Look-up tables ───────────────────────────────────────────────────────────
 
-const NODE_RADIUS: Record<string, number> = {
-  server: 18, application: 14, database: 14, database_instance: 12,
-  databaseinstance: 12, ssl_certificate: 10, sslcertificate: 10,
-  certificate: 10, network_device: 13,
-  storage: 12, api_endpoint: 12, microservice: 14,
-}
+const NODE_RADIUS = 12
 const NODE_COLOR: Record<string, string> = {
   server:            '#64748b',
   application:       '#0284c7',
@@ -56,7 +51,7 @@ const EDGE_DIST: Record<string, number> = {
   HOSTED_ON: 80, DEPENDS_ON: 120, CONNECTS_TO: 100,
 }
 
-const r   = (t: string) => NODE_RADIUS[t.toLowerCase()] ?? 13
+const r   = NODE_RADIUS
 const nc  = (t: string) => NODE_COLOR[t.toLowerCase()]  ?? '#94a3b8'
 const ec  = (t: string) => EDGE_COLOR[t]                ?? '#94a3b8'
 const ed  = (t: string) => EDGE_DIST[t]                 ?? 110
@@ -197,7 +192,7 @@ export default function TopologyGraph({
       )
       .force('charge',    d3.forceManyBody<SimNode>().strength(-300))
       .force('center',    d3.forceCenter(W / 2, H / 2))
-      .force('collision', d3.forceCollide<SimNode>((d) => r(d.type) + 8))
+      .force('collision', d3.forceCollide<SimNode>(() => r + 8))
       .alphaDecay(0.02)
     simRef.current = sim
 
@@ -231,7 +226,7 @@ export default function TopologyGraph({
     nodeElRef.current = nodeEl
 
     nodeEl.append('circle')
-      .attr('r',      (d) => d.id === rootNodeId ? r(d.type) + 4 : r(d.type))
+      .attr('r',      (d) => d.id === rootNodeId ? r + 4 : r)
       .attr('fill',   (d) => d.id === rootNodeId ? '#f97316'
                            : d.status === 'inactive' ? '#e5e7eb' : nc(d.type))
       .attr('stroke', (d) => {
@@ -247,7 +242,7 @@ export default function TopologyGraph({
     if (rootNodeId) {
       nodeEl.filter((d) => d.id === rootNodeId).append('text')
         .attr('text-anchor', 'middle').attr('dominant-baseline', 'hanging')
-        .attr('y', (d) => r(d.type) * 1.6 + 5)
+        .attr('y', r * 1.6 + 5)
         .attr('font-size', 11).attr('font-weight', 700)
         .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
         .attr('fill', 'var(--color-slate-dark)').attr('pointer-events', 'none')
@@ -256,18 +251,18 @@ export default function TopologyGraph({
 
     nodeEl.filter((d) => d.incidentCount > 0).append('circle')
       .attr('class', 'topo-pulse-incident')
-      .attr('r', (d) => r(d.type) + 5).attr('fill', 'none')
+      .attr('r', r + 5).attr('fill', 'none')
       .attr('stroke', '#dc2626').attr('stroke-width', 2).attr('pointer-events', 'none')
 
     nodeEl.filter((d) => d.changeCount > 0 && d.incidentCount === 0).append('circle')
       .attr('class', 'topo-pulse-change')
-      .attr('r', (d) => r(d.type) + 5).attr('fill', 'none')
+      .attr('r', r + 5).attr('fill', 'none')
       .attr('stroke', '#f97316').attr('stroke-width', 1.5).attr('pointer-events', 'none')
 
     nodeEl.append('text')
       .attr('class', 'node-label')
       .attr('text-anchor', 'middle').attr('dominant-baseline', 'hanging')
-      .attr('y', (d) => r(d.type) + 4).attr('font-size', 10)
+      .attr('y', r + 4).attr('font-size', 10)
       .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
       .attr('fill', 'var(--color-slate)').attr('pointer-events', 'none')
       .style('display', showLabels ? 'block' : 'none')
@@ -291,7 +286,7 @@ export default function TopologyGraph({
       .on('click', (_e, d) => onNodeClick(d))
       .on('mouseover', function(_e, d) {
         d3.select(this).select('circle').transition().duration(120)
-          .attr('r', r(d.type) * 1.3)
+          .attr('r', r * 1.3)
         const conn = new Set<string>([d.id])
         simLinks.forEach((l) => {
           if (nid(l.source) === d.id) conn.add(nid(l.target))
@@ -306,7 +301,7 @@ export default function TopologyGraph({
       })
       .on('mouseout', function(_e, d) {
         d3.select(this).select('circle').transition().duration(120)
-          .attr('r', d.id === rootNodeId ? r(d.type) + 4 : r(d.type))
+          .attr('r', d.id === rootNodeId ? r + 4 : r)
         nodeEl.style('opacity', 1)
         linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
       })
@@ -331,8 +326,8 @@ export default function TopologyGraph({
       const dx = tx - sx, dy = ty - sy
       const dist = Math.sqrt(dx * dx + dy * dy)
       if (dist === 0) return { x1: sx, y1: sy, x2: tx, y2: ty }
-      const sr = r(s.type) + 2   // source radius + gap
-      const tr = r(t.type) + 2   // target radius + gap
+      const sr = r + 2   // radius + gap
+      const tr = r + 2
       return {
         x1: sx + (dx / dist) * sr,
         y1: sy + (dy / dist) * sr,
@@ -406,7 +401,7 @@ export default function TopologyGraph({
     nodeEl.style('opacity', (n) => connected.has(n.id) ? 1 : 0.08)
     nodeEl.select('circle:first-child')
       .attr('stroke-width', (n) => n.id === highlightNodeId ? 4 : 1.5)
-      .attr('r',            (n) => n.id === highlightNodeId ? r(n.type) * 1.5 : r(n.type))
+      .attr('r',            (n) => n.id === highlightNodeId ? r * 1.5 : r)
     linkEl
       .attr('stroke-opacity', (l) =>
         nid(l.source) === highlightNodeId || nid(l.target) === highlightNodeId ? 0.85 : 0.06)
