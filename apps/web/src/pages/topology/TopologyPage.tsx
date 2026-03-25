@@ -283,7 +283,7 @@ export function TopologyPage() {
             />
           )}
 
-          <TopologyLegend />
+          <TopologyLegend nodes={nodes} edges={edges} />
 
           {/* Truncation warning */}
           {data?.topology.truncated && (

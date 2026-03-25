@@ -34,15 +34,15 @@ interface Props {
 const NODE_RADIUS: Record<string, number> = {
   server: 18, application: 14, database: 14, database_instance: 12,
   databaseinstance: 12, ssl_certificate: 10, sslcertificate: 10,
-  certificate: 10, virtual_machine: 14, network_device: 13,
-  storage: 12, cloud_service: 13, api_endpoint: 12, microservice: 14,
+  certificate: 10, network_device: 13,
+  storage: 12, api_endpoint: 12, microservice: 14,
 }
 const NODE_COLOR: Record<string, string> = {
   server: '#64748b', application: '#0284c7', database: '#059669',
   database_instance: '#059669', databaseinstance: '#059669',
   ssl_certificate: '#d97706', sslcertificate: '#d97706', certificate: '#d97706',
-  virtual_machine: '#7c3aed', network_device: '#0891b2', storage: '#94a3b8',
-  cloud_service: '#0891b2', api_endpoint: '#0891b2', microservice: '#0284c7',
+  network_device: '#0891b2', storage: '#94a3b8',
+  api_endpoint: '#0891b2', microservice: '#0284c7',
 }
 const EDGE_COLOR: Record<string, string> = {
   DEPENDS_ON: '#0284c7', HOSTED_ON: '#64748b', CONNECTS_TO: '#94a3b8',
@@ -420,22 +420,19 @@ export default function TopologyGraph({
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 
-export function TopologyLegend() {
-  const nodeTypes = [
-    { type: 'server',            label: 'Server' },
-    { type: 'application',       label: 'Application' },
-    { type: 'database',          label: 'Database' },
-    { type: 'database_instance', label: 'DB Instance' },
-    { type: 'ssl_certificate',   label: 'Certificate' },
-    { type: 'virtual_machine',   label: 'VM' },
-    { type: 'cloud_service',     label: 'Cloud Service' },
-  ]
-  const edgeTypes = [
-    { type: 'DEPENDS_ON',  label: 'Depends On' },
-    { type: 'HOSTED_ON',   label: 'Hosted On' },
-    { type: 'CONNECTS_TO', label: 'Connects To' },
-    { type: 'USES',        label: 'Uses' },
-  ]
+// Converts "database_instance" → "Database Instance", "DEPENDS_ON" → "Depends On"
+function typeLabel(t: string): string {
+  return t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+interface LegendProps {
+  nodes: TopologyNode[]
+  edges: TopologyEdge[]
+}
+
+export function TopologyLegend({ nodes, edges }: LegendProps) {
+  const presentNodeTypes = [...new Set(nodes.map((n) => n.type))].sort()
+  const presentEdgeTypes = [...new Set(edges.map((e) => e.type))].sort()
 
   return (
     <div style={{
@@ -448,27 +445,31 @@ export function TopologyLegend() {
     }}>
       <div style={{ fontWeight: 700, color: 'var(--color-slate-dark)', marginBottom: 8 }}>Legenda</div>
 
-      <div style={{ marginBottom: 6 }}>
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>NODI</div>
-        {nodeTypes.map(({ type, label }) => (
-          <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <svg width={16} height={16}><circle cx={8} cy={8} r={6} fill={nc(type)} /></svg>
-            <span style={{ color: 'var(--color-slate)' }}>{label}</span>
-          </div>
-        ))}
-      </div>
+      {presentNodeTypes.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>NODI</div>
+          {presentNodeTypes.map((type) => (
+            <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+              <svg width={16} height={16}><circle cx={8} cy={8} r={6} fill={nc(type)} /></svg>
+              <span style={{ color: 'var(--color-slate)' }}>{typeLabel(type)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
-      <div style={{ marginBottom: 6 }}>
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>RELAZIONI</div>
-        {edgeTypes.map(({ type, label }) => (
-          <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <svg width={20} height={8}>
-              <line x1={0} y1={4} x2={20} y2={4} stroke={ec(type)} strokeWidth={2} strokeOpacity={0.7} />
-            </svg>
-            <span style={{ color: 'var(--color-slate)' }}>{label}</span>
-          </div>
-        ))}
-      </div>
+      {presentEdgeTypes.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>RELAZIONI</div>
+          {presentEdgeTypes.map((type) => (
+            <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+              <svg width={20} height={8}>
+                <line x1={0} y1={4} x2={20} y2={4} stroke={ec(type)} strokeWidth={2} strokeOpacity={0.7} />
+              </svg>
+              <span style={{ color: 'var(--color-slate)' }}>{typeLabel(type)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div>
         <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>SEGNALI</div>
