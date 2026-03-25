@@ -37,25 +37,13 @@ interface Props {
   ciTypes?:         CITypeMeta[]
 }
 
-// ── Fallback color table (used when ciTypes prop has no match) ────────────────
+// ── Color constants ───────────────────────────────────────────────────────────
 
-const NODE_RADIUS = 16
-const NODE_COLOR_FALLBACK: Record<string, string> = {
-  server:            '#64748b',
-  application:       '#0284c7',
-  database:          '#16a34a',
-  database_instance: '#8b5cf6', databaseinstance: '#8b5cf6',
-  ssl_certificate:   '#f97316', sslcertificate: '#f97316', certificate: '#f97316',
-  network_device:    '#0891b2',
-  storage:           '#94a3b8',
-  api_endpoint:      '#0891b2',
-  microservice:      '#0284c7',
-}
+const NODE_RADIUS  = 16
+const NODE_COLOR   = '#64748b'   // ardesia — uguale per tutti i tipi CI
+const EDGE_COLOR   = '#0284c7'   // cyan — uguale per tutti i tipi relazione
+const NODE_SELECTED_COLOR = '#f97316'  // arancione — nodo evidenziato
 
-const EDGE_COLOR: Record<string, string> = {
-  DEPENDS_ON: '#0284c7', HOSTED_ON: '#64748b', CONNECTS_TO: '#94a3b8',
-  RUNS_ON: '#64748b', USES: '#0284c7', CONTAINS: '#059669',
-}
 const EDGE_DIST: Record<string, number> = {
   HOSTED_ON: 80, DEPENDS_ON: 120, CONNECTS_TO: 100,
 }
@@ -133,8 +121,8 @@ function normalize(s: string): string {
 }
 
 const r   = NODE_RADIUS
-const ec  = (t: string) => EDGE_COLOR[t]   ?? '#94a3b8'
-const ed  = (t: string) => EDGE_DIST[t]    ?? 110
+const ec  = () => EDGE_COLOR
+const ed  = (t: string) => EDGE_DIST[t] ?? 110
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const nid = (x: any)   => typeof x === 'object' ? (x as { id: string }).id : String(x)
 
@@ -219,15 +207,12 @@ export default function TopologyGraph({
     const { nodes, edges, showLabels, rootNodeId, onNodeClick, ciTypes } = snap
     if (nodes.length === 0) return
 
-    // Build ciType lookup from prop
-    const ciTypeMap = new Map<string, { icon: string; color: string }>()
+    // Build ciType icon lookup from prop (color is uniform — only icon varies)
+    const ciIconMap = new Map<string, string>()
     for (const ct of (ciTypes ?? [])) {
-      ciTypeMap.set(normalize(ct.name), { icon: ct.icon, color: ct.color })
+      ciIconMap.set(normalize(ct.name), ct.icon)
     }
-    const nodeColor = (type: string) =>
-      ciTypeMap.get(normalize(type))?.color ?? NODE_COLOR_FALLBACK[type.toLowerCase()] ?? '#94a3b8'
-    const nodeIconKey = (type: string) =>
-      ciTypeMap.get(normalize(type))?.icon ?? 'box'
+    const nodeIconKey = (type: string) => ciIconMap.get(normalize(type)) ?? 'box'
 
     ensurePulseStyle()
 
@@ -247,7 +232,7 @@ export default function TopologyGraph({
         .attr('viewBox', '0 -5 10 10').attr('refX', 10).attr('refY', 0)
         .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
         .append('path').attr('d', 'M0,-5L10,0L0,5')
-        .attr('fill', ec(et)).attr('opacity', 0.6)
+        .attr('fill', ec()).attr('opacity', 0.6)
     })
 
     const g = svg.append('g').attr('class', 'topo-root')
@@ -303,7 +288,7 @@ export default function TopologyGraph({
     const linkEl = g.append('g').attr('class', 'links')
       .selectAll<SVGLineElement, SimLink>('line')
       .data(simLinks).enter().append('line')
-      .attr('stroke',         (d) => ec(d.relType))
+      .attr('stroke',         ec())
       .attr('stroke-opacity', 0.5)
       .attr('stroke-width',   1.5)
       .attr('marker-end',     (d) => `url(#arrow-${d.relType})`)
@@ -345,20 +330,20 @@ export default function TopologyGraph({
       .attr('stroke', '#ea580c').attr('stroke-width', 2.5).attr('pointer-events', 'none')
       .attr('filter', 'drop-shadow(0 3px 10px rgba(0,0,0,.25))')
 
-    // Layer 4 (innermost): white bg circle with colored border
+    // Layer 4 (innermost): white bg circle with slate border
     nodeEl.append('circle')
       .attr('class', 'node-bg')
       .attr('r', r)
-      .attr('fill', (d) => d.status === 'inactive' ? '#f8fafc' : '#ffffff')
-      .attr('stroke', (d) => nodeColor(d.type))
+      .attr('fill', '#ffffff')
+      .attr('stroke', NODE_COLOR)
       .attr('stroke-width', 2.5)
       .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
 
-    // Layer 5: lucide icon centered inside the node
+    // Layer 5: lucide icon centered inside the node (always slate)
     nodeEl.each(function(d) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sel = d3.select(this) as any
-      appendLucideIcon(sel, nodeIconKey(d.type), nodeColor(d.type), 18)
+      appendLucideIcon(sel, nodeIconKey(d.type), NODE_COLOR, 18)
     })
 
     if (rootNodeId) {
@@ -487,7 +472,8 @@ export default function TopologyGraph({
       nodeEl.style('opacity', 1)
       nodeEl.select<SVGCircleElement>('.node-bg')
         .attr('stroke-width', 2.5)
-        .attr('stroke', null)   // restore to data-bound stroke handled by D3
+        .attr('stroke', NODE_COLOR)
+        .attr('r', r)
       linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
       return
     }
@@ -508,7 +494,7 @@ export default function TopologyGraph({
     nodeEl.style('opacity', (n) => connected.has(n.id) ? 1 : 0.08)
     nodeEl.select<SVGCircleElement>('.node-bg')
       .attr('stroke-width', (n) => n.id === highlightNodeId ? 4 : 2.5)
-      .attr('stroke', (n) => n.id === highlightNodeId ? '#f97316' : null)
+      .attr('stroke', (n) => n.id === highlightNodeId ? NODE_SELECTED_COLOR : NODE_COLOR)
       .attr('r', (n) => n.id === highlightNodeId ? r * 1.5 : r)
     linkEl
       .attr('stroke-opacity', (l) =>
@@ -568,15 +554,12 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
   const presentNodeTypes = [...new Set(nodes.map((n) => n.type))].sort()
   const presentEdgeTypes = [...new Set(edges.map((e) => e.type))].sort()
 
-  // Build lookup from ciTypes
-  const ciTypeMap = new Map<string, { icon: string; color: string }>()
+  // Icon lookup by CI type (color is uniform)
+  const ciIconMap = new Map<string, string>()
   for (const ct of (ciTypes ?? [])) {
-    ciTypeMap.set(normalize(ct.name), { icon: ct.icon, color: ct.color })
+    ciIconMap.set(normalize(ct.name), ct.icon)
   }
-  const nodeColor  = (type: string) =>
-    ciTypeMap.get(normalize(type))?.color ?? NODE_COLOR_FALLBACK[type.toLowerCase()] ?? '#94a3b8'
-  const nodeIconKey = (type: string) =>
-    ciTypeMap.get(normalize(type))?.icon ?? 'box'
+  const nodeIconKey = (type: string) => ciIconMap.get(normalize(type)) ?? 'box'
 
   return (
     <div style={{
@@ -594,7 +577,7 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
           <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>NODI</div>
           {presentNodeTypes.map((type) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <LegendIconSvg iconKey={nodeIconKey(type)} color={nodeColor(type)} />
+              <LegendIconSvg iconKey={nodeIconKey(type)} color={NODE_COLOR} />
               <span style={{ color: 'var(--color-slate)' }}>{typeLabel(type)}</span>
             </div>
           ))}
@@ -607,7 +590,7 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
           {presentEdgeTypes.map((type) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               <svg width={20} height={8}>
-                <line x1={0} y1={4} x2={20} y2={4} stroke={ec(type)} strokeWidth={2} strokeOpacity={0.7} />
+                <line x1={0} y1={4} x2={20} y2={4} stroke={EDGE_COLOR} strokeWidth={2} strokeOpacity={0.7} />
               </svg>
               <span style={{ color: 'var(--color-slate)' }}>{typeLabel(type)}</span>
             </div>
