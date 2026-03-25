@@ -480,79 +480,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             )}
           </div>
         )}
-        {/* Settings — collapsible */}
-        {!collapsed ? (
-          <div style={{ marginBottom: 2 }}>
-            <div
-              onClick={() => setSettingsOpen((p) => !p)}
-              style={{
-                display:         'flex',
-                alignItems:      'center',
-                justifyContent:  'space-between',
-                padding:         '7px 10px',
-                borderRadius:    6,
-                cursor:          'pointer',
-                backgroundColor: settingsActive ? 'rgba(2,132,199,0.12)' : 'transparent',
-                borderLeft:      settingsActive ? '2px solid #0284c7' : '2px solid transparent',
-                transition:      'background 150ms',
-                margin:          '1px 0',
-              }}
-              onMouseEnter={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
-                <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
-                  Settings
-                </span>
-              </div>
-              {settingsOpen
-                ? <ChevronDown size={12} color="var(--color-slate-light)" />
-                : <ChevronRight size={12} color="var(--color-slate-light)" />}
-            </div>
-
-            {settingsOpen && (
-              <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                <NavLink to="/settings/notifications" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Notifiche</span>
-                </NavLink>
-                <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span>Profilo</span>
-                </NavLink>
-                {isAdmin && (
-                  <NavLink to="/settings/ci-types" style={({ isActive }) => subItemStyle(isActive)}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Layers size={12} color={pathname === '/settings/ci-types' ? 'var(--color-brand)' : 'var(--color-slate)'} />
-                      Tipi CI
-                    </span>
-                  </NavLink>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          <NavLink
-            to="/settings/notifications"
-            title="Settings"
-            style={navItemStyle(settingsActive, true)}
-            onMouseEnter={(e) => {
-              if (!settingsActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!settingsActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-              }
-            }}
-          >
-            <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? 'var(--color-brand)' : 'inherit' }} />
-          </NavLink>
-        )}
-
-        {/* Admin items */}
+        {/* Admin items + Settings */}
         {isAdmin && (
           <>
             {!collapsed && (
@@ -586,6 +514,75 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 </NavLink>
               )
             })}
+
+            {/* Settings — collapsible, dentro ADMIN */}
+            {collapsed ? (
+              <NavLink
+                to="/settings/notifications"
+                title="Settings"
+                style={navItemStyle(settingsActive, true)}
+                onMouseEnter={(e) => {
+                  if (!settingsActive) {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
+                    ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!settingsActive) {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+                    ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
+                  }
+                }}
+              >
+                <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? 'var(--color-brand)' : 'inherit' }} />
+              </NavLink>
+            ) : (
+              <div style={{ marginBottom: 2 }}>
+                <div
+                  onClick={() => setSettingsOpen((p) => !p)}
+                  style={{
+                    display:         'flex',
+                    alignItems:      'center',
+                    justifyContent:  'space-between',
+                    padding:         '7px 10px',
+                    borderRadius:    6,
+                    cursor:          'pointer',
+                    backgroundColor: settingsActive ? 'rgba(2,132,199,0.12)' : 'transparent',
+                    borderLeft:      settingsActive ? '2px solid #0284c7' : '2px solid transparent',
+                    transition:      'background 150ms',
+                    margin:          '1px 0',
+                  }}
+                  onMouseEnter={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+                  onMouseLeave={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Settings size={16} style={{ flexShrink: 0, color: settingsActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                    <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                      Settings
+                    </span>
+                  </div>
+                  {settingsOpen
+                    ? <ChevronDown size={12} color="var(--color-slate-light)" />
+                    : <ChevronRight size={12} color="var(--color-slate-light)" />}
+                </div>
+                {settingsOpen && (
+                  <div style={{ paddingLeft: 28, marginTop: 2 }}>
+                    <NavLink to="/settings/notifications" style={({ isActive }) => subItemStyle(isActive)}>
+                      <span>Notifiche</span>
+                    </NavLink>
+                    <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
+                      <span>Profilo</span>
+                    </NavLink>
+                    <NavLink to="/settings/ci-types" style={({ isActive }) => subItemStyle(isActive)}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Layers size={12} color={pathname === '/settings/ci-types' ? 'var(--color-brand)' : 'var(--color-slate)'} />
+                        Tipi CI
+                      </span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </nav>
