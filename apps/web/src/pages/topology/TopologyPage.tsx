@@ -307,7 +307,7 @@ export function TopologyPage() {
             background:  'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)',
             border:      '1px solid #e2e8f0', borderRadius: 6,
             padding:     '5px 12px', fontSize: 12,
-            color:       'var(--color-slate-light)',
+            color:       'var(--color-slate)',
             fontFamily:  "'Plus Jakarta Sans', system-ui, sans-serif",
             transition:  'right 200ms ease',
           }}>
