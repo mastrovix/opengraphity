@@ -330,12 +330,12 @@ export default function TopologyGraph({
       .attr('stroke', '#ea580c').attr('stroke-width', 2.5).attr('pointer-events', 'none')
       .attr('filter', 'drop-shadow(0 3px 10px rgba(0,0,0,.25))')
 
-    // Layer 4 (innermost): white bg circle with slate border
+    // Layer 4 (innermost): white bg circle — no border when rings are visible
     nodeEl.append('circle')
       .attr('class', 'node-bg')
       .attr('r', r)
       .attr('fill', '#ffffff')
-      .attr('stroke', NODE_COLOR)
+      .attr('stroke', (d) => (d.incidentCount > 0 || d.changeCount > 0) ? 'none' : NODE_COLOR)
       .attr('stroke-width', 2.5)
       .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
 
@@ -472,7 +472,7 @@ export default function TopologyGraph({
       nodeEl.style('opacity', 1)
       nodeEl.select<SVGCircleElement>('.node-bg')
         .attr('stroke-width', 2.5)
-        .attr('stroke', NODE_COLOR)
+        .attr('stroke', (n) => (n.incidentCount > 0 || n.changeCount > 0) ? 'none' : NODE_COLOR)
         .attr('r', r)
       linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
       return
@@ -494,7 +494,10 @@ export default function TopologyGraph({
     nodeEl.style('opacity', (n) => connected.has(n.id) ? 1 : 0.08)
     nodeEl.select<SVGCircleElement>('.node-bg')
       .attr('stroke-width', (n) => n.id === highlightNodeId ? 4 : 2.5)
-      .attr('stroke', (n) => n.id === highlightNodeId ? NODE_SELECTED_COLOR : NODE_COLOR)
+      .attr('stroke', (n) => {
+        if (n.id === highlightNodeId) return NODE_SELECTED_COLOR
+        return (n.incidentCount > 0 || n.changeCount > 0) ? 'none' : NODE_COLOR
+      })
       .attr('r', (n) => n.id === highlightNodeId ? r * 1.5 : r)
     linkEl
       .attr('stroke-opacity', (l) =>
