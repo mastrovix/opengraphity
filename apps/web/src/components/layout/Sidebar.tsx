@@ -8,7 +8,7 @@ import {
   Bug,
   GitPullRequest,
   Inbox,
-  Kanban,
+  Ticket,
   Server,
   GitBranch,
   Users,
@@ -242,7 +242,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               }
             }}
           >
-            <Kanban size={16} style={{ flexShrink: 0, color: itsmActive ? 'var(--color-brand)' : 'inherit' }} />
+            <Ticket size={16} style={{ flexShrink: 0, color: itsmActive ? 'var(--color-brand)' : 'inherit' }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -264,7 +264,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => { if (!itsmActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Kanban size={16} style={{ flexShrink: 0, color: itsmActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
+                <Ticket size={16} style={{ flexShrink: 0, color: itsmActive ? 'var(--color-brand)' : 'var(--color-slate)' }} />
                 <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   Processi ITSM
                 </span>
