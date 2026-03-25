@@ -322,7 +322,7 @@ export default function TopologyGraph({
     nodeEl.filter((d) => d.changeCount > 0).append('circle')
       .attr('class', 'topo-pulse-change')
       .attr('r', r + 4).attr('fill', 'none')
-      .attr('stroke', '#f97316').attr('stroke-width', 1.5).attr('pointer-events', 'none')
+      .attr('stroke', '#0284c7').attr('stroke-width', 1.5).attr('pointer-events', 'none')
 
     // Layer 3: root selection ring — r+2
     nodeEl.filter((d) => d.id === rootNodeId).append('circle')
@@ -605,7 +605,7 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
           <span style={{ color: 'var(--color-slate)' }}>Incident attivo</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <svg width={16} height={16}><circle cx={8} cy={8} r={5} fill="none" stroke="#f97316" strokeWidth={1.5} /></svg>
+          <svg width={16} height={16}><circle cx={8} cy={8} r={5} fill="none" stroke="#0284c7" strokeWidth={1.5} /></svg>
           <span style={{ color: 'var(--color-slate)' }}>Change in corso</span>
         </div>
       </div>
