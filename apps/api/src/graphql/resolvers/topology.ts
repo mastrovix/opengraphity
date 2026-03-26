@@ -1,6 +1,7 @@
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
+import { cache } from '../../lib/cache.js'
 
 interface TopologyArgs {
   types?:        string[]
@@ -67,6 +68,10 @@ export const topologyResolvers = {
       args: TopologyArgs,
       ctx: GraphQLContext,
     ) => {
+      const cacheKey = `topology:${ctx.tenantId}:${args.selectedCiId ?? ''}:${args.maxHops ?? 'all'}:${args.environment ?? ''}:${args.status ?? ''}:${(args.types ?? []).join(',')}`
+      const cached = cache.get<{ nodes: unknown[]; edges: unknown[]; truncated: boolean }>(cacheKey)
+      if (cached) return cached
+
       const session = getSession(undefined, 'READ')
       try {
 
@@ -172,7 +177,9 @@ export const topologyResolvers = {
             type:   r.get('relType') as string,
           }))
 
-          return { nodes, edges, truncated }
+          const result = { nodes, edges, truncated }
+          cache.set(cacheKey, result, 30)
+          return result
         }
 
         // ── BRANCH B: full topology with type/env/status filters ──────────
@@ -247,7 +254,9 @@ export const topologyResolvers = {
           type:   r.get('relType') as string,
         }))
 
-        return { nodes, edges, truncated }
+        const result = { nodes, edges, truncated }
+        cache.set(cacheKey, result, 30)
+        return result
 
       } finally {
         await session.close()

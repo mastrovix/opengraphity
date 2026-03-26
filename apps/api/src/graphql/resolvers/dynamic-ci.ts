@@ -6,6 +6,7 @@ import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { cache } from '../../lib/cache.js'
 
 type Props = Record<string, unknown>
 
@@ -55,33 +56,40 @@ function pluralize(str: string): string {
 
 // ── Field resolvers per ogni tipo CI ─────────────────────────────────────────
 
+type PrefetchedCI = { _ownerGroup?: TeamResult | null; _supportGroup?: TeamResult | null; _prefetched?: boolean }
+type TeamResult = { id: string; tenantId: string; name: string; description: string | null; type: string | null; createdAt: string | null }
+
+function mapTeamProps(p: Props): TeamResult {
+  return { id: p['id'] as string, tenantId: p['tenant_id'] as string, name: p['name'] as string,
+    description: (p['description'] as string | null) ?? null, type: (p['type'] as string | null) ?? null,
+    createdAt: neo4jDateToISO(p['created_at']) }
+}
+
 function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CITypeWithDefinitions[]) {
   return {
-    ownerGroup: async (parent: { id: string }) =>
-      withSession(async session => {
+    ownerGroup: async (parent: { id: string } & PrefetchedCI) => {
+      if (parent._prefetched) return parent._ownerGroup ?? null
+      return withSession(async session => {
         const r = await session.executeRead(tx =>
           tx.run('MATCH (n {id: $id})-[:OWNED_BY]->(t:Team) RETURN properties(t) AS p',
             { id: parent.id }),
         )
         if (!r.records.length) return null
-        const p = r.records[0].get('p') as Props
-        return { id: p['id'], tenantId: p['tenant_id'], name: p['name'],
-          description: p['description'] ?? null, type: p['type'] ?? null,
-          createdAt: neo4jDateToISO(p['created_at']) }
-      }),
+        return mapTeamProps(r.records[0].get('p') as Props)
+      })
+    },
 
-    supportGroup: async (parent: { id: string }) =>
-      withSession(async session => {
+    supportGroup: async (parent: { id: string } & PrefetchedCI) => {
+      if (parent._prefetched) return parent._supportGroup ?? null
+      return withSession(async session => {
         const r = await session.executeRead(tx =>
           tx.run('MATCH (n {id: $id})-[:SUPPORTED_BY]->(t:Team) RETURN properties(t) AS p',
             { id: parent.id }),
         )
         if (!r.records.length) return null
-        const p = r.records[0].get('p') as Props
-        return { id: p['id'], tenantId: p['tenant_id'], name: p['name'],
-          description: p['description'] ?? null, type: p['type'] ?? null,
-          createdAt: neo4jDateToISO(p['created_at']) }
-      }),
+        return mapTeamProps(r.records[0].get('p') as Props)
+      })
+    },
 
     dependencies: async (parent: { id: string }, _: unknown, ctx: GraphQLContext) =>
       withSession(async session => {
@@ -712,14 +720,22 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
       }) : ''
       const WHERE = advWhere ? `${baseWhere} AND (${advWhere})` : baseWhere
 
+      const cacheKey = `ci:${ctx.tenantId}:${neo4jLabel}:${JSON.stringify(params)}`
+      const cachedResult = cache.get<{ items: unknown[]; total: number }>(cacheKey)
+      if (cachedResult) return cachedResult
+
       const s1 = getSession(undefined, 'READ')
       const s2 = getSession(undefined, 'READ')
       try {
         const [items, count] = await Promise.all([
           s1.executeRead(tx => tx.run(
             `MATCH (n:${neo4jLabel} {tenant_id: $tenantId}) WHERE ${WHERE}
-             RETURN properties(n) AS props ORDER BY n.name ASC
-             SKIP toInteger($offset) LIMIT toInteger($limit)`,
+             OPTIONAL MATCH (n)-[:OWNED_BY]->(og:Team)
+             OPTIONAL MATCH (n)-[:SUPPORTED_BY]->(sg:Team)
+             RETURN properties(n) AS props,
+               CASE WHEN og IS NOT NULL THEN properties(og) END AS ogProps,
+               CASE WHEN sg IS NOT NULL THEN properties(sg) END AS sgProps
+             ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
             params,
           )),
           s2.executeRead(tx => tx.run(
@@ -729,10 +745,20 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
           )),
         ])
         await Promise.all([s1.close(), s2.close()])
-        return {
-          items: items.records.map(r => mapCI(r.get('props') as Props, ciType)),
+        const result = {
+          items: items.records.map(r => {
+            const ci = mapCI(r.get('props') as Props, ciType) as Record<string, unknown>
+            const ogProps = r.get('ogProps') as Props | null
+            const sgProps = r.get('sgProps') as Props | null
+            ci['_ownerGroup']   = ogProps ? mapTeamProps(ogProps) : null
+            ci['_supportGroup'] = sgProps ? mapTeamProps(sgProps) : null
+            ci['_prefetched']   = true
+            return ci
+          }),
           total: (count.records[0]?.get('total') as { toNumber(): number })?.toNumber?.() ?? 0,
         }
+        cache.set(cacheKey, result, 30)
+        return result
       } catch (err) {
         await Promise.allSettled([s1.close(), s2.close()])
         throw err
@@ -796,6 +822,8 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
           )
         }
 
+        cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
+        cache.invalidate(`topology:${ctx.tenantId}`)
         return mapCI(result.records[0].get('p') as Props, ciType)
       }, true)
 
@@ -823,6 +851,8 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
           ),
         )
         if (!result.records.length) throw new Error('CI non trovato')
+        cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
+        cache.invalidate(`topology:${ctx.tenantId}`)
         return mapCI(result.records[0].get('p') as Props, ciType)
       }, true)
 
@@ -835,6 +865,8 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
             { id: args.id, tenantId: ctx.tenantId },
           ),
         )
+        cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
+        cache.invalidate(`topology:${ctx.tenantId}`)
         return true
       }, true)
 

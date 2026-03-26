@@ -139,6 +139,12 @@ const INDEXES: SchemaStatement[] = [
   { label: 'DashboardConfig(tenant_id, user_id)',       cypher: 'CREATE INDEX dashboard_user IF NOT EXISTS FOR (d:DashboardConfig) ON (d.tenant_id, d.user_id)' },
   // DashboardWidget
   { label: 'DashboardWidget(dashboard_id)',             cypher: 'CREATE INDEX widget_dashboard IF NOT EXISTS FOR (w:DashboardWidget) ON (w.dashboard_id)' },
+  // Anomaly
+  { label: 'Anomaly(tenant_id)',                        cypher: 'CREATE INDEX anomaly_tenant IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id)' },
+  { label: 'Anomaly(tenant_id, status)',                cypher: 'CREATE INDEX anomaly_tenant_status IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id, a.status)' },
+  { label: 'Anomaly(tenant_id, rule_key)',              cypher: 'CREATE INDEX anomaly_tenant_rule IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id, a.rule_key)' },
+  // Team by id (lookup in OWNED_BY / SUPPORTED_BY joins)
+  { label: 'Team(tenant_id, id)',                       cypher: 'CREATE INDEX team_id IF NOT EXISTS FOR (t:Team) ON (t.tenant_id, t.id)' },
 ]
 
 async function runStatements(statements: SchemaStatement[], kind: string): Promise<void> {

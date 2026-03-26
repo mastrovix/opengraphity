@@ -10,6 +10,11 @@ function createDriver(): Driver {
   const d = neo4j.driver(
     NEO4J_URI,
     neo4j.auth.basic(NEO4J_USER, NEO4J_PASSWORD),
+    {
+      maxConnectionPoolSize:       50,
+      connectionAcquisitionTimeout: 30_000,
+      maxTransactionRetryTime:      30_000,
+    },
   )
 
   d.verifyConnectivity()

@@ -2,6 +2,7 @@ import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { anomalyScannerQueue } from '../../anomaly/anomalyEngine.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { cache } from '../../lib/cache.js'
 
 type Props = Record<string, unknown>
 
@@ -116,6 +117,10 @@ export const anomalyResolvers = {
     },
 
     anomalyStats: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
+      const cacheKey = `anomaly-stats:${ctx.tenantId}`
+      const cached = cache.get<ReturnType<typeof mapAnomaly>>(cacheKey)
+      if (cached) return cached
+
       const session = getSession()
       try {
         type Row = Record<string, unknown>
@@ -132,7 +137,7 @@ export const anomalyResolvers = {
             count(CASE WHEN a.severity = 'low'      AND a.status = 'open' THEN 1 END) AS low
         `, { tenantId: ctx.tenantId })
         if (!row) return { total: 0, open: 0, critical: 0, high: 0, medium: 0, low: 0, falsePositive: 0, acceptedRisk: 0 }
-        return {
+        const result = {
           total:         toNum(row['total']),
           open:          toNum(row['open']),
           critical:      toNum(row['critical']),
@@ -142,6 +147,8 @@ export const anomalyResolvers = {
           falsePositive: toNum(row['falsePositive']),
           acceptedRisk:  toNum(row['acceptedRisk']),
         }
+        cache.set(cacheKey, result, 60)
+        return result
       } finally {
         await session.close()
       }
@@ -174,15 +181,17 @@ export const anomalyResolvers = {
           now,
         })
         if (!row) throw new Error('Anomaly not found')
+        cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
         return mapAnomaly(row.props)
       } finally {
         await session.close()
       }
     },
 
-    runAnomalyScanner: async () => {
+    runAnomalyScanner: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
       try {
         await anomalyScannerQueue.add('scan-manual', {}, { jobId: `manual-${Date.now()}` })
+        cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
       } catch (err) {
         // Queue unavailable (Redis down etc.) — log and return false
         console.error('[anomaly] runAnomalyScanner: failed to enqueue job:', err)
