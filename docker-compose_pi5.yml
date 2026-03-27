@@ -57,10 +57,10 @@ services:
       retries: 5
 
   api:
+    platform: linux/arm64
     build:
       context: .
       dockerfile: apps/api/Dockerfile_pi5
-      platform: linux/arm64
     restart: always
     depends_on:
       neo4j:
@@ -81,10 +81,10 @@ services:
       - opengrafo
 
   web:
+    platform: linux/arm64
     build:
       context: .
       dockerfile: apps/web/Dockerfile_pi5
-      platform: linux/arm64
       args:
         VITE_GRAPHQL_URL: /graphql
     restart: always
