@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { UsersRound } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
@@ -57,6 +58,7 @@ const COLUMNS: ColumnDef<Team>[] = [
 ]
 
 export function TeamsPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -77,10 +79,10 @@ export function TeamsPage() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
             <UsersRound size={22} color="var(--color-brand)" />
-            Teams
+            {t('pages.teams.title')}
           </h1>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} teams`}
+            {loading ? '—' : t('pages.teams.count', { count: total })}
           </p>
         </div>
         <button
@@ -99,8 +101,7 @@ export function TeamsPage() {
             cursor:          'not-allowed',
           }}
         >
-          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
-          Nuovo Team
+          {t('pages.teams.new')}
         </button>
       </div>
 
@@ -126,7 +127,7 @@ export function TeamsPage() {
       {total > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
           <span>
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} teams
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {t('pages.teams.count', { count: total })}
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -134,7 +135,7 @@ export function TeamsPage() {
               disabled={page === 0}
               style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
-              ← Prev
+              {t('common.prev')}
             </button>
             <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>
               {page + 1} / {totalPages}
@@ -144,7 +145,7 @@ export function TeamsPage() {
               disabled={page >= totalPages - 1}
               style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
-              Next →
+              {t('common.next')}
             </button>
           </div>
         </div>

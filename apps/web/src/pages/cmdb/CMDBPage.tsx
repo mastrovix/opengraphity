@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Server } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -18,19 +19,6 @@ interface CI {
   createdAt:   string
 }
 
-const TYPE_OPTIONS = [
-  { value: 'server',           label: 'Server' },
-  { value: 'virtual_machine',  label: 'Virtual Machine' },
-  { value: 'database',         label: 'Database' },
-  { value: 'database_instance',label: 'DB Instance' },
-  { value: 'application',      label: 'Application' },
-  { value: 'microservice',     label: 'Microservice' },
-  { value: 'network_device',   label: 'Network Device' },
-  { value: 'storage',          label: 'Storage' },
-  { value: 'cloud_service',    label: 'Cloud Service' },
-  { value: 'ssl_certificate',  label: 'SSL Certificate' },
-  { value: 'api_endpoint',     label: 'API Endpoint' },
-]
 
 const columns: ColumnDef<CI>[] = [
   { key: 'name', label: 'Name', sortable: true },
@@ -82,6 +70,7 @@ const FILTER_FIELDS: FieldConfig[] = [
 ]
 
 export function CMDBPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const typeFromUrl = searchParams.get('type')
@@ -120,14 +109,14 @@ export function CMDBPage() {
             {pageTitle}
           </h1>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} CI`}
+            {loading ? '—' : t('pages.cmdb.count', { count: total })}
           </p>
         </div>
         <button
           disabled
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'not-allowed', opacity: 0.5 }}
         >
-          New
+          {t('common.create')}
         </button>
       </div>
 
@@ -156,7 +145,7 @@ export function CMDBPage() {
       {total > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: "12px 0", fontSize: 12, color: 'var(--color-slate-light)' }}>
           <span>
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} CI
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} CI
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -164,7 +153,7 @@ export function CMDBPage() {
               disabled={page === 0}
               style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
-              ← Prev
+              {t('common.prev')}
             </button>
             <span style={{ padding: '4px 8px', fontSize: 12, color: "var(--color-slate)" }}>
               {page + 1} / {totalPages}
@@ -174,7 +163,7 @@ export function CMDBPage() {
               disabled={page >= totalPages - 1}
               style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
-              Next →
+              {t('common.next')}
             </button>
           </div>
         </div>

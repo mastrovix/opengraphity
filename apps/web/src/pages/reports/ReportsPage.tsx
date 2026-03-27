@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { useTranslation } from 'react-i18next'
 import { keycloak } from '@/lib/keycloak'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -70,6 +71,7 @@ function extractCSV(content: string): string | null {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
+  const { t } = useTranslation()
   const { data, refetch } = useQuery<{ reportConversations: ReportConversation[] }>(GET_CONVERSATIONS)
   const [deleteConv]                  = useMutation(DELETE_CONVERSATION)
 
@@ -308,7 +310,7 @@ export default function ReportsPage() {
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
           {conversations.length === 0 ? (
-            <EmptyState icon={<BarChart2 size={24} />} title="Nessuna conversazione" description="Fai la prima domanda per iniziare." />
+            <EmptyState icon={<BarChart2 size={24} />} title={t('pages.aiAnalysis.noConversation')} description={t('pages.aiAnalysis.startQuestion')} />
           ) : (
             conversations.map((c) => (
               <div
@@ -350,9 +352,9 @@ export default function ReportsPage() {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <BrainCircuit size={22} color="var(--color-brand)" />
-                AI Analysis
+                {t('pages.aiAnalysis.title')}
               </div>
-              <div style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>Fai domande sui tuoi dati in linguaggio naturale</div>
+              <div style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>{t('pages.aiAnalysis.subtitle')}</div>
             </div>
           </div>
         ) : (
@@ -513,7 +515,7 @@ export default function ReportsPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Fai una domanda sui tuoi dati ITSM..."
+              placeholder={t('pages.aiAnalysis.placeholder')}
               rows={1}
               style={{
                 flex: 1, fontSize: 14, padding: '10px 14px',

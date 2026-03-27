@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { useTranslation } from 'react-i18next'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 
 const GET_LOGS = gql`
@@ -128,6 +129,7 @@ const LOGS_FILTER_FIELDS: FieldConfig[] = [
 ]
 
 export function LogsPage() {
+  const { t } = useTranslation()
   const [level,       setLevel]       = useState('')
   const [module,      setModule]      = useState('')
   const [search,      setSearch]      = useState('')
@@ -181,10 +183,10 @@ export function LogsPage() {
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
-          Log di sistema
+          {t('pages.logs.title')}
         </h1>
         <p style={{ color: '#0f172a', fontSize: 13, margin: '4px 0 0' }}>
-          {loading ? '—' : total > 0 ? `${total} log` : 'Nessun log trovato'}
+          {loading ? '—' : total > 0 ? t('pages.logs.count', { count: total }) : t('common.noResults')}
         </p>
       </div>
 
@@ -250,23 +252,23 @@ export function LogsPage() {
           <thead>
             <tr>
               <th style={{ ...thStyle, width: 160 }}>Timestamp</th>
-              <th style={{ ...thStyle, width: 90  }}>Level</th>
-              <th style={{ ...thStyle, width: 120 }}>Modulo</th>
-              <th style={thStyle}>Messaggio</th>
+              <th style={{ ...thStyle, width: 90  }}>{t('pages.logs.level')}</th>
+              <th style={{ ...thStyle, width: 120 }}>{t('pages.logs.source')}</th>
+              <th style={thStyle}>{t('pages.logs.message')}</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
                 <td colSpan={4} style={{ padding: 32, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 13 }}>
-                  Caricamento…
+                  {t('common.loading')}
                 </td>
               </tr>
             )}
             {!loading && entries.length === 0 && (
               <tr>
                 <td colSpan={4} style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 12 }}>
-                  Nessun log trovato
+                  {t('common.noResults')}
                 </td>
               </tr>
             )}
@@ -279,7 +281,7 @@ export function LogsPage() {
       {totalPages > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 12, color: 'var(--color-slate)' }}>
           <span style={{ marginRight: 8 }}>
-            Pagina {currentPage} di {totalPages}
+            {currentPage} {t('common.of')} {totalPages}
           </span>
           <button
             disabled={offset === 0}
@@ -292,7 +294,7 @@ export function LogsPage() {
               fontSize: 12, color: 'var(--color-slate)',
             }}
           >
-            ← Prev
+            {t('common.prev')}
           </button>
           <button
             disabled={offset + PAGE_SIZE >= total}
@@ -305,7 +307,7 @@ export function LogsPage() {
               fontSize: 12, color: 'var(--color-slate)',
             }}
           >
-            Next →
+            {t('common.next')}
           </button>
         </div>
       )}

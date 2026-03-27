@@ -1,4 +1,5 @@
 import { useLocation, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Bell } from 'lucide-react'
 import {
   DropdownMenu,
@@ -19,36 +20,39 @@ const C = {
   hoverBg:     'rgba(255,255,255,0.08)',
 }
 
-const LABELS: Record<string, string> = {
-  dashboard:          'Dashboard',
-  incidents:          'Incidents',
-  problems:           'Problems',
-  changes:            'Changes',
-  requests:           'Requests',
-  workflow:           'Workflow',
-  reports:            'AI Analysis',
-  'custom-reports':   'Report Builder',
-  cmdb:               'CMDB',
-  ci:                 'CMDB',
-  teams:              'Teams',
-  users:              'Users',
-  logs:               'Logs',
-  settings:           'Settings',
-  notifications:      'Notifiche',
-  profile:            'Profilo',
-  'ci-types':         'Tipi CI',
-  new:                'Nuovo',
-}
-
-const formatSegment = (part: string): string => {
-  if (LABELS[part]) return LABELS[part]
-  if (/^[0-9a-f-]{20,}$/i.test(part)) return 'Dettaglio'
-  if (/^\d+$/.test(part)) return 'Dettaglio'
-  return part.charAt(0).toUpperCase() + part.slice(1).replace(/_/g, ' ')
-}
-
 function Breadcrumb() {
+  const { t } = useTranslation()
   const { pathname } = useLocation()
+
+  const LABELS: Record<string, string> = {
+    dashboard:          t('sidebar.dashboard'),
+    incidents:          t('sidebar.incidents'),
+    problems:           t('sidebar.problems'),
+    changes:            t('sidebar.changes'),
+    requests:           t('sidebar.requests'),
+    workflow:           t('sidebar.workflowDesigner'),
+    reports:            t('sidebar.aiAnalysis'),
+    'custom-reports':   t('sidebar.reportBuilder'),
+    cmdb:               t('sidebar.cmdb'),
+    ci:                 t('sidebar.cmdb'),
+    teams:              t('sidebar.teams'),
+    users:              t('sidebar.users'),
+    logs:               t('sidebar.logs'),
+    settings:           t('sidebar.settings'),
+    notifications:      'Notifiche',
+    profile:            t('sidebar.profile'),
+    'ci-types':         t('sidebar.ciTypeDesigner'),
+    new:                t('common.create'),
+    anomalies:          t('sidebar.anomalies'),
+    topology:           t('pages.topology.title'),
+  }
+
+  const formatSegment = (part: string): string => {
+    if (LABELS[part]) return LABELS[part]
+    if (/^[0-9a-f-]{20,}$/i.test(part)) return 'Detail'
+    if (/^\d+$/.test(part)) return 'Detail'
+    return part.charAt(0).toUpperCase() + part.slice(1).replace(/_/g, ' ')
+  }
   const parts = pathname.split('/').filter(Boolean)
 
   if (parts.length === 0) {
@@ -86,6 +90,7 @@ function Breadcrumb() {
 const NOTIFICATIONS = 3
 
 export function Topbar() {
+  const { t } = useTranslation()
   const { logout } = useAuth()
 
   return (
@@ -184,14 +189,14 @@ export function Topbar() {
           </DropdownMenuTrigger>
 
           <DropdownMenuContent align="end" style={{ width: 176 }}>
-            <DropdownMenuItem style={{ fontSize: 14 }}>Profile</DropdownMenuItem>
-            <DropdownMenuItem style={{ fontSize: 14 }}>Settings</DropdownMenuItem>
+            <DropdownMenuItem style={{ fontSize: 14 }}>{t('sidebar.profile')}</DropdownMenuItem>
+            <DropdownMenuItem style={{ fontSize: 14 }}>{t('sidebar.settings')}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={logout}
               style={{ fontSize: 14, color: 'var(--color-trigger-sla-breach)' }}
             >
-              Logout
+              {t('auth.logout')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

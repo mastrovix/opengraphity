@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { ShieldAlert, ShieldCheck, Radar, RefreshCw, X, Lightbulb } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
@@ -479,6 +480,7 @@ const ANOMALY_FILTER_FIELDS: FieldConfig[] = [
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function AnomalyPage() {
+  const { t } = useTranslation()
   const [selected, setSelected]         = useState<Anomaly | null>(null)
   const [mutLoading, setMutLoading]     = useState(false)
   const [resolveError, setResolveError] = useState<string | null>(null)
@@ -541,10 +543,10 @@ export function AnomalyPage() {
         <div>
           <h1 className="ty-page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <ShieldAlert size={22} color={colors.danger} />
-            Anomalie
+            {t('pages.anomalies.title')}
           </h1>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} anomalie`}
+            {loading ? '—' : t('pages.anomalies.count', { count: total })}
           </p>
         </div>
         <button
@@ -609,7 +611,7 @@ export function AnomalyPage() {
       {total > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
           <span>
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} anomalie
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {t('pages.anomalies.count', { count: total })}
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -617,7 +619,7 @@ export function AnomalyPage() {
               disabled={page === 0}
               style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
-              ← Prev
+              {t('common.prev')}
             </button>
             <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>
               {page + 1} / {totalPages}
@@ -627,7 +629,7 @@ export function AnomalyPage() {
               disabled={page >= totalPages - 1}
               style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
-              Next →
+              {t('common.next')}
             </button>
           </div>
         </div>

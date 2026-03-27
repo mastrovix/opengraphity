@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { toast } from 'sonner'
@@ -35,6 +36,7 @@ interface CIItem {
 }
 
 export function CIListPage() {
+  const { t } = useTranslation()
   const { typeName } = useParams<{ typeName: string }>()
   const navigate = useNavigate()
   const { getCIType, loading: metamodelLoading } = useMetamodel()
@@ -144,14 +146,12 @@ export function CIListPage() {
   ]
 
   if (metamodelLoading) {
-    return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento metamodello…</div>
+    return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 14 }}>{t('common.loading')}</div>
   }
   if (!ciType) {
     return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 14 }}>Tipo CI "{typeName}" non trovato.</div>
   }
 
-  // Article prefix: "Nuova" for feminine labels ending in 'a', else "Nuovo"
-  const article = ciType.label.match(/[aA]$/) ? 'Nuova' : 'Nuovo'
 
   return (
     <div>
@@ -171,8 +171,7 @@ export function CIListPage() {
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
         >
-          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
-          {article} {ciType.label}
+          {t('pages.cmdb.new', { type: ciType.label })}
         </button>
       </div>
 
@@ -198,20 +197,20 @@ export function CIListPage() {
       {total > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
           <span>
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} {ciType.label.toLowerCase()}
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {ciType.label.toLowerCase()}
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={() => setPage(p => Math.max(0, p - 1))}
               disabled={page === 0}
               style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
-            >← Prev</button>
+            >{t('common.prev')}</button>
             <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>{page + 1} / {totalPages}</span>
             <button
               onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
               style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
-            >Next →</button>
+            >{t('common.next')}</button>
           </div>
         </div>
       )}
@@ -224,7 +223,7 @@ export function CIListPage() {
         >
           <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 20px 0' }}>
-              {article} {ciType.label}
+              {t('pages.cmdb.new', { type: ciType.label })}
             </h2>
             <CIDynamicForm
               ciType={ciType}

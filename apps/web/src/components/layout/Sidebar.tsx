@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { GET_ANOMALY_STATS } from '@/graphql/queries'
 import {
   LayoutDashboard,
@@ -29,39 +30,41 @@ import {
   Share2,
   Bell,
   CircleUser,
+  UserCircle,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
 
-const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+const NAV_ITEM_DEFS = [
+  { to: '/dashboard', labelKey: 'sidebar.dashboard', icon: LayoutDashboard },
 ]
 
-const ANALYSIS_ITEMS = [
-  { to: '/anomalies', label: 'Anomalie',     icon: ShieldAlert },
-  { to: '/topology',  label: 'Topology Map', icon: Share2      },
+const ANALYSIS_ITEM_DEFS = [
+  { to: '/anomalies', labelKey: 'sidebar.anomalies', icon: ShieldAlert },
+  { to: '/topology',  labelKey: 'sidebar.topologyMap', icon: Share2    },
 ]
 
-const CONFIG_ITEMS = [
-  { to: '/settings/ci-types', label: 'CI Type Designer',  icon: Layers },
-  { to: '/workflow',          label: 'Workflow Designer', icon: Route },
+const CONFIG_ITEM_DEFS = [
+  { to: '/settings/ci-types', labelKey: 'sidebar.ciTypeDesigner',  icon: Layers },
+  { to: '/workflow',          labelKey: 'sidebar.workflowDesigner', icon: Route },
+  { to: '/profile',           labelKey: 'sidebar.profile',          icon: UserCircle },
 ]
 
-const ITSM_ITEMS = [
-  { to: '/incidents', label: 'Incidents', icon: AlertCircle    },
-  { to: '/problems',  label: 'Problems',  icon: Bug            },
-  { to: '/changes',   label: 'Changes',   icon: GitPullRequest },
-  { to: '/requests',  label: 'Requests',  icon: Inbox          },
+const ITSM_ITEM_DEFS = [
+  { to: '/incidents', labelKey: 'sidebar.incidents', icon: AlertCircle    },
+  { to: '/problems',  labelKey: 'sidebar.problems',  icon: Bug            },
+  { to: '/changes',   labelKey: 'sidebar.changes',   icon: GitPullRequest },
+  { to: '/requests',  labelKey: 'sidebar.requests',  icon: Inbox          },
 ]
 
-const REPORTING_ITEMS = [
-  { to: '/reports',        label: 'AI Analysis',    icon: BrainCircuit },
-  { to: '/custom-reports', label: 'Report Builder',  icon: LayoutGrid  },
+const REPORTING_ITEM_DEFS = [
+  { to: '/reports',        labelKey: 'sidebar.aiAnalysis',    icon: BrainCircuit },
+  { to: '/custom-reports', labelKey: 'sidebar.reportBuilder', icon: LayoutGrid   },
 ]
 
-const ADMIN_NAV_ITEMS = [
-  { to: '/logs', label: 'Logs', icon: ScrollText },
+const ADMIN_NAV_ITEM_DEFS = [
+  { to: '/logs', labelKey: 'sidebar.logs', icon: ScrollText },
 ]
 
 // ── colours ──────────────────────────────────────────────────────────────────
@@ -83,12 +86,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
+  const { t } = useTranslation()
   const { pathname } = useLocation()
   const [configOpen, setConfigOpen] = useState(
-    () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/workflow'),
+    () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/workflow') || pathname.startsWith('/profile'),
   )
   const [itsmOpen, setItsmOpen] = useState(
-    () => ITSM_ITEMS.some(({ to }) => pathname.startsWith(to)),
+    () => ITSM_ITEM_DEFS.some(({ to }) => pathname.startsWith(to)),
   )
   const [cmdbOpen, setCmdbOpen] = useState(
     () => pathname.startsWith('/cmdb') || pathname.startsWith('/ci/'),
@@ -103,7 +107,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     () => pathname.startsWith('/reports') || pathname.startsWith('/custom-reports'),
   )
   const [analysisOpen, setAnalysisOpen] = useState(
-    () => pathname.startsWith('/anomalies') || pathname.startsWith('/topology'),
+    () => ANALYSIS_ITEM_DEFS.some(({ to }) => pathname.startsWith(to)),
   )
 
   const isAdmin = keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin')
@@ -151,10 +155,10 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     marginBottom:   1,
   })
 
-  const configActive    = CONFIG_ITEMS.some(({ to }) => pathname.startsWith(to))
-  const itsmActive      = ITSM_ITEMS.some(({ to }) => pathname.startsWith(to))
+  const configActive    = CONFIG_ITEM_DEFS.some(({ to }) => pathname.startsWith(to))
+  const itsmActive      = ITSM_ITEM_DEFS.some(({ to }) => pathname.startsWith(to))
   const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
-  const analysisActive  = ANALYSIS_ITEMS.some(({ to }) => pathname.startsWith(to))
+  const analysisActive  = ANALYSIS_ITEM_DEFS.some(({ to }) => pathname.startsWith(to))
 
   const cmdbActive = pathname.startsWith('/cmdb') || pathname.startsWith('/ci/')
     || pathname.startsWith('/applications') || pathname.startsWith('/databases')
@@ -237,11 +241,12 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               margin:        0,
             }}
           >
-            WORKSPACE
+            {t('sidebar.workspace')}
           </p>
         )}
 
-        {NAV_ITEMS.map(({ to, label, icon: Icon }) => {
+        {NAV_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => {
+          const label = t(labelKey)
           const isActive = pathname === to || (to !== '/dashboard' && pathname.startsWith(to))
 
           return (
@@ -263,7 +268,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {collapsed ? (
           <NavLink
             to="/incidents"
-            title="ITIL Processes"
+            title={t('sidebar.itilProcesses')}
             style={navItemStyle(itsmActive, true)}
             onMouseEnter={(e) => hoverOn(e, itsmActive)}
             onMouseLeave={(e) => hoverOff(e, itsmActive)}
@@ -281,7 +286,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <ListChecks size={16} style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? C.brand : C.textDefault }}>
-                  ITIL Processes
+                  {t('sidebar.itilProcesses')}
                 </span>
               </div>
               {itsmOpen
@@ -291,11 +296,11 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
             {itsmOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {ITSM_ITEMS.map(({ to, label, icon: Icon }) => (
+                {ITSM_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                      {label}
+                      {t(labelKey)}
                     </span>
                   </NavLink>
                 ))}
@@ -308,7 +313,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {collapsed ? (
           <NavLink
             to="/reports"
-            title="Reporting"
+            title={t('sidebar.reporting')}
             style={navItemStyle(reportingActive, true)}
             onMouseEnter={(e) => hoverOn(e, reportingActive)}
             onMouseLeave={(e) => hoverOff(e, reportingActive)}
@@ -326,7 +331,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <BarChart2 size={16} style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: reportingActive ? 600 : 400, color: reportingActive ? C.brand : C.textDefault }}>
-                  Reporting
+                  {t('sidebar.reporting')}
                 </span>
               </div>
               {reportingOpen
@@ -336,11 +341,11 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
             {reportingOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {REPORTING_ITEMS.map(({ to, label, icon: Icon }) => (
+                {REPORTING_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                      {label}
+                      {t(labelKey)}
                     </span>
                   </NavLink>
                 ))}
@@ -353,7 +358,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {collapsed ? (
           <NavLink
             to="/anomalies"
-            title="Analysis"
+            title={t('sidebar.analysis')}
             style={navItemStyle(analysisActive, true)}
             onMouseEnter={(e) => hoverOn(e, analysisActive)}
             onMouseLeave={(e) => hoverOff(e, analysisActive)}
@@ -371,7 +376,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Activity size={16} style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: analysisActive ? 600 : 400, color: analysisActive ? C.brand : C.textDefault }}>
-                  Analysis
+                  {t('sidebar.analysis')}
                 </span>
               </div>
               {analysisOpen
@@ -381,11 +386,11 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
             {analysisOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {ANALYSIS_ITEMS.map(({ to, label, icon: Icon }) => (
+                {ANALYSIS_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                      {label}
+                      {t(labelKey)}
                     </span>
                     {to === '/anomalies' && anomalyCritical > 0 && (
                       <span style={{
@@ -407,7 +412,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {collapsed ? (
           <NavLink
             to="/cmdb"
-            title="CMDB"
+            title={t('sidebar.cmdb')}
             style={navItemStyle(cmdbActive, true)}
             onMouseEnter={(e) => hoverOn(e, cmdbActive)}
             onMouseLeave={(e) => hoverOff(e, cmdbActive)}
@@ -425,7 +430,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Server size={16} style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? C.brand : C.textDefault }}>
-                  CMDB
+                  {t('sidebar.cmdb')}
                 </span>
               </div>
               {cmdbOpen
@@ -438,7 +443,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 <NavLink to="/cmdb" end style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Server size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                    Tutti
+                    {t('sidebar.all')}
                   </span>
                 </NavLink>
                 {ciTypes.map(ct => {
@@ -469,7 +474,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Users size={16} style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 13, fontWeight: 400, color: C.textDefault }}>Teams & Users</span>
+                <span style={{ fontSize: 13, fontWeight: 400, color: C.textDefault }}>{t('sidebar.teamsUsers')}</span>
               </div>
               {teamsOpen
                 ? <ChevronDown size={12} color={C.textChevron} />
@@ -481,13 +486,13 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 <NavLink to="/teams" style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <UsersRound size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                    Teams
+                    {t('sidebar.teams')}
                   </span>
                 </NavLink>
                 <NavLink to="/users" style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <User size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                    Users
+                    {t('sidebar.users')}
                   </span>
                 </NavLink>
               </div>
@@ -499,7 +504,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {collapsed ? (
           <NavLink
             to="/workflow"
-            title="Configuration"
+            title={t('sidebar.configuration')}
             style={navItemStyle(configActive, true)}
             onMouseEnter={(e) => hoverOn(e, configActive)}
             onMouseLeave={(e) => hoverOff(e, configActive)}
@@ -517,7 +522,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <SlidersHorizontal size={16} style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: configActive ? 600 : 400, color: configActive ? C.brand : C.textDefault }}>
-                  Configuration
+                  {t('sidebar.configuration')}
                 </span>
               </div>
               {configOpen
@@ -526,11 +531,11 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             </div>
             {configOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {CONFIG_ITEMS.map(({ to, label, icon: Icon }) => (
+                {CONFIG_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                      {label}
+                      {t(labelKey)}
                     </span>
                   </NavLink>
                 ))}
@@ -544,10 +549,11 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           <>
             {!collapsed && (
               <p style={{ color: C.textSection, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
-                ADMIN
+                {t('sidebar.admin')}
               </p>
             )}
-            {ADMIN_NAV_ITEMS.map(({ to, label, icon: Icon }) => {
+            {ADMIN_NAV_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => {
+              const label = t(labelKey)
               const isActive = pathname === to || pathname.startsWith(to + '/')
               return (
                 <NavLink
@@ -568,7 +574,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             {collapsed ? (
               <NavLink
                 to="/settings/notifications"
-                title="Settings"
+                title={t('sidebar.settings')}
                 style={navItemStyle(settingsActive, true)}
                 onMouseEnter={(e) => hoverOn(e, settingsActive)}
                 onMouseLeave={(e) => hoverOff(e, settingsActive)}
@@ -586,7 +592,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Settings size={16} style={{ flexShrink: 0, color: C.brand }} />
                     <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? C.brand : C.textDefault }}>
-                      Settings
+                      {t('sidebar.settings')}
                     </span>
                   </div>
                   {settingsOpen
@@ -604,7 +610,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                     <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <CircleUser size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                        Profilo
+                        {t('sidebar.profile')}
                       </span>
                     </NavLink>
                   </div>
@@ -639,7 +645,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
       >
         {collapsed
           ? <ChevronRight size={14} />
-          : <><ChevronLeft size={14} /><span>Collapse</span></>
+          : <><ChevronLeft size={14} /><span>{t('sidebar.collapse', 'Collapse')}</span></>
         }
       </button>
     </aside>

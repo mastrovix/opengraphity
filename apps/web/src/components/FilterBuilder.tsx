@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, X, ChevronDown, ChevronRight } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -31,29 +32,29 @@ export interface FieldConfig {
 
 // ── Operator definitions ──────────────────────────────────────────────────────
 
-const OPERATORS_BY_TYPE: Record<string, { value: FilterOperator; label: string }[]> = {
+const OPERATORS_BY_TYPE: Record<string, { value: FilterOperator; labelKey: string }[]> = {
   text: [
-    { value: 'contains',     label: 'contiene'         },
-    { value: 'starts_with',  label: 'inizia con'       },
-    { value: 'ends_with',    label: 'finisce con'      },
-    { value: 'equals',       label: 'uguale a'         },
-    { value: 'not_equals',   label: 'diverso da'       },
-    { value: 'is_empty',     label: 'è vuoto'          },
-    { value: 'is_not_empty', label: 'non è vuoto'      },
+    { value: 'contains',     labelKey: 'filter.contains'     },
+    { value: 'starts_with',  labelKey: 'filter.startsWith'   },
+    { value: 'ends_with',    labelKey: 'filter.endsWith'     },
+    { value: 'equals',       labelKey: 'filter.equals'       },
+    { value: 'not_equals',   labelKey: 'filter.notEquals'    },
+    { value: 'is_empty',     labelKey: 'filter.isEmpty'      },
+    { value: 'is_not_empty', labelKey: 'filter.isNotEmpty'   },
   ],
   date: [
-    { value: 'after',        label: 'dopo il'          },
-    { value: 'before',       label: 'prima del'        },
-    { value: 'between',      label: 'tra'              },
-    { value: 'today',        label: 'oggi'             },
-    { value: 'last_7_days',  label: 'ultimi 7 giorni'  },
-    { value: 'last_30_days', label: 'ultimi 30 giorni' },
+    { value: 'after',        labelKey: 'filter.after'        },
+    { value: 'before',       labelKey: 'filter.before'       },
+    { value: 'between',      labelKey: 'filter.between'      },
+    { value: 'today',        labelKey: 'filter.today'        },
+    { value: 'last_7_days',  labelKey: 'filter.last7Days'    },
+    { value: 'last_30_days', labelKey: 'filter.last30Days'   },
   ],
   enum: [
-    { value: 'equals',       label: 'uguale a'         },
-    { value: 'not_equals',   label: 'diverso da'       },
-    { value: 'in',           label: 'è uno di'         },
-    { value: 'not_in',       label: 'non è uno di'     },
+    { value: 'equals',       labelKey: 'filter.equals'       },
+    { value: 'not_equals',   labelKey: 'filter.notEquals'    },
+    { value: 'in',           labelKey: 'filter.isOneOf'      },
+    { value: 'not_in',       labelKey: 'filter.isNotOneOf'   },
   ],
 }
 
@@ -225,6 +226,11 @@ function LogicConnector({
   value:    'AND' | 'OR'
   onChange: (v: 'AND' | 'OR') => void
 }) {
+  const { t } = useTranslation()
+  const LOGIC_LABELS: Record<'AND' | 'OR', string> = {
+    AND: t('filter.andConnector'),
+    OR:  t('filter.orConnector'),
+  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', padding: '4px 12px' }}>
       <div style={{ display: 'flex', borderRadius: 5, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
@@ -244,7 +250,7 @@ function LogicConnector({
               transition:      'background 100ms',
             }}
           >
-            {l}
+            {LOGIC_LABELS[l]}
           </button>
         ))}
       </div>
@@ -260,6 +266,7 @@ interface FilterBuilderProps {
 }
 
 export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
+  const { t } = useTranslation()
   const [open,  setOpen]  = useState(false)
   const [rules, setRules] = useState<FilterRule[]>([])
 
@@ -327,7 +334,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
           }}
         >
           {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          Filtri avanzati
+          {t('filter.advancedFilters')}
           {activeCount > 0 && (
             <span style={{
               fontSize: 10, fontWeight: 700, lineHeight: 1,
@@ -357,7 +364,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
               }}
             >
               <Plus size={13} />
-              Aggiungi filtro
+              {t('filter.addFilter')}
             </button>
 
             <div style={{ flex: 1 }} />
@@ -375,7 +382,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                 cursor:          'pointer',
               }}
             >
-              Applica
+              {t('common.apply')}
             </button>
 
             <button
@@ -390,7 +397,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                 cursor:          'pointer',
               }}
             >
-              Reset
+              {t('common.reset')}
             </button>
           </>
         )}
@@ -405,7 +412,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
               fontSize:  12,
               color:     'var(--color-slate-light)',
             }}>
-              Nessun filtro. Clicca "Aggiungi filtro" per iniziare.
+              {t('filter.addFilter')}
             </div>
           ) : (
             rules.map((rule, idx) => {
@@ -431,7 +438,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                       onChange={(e) => updateRule(rule.id, { field: e.target.value })}
                       style={{ ...SEL, minWidth: 140, color: rule.field ? 'var(--color-slate-dark)' : 'var(--color-slate-light)' }}
                     >
-                      <option value="">Seleziona campo…</option>
+                      <option value="">{t('filter.selectField')}</option>
                       {fields.map((f) => (
                         <option key={f.key} value={f.key}>{f.label}</option>
                       ))}
@@ -445,7 +452,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                         style={{ ...SEL, minWidth: 140 }}
                       >
                         {operators.map((op) => (
-                          <option key={op.value} value={op.value}>{op.label}</option>
+                          <option key={op.value} value={op.value}>{t(op.labelKey)}</option>
                         ))}
                       </select>
                     )}

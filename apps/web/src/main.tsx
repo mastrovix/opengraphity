@@ -20,6 +20,7 @@ import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestP
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
 import { CIListPage } from '@/pages/ci/CIListPage'
 import { CIDetailPage } from '@/pages/ci/CIDetailPage'
+import { ProfilePage as NewProfilePage } from '@/pages/profile/ProfilePage'
 function CIDetailRedirect({ typeName }: { typeName: string }) {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
@@ -43,6 +44,7 @@ import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
+import '@/i18n/i18n'
 
 function RouteError() {
   const error = useRouteError() as { status?: number; statusText?: string }
@@ -110,6 +112,7 @@ const router = createBrowserRouter([
       { path: 'workflow/:id',                  element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
       { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
+      { path: 'profile',                   element: <NewProfilePage />,          errorElement: <RouteError /> },
       { path: 'settings/ci-types',         element: <CITypeDesignerPage />,      errorElement: <RouteError /> },
       { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },
       { path: 'custom-reports',            element: <CustomReportsPage />,       errorElement: <RouteError /> },

@@ -1,5 +1,6 @@
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Inbox } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
@@ -45,6 +46,7 @@ const columns: ColumnDef<ServiceRequest>[] = [
 ]
 
 export function RequestListPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { data, loading } = useQuery<{ serviceRequests: ServiceRequest[] }>(GET_SERVICE_REQUESTS)
 
@@ -53,10 +55,10 @@ export function RequestListPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
-            Service Requests
+            {t('pages.requests.title')}
           </h1>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${data?.serviceRequests?.length ?? 0} requests`}
+            {loading ? '—' : t('pages.requests.count', { count: data?.serviceRequests?.length ?? 0 })}
           </p>
         </div>
         <button
@@ -65,8 +67,7 @@ export function RequestListPage() {
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
         >
-          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
-          New Request
+          {t('pages.requests.new')}
         </button>
       </div>
 

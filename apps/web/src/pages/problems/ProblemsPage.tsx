@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Bug } from 'lucide-react'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
@@ -31,6 +32,7 @@ function StatusBadge({ value }: { value: string }) {
 const PAGE_SIZE = 50
 
 export function ProblemsPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [page, setPage]         = useState(0)
   const [statusFilter, setStatusFilter]     = useState('')
@@ -78,10 +80,10 @@ export function ProblemsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
-            Problems
+            {t('pages.problems.title')}
           </h1>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} problems`}
+            {loading ? '—' : t('pages.problems.count', { count: total })}
           </p>
         </div>
         <button
@@ -90,8 +92,7 @@ export function ProblemsPage() {
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
         >
-          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
-          Nuovo Problem
+          {t('pages.problems.new')}
         </button>
       </div>
 
@@ -148,7 +149,7 @@ export function ProblemsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 12 }}>Caricamento...</td>
+                <td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 12 }}>{t('common.loading')}</td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
@@ -180,11 +181,11 @@ export function ProblemsPage() {
 
       {total > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
-          <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total}</span>
+          <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total}</span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>← Prev</button>
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>{t('common.prev')}</button>
             <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>{page + 1} / {totalPages}</span>
-            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>Next →</button>
+            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>{t('common.next')}</button>
           </div>
         </div>
       )}
@@ -193,7 +194,7 @@ export function ProblemsPage() {
       {showCreate && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 480, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 20px 0' }}>Nuovo Problem</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 20px 0' }}>{t('pages.problems.new')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Titolo *</label>
@@ -244,7 +245,7 @@ export function ProblemsPage() {
                 onClick={() => setShowCreate(false)}
                 style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #e5e7eb', background: 'transparent', fontSize: 14, cursor: 'pointer' }}
               >
-                Annulla
+                {t('common.cancel')}
               </button>
               <button
                 disabled={!newTitle.trim() || creating}
@@ -263,7 +264,7 @@ export function ProblemsPage() {
                 }}
                 style={{ padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: (!newTitle.trim() || creating) ? '#e5e7eb' : 'var(--color-brand)', color: (!newTitle.trim() || creating) ? 'var(--color-slate-light)' : '#fff', fontSize: 14, fontWeight: 500, cursor: (!newTitle.trim() || creating) ? 'not-allowed' : 'pointer' }}
               >
-                {creating ? 'Creazione...' : 'Crea Problem'}
+                {creating ? t('common.loading') : t('common.create')}
               </button>
             </div>
           </div>

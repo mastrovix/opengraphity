@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { useTranslation } from 'react-i18next'
 import {
   GET_REPORT_TEMPLATES,
   EXECUTE_REPORT,
@@ -60,6 +61,7 @@ function getReportIcon(template: ReportTemplate) {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export function CustomReportsPage() {
+  const { t: tr } = useTranslation()
   const [view,           setView]           = useState<View>('list')
   const [selectedId,     setSelectedId]     = useState<string | null>(null)
   const [editSection,    setEditSection]    = useState<ReportSection | null>(null)
@@ -239,13 +241,13 @@ export function CustomReportsPage() {
             <div>
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <LayoutGrid size={22} color="var(--color-brand)" />
-                Report Builder
+                {tr('pages.reportBuilder.title')}
               </h1>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: '#0f172a' }}>
-                {templates.length} report{templates.length !== 1 ? '' : ''}
+                {tr('pages.reportBuilder.count', { count: templates.length })}
               </p>
             </div>
-            <button onClick={() => setShowNewDialog(true)} style={btnPrimary}>+ Nuovo report</button>
+            <button onClick={() => setShowNewDialog(true)} style={btnPrimary}>{tr('pages.reportBuilder.new')}</button>
           </div>
 
           {/* Empty state */}
@@ -254,7 +256,7 @@ export function CustomReportsPage() {
               <div style={{ fontSize: 48, marginBottom: 12 }}>📊</div>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>Nessun report ancora</div>
               <div style={{ fontSize: 14, marginBottom: 20 }}>Crea il tuo primo report personalizzato</div>
-              <button onClick={() => setShowNewDialog(true)} style={btnPrimary}>+ Nuovo report</button>
+              <button onClick={() => setShowNewDialog(true)} style={btnPrimary}>{tr('pages.reportBuilder.new')}</button>
             </div>
           )}
 
@@ -322,11 +324,11 @@ export function CustomReportsPage() {
                     <button
                       onClick={() => { setSelectedId(t.id); setSectionResults({}); runExecute({ variables: { templateId: t.id } }); goToDetail(t) }}
                       style={{ ...btnGhost, flex: 1, fontSize: 12, padding: '4px 10px' }}
-                    >▶ Esegui</button>
+                    >▶ {tr('pages.reportBuilder.execute')}</button>
                     <button
                       onClick={() => goToDetail(t)}
                       style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '4px 10px' }}
-                    >✏ Modifica</button>
+                    >✏ {tr('pages.reportBuilder.modify')}</button>
                   </div>
                 </div>
               )
@@ -355,7 +357,7 @@ export function CustomReportsPage() {
               onClick={() => { setSectionResults({}); runExecute({ variables: { templateId: selected.id } }) }}
               disabled={execLoading}
               style={{ ...btnGhost, fontSize: 12 }}
-            >{execLoading ? 'Caricamento...' : '▶ Esegui'}</button>
+            >{execLoading ? tr('common.loading') : `▶ ${tr('pages.reportBuilder.execute')}`}</button>
             <button onClick={() => setView('add-section')} style={btnPrimary}>+ Sezione</button>
           </div>
 

@@ -1,0 +1,205 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search...",
+    "loading": "Loading...",
+    "noResults": "No results",
+    "confirm": "Confirm",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next →",
+    "prev": "← Prev",
+    "apply": "Apply",
+    "reset": "Reset",
+    "total": "total",
+    "actions": "Actions",
+    "yes": "Yes",
+    "no": "No",
+    "of": "of"
+  },
+  "sidebar": {
+    "workspace": "WORKSPACE",
+    "admin": "ADMIN",
+    "dashboard": "Dashboard",
+    "cmdb": "CMDB",
+    "all": "All",
+    "itilProcesses": "ITIL Processes",
+    "incidents": "Incidents",
+    "changes": "Changes",
+    "problems": "Problems",
+    "requests": "Requests",
+    "reporting": "Reporting",
+    "aiAnalysis": "AI Analysis",
+    "reportBuilder": "Report Builder",
+    "analysis": "Analysis",
+    "anomalies": "Anomalies",
+    "topologyMap": "Topology Map",
+    "configuration": "Configuration",
+    "ciTypeDesigner": "CI Type Designer",
+    "workflowDesigner": "Workflow Designer",
+    "profile": "Profile",
+    "logs": "Logs",
+    "settings": "Settings",
+    "teamsUsers": "Teams & Users",
+    "teams": "Teams",
+    "users": "Users"
+  },
+  "pages": {
+    "incidents": {
+      "title": "Incidents",
+      "new": "+ New Incident",
+      "count_one": "{{count}} incident",
+      "count_other": "{{count}} incidents",
+      "severity": "Severity",
+      "status": "Status",
+      "assignedTeam": "Assigned Team",
+      "createdAt": "Created",
+      "notFound": "Incident not found"
+    },
+    "changes": {
+      "title": "Changes",
+      "new": "+ New Change",
+      "count_one": "{{count}} change",
+      "count_other": "{{count}} changes",
+      "type": "Type",
+      "priority": "Priority",
+      "status": "Status",
+      "scheduledStart": "Scheduled Start",
+      "notFound": "Change not found"
+    },
+    "problems": {
+      "title": "Problems",
+      "new": "+ New Problem",
+      "count_one": "{{count}} problem",
+      "count_other": "{{count}} problems",
+      "priority": "Priority",
+      "status": "Status",
+      "notFound": "Problem not found"
+    },
+    "requests": {
+      "title": "Requests",
+      "new": "+ New Request",
+      "count_one": "{{count}} request",
+      "count_other": "{{count}} requests"
+    },
+    "cmdb": {
+      "title": "CMDB",
+      "count": "{{count}} CI",
+      "new": "+ New {{type}}",
+      "name": "Name",
+      "status": "Status",
+      "environment": "Environment",
+      "ownerGroup": "Owner Group",
+      "createdAt": "Created"
+    },
+    "anomalies": {
+      "title": "Anomalies",
+      "count_one": "{{count}} anomaly",
+      "count_other": "{{count}} anomalies",
+      "severity": "Severity",
+      "type": "Type",
+      "detectedAt": "Detected",
+      "resolve": "Resolve"
+    },
+    "topology": {
+      "title": "Topology Map",
+      "nodes": "nodes",
+      "relations": "relations",
+      "depth": "Depth",
+      "allEnv": "All environments",
+      "allStatus": "All statuses",
+      "labels": "Labels",
+      "activeIncidents": "active incidents"
+    },
+    "teams": {
+      "title": "Teams",
+      "new": "+ New Team",
+      "count_one": "{{count}} team",
+      "count_other": "{{count}} teams"
+    },
+    "users": {
+      "title": "Users",
+      "newUser": "+ New User",
+      "count_one": "{{count}} user",
+      "count_other": "{{count}} users",
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "createdAt": "Created"
+    },
+    "logs": {
+      "title": "Logs",
+      "count_one": "{{count}} log",
+      "count_other": "{{count}} logs",
+      "level": "Level",
+      "message": "Message",
+      "source": "Source"
+    },
+    "dashboard": {
+      "title": "Dashboard"
+    },
+    "reportBuilder": {
+      "title": "Report Builder",
+      "count_one": "{{count}} report",
+      "count_other": "{{count}} reports",
+      "new": "+ New Report",
+      "execute": "Execute",
+      "modify": "Edit",
+      "private": "Private",
+      "public": "Public"
+    },
+    "aiAnalysis": {
+      "title": "AI Analysis",
+      "placeholder": "Ask a question about your data...",
+      "newConversation": "New conversation",
+      "noConversation": "No conversations",
+      "startQuestion": "Ask the first question to start.",
+      "subtitle": "Ask questions about your data in natural language"
+    },
+    "settings": {
+      "title": "Settings"
+    },
+    "profile": {
+      "title": "Profile",
+      "language": "Language",
+      "languageDescription": "Choose your preferred language",
+      "english": "English",
+      "italian": "Italiano"
+    }
+  },
+  "filter": {
+    "advancedFilters": "Advanced filters",
+    "activeFilters_one": "{{count}} active filter",
+    "activeFilters_other": "{{count}} active filters",
+    "clearAll": "Clear all",
+    "addFilter": "+ Add filter",
+    "selectField": "Select field...",
+    "andConnector": "AND",
+    "orConnector": "OR",
+    "contains": "contains",
+    "startsWith": "starts with",
+    "endsWith": "ends with",
+    "equals": "equals",
+    "notEquals": "not equals",
+    "isEmpty": "is empty",
+    "isNotEmpty": "is not empty",
+    "after": "after",
+    "before": "before",
+    "between": "between",
+    "today": "today",
+    "last7Days": "last 7 days",
+    "last30Days": "last 30 days",
+    "isOneOf": "is one of",
+    "isNotOneOf": "is not one of"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password"
+  }
+}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
 import { colors } from '@/lib/tokens'
@@ -35,9 +36,11 @@ export function SortableFilterTable<T extends object>({
   data,
   onRowClick,
   loading = false,
-  emptyMessage = 'Nessun risultato',
+  emptyMessage,
   emptyComponent,
 }: Props<T>) {
+  const { t } = useTranslation()
+  const resolvedEmptyMessage = emptyMessage ?? t('common.noResults')
   const [sortKey, setSortKey] = useState<keyof T | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -129,7 +132,7 @@ export function SortableFilterTable<T extends object>({
               <td colSpan={columns.length}>
                 {emptyComponent ?? (
                   <div style={{ textAlign: 'center', color: colors.slateLight, padding: '40px 20px', fontSize: 12 }}>
-                    {emptyMessage}
+                    {resolvedEmptyMessage}
                   </div>
                 )}
               </td>

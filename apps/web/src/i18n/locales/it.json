@@ -1,0 +1,205 @@
+{
+  "common": {
+    "save": "Salva",
+    "cancel": "Annulla",
+    "delete": "Elimina",
+    "edit": "Modifica",
+    "create": "Crea",
+    "search": "Cerca...",
+    "loading": "Caricamento...",
+    "noResults": "Nessun risultato",
+    "confirm": "Conferma",
+    "close": "Chiudi",
+    "back": "Indietro",
+    "next": "Avanti →",
+    "prev": "← Prec",
+    "apply": "Applica",
+    "reset": "Reset",
+    "total": "totale",
+    "actions": "Azioni",
+    "yes": "Sì",
+    "no": "No",
+    "of": "di"
+  },
+  "sidebar": {
+    "workspace": "WORKSPACE",
+    "admin": "ADMIN",
+    "dashboard": "Dashboard",
+    "cmdb": "CMDB",
+    "all": "Tutti",
+    "itilProcesses": "Processi ITIL",
+    "incidents": "Incident",
+    "changes": "Change",
+    "problems": "Problem",
+    "requests": "Richieste",
+    "reporting": "Reporting",
+    "aiAnalysis": "AI Analysis",
+    "reportBuilder": "Report Builder",
+    "analysis": "Analisi",
+    "anomalies": "Anomalie",
+    "topologyMap": "Mappa Topologica",
+    "configuration": "Configurazione",
+    "ciTypeDesigner": "CI Type Designer",
+    "workflowDesigner": "Workflow Designer",
+    "profile": "Profilo",
+    "logs": "Log",
+    "settings": "Impostazioni",
+    "teamsUsers": "Team e Utenti",
+    "teams": "Team",
+    "users": "Utenti"
+  },
+  "pages": {
+    "incidents": {
+      "title": "Incident",
+      "new": "+ Nuovo Incident",
+      "count_one": "{{count}} incident",
+      "count_other": "{{count}} incident",
+      "severity": "Severità",
+      "status": "Stato",
+      "assignedTeam": "Team Assegnato",
+      "createdAt": "Creato il",
+      "notFound": "Incident non trovato"
+    },
+    "changes": {
+      "title": "Change",
+      "new": "+ Nuovo Change",
+      "count_one": "{{count}} change",
+      "count_other": "{{count}} change",
+      "type": "Tipo",
+      "priority": "Priorità",
+      "status": "Stato",
+      "scheduledStart": "Inizio Previsto",
+      "notFound": "Change non trovato"
+    },
+    "problems": {
+      "title": "Problem",
+      "new": "+ Nuovo Problem",
+      "count_one": "{{count}} problem",
+      "count_other": "{{count}} problem",
+      "priority": "Priorità",
+      "status": "Stato",
+      "notFound": "Problem non trovato"
+    },
+    "requests": {
+      "title": "Richieste",
+      "new": "+ Nuova Richiesta",
+      "count_one": "{{count}} richiesta",
+      "count_other": "{{count}} richieste"
+    },
+    "cmdb": {
+      "title": "CMDB",
+      "count": "{{count}} CI",
+      "new": "+ Nuovo {{type}}",
+      "name": "Nome",
+      "status": "Stato",
+      "environment": "Ambiente",
+      "ownerGroup": "Gruppo Owner",
+      "createdAt": "Creato il"
+    },
+    "anomalies": {
+      "title": "Anomalie",
+      "count_one": "{{count}} anomalia",
+      "count_other": "{{count}} anomalie",
+      "severity": "Severità",
+      "type": "Tipo",
+      "detectedAt": "Rilevato il",
+      "resolve": "Risolvi"
+    },
+    "topology": {
+      "title": "Mappa Topologica",
+      "nodes": "nodi",
+      "relations": "relazioni",
+      "depth": "Profondità",
+      "allEnv": "Tutti gli ambienti",
+      "allStatus": "Tutti gli stati",
+      "labels": "Etichette",
+      "activeIncidents": "incident attivi"
+    },
+    "teams": {
+      "title": "Team",
+      "new": "+ Nuovo Team",
+      "count_one": "{{count}} team",
+      "count_other": "{{count}} team"
+    },
+    "users": {
+      "title": "Utenti",
+      "newUser": "+ Nuovo Utente",
+      "count_one": "{{count}} utente",
+      "count_other": "{{count}} utenti",
+      "name": "Nome",
+      "email": "Email",
+      "role": "Ruolo",
+      "createdAt": "Creato il"
+    },
+    "logs": {
+      "title": "Log",
+      "count_one": "{{count}} log",
+      "count_other": "{{count}} log",
+      "level": "Livello",
+      "message": "Messaggio",
+      "source": "Sorgente"
+    },
+    "dashboard": {
+      "title": "Dashboard"
+    },
+    "reportBuilder": {
+      "title": "Report Builder",
+      "count_one": "{{count}} report",
+      "count_other": "{{count}} report",
+      "new": "+ Nuovo Report",
+      "execute": "Esegui",
+      "modify": "Modifica",
+      "private": "Privato",
+      "public": "Pubblico"
+    },
+    "aiAnalysis": {
+      "title": "AI Analysis",
+      "placeholder": "Fai una domanda sui tuoi dati...",
+      "newConversation": "Nuova conversazione",
+      "noConversation": "Nessuna conversazione",
+      "startQuestion": "Fai la prima domanda per iniziare.",
+      "subtitle": "Fai domande sui tuoi dati in linguaggio naturale"
+    },
+    "settings": {
+      "title": "Impostazioni"
+    },
+    "profile": {
+      "title": "Profilo",
+      "language": "Lingua",
+      "languageDescription": "Scegli la lingua preferita",
+      "english": "English",
+      "italian": "Italiano"
+    }
+  },
+  "filter": {
+    "advancedFilters": "Filtri avanzati",
+    "activeFilters_one": "{{count}} filtro attivo",
+    "activeFilters_other": "{{count}} filtri attivi",
+    "clearAll": "Rimuovi tutti",
+    "addFilter": "+ Aggiungi filtro",
+    "selectField": "Seleziona campo...",
+    "andConnector": "E",
+    "orConnector": "O",
+    "contains": "contiene",
+    "startsWith": "inizia con",
+    "endsWith": "finisce con",
+    "equals": "uguale a",
+    "notEquals": "diverso da",
+    "isEmpty": "è vuoto",
+    "isNotEmpty": "non è vuoto",
+    "after": "dopo il",
+    "before": "prima del",
+    "between": "tra",
+    "today": "oggi",
+    "last7Days": "ultimi 7 giorni",
+    "last30Days": "ultimi 30 giorni",
+    "isOneOf": "è uno di",
+    "isNotOneOf": "non è uno di"
+  },
+  "auth": {
+    "login": "Accedi",
+    "logout": "Esci",
+    "email": "Email",
+    "password": "Password"
+  }
+}
