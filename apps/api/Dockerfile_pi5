@@ -1,6 +1,6 @@
 # Stage 1: Build
-FROM node:20-alpine AS builder
-RUN apk add --no-cache python3 make g++
+FROM node:20-slim AS builder
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
@@ -12,7 +12,7 @@ COPY packages/ packages/
 RUN pnpm --filter @opengraphity/api build
 
 # Stage 2: Production
-FROM node:20-alpine
+FROM node:20-slim
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY --from=builder /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/package.json ./
