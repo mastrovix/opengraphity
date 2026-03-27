@@ -2,6 +2,9 @@
 FROM node:20-slim AS builder
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 ARG VITE_GRAPHQL_URL=/graphql
+ARG VITE_KEYCLOAK_URL=https://192.168.1.119/auth
+ARG VITE_KEYCLOAK_REALM=opengrafo
+ARG VITE_KEYCLOAK_CLIENT_ID=opengrafo-web
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
@@ -11,6 +14,9 @@ RUN pnpm install --frozen-lockfile
 COPY apps/web/ apps/web/
 COPY packages/ packages/
 ENV VITE_GRAPHQL_URL=$VITE_GRAPHQL_URL
+ENV VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL
+ENV VITE_KEYCLOAK_REALM=$VITE_KEYCLOAK_REALM
+ENV VITE_KEYCLOAK_CLIENT_ID=$VITE_KEYCLOAK_CLIENT_ID
 RUN pnpm --filter @opengraphity/web build
 
 # Stage 2: Nginx
