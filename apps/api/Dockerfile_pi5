@@ -3,7 +3,7 @@ FROM node:20-slim AS builder
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/ packages/
 RUN pnpm install --frozen-lockfile
