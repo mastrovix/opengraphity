@@ -9,7 +9,7 @@ COPY packages/ packages/
 RUN pnpm install --frozen-lockfile
 COPY apps/api/ apps/api/
 COPY packages/ packages/
-RUN pnpm --filter @opengraphity/api build
+RUN cd apps/api && npx tsc --skipLibCheck
 
 # Stage 2: Production
 FROM node:20-slim
