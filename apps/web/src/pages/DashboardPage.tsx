@@ -753,7 +753,7 @@ export function DashboardPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16, padding: 24 }}>
             {viewWidgets.map((widget) => (
               <div key={widget.id} style={{ gridColumn: `span ${widget.colSpan}` }}>
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+                <div className="card-border" style={{ overflow: 'hidden' }}>
                   <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)' }}>
                       {widget.reportSection?.title ?? 'Widget'}

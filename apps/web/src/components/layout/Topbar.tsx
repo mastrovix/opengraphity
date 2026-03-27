@@ -26,7 +26,7 @@ const LABELS: Record<string, string> = {
   changes:            'Changes',
   requests:           'Requests',
   workflow:           'Workflow',
-  reports:            'Report AI',
+  reports:            'AI Analysis',
   'custom-reports':   'Report Builder',
   cmdb:               'CMDB',
   ci:                 'CMDB',

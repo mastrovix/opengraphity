@@ -127,9 +127,10 @@ function formatDuration(ms: number): string {
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={{
-      backgroundColor: 'var(--surface)',
-      border:          '1px solid var(--border)',
-      borderRadius:    8,
+      backgroundColor: '#fff',
+      border:          '1px solid #e5e7eb',
+      borderRadius:    10,
+      boxShadow:       '0 1px 2px rgba(0,0,0,0.05)',
       padding:         '20px 24px',
       ...style,
     }}>

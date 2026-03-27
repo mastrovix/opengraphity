@@ -114,9 +114,10 @@ function AnomalyStatusBadge({ value }: { value: string }) {
 function StatCard({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
     <div style={{
-      background: 'var(--surface)',
-      border: `1px solid var(--border)`,
+      background: '#fff',
+      border: '1px solid #e5e7eb',
       borderRadius: 10,
+      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       padding: '14px 18px',
       minWidth: 110,
       flex: 1,
@@ -591,7 +592,7 @@ export function AnomalyPage() {
       />
 
       {/* Table */}
-      <div style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden' }}>
+      <div className="card-border" style={{ overflow: 'hidden' }}>
         {!loading && anomalies.length === 0 ? (
           <AnomalyEmptyState scanStatus={scanStatus} />
         ) : (

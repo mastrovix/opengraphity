@@ -16,7 +16,7 @@ import {
   UsersRound,
   User,
   BarChart2,
-  Bot,
+  BrainCircuit,
   LayoutGrid,
   ScrollText,
   ChevronLeft,
@@ -56,7 +56,7 @@ const ITSM_ITEMS = [
 ]
 
 const REPORTING_ITEMS = [
-  { to: '/reports',        label: 'Analisi ITSM',   icon: Bot },
+  { to: '/reports',        label: 'AI Analysis',    icon: BrainCircuit },
   { to: '/custom-reports', label: 'Report Builder',  icon: LayoutGrid  },
 ]
 
@@ -259,11 +259,11 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           )
         })}
 
-        {/* Processi ITSM — collapsible */}
+        {/* ITIL Processes — collapsible */}
         {collapsed ? (
           <NavLink
             to="/incidents"
-            title="Processi ITSM"
+            title="ITIL Processes"
             style={navItemStyle(itsmActive, true)}
             onMouseEnter={(e) => hoverOn(e, itsmActive)}
             onMouseLeave={(e) => hoverOff(e, itsmActive)}
@@ -281,7 +281,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <ListChecks size={16} style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? C.brand : C.textDefault }}>
-                  Processi ITSM
+                  ITIL Processes
                 </span>
               </div>
               {itsmOpen

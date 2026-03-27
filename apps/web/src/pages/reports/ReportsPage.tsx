@@ -5,7 +5,7 @@ import { keycloak } from '@/lib/keycloak'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
-import { BarChart2, X } from 'lucide-react'
+import { BarChart2, BrainCircuit, X } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
 import { EmptyState } from '@/components/EmptyState'
 
@@ -290,7 +290,7 @@ export default function ReportsPage() {
   const hasMessages = localMessages.length > 0
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+    <div className="card-border" style={{ display: 'flex', height: 'calc(100vh - 56px - 48px)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", overflow: 'hidden' }}>
 
       {/* ── Sidebar sinistra ────────────────────────────────────────────── */}
       <div style={{
@@ -348,7 +348,10 @@ export default function ReportsPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16 }}>
             <BarChart2 size={48} color="#d1d5db" strokeWidth={1.5} />
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6 }}>Analisi ITSM</div>
+              <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                <BrainCircuit size={22} color="var(--color-brand)" />
+                AI Analysis
+              </div>
               <div style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>Fai domande sui tuoi dati in linguaggio naturale</div>
             </div>
           </div>

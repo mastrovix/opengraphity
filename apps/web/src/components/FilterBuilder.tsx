@@ -307,7 +307,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
   const activeCount = rules.length
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div className="card-border" style={{ marginBottom: 16, padding: '10px 14px' }}>
       {/* Header bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: open ? 10 : 0 }}>
         <button

@@ -42,7 +42,7 @@ export function AppLayout() {
             flex:            1,
             overflowY:       'auto',
             padding:         24,
-            backgroundColor: '#e8ecf0',
+            backgroundColor: '#f8fafc',
           }}
         >
           <Outlet />
