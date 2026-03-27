@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
-import { Users } from 'lucide-react'
+import { UsersRound } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_TEAMS } from '@/graphql/queries'
@@ -33,6 +33,7 @@ const PAGE_SIZE = 50
 
 const FILTER_FIELDS: FieldConfig[] = [
   { key: 'name',      label: 'Nome',      type: 'text' },
+  { key: 'type',      label: 'Tipo',      type: 'enum', enumValues: ['owner', 'support'] },
   { key: 'createdAt', label: 'Creato il', type: 'date' },
 ]
 
@@ -42,12 +43,14 @@ const COLUMNS: ColumnDef<Team>[] = [
   {
     key:    'type',
     label:  'Tipo',
+    width:  '120px',
     sortable: true,
     render: (v) => <TypeBadge type={v as string | null} />,
   },
   {
     key:    'createdAt',
     label:  'Creato il',
+    width:  '120px',
     sortable: true,
     render: (v) => v ? new Date(v as string).toLocaleDateString('it-IT') : '—',
   },
@@ -69,25 +72,35 @@ export function TeamsPage() {
   const pageItems  = teams.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   return (
-    <div style={{ padding: '32px 40px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>Teams</h1>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <UsersRound size={22} color="var(--color-brand)" />
+            Teams
+          </h1>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${total} teams`}
+          </p>
+        </div>
         <button
           disabled
           style={{
+            display:         'flex',
+            alignItems:      'center',
+            gap:             6,
             padding:         '8px 16px',
-            background:      'var(--color-brand)',
+            backgroundColor: '#38bdf8',
             color:           '#fff',
             border:          'none',
             borderRadius:    6,
-            fontSize:        13,
-            fontWeight:      600,
+            fontSize:        14,
+            fontWeight:      500,
             cursor:          'not-allowed',
-            opacity:         0.4,
           }}
         >
-          New
+          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
+          Nuovo Team
         </button>
       </div>
 
@@ -96,40 +109,44 @@ export function TeamsPage() {
         onApply={(group) => { setFilterGroup(group); setPage(0) }}
       />
 
-      {/* Table */}
-      {!loading && teams.length === 0 ? (
-        <EmptyState
-          icon={<Users size={32} color="var(--color-slate-light)" />}
-          title="Nessun team"
-          description="Non ci sono team per questo tenant."
-        />
-      ) : (
-        <SortableFilterTable
-          columns={COLUMNS}
-          data={pageItems}
-          loading={loading}
-          onRowClick={(row) => navigate(`/teams/${row.id}`)}
-        />
-      )}
+      <SortableFilterTable
+        columns={COLUMNS}
+        data={pageItems}
+        loading={loading}
+        emptyComponent={
+          <EmptyState
+            icon={<UsersRound size={32} color="var(--color-slate-light)" />}
+            title="Nessun team"
+            description="Non ci sono team per questo tenant."
+          />
+        }
+        onRowClick={(row) => navigate(`/teams/${row.id}`)}
+      />
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 12, color: "var(--color-slate)" }}>
-          <button
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={page === 0}
-            style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#fff', cursor: page === 0 ? 'not-allowed' : 'pointer', opacity: page === 0 ? 0.4 : 1 }}
-          >
-            ← Prev
-          </button>
-          <span>{page + 1} / {totalPages}</span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
-            style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#fff', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', opacity: page >= totalPages - 1 ? 0.4 : 1 }}
-          >
-            Next →
-          </button>
+      {total > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+          <span>
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} teams
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+            >
+              ← Prev
+            </button>
+            <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>
+              {page + 1} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+            >
+              Next →
+            </button>
+          </div>
         </div>
       )}
     </div>

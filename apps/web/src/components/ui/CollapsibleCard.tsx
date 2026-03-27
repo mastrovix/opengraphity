@@ -13,7 +13,7 @@ export function CollapsibleCard({ title, count, defaultOpen = false, children }:
   const [open, setOpen] = useState(defaultOpen)
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06)' }}>
       <div
         onClick={() => setOpen(p => !p)}
         style={{

@@ -183,8 +183,8 @@ export function LogsPage() {
         <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
           Log di sistema
         </h1>
-        <p style={{ color: 'var(--color-slate-light)', fontSize: 14, margin: '4px 0 0' }}>
-          {total > 0 ? `${total} entries trovate` : 'Nessun log trovato'}
+        <p style={{ color: '#0f172a', fontSize: 13, margin: '4px 0 0' }}>
+          {loading ? '—' : total > 0 ? `${total} log` : 'Nessun log trovato'}
         </p>
       </div>
 

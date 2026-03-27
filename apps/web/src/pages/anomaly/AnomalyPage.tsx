@@ -536,10 +536,15 @@ export function AnomalyPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ShieldAlert size={22} color={colors.danger} />
-          <h1 className="ty-page-title">Anomalie</h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h1 className="ty-page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <ShieldAlert size={22} color={colors.danger} />
+            Anomalie
+          </h1>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${total} anomalie`}
+          </p>
         </div>
         <button
           type="button"

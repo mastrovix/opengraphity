@@ -17,7 +17,7 @@ export function AppLayout() {
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: '#f8f9fc' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: '#f1f5f9' }}>
       <Sidebar
         collapsed={collapsed}
         width={sidebarWidth}
@@ -39,9 +39,10 @@ export function AppLayout() {
         <Topbar />
         <main
           style={{
-            flex:      1,
-            overflowY: 'auto',
-            padding:   24,
+            flex:            1,
+            overflowY:       'auto',
+            padding:         24,
+            backgroundColor: '#e8ecf0',
           }}
         >
           <Outlet />

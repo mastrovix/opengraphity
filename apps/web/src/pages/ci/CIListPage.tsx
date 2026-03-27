@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@apollo/client/react'
+import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { toast } from 'sonner'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -9,6 +10,7 @@ import { EnvBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
 import { CIIcon } from '@/lib/ciIcon'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { CIDynamicForm } from '@/components/CIDynamicForm'
 
 const PAGE_SIZE = 50
 
@@ -38,11 +40,12 @@ export function CIListPage() {
   const { getCIType, loading: metamodelLoading } = useMetamodel()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
 
   const ciType = typeName ? getCIType(typeName) : undefined
 
-  const { queryKey, listQuery } = useMemo(() => {
-    if (!typeName) return { queryKey: '', listQuery: null }
+  const { queryKey, listQuery, createMutation } = useMemo(() => {
+    if (!typeName) return { queryKey: '', listQuery: null, createMutation: null }
     const pascal = toPascalCase(typeName)
     const plural = pluralize(pascal)
     const key = plural.charAt(0).toLowerCase() + plural.slice(1)
@@ -63,15 +66,35 @@ export function CIListPage() {
         }
       }
     `
-    return { queryKey: key, listQuery: query }
+    const mutation = gql`
+      mutation DynamicCreate_${pascal}($input: Create${pascal}Input!) {
+        create${pascal}(input: $input) { id name }
+      }
+    `
+    return { queryKey: key, listQuery: query, createMutation: mutation }
   }, [typeName])
 
-  const { data, loading } = useQuery<Record<string, { total: number; items: CIItem[] }>>(
+  const { data, loading, refetch } = useQuery<Record<string, { total: number; items: CIItem[] }>>(
     listQuery ?? gql`query EmptyCIList { __typename }`,
     {
       variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null },
       fetchPolicy: 'cache-and-network',
       skip: !listQuery || !typeName,
+    },
+  )
+
+  const [createCI, { loading: creating }] = useMutation<Record<string, { id: string; name: string }>>(
+    createMutation ?? gql`mutation EmptyCICreate { __typename }`,
+    {
+      onCompleted: (res) => {
+        const key = `create${toPascalCase(typeName ?? '')}`
+        const newId = res[key]?.id
+        toast.success(`${ciType?.label ?? 'CI'} creato`)
+        setShowCreate(false)
+        void refetch()
+        if (newId) navigate(`/ci/${typeName}/${newId}`)
+      },
+      onError: (err) => toast.error(err.message),
     },
   )
 
@@ -83,11 +106,11 @@ export function CIListPage() {
   const filterFields = useMemo((): FieldConfig[] => {
     if (!ciType) return []
     const base: FieldConfig[] = [
-      { key: 'name',        label: 'Nome',           type: 'text' },
-      { key: 'status',      label: 'Status',          type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
-      { key: 'environment', label: 'Environment',     type: 'enum', enumValues: ['production', 'staging', 'development'] },
-      { key: 'ownerGroup',  label: 'Owner Group',     type: 'text' },
-      { key: 'createdAt',   label: 'Creato il',       type: 'date' },
+      { key: 'name',        label: 'Nome',        type: 'text' },
+      { key: 'status',      label: 'Status',      type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
+      { key: 'environment', label: 'Environment', type: 'enum', enumValues: ['production', 'staging', 'development'] },
+      { key: 'ownerGroup',  label: 'Owner Group', type: 'text' },
+      { key: 'createdAt',   label: 'Creato il',   type: 'date' },
     ]
     const custom: FieldConfig[] = ciType.fields
       .filter((f) => !f.isSystem)
@@ -127,14 +150,30 @@ export function CIListPage() {
     return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 14 }}>Tipo CI "{typeName}" non trovato.</div>
   }
 
+  // Article prefix: "Nuova" for feminine labels ending in 'a', else "Nuovo"
+  const article = ciType.label.match(/[aA]$/) ? 'Nuova' : 'Nuovo'
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <CIIcon icon={ciType.icon} size={22} color={ciType.color} />
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{ciType.label}</h1>
-          {total > 0 && <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{total} totali</span>}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <CIIcon icon={ciType.icon} size={22} color={ciType.color} />
+            {ciType.label}
+          </h1>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${total} ${ciType.label.toLowerCase()}`}
+          </p>
         </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
+        >
+          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
+          {article} {ciType.label}
+        </button>
       </div>
 
       <FilterBuilder
@@ -156,19 +195,46 @@ export function CIListPage() {
         />
       )}
 
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 12, color: 'var(--color-slate)' }}>
-          <button
-            onClick={() => setPage(p => Math.max(0, p - 1))}
-            disabled={page === 0}
-            style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#fff', cursor: page === 0 ? 'not-allowed' : 'pointer', opacity: page === 0 ? 0.4 : 1 }}
-          >← Prev</button>
-          <span>{page + 1} / {totalPages}</span>
-          <button
-            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
-            style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#fff', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', opacity: page >= totalPages - 1 ? 0.4 : 1 }}
-          >Next →</button>
+      {total > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+          <span>
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} {ciType.label.toLowerCase()}
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+            >← Prev</button>
+            <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>{page + 1} / {totalPages}</span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+            >Next →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Create modal */}
+      {showCreate && (
+        <div
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false) }}
+        >
+          <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 20px 0' }}>
+              {article} {ciType.label}
+            </h2>
+            <CIDynamicForm
+              ciType={ciType}
+              loading={creating}
+              onCancel={() => setShowCreate(false)}
+              onSubmit={async (values) => {
+                await createCI({ variables: { input: values } })
+              }}
+            />
+          </div>
         </div>
       )}
     </div>

@@ -72,7 +72,7 @@ export function SortableFilterTable<T extends object>({
       })
 
   return (
-    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06)' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <colgroup>
           {columns.map((col) => (
@@ -145,10 +145,10 @@ export function SortableFilterTable<T extends object>({
                     borderBottom:    '1px solid #f1f3f9',
                     cursor:          onRowClick ? 'pointer' : 'default',
                     backgroundColor: colors.white,
-                    transition:      'background 100ms',
+                    transition:      'background-color 0.15s, color 0.15s',
                   }}
                   onMouseEnter={(e) => {
-                    if (onRowClick) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f5f7ff'
+                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#3d4856'
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLTableRowElement).style.backgroundColor = colors.white

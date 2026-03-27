@@ -133,13 +133,15 @@ export function ChangeListPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>Changes</h1>
-          <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} change${total !== 1 ? 's' : ''}`}
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${total} changes`}
           </p>
         </div>
         <button
           onClick={() => navigate('/changes/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
         >
           <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
           Nuovo Change

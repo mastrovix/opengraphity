@@ -64,6 +64,18 @@ const ADMIN_NAV_ITEMS = [
   { to: '/logs', label: 'Logs', icon: ScrollText },
 ]
 
+// ── colours ──────────────────────────────────────────────────────────────────
+const C = {
+  bg:           '#3d4856',
+  border:       '#4f5e70',
+  textDefault:  '#e2e8f0',
+  textSection:  '#94a3b8',
+  textChevron:  '#94a3b8',
+  hoverBg:      'rgba(255,255,255,0.08)',
+  activeBg:     'rgba(255,255,255,0.08)',
+  brand:        '#38bdf8',
+}
+
 interface SidebarProps {
   collapsed: boolean
   width:     number
@@ -117,9 +129,9 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     textDecoration:  'none',
     fontWeight:      isActive ? 600 : 400,
     fontSize:        13,
-    color:           isActive ? 'var(--color-brand)' : 'var(--color-slate)',
-    backgroundColor: isActive ? 'rgba(2,132,199,0.12)' : 'transparent',
-    borderLeft:      isActive ? '2px solid #0284c7' : '2px solid transparent',
+    color:           isActive ? C.brand : C.textDefault,
+    backgroundColor: isActive ? C.activeBg : 'transparent',
+    borderLeft:      isActive ? `2px solid ${C.brand}` : '2px solid transparent',
     transition:      'background 150ms, color 150ms',
     cursor:          'pointer',
     boxSizing:       'border-box' as const,
@@ -132,7 +144,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     padding:        '5px 8px',
     borderRadius:   4,
     fontSize:       12,
-    color:          isActive ? 'var(--color-brand)' : 'var(--color-slate)',
+    color:          isActive ? C.brand : C.textDefault,
     fontWeight:     isActive ? 600 : 400,
     textDecoration: 'none',
     cursor:         'pointer',
@@ -149,6 +161,26 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     || pathname.startsWith('/database-instances') || pathname.startsWith('/servers')
     || pathname.startsWith('/certificates')
 
+  const hoverOn  = (e: React.MouseEvent, active: boolean) => {
+    if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg
+  }
+  const hoverOff = (e: React.MouseEvent, active: boolean) => {
+    if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
+  }
+
+  const parentGroupStyle = (isActive: boolean): React.CSSProperties => ({
+    display:         'flex',
+    alignItems:      'center',
+    justifyContent:  'space-between',
+    padding:         '7px 10px',
+    borderRadius:    6,
+    cursor:          'pointer',
+    backgroundColor: isActive ? C.activeBg : 'transparent',
+    borderLeft:      isActive ? `2px solid ${C.brand}` : '2px solid transparent',
+    transition:      'background 150ms',
+    margin:          '1px 0',
+  })
+
   return (
     <aside
       style={{
@@ -157,8 +189,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         top:             0,
         bottom:          0,
         width:           width,
-        backgroundColor: '#ffffff',
-        borderRight:     '1px solid #e5e7eb',
+        backgroundColor: C.bg,
+        borderRight:     `1px solid ${C.border}`,
         display:         'flex',
         flexDirection:   'column',
         zIndex:          40,
@@ -170,7 +202,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
       <div
         style={{
           height:          56,
-          borderBottom:    '1px solid #e5e7eb',
+          borderBottom:    `1px solid ${C.border}`,
           display:         'flex',
           alignItems:      'center',
           justifyContent:  collapsed ? 'center' : 'flex-start',
@@ -197,7 +229,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {!collapsed && (
           <p
             style={{
-              color:         'var(--color-slate-dark)',
+              color:         C.textSection,
               fontSize:      10,
               fontWeight:    600,
               letterSpacing: '0.08em',
@@ -218,74 +250,43 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               to={to}
               title={collapsed ? label : undefined}
               style={navItemStyle(isActive, collapsed)}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                  ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                  ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-                }
-              }}
+              onMouseEnter={(e) => hoverOn(e, isActive)}
+              onMouseLeave={(e) => hoverOff(e, isActive)}
             >
-              <Icon size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+              <Icon size={16} style={{ flexShrink: 0, color: C.brand }} />
               {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
             </NavLink>
           )
         })}
 
-        {/* Processi ITSM — collapsible, default espanso */}
+        {/* Processi ITSM — collapsible */}
         {collapsed ? (
           <NavLink
             to="/incidents"
             title="Processi ITSM"
             style={navItemStyle(itsmActive, true)}
-            onMouseEnter={(e) => {
-              if (!itsmActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!itsmActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-              }
-            }}
+            onMouseEnter={(e) => hoverOn(e, itsmActive)}
+            onMouseLeave={(e) => hoverOff(e, itsmActive)}
           >
-            <ListChecks size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+            <ListChecks size={16} style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
             <div
               onClick={() => setItsmOpen((p) => !p)}
-              style={{
-                display:         'flex',
-                alignItems:      'center',
-                justifyContent:  'space-between',
-                padding:         '7px 10px',
-                borderRadius:    6,
-                cursor:          'pointer',
-                backgroundColor: itsmActive ? 'rgba(2,132,199,0.12)' : 'transparent',
-                borderLeft:      itsmActive ? '2px solid #0284c7' : '2px solid transparent',
-                transition:      'background 150ms',
-                margin:          '1px 0',
-              }}
-              onMouseEnter={(e) => { if (!itsmActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { if (!itsmActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+              style={parentGroupStyle(itsmActive)}
+              onMouseEnter={(e) => hoverOn(e, itsmActive)}
+              onMouseLeave={(e) => hoverOff(e, itsmActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ListChecks size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
-                <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                <ListChecks size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? C.brand : C.textDefault }}>
                   Processi ITSM
                 </span>
               </div>
               {itsmOpen
-                ? <ChevronDown size={12} color="var(--color-slate-light)" />
-                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+                ? <ChevronDown size={12} color={C.textChevron} />
+                : <ChevronRight size={12} color={C.textChevron} />}
             </div>
 
             {itsmOpen && (
@@ -293,7 +294,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {ITSM_ITEMS.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                      <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
                       {label}
                     </span>
                   </NavLink>
@@ -309,49 +310,28 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             to="/reports"
             title="Reporting"
             style={navItemStyle(reportingActive, true)}
-            onMouseEnter={(e) => {
-              if (!reportingActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!reportingActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-              }
-            }}
+            onMouseEnter={(e) => hoverOn(e, reportingActive)}
+            onMouseLeave={(e) => hoverOff(e, reportingActive)}
           >
-            <BarChart2 size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+            <BarChart2 size={16} style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
             <div
               onClick={() => setReportingOpen((p) => !p)}
-              style={{
-                display:         'flex',
-                alignItems:      'center',
-                justifyContent:  'space-between',
-                padding:         '7px 10px',
-                borderRadius:    6,
-                cursor:          'pointer',
-                backgroundColor: reportingActive ? 'rgba(2,132,199,0.12)' : 'transparent',
-                borderLeft:      reportingActive ? '2px solid #0284c7' : '2px solid transparent',
-                transition:      'background 150ms',
-                margin:          '1px 0',
-              }}
-              onMouseEnter={(e) => { if (!reportingActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { if (!reportingActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+              style={parentGroupStyle(reportingActive)}
+              onMouseEnter={(e) => hoverOn(e, reportingActive)}
+              onMouseLeave={(e) => hoverOff(e, reportingActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <BarChart2 size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
-                <span style={{ fontSize: 13, fontWeight: reportingActive ? 600 : 400, color: reportingActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                <BarChart2 size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <span style={{ fontSize: 13, fontWeight: reportingActive ? 600 : 400, color: reportingActive ? C.brand : C.textDefault }}>
                   Reporting
                 </span>
               </div>
               {reportingOpen
-                ? <ChevronDown size={12} color="var(--color-slate-light)" />
-                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+                ? <ChevronDown size={12} color={C.textChevron} />
+                : <ChevronRight size={12} color={C.textChevron} />}
             </div>
 
             {reportingOpen && (
@@ -359,7 +339,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {REPORTING_ITEMS.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                      <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
                       {label}
                     </span>
                   </NavLink>
@@ -375,49 +355,28 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             to="/anomalies"
             title="Analysis"
             style={navItemStyle(analysisActive, true)}
-            onMouseEnter={(e) => {
-              if (!analysisActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!analysisActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-              }
-            }}
+            onMouseEnter={(e) => hoverOn(e, analysisActive)}
+            onMouseLeave={(e) => hoverOff(e, analysisActive)}
           >
-            <Activity size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+            <Activity size={16} style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
             <div
               onClick={() => setAnalysisOpen((p) => !p)}
-              style={{
-                display:         'flex',
-                alignItems:      'center',
-                justifyContent:  'space-between',
-                padding:         '7px 10px',
-                borderRadius:    6,
-                cursor:          'pointer',
-                backgroundColor: analysisActive ? 'rgba(2,132,199,0.12)' : 'transparent',
-                borderLeft:      analysisActive ? '2px solid #0284c7' : '2px solid transparent',
-                transition:      'background 150ms',
-                margin:          '1px 0',
-              }}
-              onMouseEnter={(e) => { if (!analysisActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { if (!analysisActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+              style={parentGroupStyle(analysisActive)}
+              onMouseEnter={(e) => hoverOn(e, analysisActive)}
+              onMouseLeave={(e) => hoverOff(e, analysisActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Activity size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
-                <span style={{ fontSize: 13, fontWeight: analysisActive ? 600 : 400, color: analysisActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                <Activity size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <span style={{ fontSize: 13, fontWeight: analysisActive ? 600 : 400, color: analysisActive ? C.brand : C.textDefault }}>
                   Analysis
                 </span>
               </div>
               {analysisOpen
-                ? <ChevronDown size={12} color="var(--color-slate-light)" />
-                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+                ? <ChevronDown size={12} color={C.textChevron} />
+                : <ChevronRight size={12} color={C.textChevron} />}
             </div>
 
             {analysisOpen && (
@@ -425,7 +384,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {ANALYSIS_ITEMS.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                      <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
                       {label}
                     </span>
                     {to === '/anomalies' && anomalyCritical > 0 && (
@@ -444,64 +403,41 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           </div>
         )}
 
-        {/* CMDB — collapsible with sub-items */}
+        {/* CMDB — collapsible */}
         {collapsed ? (
           <NavLink
             to="/cmdb"
             title="CMDB"
             style={navItemStyle(cmdbActive, true)}
-            onMouseEnter={(e) => {
-              if (!cmdbActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!cmdbActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-              }
-            }}
+            onMouseEnter={(e) => hoverOn(e, cmdbActive)}
+            onMouseLeave={(e) => hoverOff(e, cmdbActive)}
           >
-            <Server size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+            <Server size={16} style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
-            {/* Header */}
             <div
               onClick={() => setCmdbOpen((p) => !p)}
-              style={{
-                display:         'flex',
-                alignItems:      'center',
-                justifyContent:  'space-between',
-                padding:         '7px 10px',
-                borderRadius:    6,
-                cursor:          'pointer',
-                backgroundColor: cmdbActive ? 'rgba(2,132,199,0.12)' : 'transparent',
-                borderLeft:      cmdbActive ? '2px solid #0284c7' : '2px solid transparent',
-                transition:      'background 150ms',
-                margin:          '1px 0',
-              }}
-              onMouseEnter={(e) => { if (!cmdbActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { if (!cmdbActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+              style={parentGroupStyle(cmdbActive)}
+              onMouseEnter={(e) => hoverOn(e, cmdbActive)}
+              onMouseLeave={(e) => hoverOff(e, cmdbActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Server size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
-                <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                <Server size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? C.brand : C.textDefault }}>
                   CMDB
                 </span>
               </div>
               {cmdbOpen
-                ? <ChevronDown size={12} color="var(--color-slate-light)" />
-                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+                ? <ChevronDown size={12} color={C.textChevron} />
+                : <ChevronRight size={12} color={C.textChevron} />}
             </div>
 
-            {/* Sub-items */}
             {cmdbOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 <NavLink to="/cmdb" end style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Server size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                    <Server size={12} style={{ color: C.brand, flexShrink: 0 }} />
                     Tutti
                   </span>
                 </NavLink>
@@ -511,7 +447,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   return (
                     <NavLink key={ct.name} to={to} style={() => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CIIcon icon={ct.icon} size={12} color='var(--color-brand)' />
+                        <CIIcon icon={ct.icon} size={12} color={C.brand} />
                         {ct.label}
                       </span>
                     </NavLink>
@@ -527,41 +463,30 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           <div style={{ marginBottom: 2 }}>
             <div
               onClick={() => setTeamsOpen((p) => !p)}
-              style={{
-                display:        'flex',
-                alignItems:     'center',
-                justifyContent: 'space-between',
-                padding:        '7px 10px',
-                borderRadius:   6,
-                cursor:         'pointer',
-                backgroundColor: 'transparent',
-                borderLeft:     '2px solid transparent',
-                transition:     'background 150ms',
-                margin:         '1px 0',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+              style={parentGroupStyle(false)}
+              onMouseEnter={(e) => hoverOn(e, false)}
+              onMouseLeave={(e) => hoverOff(e, false)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Users size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
-                <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--color-slate)' }}>Teams & Users</span>
+                <Users size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <span style={{ fontSize: 13, fontWeight: 400, color: C.textDefault }}>Teams & Users</span>
               </div>
               {teamsOpen
-                ? <ChevronDown size={12} color="var(--color-slate-light)" />
-                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+                ? <ChevronDown size={12} color={C.textChevron} />
+                : <ChevronRight size={12} color={C.textChevron} />}
             </div>
 
             {teamsOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 <NavLink to="/teams" style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <UsersRound size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                    <UsersRound size={12} style={{ color: C.brand, flexShrink: 0 }} />
                     Teams
                   </span>
                 </NavLink>
                 <NavLink to="/users" style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <User size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                    <User size={12} style={{ color: C.brand, flexShrink: 0 }} />
                     Users
                   </span>
                 </NavLink>
@@ -569,62 +494,42 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             )}
           </div>
         )}
-        {/* Configuration — collapsible, default collassato */}
+
+        {/* Configuration — collapsible */}
         {collapsed ? (
           <NavLink
             to="/workflow"
             title="Configuration"
             style={navItemStyle(configActive, true)}
-            onMouseEnter={(e) => {
-              if (!configActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!configActive) {
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-              }
-            }}
+            onMouseEnter={(e) => hoverOn(e, configActive)}
+            onMouseLeave={(e) => hoverOff(e, configActive)}
           >
-            <SlidersHorizontal size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+            <SlidersHorizontal size={16} style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
             <div
               onClick={() => setConfigOpen((p) => !p)}
-              style={{
-                display:         'flex',
-                alignItems:      'center',
-                justifyContent:  'space-between',
-                padding:         '7px 10px',
-                borderRadius:    6,
-                cursor:          'pointer',
-                backgroundColor: configActive ? 'rgba(2,132,199,0.12)' : 'transparent',
-                borderLeft:      configActive ? '2px solid #0284c7' : '2px solid transparent',
-                transition:      'background 150ms',
-                margin:          '1px 0',
-              }}
-              onMouseEnter={(e) => { if (!configActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { if (!configActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+              style={parentGroupStyle(configActive)}
+              onMouseEnter={(e) => hoverOn(e, configActive)}
+              onMouseLeave={(e) => hoverOff(e, configActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <SlidersHorizontal size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
-                <span style={{ fontSize: 13, fontWeight: configActive ? 600 : 400, color: configActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                <SlidersHorizontal size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <span style={{ fontSize: 13, fontWeight: configActive ? 600 : 400, color: configActive ? C.brand : C.textDefault }}>
                   Configuration
                 </span>
               </div>
               {configOpen
-                ? <ChevronDown size={12} color="var(--color-slate-light)" />
-                : <ChevronRight size={12} color="var(--color-slate-light)" />}
+                ? <ChevronDown size={12} color={C.textChevron} />
+                : <ChevronRight size={12} color={C.textChevron} />}
             </div>
             {configOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 {CONFIG_ITEMS.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                      <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
                       {label}
                     </span>
                   </NavLink>
@@ -638,7 +543,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {isAdmin && (
           <>
             {!collapsed && (
-              <p style={{ color: 'var(--color-slate-dark)', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
+              <p style={{ color: C.textSection, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
                 ADMIN
               </p>
             )}
@@ -650,20 +555,10 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   to={to}
                   title={collapsed ? label : undefined}
                   style={navItemStyle(isActive, collapsed)}
-                  onMouseEnter={(e) => {
-                    if (!isActive) {
-                      (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                      ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) {
-                      (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                      ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-                    }
-                  }}
+                  onMouseEnter={(e) => hoverOn(e, isActive)}
+                  onMouseLeave={(e) => hoverOff(e, isActive)}
                 >
-                  <Icon size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+                  <Icon size={16} style={{ flexShrink: 0, color: C.brand }} />
                   {!collapsed && label}
                 </NavLink>
               )
@@ -675,61 +570,40 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 to="/settings/notifications"
                 title="Settings"
                 style={navItemStyle(settingsActive, true)}
-                onMouseEnter={(e) => {
-                  if (!settingsActive) {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9'
-                    ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate-dark)'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!settingsActive) {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-                    ;(e.currentTarget as HTMLElement).style.color = 'var(--color-slate)'
-                  }
-                }}
+                onMouseEnter={(e) => hoverOn(e, settingsActive)}
+                onMouseLeave={(e) => hoverOff(e, settingsActive)}
               >
-                <Settings size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
+                <Settings size={16} style={{ flexShrink: 0, color: C.brand }} />
               </NavLink>
             ) : (
               <div style={{ marginBottom: 2 }}>
                 <div
                   onClick={() => setSettingsOpen((p) => !p)}
-                  style={{
-                    display:         'flex',
-                    alignItems:      'center',
-                    justifyContent:  'space-between',
-                    padding:         '7px 10px',
-                    borderRadius:    6,
-                    cursor:          'pointer',
-                    backgroundColor: settingsActive ? 'rgba(2,132,199,0.12)' : 'transparent',
-                    borderLeft:      settingsActive ? '2px solid #0284c7' : '2px solid transparent',
-                    transition:      'background 150ms',
-                    margin:          '1px 0',
-                  }}
-                  onMouseEnter={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-                  onMouseLeave={(e) => { if (!settingsActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+                  style={parentGroupStyle(settingsActive)}
+                  onMouseEnter={(e) => hoverOn(e, settingsActive)}
+                  onMouseLeave={(e) => hoverOff(e, settingsActive)}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Settings size={16} style={{ flexShrink: 0, color: 'var(--color-brand)' }} />
-                    <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                    <Settings size={16} style={{ flexShrink: 0, color: C.brand }} />
+                    <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? C.brand : C.textDefault }}>
                       Settings
                     </span>
                   </div>
                   {settingsOpen
-                    ? <ChevronDown size={12} color="var(--color-slate-light)" />
-                    : <ChevronRight size={12} color="var(--color-slate-light)" />}
+                    ? <ChevronDown size={12} color={C.textChevron} />
+                    : <ChevronRight size={12} color={C.textChevron} />}
                 </div>
                 {settingsOpen && (
                   <div style={{ paddingLeft: 28, marginTop: 2 }}>
                     <NavLink to="/settings/notifications" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Bell size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                        <Bell size={12} style={{ color: C.brand, flexShrink: 0 }} />
                         Notifiche
                       </span>
                     </NavLink>
                     <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CircleUser size={12} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+                        <CircleUser size={12} style={{ color: C.brand, flexShrink: 0 }} />
                         Profilo
                       </span>
                     </NavLink>
@@ -752,15 +626,15 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           padding:         collapsed ? '12px 0' : '12px 16px',
           background:      'none',
           border:          'none',
-          borderTop:       '1px solid #e5e7eb',
-          color:           'var(--color-slate-light)',
+          borderTop:       `1px solid ${C.border}`,
+          color:           C.textSection,
           cursor:          'pointer',
           width:           '100%',
           flexShrink:      0,
           fontSize:        12,
           transition:      'background 150ms',
         }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
       >
         {collapsed

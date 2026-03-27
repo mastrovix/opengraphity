@@ -119,13 +119,13 @@ export function CMDBPage() {
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
             {pageTitle}
           </h1>
-          <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} configuration items`}
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${total} CI`}
           </p>
         </div>
         <button
           disabled
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'not-allowed', opacity: 0.6 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'not-allowed', opacity: 0.5 }}
         >
           New
         </button>
