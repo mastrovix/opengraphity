@@ -16,37 +16,37 @@ interface ServiceRequest {
   createdAt: string
 }
 
-const columns: ColumnDef<ServiceRequest>[] = [
-  { key: 'title',    label: 'Title',    sortable: true },
-  {
-    key:     'priority',
-    label:   'Priority',
-    width:   '130px',
-    sortable: true,
-    render:  (v) => <SeverityBadge value={String(v)} />,
-  },
-  {
-    key:     'status',
-    label:   'Status',
-    width:   '130px',
-    sortable: true,
-    render:  (v) => <StatusBadge value={String(v)} />,
-  },
-  {
-    key:      'createdAt',
-    label:    'Created',
-    width:    '120px',
-    sortable: true,
-    render:   (v) => (
-      <span style={{ color: "var(--color-slate-light)" }}>
-        {new Date(String(v)).toLocaleDateString()}
-      </span>
-    ),
-  },
-]
-
 export function RequestListPage() {
   const { t } = useTranslation()
+
+  const columns: ColumnDef<ServiceRequest>[] = [
+    { key: 'title',    label: t('pages.requests.title_col'), sortable: true },
+    {
+      key:     'priority',
+      label:   t('pages.requests.priority'),
+      width:   '130px',
+      sortable: true,
+      render:  (v) => <SeverityBadge value={String(v)} />,
+    },
+    {
+      key:     'status',
+      label:   t('pages.requests.status'),
+      width:   '130px',
+      sortable: true,
+      render:  (v) => <StatusBadge value={String(v)} />,
+    },
+    {
+      key:      'createdAt',
+      label:    t('pages.requests.createdAt'),
+      width:    '120px',
+      sortable: true,
+      render:   (v) => (
+        <span style={{ color: "var(--color-slate-light)" }}>
+          {new Date(String(v)).toLocaleDateString()}
+        </span>
+      ),
+    },
+  ]
   const navigate = useNavigate()
   const { data, loading } = useQuery<{ serviceRequests: ServiceRequest[] }>(GET_SERVICE_REQUESTS)
 
@@ -75,7 +75,7 @@ export function RequestListPage() {
         columns={columns}
         data={data?.serviceRequests ?? []}
         loading={loading}
-        emptyComponent={<EmptyState icon={<Inbox size={32} />} title="Nessuna richiesta trovata" description="Crea una nuova service request." />}
+        emptyComponent={<EmptyState icon={<Inbox size={32} />} title={t('pages.requests.noResults')} description={t('pages.requests.noResultsDesc')} />}
       />
     </div>
   )

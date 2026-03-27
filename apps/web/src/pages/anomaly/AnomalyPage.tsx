@@ -51,61 +51,55 @@ interface AnomalyScanStatus {
 
 const PAGE_SIZE = 10
 
-const CI_TYPE_LABEL: Record<string, string> = {
-  application:       'Application',
-  database:          'Database',
-  database_instance: 'DB Instance',
-  server:            'Server',
-  certificate:       'Certificate',
-  ci:                'CI',
+// CI_TYPE_LABEL is used inside components that receive t() — kept as a key lookup
+const CI_TYPE_KEYS: Record<string, string> = {
+  application:       'sidebar.application',
+  database:          'sidebar.database',
+  database_instance: 'sidebar.dbInstance',
+  server:            'sidebar.server',
+  certificate:       'sidebar.certificate',
 }
 
-const RULE_LABELS: Record<string, string> = {
-  orphan_ci:             'CI Orfano',
-  spof:                  'Single Point of Failure',
-  dependency_cycle:      'Ciclo di Dipendenza',
-  missing_owner:         'CI Senza Owner',
-  unauthorized_relation: 'Relazione Non Autorizzata',
-  isolated_cluster:      'Cluster Isolato',
-  risk_concentration:    'Concentrazione di Rischio',
+const RULE_LABEL_KEYS: Record<string, string> = {
+  orphan_ci:             'anomaly.rules.orphan_ci',
+  spof:                  'anomaly.rules.spof',
+  dependency_cycle:      'anomaly.rules.dependency_cycle',
+  missing_owner:         'anomaly.rules.missing_owner',
+  unauthorized_relation: 'anomaly.rules.unauthorized_relation',
+  isolated_cluster:      'anomaly.rules.isolated_cluster',
+  risk_concentration:    'anomaly.rules.risk_concentration',
 }
 
-const RULE_SUGGESTIONS: Record<string, string> = {
-  orphan_ci:
-    'Questo CI non ha relazioni. Verifica se è ancora in uso — se no, considera di eliminarlo. Se è attivo, collegalo ai CI da cui dipende.',
-  spof:
-    'Questo CI è un Single Point of Failure — molti servizi dipendono da esso senza ridondanza. Considera di creare un Change per aggiungere un secondo nodo o un load balancer.',
-  dependency_cycle:
-    'Esiste un ciclo nelle dipendenze che può causare deadlock o problemi a catena. Rivedi le relazioni e rimuovi quella non necessaria.',
-  missing_owner:
-    'Nessun team è responsabile di questo CI. Assegna un team owner per garantire accountability in caso di incident.',
-  unauthorized_relation:
-    'Questa relazione è stata creata senza un Change approvato. Verifica se è legittima — se sì, crea un Change retroattivo. Se no, rimuovila.',
-  isolated_cluster:
-    'Questo gruppo di CI è disconnesso dal resto dell\'infrastruttura. Verifica se è intenzionale (es. ambiente test) o se mancano relazioni.',
-  risk_concentration:
-    'Troppi servizi critici sono concentrati su questo nodo. Considera di redistribuire i workload su più server per ridurre il rischio.',
+const RULE_SUGGESTION_KEYS: Record<string, string> = {
+  orphan_ci:             'anomaly.suggestions.orphan_ci',
+  spof:                  'anomaly.suggestions.spof',
+  dependency_cycle:      'anomaly.suggestions.dependency_cycle',
+  missing_owner:         'anomaly.suggestions.missing_owner',
+  unauthorized_relation: 'anomaly.suggestions.unauthorized_relation',
+  isolated_cluster:      'anomaly.suggestions.isolated_cluster',
+  risk_concentration:    'anomaly.suggestions.risk_concentration',
 }
-
-const RESOLUTION_OPTIONS = [
-  { value: 'resolved',        label: 'Risolto — ho fixato il problema' },
-  { value: 'false_positive',  label: 'Falso positivo — non è un problema reale' },
-  { value: 'accepted_risk',   label: 'Rischio accettato — consapevole, non richiede azione' },
-]
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function AnomalyStatusBadge({ value }: { value: string }) {
-  const map: Record<string, { color: string; label: string; weight?: number }> = {
-    open:           { color: colors.danger,      label: 'Aperta',           weight: 600 },
-    resolved:       { color: colors.success,     label: 'Risolta',          weight: 500 },
-    false_positive: { color: colors.slateLight,  label: 'Falso positivo',   weight: 400 },
-    accepted_risk:  { color: colors.slateLight,  label: 'Rischio accettato', weight: 400 },
+  const { t } = useTranslation()
+  const map: Record<string, { color: string; weight?: number }> = {
+    open:           { color: colors.danger,     weight: 600 },
+    resolved:       { color: colors.success,    weight: 500 },
+    false_positive: { color: colors.slateLight, weight: 400 },
+    accepted_risk:  { color: colors.slateLight, weight: 400 },
   }
-  const s = map[value] ?? { color: colors.slate, label: value, weight: 400 }
+  const labelMap: Record<string, string> = {
+    open:           t('pages.anomalies.statusOpen'),
+    resolved:       t('pages.anomalies.statusResolved'),
+    false_positive: t('pages.anomalies.statusFalsePositive'),
+    accepted_risk:  t('pages.anomalies.statusAcceptedRisk'),
+  }
+  const s = map[value] ?? { color: colors.slate, weight: 400 }
   return (
     <span style={{ fontSize: 12, fontWeight: s.weight, color: s.color }}>
-      {s.label}
+      {labelMap[value] ?? value}
     </span>
   )
 }
@@ -148,11 +142,19 @@ function ResolutionForm({
   loading: boolean
   error?: string | null
 }) {
+  const { t } = useTranslation()
   const [resolutionStatus, setResolutionStatus] = useState('')
   const [note, setNote]                         = useState('')
 
-  const suggestion = RULE_SUGGESTIONS[anomaly.ruleKey]
-  const isValid    = resolutionStatus !== '' && note.trim().length >= 10
+  const suggestionKey = RULE_SUGGESTION_KEYS[anomaly.ruleKey]
+  const suggestion    = suggestionKey ? t(suggestionKey) : null
+  const isValid       = resolutionStatus !== '' && note.trim().length >= 10
+
+  const resolutionOptions = [
+    { value: 'resolved',       label: t('pages.anomalies.resolutionResolved') },
+    { value: 'false_positive', label: t('pages.anomalies.resolutionFalsePositive') },
+    { value: 'accepted_risk',  label: t('pages.anomalies.resolutionAcceptedRisk') },
+  ]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -177,7 +179,7 @@ function ResolutionForm({
       {/* Resolution status dropdown */}
       <div>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-          Azione *
+          {t('pages.anomalies.actionLabel')}
         </label>
         <select
           value={resolutionStatus}
@@ -190,8 +192,8 @@ function ResolutionForm({
             cursor: 'pointer', appearance: 'auto',
           }}
         >
-          <option value="" disabled>Seleziona un'azione...</option>
-          {RESOLUTION_OPTIONS.map(opt => (
+          <option value="" disabled>{t('pages.anomalies.actionPlaceholder')}</option>
+          {resolutionOptions.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
@@ -200,12 +202,12 @@ function ResolutionForm({
       {/* Note textarea */}
       <div>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-          Nota *
+          {t('pages.anomalies.noteLabel')}
         </label>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Descrivi cosa hai fatto o perché non è un problema..."
+          placeholder={t('pages.anomalies.notePlaceholder')}
           rows={4}
           style={{
             width: '100%', fontSize: 13, lineHeight: 1.6,
@@ -216,7 +218,7 @@ function ResolutionForm({
           }}
         />
         <div style={{ fontSize: 11, color: note.trim().length < 10 ? colors.slateLight : colors.success, marginTop: 4 }}>
-          {note.trim().length} / 10 caratteri minimi
+          {t('pages.anomalies.minChars', { count: note.trim().length })}
         </div>
       </div>
 
@@ -241,7 +243,7 @@ function ResolutionForm({
             transition: 'background 150ms',
           }}
         >
-          {loading ? 'Salvataggio...' : 'Conferma risoluzione'}
+          {loading ? t('pages.anomalies.saving') : t('pages.anomalies.confirmResolution')}
         </button>
         <button
           type="button"
@@ -253,7 +255,7 @@ function ResolutionForm({
             color: colors.slate, fontSize: 13, fontWeight: 500, cursor: 'pointer',
           }}
         >
-          Annulla
+          {t('common.cancel')}
         </button>
       </div>
     </div>
@@ -275,6 +277,7 @@ function DetailPanel({
   loading: boolean
   resolveError: string | null
 }) {
+  const { t } = useTranslation()
   const [showForm, setShowForm] = useState(false)
 
   const isOpen = anomaly.status === 'open'
@@ -293,7 +296,7 @@ function DetailPanel({
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 16 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 11, fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
-            {RULE_LABELS[anomaly.ruleKey] ?? anomaly.ruleKey}
+            {RULE_LABEL_KEYS[anomaly.ruleKey] ? t(RULE_LABEL_KEYS[anomaly.ruleKey]) : anomaly.ruleKey}
           </div>
           <div style={{ fontSize: 15, fontWeight: 600, color: colors.slateDark, lineHeight: 1.4 }}>
             {anomaly.title}
@@ -316,17 +319,17 @@ function DetailPanel({
 
       {/* Fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
-        <Field label="Entità"     value={`${anomaly.entityName} (${CI_TYPE_LABEL[anomaly.entitySubtype] ?? anomaly.entitySubtype})`} />
-        <Field label="Descrizione" value={anomaly.description} />
-        <Field label="Rilevata il" value={new Date(anomaly.detectedAt).toLocaleString('it-IT')} />
+        <Field label={t('pages.anomalies.entity')} value={`${anomaly.entityName} (${CI_TYPE_KEYS[anomaly.entitySubtype] ? t(CI_TYPE_KEYS[anomaly.entitySubtype]) : (anomaly.entitySubtype ?? anomaly.entityType)})`} />
+        <Field label={t('common.description')} value={anomaly.description} />
+        <Field label={t('pages.anomalies.detectedAtCol')} value={new Date(anomaly.detectedAt).toLocaleString()} />
         {anomaly.resolvedAt && (
-          <Field label="Risolta il" value={new Date(anomaly.resolvedAt).toLocaleString('it-IT')} />
+          <Field label={t('common.resolvedAt')} value={new Date(anomaly.resolvedAt).toLocaleString()} />
         )}
         {anomaly.resolutionNote && (
-          <Field label="Nota" value={anomaly.resolutionNote} />
+          <Field label={t('common.note')} value={anomaly.resolutionNote} />
         )}
         {anomaly.resolvedBy && (
-          <Field label="Risolta da" value={anomaly.resolvedBy} />
+          <Field label={t('common.resolvedBy')} value={anomaly.resolvedBy} />
         )}
       </div>
 
@@ -341,14 +344,14 @@ function DetailPanel({
             fontSize: 13, fontWeight: 600, cursor: 'pointer',
           }}
         >
-          Risolvi anomalia
+          {t('pages.anomalies.resolveAnomaly')}
         </button>
       )}
 
       {isOpen && showForm && (
         <>
           <div style={{ fontSize: 13, fontWeight: 600, color: colors.slateDark, marginBottom: 12 }}>
-            Risoluzione
+            {t('pages.anomalies.resolution')}
           </div>
           <ResolutionForm
             anomaly={anomaly}
@@ -377,6 +380,7 @@ function Field({ label, value }: { label: string; value: string }) {
 // ── Smart empty state ─────────────────────────────────────────────────────────
 
 function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | null | undefined }) {
+  const { t } = useTranslation()
   const neverRun = !scanStatus?.lastScanAt
 
   if (neverRun) {
@@ -386,102 +390,100 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
           <Radar size={44} color={colors.slateLight} />
         </div>
         <div style={{ fontSize: 15, fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
-          Scanner non ancora eseguito
+          {t('pages.anomalies.noScanYet')}
         </div>
         <div style={{ fontSize: 13, color: colors.slateLight, maxWidth: 340, margin: '0 auto' }}>
-          Clicca &ldquo;Esegui Scanner&rdquo; per analizzare il grafo CMDB e rilevare eventuali anomalie.
+          {t('pages.anomalies.noScanYetDesc')}
         </div>
       </div>
     )
   }
 
-  const lastScan = new Date(scanStatus.lastScanAt!).toLocaleString('it-IT')
+  const lastScan = new Date(scanStatus.lastScanAt!).toLocaleString()
   return (
     <div style={{ textAlign: 'center', padding: '56px 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
         <ShieldCheck size={44} color={colors.success} />
       </div>
       <div style={{ fontSize: 15, fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
-        Nessuna anomalia rilevata
+        {t('pages.anomalies.noAnomalies')}
       </div>
       <div style={{ fontSize: 13, color: colors.slateLight, maxWidth: 360, margin: '0 auto' }}>
-        Il grafo CMDB è in salute. Ultima scansione: {lastScan}
+        {t('pages.anomalies.noAnomaliesDesc', { date: lastScan })}
       </div>
     </div>
   )
 }
-
-// ── Table columns ─────────────────────────────────────────────────────────────
-
-const columns: ColumnDef<Anomaly>[] = [
-  {
-    key:      'title',
-    label:    'Anomalia',
-    sortable: true,
-    render: (v, row) => (
-      <div>
-        <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{String(v)}</div>
-        <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
-          {row.description.length > 64
-            ? row.description.slice(0, 61) + '…'
-            : row.description}
-        </div>
-      </div>
-    ),
-  },
-  {
-    key:      'severity',
-    label:    'Severity',
-    width:    '120px',
-    sortable: true,
-    render:   (v) => <SeverityBadge value={String(v)} />,
-  },
-  {
-    key:      'status',
-    label:    'Stato',
-    width:    '130px',
-    sortable: true,
-    render:   (v) => <AnomalyStatusBadge value={String(v)} />,
-  },
-  {
-    key:      'entityName',
-    label:    'Entità',
-    sortable: true,
-    render: (v, row) => (
-      <div>
-        <div style={{ color: 'var(--color-slate-dark)' }}>{String(v)}</div>
-        <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
-          {CI_TYPE_LABEL[row.entitySubtype] ?? row.entitySubtype ?? row.entityType}
-        </div>
-      </div>
-    ),
-  },
-  {
-    key:      'detectedAt',
-    label:    'Rilevata il',
-    width:    '160px',
-    sortable: true,
-    render:   (v) => (
-      <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>
-        {new Date(String(v)).toLocaleString('it-IT')}
-      </span>
-    ),
-  },
-]
-
-const ANOMALY_FILTER_FIELDS: FieldConfig[] = [
-  { key: 'title',      label: 'Titolo',    type: 'text' },
-  { key: 'severity',   label: 'Severity',  type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
-  { key: 'status',     label: 'Stato',     type: 'enum', enumValues: ['open', 'resolved', 'false_positive', 'accepted_risk'] },
-  { key: 'ruleKey',    label: 'Tipo',      type: 'enum', enumValues: ['orphan_ci', 'spof', 'dependency_cycle', 'missing_owner', 'unauthorized_relation', 'isolated_cluster', 'risk_concentration'] },
-  { key: 'detectedAt', label: 'Rilevata il', type: 'date' },
-]
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function AnomalyPage() {
   const { t } = useTranslation()
   const [selected, setSelected]         = useState<Anomaly | null>(null)
+
+  const columns: ColumnDef<Anomaly>[] = [
+    {
+      key:      'title',
+      label:    t('pages.anomalies.title_col'),
+      sortable: true,
+      render: (v, row) => (
+        <div>
+          <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{String(v)}</div>
+          <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
+            {row.description.length > 64
+              ? row.description.slice(0, 61) + '…'
+              : row.description}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key:      'severity',
+      label:    t('pages.anomalies.severity'),
+      width:    '120px',
+      sortable: true,
+      render:   (v) => <SeverityBadge value={String(v)} />,
+    },
+    {
+      key:      'status',
+      label:    t('pages.anomalies.status'),
+      width:    '130px',
+      sortable: true,
+      render:   (v) => <AnomalyStatusBadge value={String(v)} />,
+    },
+    {
+      key:      'entityName',
+      label:    t('pages.anomalies.entity'),
+      sortable: true,
+      render: (v, row) => (
+        <div>
+          <div style={{ color: 'var(--color-slate-dark)' }}>{String(v)}</div>
+          <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
+            {CI_TYPE_KEYS[row.entitySubtype] ? t(CI_TYPE_KEYS[row.entitySubtype]) : (row.entitySubtype ?? row.entityType)}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key:      'detectedAt',
+      label:    t('pages.anomalies.detectedAtCol'),
+      width:    '160px',
+      sortable: true,
+      render:   (v) => (
+        <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>
+          {new Date(String(v)).toLocaleString()}
+        </span>
+      ),
+    },
+  ]
+
+  const ANOMALY_FILTER_FIELDS: FieldConfig[] = [
+    { key: 'title',      label: t('common.title'),                    type: 'text' },
+    { key: 'severity',   label: t('pages.anomalies.severity'),        type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
+    { key: 'status',     label: t('pages.anomalies.status'),          type: 'enum', enumValues: ['open', 'resolved', 'false_positive', 'accepted_risk'] },
+    { key: 'ruleKey',    label: t('pages.anomalies.type'),            type: 'enum', enumValues: ['orphan_ci', 'spof', 'dependency_cycle', 'missing_owner', 'unauthorized_relation', 'isolated_cluster', 'risk_concentration'] },
+    { key: 'detectedAt', label: t('pages.anomalies.detectedAtCol'),   type: 'date' },
+  ]
   const [mutLoading, setMutLoading]     = useState(false)
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [page, setPage]                 = useState(0)
@@ -523,7 +525,7 @@ export function AnomalyPage() {
       void refetchStats()
       setSelected(null)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Errore durante la risoluzione. Riprova.'
+      const msg = err instanceof Error ? err.message : t('pages.anomalies.errResolving')
       setResolveError(msg)
     } finally {
       setMutLoading(false)
@@ -562,7 +564,7 @@ export function AnomalyPage() {
           }}
         >
           <RefreshCw size={14} style={{ animation: scannerLoading ? 'spin 1s linear infinite' : undefined }} />
-          Esegui Scanner
+          {t('pages.anomalies.runScanner')}
         </button>
       </div>
 
@@ -570,17 +572,17 @@ export function AnomalyPage() {
       {stats && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <StatCard label="Aperte"   value={stats.open}     accent={colors.danger}                     />
-            <StatCard label="Critical" value={stats.critical} accent={colors.severity.critical.text}     />
-            <StatCard label="High"     value={stats.high}     accent={colors.severity.high.text}         />
-            <StatCard label="Medium"   value={stats.medium}   accent={colors.severity.medium.text}       />
-            <StatCard label="Low"      value={stats.low}      accent={colors.severity.low.text}          />
+            <StatCard label={t('pages.anomalies.statsOpen')} value={stats.open}     accent={colors.danger}                     />
+            <StatCard label="Critical"                       value={stats.critical} accent={colors.severity.critical.text}     />
+            <StatCard label="High"                           value={stats.high}     accent={colors.severity.high.text}         />
+            <StatCard label="Medium"                         value={stats.medium}   accent={colors.severity.medium.text}       />
+            <StatCard label="Low"                            value={stats.low}      accent={colors.severity.low.text}          />
           </div>
           {(stats.falsePositive > 0 || stats.acceptedRisk > 0) && (
             <div style={{ fontSize: 12, color: colors.slateLight, paddingLeft: 2 }}>
               {[
-                stats.falsePositive > 0 ? `${stats.falsePositive} false positive` : null,
-                stats.acceptedRisk  > 0 ? `${stats.acceptedRisk} rischi accettati` : null,
+                stats.falsePositive > 0 ? t('pages.anomalies.falsePositives', { count: stats.falsePositive }) : null,
+                stats.acceptedRisk  > 0 ? t('pages.anomalies.acceptedRisks',  { count: stats.acceptedRisk })  : null,
               ].filter(Boolean).join(' · ')}
             </div>
           )}

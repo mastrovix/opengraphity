@@ -121,15 +121,15 @@ const inputStyle: React.CSSProperties = {
   cursor:          'pointer',
 }
 
-const LOGS_FILTER_FIELDS: FieldConfig[] = [
-  { key: 'message',   label: 'Messaggio', type: 'text' },
-  { key: 'level',     label: 'Livello',   type: 'enum', enumValues: ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] },
-  { key: 'module',    label: 'Modulo',    type: 'text' },
-  { key: 'timestamp', label: 'Data',      type: 'date' },
-]
-
 export function LogsPage() {
   const { t } = useTranslation()
+
+  const LOGS_FILTER_FIELDS: FieldConfig[] = [
+    { key: 'message',   label: t('pages.logs.filterMessage'), type: 'text' },
+    { key: 'level',     label: t('pages.logs.filterLevel'),   type: 'enum', enumValues: ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] },
+    { key: 'module',    label: t('pages.logs.filterModule'),  type: 'text' },
+    { key: 'timestamp', label: t('pages.logs.filterDate'),    type: 'date' },
+  ]
   const [level,       setLevel]       = useState('')
   const [module,      setModule]      = useState('')
   const [search,      setSearch]      = useState('')
@@ -193,12 +193,12 @@ export function LogsPage() {
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={level} onChange={(e) => { setLevel(e.target.value); setOffset(0) }} style={inputStyle}>
-          <option value="">Tutti i livelli</option>
+          <option value="">{t('pages.logs.allLevels')}</option>
           {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
 
         <select value={module} onChange={(e) => { setModule(e.target.value); setOffset(0) }} style={inputStyle}>
-          <option value="">Tutti i moduli</option>
+          <option value="">{t('pages.logs.allModules')}</option>
           {MODULES.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
 
@@ -209,7 +209,7 @@ export function LogsPage() {
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Cerca nel messaggio…"
+            placeholder={t('pages.logs.searchPlaceholder')}
             style={{ ...inputStyle, width: 220, cursor: 'text' }}
           />
           <button type="submit" style={{
@@ -221,14 +221,14 @@ export function LogsPage() {
             color:           '#fff',
             fontSize:        12,
             cursor:          'pointer',
-          }}>Cerca</button>
+          }}>{t('pages.logs.search')}</button>
         </form>
 
         <button
           onClick={() => void refetch()}
           style={{ ...inputStyle, cursor: 'pointer' }}
         >
-          Refresh
+          {t('pages.logs.refresh')}
         </button>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer' }}>
@@ -237,7 +237,7 @@ export function LogsPage() {
             checked={autoRefresh}
             onChange={(e) => setAutoRefresh(e.target.checked)}
           />
-          Auto-refresh 10s
+          {t('pages.logs.autoRefresh')}
         </label>
       </div>
 
@@ -251,7 +251,7 @@ export function LogsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th style={{ ...thStyle, width: 160 }}>Timestamp</th>
+              <th style={{ ...thStyle, width: 160 }}>{t('pages.logs.timestamp')}</th>
               <th style={{ ...thStyle, width: 90  }}>{t('pages.logs.level')}</th>
               <th style={{ ...thStyle, width: 120 }}>{t('pages.logs.source')}</th>
               <th style={thStyle}>{t('pages.logs.message')}</th>

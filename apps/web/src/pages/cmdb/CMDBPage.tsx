@@ -20,57 +20,57 @@ interface CI {
 }
 
 
-const columns: ColumnDef<CI>[] = [
-  { key: 'name', label: 'Name', sortable: true },
-  {
-    key:      'type',
-    label:    'Type',
-    width:    '160px',
-    sortable: true,
-    render:   (v) => (
-      <span style={{ color: "var(--color-slate)", textTransform: 'capitalize' }}>
-        {String(v).replace(/_/g, ' ')}
-      </span>
-    ),
-  },
-  {
-    key:      'status',
-    label:    'Status',
-    width:    '130px',
-    sortable: true,
-    render:   (v) => <StatusBadge value={String(v)} />,
-  },
-  {
-    key:      'environment',
-    label:    'Environment',
-    width:    '140px',
-    sortable: true,
-    render:   (v) => <EnvBadge environment={String(v)} />,
-  },
-  {
-    key:      'createdAt',
-    label:    'Created',
-    width:    '120px',
-    sortable: true,
-    render:   (v) => (
-      <span style={{ color: "var(--color-slate-light)" }}>
-        {new Date(String(v)).toLocaleDateString()}
-      </span>
-    ),
-  },
-]
-
 const PAGE_SIZE = 50
-
-const FILTER_FIELDS: FieldConfig[] = [
-  { key: 'name',        label: 'Nome',        type: 'text' },
-  { key: 'status',      label: 'Status',      type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
-  { key: 'environment', label: 'Environment', type: 'enum', enumValues: ['production', 'staging', 'development'] },
-  { key: 'createdAt',   label: 'Creato il',   type: 'date' },
-]
 
 export function CMDBPage() {
   const { t } = useTranslation()
+
+  const columns: ColumnDef<CI>[] = [
+    { key: 'name', label: t('pages.cmdb.name'), sortable: true },
+    {
+      key:      'type',
+      label:    t('pages.cmdb.type'),
+      width:    '160px',
+      sortable: true,
+      render:   (v) => (
+        <span style={{ color: "var(--color-slate)", textTransform: 'capitalize' }}>
+          {String(v).replace(/_/g, ' ')}
+        </span>
+      ),
+    },
+    {
+      key:      'status',
+      label:    t('pages.cmdb.status'),
+      width:    '130px',
+      sortable: true,
+      render:   (v) => <StatusBadge value={String(v)} />,
+    },
+    {
+      key:      'environment',
+      label:    t('pages.cmdb.environment'),
+      width:    '140px',
+      sortable: true,
+      render:   (v) => <EnvBadge environment={String(v)} />,
+    },
+    {
+      key:      'createdAt',
+      label:    t('pages.cmdb.createdAt'),
+      width:    '120px',
+      sortable: true,
+      render:   (v) => (
+        <span style={{ color: "var(--color-slate-light)" }}>
+          {new Date(String(v)).toLocaleDateString()}
+        </span>
+      ),
+    },
+  ]
+
+  const FILTER_FIELDS: FieldConfig[] = [
+    { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
+    { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
+    { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', enumValues: ['production', 'staging', 'development'] },
+    { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
+  ]
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const typeFromUrl = searchParams.get('type')
@@ -129,7 +129,7 @@ export function CMDBPage() {
         columns={columns}
         data={items}
         loading={loading}
-        emptyComponent={<EmptyState icon={<Server size={32} />} title="Nessun configuration item trovato" description="Il CMDB è vuoto. Aggiungi il primo CI per iniziare." />}
+        emptyComponent={<EmptyState icon={<Server size={32} />} title={t('pages.cmdb.noResults')} description={t('pages.cmdb.noResultsDesc')} />}
         onRowClick={(row) => {
           switch (row.type) {
             case 'application':       navigate(`/applications/${row.id}`);       break

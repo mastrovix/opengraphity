@@ -449,11 +449,21 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {ciTypes.map(ct => {
                   const to = `/ci/${ct.name}`
                   const isActive = pathname === to || pathname.startsWith(`${to}/`)
+                  const CI_LABEL_KEYS: Record<string, string> = {
+                    application:       'sidebar.application',
+                    server:            'sidebar.server',
+                    database:          'sidebar.database',
+                    database_instance: 'sidebar.dbInstance',
+                    certificate:       'sidebar.certificate',
+                    ssl_certificate:   'sidebar.certificate',
+                  }
+                  const labelKey = CI_LABEL_KEYS[ct.name]
+                  const label = labelKey ? t(labelKey) : ct.label
                   return (
                     <NavLink key={ct.name} to={to} style={() => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <CIIcon icon={ct.icon} size={12} color={C.brand} />
-                        {ct.label}
+                        {label}
                       </span>
                     </NavLink>
                   )

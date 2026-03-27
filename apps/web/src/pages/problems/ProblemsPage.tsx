@@ -59,7 +59,7 @@ export function ProblemsPage() {
 
   const [createProblem, { loading: creating }] = useMutation<{ createProblem: { id: string } }>(CREATE_PROBLEM, {
     onCompleted: (res) => {
-      toast.success('Problem creato')
+      toast.success(t('pages.problems.problemCreated'))
       setShowCreate(false)
       setNewTitle('')
       setNewDescription('')
@@ -102,7 +102,7 @@ export function ProblemsPage() {
           type="text"
           value={searchText}
           onChange={(e) => { setSearchText(e.target.value); setPage(0) }}
-          placeholder="Cerca per titolo..."
+          placeholder={t('pages.problems.searchPlaceholder')}
           style={{ padding: '7px 12px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 14, width: 220, outline: 'none' }}
         />
         <select
@@ -110,22 +110,22 @@ export function ProblemsPage() {
           onChange={(e) => { setStatusFilter(e.target.value); setPage(0) }}
           style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none', backgroundColor: '#fff' }}
         >
-          <option value="">Tutti gli status</option>
+          <option value="">{t('pages.problems.allStatuses')}</option>
           <option value="new">New</option>
-          <option value="under_investigation">In Analisi</option>
-          <option value="change_requested">Change Richiesta</option>
-          <option value="change_in_progress">Change in Progress</option>
-          <option value="resolved">Resolved</option>
-          <option value="deferred">Deferred</option>
-          <option value="closed">Closed</option>
-          <option value="rejected">Rejected</option>
+          <option value="under_investigation">{t('pages.problems.statusUnderInvestigation')}</option>
+          <option value="change_requested">{t('pages.problems.statusChangeRequested')}</option>
+          <option value="change_in_progress">{t('pages.problems.statusChangeInProgress')}</option>
+          <option value="resolved">{t('pages.problems.statusResolved')}</option>
+          <option value="deferred">{t('pages.problems.statusDeferred')}</option>
+          <option value="closed">{t('pages.problems.statusClosed')}</option>
+          <option value="rejected">{t('pages.problems.statusRejected')}</option>
         </select>
         <select
           value={priorityFilter}
           onChange={(e) => { setPriorityFilter(e.target.value); setPage(0) }}
           style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none', backgroundColor: '#fff' }}
         >
-          <option value="">Tutte le priorità</option>
+          <option value="">{t('pages.problems.allPriorities')}</option>
           <option value="critical">Critical</option>
           <option value="high">High</option>
           <option value="medium">Medium</option>
@@ -138,12 +138,12 @@ export function ProblemsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)' }}>Titolo</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 120 }}>Priorità</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 160 }}>Status</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 80 }}>CI</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 150 }}>Team</th>
-              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 120 }}>Creato il</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)' }}>{t('pages.problems.title_col')}</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 120 }}>{t('pages.problems.priority')}</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 160 }}>{t('pages.problems.status')}</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 80 }}>{t('pages.problems.ci')}</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 150 }}>{t('pages.problems.team')}</th>
+              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-slate-light)', width: 120 }}>{t('pages.problems.createdAt')}</th>
             </tr>
           </thead>
           <tbody>
@@ -154,7 +154,7 @@ export function ProblemsPage() {
             ) : items.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center' }}>
-                  <EmptyState icon={<Bug size={32} />} title="Nessun problema trovato" description="Crea un nuovo problem o modifica i filtri." />
+                  <EmptyState icon={<Bug size={32} />} title={t('pages.problems.noResults')} description={t('pages.problems.noResultsDesc')} />
                 </td>
               </tr>
             ) : (
@@ -197,27 +197,27 @@ export function ProblemsPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 20px 0' }}>{t('pages.problems.new')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Titolo *</label>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.problems.titleLabel')}</label>
                 <input
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Titolo del problem..."
+                  placeholder={t('pages.problems.titlePlaceholder')}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none' }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Descrizione</label>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.problems.descriptionLabel')}</label>
                 <textarea
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="Descrizione del problem..."
+                  placeholder={t('pages.problems.descriptionPlaceholder')}
                   rows={3}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none', resize: 'none', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Priorità</label>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.problems.priorityLabel')}</label>
                 <select
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value)}
@@ -230,11 +230,11 @@ export function ProblemsPage() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Workaround</label>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.problems.workaroundLabel')}</label>
                 <textarea
                   value={newWorkaround}
                   onChange={(e) => setNewWorkaround(e.target.value)}
-                  placeholder="Workaround temporaneo..."
+                  placeholder={t('pages.problems.workaroundPlaceholder')}
                   rows={2}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none', resize: 'none', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}
                 />

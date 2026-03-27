@@ -33,34 +33,34 @@ function RoleBadge({ role }: { role: string }) {
 
 const PAGE_SIZE = 50
 
-const FILTER_FIELDS: FieldConfig[] = [
-  { key: 'name',      label: 'Nome',      type: 'text' },
-  { key: 'email',     label: 'Email',     type: 'text' },
-  { key: 'role',      label: 'Ruolo',     type: 'enum', enumValues: ['admin', 'operator', 'viewer'] },
-  { key: 'createdAt', label: 'Creato il', type: 'date' },
-]
-
-const COLUMNS: ColumnDef<UserRow>[] = [
-  { key: 'name',  label: 'Nome',  sortable: true },
-  { key: 'email', label: 'Email', sortable: true },
-  {
-    key:    'role',
-    label:  'Ruolo',
-    width:  '120px',
-    sortable: true,
-    render: (v) => <RoleBadge role={v as string} />,
-  },
-  {
-    key:     'createdAt',
-    label:   'Creato il',
-    width:   '120px',
-    sortable: true,
-    render:  (v) => v ? new Date(v as string).toLocaleDateString('it-IT') : '—',
-  },
-]
-
 export function UsersPage() {
   const { t } = useTranslation()
+
+  const FILTER_FIELDS: FieldConfig[] = [
+    { key: 'name',      label: t('pages.users.name'),      type: 'text' },
+    { key: 'email',     label: t('pages.users.email'),     type: 'text' },
+    { key: 'role',      label: t('pages.users.role'),      type: 'enum', enumValues: ['admin', 'operator', 'viewer'] },
+    { key: 'createdAt', label: t('pages.users.createdAt'), type: 'date' },
+  ]
+
+  const COLUMNS: ColumnDef<UserRow>[] = [
+    { key: 'name',  label: t('pages.users.name'),  sortable: true },
+    { key: 'email', label: t('pages.users.email'), sortable: true },
+    {
+      key:    'role',
+      label:  t('pages.users.role'),
+      width:  '120px',
+      sortable: true,
+      render: (v) => <RoleBadge role={v as string} />,
+    },
+    {
+      key:     'createdAt',
+      label:   t('pages.users.createdAt'),
+      width:   '120px',
+      sortable: true,
+      render:  (v) => v ? new Date(v as string).toLocaleDateString() : '—',
+    },
+  ]
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -107,8 +107,8 @@ export function UsersPage() {
         emptyComponent={
           <EmptyState
             icon={<User size={32} color="var(--color-slate-light)" />}
-            title="Nessun utente"
-            description="Non ci sono utenti per questo tenant."
+            title={t('pages.users.noResults')}
+            description={t('pages.users.noResultsDesc')}
           />
         }
         onRowClick={(row) => navigate(`/users/${row.id}`)}

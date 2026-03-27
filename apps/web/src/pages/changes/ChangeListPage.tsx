@@ -27,97 +27,97 @@ interface Change {
   workflowInstance: WorkflowInstance | null
 }
 
-const columns: ColumnDef<Change>[] = [
-  {
-    key:      'title',
-    label:    'Titolo',
-    sortable: true,
-    render: (v, row) => (
-      <div>
-        <div style={{ fontWeight: 600, color: "var(--color-slate-dark)", marginBottom: 2 }}>{String(v)}</div>
-        <div style={{ color: 'var(--color-slate-light)' }}>{row.id.slice(0, 8)}</div>
-      </div>
-    ),
-  },
-  {
-    key:      'type',
-    label:    'Tipo',
-    width:    '120px',
-    sortable: true,
-    render:   (v) => <TypeBadge type={String(v)} />,
-  },
-  {
-    key:      'priority',
-    label:    'Priorità',
-    width:    '110px',
-    sortable: true,
-    render:   (v) => <PriorityBadge priority={String(v)} />,
-  },
-  {
-    key:      'status',
-    label:    'Step',
-    width:    '140px',
-    sortable: true,
-    render: (_v, row) => row.workflowInstance
-      ? <StepBadge step={row.workflowInstance.currentStep} />
-      : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
-  },
-  {
-    key:      'assignedTeam' as keyof Change,
-    label:    'Team',
-    width:    '140px',
-    render:   (_v, row) => (
-      <span style={{ color: "var(--color-slate)" }}>{(row as Change).assignedTeam?.name ?? '—'}</span>
-    ),
-  },
-  {
-    key:      'scheduledStart',
-    label:    'Scheduled Start',
-    width:    '130px',
-    sortable: true,
-    render:   (v) => (
-      <span style={{ color: "var(--color-slate-light)", whiteSpace: 'nowrap' }}>
-        {v ? new Date(String(v)).toLocaleDateString('it-IT') : '—'}
-      </span>
-    ),
-  },
-  {
-    key:      'affectedCIs' as keyof Change,
-    label:    'CI',
-    width:    '70px',
-    render:   (_v, row) => row.affectedCIs.length > 0 ? (
-      <span style={{ color: "var(--color-slate)" }}>
-        {row.affectedCIs.length} CI
-      </span>
-    ) : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
-  },
-  {
-    key:      'createdAt',
-    label:    'Creato',
-    width:    '110px',
-    sortable: true,
-    render:   (v) => (
-      <span style={{ color: "var(--color-slate-light)", whiteSpace: 'nowrap' }}>
-        {new Date(String(v)).toLocaleDateString('it-IT')}
-      </span>
-    ),
-  },
-]
-
 const PAGE_SIZE = 50
-
-const FILTER_FIELDS: FieldConfig[] = [
-  { key: 'title',        label: 'Titolo',          type: 'text' },
-  { key: 'type',         label: 'Tipo',            type: 'enum', enumValues: ['standard', 'normal', 'emergency'] },
-  { key: 'priority',     label: 'Priorità',        type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
-  { key: 'status',       label: 'Status',          type: 'text' },
-  { key: 'assignedTeam', label: 'Team',            type: 'text' },
-  { key: 'scheduledStart', label: 'Scheduled Start', type: 'date' },
-  { key: 'createdAt',    label: 'Creato il',       type: 'date' },
-]
 
 export function ChangeListPage() {
   const { t } = useTranslation()
+
+  const columns: ColumnDef<Change>[] = [
+    {
+      key:      'title',
+      label:    t('pages.changes.title_col'),
+      sortable: true,
+      render: (v, row) => (
+        <div>
+          <div style={{ fontWeight: 600, color: "var(--color-slate-dark)", marginBottom: 2 }}>{String(v)}</div>
+          <div style={{ color: 'var(--color-slate-light)' }}>{row.id.slice(0, 8)}</div>
+        </div>
+      ),
+    },
+    {
+      key:      'type',
+      label:    t('pages.changes.type'),
+      width:    '120px',
+      sortable: true,
+      render:   (v) => <TypeBadge type={String(v)} />,
+    },
+    {
+      key:      'priority',
+      label:    t('pages.changes.priority'),
+      width:    '110px',
+      sortable: true,
+      render:   (v) => <PriorityBadge priority={String(v)} />,
+    },
+    {
+      key:      'status',
+      label:    t('pages.changes.step'),
+      width:    '140px',
+      sortable: true,
+      render: (_v, row) => row.workflowInstance
+        ? <StepBadge step={row.workflowInstance.currentStep} />
+        : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
+    },
+    {
+      key:      'assignedTeam' as keyof Change,
+      label:    t('pages.changes.team'),
+      width:    '140px',
+      render:   (_v, row) => (
+        <span style={{ color: "var(--color-slate)" }}>{(row as Change).assignedTeam?.name ?? '—'}</span>
+      ),
+    },
+    {
+      key:      'scheduledStart',
+      label:    t('pages.changes.scheduledStart'),
+      width:    '130px',
+      sortable: true,
+      render:   (v) => (
+        <span style={{ color: "var(--color-slate-light)", whiteSpace: 'nowrap' }}>
+          {v ? new Date(String(v)).toLocaleDateString() : '—'}
+        </span>
+      ),
+    },
+    {
+      key:      'affectedCIs' as keyof Change,
+      label:    t('pages.changes.ci'),
+      width:    '70px',
+      render:   (_v, row) => row.affectedCIs.length > 0 ? (
+        <span style={{ color: "var(--color-slate)" }}>
+          {row.affectedCIs.length} CI
+        </span>
+      ) : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
+    },
+    {
+      key:      'createdAt',
+      label:    t('pages.changes.createdAt'),
+      width:    '110px',
+      sortable: true,
+      render:   (v) => (
+        <span style={{ color: "var(--color-slate-light)", whiteSpace: 'nowrap' }}>
+          {new Date(String(v)).toLocaleDateString()}
+        </span>
+      ),
+    },
+  ]
+
+  const FILTER_FIELDS: FieldConfig[] = [
+    { key: 'title',          label: t('pages.changes.title_col'),     type: 'text' },
+    { key: 'type',           label: t('pages.changes.type'),          type: 'enum', enumValues: ['standard', 'normal', 'emergency'] },
+    { key: 'priority',       label: t('pages.changes.priority'),      type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
+    { key: 'status',         label: t('pages.changes.status'),        type: 'text' },
+    { key: 'assignedTeam',   label: t('pages.changes.team'),          type: 'text' },
+    { key: 'scheduledStart', label: t('pages.changes.scheduledStart'), type: 'date' },
+    { key: 'createdAt',      label: t('pages.changes.createdAt'),     type: 'date' },
+  ]
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -158,7 +158,7 @@ export function ChangeListPage() {
         columns={columns}
         data={items}
         loading={loading}
-        emptyComponent={<EmptyState icon={<GitPullRequest size={32} />} title="Nessun change trovato" description="Crea il primo change o modifica i filtri applicati." />}
+        emptyComponent={<EmptyState icon={<GitPullRequest size={32} />} title={t('pages.changes.noResults')} description={t('pages.changes.noResultsDesc')} />}
         onRowClick={(row) => navigate(`/changes/${row.id}`)}
       />
 

@@ -18,47 +18,47 @@ interface Incident {
   createdAt: string
 }
 
-const columns: ColumnDef<Incident>[] = [
-  { key: 'title',    label: 'Title',    sortable: true },
-  {
-    key:     'severity',
-    label:   'Severity',
-    width:   '130px',
-    sortable: true,
-    render:  (v) => <SeverityBadge value={String(v)} />,
-  },
-  {
-    key:     'status',
-    label:   'Status',
-    width:   '130px',
-    sortable: true,
-    render:  (v) => <StatusBadge value={String(v)} />,
-  },
-  {
-    key:      'createdAt',
-    label:    'Created',
-    width:    '120px',
-    sortable: true,
-    render:   (v) => (
-      <span style={{ color: "var(--color-slate-light)" }}>
-        {new Date(String(v)).toLocaleDateString()}
-      </span>
-    ),
-  },
-]
-
 const PAGE_SIZE = 50
-
-const FILTER_FIELDS: FieldConfig[] = [
-  { key: 'title',       label: 'Titolo',    type: 'text' },
-  { key: 'severity',    label: 'Severity',  type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
-  { key: 'status',      label: 'Status',    type: 'text' },
-  { key: 'assignedTeam',label: 'Team',      type: 'text' },
-  { key: 'createdAt',   label: 'Creato il', type: 'date' },
-]
 
 export function IncidentListPage() {
   const { t } = useTranslation()
+
+  const columns: ColumnDef<Incident>[] = [
+    { key: 'title',    label: t('pages.incidents.title_col'),    sortable: true },
+    {
+      key:     'severity',
+      label:   t('pages.incidents.severity'),
+      width:   '130px',
+      sortable: true,
+      render:  (v) => <SeverityBadge value={String(v)} />,
+    },
+    {
+      key:     'status',
+      label:   t('pages.incidents.status'),
+      width:   '130px',
+      sortable: true,
+      render:  (v) => <StatusBadge value={String(v)} />,
+    },
+    {
+      key:      'createdAt',
+      label:    t('pages.incidents.createdAt'),
+      width:    '120px',
+      sortable: true,
+      render:   (v) => (
+        <span style={{ color: "var(--color-slate-light)" }}>
+          {new Date(String(v)).toLocaleDateString()}
+        </span>
+      ),
+    },
+  ]
+
+  const FILTER_FIELDS: FieldConfig[] = [
+    { key: 'title',       label: t('pages.incidents.title_col'),    type: 'text' },
+    { key: 'severity',    label: t('pages.incidents.severity'),     type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
+    { key: 'status',      label: t('pages.incidents.status'),       type: 'text' },
+    { key: 'assignedTeam',label: t('pages.incidents.assignedTeam'), type: 'text' },
+    { key: 'createdAt',   label: t('pages.incidents.createdAt'),    type: 'date' },
+  ]
   const navigate = useNavigate()
   const location = useLocation()
   const [page, setPage] = useState(0)
@@ -110,7 +110,7 @@ export function IncidentListPage() {
         columns={columns}
         data={items}
         loading={loading}
-        emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title="Nessun incident trovato" description="Apri un nuovo incident o modifica i filtri applicati." />}
+        emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title={t('pages.incidents.noResults')} description={t('pages.incidents.noResultsDesc')} />}
         onRowClick={(row) => navigate(`/incidents/${row.id}`)}
       />
 

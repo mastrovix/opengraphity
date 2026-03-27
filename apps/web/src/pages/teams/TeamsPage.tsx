@@ -32,33 +32,33 @@ function TypeBadge({ type }: { type: string | null }) {
 
 const PAGE_SIZE = 50
 
-const FILTER_FIELDS: FieldConfig[] = [
-  { key: 'name',      label: 'Nome',      type: 'text' },
-  { key: 'type',      label: 'Tipo',      type: 'enum', enumValues: ['owner', 'support'] },
-  { key: 'createdAt', label: 'Creato il', type: 'date' },
-]
-
-const COLUMNS: ColumnDef<Team>[] = [
-  { key: 'name',        label: 'Nome',        sortable: true },
-  { key: 'description', label: 'Descrizione', sortable: false },
-  {
-    key:    'type',
-    label:  'Tipo',
-    width:  '120px',
-    sortable: true,
-    render: (v) => <TypeBadge type={v as string | null} />,
-  },
-  {
-    key:    'createdAt',
-    label:  'Creato il',
-    width:  '120px',
-    sortable: true,
-    render: (v) => v ? new Date(v as string).toLocaleDateString('it-IT') : '—',
-  },
-]
-
 export function TeamsPage() {
   const { t } = useTranslation()
+
+  const FILTER_FIELDS: FieldConfig[] = [
+    { key: 'name',      label: t('pages.teams.name'),      type: 'text' },
+    { key: 'type',      label: t('pages.teams.type'),      type: 'enum', enumValues: ['owner', 'support'] },
+    { key: 'createdAt', label: t('pages.teams.createdAt'), type: 'date' },
+  ]
+
+  const COLUMNS: ColumnDef<Team>[] = [
+    { key: 'name',        label: t('pages.teams.name'),        sortable: true },
+    { key: 'description', label: t('pages.teams.description'), sortable: false },
+    {
+      key:    'type',
+      label:  t('pages.teams.type'),
+      width:  '120px',
+      sortable: true,
+      render: (v) => <TypeBadge type={v as string | null} />,
+    },
+    {
+      key:    'createdAt',
+      label:  t('pages.teams.createdAt'),
+      width:  '120px',
+      sortable: true,
+      render: (v) => v ? new Date(v as string).toLocaleDateString() : '—',
+    },
+  ]
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -117,8 +117,8 @@ export function TeamsPage() {
         emptyComponent={
           <EmptyState
             icon={<UsersRound size={32} color="var(--color-slate-light)" />}
-            title="Nessun team"
-            description="Non ci sono team per questo tenant."
+            title={t('pages.teams.noResults')}
+            description={t('pages.teams.noResultsDesc')}
           />
         }
         onRowClick={(row) => navigate(`/teams/${row.id}`)}

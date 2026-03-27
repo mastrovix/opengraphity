@@ -19,7 +19,12 @@
     "actions": "Actions",
     "yes": "Yes",
     "no": "No",
-    "of": "of"
+    "of": "of",
+    "description": "Description",
+    "note": "Note",
+    "resolvedAt": "Resolved at",
+    "resolvedBy": "Resolved by",
+    "title": "Title"
   },
   "sidebar": {
     "workspace": "WORKSPACE",
@@ -27,6 +32,11 @@
     "dashboard": "Dashboard",
     "cmdb": "CMDB",
     "all": "All",
+    "application": "Application",
+    "server": "Server",
+    "database": "Database",
+    "dbInstance": "DB Instance",
+    "certificate": "Certificate",
     "itilProcesses": "ITIL Processes",
     "incidents": "Incidents",
     "changes": "Changes",
@@ -46,7 +56,8 @@
     "settings": "Settings",
     "teamsUsers": "Teams & Users",
     "teams": "Teams",
-    "users": "Users"
+    "users": "Users",
+    "notifications": "Notifications"
   },
   "pages": {
     "incidents": {
@@ -58,7 +69,10 @@
       "status": "Status",
       "assignedTeam": "Assigned Team",
       "createdAt": "Created",
-      "notFound": "Incident not found"
+      "notFound": "Incident not found",
+      "title_col": "Title",
+      "noResults": "No incidents found",
+      "noResultsDesc": "Open a new incident or adjust the applied filters."
     },
     "changes": {
       "title": "Changes",
@@ -69,7 +83,14 @@
       "priority": "Priority",
       "status": "Status",
       "scheduledStart": "Scheduled Start",
-      "notFound": "Change not found"
+      "notFound": "Change not found",
+      "title_col": "Title",
+      "team": "Team",
+      "ci": "CI",
+      "createdAt": "Created",
+      "step": "Step",
+      "noResults": "No changes found",
+      "noResultsDesc": "Create the first change or adjust the applied filters."
     },
     "problems": {
       "title": "Problems",
@@ -78,23 +99,65 @@
       "count_other": "{{count}} problems",
       "priority": "Priority",
       "status": "Status",
-      "notFound": "Problem not found"
+      "notFound": "Problem not found",
+      "title_col": "Title",
+      "ci": "CI",
+      "team": "Team",
+      "createdAt": "Created",
+      "noResults": "No problems found",
+      "noResultsDesc": "Create a new problem or adjust the filters.",
+      "allStatuses": "All statuses",
+      "allPriorities": "All priorities",
+      "searchPlaceholder": "Search by title...",
+      "statusUnderInvestigation": "Under Investigation",
+      "statusChangeRequested": "Change Requested",
+      "statusChangeInProgress": "Change in Progress",
+      "statusResolved": "Resolved",
+      "statusDeferred": "Deferred",
+      "statusClosed": "Closed",
+      "statusRejected": "Rejected",
+      "titleLabel": "Title *",
+      "titlePlaceholder": "Problem title...",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Problem description...",
+      "priorityLabel": "Priority",
+      "workaroundLabel": "Workaround",
+      "workaroundPlaceholder": "Temporary workaround...",
+      "problemCreated": "Problem created"
     },
     "requests": {
       "title": "Requests",
       "new": "+ New Request",
       "count_one": "{{count}} request",
-      "count_other": "{{count}} requests"
+      "count_other": "{{count}} requests",
+      "title_col": "Title",
+      "priority": "Priority",
+      "status": "Status",
+      "createdAt": "Created",
+      "noResults": "No requests found",
+      "noResultsDesc": "Create a new service request."
     },
     "cmdb": {
       "title": "CMDB",
       "count": "{{count}} CI",
       "new": "+ New {{type}}",
+      "newFeminine": "+ New {{type}}",
       "name": "Name",
+      "type": "Type",
       "status": "Status",
       "environment": "Environment",
       "ownerGroup": "Owner Group",
-      "createdAt": "Created"
+      "createdAt": "Created",
+      "notFound": "CI type \"{{type}}\" not found.",
+      "ciCreated": "{{type}} created",
+      "noResults": "No configuration items found",
+      "noResultsDesc": "The CMDB is empty. Add the first CI to get started.",
+      "noCiOfType": "No {{type}}",
+      "filterName": "Name",
+      "filterStatus": "Status",
+      "filterEnvironment": "Environment",
+      "filterOwnerGroup": "Owner Group",
+      "filterCreatedAt": "Created at"
     },
     "anomalies": {
       "title": "Anomalies",
@@ -103,7 +166,36 @@
       "severity": "Severity",
       "type": "Type",
       "detectedAt": "Detected",
-      "resolve": "Resolve"
+      "resolve": "Resolve",
+      "title_col": "Anomaly",
+      "entity": "Entity",
+      "status": "Status",
+      "detectedAtCol": "Detected at",
+      "statusOpen": "Open",
+      "statusResolved": "Resolved",
+      "statusFalsePositive": "False positive",
+      "statusAcceptedRisk": "Accepted risk",
+      "runScanner": "Run Scanner",
+      "noScanYet": "Scanner not yet run",
+      "noScanYetDesc": "Click \"Run Scanner\" to analyse the CMDB graph and detect anomalies.",
+      "noAnomalies": "No anomalies detected",
+      "noAnomaliesDesc": "The CMDB graph is healthy. Last scan: {{date}}",
+      "statsOpen": "Open",
+      "resolveAnomaly": "Resolve anomaly",
+      "resolution": "Resolution",
+      "actionLabel": "Action *",
+      "actionPlaceholder": "Select an action...",
+      "noteLabel": "Note *",
+      "notePlaceholder": "Describe what you did or why this is not a problem...",
+      "minChars": "{{count}} / 10 minimum characters",
+      "saving": "Saving...",
+      "confirmResolution": "Confirm resolution",
+      "errResolving": "Error during resolution. Please retry.",
+      "falsePositives": "{{count}} false positive",
+      "acceptedRisks": "{{count}} accepted risks",
+      "resolutionResolved": "Resolved — I fixed the problem",
+      "resolutionFalsePositive": "False positive — not a real problem",
+      "resolutionAcceptedRisk": "Accepted risk — aware, no action needed"
     },
     "topology": {
       "title": "Topology Map",
@@ -119,7 +211,13 @@
       "title": "Teams",
       "new": "+ New Team",
       "count_one": "{{count}} team",
-      "count_other": "{{count}} teams"
+      "count_other": "{{count}} teams",
+      "name": "Name",
+      "description": "Description",
+      "type": "Type",
+      "createdAt": "Created",
+      "noResults": "No teams",
+      "noResultsDesc": "There are no teams for this tenant."
     },
     "users": {
       "title": "Users",
@@ -129,7 +227,9 @@
       "name": "Name",
       "email": "Email",
       "role": "Role",
-      "createdAt": "Created"
+      "createdAt": "Created",
+      "noResults": "No users",
+      "noResultsDesc": "There are no users for this tenant."
     },
     "logs": {
       "title": "Logs",
@@ -137,7 +237,18 @@
       "count_other": "{{count}} logs",
       "level": "Level",
       "message": "Message",
-      "source": "Source"
+      "source": "Source",
+      "timestamp": "Timestamp",
+      "allLevels": "All levels",
+      "allModules": "All modules",
+      "searchPlaceholder": "Search in message…",
+      "search": "Search",
+      "refresh": "Refresh",
+      "autoRefresh": "Auto-refresh 10s",
+      "filterMessage": "Message",
+      "filterLevel": "Level",
+      "filterModule": "Module",
+      "filterDate": "Date"
     },
     "dashboard": {
       "title": "Dashboard"
@@ -201,5 +312,25 @@
     "logout": "Logout",
     "email": "Email",
     "password": "Password"
+  },
+  "anomaly": {
+    "rules": {
+      "orphan_ci":             "Orphan CI",
+      "spof":                  "Single Point of Failure",
+      "dependency_cycle":      "Dependency Cycle",
+      "missing_owner":         "CI Without Owner",
+      "unauthorized_relation": "Unauthorised Relation",
+      "isolated_cluster":      "Isolated Cluster",
+      "risk_concentration":    "Risk Concentration"
+    },
+    "suggestions": {
+      "orphan_ci":             "This CI has no relations. Check if it is still in use — if not, consider deleting it. If it is active, link it to the CIs it depends on.",
+      "spof":                  "This CI is a Single Point of Failure — many services depend on it without redundancy. Consider creating a Change to add a second node or a load balancer.",
+      "dependency_cycle":      "There is a cycle in the dependencies that can cause deadlocks or cascading issues. Review the relations and remove the unnecessary one.",
+      "missing_owner":         "No team is responsible for this CI. Assign an owner team to ensure accountability in the event of an incident.",
+      "unauthorized_relation": "This relation was created without an approved Change. Check whether it is legitimate — if so, create a retroactive Change. If not, remove it.",
+      "isolated_cluster":      "This group of CIs is disconnected from the rest of the infrastructure. Check if it is intentional (e.g. test environment) or if relations are missing.",
+      "risk_concentration":    "Too many critical services are concentrated on this node. Consider redistributing workloads across multiple servers to reduce risk."
+    }
   }
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Bug } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
@@ -17,47 +18,48 @@ interface Problem {
   createdAt: string
 }
 
-const columns: ColumnDef<Problem>[] = [
-  { key: 'title',    label: 'Title',    sortable: true },
-  {
-    key:     'priority',
-    label:   'Priority',
-    width:   '130px',
-    sortable: true,
-    render:  (v) => <SeverityBadge value={String(v)} />,
-  },
-  {
-    key:     'status',
-    label:   'Status',
-    width:   '130px',
-    sortable: true,
-    render:  (v) => <StatusBadge value={String(v)} />,
-  },
-  {
-    key:      'createdAt',
-    label:    'Created',
-    width:    '120px',
-    sortable: true,
-    render:   (v) => (
-      <span style={{ color: "var(--color-slate-light)" }}>
-        {new Date(String(v)).toLocaleDateString()}
-      </span>
-    ),
-  },
-]
-
 const PAGE_SIZE = 50
 
-const FILTER_FIELDS: FieldConfig[] = [
-  { key: 'title',       label: 'Titolo',    type: 'text' },
-  { key: 'priority',    label: 'Priorità',  type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
-  { key: 'status',      label: 'Status',    type: 'text' },
-  { key: 'assignedTeam',label: 'Team',      type: 'text' },
-  { key: 'createdAt',   label: 'Creato il', type: 'date' },
-]
-
 export function ProblemListPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
+
+  const columns: ColumnDef<Problem>[] = [
+    { key: 'title',    label: t('pages.problems.title_col'), sortable: true },
+    {
+      key:     'priority',
+      label:   t('pages.problems.priority'),
+      width:   '130px',
+      sortable: true,
+      render:  (v) => <SeverityBadge value={String(v)} />,
+    },
+    {
+      key:     'status',
+      label:   t('pages.problems.status'),
+      width:   '130px',
+      sortable: true,
+      render:  (v) => <StatusBadge value={String(v)} />,
+    },
+    {
+      key:      'createdAt',
+      label:    t('pages.problems.createdAt'),
+      width:    '120px',
+      sortable: true,
+      render:   (v) => (
+        <span style={{ color: "var(--color-slate-light)" }}>
+          {new Date(String(v)).toLocaleDateString()}
+        </span>
+      ),
+    },
+  ]
+
+  const FILTER_FIELDS: FieldConfig[] = [
+    { key: 'title',       label: t('pages.problems.title_col'),  type: 'text' },
+    { key: 'priority',    label: t('pages.problems.priority'),   type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
+    { key: 'status',      label: t('pages.problems.status'),     type: 'text' },
+    { key: 'assignedTeam',label: t('pages.problems.team'),       type: 'text' },
+    { key: 'createdAt',   label: t('pages.problems.createdAt'),  type: 'date' },
+  ]
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
 
@@ -74,10 +76,10 @@ export function ProblemListPage() {
     <div>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
-          Problems
+          {t('pages.problems.title')}
         </h1>
         <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
-          {loading ? '—' : `${total} total`}
+          {loading ? '—' : t('pages.problems.count', { count: total })}
         </p>
       </div>
 
@@ -90,14 +92,14 @@ export function ProblemListPage() {
         columns={columns}
         data={items}
         loading={loading}
-        emptyComponent={<EmptyState icon={<Bug size={32} />} title="Nessun problema trovato" description="Non ci sono problemi aperti al momento." />}
+        emptyComponent={<EmptyState icon={<Bug size={32} />} title={t('pages.problems.noResults')} description={t('pages.problems.noResultsDesc')} />}
         onRowClick={(row) => navigate(`/problems/${row.id}`)}
       />
 
       {totalPages > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: "12px 0", fontSize: 12, color: 'var(--color-slate-light)' }}>
           <span>
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total} problems
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {t('pages.problems.count', { count: total })}
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -105,7 +107,7 @@ export function ProblemListPage() {
               disabled={page === 0}
               style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
-              ← Prev
+              {t('common.prev')}
             </button>
             <span style={{ padding: '4px 8px', fontSize: 12, color: "var(--color-slate)" }}>
               {page + 1} / {totalPages}
@@ -115,7 +117,7 @@ export function ProblemListPage() {
               disabled={page >= totalPages - 1}
               style={{ padding: '4px 12px', fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
-              Next →
+              {t('common.next')}
             </button>
           </div>
         </div>

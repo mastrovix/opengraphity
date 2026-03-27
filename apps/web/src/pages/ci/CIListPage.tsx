@@ -35,8 +35,17 @@ interface CIItem {
   ownerGroup: { id: string; name: string } | null
 }
 
+const CI_TYPE_KEYS: Record<string, string> = {
+  application:       'sidebar.application',
+  server:            'sidebar.server',
+  database:          'sidebar.database',
+  database_instance: 'sidebar.dbInstance',
+  certificate:       'sidebar.certificate',
+  ssl_certificate:   'sidebar.certificate',
+}
+
 export function CIListPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { typeName } = useParams<{ typeName: string }>()
   const navigate = useNavigate()
   const { getCIType, loading: metamodelLoading } = useMetamodel()
@@ -45,6 +54,10 @@ export function CIListPage() {
   const [showCreate, setShowCreate] = useState(false)
 
   const ciType = typeName ? getCIType(typeName) : undefined
+  const ciTypeLabel = (typeName && CI_TYPE_KEYS[typeName]) ? t(CI_TYPE_KEYS[typeName]) : (ciType?.label ?? '')
+  const newLabel = i18n.language.startsWith('it') && ciTypeLabel.match(/[aA]$/)
+    ? t('pages.cmdb.newFeminine', { type: ciTypeLabel })
+    : t('pages.cmdb.new', { type: ciTypeLabel })
 
   const { queryKey, listQuery, createMutation } = useMemo(() => {
     if (!typeName) return { queryKey: '', listQuery: null, createMutation: null }
@@ -91,7 +104,7 @@ export function CIListPage() {
       onCompleted: (res) => {
         const key = `create${toPascalCase(typeName ?? '')}`
         const newId = res[key]?.id
-        toast.success(`${ciType?.label ?? 'CI'} creato`)
+        toast.success(t('pages.cmdb.ciCreated', { type: ciTypeLabel || 'CI' }))
         setShowCreate(false)
         void refetch()
         if (newId) navigate(`/ci/${typeName}/${newId}`)
@@ -108,11 +121,11 @@ export function CIListPage() {
   const filterFields = useMemo((): FieldConfig[] => {
     if (!ciType) return []
     const base: FieldConfig[] = [
-      { key: 'name',        label: 'Nome',        type: 'text' },
-      { key: 'status',      label: 'Status',      type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
-      { key: 'environment', label: 'Environment', type: 'enum', enumValues: ['production', 'staging', 'development'] },
-      { key: 'ownerGroup',  label: 'Owner Group', type: 'text' },
-      { key: 'createdAt',   label: 'Creato il',   type: 'date' },
+      { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
+      { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
+      { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', enumValues: ['production', 'staging', 'development'] },
+      { key: 'ownerGroup',  label: t('pages.cmdb.ownerGroup'),  type: 'text' },
+      { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
     ]
     const custom: FieldConfig[] = ciType.fields
       .filter((f) => !f.isSystem)
@@ -126,22 +139,22 @@ export function CIListPage() {
   }, [ciType])
 
   const COLUMNS: ColumnDef<CIItem>[] = [
-    { key: 'name', label: 'Nome', sortable: true },
+    { key: 'name', label: t('pages.cmdb.name'), sortable: true },
     {
-      key: 'environment', label: 'Env', sortable: true,
+      key: 'environment', label: t('pages.cmdb.environment'), sortable: true,
       render: (v) => v ? <EnvBadge environment={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span>,
     },
     {
-      key: 'status', label: 'Status', sortable: true,
+      key: 'status', label: t('pages.cmdb.status'), sortable: true,
       render: (v) => v ? <StatusBadge value={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span>,
     },
     {
-      key: 'ownerGroup', label: 'Owner Group', sortable: true,
+      key: 'ownerGroup', label: t('pages.cmdb.ownerGroup'), sortable: true,
       render: (v) => (v as CIItem['ownerGroup'])?.name ?? <span style={{ color: '#c4cad4' }}>—</span>,
     },
     {
-      key: 'createdAt', label: 'Creato', sortable: true,
-      render: (v) => new Date(v as string).toLocaleDateString('it-IT'),
+      key: 'createdAt', label: t('pages.cmdb.createdAt'), sortable: true,
+      render: (v) => new Date(v as string).toLocaleDateString(),
     },
   ]
 
@@ -149,7 +162,7 @@ export function CIListPage() {
     return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 14 }}>{t('common.loading')}</div>
   }
   if (!ciType) {
-    return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 14 }}>Tipo CI "{typeName}" non trovato.</div>
+    return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 14 }}>{t('pages.cmdb.notFound', { type: typeName })}</div>
   }
 
 
@@ -159,10 +172,10 @@ export function CIListPage() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
             <CIIcon icon={ciType.icon} size={22} color={ciType.color} />
-            {ciType.label}
+            {ciTypeLabel}
           </h1>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} ${ciType.label.toLowerCase()}`}
+            {loading ? '—' : `${total} ${ciTypeLabel.toLowerCase()}`}
           </p>
         </div>
         <button
@@ -171,7 +184,7 @@ export function CIListPage() {
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
         >
-          {t('pages.cmdb.new', { type: ciType.label })}
+          {newLabel}
         </button>
       </div>
 
@@ -183,7 +196,7 @@ export function CIListPage() {
       {!loading && items.length === 0 ? (
         <EmptyState
           icon={<CIIcon icon={ciType.icon} size={32} color="var(--color-slate-light)" />}
-          title={`Nessun ${ciType.label}`}
+          title={t('pages.cmdb.noCiOfType', { type: ciTypeLabel })}
         />
       ) : (
         <SortableFilterTable
@@ -197,7 +210,7 @@ export function CIListPage() {
       {total > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
           <span>
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {ciType.label.toLowerCase()}
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {ciTypeLabel.toLowerCase()}
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -223,7 +236,7 @@ export function CIListPage() {
         >
           <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 20px 0' }}>
-              {t('pages.cmdb.new', { type: ciType.label })}
+              {newLabel}
             </h2>
             <CIDynamicForm
               ciType={ciType}

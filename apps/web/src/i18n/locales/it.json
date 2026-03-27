@@ -19,7 +19,12 @@
     "actions": "Azioni",
     "yes": "Sì",
     "no": "No",
-    "of": "di"
+    "of": "di",
+    "description": "Descrizione",
+    "note": "Nota",
+    "resolvedAt": "Risolta il",
+    "resolvedBy": "Risolta da",
+    "title": "Titolo"
   },
   "sidebar": {
     "workspace": "WORKSPACE",
@@ -27,6 +32,11 @@
     "dashboard": "Dashboard",
     "cmdb": "CMDB",
     "all": "Tutti",
+    "application": "Applicazione",
+    "server": "Server",
+    "database": "Database",
+    "dbInstance": "Istanza DB",
+    "certificate": "Certificato",
     "itilProcesses": "Processi ITIL",
     "incidents": "Incident",
     "changes": "Change",
@@ -46,7 +56,8 @@
     "settings": "Impostazioni",
     "teamsUsers": "Team e Utenti",
     "teams": "Team",
-    "users": "Utenti"
+    "users": "Utenti",
+    "notifications": "Notifiche"
   },
   "pages": {
     "incidents": {
@@ -58,7 +69,10 @@
       "status": "Stato",
       "assignedTeam": "Team Assegnato",
       "createdAt": "Creato il",
-      "notFound": "Incident non trovato"
+      "notFound": "Incident non trovato",
+      "title_col": "Titolo",
+      "noResults": "Nessun incident trovato",
+      "noResultsDesc": "Apri un nuovo incident o modifica i filtri applicati."
     },
     "changes": {
       "title": "Change",
@@ -69,7 +83,14 @@
       "priority": "Priorità",
       "status": "Stato",
       "scheduledStart": "Inizio Previsto",
-      "notFound": "Change non trovato"
+      "notFound": "Change non trovato",
+      "title_col": "Titolo",
+      "team": "Team",
+      "ci": "CI",
+      "createdAt": "Creato il",
+      "step": "Step",
+      "noResults": "Nessun change trovato",
+      "noResultsDesc": "Crea il primo change o modifica i filtri applicati."
     },
     "problems": {
       "title": "Problem",
@@ -78,23 +99,65 @@
       "count_other": "{{count}} problem",
       "priority": "Priorità",
       "status": "Stato",
-      "notFound": "Problem non trovato"
+      "notFound": "Problem non trovato",
+      "title_col": "Titolo",
+      "ci": "CI",
+      "team": "Team",
+      "createdAt": "Creato il",
+      "noResults": "Nessun problema trovato",
+      "noResultsDesc": "Crea un nuovo problem o modifica i filtri.",
+      "allStatuses": "Tutti gli status",
+      "allPriorities": "Tutte le priorità",
+      "searchPlaceholder": "Cerca per titolo...",
+      "statusUnderInvestigation": "In Analisi",
+      "statusChangeRequested": "Change Richiesta",
+      "statusChangeInProgress": "Change in Progress",
+      "statusResolved": "Risolto",
+      "statusDeferred": "Differito",
+      "statusClosed": "Chiuso",
+      "statusRejected": "Rifiutato",
+      "titleLabel": "Titolo *",
+      "titlePlaceholder": "Titolo del problem...",
+      "descriptionLabel": "Descrizione",
+      "descriptionPlaceholder": "Descrizione del problem...",
+      "priorityLabel": "Priorità",
+      "workaroundLabel": "Workaround",
+      "workaroundPlaceholder": "Workaround temporaneo...",
+      "problemCreated": "Problem creato"
     },
     "requests": {
       "title": "Richieste",
       "new": "+ Nuova Richiesta",
       "count_one": "{{count}} richiesta",
-      "count_other": "{{count}} richieste"
+      "count_other": "{{count}} richieste",
+      "title_col": "Titolo",
+      "priority": "Priorità",
+      "status": "Stato",
+      "createdAt": "Creato il",
+      "noResults": "Nessuna richiesta trovata",
+      "noResultsDesc": "Crea una nuova service request."
     },
     "cmdb": {
       "title": "CMDB",
       "count": "{{count}} CI",
       "new": "+ Nuovo {{type}}",
+      "newFeminine": "+ Nuova {{type}}",
       "name": "Nome",
+      "type": "Tipo",
       "status": "Stato",
       "environment": "Ambiente",
       "ownerGroup": "Gruppo Owner",
-      "createdAt": "Creato il"
+      "createdAt": "Creato il",
+      "notFound": "Tipo CI \"{{type}}\" non trovato.",
+      "ciCreated": "{{type}} creato",
+      "noResults": "Nessun configuration item trovato",
+      "noResultsDesc": "Il CMDB è vuoto. Aggiungi il primo CI per iniziare.",
+      "noCiOfType": "Nessun {{type}}",
+      "filterName": "Nome",
+      "filterStatus": "Stato",
+      "filterEnvironment": "Ambiente",
+      "filterOwnerGroup": "Gruppo Owner",
+      "filterCreatedAt": "Creato il"
     },
     "anomalies": {
       "title": "Anomalie",
@@ -103,7 +166,36 @@
       "severity": "Severità",
       "type": "Tipo",
       "detectedAt": "Rilevato il",
-      "resolve": "Risolvi"
+      "resolve": "Risolvi",
+      "title_col": "Anomalia",
+      "entity": "Entità",
+      "status": "Stato",
+      "detectedAtCol": "Rilevata il",
+      "statusOpen": "Aperta",
+      "statusResolved": "Risolta",
+      "statusFalsePositive": "Falso positivo",
+      "statusAcceptedRisk": "Rischio accettato",
+      "runScanner": "Esegui Scanner",
+      "noScanYet": "Scanner non ancora eseguito",
+      "noScanYetDesc": "Clicca \"Esegui Scanner\" per analizzare il grafo CMDB e rilevare eventuali anomalie.",
+      "noAnomalies": "Nessuna anomalia rilevata",
+      "noAnomaliesDesc": "Il grafo CMDB è in salute. Ultima scansione: {{date}}",
+      "statsOpen": "Aperte",
+      "resolveAnomaly": "Risolvi anomalia",
+      "resolution": "Risoluzione",
+      "actionLabel": "Azione *",
+      "actionPlaceholder": "Seleziona un'azione...",
+      "noteLabel": "Nota *",
+      "notePlaceholder": "Descrivi cosa hai fatto o perché non è un problema...",
+      "minChars": "{{count}} / 10 caratteri minimi",
+      "saving": "Salvataggio...",
+      "confirmResolution": "Conferma risoluzione",
+      "errResolving": "Errore durante la risoluzione. Riprova.",
+      "falsePositives": "{{count}} false positive",
+      "acceptedRisks": "{{count}} rischi accettati",
+      "resolutionResolved": "Risolto — ho fixato il problema",
+      "resolutionFalsePositive": "Falso positivo — non è un problema reale",
+      "resolutionAcceptedRisk": "Rischio accettato — consapevole, non richiede azione"
     },
     "topology": {
       "title": "Mappa Topologica",
@@ -119,7 +211,13 @@
       "title": "Team",
       "new": "+ Nuovo Team",
       "count_one": "{{count}} team",
-      "count_other": "{{count}} team"
+      "count_other": "{{count}} team",
+      "name": "Nome",
+      "description": "Descrizione",
+      "type": "Tipo",
+      "createdAt": "Creato il",
+      "noResults": "Nessun team",
+      "noResultsDesc": "Non ci sono team per questo tenant."
     },
     "users": {
       "title": "Utenti",
@@ -129,7 +227,9 @@
       "name": "Nome",
       "email": "Email",
       "role": "Ruolo",
-      "createdAt": "Creato il"
+      "createdAt": "Creato il",
+      "noResults": "Nessun utente",
+      "noResultsDesc": "Non ci sono utenti per questo tenant."
     },
     "logs": {
       "title": "Log",
@@ -137,7 +237,18 @@
       "count_other": "{{count}} log",
       "level": "Livello",
       "message": "Messaggio",
-      "source": "Sorgente"
+      "source": "Sorgente",
+      "timestamp": "Timestamp",
+      "allLevels": "Tutti i livelli",
+      "allModules": "Tutti i moduli",
+      "searchPlaceholder": "Cerca nel messaggio…",
+      "search": "Cerca",
+      "refresh": "Refresh",
+      "autoRefresh": "Auto-refresh 10s",
+      "filterMessage": "Messaggio",
+      "filterLevel": "Livello",
+      "filterModule": "Modulo",
+      "filterDate": "Data"
     },
     "dashboard": {
       "title": "Dashboard"
@@ -201,5 +312,25 @@
     "logout": "Esci",
     "email": "Email",
     "password": "Password"
+  },
+  "anomaly": {
+    "rules": {
+      "orphan_ci":             "CI Orfano",
+      "spof":                  "Single Point of Failure",
+      "dependency_cycle":      "Ciclo di Dipendenza",
+      "missing_owner":         "CI Senza Owner",
+      "unauthorized_relation": "Relazione Non Autorizzata",
+      "isolated_cluster":      "Cluster Isolato",
+      "risk_concentration":    "Concentrazione di Rischio"
+    },
+    "suggestions": {
+      "orphan_ci":             "Questo CI non ha relazioni. Verifica se è ancora in uso — se no, considera di eliminarlo. Se è attivo, collegalo ai CI da cui dipende.",
+      "spof":                  "Questo CI è un Single Point of Failure — molti servizi dipendono da esso senza ridondanza. Considera di creare un Change per aggiungere un secondo nodo o un load balancer.",
+      "dependency_cycle":      "Esiste un ciclo nelle dipendenze che può causare deadlock o problemi a catena. Rivedi le relazioni e rimuovi quella non necessaria.",
+      "missing_owner":         "Nessun team è responsabile di questo CI. Assegna un team owner per garantire accountability in caso di incident.",
+      "unauthorized_relation": "Questa relazione è stata creata senza un Change approvato. Verifica se è legittima — se sì, crea un Change retroattivo. Se no, rimuovila.",
+      "isolated_cluster":      "Questo gruppo di CI è disconnesso dal resto dell'infrastruttura. Verifica se è intenzionale (es. ambiente test) o se mancano relazioni.",
+      "risk_concentration":    "Troppi servizi critici sono concentrati su questo nodo. Considera di redistribuire i workload su più server per ridurre il rischio."
+    }
   }
 }
