@@ -22,4 +22,4 @@ COPY --from=builder /app/apps/api/package.json apps/api/
 COPY --from=builder /app/packages packages
 COPY --from=builder /app/package.json ./
 EXPOSE 4000
-CMD ["node", "apps/api/dist/server.js"]
+CMD ["node", "apps/api/dist/index.js"]
