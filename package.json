@@ -10,13 +10,18 @@
     "neo4j:init": "pnpm --filter @opengraphity/neo4j init"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "isolated-vm", "msgpackr-extract"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "isolated-vm",
+      "msgpackr-extract"
+    ]
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
     "prettier": "^3.2.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.4.0",
     "vitest": "^1.4.0"
   }
