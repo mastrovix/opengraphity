@@ -1,5 +1,6 @@
 /**
  * Tenant onboarding script — creates a new tenant from scratch.
+ * Idempotent: safe to run multiple times, skips existing resources.
  *
  * Usage:
  *   pnpm tsx apps/api/src/scripts/onboard-tenant.ts \
@@ -29,6 +30,7 @@ const { values: args } = parseArgs({
     'admin-first-name': { type: 'string' },
     'admin-last-name':  { type: 'string' },
     'domain':           { type: 'string', default: 'opengrafo.com' },
+    'admin-role':       { type: 'string', default: 'admin' },
   },
 })
 
@@ -38,17 +40,27 @@ const password  = args['admin-password']
 const firstName = args['admin-first-name']
 const lastName  = args['admin-last-name']
 const domain    = args['domain']!
+const adminRole = args['admin-role']!
 
-if (!slug || !email || !password || !firstName || !lastName) {
-  console.error('Missing required args: --slug --admin-email --admin-password --admin-first-name --admin-last-name')
+const ALLOWED_ROLES = ['admin', 'user', 'manager'] as const
+if (!ALLOWED_ROLES.includes(adminRole as typeof ALLOWED_ROLES[number])) {
+  console.error(`Errore: --admin-role deve essere uno di: ${ALLOWED_ROLES.join(', ')}`)
   process.exit(1)
 }
 
-// ── Keycloak helpers ──────────────────────────────────────────────────────────
+if (!slug || !email || !password || !firstName || !lastName) {
+  console.error('Errore: argomenti mancanti.')
+  console.error('Uso: --slug <slug> --admin-email <email> --admin-password <pwd> --admin-first-name <nome> --admin-last-name <cognome>')
+  process.exit(1)
+}
+
+// ── Keycloak config ───────────────────────────────────────────────────────────
 
 const KEYCLOAK_URL        = process.env['KEYCLOAK_URL']            ?? 'http://localhost:8080'
 const KEYCLOAK_ADMIN_USER = process.env['KEYCLOAK_ADMIN_USER']     ?? 'admin'
 const KEYCLOAK_ADMIN_PASS = process.env['KEYCLOAK_ADMIN_PASSWORD'] ?? 'opengrafo_local'
+
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 async function getAdminToken(): Promise<string> {
   const res = await fetch(
@@ -64,12 +76,38 @@ async function getAdminToken(): Promise<string> {
       }),
     },
   )
-  if (!res.ok) throw new Error(`Admin token failed: ${res.status} ${await res.text()}`)
+  if (!res.ok) {
+    throw new Error(`Keycloak auth fallita (${res.status}): verifica KEYCLOAK_URL e credenziali admin`)
+  }
   const data = await res.json() as { access_token: string }
   return data.access_token
 }
 
-async function kcPost(token: string, path: string, body: unknown): Promise<{ id?: string }> {
+/** Returns the resource id from the Location header, or undefined. */
+function idFromLocation(res: Response): string | undefined {
+  return res.headers.get('location')?.split('/').pop()
+}
+
+async function kcGet<T>(token: string, path: string): Promise<T> {
+  const res = await fetch(`${KEYCLOAK_URL}${path}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new Error(`GET ${path} → ${res.status}: ${await res.text()}`)
+  }
+  return res.json() as Promise<T>
+}
+
+/**
+ * POST to Keycloak Admin API.
+ * Returns { id, created: true } on 201, { id, created: false } on 409 (already exists).
+ * Throws on any other error status.
+ */
+async function kcPost(
+  token: string,
+  path: string,
+  body: unknown,
+): Promise<{ id?: string; created: boolean }> {
   const res = await fetch(`${KEYCLOAK_URL}${path}`, {
     method:  'POST',
     headers: {
@@ -78,22 +116,14 @@ async function kcPost(token: string, path: string, body: unknown): Promise<{ id?
     },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`POST ${path} → ${res.status}: ${text}`)
-  }
-  // 201 Created: id in Location header
-  const location = res.headers.get('location')
-  const id = location ? location.split('/').pop() : undefined
-  return { id }
-}
 
-async function kcGet<T>(token: string, path: string): Promise<T> {
-  const res = await fetch(`${KEYCLOAK_URL}${path}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  })
-  if (!res.ok) throw new Error(`GET ${path} → ${res.status}: ${await res.text()}`)
-  return res.json() as Promise<T>
+  if (res.status === 409) {
+    return { created: false }
+  }
+  if (!res.ok) {
+    throw new Error(`POST ${path} → ${res.status}: ${await res.text()}`)
+  }
+  return { id: idFromLocation(res), created: true }
 }
 
 async function kcPut(token: string, path: string, body: unknown): Promise<void> {
@@ -105,25 +135,31 @@ async function kcPut(token: string, path: string, body: unknown): Promise<void> 
     },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`PUT ${path} → ${res.status}: ${await res.text()}`)
+  if (!res.ok) {
+    throw new Error(`PUT ${path} → ${res.status}: ${await res.text()}`)
+  }
 }
 
-// ── Step 1: Create realm ──────────────────────────────────────────────────────
+// ── Step 1: Realm ─────────────────────────────────────────────────────────────
 
 async function createRealm(token: string): Promise<void> {
-  await kcPost(token, '/admin/realms', {
+  const { created } = await kcPost(token, '/admin/realms', {
     realm:       slug,
     enabled:     true,
     sslRequired: 'none',
     displayName: slug,
   })
-  console.log(`  ✓ Realm "${slug}" creato`)
+  if (created) {
+    console.log(`  ✓ Realm "${slug}" creato`)
+  } else {
+    console.log(`  ↩ Realm "${slug}" già esistente — skip`)
+  }
 }
 
-// ── Step 2: Create client ─────────────────────────────────────────────────────
+// ── Step 2: Client ────────────────────────────────────────────────────────────
 
 async function createClient(token: string): Promise<string> {
-  const { id } = await kcPost(token, `/admin/realms/${slug}/clients`, {
+  const { id, created } = await kcPost(token, `/admin/realms/${slug}/clients`, {
     clientId:     'opengrafo-web',
     publicClient: true,
     enabled:      true,
@@ -136,45 +172,72 @@ async function createClient(token: string): Promise<string> {
       `http://${slug}.localhost:5173`,
     ],
   })
-  if (!id) throw new Error('Client created but no ID returned')
-  console.log(`  ✓ Client "opengrafo-web" creato (id: ${id})`)
-  return id
+
+  if (created && id) {
+    console.log(`  ✓ Client "opengrafo-web" creato (id: ${id})`)
+    return id
+  }
+
+  // Already exists — retrieve the id via GET
+  const clients = await kcGet<{ id: string; clientId: string }[]>(
+    token,
+    `/admin/realms/${slug}/clients?clientId=opengrafo-web`,
+  )
+  const existing = clients[0]
+  if (!existing) {
+    throw new Error('Client "opengrafo-web" non trovato dopo 409 — stato inatteso')
+  }
+  console.log(`  ↩ Client "opengrafo-web" già esistente (id: ${existing.id}) — skip`)
+  return existing.id
 }
 
-// ── Step 3: Create roles ──────────────────────────────────────────────────────
+// ── Step 3: Roles ─────────────────────────────────────────────────────────────
 
 async function createRoles(token: string): Promise<void> {
+  let created = 0
   for (const name of ['admin', 'user', 'manager']) {
-    await kcPost(token, `/admin/realms/${slug}/roles`, { name })
+    const { created: wasCreated } = await kcPost(token, `/admin/realms/${slug}/roles`, { name })
+    if (wasCreated) created++
   }
-  console.log(`  ✓ Ruoli creati: admin, user, manager`)
+  if (created === 3) {
+    console.log(`  ✓ Ruoli creati: admin, user, manager`)
+  } else {
+    console.log(`  ↩ Ruoli già esistenti (${3 - created} skippati)`)
+  }
 }
 
-// ── Step 4: Add realm role mapper to client ───────────────────────────────────
+// ── Step 4: Realm role mapper ─────────────────────────────────────────────────
 
 async function addRoleMapper(token: string, clientId: string): Promise<void> {
-  await kcPost(token, `/admin/realms/${slug}/clients/${clientId}/protocol-mappers/models`, {
-    name:            'realm roles',
-    protocol:        'openid-connect',
-    protocolMapper:  'oidc-usermodel-realm-role-mapper',
-    consentRequired: false,
-    config: {
-      'multivalued':         'true',
-      'userinfo.token.claim': 'true',
-      'id.token.claim':       'true',
-      'access.token.claim':   'true',
-      'claim.name':           'realm_access.roles',
-      'jsonType.label':       'String',
+  const { created } = await kcPost(
+    token,
+    `/admin/realms/${slug}/clients/${clientId}/protocol-mappers/models`,
+    {
+      name:            'realm roles',
+      protocol:        'openid-connect',
+      protocolMapper:  'oidc-usermodel-realm-role-mapper',
+      consentRequired: false,
+      config: {
+        'multivalued':          'true',
+        'userinfo.token.claim': 'true',
+        'id.token.claim':       'true',
+        'access.token.claim':   'true',
+        'claim.name':           'realm_access.roles',
+        'jsonType.label':       'String',
+      },
     },
-  })
-  console.log(`  ✓ Mapper "realm roles" aggiunto al client`)
+  )
+  if (created) {
+    console.log(`  ✓ Mapper "realm roles" aggiunto al client`)
+  } else {
+    console.log(`  ↩ Mapper "realm roles" già esistente — skip`)
+  }
 }
 
-// ── Step 5: Create admin user ─────────────────────────────────────────────────
+// ── Step 5: Admin user ────────────────────────────────────────────────────────
 
 async function createAdminUser(token: string): Promise<void> {
-  // Create user
-  const { id: userId } = await kcPost(token, `/admin/realms/${slug}/users`, {
+  const { id: newId, created } = await kcPost(token, `/admin/realms/${slug}/users`, {
     username:      email,
     email,
     emailVerified: true,
@@ -182,29 +245,50 @@ async function createAdminUser(token: string): Promise<void> {
     firstName,
     lastName,
   })
-  if (!userId) throw new Error('User created but no ID returned')
 
-  // Set password
-  await kcPut(token, `/admin/realms/${slug}/users/${userId}/reset-password`, {
-    type:      'password',
-    value:     password,
-    temporary: false,
-  })
+  let userId: string
 
-  // Get admin role representation
+  if (created && newId) {
+    userId = newId
+  } else {
+    // Already exists — retrieve user id
+    const users = await kcGet<{ id: string }[]>(
+      token,
+      `/admin/realms/${slug}/users?email=${encodeURIComponent(email)}&exact=true`,
+    )
+    const existing = users[0]
+    if (!existing) {
+      throw new Error(`Utente "${email}" non trovato dopo 409 — stato inatteso`)
+    }
+    userId = existing.id
+    console.log(`  ↩ Utente "${email}" già esistente — skip creazione`)
+  }
+
+  if (created) {
+    // Set password only for newly created users
+    await kcPut(token, `/admin/realms/${slug}/users/${userId}/reset-password`, {
+      type:      'password',
+      value:     password,
+      temporary: false,
+    })
+  }
+
+  // Assign role (idempotent — Keycloak ignores duplicate role assignments)
   const roles = await kcGet<{ id: string; name: string }[]>(
     token,
     `/admin/realms/${slug}/roles`,
   )
-  const adminRole = roles.find((r) => r.name === 'admin')
-  if (!adminRole) throw new Error('Role "admin" not found after creation')
-
-  // Assign admin role
+  const roleToAssign = roles.find((r) => r.name === adminRole)
+  if (!roleToAssign) {
+    throw new Error(`Ruolo "${adminRole}" non trovato nel realm — esegui prima createRoles()`)
+  }
   await kcPost(token, `/admin/realms/${slug}/users/${userId}/role-mappings/realm`, [
-    { id: adminRole.id, name: adminRole.name },
+    { id: roleToAssign.id, name: roleToAssign.name },
   ])
 
-  console.log(`  ✓ Utente admin creato: ${email} (id: ${userId})`)
+  if (created) {
+    console.log(`  ✓ Utente admin creato: ${email} (id: ${userId})`)
+  }
 }
 
 // ── Step 6: Neo4j ─────────────────────────────────────────────────────────────
@@ -214,32 +298,32 @@ async function provisionNeo4j(): Promise<void> {
   const now     = new Date().toISOString()
 
   try {
-    // 6a. Admin User node
+    // 6a. Admin User node — MERGE is inherently idempotent
     const userId = uuidv4()
-    await session.executeWrite((tx) =>
+    const userResult = await session.executeWrite((tx) =>
       tx.run(
         `MERGE (u:User {email: $email, tenant_id: $tenantId})
          ON CREATE SET
            u.id         = $id,
            u.name       = $name,
-           u.role       = 'admin',
+           u.role       = $role,
            u.active     = true,
            u.created_at = $now,
-           u.updated_at = $now`,
-        {
-          email,
-          tenantId: slug,
-          id:       userId,
-          name:     `${firstName} ${lastName}`,
-          now,
-        },
+           u.updated_at = $now
+         RETURN (u.created_at = $now) AS wasCreated`,
+        { email, tenantId: slug, id: userId, name: `${firstName} ${lastName}`, role: adminRole, now },
       ),
     )
-    console.log(`  ✓ User Neo4j creato: ${email} (tenant_id: ${slug})`)
+    const userCreated = userResult.records[0]?.get('wasCreated') as boolean
+    if (userCreated) {
+      console.log(`  ✓ User Neo4j creato: ${email} (tenant_id: ${slug})`)
+    } else {
+      console.log(`  ↩ User Neo4j già esistente: ${email} — skip`)
+    }
 
-    // 6b. Default DashboardConfig
+    // 6b. Default DashboardConfig — MERGE is idempotent
     const dashId = uuidv4()
-    await session.executeWrite((tx) =>
+    const dashResult = await session.executeWrite((tx) =>
       tx.run(
         `MERGE (d:DashboardConfig {tenant_id: $tenantId, name: 'Dashboard', is_default: true})
          ON CREATE SET
@@ -247,13 +331,19 @@ async function provisionNeo4j(): Promise<void> {
            d.user_id    = $userId,
            d.visibility = 'private',
            d.created_at = $now,
-           d.updated_at = $now`,
+           d.updated_at = $now
+         RETURN (d.created_at = $now) AS wasCreated`,
         { tenantId: slug, id: dashId, userId, now },
       ),
     )
-    console.log(`  ✓ DashboardConfig default creato`)
+    const dashCreated = dashResult.records[0]?.get('wasCreated') as boolean
+    if (dashCreated) {
+      console.log(`  ✓ DashboardConfig default creato`)
+    } else {
+      console.log(`  ↩ DashboardConfig già esistente — skip`)
+    }
 
-    // 6c. Verify base CITypeDefinitions are accessible (scope='base' nodes are shared)
+    // 6c. Verify base CITypeDefinitions (shared, scope='base')
     const ciResult = await session.executeRead((tx) =>
       tx.run(
         `MATCH (t:CITypeDefinition)
@@ -263,9 +353,9 @@ async function provisionNeo4j(): Promise<void> {
     )
     const ciCount = (ciResult.records[0]?.get('total') as { toNumber(): number })?.toNumber() ?? 0
     if (ciCount === 0) {
-      console.warn(`  ⚠ Nessun CITypeDefinition con scope='base' trovato — esegui seed-metamodel.ts`)
+      console.warn(`  ⚠ Nessun CITypeDefinition scope='base' trovato — esegui seed-metamodel.ts`)
     } else {
-      console.log(`  ✓ ${ciCount} CITypeDefinition base disponibili per il tenant`)
+      console.log(`  ✓ ${ciCount} CITypeDefinition base disponibili`)
     }
   } finally {
     await session.close()
@@ -276,10 +366,9 @@ async function provisionNeo4j(): Promise<void> {
 
 async function main() {
   console.log(`\n╔══════════════════════════════════════════╗`)
-  console.log(`║  OpenGrafo — Onboarding tenant: ${slug.padEnd(8)} ║`)
+  console.log(`║  OpenGrafo — Onboarding tenant: ${slug!.padEnd(8)} ║`)
   console.log(`╚══════════════════════════════════════════╝\n`)
 
-  // ── Keycloak ────────────────────────────────────────
   console.log('▶ Keycloak')
   const token    = await getAdminToken()
   await createRealm(token)
@@ -288,14 +377,12 @@ async function main() {
   await addRoleMapper(token, clientId)
   await createAdminUser(token)
 
-  // ── Neo4j ───────────────────────────────────────────
   console.log('\n▶ Neo4j')
   await provisionNeo4j()
 
-  // ── Summary ─────────────────────────────────────────
   console.log(`
 ╔══════════════════════════════════════════════════════╗
-║  Tenant "${slug}" creato con successo!
+║  Tenant "${slug}" pronto!
 ╠══════════════════════════════════════════════════════╣
 ║  URL locale:     http://${slug}.localhost:5173
 ║  URL produzione: https://${slug}.${domain}
