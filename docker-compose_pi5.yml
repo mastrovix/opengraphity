@@ -102,7 +102,8 @@ services:
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-opengraphity}:${RABBITMQ_PASSWORD:-opengraphity_local}@rabbitmq:5672
-      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_URL: https://192.168.1.119
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
       KEYCLOAK_REALM: opengrafo
     networks:
       - opengrafo
