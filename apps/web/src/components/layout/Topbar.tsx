@@ -193,13 +193,24 @@ export function Topbar() {
             </span>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent align="end" style={{ width: 176 }}>
-            <DropdownMenuItem style={{ fontSize: 14 }}>{t('sidebar.profile')}</DropdownMenuItem>
-            <DropdownMenuItem style={{ fontSize: 14 }}>{t('sidebar.settings')}</DropdownMenuItem>
+          <DropdownMenuContent
+            align="end"
+            style={{
+              backgroundColor: '#ffffff',
+              border: '1px solid #e5e7eb',
+              borderRadius: 10,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              minWidth: 180,
+              padding: '8px 0',
+              zIndex: 50,
+            }}
+          >
+            <DropdownMenuItem style={{ fontSize: 14, padding: '10px 16px' }}>{t('sidebar.profile')}</DropdownMenuItem>
+            <DropdownMenuItem style={{ fontSize: 14, padding: '10px 16px' }}>{t('sidebar.settings')}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={logout}
-              style={{ fontSize: 14, color: 'var(--color-trigger-sla-breach)' }}
+              style={{ fontSize: 14, padding: '10px 16px', color: '#ef4444' }}
             >
               {t('auth.logout')}
             </DropdownMenuItem>
