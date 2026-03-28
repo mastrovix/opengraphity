@@ -318,7 +318,7 @@ export function TopologyPage() {
               </span>
             )}
             {totalIncident > 0 && <span style={{ color: '#dc2626', marginLeft: 8 }}>{totalIncident} incident attivi</span>}
-            {totalChange   > 0 && <span style={{ color: '#f97316', marginLeft: 8 }}>{totalChange} change in corso</span>}
+            {totalChange   > 0 && <span style={{ color: '#8b5cf6', marginLeft: 8 }}>{totalChange} change in corso</span>}
           </div>
         </div>
 
