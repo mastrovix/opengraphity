@@ -67,15 +67,19 @@ export async function buildContext(req: express.Request): Promise<GraphQLContext
     const decoded = await verifyKeycloakToken(token)
     const user = await getUserByEmail(decoded.email)
 
+    if (!user) {
+      throw new GraphQLError('Unauthorized: user not found', { extensions: { code: 'UNAUTHORIZED' } })
+    }
+
     const kcRole = decoded.realm_access?.roles?.find((r) =>
       (ITSM_ROLES as readonly string[]).includes(r),
     ) ?? 'viewer'
 
     return {
-      tenantId:  user?.tenantId ?? 'tenant-demo',
-      userId:    user?.id       ?? decoded.sub,
-      userEmail: decoded.email  ?? decoded.preferred_username,
-      role:      (user?.role    ?? kcRole) as GraphQLContext['role'],
+      tenantId:  user.tenantId,
+      userId:    user.id,
+      userEmail: decoded.email ?? decoded.preferred_username,
+      role:      (user.role ?? kcRole) as GraphQLContext['role'],
     }
   } catch (err) {
     authLogger.warn({ err }, 'Keycloak token invalid, trying JWT fallback')

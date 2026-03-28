@@ -156,7 +156,7 @@ async function teamMembers(parent: { id: string }, _: unknown, ctx: GraphQLConte
 async function teamOwnedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (t:Team {id: $id})<-[:OWNED_BY]-(n)
+      MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:OWNED_BY]-(n)
       WHERE n.tenant_id = $tenantId
       RETURN properties(n) as props, labels(n)[0] AS label
       ORDER BY n.name

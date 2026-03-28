@@ -24,6 +24,7 @@ async function logs(
   }
 
   const params: Record<string, unknown> = {
+    tenantId: ctx.tenantId,
     level:  level  ?? null,
     module: module ?? null,
     search: search ?? null,
@@ -31,7 +32,8 @@ async function logs(
   const advWhere = filters ? buildAdvancedWhere(filters, params, LOGS_ALLOWED_FIELDS, 'l') : ''
 
   const baseWhere = `
-    WHERE ($level  IS NULL OR l.level  = $level)
+    WHERE l.tenant_id = $tenantId
+      AND ($level  IS NULL OR l.level  = $level)
       AND ($module IS NULL OR l.module = $module)
       AND ($search IS NULL OR toLower(l.message) CONTAINS toLower($search))
       ${advWhere ? `AND (${advWhere})` : ''}
