@@ -58,7 +58,7 @@ services:
     image: quay.io/keycloak/keycloak:26.0
     platform: linux/arm64
     restart: always
-    command: start-dev
+    command: start-dev --import-realm
     environment:
       KC_DB: dev-file
       KEYCLOAK_ADMIN: admin
@@ -68,6 +68,9 @@ services:
       KC_HTTP_ENABLED: "true"
     ports:
       - "8080:8080"
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+      - ./keycloak-realm_pi5.json:/opt/keycloak/data/import/opengrafo-realm.json:ro
     networks:
       - opengrafo
     healthcheck:
@@ -131,6 +134,7 @@ volumes:
   neo4j-logs:
   redis-data:
   rabbitmq-data:
+  keycloak-data:
 
 networks:
   opengrafo:

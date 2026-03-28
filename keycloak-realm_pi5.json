@@ -1,0 +1,55 @@
+{
+  "realm": "opengrafo",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      { "name": "admin", "composite": false },
+      { "name": "user", "composite": false },
+      { "name": "manager", "composite": false }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "opengrafo-web",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["https://REPLACE_PI_IP/*"],
+      "webOrigins": ["https://REPLACE_PI_IP"],
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@demo.opengrafo.io",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Demo",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Demo1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"]
+    }
+  ]
+}
