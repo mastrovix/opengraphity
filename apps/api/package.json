@@ -23,6 +23,8 @@
     "seed:metamodel": "tsx src/scripts/seed-metamodel.ts",
     "seed:anomaly-scenarios": "tsx src/scripts/seed-anomaly-scenarios.ts",
     "scan:anomalies": "tsx src/scripts/run-anomaly-scan.ts",
+    "onboard-tenant": "tsx src/scripts/onboard-tenant.ts",
+    "add-user": "tsx src/scripts/add-user.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
