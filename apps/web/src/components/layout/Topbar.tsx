@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
+import { keycloak } from '@/lib/keycloak'
 
 // ── colours (aligned with Sidebar) ───────────────────────────────────────────
 const C = {
@@ -94,9 +95,30 @@ function Breadcrumb() {
 
 const NOTIFICATIONS = 3
 
+function getUserInfo() {
+  const parsed = keycloak.tokenParsed as Record<string, string> | undefined
+  const email  = parsed?.['email']              ?? ''
+  const name   = parsed?.['name']               ?? parsed?.['preferred_username'] ?? ''
+
+  let initials: string
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    initials = (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase()
+  } else if (name.trim().length >= 2) {
+    initials = name.trim().slice(0, 2).toUpperCase()
+  } else {
+    initials = email.slice(0, 2).toUpperCase()
+  }
+
+  const display = name.trim() || email.split('@')[0] || '—'
+
+  return { email, display, initials }
+}
+
 export function Topbar() {
   const { t } = useTranslation()
   const { logout } = useAuth()
+  const { display, initials } = getUserInfo()
 
   return (
     <header
@@ -186,10 +208,10 @@ export function Topbar() {
                 flexShrink:      0,
               }}
             >
-              AD
+              {initials}
             </div>
             <span style={{ fontSize: 14, color: C.textDefault, fontWeight: 500 }}>
-              admin@demo
+              {display}
             </span>
           </DropdownMenuTrigger>
 

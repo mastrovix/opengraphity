@@ -24,6 +24,30 @@ interface JWTPayload {
 
 const ITSM_ROLES = ['admin', 'operator', 'viewer'] as const
 
+/**
+ * Extracts the tenant slug from the Host or X-Forwarded-Host header.
+ * "c-one.opengrafo.com"  → "c-one"
+ * "c-one.localhost:4000" → "c-one"
+ * Returns null if there is no subdomain (bare localhost, IP, etc.)
+ */
+function extractTenantFromHost(req: express.Request): string | null {
+  const raw = (req.headers['x-forwarded-host'] ?? req.headers['host'] ?? '') as string
+  const host = raw.split(':')[0]!        // strip port
+  const first = host.split('.')[0]!
+
+  if (
+    first === 'localhost' ||
+    first === '127'       ||
+    first.startsWith('192') ||
+    first.startsWith('10')  ||
+    first === ''
+  ) {
+    return null
+  }
+
+  return first
+}
+
 async function getUserByEmail(email: string): Promise<{ id: string; tenantId: string; role: string } | null> {
   const session = getSession(undefined, 'READ')
   try {
@@ -69,6 +93,16 @@ export async function buildContext(req: express.Request): Promise<GraphQLContext
 
     if (!user) {
       throw new GraphQLError('Unauthorized: user not found', { extensions: { code: 'UNAUTHORIZED' } })
+    }
+
+    // Cross-check: token tenant must match the subdomain the request arrived on
+    const tenantFromHost = extractTenantFromHost(req)
+    if (tenantFromHost && user.tenantId !== tenantFromHost) {
+      authLogger.warn(
+        { userTenant: user.tenantId, hostTenant: tenantFromHost },
+        'Tenant/host mismatch — token rejected',
+      )
+      throw new GraphQLError('Unauthorized: token/tenant mismatch', { extensions: { code: 'UNAUTHORIZED' } })
     }
 
     const kcRole = decoded.realm_access?.roles?.find((r) =>

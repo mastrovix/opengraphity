@@ -87,7 +87,6 @@ services:
       REDIS_URL: redis://redis:6379
       KEYCLOAK_URL: https://192.168.1.119
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
-      KEYCLOAK_REALM: opengrafo
     networks:
       - opengrafo
 
@@ -99,7 +98,6 @@ services:
       args:
         VITE_GRAPHQL_URL: /graphql
         VITE_KEYCLOAK_URL: https://${PI_IP:-192.168.1.119}
-        VITE_KEYCLOAK_REALM: opengrafo
         VITE_KEYCLOAK_CLIENT_ID: opengrafo-web
     restart: always
     depends_on:
