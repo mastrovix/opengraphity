@@ -11,7 +11,6 @@ import type {
   SLABreachedPayload,
   ProblemKnownErrorPayload,
 } from '@opengraphity/types'
-import { Message } from 'amqplib'
 import { sseManager, InAppNotification } from './sse.js'
 import { sendTeamsCard, TeamsCard } from './teams.js'
 import { dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
@@ -38,7 +37,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     super('notification-service')
   }
 
-  async process(event: DomainEvent<unknown>, _msg: Message): Promise<void> {
+  async process(event: DomainEvent<unknown>): Promise<void> {
     console.log(`[dispatcher] Processing event: ${event.type}`)
 
     let notification: InAppNotification | null = null

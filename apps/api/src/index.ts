@@ -31,7 +31,7 @@ async function main() {
       console.log('[api] HTTP server closed')
     })
     await closeConnection()
-    console.log('[api] RabbitMQ connection closed')
+    console.log('[api] Redis connection closed')
     process.exit(0)
   }
 

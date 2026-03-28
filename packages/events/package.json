@@ -13,11 +13,10 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "amqplib": "^0.10.4",
+    "bullmq": "^5.4.0",
     "@opengraphity/types": "workspace:*"
   },
   "devDependencies": {
-    "@types/amqplib": "^0.10.5",
     "@types/node": "^20.12.0",
     "typescript": "^5.4.0"
   }

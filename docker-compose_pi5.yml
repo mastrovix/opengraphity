@@ -37,23 +37,6 @@ services:
       timeout: 5s
       retries: 3
 
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    platform: linux/arm64
-    restart: always
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-opengraphity}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-opengraphity_local}
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-    networks:
-      - opengrafo
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     platform: linux/arm64
@@ -102,7 +85,6 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-opengraphity}:${RABBITMQ_PASSWORD:-opengraphity_local}@rabbitmq:5672
       KEYCLOAK_URL: https://192.168.1.119
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       KEYCLOAK_REALM: opengrafo
@@ -134,7 +116,6 @@ volumes:
   neo4j-data:
   neo4j-logs:
   redis-data:
-  rabbitmq-data:
   keycloak-data:
 
 networks:

@@ -45,8 +45,6 @@ echo "IP rilevato: $PI_IP"
 
 cat > .env << ENVEOF
 NEO4J_PASSWORD=opengraphity_local
-RABBITMQ_USER=opengraphity
-RABBITMQ_PASSWORD=opengraphity_local
 KEYCLOAK_ADMIN_PASSWORD=opengrafo_local
 PI_IP=$PI_IP
 ENVEOF
@@ -70,7 +68,7 @@ echo "=== 7. Build immagini (10-15 min la prima volta) ==="
 docker compose -f docker-compose_pi5.yml build
 
 echo "=== 8. Avvio infrastruttura (senza API) ==="
-docker compose -f docker-compose_pi5.yml up -d neo4j redis rabbitmq keycloak web
+docker compose -f docker-compose_pi5.yml up -d neo4j redis keycloak web
 
 echo "=== 9. Attesa servizi ==="
 echo "Attendo Neo4j..."
@@ -80,13 +78,6 @@ until docker compose -f docker-compose_pi5.yml exec -T neo4j bash -c 'cat < /dev
 done
 echo "Neo4j pronto!"
 
-echo "Attendo RabbitMQ..."
-until docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl await_startup 2>/dev/null; do
-  sleep 10
-  echo "  RabbitMQ non pronto..."
-done
-echo "RabbitMQ pronto!"
-
 echo "Attendo Keycloak..."
 until docker compose -f docker-compose_pi5.yml exec -T keycloak bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8080' 2>/dev/null; do
   sleep 10
@@ -94,37 +85,19 @@ until docker compose -f docker-compose_pi5.yml exec -T keycloak bash -c 'cat < /
 done
 echo "Keycloak pronto!"
 
-echo "=== 10. Creazione queue RabbitMQ ==="
-docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl set_permissions -p / opengraphity ".*" ".*" ".*"
-sleep 5
-docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl delete_queue notification-service 2>/dev/null || true
-docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl delete_queue sla-engine 2>/dev/null || true
-sleep 2
-
 DEPLOY_EOF
 ```
 
-### Blocco 2 — Creazione queue RabbitMQ (escaping Erlang separato)
-```bash
-ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl eval '"'"'rabbit_amqqueue:declare(rabbit_misc:r(<<"/">>, queue, <<"notification-service">>), true, false, [], none, <<"rmq-internal">>).'"'"''
-sleep 2
-ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl eval '"'"'rabbit_amqqueue:declare(rabbit_misc:r(<<"/">>, queue, <<"sla-engine">>), true, false, [], none, <<"rmq-internal">>).'"'"''
-sleep 2
-```
-
-### Blocco 3 — Avvio API e verifica finale
+### Blocco 2 — Avvio API e verifica finale
 ```bash
 ssh mastrovix@192.168.1.119 'bash -s' << 'DEPLOY_EOF2'
 cd ~/opengraphity
 
-echo "Verifica queue..."
-docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl list_queues
-
-echo "=== 11. Avvio API ==="
+echo "=== 10. Avvio API ==="
 docker compose -f docker-compose_pi5.yml up -d api
 sleep 20
 
-echo "=== 12. Verifica ==="
+echo "=== 11. Verifica ==="
 docker compose -f docker-compose_pi5.yml ps
 
 PI_IP=$(hostname -I | awk '{print $1}')
@@ -209,7 +182,6 @@ ssh mastrovix@192.168.1.119 'cd ~/opengraphity && git pull && docker compose -f 
 | API Node.js | ~512MB |
 | Keycloak | ~512MB |
 | Redis | ~256MB |
-| RabbitMQ | ~256MB |
 | Nginx | ~64MB |
 | OS | ~1GB |
-| **Totale** | **~7GB su 16GB** |
+| **Totale** | **~6.5GB su 16GB** |

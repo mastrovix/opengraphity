@@ -8,7 +8,6 @@ import type {
   ProblemCreatedPayload,
   ProblemResolvedPayload,
 } from '@opengraphity/types'
-import { Message } from 'amqplib'
 import { DEFAULT_SLA_POLICIES } from './policy.js'
 import { createSLAStatus, getSLAStatus, markResolveMet } from './status.js'
 import {
@@ -28,7 +27,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
     super('sla-engine')
   }
 
-  async process(event: DomainEvent<unknown>, _msg: Message): Promise<void> {
+  async process(event: DomainEvent<unknown>): Promise<void> {
     switch (event.type) {
       case 'incident.created':
         await this.handleEntityCreated(

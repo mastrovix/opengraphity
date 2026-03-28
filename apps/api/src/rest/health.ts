@@ -1,6 +1,6 @@
 import { Router, type Router as ExpressRouter } from 'express'
 import { getSession } from '@opengraphity/neo4j'
-import { getConnection } from '@opengraphity/events'
+import { Redis } from 'ioredis'
 
 const router: ExpressRouter = Router()
 
@@ -25,25 +25,34 @@ async function checkNeo4j(): Promise<'ok' | 'error'> {
   }
 }
 
-async function checkRabbitMQ(): Promise<'ok' | 'error'> {
+async function checkRedis(): Promise<'ok' | 'error'> {
+  const client = new Redis({
+    host:                 process.env['REDIS_HOST'] ?? 'localhost',
+    port:                 parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
+    lazyConnect:          true,
+    maxRetriesPerRequest: 0,
+  })
   try {
-    await withTimeout(getConnection(), 2_000)
+    await withTimeout(client.connect(), 2_000)
+    await client.ping()
     return 'ok'
   } catch {
     return 'error'
+  } finally {
+    client.disconnect()
   }
 }
 
 router.get('/health', async (_req, res) => {
-  const [neo4j, rabbitmq] = await Promise.all([checkNeo4j(), checkRabbitMQ()])
+  const [neo4j, redis] = await Promise.all([checkNeo4j(), checkRedis()])
 
-  const allOk = neo4j === 'ok' && rabbitmq === 'ok'
+  const allOk = neo4j === 'ok' && redis === 'ok'
 
   res.status(allOk ? 200 : 503).json({
     status:    allOk ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
     version:   '0.1.0',
-    services:  { neo4j, rabbitmq },
+    services:  { neo4j, redis },
   })
 })
 
