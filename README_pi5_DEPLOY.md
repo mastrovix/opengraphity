@@ -9,6 +9,8 @@
 ## Installazione automatica
 
 Dal Mac, copia e incolla nel terminale (sostituisci UTENTE e IP):
+
+### Blocco 1 — Setup, build e avvio infrastruttura
 ```bash
 ssh mastrovix@192.168.1.119 'bash -s' << 'DEPLOY_EOF'
 set -e
@@ -95,10 +97,25 @@ echo "Keycloak pronto!"
 echo "=== 10. Creazione queue RabbitMQ ==="
 docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl set_permissions -p / opengraphity ".*" ".*" ".*"
 sleep 5
-docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl eval 'rabbit_amqqueue:declare(rabbit_misc:r(<<"/">>, queue, <<"notification-service">>), true, false, [], none, <<"rmq-internal">>).'
+docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl delete_queue notification-service 2>/dev/null || true
+docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl delete_queue sla-engine 2>/dev/null || true
 sleep 2
-docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl eval 'rabbit_amqqueue:declare(rabbit_misc:r(<<"/">>, queue, <<"sla-engine">>), true, false, [], none, <<"rmq-internal">>).'
+
+DEPLOY_EOF
+```
+
+### Blocco 2 — Creazione queue RabbitMQ (escaping Erlang separato)
+```bash
+ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl eval '"'"'rabbit_amqqueue:declare(rabbit_misc:r(<<"/">>, queue, <<"notification-service">>), true, false, [], none, <<"rmq-internal">>).'"'"''
 sleep 2
+ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl eval '"'"'rabbit_amqqueue:declare(rabbit_misc:r(<<"/">>, queue, <<"sla-engine">>), true, false, [], none, <<"rmq-internal">>).'"'"''
+sleep 2
+```
+
+### Blocco 3 — Avvio API e verifica finale
+```bash
+ssh mastrovix@192.168.1.119 'bash -s' << 'DEPLOY_EOF2'
+cd ~/opengraphity
 
 echo "Verifica queue..."
 docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl list_queues
@@ -110,6 +127,7 @@ sleep 20
 echo "=== 12. Verifica ==="
 docker compose -f docker-compose_pi5.yml ps
 
+PI_IP=$(hostname -I | awk '{print $1}')
 echo ""
 echo "============================================"
 echo "  OpenGrafo installato con successo!"
@@ -126,7 +144,7 @@ echo ""
 echo "  NOTA: Accetta il certificato self-signed"
 echo "        nel browser (Avanzate > Procedi)"
 echo "============================================"
-DEPLOY_EOF
+DEPLOY_EOF2
 ```
 
 ## Backup e restore Neo4j (opzionale)
