@@ -100,6 +100,7 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-opengraphity_local}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-opengraphity}:${RABBITMQ_PASSWORD:-opengraphity_local}@rabbitmq:5672
     networks:
       - opengrafo

@@ -6,7 +6,7 @@ import type { WorkflowActionConfig, WorkflowInstance } from './types.js'
 
 const redisConnection = {
   host: process.env['REDIS_HOST'] ?? 'localhost',
-  port: 6379,
+  port: parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
 }
 
 export async function runAction(
