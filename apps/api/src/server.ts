@@ -59,6 +59,8 @@ app.post('/api/slack/actions',
   (req: Request, res: Response) => void handleSlackActions(req, res),
 )
 
+app.set('trust proxy', 1)
+
 app.use(rateLimit({
   windowMs: 15 * 60 * 1_000,
   max:      100,

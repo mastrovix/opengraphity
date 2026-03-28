@@ -91,8 +91,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
       keycloak:
         condition: service_healthy
     environment:
@@ -118,6 +116,9 @@ services:
       dockerfile: apps/web/Dockerfile_pi5
       args:
         VITE_GRAPHQL_URL: /graphql
+        VITE_KEYCLOAK_URL: https://${PI_IP:-192.168.1.119}
+        VITE_KEYCLOAK_REALM: opengrafo
+        VITE_KEYCLOAK_CLIENT_ID: opengrafo-web
     restart: always
     depends_on:
       - api

@@ -4,11 +4,11 @@
 - Raspberry Pi 5 con 8-16GB RAM
 - Raspberry Pi OS (64-bit) o Ubuntu Server 24.04 ARM64
 - Connessione internet
-- SSH abilitato sul Pi
+- SSH abilitato
 
 ## Installazione automatica
 
-Dal Mac, copia e incolla questo script nel terminale:
+Dal Mac, copia e incolla nel terminale (sostituisci UTENTE e IP):
 ```bash
 ssh mastrovix@192.168.1.119 'bash -s' << 'DEPLOY_EOF'
 set -e
@@ -37,16 +37,19 @@ fi
 cd opengraphity
 git pull
 
-echo "=== 4. Configurazione password ==="
-cat > .env << 'ENVEOF'
+echo "=== 4. Rileva IP e configurazione ==="
+PI_IP=$(hostname -I | awk '{print $1}')
+echo "IP rilevato: $PI_IP"
+
+cat > .env << ENVEOF
 NEO4J_PASSWORD=opengraphity_local
 RABBITMQ_USER=opengraphity
 RABBITMQ_PASSWORD=opengraphity_local
 KEYCLOAK_ADMIN_PASSWORD=opengrafo_local
+PI_IP=$PI_IP
 ENVEOF
 
 echo "=== 5. Configurazione Keycloak realm ==="
-PI_IP=$(hostname -I | awk '{print $1}')
 cp keycloak-realm_pi5.json keycloak-realm_pi5_local.json
 sed -i "s/REPLACE_PI_IP/$PI_IP/g" keycloak-realm_pi5_local.json
 
@@ -61,37 +64,52 @@ if [ ! -f certs_pi5/selfsigned.crt ]; then
   sudo chmod 600 certs_pi5/selfsigned.key
 fi
 
-echo "=== 7. Build e avvio container (10-15 min la prima volta) ==="
-docker compose -f docker-compose_pi5.yml up -d --build
+echo "=== 7. Build immagini (10-15 min la prima volta) ==="
+docker compose -f docker-compose_pi5.yml build
 
-echo "=== 8. Attesa avvio servizi ==="
+echo "=== 8. Avvio infrastruttura (senza API) ==="
+docker compose -f docker-compose_pi5.yml up -d neo4j redis rabbitmq keycloak web
+
+echo "=== 9. Attesa servizi ==="
 echo "Attendo Neo4j..."
-sleep 30
 until docker compose -f docker-compose_pi5.yml exec -T neo4j bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/7474' 2>/dev/null; do
-  echo "  Neo4j non pronto, attendo 10s..."
   sleep 10
+  echo "  Neo4j non pronto..."
 done
 echo "Neo4j pronto!"
 
+echo "Attendo RabbitMQ..."
+until docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl await_startup 2>/dev/null; do
+  sleep 10
+  echo "  RabbitMQ non pronto..."
+done
+echo "RabbitMQ pronto!"
+
 echo "Attendo Keycloak..."
 until docker compose -f docker-compose_pi5.yml exec -T keycloak bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8080' 2>/dev/null; do
-  echo "  Keycloak non pronto, attendo 10s..."
   sleep 10
+  echo "  Keycloak non pronto..."
 done
 echo "Keycloak pronto!"
 
-echo "=== 9. Creazione queue RabbitMQ ==="
-sleep 10
+echo "=== 10. Creazione queue RabbitMQ ==="
 docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl set_permissions -p / opengraphity ".*" ".*" ".*"
+sleep 5
 docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl eval 'rabbit_amqqueue:declare(rabbit_misc:r(<<"/">>, queue, <<"notification-service">>), true, false, [], none, <<"rmq-internal">>).'
+sleep 2
 docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl eval 'rabbit_amqqueue:declare(rabbit_misc:r(<<"/">>, queue, <<"sla-engine">>), true, false, [], none, <<"rmq-internal">>).'
-echo "Queue create!"
+sleep 2
 
-echo "=== 10. Riavvio API ==="
-docker compose -f docker-compose_pi5.yml restart api
-sleep 15
+echo "Verifica queue..."
+docker compose -f docker-compose_pi5.yml exec -T rabbitmq rabbitmqctl list_queues
 
-PI_IP=$(hostname -I | awk '{print $1}')
+echo "=== 11. Avvio API ==="
+docker compose -f docker-compose_pi5.yml up -d api
+sleep 20
+
+echo "=== 12. Verifica ==="
+docker compose -f docker-compose_pi5.yml ps
+
 echo ""
 echo "============================================"
 echo "  OpenGrafo installato con successo!"
@@ -112,8 +130,6 @@ DEPLOY_EOF
 ```
 
 ## Backup e restore Neo4j (opzionale)
-
-Per copiare i dati dal tuo ambiente locale al Pi.
 
 ### Export dal Mac:
 ```bash
@@ -138,18 +154,16 @@ docker compose -f docker-compose_pi5.yml stop neo4j
 docker compose -f docker-compose_pi5.yml run --rm -v ~/neo4j-backup.dump:/backup/neo4j.dump neo4j neo4j-admin database load neo4j --from-path=/backup --overwrite-destination=true
 docker compose -f docker-compose_pi5.yml up -d neo4j
 sleep 30
-docker compose -f docker-compose_pi5.yml up -d api
+
+# Aggiorna user_id dashboard
+NEW_ID=$(docker compose -f docker-compose_pi5.yml exec -T keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password opengrafo_local 2>/dev/null && docker compose -f docker-compose_pi5.yml exec -T keycloak /opt/keycloak/bin/kcadm.sh get users -r opengrafo --fields id --format csv --noquotes 2>/dev/null | tail -1 | tr -d '\r')
+echo "Nuovo user_id: $NEW_ID"
+docker compose -f docker-compose_pi5.yml exec -T neo4j cypher-shell -u neo4j -p opengraphity_local "MATCH (d:DashboardConfig) WHERE d.user_id IS NOT NULL SET d.user_id = '$NEW_ID' RETURN d.name, d.user_id"
+
+docker compose -f docker-compose_pi5.yml restart api
+sleep 15
 echo "Restore completato!"
 EOF
-```
-
-### Aggiorna user_id dashboard dopo restore:
-```bash
-# Trova il nuovo user_id Keycloak
-ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml exec -T keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password opengrafo_local && docker compose -f docker-compose_pi5.yml exec -T keycloak /opt/keycloak/bin/kcadm.sh get users -r opengrafo --fields id,username'
-
-# Aggiorna (sostituisci OLD_ID e NEW_ID)
-ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml exec -T neo4j cypher-shell -u neo4j -p opengraphity_local "MATCH (d:DashboardConfig) WHERE d.user_id = \"OLD_ID\" SET d.user_id = \"NEW_ID\" RETURN d.name, d.user_id"'
 ```
 
 ## Comandi utili
@@ -157,10 +171,10 @@ ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compo
 # Stato
 ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml ps'
 
-# Log
+# Log API
 ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml logs -f api'
 
-# Riavvio
+# Riavvio completo
 ssh mastrovix@192.168.1.119 'cd ~/opengraphity && docker compose -f docker-compose_pi5.yml restart'
 
 # Stop
