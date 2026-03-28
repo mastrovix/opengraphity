@@ -47,7 +47,8 @@ ENVEOF
 
 echo "=== 5. Configurazione Keycloak realm ==="
 PI_IP=$(hostname -I | awk '{print $1}')
-sed -i "s/REPLACE_PI_IP/$PI_IP/g" keycloak-realm_pi5.json
+cp keycloak-realm_pi5.json keycloak-realm_pi5_local.json
+sed -i "s/REPLACE_PI_IP/$PI_IP/g" keycloak-realm_pi5_local.json
 
 echo "=== 6. Certificato HTTPS self-signed ==="
 if [ ! -f certs_pi5/selfsigned.crt ]; then

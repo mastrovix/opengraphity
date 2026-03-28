@@ -70,7 +70,7 @@ services:
       - "8080:8080"
     volumes:
       - keycloak-data:/opt/keycloak/data
-      - ./keycloak-realm_pi5.json:/opt/keycloak/data/import/opengrafo-realm.json:ro
+      - ./keycloak-realm_pi5_local.json:/opt/keycloak/data/import/opengrafo-realm.json:ro
     networks:
       - opengrafo
     healthcheck:
