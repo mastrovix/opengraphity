@@ -17,18 +17,15 @@ export const authResolvers = {
           tx.run('MATCH (u:User {email: $email}) RETURN u LIMIT 1', { email }),
         )
 
-        let userId   = 'user-001'
-        let tenantId = 'tenant-demo'
-        let role     = 'admin'
-        let name     = email.split('@')[0]!
-
-        if (result.records.length > 0) {
-          const u  = result.records[0]!.get('u').properties as Record<string, string>
-          userId   = u['id']!
-          tenantId = u['tenant_id']!
-          role     = u['role']!
-          name     = u['name']!
+        if (result.records.length === 0) {
+          throw new Error('Credenziali non valide')
         }
+
+        const u        = result.records[0]!.get('u').properties as Record<string, string>
+        const userId   = u['id']!
+        const tenantId = u['tenant_id']!
+        const role     = u['role']!
+        const name     = u['name']!
 
         const iat = Math.floor(Date.now() / 1000)
         const exp = iat + 24 * 60 * 60 // 24h

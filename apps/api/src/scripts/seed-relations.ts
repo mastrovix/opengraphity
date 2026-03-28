@@ -1,7 +1,7 @@
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 
-const TENANT_ID = 'tenant-demo'
+const TENANT_ID = 'c-one'
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]

@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 
-const TENANT_ID = 'tenant-demo'
+const TENANT_ID = 'c-one'
 
 function pickEnvironment(): string {
   const r = Math.random()

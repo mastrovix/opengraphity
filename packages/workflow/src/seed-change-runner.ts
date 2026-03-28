@@ -1,6 +1,6 @@
 import { seedChangeWorkflows } from './seed-change.js'
 
-seedChangeWorkflows('tenant-demo')
+seedChangeWorkflows('c-one')
   .then(() => {
     console.log('Change workflows seeded')
     process.exit(0)

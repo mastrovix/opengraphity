@@ -56,7 +56,7 @@ describe('WorkflowEngine', () => {
         executeRead:  vi.fn(),
         executeWrite: vi.fn().mockResolvedValue({
           id:           'wi-123',
-          tenantId:     'tenant-demo',
+          tenantId:     'c-one',
           definitionId: 'def-456',
           entityId:     'incident-789',
           entityType:   'incident',
@@ -68,7 +68,7 @@ describe('WorkflowEngine', () => {
       }
 
       const engine = new WorkflowEngine()
-      await engine.createInstance(session as never, 'tenant-demo', 'incident-789', 'incident')
+      await engine.createInstance(session as never, 'c-one', 'incident-789', 'incident')
       expect(session.executeWrite).toHaveBeenCalledOnce()
     })
   })
@@ -89,7 +89,7 @@ describe('WorkflowEngine', () => {
     it('verifica condizione rootCause: rifiuta se notes mancanti', async () => {
       const session = makeSession([
         mockRecord({
-          wi: { properties: { tenant_id: 'tenant-demo', entity_id: 'inc-1', entity_type: 'incident' } },
+          wi: { properties: { tenant_id: 'c-one', entity_id: 'inc-1', entity_type: 'incident' } },
           currentStepId:    'step-1',
           exitActions:      null,
           nextStepId:       'step-2',

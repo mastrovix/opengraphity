@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 
-const TENANT_ID = 'tenant-demo'
+const TENANT_ID = 'c-one'
 
 function pickRole(): string {
   const rand = Math.random()
@@ -30,7 +30,7 @@ async function seed() {
     { tenantId: TENANT_ID }
   )
   const teamIds = teamsResult.records.map((r) => r.get('id') as string)
-  if (teamIds.length === 0) throw new Error('No teams found for tenant-demo')
+  if (teamIds.length === 0) throw new Error('No teams found for c-one')
   console.log(`Loaded ${teamIds.length} teams`)
 
   let created   = 0

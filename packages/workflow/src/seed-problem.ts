@@ -120,7 +120,7 @@ async function seedProblemWorkflow(tenantId: string): Promise<void> {
 
 const isMain = process.argv[1] === fileURLToPath(import.meta.url)
 if (isMain) {
-  seedProblemWorkflow('tenant-demo')
+  seedProblemWorkflow('c-one')
     .then(() => process.exit(0))
     .catch((e: unknown) => { console.error(e); process.exit(1) })
 }

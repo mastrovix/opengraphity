@@ -63,15 +63,20 @@ async function resolveAuth(
     const decoded = await verifyKeycloakToken(token)
     const user = await getUserByEmail(decoded.email)
 
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized: user not found' })
+      return
+    }
+
     const kcRole = decoded.realm_access?.roles?.find((r) =>
       (ITSM_ROLES as readonly string[]).includes(r),
     ) ?? 'viewer'
 
     req.user = {
-      userId:   user?.id       ?? decoded.sub,
-      tenantId: user?.tenantId ?? 'tenant-demo',
-      email:    decoded.email  ?? decoded.preferred_username,
-      role:     user?.role     ?? kcRole,
+      userId:   user.id,
+      tenantId: user.tenantId,
+      email:    decoded.email ?? decoded.preferred_username,
+      role:     user.role     ?? kcRole,
     }
     next()
     return

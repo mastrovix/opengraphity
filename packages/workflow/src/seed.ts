@@ -294,7 +294,7 @@ export async function seedWorkflowForTenant(tenantId: string): Promise<string> {
 // Eseguibile standalone: pnpm --filter @opengraphity/workflow run seed
 const isMain = process.argv[1] === fileURLToPath(import.meta.url)
 if (isMain) {
-  seedWorkflowForTenant('tenant-demo')
+  seedWorkflowForTenant('c-one')
     .then(() => process.exit(0))
     .catch((e: unknown) => { console.error(e); process.exit(1) })
 }

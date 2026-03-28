@@ -1,7 +1,7 @@
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 
-const TENANT_ID = 'tenant-demo'
+const TENANT_ID = 'c-one'
 
 function randomSubset<T>(arr: T[], min: number, max: number): T[] {
   const n = min + Math.floor(Math.random() * (max - min + 1))

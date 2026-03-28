@@ -18,7 +18,7 @@ import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 
-const TENANT = 'tenant-demo'
+const TENANT = 'c-one'
 
 async function run(session: ReturnType<typeof getSession>, label: string, cypher: string, params: Record<string, unknown> = {}) {
   console.log(`  → ${label}`)

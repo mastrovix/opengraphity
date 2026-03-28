@@ -1,6 +1,6 @@
 import { getSession } from '@opengraphity/neo4j'
 
-const TENANT = 'tenant-demo'
+const TENANT = 'c-one'
 const now    = new Date().toISOString()
 
 const USERS_WITH_TEAMS = [

@@ -5,7 +5,7 @@
 import { getSession } from '@opengraphity/neo4j'
 import { ANOMALY_RULES } from '../anomaly/rules.js'
 
-const TENANT = 'tenant-demo'
+const TENANT = 'c-one'
 
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v

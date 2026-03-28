@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 
-const TENANT_ID = 'tenant-demo'
+const TENANT_ID = 'c-one'
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
@@ -43,7 +43,7 @@ async function seed() {
     { tenantId: TENANT_ID }
   )
   const teamIds = teamsResult.records.map((r) => r.get('id') as string)
-  if (teamIds.length === 0) throw new Error('No teams found for tenant-demo')
+  if (teamIds.length === 0) throw new Error('No teams found for c-one')
 
   // Load databases
   const dbsResult = await session.run(
@@ -53,7 +53,7 @@ async function seed() {
     { tenantId: TENANT_ID }
   )
   const dbIds = dbsResult.records.map((r) => r.get('id') as string)
-  if (dbIds.length === 0) throw new Error('No database CIs found for tenant-demo')
+  if (dbIds.length === 0) throw new Error('No database CIs found for c-one')
 
   let created = 0
   let skipped = 0

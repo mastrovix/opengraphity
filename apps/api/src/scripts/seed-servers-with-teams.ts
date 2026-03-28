@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 
-const TENANT_ID = 'tenant-demo'
+const TENANT_ID = 'c-one'
 
 const LOCATIONS  = ['Milano', 'Roma', 'Torino', 'Napoli', 'Bologna', 'Firenze', 'Palermo', 'Genova']
 const VENDORS    = ['Dell', 'HP', 'IBM', 'Cisco', 'Lenovo', 'Supermicro', 'Fujitsu']
