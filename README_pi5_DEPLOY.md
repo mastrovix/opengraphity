@@ -20,7 +20,12 @@ OpenGrafo v14 richiede un **sottodominio** per identificare il tenant. Con il Pi
 
 ## Installazione automatica
 
-Dal Mac, copia e incolla nel terminale (sostituisci UTENTE e IP):
+### Prima di tutto — Sul Mac, aggiungi al file /etc/hosts:
+```bash
+sudo sh -c 'echo "192.168.1.119 c-one.opengrafo.pi" >> /etc/hosts'
+```
+> Sostituisci `192.168.1.119` con l'IP effettivo del tuo Pi5.
+> Questo permette di raggiungere l'app via `https://c-one.opengrafo.pi`.
 
 ### Blocco 1 — Setup, build e avvio infrastruttura
 ```bash
@@ -65,13 +70,14 @@ echo "=== 5. Configurazione Keycloak realm ==="
 cp keycloak-realm_pi5.json keycloak-realm_pi5_local.json
 sed -i "s/REPLACE_PI_IP/$PI_IP/g" keycloak-realm_pi5_local.json
 
-echo "=== 6. Certificato HTTPS self-signed ==="
+echo "=== 6. Certificato HTTPS self-signed (con SAN) ==="
 if [ ! -f certs_pi5/selfsigned.crt ]; then
   sudo mkdir -p certs_pi5
   sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout certs_pi5/selfsigned.key \
     -out certs_pi5/selfsigned.crt \
-    -subj "/CN=opengrafo.local"
+    -subj "/CN=opengrafo.pi" \
+    -addext "subjectAltName=DNS:*.opengrafo.pi,IP:$PI_IP"
   sudo chmod 644 certs_pi5/selfsigned.crt
   sudo chmod 600 certs_pi5/selfsigned.key
 fi
@@ -117,11 +123,12 @@ echo ""
 echo "============================================"
 echo "  OpenGrafo installato con successo!"
 echo "============================================"
-echo "  App (tenant c-one): https://c-one.$PI_IP.nip.io"
+echo "  App (tenant c-one): https://c-one.opengrafo.pi"
+echo "  App (via nip.io):   https://c-one.$PI_IP.nip.io"
 echo "  Neo4j:              http://$PI_IP:7474"
 echo "  Keycloak:           http://$PI_IP:8080/admin"
 echo ""
-echo "  Login App:    admin@demo.opengrafo.io / Demo1234"
+echo "  Login App:    admin@opengrafo.com / Demo1234"
 echo "  Neo4j:        neo4j / opengraphity_local"
 echo "  Keycloak:     admin / opengrafo_local"
 echo "============================================"
@@ -131,6 +138,8 @@ echo "  pnpm onboard-tenant -- --slug acme --pi-ip $PI_IP ..."
 echo ""
 echo "  NOTA: Accetta il certificato self-signed"
 echo "        nel browser (Avanzate > Procedi)"
+echo "  Sul Mac aggiungi a /etc/hosts:"
+echo "  $PI_IP c-one.opengrafo.pi"
 echo "============================================"
 DEPLOY_EOF2
 ```
@@ -162,7 +171,7 @@ docker compose -f docker-compose_pi5.yml up -d neo4j
 sleep 30
 
 # Aggiorna user_id dashboard
-NEW_ID=$(docker compose -f docker-compose_pi5.yml exec -T keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password opengrafo_local 2>/dev/null && docker compose -f docker-compose_pi5.yml exec -T keycloak /opt/keycloak/bin/kcadm.sh get users -r opengrafo --fields id --format csv --noquotes 2>/dev/null | tail -1 | tr -d '\r')
+NEW_ID=$(docker compose -f docker-compose_pi5.yml exec -T keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password opengrafo_local 2>/dev/null && docker compose -f docker-compose_pi5.yml exec -T keycloak /opt/keycloak/bin/kcadm.sh get users -r c-one --fields id --format csv --noquotes 2>/dev/null | tail -1 | tr -d '\r')
 echo "Nuovo user_id: $NEW_ID"
 docker compose -f docker-compose_pi5.yml exec -T neo4j cypher-shell -u neo4j -p opengraphity_local "MATCH (d:DashboardConfig) WHERE d.user_id IS NOT NULL SET d.user_id = '$NEW_ID' RETURN d.name, d.user_id"
 
