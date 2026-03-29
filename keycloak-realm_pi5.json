@@ -1,5 +1,5 @@
 {
-  "realm": "opengrafo",
+  "realm": "c-one",
   "enabled": true,
   "roles": {
     "realm": [
@@ -37,10 +37,10 @@
   "users": [
     {
       "username": "admin",
-      "email": "admin@demo.opengrafo.io",
+      "email": "admin@opengrafo.com",
       "emailVerified": true,
-      "firstName": "Admin",
-      "lastName": "Demo",
+      "firstName": "Vittorio",
+      "lastName": "Mastrolilli",
       "enabled": true,
       "credentials": [
         {
