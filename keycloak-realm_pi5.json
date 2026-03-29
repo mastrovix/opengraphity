@@ -14,8 +14,8 @@
       "enabled": true,
       "publicClient": true,
       "directAccessGrantsEnabled": true,
-      "redirectUris": ["https://REPLACE_PI_IP/*"],
-      "webOrigins": ["https://REPLACE_PI_IP"],
+      "redirectUris": ["https://REPLACE_PI_IP/*", "https://c-one.REPLACE_PI_IP.nip.io/*"],
+      "webOrigins": ["https://REPLACE_PI_IP", "https://c-one.REPLACE_PI_IP.nip.io"],
       "protocol": "openid-connect",
       "protocolMappers": [
         {

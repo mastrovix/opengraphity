@@ -10,6 +10,7 @@
  *     --admin-first-name Mario \
  *     --admin-last-name Rossi \
  *     [--domain opengrafo.com]
+ *     [--pi-ip 192.168.1.119]
  *
  * Required env vars:
  *   KEYCLOAK_URL, KEYCLOAK_ADMIN_USER (default "admin"), KEYCLOAK_ADMIN_PASSWORD
@@ -31,6 +32,7 @@ const { values: args } = parseArgs({
     'admin-last-name':  { type: 'string' },
     'domain':           { type: 'string', default: 'opengrafo.com' },
     'admin-role':       { type: 'string', default: 'admin' },
+    'pi-ip':            { type: 'string' },
   },
 })
 
@@ -41,6 +43,7 @@ const firstName = args['admin-first-name']
 const lastName  = args['admin-last-name']
 const domain    = args['domain']!
 const adminRole = args['admin-role']!
+const piIp      = args['pi-ip']
 
 const ALLOWED_ROLES = ['admin', 'user', 'manager'] as const
 if (!ALLOWED_ROLES.includes(adminRole as typeof ALLOWED_ROLES[number])) {
@@ -166,10 +169,12 @@ async function createClient(token: string): Promise<string> {
     redirectUris: [
       `https://${slug}.${domain}/*`,
       `http://${slug}.localhost:5173/*`,
+      ...(piIp ? [`https://${slug}.${piIp}.nip.io/*`] : []),
     ],
     webOrigins: [
       `https://${slug}.${domain}`,
       `http://${slug}.localhost:5173`,
+      ...(piIp ? [`https://${slug}.${piIp}.nip.io`] : []),
     ],
   })
 

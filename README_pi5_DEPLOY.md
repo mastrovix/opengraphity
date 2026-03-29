@@ -6,6 +6,18 @@
 - Connessione internet
 - SSH abilitato
 
+## Accesso multi-tenant (importante)
+
+OpenGrafo v14 richiede un **sottodominio** per identificare il tenant. Con il Pi5 si usa [nip.io](https://nip.io): un servizio DNS pubblico gratuito che risolve automaticamente `*.192.168.1.119.nip.io` verso `192.168.1.119` — senza nessuna configurazione.
+
+| Tenant | URL |
+|--------|-----|
+| c-one  | `https://c-one.192.168.1.119.nip.io` |
+| acme   | `https://acme.192.168.1.119.nip.io` |
+
+> Accettare il certificato self-signed la prima volta (Avanzate → Procedi).
+> Sostituire `192.168.1.119` con l'IP effettivo del tuo Pi5.
+
 ## Installazione automatica
 
 Dal Mac, copia e incolla nel terminale (sostituisci UTENTE e IP):
@@ -105,14 +117,17 @@ echo ""
 echo "============================================"
 echo "  OpenGrafo installato con successo!"
 echo "============================================"
-echo "  App:          https://$PI_IP"
-echo "  Neo4j:        http://$PI_IP:7474"
-echo "  Keycloak:     http://$PI_IP:8080/admin"
+echo "  App (tenant c-one): https://c-one.$PI_IP.nip.io"
+echo "  Neo4j:              http://$PI_IP:7474"
+echo "  Keycloak:           http://$PI_IP:8080/admin"
 echo ""
 echo "  Login App:    admin@demo.opengrafo.io / Demo1234"
 echo "  Neo4j:        neo4j / opengraphity_local"
 echo "  Keycloak:     admin / opengrafo_local"
 echo "============================================"
+echo ""
+echo "  Per aggiungere un tenant:"
+echo "  pnpm onboard-tenant -- --slug acme --pi-ip $PI_IP ..."
 echo ""
 echo "  NOTA: Accetta il certificato self-signed"
 echo "        nel browser (Avanzate > Procedi)"
