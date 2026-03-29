@@ -332,5 +332,14 @@
       "isolated_cluster":      "This group of CIs is disconnected from the rest of the infrastructure. Check if it is intentional (e.g. test environment) or if relations are missing.",
       "risk_concentration":    "Too many critical services are concentrated on this node. Consider redistributing workloads across multiple servers to reduce risk."
     }
+  },
+  "notifications": {
+    "title":       "Notifications",
+    "markAllRead": "Mark all as read",
+    "empty":       "No notifications",
+    "justNow":     "Just now",
+    "minAgo":      "{{count}} min ago",
+    "hoursAgo":    "{{count}}h ago",
+    "daysAgo":     "{{count}}d ago"
   }
 }

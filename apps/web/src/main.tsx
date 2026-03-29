@@ -41,6 +41,7 @@ import { UserDetailPage } from '@/pages/users/UserDetailPage'
 import { LogsPage } from '@/pages/logs/LogsPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
+import { NotificationProvider } from '@/contexts/NotificationContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
@@ -143,8 +144,10 @@ initKeycloak().then((authenticated) => {
       <ErrorBoundary>
         <ApolloProvider client={apolloClient}>
           <MetamodelProvider>
-            <RouterProvider router={router} />
-            <Toaster richColors position="top-right" />
+            <NotificationProvider>
+              <RouterProvider router={router} />
+              <Toaster richColors position="top-right" />
+            </NotificationProvider>
           </MetamodelProvider>
         </ApolloProvider>
       </ErrorBoundary>

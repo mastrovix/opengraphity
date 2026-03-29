@@ -64,6 +64,7 @@ app.set('trust proxy', 1)
 app.use(rateLimit({
   windowMs: 15 * 60 * 1_000,
   max:      100,
+  skip:     (req) => req.path === '/api/sse',
   standardHeaders: true,
   legacyHeaders:   false,
 }))

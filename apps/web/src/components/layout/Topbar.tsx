@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Bell } from 'lucide-react'
@@ -10,6 +11,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
 import { keycloak } from '@/lib/keycloak'
+import { useNotificationContext } from '@/contexts/NotificationContext'
+import { NotificationPanel } from '@/components/ui/NotificationPanel'
 
 // ── colours (aligned with Sidebar) ───────────────────────────────────────────
 const C = {
@@ -93,8 +96,6 @@ function Breadcrumb() {
   )
 }
 
-const NOTIFICATIONS = 3
-
 function getUserInfo() {
   const parsed = keycloak.tokenParsed as Record<string, string> | undefined
   const email  = parsed?.['email']              ?? ''
@@ -119,6 +120,8 @@ export function Topbar() {
   const { t } = useTranslation()
   const { logout } = useAuth()
   const { display, initials } = getUserInfo()
+  const { unreadCount } = useNotificationContext()
+  const [panelOpen, setPanelOpen] = useState(false)
 
   return (
     <header
@@ -140,38 +143,52 @@ export function Topbar() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {/* Bell */}
-        <button
-          style={{
-            position:        'relative',
-            display:         'flex',
-            alignItems:      'center',
-            justifyContent:  'center',
-            width:           32,
-            height:          32,
-            borderRadius:    6,
-            border:          'none',
-            backgroundColor: 'transparent',
-            color:           C.brand,
-            cursor:          'pointer',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
-        >
-          <Bell size={16} />
-          {NOTIFICATIONS > 0 && (
-            <span
-              style={{
-                position:        'absolute',
-                top:             4,
-                right:           4,
-                width:           6,
-                height:          6,
-                borderRadius:    '50%',
-                backgroundColor: 'var(--color-trigger-sla-breach)',
-              }}
-            />
-          )}
-        </button>
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setPanelOpen(v => !v)}
+            style={{
+              position:        'relative',
+              display:         'flex',
+              alignItems:      'center',
+              justifyContent:  'center',
+              width:           32,
+              height:          32,
+              borderRadius:    6,
+              border:          'none',
+              backgroundColor: panelOpen ? C.hoverBg : 'transparent',
+              color:           C.brand,
+              cursor:          'pointer',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = panelOpen ? C.hoverBg : 'transparent' }}
+          >
+            <Bell size={16} />
+            {unreadCount > 0 && (
+              <span
+                style={{
+                  position:        'absolute',
+                  top:             3,
+                  right:           3,
+                  minWidth:        14,
+                  height:          14,
+                  borderRadius:    7,
+                  backgroundColor: '#ef4444',
+                  color:           '#fff',
+                  fontSize:        9,
+                  fontWeight:      700,
+                  display:         'flex',
+                  alignItems:      'center',
+                  justifyContent:  'center',
+                  padding:         '0 3px',
+                  lineHeight:      1,
+                }}
+              >
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+          {panelOpen && <NotificationPanel onClose={() => setPanelOpen(false)} />}
+        </div>
 
         {/* Divider */}
         <div style={{ width: 1, height: 20, backgroundColor: C.border }} />

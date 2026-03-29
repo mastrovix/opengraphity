@@ -332,5 +332,14 @@
       "isolated_cluster":      "Questo gruppo di CI è disconnesso dal resto dell'infrastruttura. Verifica se è intenzionale (es. ambiente test) o se mancano relazioni.",
       "risk_concentration":    "Troppi servizi critici sono concentrati su questo nodo. Considera di redistribuire i workload su più server per ridurre il rischio."
     }
+  },
+  "notifications": {
+    "title":       "Notifiche",
+    "markAllRead": "Segna tutte come lette",
+    "empty":       "Nessuna notifica",
+    "justNow":     "Adesso",
+    "minAgo":      "{{count}} min fa",
+    "hoursAgo":    "{{count}}h fa",
+    "daysAgo":     "{{count}}g fa"
   }
 }
