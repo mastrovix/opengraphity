@@ -1,4 +1,8 @@
 import { workflowEngine } from '@opengraphity/workflow'
+import { publish } from '@opengraphity/events'
+import { v4 as uuidv4 } from 'uuid'
+import type { DomainEvent } from '@opengraphity/types'
+import type { IncidentEventPayload } from './incident.js'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 
@@ -443,7 +447,26 @@ async function executeWorkflowTransition(
           CREATE (i)-[:HAS_COMMENT]->(c)
         `, { incidentId, tenantId, text: commentText, userId: ctx.userId, now }))
 
-
+        if (toStep === 'escalated' || toStep === 'resolved') {
+          const payload: IncidentEventPayload = {
+            id:         incidentId,
+            title:      r.get('title')                                    as string,
+            severity:   r.get('severity')                                 as string,
+            status:     toStep,
+            ciName:     (r.get('ciName')    ?? '—')                      as string,
+            assignedTo: ((r.get('assignedTo') ?? r.get('teamName') ?? '—') as string),
+          }
+          const domainEvent: DomainEvent<IncidentEventPayload> = {
+            id:             uuidv4(),
+            type:           toStep === 'escalated' ? 'incident.escalated' : 'incident.resolved',
+            tenant_id:      tenantId,
+            timestamp:      now,
+            correlation_id: uuidv4(),
+            actor_id:       ctx.userId,
+            payload,
+          }
+          await publish(domainEvent)
+        }
       }
     }
 

@@ -56,10 +56,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       name:  'escalated',
       label: 'Escalato',
       type:  'standard',
-      enterActions: [
-        { type: 'notify',        params: { target: 'senior_team', event: 'incident.escalated' } },
-        { type: 'publish_event', params: { event: 'incident.escalated' } },
-      ],
+      enterActions: [],
       exitActions: [],
     },
     {
@@ -68,9 +65,8 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       label: 'Risolto',
       type:  'standard',
       enterActions: [
-        { type: 'sla_stop',      params: { sla_type: 'resolve' } },
-        { type: 'publish_event', params: { event: 'incident.resolved' } },
-        { type: 'schedule_job',  params: { job: 'auto_close', delay_hours: '72' } },
+        { type: 'sla_stop',     params: { sla_type: 'resolve' } },
+        { type: 'schedule_job', params: { job: 'auto_close', delay_hours: '72' } },
       ],
       exitActions: [
         { type: 'cancel_job', params: { job: 'auto_close' } },
