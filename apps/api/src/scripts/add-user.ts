@@ -162,7 +162,7 @@ async function upsertKeycloakUser(token: string): Promise<void> {
     // 409 — already exists, retrieve id
     const { data: users } = await kcGet<{ id: string }[]>(
       token,
-      `/admin/realms/${slug}/users?email=${encodeURIComponent(email)}&exact=true`,
+      `/admin/realms/${slug}/users?email=${encodeURIComponent(email!)}&exact=true`,
     )
     const existing = users[0]
     if (!existing) {

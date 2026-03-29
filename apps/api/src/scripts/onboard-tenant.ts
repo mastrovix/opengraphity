@@ -254,7 +254,7 @@ async function createAdminUser(token: string): Promise<void> {
   let userId: string
 
   if (created && newId) {
-    userId = newId
+    userId = newId!
   } else {
     // Already exists — retrieve user id
     const users = await kcGet<{ id: string }[]>(
