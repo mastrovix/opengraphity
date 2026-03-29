@@ -43,7 +43,10 @@ export function useNotifications() {
           // Skip connection confirmation message
           if (raw.type === 'connected') return
           const notif: InAppNotification = { ...raw, read: false }
-          setNotifications(prev => [notif, ...prev].slice(0, MAX_NOTIFICATIONS))
+          setNotifications(prev => {
+            if (prev.some(n => n.id === notif.id)) return prev
+            return [notif, ...prev].slice(0, MAX_NOTIFICATIONS)
+          })
         } catch {
           // ignore malformed frames
         }
