@@ -156,7 +156,7 @@ async function upsertKeycloakUser(token: string): Promise<void> {
   let wasCreated: boolean
 
   if (status === 201 && newId) {
-    userId     = newId
+    userId     = newId!
     wasCreated = true
   } else {
     // 409 — already exists, retrieve id

@@ -259,7 +259,7 @@ async function createAdminUser(token: string): Promise<void> {
     // Already exists — retrieve user id
     const users = await kcGet<{ id: string }[]>(
       token,
-      `/admin/realms/${slug}/users?email=${encodeURIComponent(email)}&exact=true`,
+      `/admin/realms/${slug}/users?email=${encodeURIComponent(email!)}&exact=true`,
     )
     const existing = users[0]
     if (!existing) {
