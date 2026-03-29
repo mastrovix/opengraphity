@@ -44,7 +44,15 @@ export function useNotifications() {
           if (raw.type === 'connected') return
           const notif: InAppNotification = { ...raw, read: false }
           setNotifications(prev => {
+            // Dedup by notification id
             if (prev.some(n => n.id === notif.id)) return prev
+            // Dedup by entity+type within last 10s (catches BullMQ retried jobs)
+            const tenSeconds = 10_000
+            if (notif.entity_id && prev.some(n =>
+              n.entity_id === notif.entity_id &&
+              n.type      === notif.type &&
+              Math.abs(new Date(n.timestamp).getTime() - new Date(notif.timestamp).getTime()) < tenSeconds
+            )) return prev
             return [notif, ...prev].slice(0, MAX_NOTIFICATIONS)
           })
         } catch {
