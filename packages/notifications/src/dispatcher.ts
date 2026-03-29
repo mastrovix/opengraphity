@@ -38,7 +38,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   }
 
   async process(event: DomainEvent<unknown>): Promise<void> {
-    console.log(`[dispatcher] Processing event: ${event.type}`)
+    console.log(`[dispatcher] Processing event: ${event.type} id=${event.id} tenant=${event.tenant_id} clients=${sseManager.getConnectedCount(event.tenant_id)}`)
 
     let notification: InAppNotification | null = null
     let teamsCard: TeamsCard | null = null
