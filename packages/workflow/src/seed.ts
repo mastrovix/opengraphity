@@ -24,7 +24,6 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       type:  'standard',
       enterActions: [
         { type: 'sla_start', params: { sla_type: 'response' } },
-        { type: 'notify',    params: { target: 'assignee', event: 'incident.assigned' } },
       ],
       exitActions: [],
     },
@@ -77,9 +76,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       name:  'closed',
       label: 'Chiuso',
       type:  'end',
-      enterActions: [
-        { type: 'publish_event', params: { event: 'incident.closed' } },
-      ],
+      enterActions: [],
       exitActions: [],
     },
   ],

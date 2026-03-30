@@ -2,12 +2,11 @@ import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
-import { publish } from '@opengraphity/events'
 import { withSession, getSession } from '../ci-utils.js'
 import type { WorkflowInstance } from '@opengraphity/workflow'
-import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../../context.js'
 import { mapChange, mapChangeTask, mapChangeComment, type Props } from './mappers.js'
+import * as changeService from '../../../services/changeService.js'
 
 // ── createChangeComment helper ────────────────────────────────────────────────
 
@@ -976,24 +975,15 @@ export async function executeChangeTransition(
       }
 
       // Step 3: Publish change.task_assigned for each task
-      const eventNow = new Date().toISOString()
       for (const record of tasksResult.records) {
-        await publish<{ changeId: string; changeTitle: string; taskId: string; ciName: string; teamName: string; assignedTo: string }>({
-          id:             uuidv4(),
-          type:           'change.task_assigned',
-          tenant_id:      tenantId,
-          timestamp:      eventNow,
-          correlation_id: uuidv4(),
-          actor_id:       ctx.userId,
-          payload: {
-            changeId,
-            changeTitle: (record.get('changeTitle') ?? '') as string,
-            taskId:      record.get('taskId')    as string,
-            ciName:      (record.get('ciName')   ?? '—') as string,
-            teamName:    (record.get('teamName') ?? '—') as string,
-            assignedTo:  '—',
-          },
-        })
+        await changeService.publishTaskAssigned({
+          changeId,
+          changeTitle: (record.get('changeTitle') ?? '') as string,
+          taskId:      record.get('taskId')    as string,
+          ciName:      (record.get('ciName')   ?? '—') as string,
+          teamName:    (record.get('teamName') ?? '—') as string,
+          assignedTo:  '—',
+        }, { tenantId, userId: ctx.userId })
       }
     }
 
@@ -1008,35 +998,7 @@ export async function executeChangeTransition(
 
     // Publish change.approved when transition reaches 'scheduled'
     if (result.success && args.toStep === 'scheduled') {
-      const chRes = await session.executeRead((tx) => tx.run(`
-        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-        OPTIONAL MATCH (c)-[:AFFECTS]->(ci)
-        OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(u:User)
-        OPTIONAL MATCH (c)-[:ASSIGNED_TO_TEAM]->(t:Team)
-        RETURN c.id AS id, c.title AS title, c.type AS type, c.status AS status,
-               collect(DISTINCT ci.name)[0] AS ciName,
-               u.name AS assignedTo, t.name AS teamName
-      `, { changeId, tenantId }))
-      if (chRes.records.length > 0) {
-        const ch = chRes.records[0]
-        const changeEvent: DomainEvent<ChangeEventPayload> = {
-          id:             uuidv4(),
-          type:           'change.approved',
-          tenant_id:      tenantId,
-          timestamp:      new Date().toISOString(),
-          correlation_id: uuidv4(),
-          actor_id:       ctx.userId,
-          payload: {
-            id:         ch.get('id')                                                     as string,
-            title:      ch.get('title')                                                  as string,
-            type:       ch.get('type')                                                   as string,
-            status:     'scheduled',
-            ciName:     ((ch.get('ciName')    ?? '—') as string),
-            assignedTo: ((ch.get('assignedTo') ?? ch.get('teamName') ?? '—') as string),
-          },
-        }
-        await publish(changeEvent)
-      }
+      await changeService.approveChange(changeId, { tenantId, userId: ctx.userId })
     }
 
     // Audit comment when rejected

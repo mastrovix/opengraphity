@@ -1,94 +1,16 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { publish } from '@opengraphity/events'
-import { workflowEngine } from '@opengraphity/workflow'
-import { mapCI, ciTypeFromLabels, withSession, getSession } from './ci-utils.js'
-import { mapUser, mapTeam } from '../../lib/mappers.js'
+import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
+import { mapUser, mapTeam, mapIncident } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
-import type { DomainEvent, IncidentCreatedPayload, IncidentResolvedPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
-
-export interface IncidentEventPayload {
-  id: string; title: string; severity: string; status: string
-  ciName: string; assignedTo: string
-  resolved_at?: string; affected_ci_ids?: string[]
-}
-
-type Session = ReturnType<typeof getSession>
-
-async function loadIncidentData(session: Session, incidentId: string, tenantId: string): Promise<IncidentEventPayload | null> {
-  const result = await session.executeRead((tx) =>
-    tx.run(`
-      MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-      OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
-      OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
-      RETURN i.id AS id, i.title AS title,
-             i.severity AS severity, i.status AS status,
-             collect(ci.name)[0] AS ciName,
-             u.name AS assignedTo
-    `, { incidentId, tenantId }),
-  )
-  if (!result.records.length) return null
-  const r = result.records[0]
-  return {
-    id:         r.get('id')         as string,
-    title:      r.get('title')      as string,
-    severity:   r.get('severity')   as string,
-    status:     r.get('status')     as string,
-    ciName:     (r.get('ciName')    ?? '—') as string,
-    assignedTo: (r.get('assignedTo') ?? '—') as string,
-  }
-}
+import * as incidentService from '../../services/incidentService.js'
+export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
 
 type Props = Record<string, unknown>
-
-function mapIncident(props: Props) {
-  return {
-    id:              props['id']          as string,
-    tenantId:        props['tenant_id']   as string,
-    title:           props['title']       as string,
-    description:     props['description'] as string | undefined,
-    severity:        props['severity']    as string,
-    status:          props['status']      as string,
-    createdAt:       props['created_at']  as string,
-    updatedAt:       props['updated_at']  as string,
-    resolvedAt:      props['resolved_at'] as string | undefined,
-    rootCause:       (props['root_cause'] ?? null) as string | null,
-    // Populated by field resolvers
-    assignee:        null,
-    assignedTeam:    null,
-    affectedCIs:     [],
-    causedByProblem: null,
-    comments:        [],
-  }
-}
-
-// ── Comment helper ───────────────────────────────────────────────────────────
-
-async function createTransitionComment(
-  session: ReturnType<typeof getSession>,
-  incidentId: string,
-  tenantId: string,
-  userId: string,
-  text: string,
-) {
-  const now = new Date().toISOString()
-  await session.executeWrite((tx) => tx.run(`
-    MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-    CREATE (c:Comment {
-      id:         randomUUID(),
-      tenant_id:  $tenantId,
-      text:       $text,
-      author_id:  $userId,
-      created_at: $now,
-      updated_at: $now
-    })
-    CREATE (i)-[:HAS_COMMENT]->(c)
-  `, { incidentId, tenantId, text, userId, now }))
-}
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
@@ -182,71 +104,7 @@ async function createIncident(
   args: { input: { title: string; description?: string; severity: string; affectedCIIds?: string[] } },
   ctx: GraphQLContext,
 ) {
-  const { input } = args
-  const id  = uuidv4()
-  const now = new Date().toISOString()
-
-  const created = await withSession(async (session) => {
-    const cypher = `
-      CREATE (i:Incident {
-        id:           $id,
-        tenant_id:    $tenantId,
-        title:        $title,
-        description:  $description,
-        severity:     $severity,
-        status:       'open',
-        created_at:   $now,
-        updated_at:   $now
-      })
-      RETURN properties(i) as props
-    `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id,
-      tenantId:    ctx.tenantId,
-      title:       input.title,
-      description: input.description ?? null,
-      severity:    input.severity,
-      now,
-    })
-    const row = rows[0]
-    if (!row) throw new GraphQLError('Failed to create incident')
-    return mapIncident(row.props)
-  }, true)
-
-  // Link affected CIs
-  if (input.affectedCIIds?.length) {
-    await withSession(async (session) => {
-      for (const ciId of input.affectedCIIds!) {
-        await runQuery(session, `
-          MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-          MATCH (ci {id: $ciId, tenant_id: $tenantId})
-          WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
-          MERGE (i)-[:AFFECTED_BY]->(ci)
-        `, { id, tenantId: ctx.tenantId, ciId })
-      }
-    }, true)
-  }
-
-  // Inizializza istanza workflow
-  await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident')
-  }, true)
-
-  // Publish domain event
-  const createdPayload: IncidentEventPayload = {
-    id, title: input.title, severity: input.severity, status: 'open',
-    ciName: '—', assignedTo: '—',
-    affected_ci_ids: input.affectedCIIds ?? [],
-  }
-  const event: DomainEvent<IncidentEventPayload> = {
-    id: uuidv4(), type: 'incident.created',
-    tenant_id: ctx.tenantId, timestamp: now,
-    correlation_id: uuidv4(), actor_id: ctx.userId,
-    payload: createdPayload,
-  }
-  await publish(event)
-
-  return created
+  return incidentService.createIncident(args.input, ctx)
 }
 
 async function updateIncident(
@@ -289,39 +147,7 @@ async function resolveIncident(
   args: { id: string; rootCause?: string },
   ctx: GraphQLContext,
 ) {
-  const now = new Date().toISOString()
-
-  const resolved = await withSession(async (session) => {
-    const cypher = `
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      SET i.status = 'resolved', i.resolved_at = $now, i.updated_at = $now
-      RETURN properties(i) as props
-    `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id: args.id,
-      tenantId: ctx.tenantId,
-      now,
-    })
-    const row = rows[0]
-    if (!row) throw new GraphQLError('Incident not found')
-    return mapIncident(row.props)
-  }, true)
-
-  const resolvedData = await withSession((s) => loadIncidentData(s, args.id, ctx.tenantId))
-  const resolvedPayload: IncidentEventPayload = resolvedData ?? {
-    id: args.id, title: `Incident ${args.id}`, severity: 'low', status: 'resolved',
-    ciName: '—', assignedTo: '—', resolved_at: now,
-  }
-  resolvedPayload.resolved_at = now
-  const event: DomainEvent<IncidentEventPayload> = {
-    id: uuidv4(), type: 'incident.resolved',
-    tenant_id: ctx.tenantId, timestamp: now,
-    correlation_id: uuidv4(), actor_id: ctx.userId,
-    payload: resolvedPayload,
-  }
-  await publish(event)
-
-  return resolved
+  return incidentService.resolveIncident(args.id, ctx, args.rootCause)
 }
 
 async function assignIncidentToTeam(
@@ -329,83 +155,7 @@ async function assignIncidentToTeam(
   args: { id: string; teamId: string },
   ctx: GraphQLContext,
 ) {
-  if (!args.teamId || !args.teamId.trim()) throw new GraphQLError('teamId è obbligatorio')
-  const now = new Date().toISOString()
-
-  return withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      OPTIONAL MATCH (i)-[old:ASSIGNED_TO_TEAM]->()
-      DELETE old
-      WITH i
-      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-      CREATE (i)-[:ASSIGNED_TO_TEAM]->(t)
-      SET i.updated_at = $now
-    `, { id: args.id, teamId: args.teamId, tenantId: ctx.tenantId, now }))
-
-    // Lookup team name (always needed)
-    const teamResult = await session.executeRead((tx) => tx.run(
-      'MATCH (t:Team {id: $id}) RETURN t.name AS name', { id: args.teamId }
-    ))
-    const teamName = (teamResult.records[0]?.get('name') as string | null) ?? args.teamId
-    const transitionNotes = `Riassegnato al team ${teamName}`
-
-    const wiResult = await session.executeRead((tx) => tx.run(`
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId, wi.current_step AS currentStep
-    `, { id: args.id, tenantId: ctx.tenantId }))
-
-    if (wiResult.records.length > 0) {
-      const instanceId  = wiResult.records[0]!.get('instanceId')  as string
-      const currentStep = wiResult.records[0]!.get('currentStep') as string
-
-      if (currentStep === 'new') {
-        // workflowEngine.transition creates the WorkflowStepExecution internally
-        await workflowEngine.transition(
-          session,
-          { instanceId, toStepName: 'assigned', triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes },
-          { userId: ctx.userId },
-        )
-      } else {
-        // Manually record the reassignment in the workflow history
-        await session.executeWrite((tx) => tx.run(`
-          MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-          CREATE (wi)-[:STEP_HISTORY]->(:WorkflowStepExecution {
-            id:           randomUUID(),
-            tenant_id:    $tenantId,
-            instance_id:  wi.id,
-            step_name:    'assigned',
-            entered_at:   $now,
-            exited_at:    $now,
-            duration_ms:  toInteger(0),
-            triggered_by: $userId,
-            trigger_type: 'manual',
-            notes:        $notes
-          })
-        `, { incidentId: args.id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: transitionNotes }))
-      }
-
-      await createTransitionComment(session, args.id, ctx.tenantId, ctx.userId, transitionNotes)
-    }
-
-    const result = await session.executeRead((tx) => tx.run(
-      `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
-      { id: args.id, tenantId: ctx.tenantId },
-    ))
-    const row = result.records[0]
-    if (!row) throw new GraphQLError('Incident not found')
-    const assigned = mapIncident(row.get('props') as Props)
-    const assignedData = await loadIncidentData(session, args.id, ctx.tenantId)
-    const assignedPayload = assignedData ?? { id: args.id, title: assigned.title, severity: assigned.severity, status: assigned.status, ciName: '—', assignedTo: '—' }
-    const assignedEvent: DomainEvent<IncidentEventPayload> = {
-      id: uuidv4(), type: 'incident.assigned',
-      tenant_id: ctx.tenantId, timestamp: now,
-      correlation_id: uuidv4(), actor_id: ctx.userId,
-      payload: assignedPayload,
-    }
-    await publish(assignedEvent)
-    return assigned
-  }, true)
+  return incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
 }
 
 async function assignIncidentToUser(
@@ -413,98 +163,7 @@ async function assignIncidentToUser(
   args: { id: string; userId: string | null },
   ctx: GraphQLContext,
 ) {
-  const now = new Date().toISOString()
-
-  return withSession(async (session) => {
-    // userId = null → only remove the existing ASSIGNED_TO relation (reset)
-    if (!args.userId) {
-      await session.executeWrite((tx) => tx.run(`
-        MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-        OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()
-        DELETE old
-        SET i.updated_at = $now
-      `, { id: args.id, tenantId: ctx.tenantId, now }))
-      const r = await session.executeRead((tx) => tx.run(
-        `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
-        { id: args.id, tenantId: ctx.tenantId },
-      ))
-      const row = r.records[0]
-      if (!row) throw new GraphQLError('Incident not found')
-      return mapIncident(row.get('props') as Props)
-    }
-
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()
-      DELETE old
-      WITH i
-      MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      CREATE (i)-[:ASSIGNED_TO]->(u)
-      SET i.updated_at = $now
-    `, { id: args.id, userId: args.userId, tenantId: ctx.tenantId, now }))
-
-    // Lookup user name (always needed)
-    const userResult = await session.executeRead((tx) => tx.run(
-      'MATCH (u:User {id: $id}) RETURN u.name AS name', { id: args.userId }
-    ))
-    const userName = (userResult.records[0]?.get('name') as string | null) ?? args.userId
-
-    const wiResult = await session.executeRead((tx) => tx.run(`
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId, wi.current_step AS currentStep
-    `, { id: args.id, tenantId: ctx.tenantId }))
-
-    if (wiResult.records.length > 0) {
-      const instanceId  = wiResult.records[0]!.get('instanceId')  as string
-      const currentStep = wiResult.records[0]!.get('currentStep') as string
-
-      if (currentStep === 'assigned') {
-        // workflowEngine.transition creates the WorkflowStepExecution internally
-        await workflowEngine.transition(
-          session,
-          { instanceId, toStepName: 'in_progress', triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato a ${userName}` },
-          { userId: ctx.userId },
-        )
-      } else {
-        // Already in_progress or beyond — log the reassignment without changing step
-        await session.executeWrite((tx) => tx.run(`
-          MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-          CREATE (wi)-[:STEP_HISTORY]->(:WorkflowStepExecution {
-            id:           randomUUID(),
-            tenant_id:    $tenantId,
-            instance_id:  wi.id,
-            step_name:    wi.current_step,
-            entered_at:   $now,
-            exited_at:    $now,
-            duration_ms:  toInteger(0),
-            triggered_by: $userId,
-            trigger_type: 'manual',
-            notes:        $notes
-          })
-        `, { incidentId: args.id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: `Riassegnato a ${userName}` }))
-      }
-
-      await createTransitionComment(session, args.id, ctx.tenantId, ctx.userId, `Assegnato a ${userName}`)
-    }
-
-    const result = await session.executeRead((tx) => tx.run(
-      `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
-      { id: args.id, tenantId: ctx.tenantId },
-    ))
-    const row = result.records[0]
-    if (!row) throw new GraphQLError('Incident not found')
-    const assignedToUser = mapIncident(row.get('props') as Props)
-    const assignedToUserData = await loadIncidentData(session, args.id, ctx.tenantId)
-    const assignedToUserPayload = assignedToUserData ?? { id: args.id, title: assignedToUser.title, severity: assignedToUser.severity, status: assignedToUser.status, ciName: '—', assignedTo: '—' }
-    const assignedToUserEvent: DomainEvent<IncidentEventPayload> = {
-      id: uuidv4(), type: 'incident.assigned',
-      tenant_id: ctx.tenantId, timestamp: now,
-      correlation_id: uuidv4(), actor_id: ctx.userId,
-      payload: assignedToUserPayload,
-    }
-    await publish(assignedToUserEvent)
-    return assignedToUser
-  }, true)
+  return incidentService.assignIncidentToUser(args.id, args.userId, ctx)
 }
 
 async function addAffectedCI(

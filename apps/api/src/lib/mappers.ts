@@ -31,6 +31,26 @@ export function mapUser(props: Props) {
   }
 }
 
+export function mapIncident(props: Props) {
+  return {
+    id:           props['id']          as string,
+    tenantId:     props['tenant_id']   as string,
+    title:        props['title']       as string,
+    description:  props['description'] as string | undefined,
+    severity:     props['severity']    as string,
+    status:       props['status']      as string,
+    createdAt:    props['created_at']  as string,
+    updatedAt:    props['updated_at']  as string,
+    resolvedAt:   props['resolved_at'] as string | undefined,
+    rootCause:    (props['root_cause'] ?? null) as string | null,
+    assignee:        null,
+    assignedTeam:    null,
+    affectedCIs:     [],
+    causedByProblem: null,
+    comments:        [],
+  }
+}
+
 export function mapTeam(props: Props) {
   return {
     id:          props['id']         as string,

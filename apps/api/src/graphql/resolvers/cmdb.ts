@@ -1,10 +1,8 @@
-import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { publish } from '@opengraphity/events'
-import type { DomainEvent } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { withSession } from './ci-utils.js'
+import * as cmdbService from '../../services/cmdbService.js'
 
 type Props = Record<string, unknown>
 
@@ -162,44 +160,8 @@ async function createConfigurationItem(
   args: { input: { name: string; type: string; status: string; environment: string } },
   ctx: GraphQLContext,
 ) {
-  const { input } = args
-  const id  = uuidv4()
-  const now = new Date().toISOString()
-
-  const created = await withSession(async (session) => {
-    const cypher = `
-      CREATE (ci:ConfigurationItem {
-        id:          $id,
-        tenant_id:   $tenantId,
-        name:        $name,
-        type:        $type,
-        status:      $status,
-        environment: $environment,
-        created_at:  $now,
-        updated_at:  $now
-      })
-      RETURN properties(ci) as props
-    `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id, tenantId: ctx.tenantId, ...input, now,
-    })
-    const row = rows[0]
-    if (!row) throw new Error('Failed to create ConfigurationItem')
-    return mapCI(row.props)
-  }, true)
-
-  const event: DomainEvent<{ id: string; type: string; tenant_id: string }> = {
-    id:             uuidv4(),
-    type:           'ci.created',
-    tenant_id:      ctx.tenantId,
-    timestamp:      now,
-    correlation_id: uuidv4(),
-    actor_id:       ctx.userId,
-    payload:        { id, type: input.type, tenant_id: ctx.tenantId },
-  }
-  await publish(event)
-
-  return created
+  const props = await cmdbService.createCI(args.input, ctx)
+  return mapCI(props as Props)
 }
 
 async function updateConfigurationItem(
@@ -298,32 +260,7 @@ async function addCIDependency(
   args: { fromId: string; toId: string; type: string },
   ctx: GraphQLContext,
 ) {
-  const now = new Date().toISOString()
-
-  await withSession(async (session) => {
-    const cypher = `
-      MATCH (a:ConfigurationItem {id: $fromId, tenant_id: $tenantId})
-      MATCH (b:ConfigurationItem {id: $toId,   tenant_id: $tenantId})
-      MERGE (a)-[r:DEPENDS_ON {type: $type}]->(b)
-      ON CREATE SET r.created_at = $now
-    `
-    await runQuery(session, cypher, {
-      fromId: args.fromId, toId: args.toId, type: args.type,
-      tenantId: ctx.tenantId, now,
-    })
-  }, true)
-
-  const event: DomainEvent<{ from_id: string; to_id: string; type: string }> = {
-    id:             uuidv4(),
-    type:           'ci.dependency_added',
-    tenant_id:      ctx.tenantId,
-    timestamp:      now,
-    correlation_id: uuidv4(),
-    actor_id:       ctx.userId,
-    payload:        { from_id: args.fromId, to_id: args.toId, type: args.type },
-  }
-  await publish(event)
-
+  await cmdbService.addDependency(args.fromId, args.toId, args.type, ctx)
   return true
 }
 
