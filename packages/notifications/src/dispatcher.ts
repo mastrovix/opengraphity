@@ -46,11 +46,10 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     switch (event.type) {
       case 'incident.created': {
         const p = event.payload as IncidentCreatedPayload
-        if (p.severity !== 'critical' && p.severity !== 'high') break
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'Nuovo Incident Critico',
+          title: 'Nuovo Incident',
           message: `${p.title} — ${p.severity}`,
           severity: mapIncidentSeverity(p.severity),
           entity_id: p.id,
@@ -74,6 +73,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
 
       case 'incident.assigned': {
         const p = event.payload as EnrichedIncidentPayload
+        console.log('[dispatcher] Processing incident.assigned:', p.id)
         notification = {
           id: randomUUID(),
           type: event.type,
