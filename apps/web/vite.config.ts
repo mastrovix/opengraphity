@@ -10,20 +10,8 @@ export default defineConfig({
     },
   },
   server: {
-    proxy: {
-      '/graphql': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-      },
-      '/api/sse': {
-        target:      'http://localhost:4000',
-        changeOrigin: true,
-      },
-      '/api': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-      },
-    },
+    host: true,
+    allowedHosts: true,
   },
   appType: 'spa',
 })
