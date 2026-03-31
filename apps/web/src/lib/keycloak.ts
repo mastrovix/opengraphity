@@ -41,8 +41,10 @@ export function getKeycloak(): Keycloak {
 export async function initKeycloak(): Promise<boolean> {
   const slug = getTenantSlug()
 
+  const keycloakUrl = import.meta.env['VITE_KEYCLOAK_URL'] || window.location.origin
+
   _keycloak = new Keycloak({
-    url:      import.meta.env['VITE_KEYCLOAK_URL'] as string,
+    url:      keycloakUrl,
     realm:    slug,
     clientId: import.meta.env['VITE_KEYCLOAK_CLIENT_ID'] as string,
   })
