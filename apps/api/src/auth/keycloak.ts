@@ -1,23 +1,36 @@
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
 
-const KEYCLOAK_URL = process.env['KEYCLOAK_URL']!
-
-/** Per-realm JWKS client cache — one entry per tenant */
+/** Per-issuer JWKS client cache — one entry per tenant */
 const clientCache = new Map<string, ReturnType<typeof jwksClient>>()
 
-function getJwksClient(realm: string): ReturnType<typeof jwksClient> {
-  const cached = clientCache.get(realm)
+function getJwksClient(issuer: string): ReturnType<typeof jwksClient> {
+  const cached = clientCache.get(issuer)
   if (cached) return cached
 
   const client = jwksClient({
-    jwksUri:         `${KEYCLOAK_URL}/realms/${realm}/protocol/openid-connect/certs`,
+    jwksUri:         `${issuer}/protocol/openid-connect/certs`,
     cache:           true,
     cacheMaxEntries: 10,
     cacheMaxAge:     10 * 60 * 1000, // 10 min
   })
-  clientCache.set(realm, client)
+  clientCache.set(issuer, client)
   return client
+}
+
+/**
+ * Validates that the issuer looks like a Keycloak realm URL.
+ * Prevents tokens with arbitrary issuers from being accepted.
+ */
+function validateIssuer(iss: string): void {
+  if (!iss.includes('/realms/')) {
+    throw new Error(`Invalid issuer — not a Keycloak realm URL: ${iss}`)
+  }
+  try {
+    new URL(iss)
+  } catch {
+    throw new Error(`Invalid issuer — not a valid URL: ${iss}`)
+  }
 }
 
 export interface KeycloakTokenPayload {
@@ -28,16 +41,6 @@ export interface KeycloakTokenPayload {
   iss:                string
 }
 
-/**
- * Extracts the Keycloak realm from the token issuer claim.
- * "http://keycloak:8080/realms/c-one" → "c-one"
- */
-function realmFromIssuer(iss: string): string {
-  const match = iss.match(/\/realms\/([^/]+)$/)
-  if (!match?.[1]) throw new Error(`Cannot extract realm from issuer: ${iss}`)
-  return match[1]
-}
-
 export async function verifyKeycloakToken(token: string): Promise<KeycloakTokenPayload> {
   // Decode without verification to read the issuer — safe because we verify below
   const unverified = jwt.decode(token) as { iss?: string } | null
@@ -45,8 +48,10 @@ export async function verifyKeycloakToken(token: string): Promise<KeycloakTokenP
     throw new Error('Token missing issuer claim')
   }
 
-  const realm  = realmFromIssuer(unverified.iss)
-  const client = getJwksClient(realm)
+  const iss = unverified.iss
+  validateIssuer(iss)
+
+  const client = getJwksClient(iss)
 
   function getKey(header: jwt.JwtHeader, callback: jwt.SigningKeyCallback) {
     client.getSigningKey(header.kid!, (err, key) => {
@@ -60,7 +65,7 @@ export async function verifyKeycloakToken(token: string): Promise<KeycloakTokenP
       getKey,
       {
         algorithms: ['RS256'],
-        issuer:     `${KEYCLOAK_URL}/realms/${realm}`,
+        issuer:     iss,
       },
       (err, decoded) => {
         if (err) {
