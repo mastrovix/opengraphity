@@ -546,3 +546,14 @@ export const GET_NOTIFICATION_RULES = gql`
     }
   }
 `
+
+export const GET_QUEUE_STATS = gql`
+  query GetQueueStats {
+    queueStats {
+      name
+      counts {
+        waiting active completed failed delayed paused
+      }
+    }
+  }
+`

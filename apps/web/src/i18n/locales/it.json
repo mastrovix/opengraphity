@@ -59,7 +59,8 @@
     "users": "Utenti",
     "notifications": "Notifiche",
     "notificationChannels": "Canali Notifica",
-    "notificationRules": "Regole Notifiche"
+    "notificationRules": "Regole Notifiche",
+    "bullBoard": "Coda Jobs"
   },
   "pages": {
     "incidents": {
@@ -272,6 +273,16 @@
       "noConversation": "Nessuna conversazione",
       "startQuestion": "Fai la prima domanda per iniziare.",
       "subtitle": "Fai domande sui tuoi dati in linguaggio naturale"
+    },
+    "queueStats": {
+      "title": "Coda Jobs",
+      "autoRefresh": "Si aggiorna automaticamente ogni 10 secondi.",
+      "active": "attivi",
+      "waiting": "in attesa",
+      "delayed": "posticipati",
+      "failed": "falliti",
+      "completed": "completati",
+      "paused": "in pausa"
     },
     "settings": {
       "title": "Impostazioni"

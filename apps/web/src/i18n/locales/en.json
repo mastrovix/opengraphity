@@ -59,7 +59,8 @@
     "users": "Users",
     "notifications": "Notifications",
     "notificationChannels": "Notification Channels",
-    "notificationRules": "Notification Rules"
+    "notificationRules": "Notification Rules",
+    "bullBoard": "Job Queue"
   },
   "pages": {
     "incidents": {
@@ -272,6 +273,16 @@
       "noConversation": "No conversations",
       "startQuestion": "Ask the first question to start.",
       "subtitle": "Ask questions about your data in natural language"
+    },
+    "queueStats": {
+      "title": "Job Queue",
+      "autoRefresh": "Auto-refreshes every 10 seconds.",
+      "active": "active",
+      "waiting": "waiting",
+      "delayed": "delayed",
+      "failed": "failed",
+      "completed": "completed",
+      "paused": "paused"
     },
     "settings": {
       "title": "Settings"

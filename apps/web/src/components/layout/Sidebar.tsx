@@ -623,6 +623,12 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                         {t('sidebar.notificationRules')}
                       </span>
                     </NavLink>
+                    <NavLink to="/admin/queues" style={({ isActive }) => subItemStyle(isActive)}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Activity size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                        {t('sidebar.bullBoard')}
+                      </span>
+                    </NavLink>
                     <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <CircleUser size={12} style={{ color: C.brand, flexShrink: 0 }} />

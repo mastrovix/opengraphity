@@ -80,6 +80,9 @@ export function buildBaseSDL(): string {
     workflowDefinition(entityType: String!): WorkflowDefinition
     workflowDefinitionById(id: ID!): WorkflowDefinition
     workflowDefinitions(entityType: String): [WorkflowDefinition!]!
+
+    # Queue Stats (admin only)
+    queueStats: [QueueStat!]!
   }
 
   type AuthPayload {
@@ -1074,6 +1077,20 @@ export function buildBaseSDL(): string {
     severityOverride: String
     channels:         [String!]
     target:           String
+  }
+
+  type QueueJobCounts {
+    waiting:   Int!
+    active:    Int!
+    completed: Int!
+    failed:    Int!
+    delayed:   Int!
+    paused:    Int!
+  }
+
+  type QueueStat {
+    name:   String!
+    counts: QueueJobCounts!
   }
 `
 }
