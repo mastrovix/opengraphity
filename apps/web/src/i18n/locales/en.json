@@ -341,5 +341,34 @@
     "minAgo":      "{{count}} min ago",
     "hoursAgo":    "{{count}}h ago",
     "daysAgo":     "{{count}}d ago"
+  },
+  "notification": {
+    "incident": {
+      "created":     { "title": "New Incident" },
+      "assigned":    { "title": "Incident Assigned" },
+      "in_progress": { "title": "Incident In Progress" },
+      "on_hold":     { "title": "Incident On Hold" },
+      "escalated":   { "title": "Incident Escalated" },
+      "resolved":    { "title": "Incident Resolved" },
+      "closed":      { "title": "Incident Closed" }
+    },
+    "change": {
+      "approved":      { "title": "Change Approved" },
+      "completed":     { "title": "Change Completed" },
+      "failed":        { "title": "Change Failed" },
+      "rejected":      { "title": "Change Rejected" },
+      "task_assigned": { "title": "Change Task Assigned" }
+    },
+    "sla": {
+      "warning":  { "title": "SLA Warning" },
+      "breached": { "title": "SLA Breached" }
+    },
+    "problem": {
+      "created":       { "title": "New Problem" },
+      "investigating": { "title": "Problem Under Investigation" },
+      "deferred":      { "title": "Problem Deferred" },
+      "resolved":      { "title": "Problem Resolved" },
+      "closed":        { "title": "Problem Closed" }
+    }
   }
 }

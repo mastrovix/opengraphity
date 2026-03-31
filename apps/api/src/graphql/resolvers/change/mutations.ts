@@ -1001,6 +1001,18 @@ export async function executeChangeTransition(
       await changeService.approveChange(changeId, { tenantId, userId: ctx.userId })
     }
 
+    if (result.success && args.toStep === 'completed') {
+      await changeService.completeChange(changeId, { tenantId, userId: ctx.userId })
+    }
+
+    if (result.success && args.toStep === 'failed') {
+      await changeService.failChange(changeId, { tenantId, userId: ctx.userId })
+    }
+
+    if (result.success && args.toStep === 'rejected') {
+      await changeService.rejectChange(changeId, { tenantId, userId: ctx.userId })
+    }
+
     // Audit comment when rejected
     if (result.success && args.toStep === 'rejected') {
       await createChangeComment(

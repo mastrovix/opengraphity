@@ -6,6 +6,7 @@ import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { mapUser, mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import type { GraphQLContext } from '../../context.js'
+import * as problemService from '../../services/problemService.js'
 
 type Props = Record<string, unknown>
 
@@ -137,68 +138,8 @@ async function createProblem(
   args: { input: { title: string; description?: string; priority: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string } },
   ctx: GraphQLContext,
 ) {
-  const { input } = args
-  const id  = uuidv4()
-  const now = new Date().toISOString()
-
-  const created = await withSession(async (session) => {
-    const rows = await runQuery<{ props: Props }>(session, `
-      CREATE (p:Problem {
-        id:          $id,
-        tenant_id:   $tenantId,
-        title:       $title,
-        description: $description,
-        priority:    $priority,
-        status:      'new',
-        workaround:  $workaround,
-        created_at:  $now,
-        updated_at:  $now
-      })
-      RETURN properties(p) as props
-    `, {
-      id,
-      tenantId:    ctx.tenantId,
-      title:       input.title,
-      description: input.description ?? null,
-      priority:    input.priority,
-      workaround:  input.workaround ?? null,
-      now,
-    })
-    const row = rows[0]
-    if (!row) throw new GraphQLError('Failed to create problem')
-    return mapProblem(row.props)
-  }, true)
-
-  if (input.affectedCIs?.length) {
-    await withSession(async (session) => {
-      for (const ciId of input.affectedCIs!) {
-        await runQuery(session, `
-          MATCH (p:Problem {id: $id, tenant_id: $tenantId})
-          MATCH (ci {id: $ciId, tenant_id: $tenantId})
-          WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
-          MERGE (p)-[:AFFECTS]->(ci)
-        `, { id, tenantId: ctx.tenantId, ciId })
-      }
-    }, true)
-  }
-
-  if (input.relatedIncidents?.length) {
-    await withSession(async (session) => {
-      for (const incidentId of input.relatedIncidents!) {
-        await runQuery(session, `
-          MATCH (p:Problem {id: $id, tenant_id: $tenantId})
-          MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-          MERGE (p)-[:CAUSED_BY]->(i)
-        `, { id, tenantId: ctx.tenantId, incidentId })
-      }
-    }, true)
-  }
-
-  await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem')
-  }, true)
-
-  return created
+  const props = await problemService.createProblem(args.input, ctx)
+  return mapProblem(props as Props)
 }
 
 async function updateProblem(
@@ -411,11 +352,19 @@ async function executeProblemTransition(
     if (!wiResult.records.length) throw new GraphQLError('Workflow instance not found for this problem')
     const instanceId = wiResult.records[0]!.get('instanceId') as string
 
-    await workflowEngine.transition(
+    const result = await workflowEngine.transition(
       session,
       { instanceId, toStepName: args.toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.notes ?? undefined },
       { userId: ctx.userId },
     )
+
+    if (result.success) {
+      const svcCtx = { tenantId: ctx.tenantId, userId: ctx.userId }
+      if      (args.toStep === 'under_investigation') await problemService.investigateProblem(args.problemId, svcCtx)
+      else if (args.toStep === 'deferred')            await problemService.deferProblem(args.problemId, svcCtx)
+      else if (args.toStep === 'resolved')            await problemService.resolveProblem(args.problemId, svcCtx)
+      else if (args.toStep === 'closed')              await problemService.closeProblem(args.problemId, svcCtx)
+    }
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props

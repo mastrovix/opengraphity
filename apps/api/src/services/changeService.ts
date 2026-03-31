@@ -14,6 +14,34 @@ export interface ChangeTaskPayloadItem {
   taskId: string; ciName: string; teamName: string; assignedTo: string
 }
 
+async function loadChangePayload(
+  changeId: string,
+  tenantId: string,
+  status: string,
+): Promise<ChangeEventPayload | null> {
+  return withSession(async (session) => {
+    const result = await session.executeRead((tx) => tx.run(`
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+      OPTIONAL MATCH (c)-[:AFFECTS]->(ci)
+      OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(u:User)
+      OPTIONAL MATCH (c)-[:ASSIGNED_TO_TEAM]->(t:Team)
+      RETURN c.id AS id, c.title AS title, c.type AS type,
+             collect(DISTINCT ci.name)[0] AS ciName,
+             u.name AS assignedTo, t.name AS teamName
+    `, { changeId, tenantId }))
+    if (!result.records.length) return null
+    const r = result.records[0]
+    return {
+      id:         r.get('id')                                                    as string,
+      title:      r.get('title')                                                 as string,
+      type:       r.get('type')                                                  as string,
+      status,
+      ciName:     ((r.get('ciName')    ?? '—') as string),
+      assignedTo: ((r.get('assignedTo') ?? r.get('teamName') ?? '—') as string),
+    } satisfies ChangeEventPayload
+  })
+}
+
 function buildEvent<T>(
   type: string,
   tenantId: string,
@@ -59,6 +87,24 @@ export async function approveChange(
 
   if (!payload) return
   await publish(buildEvent('change.approved', ctx.tenantId, ctx.userId, payload))
+}
+
+export async function completeChange(changeId: string, ctx: ServiceCtx) {
+  const payload = await loadChangePayload(changeId, ctx.tenantId, 'completed')
+  if (!payload) return
+  await publish(buildEvent('change.completed', ctx.tenantId, ctx.userId, payload))
+}
+
+export async function failChange(changeId: string, ctx: ServiceCtx) {
+  const payload = await loadChangePayload(changeId, ctx.tenantId, 'failed')
+  if (!payload) return
+  await publish(buildEvent('change.failed', ctx.tenantId, ctx.userId, payload))
+}
+
+export async function rejectChange(changeId: string, ctx: ServiceCtx) {
+  const payload = await loadChangePayload(changeId, ctx.tenantId, 'rejected')
+  if (!payload) return
+  await publish(buildEvent('change.rejected', ctx.tenantId, ctx.userId, payload))
 }
 
 export async function publishTaskAssigned(

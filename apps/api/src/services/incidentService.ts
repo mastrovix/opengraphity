@@ -339,6 +339,30 @@ export async function assignIncidentToUser(
   }, true)
 }
 
+export async function inProgressIncident(
+  id: string,
+  ctx: ServiceCtx,
+) {
+  const now = new Date().toISOString()
+  const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
+  await publish(buildEvent('incident.in_progress', ctx.tenantId, ctx.userId,
+    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'in_progress', ciName: '—', assignedTo: '—' },
+    now,
+  ))
+}
+
+export async function onHoldIncident(
+  id: string,
+  ctx: ServiceCtx,
+) {
+  const now = new Date().toISOString()
+  const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
+  await publish(buildEvent('incident.on_hold', ctx.tenantId, ctx.userId,
+    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'pending', ciName: '—', assignedTo: '—' },
+    now,
+  ))
+}
+
 export async function closeIncident(
   id: string,
   ctx: ServiceCtx,

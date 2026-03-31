@@ -49,7 +49,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'Nuovo Incident',
+          title: 'notification.incident.created.title',
           message: `${p.title} — ${p.severity}`,
           severity: mapIncidentSeverity(p.severity),
           entity_id: p.id,
@@ -59,7 +59,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         }
         if (p.severity === 'critical') {
           teamsCard = {
-            title: 'Nuovo Incident Critico',
+            title: 'notification.incident.created.title',
             message: `${p.title} — ${p.severity}`,
             color: 'FF0000',
             facts: [
@@ -76,8 +76,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'Incident Assegnato',
-          message: `${p.title} — assegnato a ${p.assignedTo !== '—' ? p.assignedTo : 'team'}`,
+          title: 'notification.incident.assigned.title',
+          message: `${p.title} — ${p.assignedTo !== '—' ? p.assignedTo : ''}`.trimEnd().replace(/\s—\s$/, ''),
           severity: 'info',
           entity_id: p.id,
           entity_type: 'incident',
@@ -87,13 +87,39 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         break
       }
 
+      case 'incident.in_progress': {
+        const p = event.payload as EnrichedIncidentPayload
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.incident.in_progress.title',
+          message: p.title ?? `Incident ${p.id}`,
+          severity: 'info',
+          entity_id: p.id, entity_type: 'incident',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
+      case 'incident.on_hold': {
+        const p = event.payload as EnrichedIncidentPayload
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.incident.on_hold.title',
+          message: p.title ?? `Incident ${p.id}`,
+          severity: 'warning',
+          entity_id: p.id, entity_type: 'incident',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
       case 'incident.escalated': {
         const p = event.payload as EnrichedIncidentPayload
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'Incident Escalato',
-          message: `${p.title} — escalation in corso`,
+          title: 'notification.incident.escalated.title',
+          message: p.title ?? `Incident ${p.id}`,
           severity: 'warning',
           entity_id: p.id,
           entity_type: 'incident',
@@ -108,8 +134,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: "Incident Risolto",
-          message: "L'incident è stato risolto",
+          title: 'notification.incident.resolved.title',
+          message: '',
           severity: 'success',
           entity_id: p.id,
           entity_type: 'incident',
@@ -119,13 +145,26 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         break
       }
 
+      case 'incident.closed': {
+        const p = event.payload as EnrichedIncidentPayload
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.incident.closed.title',
+          message: p.title ?? `Incident ${p.id}`,
+          severity: 'info',
+          entity_id: p.id, entity_type: 'incident',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
       case 'change.approved': {
         const p = event.payload as ChangeApprovedPayload
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'Change Approvato',
-          message: `La change ${p.id} è stata approvata`,
+          title: 'notification.change.approved.title',
+          message: p.title ?? p.id,
           severity: 'success',
           entity_id: p.id,
           entity_type: 'change',
@@ -140,8 +179,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'Change Rifiutato',
-          message: `La change ${p.id} è stata rifiutata`,
+          title: 'notification.change.rejected.title',
+          message: p.title ?? p.id,
           severity: 'error',
           entity_id: p.id,
           entity_type: 'change',
@@ -156,8 +195,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'SLA in Scadenza',
-          message: `Scade tra ${p.minutes_remaining} minuti`,
+          title: 'notification.sla.warning.title',
+          message: `${p.minutes_remaining}`,
           severity: 'warning',
           entity_id: p.entity_id,
           entity_type: p.entity_type,
@@ -172,8 +211,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'SLA Violato',
-          message: `SLA superato per ${p.entity_type} ${p.entity_id}`,
+          title: 'notification.sla.breached.title',
+          message: `${p.entity_type} ${p.entity_id}`,
           severity: 'error',
           entity_id: p.entity_id,
           entity_type: p.entity_type,
@@ -198,8 +237,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         notification = {
           id: randomUUID(),
           type: event.type,
-          title: 'Known Error Identificato',
-          message: 'Workaround disponibile',
+          title: 'notification.problem.known_error.title',
+          message: '',
           severity: 'warning',
           entity_id: p.id,
           entity_type: 'problem',
@@ -209,8 +248,109 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         break
       }
 
-      case 'change.task_assigned':
-        break  // no in-app notification — handled in dispatchToChannels
+      case 'change.completed': {
+        const p = event.payload as ChangeApprovedPayload
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.change.completed.title',
+          message: p.title ?? p.id,
+          severity: 'success',
+          entity_id: p.id, entity_type: 'change',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
+      case 'change.failed': {
+        const p = event.payload as ChangeApprovedPayload
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.change.failed.title',
+          message: p.title ?? p.id,
+          severity: 'error',
+          entity_id: p.id, entity_type: 'change',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
+      case 'change.task_assigned': {
+        const p = event.payload as { changeTitle?: string; ciName?: string }
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.change.task_assigned.title',
+          message: `${p.changeTitle ?? ''} — ${p.ciName ?? ''}`.replace(/^\s*—\s*|\s*—\s*$/, '').trim() || '',
+          severity: 'info',
+          entity_type: 'change',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
+      case 'problem.created': {
+        const p = event.payload as { id: string; title?: string }
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.problem.created.title',
+          message: p.title ?? `Problem ${p.id}`,
+          severity: 'warning',
+          entity_id: p.id, entity_type: 'problem',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
+      case 'problem.under_investigation': {
+        const p = event.payload as { id: string; title?: string }
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.problem.investigating.title',
+          message: p.title ?? `Problem ${p.id}`,
+          severity: 'info',
+          entity_id: p.id, entity_type: 'problem',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
+      case 'problem.deferred': {
+        const p = event.payload as { id: string; title?: string }
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.problem.deferred.title',
+          message: p.title ?? `Problem ${p.id}`,
+          severity: 'warning',
+          entity_id: p.id, entity_type: 'problem',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
+      case 'problem.resolved': {
+        const p = event.payload as { id: string; title?: string }
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.problem.resolved.title',
+          message: p.title ?? `Problem ${p.id}`,
+          severity: 'success',
+          entity_id: p.id, entity_type: 'problem',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
+
+      case 'problem.closed': {
+        const p = event.payload as { id: string; title?: string }
+        notification = {
+          id: randomUUID(), type: event.type,
+          title: 'notification.problem.closed.title',
+          message: p.title ?? `Problem ${p.id}`,
+          severity: 'info',
+          entity_id: p.id, entity_type: 'problem',
+          timestamp: event.timestamp, read: false,
+        }
+        break
+      }
 
       default:
         console.log(`[dispatcher] Event type "${event.type}" — no notification rule, skipping`)

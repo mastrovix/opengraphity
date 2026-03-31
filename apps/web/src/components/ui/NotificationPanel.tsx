@@ -90,7 +90,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
           overflow:    'hidden',
           textOverflow:'ellipsis',
         }}>
-          {notif.title}
+          {t(notif.title)}
         </div>
         <div style={{
           fontSize:    12,

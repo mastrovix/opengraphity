@@ -341,5 +341,34 @@
     "minAgo":      "{{count}} min fa",
     "hoursAgo":    "{{count}}h fa",
     "daysAgo":     "{{count}}g fa"
+  },
+  "notification": {
+    "incident": {
+      "created":     { "title": "Nuovo Incident" },
+      "assigned":    { "title": "Incident Assegnato" },
+      "in_progress": { "title": "Incident in Lavorazione" },
+      "on_hold":     { "title": "Incident in Attesa" },
+      "escalated":   { "title": "Incident Escalato" },
+      "resolved":    { "title": "Incident Risolto" },
+      "closed":      { "title": "Incident Chiuso" }
+    },
+    "change": {
+      "approved":      { "title": "Change Approvata" },
+      "completed":     { "title": "Change Completata" },
+      "failed":        { "title": "Change Fallita" },
+      "rejected":      { "title": "Change Rifiutata" },
+      "task_assigned": { "title": "Task Change Assegnato" }
+    },
+    "sla": {
+      "warning":  { "title": "SLA in Scadenza" },
+      "breached": { "title": "SLA Violato" }
+    },
+    "problem": {
+      "created":       { "title": "Nuovo Problem" },
+      "investigating": { "title": "Problem in Analisi" },
+      "deferred":      { "title": "Problem Posticipato" },
+      "resolved":      { "title": "Problem Risolto" },
+      "closed":        { "title": "Problem Chiuso" }
+    }
   }
 }

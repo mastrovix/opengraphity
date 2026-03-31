@@ -450,6 +450,10 @@ async function executeWorkflowTransition(
           await incidentService.escalateIncident(incidentId, { tenantId, userId: ctx.userId })
         } else if (toStep === 'closed') {
           await incidentService.closeIncident(incidentId, { tenantId, userId: ctx.userId })
+        } else if (toStep === 'in_progress') {
+          await incidentService.inProgressIncident(incidentId, { tenantId, userId: ctx.userId })
+        } else if (toStep === 'pending') {
+          await incidentService.onHoldIncident(incidentId, { tenantId, userId: ctx.userId })
         }
       }
     }
