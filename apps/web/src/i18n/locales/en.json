@@ -349,9 +349,11 @@
     "description": "Configure which events generate notifications and through which channels.",
     "enabled":     "Enabled",
     "event":       "Event",
-    "severity":    "Severity",
-    "channels":    "Channels",
-    "target":      "Recipients",
+    "header": {
+      "severity": "Severity",
+      "channels": "Channels",
+      "target":   "Recipients"
+    },
     "category": {
       "incident": "Incident",
       "change":   "Change",

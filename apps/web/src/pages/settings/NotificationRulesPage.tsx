@@ -335,7 +335,7 @@ function NewRuleDialog({
 
         {/* Severity */}
         <label style={labelStyle}>
-          <span style={labelTextStyle}>{t('notificationRules.severity')}</span>
+          <span style={labelTextStyle}>{t('notificationRules.header.severity')}</span>
           <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ ...inputStyle, color: SEVERITY_COLOR[severity] ?? '#64748b', fontWeight: fontWeight.medium }}>
             {SEVERITY_OPTIONS.map((s) => (
               <option key={s} value={s} style={{ color: SEVERITY_COLOR[s] }}>{t(`notificationRules.severity.${s}`)}</option>
@@ -345,7 +345,7 @@ function NewRuleDialog({
 
         {/* Channels */}
         <div style={labelStyle}>
-          <span style={labelTextStyle}>{t('notificationRules.channels')}</span>
+          <span style={labelTextStyle}>{t('notificationRules.header.channels')}</span>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {CHANNELS_OPTIONS.map(({ value, labelKey }) => (
               <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#64748b' }}>
@@ -363,7 +363,7 @@ function NewRuleDialog({
 
         {/* Target */}
         <label style={labelStyle}>
-          <span style={labelTextStyle}>{t('notificationRules.target')}</span>
+          <span style={labelTextStyle}>{t('notificationRules.header.target')}</span>
           <select value={target} onChange={(e) => setTarget(e.target.value)} style={{ ...inputStyle, color: '#64748b' }}>
             {TARGET_OPTIONS.map(({ value, labelKey }) => (
               <option key={value} value={value}>{t(labelKey)}</option>
@@ -450,9 +450,9 @@ export default function NotificationRulesPage() {
     <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
       <th style={{ ...TH, width: 52 }}>{t('notificationRules.enabled')}</th>
       <th style={TH}>{t('notificationRules.event')}</th>
-      <th style={{ ...TH, width: 120 }}>{t('notificationRules.severity')}</th>
-      <th style={TH}>{t('notificationRules.channels')}</th>
-      <th style={{ ...TH, width: 160 }}>{t('notificationRules.target')}</th>
+      <th style={{ ...TH, width: 120 }}>{t('notificationRules.header.severity')}</th>
+      <th style={TH}>{t('notificationRules.header.channels')}</th>
+      <th style={{ ...TH, width: 160 }}>{t('notificationRules.header.target')}</th>
       <th style={{ ...TH, width: 36 }} />
     </tr>
   )
