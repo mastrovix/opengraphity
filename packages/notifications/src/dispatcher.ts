@@ -73,7 +73,6 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
 
       case 'incident.assigned': {
         const p = event.payload as EnrichedIncidentPayload
-        console.log('[dispatcher] Processing incident.assigned:', p.id)
         notification = {
           id: randomUUID(),
           type: event.type,

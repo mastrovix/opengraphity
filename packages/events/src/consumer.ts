@@ -23,8 +23,13 @@ export abstract class BaseConsumer<T> {
       async (job: Job) => {
         const event = job.data as DomainEvent<T>
         console.log(`[consumer:${this.queueName}] Received: ${event.type} (id: ${event.id})`)
-        await this.process(event)
-        console.log(`[consumer:${this.queueName}] Processed successfully: ${event.id}`)
+        try {
+          await this.process(event)
+          console.log(`[consumer:${this.queueName}] Processed successfully: ${event.id}`)
+        } catch (err) {
+          console.error(`[consumer:${this.queueName}] process() threw:`, err)
+          throw err
+        }
       },
       {
         connection: getRedisOptions(),

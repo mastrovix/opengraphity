@@ -239,11 +239,14 @@ export async function assignIncidentToTeam(
     ))
     if (!r.records[0]) throw new Error('Incident not found')
     const assigned = mapIncident(r.records[0].get('props') as Props)
-    const assignedPayload = await loadIncidentPayload(session, id, ctx.tenantId)
-    await publish(buildEvent('incident.assigned', ctx.tenantId, ctx.userId,
-      assignedPayload ?? { id, title: assigned.title, severity: assigned.severity, status: assigned.status, ciName: '—', assignedTo: '—' },
-      now,
-    ))
+    await publish(buildEvent('incident.assigned', ctx.tenantId, ctx.userId, {
+      id:         assigned.id,
+      title:      assigned.title,
+      severity:   assigned.severity,
+      status:     assigned.status,
+      ciName:     '—',
+      assignedTo: teamName,
+    } satisfies IncidentEventPayload, now))
     return assigned
   }, true)
 }
