@@ -20,6 +20,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
+import { seedNotificationRules } from '../lib/seedNotificationRules.js'
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
@@ -348,7 +349,10 @@ async function provisionNeo4j(): Promise<void> {
       console.log(`  ↩ DashboardConfig già esistente — skip`)
     }
 
-    // 6c. Verify base CITypeDefinitions (shared, scope='base')
+    // 6c. Notification rules default
+    await seedNotificationRules(slug!, session)
+
+    // 6d. Verify base CITypeDefinitions (shared, scope='base')
     const ciResult = await session.executeRead((tx) =>
       tx.run(
         `MATCH (t:CITypeDefinition)

@@ -41,6 +41,9 @@ export function buildBaseSDL(): string {
     # Notification Channels
     notificationChannels: [NotificationChannel!]!
 
+    # Notification Rules
+    notificationRules: [NotificationRule!]!
+
     # Reports (AI conversations)
     reportConversations: [ReportConversation!]!
     reportConversation(id: ID!): ReportConversation
@@ -155,6 +158,7 @@ export function buildBaseSDL(): string {
       definitionId: ID!
       stepName:     String!
       label:        String!
+      enterActions: String
     ): WorkflowStep!
 
     updateWorkflowTransition(
@@ -184,6 +188,8 @@ export function buildBaseSDL(): string {
     createNotificationChannel(input: CreateNotificationChannelInput!): NotificationChannel!
     updateNotificationChannel(id: ID!, input: CreateNotificationChannelInput!): NotificationChannel!
     deleteNotificationChannel(id: ID!): Boolean!
+
+    updateNotificationRule(id: ID!, input: UpdateNotificationRuleInput!): NotificationRule!
     testNotificationChannel(id: ID!): Boolean!
 
     # Slack account linking
@@ -1038,6 +1044,24 @@ export function buildBaseSDL(): string {
     nodes:     [TopologyNode!]!
     edges:     [TopologyEdge!]!
     truncated: Boolean!
+  }
+
+  type NotificationRule {
+    id:               ID!
+    eventType:        String!
+    enabled:          Boolean!
+    severityOverride: String!
+    titleKey:         String!
+    channels:         [String!]!
+    target:           String!
+    conditions:       String
+  }
+
+  input UpdateNotificationRuleInput {
+    enabled:          Boolean
+    severityOverride: String
+    channels:         [String!]
+    target:           String
   }
 `
 }

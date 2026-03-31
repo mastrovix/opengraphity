@@ -101,7 +101,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     () => pathname.startsWith('/teams') || pathname.startsWith('/users'),
   )
   const [settingsOpen, setSettingsOpen] = useState(
-    () => pathname.startsWith('/settings'),
+    () => pathname.startsWith('/settings') || pathname === '/settings/notification-rules',
   )
   const [reportingOpen, setReportingOpen] = useState(
     () => pathname.startsWith('/reports') || pathname.startsWith('/custom-reports'),
@@ -614,7 +614,13 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                     <NavLink to="/settings/notifications" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Bell size={12} style={{ color: C.brand, flexShrink: 0 }} />
-                        Notifiche
+                        {t('sidebar.notificationChannels')}
+                      </span>
+                    </NavLink>
+                    <NavLink to="/settings/notification-rules" style={({ isActive }) => subItemStyle(isActive)}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Bell size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                        {t('sidebar.notificationRules')}
                       </span>
                     </NavLink>
                     <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>

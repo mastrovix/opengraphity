@@ -1,4 +1,6 @@
+import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
+import { publish } from '@opengraphity/events'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import * as incidentService from '../../services/incidentService.js'
@@ -277,7 +279,7 @@ async function workflowDefinitions(
 
 async function updateWorkflowStep(
   _: unknown,
-  { definitionId, stepName, label }: { definitionId: string; stepName: string; label: string },
+  { definitionId, stepName, label, enterActions }: { definitionId: string; stepName: string; label: string; enterActions?: string | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -285,9 +287,11 @@ async function updateWorkflowStep(
     const result = await session.executeWrite((tx) =>
       tx.run(`
         MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName, tenant_id: $tenantId})
-        SET s.label = $label, s.updated_at = $now
+        SET s.label        = $label,
+            s.updated_at   = $now,
+            s.enter_actions = CASE WHEN $enterActions IS NOT NULL THEN $enterActions ELSE s.enter_actions END
         RETURN s
-      `, { definitionId, stepName, tenantId: ctx.tenantId, label, now }),
+      `, { definitionId, stepName, tenantId: ctx.tenantId, label, enterActions: enterActions ?? null, now }),
     )
     if (!result.records.length) throw new Error('WorkflowStep non trovato')
     const s = result.records[0].get('s').properties as Record<string, unknown>
@@ -390,6 +394,52 @@ async function updateWorkflowTransition(
   }, true)
 }
 
+// ── Publish workflow.step.entered for notify_rule enter_actions ───────────────
+
+async function publishNotifyRuleActions(
+  session: import('neo4j-driver').Session,
+  instanceId: string,
+  stepName: string,
+  tenantId: string,
+  userId: string,
+  entityType: string,
+  entityId: string,
+): Promise<void> {
+  const result = await session.executeRead((tx) =>
+    tx.run(
+      `MATCH (wi:WorkflowInstance {id: $instanceId})
+       MATCH (wd:WorkflowDefinition {id: wi.definition_id})
+       MATCH (s:WorkflowStep {definition_id: wd.id, name: $stepName})
+       RETURN s.enter_actions AS enterActions`,
+      { instanceId, stepName },
+    ),
+  )
+  if (!result.records.length) return
+  const raw = result.records[0].get('enterActions') as string | null
+  if (!raw) return
+
+  let actions: Array<{ type: string; params?: Record<string, unknown> }>
+  try { actions = JSON.parse(raw) } catch { return }
+
+  const notifyRules = actions.filter((a) => a.type === 'notify_rule')
+  for (const action of notifyRules) {
+    await publish({
+      id:             uuidv4(),
+      type:           'workflow.step.entered',
+      tenant_id:      tenantId,
+      timestamp:      new Date().toISOString(),
+      correlation_id: uuidv4(),
+      actor_id:       userId,
+      payload: {
+        stepName,
+        entityType,
+        entityId,
+        notifyRule: action.params ?? {},
+      },
+    })
+  }
+}
+
 async function executeWorkflowTransition(
   _: unknown,
   { instanceId, toStep, notes }: { instanceId: string; toStep: string; notes?: string },
@@ -455,6 +505,9 @@ async function executeWorkflowTransition(
         } else if (toStep === 'pending') {
           await incidentService.onHoldIncident(incidentId, { tenantId, userId: ctx.userId })
         }
+
+        // Publish workflow.step.entered for any notify_rule enter_actions on this step
+        await publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'incident', incidentId)
       }
     }
 

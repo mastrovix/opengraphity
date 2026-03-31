@@ -57,7 +57,9 @@
     "teamsUsers": "Team e Utenti",
     "teams": "Team",
     "users": "Utenti",
-    "notifications": "Notifiche"
+    "notifications": "Notifiche",
+    "notificationChannels": "Canali Notifica",
+    "notificationRules": "Regole Notifiche"
   },
   "pages": {
     "incidents": {
@@ -341,6 +343,40 @@
     "minAgo":      "{{count}} min fa",
     "hoursAgo":    "{{count}}h fa",
     "daysAgo":     "{{count}}g fa"
+  },
+  "notificationRules": {
+    "title":       "Regole Notifiche",
+    "description": "Configura quali eventi generano notifiche e attraverso quali canali.",
+    "enabled":     "Attiva",
+    "event":       "Evento",
+    "severity":    "Severità",
+    "channels":    "Canali",
+    "target":      "Destinatari",
+    "category": {
+      "incident": "Incident",
+      "change":   "Change",
+      "problem":  "Problem",
+      "sla":      "SLA"
+    },
+    "severity": {
+      "info":    "Info",
+      "success": "Successo",
+      "warning": "Avviso",
+      "error":   "Errore"
+    },
+    "channels": {
+      "inApp": "In-App",
+      "slack": "Slack",
+      "teams": "Teams",
+      "email": "Email"
+    },
+    "target": {
+      "all":         "Tutti",
+      "assignee":    "Assegnatario",
+      "teamOwner":   "Team Owner",
+      "adminOnly":   "Solo Admin",
+      "managerOnly": "Solo Manager"
+    }
   },
   "notification": {
     "incident": {

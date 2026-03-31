@@ -30,6 +30,7 @@ import { TopologyPage } from '@/pages/topology/TopologyPage'
 import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
 import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
 import NotificationsPage from '@/pages/settings/NotificationsPage'
+import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import ReportsPage from '@/pages/reports/ReportsPage'
@@ -111,7 +112,8 @@ const router = createBrowserRouter([
       { path: 'topology',                      element: <TopologyPage />,                errorElement: <RouteError /> },
       { path: 'workflow',                      element: <WorkflowListPage />,            errorElement: <RouteError /> },
       { path: 'workflow/:id',                  element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
-      { path: 'settings/notifications',     element: <NotificationsPage />,       errorElement: <RouteError /> },
+      { path: 'settings/notifications',      element: <NotificationsPage />,       errorElement: <RouteError /> },
+      { path: 'settings/notification-rules', element: <NotificationRulesPage />, errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
       { path: 'profile',                   element: <NewProfilePage />,          errorElement: <RouteError /> },
       { path: 'settings/ci-types',         element: <CITypeDesignerPage />,      errorElement: <RouteError /> },

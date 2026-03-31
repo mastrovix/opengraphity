@@ -177,9 +177,9 @@ export const ADD_CI_DEPENDENCY = gql`
 `
 
 export const UPDATE_WORKFLOW_STEP = gql`
-  mutation UpdateWorkflowStep($definitionId: ID!, $stepName: String!, $label: String!) {
-    updateWorkflowStep(definitionId: $definitionId, stepName: $stepName, label: $label) {
-      id name label type
+  mutation UpdateWorkflowStep($definitionId: ID!, $stepName: String!, $label: String!, $enterActions: String) {
+    updateWorkflowStep(definitionId: $definitionId, stepName: $stepName, label: $label, enterActions: $enterActions) {
+      id name label type enterActions
     }
   }
 `
@@ -657,6 +657,14 @@ export const REORDER_DASHBOARD_WIDGETS = gql`
   mutation ReorderDashboardWidgets($dashboardId: ID!, $widgetIds: [ID!]!) {
     reorderDashboardWidgets(dashboardId: $dashboardId, widgetIds: $widgetIds) {
       id widgets { id order colSpan }
+    }
+  }
+`
+
+export const UPDATE_NOTIFICATION_RULE = gql`
+  mutation UpdateNotificationRule($id: ID!, $input: UpdateNotificationRuleInput!) {
+    updateNotificationRule(id: $id, input: $input) {
+      id eventType enabled severityOverride titleKey channels target
     }
   }
 `

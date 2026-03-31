@@ -1,0 +1,77 @@
+import type { GraphQLContext } from '../../context.js'
+import { withSession } from './ci-utils.js'
+import { invalidateRuleCache } from '@opengraphity/notifications'
+
+function mapRule(props: Record<string, unknown>) {
+  return {
+    id:               props['id']                as string,
+    eventType:        props['event_type']        as string,
+    enabled:          props['enabled']           as boolean,
+    severityOverride: (props['severity_override'] ?? 'info') as string,
+    titleKey:         props['title_key']         as string,
+    channels:         (props['channels']         as string[]) ?? ['in_app'],
+    target:           (props['target']           as string)   ?? 'all',
+    conditions:       (props['conditions']       ?? null) as string | null,
+  }
+}
+
+async function notificationRules(_: unknown, __: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const result = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (r:NotificationRule {tenant_id: $tenantId})
+         RETURN r ORDER BY r.event_type`,
+        { tenantId: ctx.tenantId },
+      ),
+    )
+    return result.records.map((rec) => mapRule(rec.get('r').properties as Record<string, unknown>))
+  })
+}
+
+async function updateNotificationRule(
+  _: unknown,
+  { id, input }: {
+    id: string
+    input: {
+      enabled?:          boolean | null
+      severityOverride?: string  | null
+      channels?:         string[]| null
+      target?:           string  | null
+    }
+  },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const now = new Date().toISOString()
+    const result = await session.executeWrite((tx) =>
+      tx.run(
+        `MATCH (r:NotificationRule {id: $id, tenant_id: $tenantId})
+         SET r.updated_at = $now
+           , r.enabled           = CASE WHEN $enabled          IS NOT NULL THEN $enabled          ELSE r.enabled           END
+           , r.severity_override = CASE WHEN $severityOverride IS NOT NULL THEN $severityOverride ELSE r.severity_override END
+           , r.channels          = CASE WHEN $channels         IS NOT NULL THEN $channels         ELSE r.channels          END
+           , r.target            = CASE WHEN $target           IS NOT NULL THEN $target           ELSE r.target            END
+         RETURN r`,
+        {
+          id,
+          tenantId:         ctx.tenantId,
+          now,
+          enabled:          input.enabled          ?? null,
+          severityOverride: input.severityOverride ?? null,
+          channels:         input.channels         ?? null,
+          target:           input.target           ?? null,
+        },
+      ),
+    )
+    if (!result.records.length) throw new Error('NotificationRule non trovata')
+    const props = result.records[0].get('r').properties as Record<string, unknown>
+    const rule = mapRule(props)
+    invalidateRuleCache(ctx.tenantId, rule.eventType)
+    return rule
+  }, true)
+}
+
+export const notificationRuleResolvers = {
+  Query:    { notificationRules },
+  Mutation: { updateNotificationRule },
+}

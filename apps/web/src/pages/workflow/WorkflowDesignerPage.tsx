@@ -326,6 +326,17 @@ const edgeTypes  = { workflowEdge: WorkflowEdge }
 
 // ── Side Panel ────────────────────────────────────────────────────────────────
 
+interface NotifyRuleAction {
+  type:   'notify_rule'
+  params: { title_key: string; severity: string; channels: string[]; target: string }
+}
+
+type AnyAction = { type: string; params?: Record<string, unknown> }
+
+const NR_CHANNELS = ['in_app', 'slack', 'teams', 'email'] as const
+const NR_SEVERITIES = ['info', 'success', 'warning', 'error'] as const
+const NR_TARGETS = ['all', 'assignee', 'team_owner', 'role:admin', 'role:manager'] as const
+
 interface StepPanelProps {
   step:         WFStep
   definitionId: string
@@ -334,52 +345,192 @@ interface StepPanelProps {
 }
 
 function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
-  const [label, setLabel] = useState(step.label)
+  const [activeTab, setActiveTab]   = useState<'props' | 'notify'>('props')
+  const [label,     setLabel]       = useState(step.label)
 
-  const [save, { loading }] = useMutation(UPDATE_WORKFLOW_STEP, {
-    onCompleted: () => { toast.success('Step aggiornato'); onSaved({ label }) },
-    onError:     (e) => toast.error(e.message),
+  // Parse enter_actions, separating notify_rule from the rest
+  const allEnterActions: AnyAction[] = step.enterActions ? (JSON.parse(step.enterActions) as AnyAction[]) : []
+  const exitActions: AnyAction[]     = step.exitActions  ? (JSON.parse(step.exitActions)  as AnyAction[]) : []
+  const existingNR = allEnterActions.find((a) => a.type === 'notify_rule') as NotifyRuleAction | undefined
+  const otherEnterActions = allEnterActions.filter((a) => a.type !== 'notify_rule')
+
+  const [notifyEnabled,  setNotifyEnabled]  = useState(!!existingNR)
+  const [notifyTitleKey, setNotifyTitleKey] = useState(existingNR?.params.title_key  ?? '')
+  const [notifySeverity, setNotifySeverity] = useState(existingNR?.params.severity   ?? 'info')
+  const [notifyChannels, setNotifyChannels] = useState<string[]>(existingNR?.params.channels ?? ['in_app'])
+  const [notifyTarget,   setNotifyTarget]   = useState(existingNR?.params.target     ?? 'all')
+
+  const [save, { loading }] = useMutation<{ updateWorkflowStep: WFStep }>(UPDATE_WORKFLOW_STEP, {
+    onCompleted: (data) => {
+      toast.success('Step aggiornato')
+      onSaved({ label, enterActions: data.updateWorkflowStep?.enterActions ?? null })
+    },
+    onError: (e) => toast.error(e.message),
   })
 
-  const enterActions = step.enterActions ? (JSON.parse(step.enterActions) as Array<{ type: string }>) : []
-  const exitActions  = step.exitActions  ? (JSON.parse(step.exitActions)  as Array<{ type: string }>) : []
+  const buildEnterActions = (): string | null => {
+    const actions: AnyAction[] = [...otherEnterActions]
+    if (notifyEnabled && notifyTitleKey.trim()) {
+      actions.push({
+        type: 'notify_rule',
+        params: {
+          title_key: notifyTitleKey.trim(),
+          severity:  notifySeverity,
+          channels:  notifyChannels,
+          target:    notifyTarget,
+        },
+      })
+    }
+    return actions.length > 0 ? JSON.stringify(actions) : null
+  }
+
+  const propsUnchanged   = label === step.label
+  const notifyUnchanged  = notifyEnabled === !!existingNR
+    && notifyTitleKey === (existingNR?.params.title_key  ?? '')
+    && notifySeverity === (existingNR?.params.severity   ?? 'info')
+    && JSON.stringify(notifyChannels) === JSON.stringify(existingNR?.params.channels ?? ['in_app'])
+    && notifyTarget   === (existingNR?.params.target     ?? 'all')
+  const saveDisabled = loading || (propsUnchanged && notifyUnchanged)
+
+  const handleSave = () => {
+    const enterActionsJson = buildEnterActions()
+    save({ variables: { definitionId, stepName: step.name, label, enterActions: enterActionsJson } })
+  }
+
+  const toggleChannel = (ch: string) => {
+    setNotifyChannels((prev) =>
+      prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch],
+    )
+  }
+
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding:         '6px 14px',
+    fontSize:        12,
+    fontWeight:      active ? 700 : 400,
+    color:           active ? ACCENT_COLOR : 'var(--color-slate-light)',
+    borderBottom:    active ? `2px solid ${ACCENT_COLOR}` : '2px solid transparent',
+    cursor:          'pointer',
+    background:      'none',
+    border:          'none',
+    borderBottomWidth: 2,
+    borderBottomStyle: 'solid' as const,
+    borderBottomColor: active ? ACCENT_COLOR : 'transparent',
+    transition:      'color 150ms',
+  })
 
   return (
     <div style={panelStyle}>
       <PanelHeader title="Modifica Step" onClose={onClose} />
 
-      <PanelField label="Label">
-        <input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
-      </PanelField>
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}>
+        <button style={tabStyle(activeTab === 'props')}  onClick={() => setActiveTab('props')}>Proprietà</button>
+        <button style={tabStyle(activeTab === 'notify')} onClick={() => setActiveTab('notify')}>Notifiche</button>
+      </div>
 
-      <PanelField label="Name">
-        <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.name}</code>
-      </PanelField>
+      {activeTab === 'props' && (
+        <>
+          <PanelField label="Label">
+            <input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
+          </PanelField>
 
-      <PanelField label="Type">
-        <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.type}</code>
-      </PanelField>
+          <PanelField label="Name">
+            <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.name}</code>
+          </PanelField>
 
-      {enterActions.length > 0 && (
-        <PanelField label="Enter Actions">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {enterActions.map((a, i) => <ActionBadge key={i} type={a.type} />)}
-          </div>
-        </PanelField>
+          <PanelField label="Type">
+            <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.type}</code>
+          </PanelField>
+
+          {otherEnterActions.length > 0 && (
+            <PanelField label="Enter Actions">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {otherEnterActions.map((a, i) => <ActionBadge key={i} type={a.type} />)}
+              </div>
+            </PanelField>
+          )}
+
+          {exitActions.length > 0 && (
+            <PanelField label="Exit Actions">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {exitActions.map((a, i) => <ActionBadge key={i} type={a.type} />)}
+              </div>
+            </PanelField>
+          )}
+        </>
       )}
 
-      {exitActions.length > 0 && (
-        <PanelField label="Exit Actions">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {exitActions.map((a, i) => <ActionBadge key={i} type={a.type} />)}
-          </div>
-        </PanelField>
+      {activeTab === 'notify' && (
+        <>
+          <PanelField label="Notifica all'ingresso">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <div
+                onClick={() => setNotifyEnabled((p) => !p)}
+                style={{
+                  width: 36, height: 20, borderRadius: 10, cursor: 'pointer',
+                  backgroundColor: notifyEnabled ? ACCENT_COLOR : '#cbd5e1',
+                  position: 'relative', transition: 'background 200ms', flexShrink: 0,
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: 2, left: notifyEnabled ? 18 : 2,
+                  width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                  transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                }} />
+              </div>
+              <span style={{ fontSize: 13, color: 'var(--color-slate)' }}>
+                {notifyEnabled ? 'Attiva' : 'Disattiva'}
+              </span>
+            </label>
+          </PanelField>
+
+          {notifyEnabled && (
+            <>
+              <PanelField label="Chiave titolo (i18n)">
+                <input
+                  value={notifyTitleKey}
+                  onChange={(e) => setNotifyTitleKey(e.target.value)}
+                  placeholder="es. notification.custom.step.title"
+                  style={inputStyle}
+                />
+              </PanelField>
+
+              <PanelField label="Severità">
+                <select value={notifySeverity} onChange={(e) => setNotifySeverity(e.target.value)} style={inputStyle}>
+                  {NR_SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </PanelField>
+
+              <PanelField label="Canali">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {NR_CHANNELS.map((ch) => (
+                    <label key={ch} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={notifyChannels.includes(ch)}
+                        onChange={() => toggleChannel(ch)}
+                        style={{ accentColor: ACCENT_COLOR }}
+                      />
+                      {ch === 'in_app' ? 'In-App' : ch.charAt(0).toUpperCase() + ch.slice(1)}
+                    </label>
+                  ))}
+                </div>
+              </PanelField>
+
+              <PanelField label="Destinatari">
+                <select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)} style={inputStyle}>
+                  {NR_TARGETS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </PanelField>
+            </>
+          )}
+        </>
       )}
 
       <button
-        onClick={() => save({ variables: { definitionId, stepName: step.name, label } })}
-        disabled={loading || label === step.label}
-        style={saveButtonStyle(loading || label === step.label)}
+        onClick={handleSave}
+        disabled={saveDisabled}
+        style={saveButtonStyle(saveDisabled)}
       >
         {loading ? 'Salvataggio…' : 'Salva'}
       </button>
