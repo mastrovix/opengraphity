@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus, X } from 'lucide-react'
+import { Trash2, Plus, X, Lock, Unlock } from 'lucide-react'
 import { GET_NOTIFICATION_RULES } from '@/graphql/queries'
 import { UPDATE_NOTIFICATION_RULE, CREATE_NOTIFICATION_RULE, DELETE_NOTIFICATION_RULE } from '@/graphql/mutations'
 import { colors, fontSize, fontWeight } from '@/lib/tokens'
@@ -168,7 +168,13 @@ function RuleRow({
 
       {/* Event */}
       <td style={{ padding: '10px 12px', fontSize: fontSize.table, color: '#0f172a', fontWeight: fontWeight.medium }}>
-        {titleLabel}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {titleLabel}
+          {rule.isSeed
+            ? <span title={t('notificationRules.systemRule',   'Regola di sistema')}     style={{ display: 'inline-flex', flexShrink: 0 }}><Lock   size={14} color="#94a3b8" /></span>
+            : <span title={t('notificationRules.customRule',   'Regola personalizzata')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color="#94a3b8" /></span>
+          }
+        </div>
         <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
       </td>
 
