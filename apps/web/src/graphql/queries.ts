@@ -542,7 +542,7 @@ export const GET_TOPOLOGY = gql`
 export const GET_NOTIFICATION_RULES = gql`
   query GetNotificationRules {
     notificationRules {
-      id eventType enabled severityOverride titleKey channels target conditions
+      id eventType enabled severityOverride titleKey channels target conditions isSeed
     }
   }
 `

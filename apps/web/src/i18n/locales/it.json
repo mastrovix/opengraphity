@@ -376,7 +376,14 @@
       "teamOwner":   "Team Owner",
       "adminOnly":   "Solo Admin",
       "managerOnly": "Solo Manager"
-    }
+    },
+    "addRule":      "Nuova regola",
+    "deleteRule":   "Elimina regola",
+    "eventType":    "Tipo evento",
+    "titleKey":     "Titolo notifica",
+    "customEvent":  "Evento personalizzato…",
+    "save":         "Salva",
+    "cancel":       "Annulla"
   },
   "notification": {
     "incident": {

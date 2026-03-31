@@ -189,7 +189,9 @@ export function buildBaseSDL(): string {
     updateNotificationChannel(id: ID!, input: CreateNotificationChannelInput!): NotificationChannel!
     deleteNotificationChannel(id: ID!): Boolean!
 
+    createNotificationRule(input: CreateNotificationRuleInput!): NotificationRule!
     updateNotificationRule(id: ID!, input: UpdateNotificationRuleInput!): NotificationRule!
+    deleteNotificationRule(id: ID!): Boolean!
     testNotificationChannel(id: ID!): Boolean!
 
     # Slack account linking
@@ -1055,6 +1057,16 @@ export function buildBaseSDL(): string {
     channels:         [String!]!
     target:           String!
     conditions:       String
+    isSeed:           Boolean!
+  }
+
+  input CreateNotificationRuleInput {
+    eventType:        String!
+    enabled:          Boolean
+    severityOverride: String
+    titleKey:         String!
+    channels:         [String!]!
+    target:           String!
   }
 
   input UpdateNotificationRuleInput {

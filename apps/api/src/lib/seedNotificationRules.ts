@@ -48,6 +48,7 @@ export async function seedNotificationRules(tenantId: string, session: Session):
            r.channels          = $channels,
            r.target            = $target,
            r.conditions        = null,
+           r.is_seed           = true,
            r.created_at        = $now,
            r.updated_at        = $now
          RETURN (r.created_at = $now) AS wasCreated`,

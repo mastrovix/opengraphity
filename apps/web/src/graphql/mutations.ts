@@ -664,7 +664,21 @@ export const REORDER_DASHBOARD_WIDGETS = gql`
 export const UPDATE_NOTIFICATION_RULE = gql`
   mutation UpdateNotificationRule($id: ID!, $input: UpdateNotificationRuleInput!) {
     updateNotificationRule(id: $id, input: $input) {
-      id eventType enabled severityOverride titleKey channels target
+      id eventType enabled severityOverride titleKey channels target isSeed
     }
+  }
+`
+
+export const CREATE_NOTIFICATION_RULE = gql`
+  mutation CreateNotificationRule($input: CreateNotificationRuleInput!) {
+    createNotificationRule(input: $input) {
+      id eventType enabled severityOverride titleKey channels target isSeed
+    }
+  }
+`
+
+export const DELETE_NOTIFICATION_RULE = gql`
+  mutation DeleteNotificationRule($id: ID!) {
+    deleteNotificationRule(id: $id)
   }
 `
