@@ -119,8 +119,6 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   }
 
   async process(event: DomainEvent<unknown>): Promise<void> {
-    console.log(`[dispatcher] Processing event: ${event.type}`)
-
     // Workflow step custom notification (embed rule in payload, no DB lookup)
     if (event.type === 'workflow.step.entered') {
       await this.processWorkflowStep(event)
@@ -144,10 +142,6 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
 
     if (rule.channels.includes('in_app')) {
       sseManager.sendToTenant(event.tenant_id, notification)
-    }
-
-    if (rule.channels.includes('email')) {
-      console.log(`[dispatcher] Email placeholder for ${event.type} → tenant ${event.tenant_id}`)
     }
 
     if (rule.channels.some((c) => c === 'slack' || c === 'teams')) {
@@ -181,9 +175,6 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       sseManager.sendToTenant(event.tenant_id, notification)
     }
 
-    if (nr.channels.includes('email')) {
-      console.log(`[dispatcher] Email placeholder for workflow.step.entered on step ${p.stepName}`)
-    }
   }
 
   // ── Slack / Teams channel dispatch (driven by rule.channels) ────────────────
