@@ -80,7 +80,7 @@ describe('WorkflowEngine', () => {
       const result = await engine.transition(
         session as never,
         { instanceId: 'wi-123', toStepName: 'nonexistent', triggeredBy: 'user-1', triggerType: 'manual' },
-        { userId: 'user-1' },
+        { userId: 'user-1', entityData: {} },
       )
       expect(result.success).toBe(false)
       expect((result as { success: false; error: string }).error).toContain('non valida')
@@ -105,7 +105,7 @@ describe('WorkflowEngine', () => {
       const result = await engine.transition(
         session as never,
         { instanceId: 'wi-123', toStepName: 'resolved', triggeredBy: 'user-1', triggerType: 'manual' },
-        { userId: 'user-1' },
+        { userId: 'user-1', entityData: {} },
       )
       expect(result.success).toBe(false)
       expect((result as { success: false; error: string }).error).toContain('Root cause')

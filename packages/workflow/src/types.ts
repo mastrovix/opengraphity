@@ -15,11 +15,75 @@ export type WorkflowActionType =
   | 'publish_event'
   | 'schedule_job'
   | 'cancel_job'
+  | 'notify_rule'
+  | 'create_entity'
+  | 'assign_to'
+  | 'update_field'
+  | 'call_webhook'
+
+// ── Typed params per action type ──────────────────────────────────────────────
+
+export interface CreateEntityParams {
+  entity_type:     'incident' | 'problem' | 'change'
+  title_template:  string
+  link_to_current: boolean
+  copy_fields?:    string[]
+}
+
+export interface AssignToParams {
+  target_type:  'team' | 'user'
+  target_id?:   string
+  target_name?: string
+}
+
+export interface UpdateFieldParams {
+  field: string
+  value: string | number | boolean
+}
+
+export interface CallWebhookParams {
+  url:               string
+  method:            'GET' | 'POST' | 'PUT'
+  headers?:          Record<string, string>
+  payload_template?: string
+}
+
+// ── Conditions ────────────────────────────────────────────────────────────────
+
+export type ConditionOperator =
+  | 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte'
+  | 'in' | 'not_in' | 'contains'
+  | 'is_null' | 'is_not_null'
+
+export interface ConditionDef {
+  field:    string
+  operator: ConditionOperator
+  value?:   unknown
+}
+
+// ── Action config ─────────────────────────────────────────────────────────────
 
 export interface WorkflowActionConfig {
-  type:   WorkflowActionType
-  params: Record<string, string>
+  type:              WorkflowActionType
+  params:            Record<string, unknown>
+  conditions?:       ConditionDef[]
+  conditions_logic?: 'AND' | 'OR'
 }
+
+// ── Action context ─────────────────────────────────────────────────────────────
+// Passed by callers so that packages/workflow never imports from apps/api.
+
+export interface ActionContext {
+  userId:       string
+  notes?:       string
+  entityData:   Record<string, unknown>      // entity properties for template/condition eval
+  createEntity?: (type: string, data: Record<string, unknown>) => Promise<string>
+  assignTo?:    (entityId: string, targetType: string, targetId: string) => Promise<void>
+  updateField?: (entityId: string, field: string, value: unknown) => Promise<void>
+  publishEvent?: (type: string, payload: Record<string, unknown>) => Promise<void>
+}
+
+// ── Step / Transition / Definition ────────────────────────────────────────────
 
 export interface WorkflowStepDef {
   id:           string

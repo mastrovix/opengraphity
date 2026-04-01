@@ -162,6 +162,7 @@ export function buildBaseSDL(): string {
       stepName:     String!
       label:        String!
       enterActions: String
+      exitActions:  String
     ): WorkflowStep!
 
     updateWorkflowTransition(

@@ -398,6 +398,34 @@
     "save":         "Save",
     "cancel":       "Cancel"
   },
+  "workflow": {
+    "addAction":    "Add action",
+    "removeAction": "Remove",
+    "actionType":   "Action type",
+    "params":       "Parameters",
+    "help": {
+      "schedule_job": "After the specified time, the job will be executed automatically (e.g. auto_close closes the incident).",
+      "create_entity": "Creates a new entity (incident, problem, change) linked to the current one.",
+      "assign_to":     "Assigns the entity to a team or user by ID or template.",
+      "update_field":  "Updates a field on the entity (severity, priority, status, description, category).",
+      "call_webhook":  "Calls an external HTTPS webhook with a JSON payload."
+    },
+    "actions": {
+      "sla_start":     "Start SLA timer",
+      "sla_stop":      "Stop SLA timer",
+      "schedule_job":  "Schedule automatic job",
+      "cancel_job":    "Cancel scheduled job",
+      "notify_rule":   "Notification rule",
+      "create_entity": "Create entity",
+      "assign_to":     "Assign to",
+      "update_field":  "Update field",
+      "call_webhook":  "Call webhook",
+      "sla_response":  "response",
+      "sla_resolve":   "resolution",
+      "auto_close":    "auto-close",
+      "after":         "after"
+    }
+  },
   "notification": {
     "incident": {
       "created":     { "title": "New Incident" },

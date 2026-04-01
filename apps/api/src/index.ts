@@ -4,6 +4,7 @@ import { createSLAEngine } from '@opengraphity/sla'
 import { closeConnection } from '@opengraphity/events'
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
+import { startWorkflowJobWorker } from './jobs/workflowJobWorker.js'
 
 async function main() {
   const httpServer = await startServer()
@@ -17,6 +18,9 @@ async function main() {
 
   // Start anomaly scanner (BullMQ, every 1h)
   startAnomalyScanner()
+
+  // Start workflow job worker (BullMQ, processes auto_close and other scheduled jobs)
+  startWorkflowJobWorker()
 
   console.log('[api] All consumers started')
 

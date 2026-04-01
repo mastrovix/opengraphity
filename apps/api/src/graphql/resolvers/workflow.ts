@@ -1,9 +1,17 @@
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
+import type { ActionContext } from '@opengraphity/workflow'
 import { publish } from '@opengraphity/events'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import * as incidentService from '../../services/incidentService.js'
+
+// Safe label map — prevents Cypher injection when creating entities dynamically
+const ENTITY_LABELS: Record<string, string> = {
+  incident: 'Incident',
+  problem:  'Problem',
+  change:   'Change',
+}
 
 function mapWI(wi: Record<string, unknown>) {
   return {
@@ -279,7 +287,7 @@ async function workflowDefinitions(
 
 async function updateWorkflowStep(
   _: unknown,
-  { definitionId, stepName, label, enterActions }: { definitionId: string; stepName: string; label: string; enterActions?: string | null },
+  { definitionId, stepName, label, enterActions, exitActions }: { definitionId: string; stepName: string; label: string; enterActions?: string | null; exitActions?: string | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -289,9 +297,10 @@ async function updateWorkflowStep(
         MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName, tenant_id: $tenantId})
         SET s.label        = $label,
             s.updated_at   = $now,
-            s.enter_actions = CASE WHEN $enterActions IS NOT NULL THEN $enterActions ELSE s.enter_actions END
+            s.enter_actions = CASE WHEN $enterActions IS NOT NULL THEN $enterActions ELSE s.enter_actions END,
+            s.exit_actions  = CASE WHEN $exitActions  IS NOT NULL THEN $exitActions  ELSE s.exit_actions  END
         RETURN s
-      `, { definitionId, stepName, tenantId: ctx.tenantId, label, enterActions: enterActions ?? null, now }),
+      `, { definitionId, stepName, tenantId: ctx.tenantId, label, enterActions: enterActions ?? null, exitActions: exitActions ?? null, now }),
     )
     if (!result.records.length) throw new Error('WorkflowStep non trovato')
     const s = result.records[0].get('s').properties as Record<string, unknown>
@@ -446,6 +455,75 @@ async function executeWorkflowTransition(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
+    // Pre-fetch entity data for template/condition evaluation in actions
+    const entityDataResult = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (wi:WorkflowInstance {id: $instanceId})
+        MATCH (entity {id: wi.entity_id, tenant_id: wi.tenant_id})
+        RETURN properties(entity) AS entityData
+      `, { instanceId }),
+    )
+    const entityData: Record<string, unknown> =
+      entityDataResult.records.length > 0
+        ? (entityDataResult.records[0].get('entityData') as Record<string, unknown>)
+        : {}
+
+    const actionCtx: ActionContext = {
+      userId:     ctx.userId,
+      notes,
+      entityData,
+
+      createEntity: async (type, data) => {
+        const label = ENTITY_LABELS[type]
+        if (!label) throw new Error(`Unknown entity type: ${type}`)
+        const id = uuidv4()
+        const now = new Date().toISOString()
+        await session.executeWrite((tx) =>
+          tx.run(
+            `CREATE (e:${label} $props) RETURN e.id AS id`,
+            { props: { id, created_at: now, updated_at: now, ...data } },
+          ),
+        )
+        return id
+      },
+
+      assignTo: async (entityId, targetType, targetId) => {
+        const relType = targetType === 'team' ? 'ASSIGNED_TO_TEAM' : 'ASSIGNED_TO'
+        const targetLabel = targetType === 'team' ? 'Team' : 'User'
+        await session.executeWrite((tx) =>
+          tx.run(
+            `MATCH (e {id: $entityId, tenant_id: $tenantId})
+             MATCH (t:${targetLabel} {id: $targetId})
+             MERGE (e)-[:${relType}]->(t)`,
+            { entityId, tenantId: ctx.tenantId, targetId },
+          ),
+        )
+      },
+
+      updateField: async (entityId, field, value) => {
+        const now = new Date().toISOString()
+        await session.executeWrite((tx) =>
+          tx.run(
+            `MATCH (e {id: $entityId, tenant_id: $tenantId})
+             SET e[$field] = $value, e.updated_at = $now`,
+            { entityId, tenantId: ctx.tenantId, field, value, now },
+          ),
+        )
+      },
+
+      publishEvent: async (type, payload) => {
+        await publish({
+          id:             uuidv4(),
+          type,
+          tenant_id:      ctx.tenantId,
+          timestamp:      new Date().toISOString(),
+          correlation_id: uuidv4(),
+          actor_id:       ctx.userId,
+          payload,
+        })
+      },
+    }
+
     const result = await workflowEngine.transition(
       session,
       {
@@ -455,7 +533,7 @@ async function executeWorkflowTransition(
         triggerType: 'manual',
         notes,
       },
-      { userId: ctx.userId },
+      actionCtx,
     )
 
     if (result.success) {

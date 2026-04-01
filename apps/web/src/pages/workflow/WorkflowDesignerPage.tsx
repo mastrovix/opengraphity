@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { ArrowLeft, Pencil, Settings2, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   ReactFlow,
   Background,
@@ -345,14 +346,32 @@ interface StepPanelProps {
 }
 
 function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
-  const [activeTab, setActiveTab]   = useState<'props' | 'notify'>('props')
-  const [label,     setLabel]       = useState(step.label)
+  const { t } = useTranslation()
+  const [activeTab, setActiveTab] = useState<'props' | 'notify'>('props')
+  const [label, setLabel]         = useState(step.label)
 
-  // Parse enter_actions, separating notify_rule from the rest
-  const allEnterActions: AnyAction[] = step.enterActions ? (JSON.parse(step.enterActions) as AnyAction[]) : []
-  const exitActions: AnyAction[]     = step.exitActions  ? (JSON.parse(step.exitActions)  as AnyAction[]) : []
+  // Parse initial actions (computed once from props — stable until save)
+  const allEnterActions: AnyAction[]  = step.enterActions ? (JSON.parse(step.enterActions) as AnyAction[]) : []
+  const initExitActions: AnyAction[]  = step.exitActions  ? (JSON.parse(step.exitActions)  as AnyAction[]) : []
   const existingNR = allEnterActions.find((a) => a.type === 'notify_rule') as NotifyRuleAction | undefined
-  const otherEnterActions = allEnterActions.filter((a) => a.type !== 'notify_rule')
+  const initEnterActions = allEnterActions.filter((a) => a.type !== 'notify_rule')
+
+  // Editable actions
+  const [editableEnterActions, setEditableEnterActions] = useState<AnyAction[]>(initEnterActions)
+  const [editableExitActions,  setEditableExitActions]  = useState<AnyAction[]>(initExitActions)
+
+  // Inline "add action" form
+  const [addingFor,       setAddingFor]       = useState<'enter' | 'exit' | null>(null)
+  const [newActionType,   setNewActionType]   = useState('sla_start')
+  const [newActionParams, setNewActionParams] = useState<Record<string, string>>({})
+
+  // Inline "edit action" form (one at a time)
+  const [editingAction, setEditingAction] = useState<{
+    list:   'enter' | 'exit'
+    index:  number
+    type:   string
+    params: Record<string, string>
+  } | null>(null)
 
   const [notifyEnabled,  setNotifyEnabled]  = useState(!!existingNR)
   const [notifyTitleKey, setNotifyTitleKey] = useState(existingNR?.params.title_key  ?? '')
@@ -363,13 +382,17 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
   const [save, { loading }] = useMutation<{ updateWorkflowStep: WFStep }>(UPDATE_WORKFLOW_STEP, {
     onCompleted: (data) => {
       toast.success('Step aggiornato')
-      onSaved({ label, enterActions: data.updateWorkflowStep?.enterActions ?? null })
+      onSaved({
+        label,
+        enterActions: data.updateWorkflowStep?.enterActions ?? null,
+        exitActions:  data.updateWorkflowStep?.exitActions  ?? null,
+      })
     },
     onError: (e) => toast.error(e.message),
   })
 
   const buildEnterActions = (): string | null => {
-    const actions: AnyAction[] = [...otherEnterActions]
+    const actions: AnyAction[] = [...editableEnterActions]
     if (notifyEnabled && notifyTitleKey.trim()) {
       actions.push({
         type: 'notify_rule',
@@ -384,8 +407,13 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
     return actions.length > 0 ? JSON.stringify(actions) : null
   }
 
-  const propsUnchanged   = label === step.label
-  const notifyUnchanged  = notifyEnabled === !!existingNR
+  const buildExitActions = (): string | null =>
+    editableExitActions.length > 0 ? JSON.stringify(editableExitActions) : null
+
+  const enterActionsChanged = JSON.stringify(editableEnterActions) !== JSON.stringify(initEnterActions)
+  const exitActionsChanged  = JSON.stringify(editableExitActions)  !== JSON.stringify(initExitActions)
+  const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged
+  const notifyUnchanged     = notifyEnabled === !!existingNR
     && notifyTitleKey === (existingNR?.params.title_key  ?? '')
     && notifySeverity === (existingNR?.params.severity   ?? 'info')
     && JSON.stringify(notifyChannels) === JSON.stringify(existingNR?.params.channels ?? ['in_app'])
@@ -393,8 +421,24 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
   const saveDisabled = loading || (propsUnchanged && notifyUnchanged)
 
   const handleSave = () => {
-    const enterActionsJson = buildEnterActions()
-    save({ variables: { definitionId, stepName: step.name, label, enterActions: enterActionsJson } })
+    save({
+      variables: {
+        definitionId,
+        stepName:     step.name,
+        label,
+        enterActions: buildEnterActions(),
+        exitActions:  buildExitActions(),
+      },
+    })
+  }
+
+  const handleConfirmAdd = (forKey: 'enter' | 'exit') => {
+    const action: AnyAction = { type: newActionType, params: buildActionParams(newActionType, newActionParams) }
+    if (forKey === 'enter') setEditableEnterActions((prev) => [...prev, action])
+    else                    setEditableExitActions((prev)  => [...prev, action])
+    setAddingFor(null)
+    setNewActionType('sla_start')
+    setNewActionParams({})
   }
 
   const toggleChannel = (ch: string) => {
@@ -404,19 +448,257 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
   }
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding:         '6px 14px',
-    fontSize:        12,
-    fontWeight:      active ? 700 : 400,
-    color:           active ? ACCENT_COLOR : 'var(--color-slate-light)',
-    borderBottom:    active ? `2px solid ${ACCENT_COLOR}` : '2px solid transparent',
-    cursor:          'pointer',
-    background:      'none',
-    border:          'none',
+    padding:           '6px 14px',
+    fontSize:          12,
+    fontWeight:        active ? 700 : 400,
+    color:             active ? ACCENT_COLOR : 'var(--color-slate-light)',
+    cursor:            'pointer',
+    background:        'none',
+    border:            'none',
     borderBottomWidth: 2,
     borderBottomStyle: 'solid' as const,
     borderBottomColor: active ? ACCENT_COLOR : 'transparent',
-    transition:      'color 150ms',
+    transition:        'color 150ms',
   })
+
+  // ── Shared param fields renderer (used by both add and edit forms) ────────────
+  const renderParamFields = (
+    type: string,
+    params: Record<string, string>,
+    setParams: (updater: (p: Record<string, string>) => Record<string, string>) => void,
+  ) => {
+    const labelStyle: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
+    const field = (key: string, label: string, placeholder = '', inputType = 'text') => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={labelStyle}>{label}</span>
+        <input type={inputType} value={params[key] ?? ''} onChange={(e) => setParams((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} style={inputStyle} />
+      </div>
+    )
+
+    if (type === 'sla_start' || type === 'sla_stop') return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={labelStyle}>sla_type</span>
+        <select value={params['sla_type'] ?? 'response'} onChange={(e) => setParams((p) => ({ ...p, sla_type: e.target.value }))} style={inputStyle}>
+          <option value="response">response</option>
+          <option value="resolve">resolve</option>
+        </select>
+      </div>
+    )
+    if (type === 'schedule_job') return (
+      <>
+        {field('job', 'job', 'auto_close')}
+        {field('delay_hours', 'delay_hours', '0', 'number')}
+      </>
+    )
+    if (type === 'cancel_job') return field('job', 'job', 'auto_close')
+
+    if (type === 'create_entity') return (
+      <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={labelStyle}>entity_type</span>
+          <select value={params['entity_type'] ?? 'incident'} onChange={(e) => setParams((p) => ({ ...p, entity_type: e.target.value }))} style={inputStyle}>
+            <option value="incident">incident</option>
+            <option value="problem">problem</option>
+            <option value="change">change</option>
+          </select>
+        </div>
+        {field('title_template', 'title_template', '{title} — escalated')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={labelStyle}>link_to_current</span>
+          <select value={params['link_to_current'] ?? 'true'} onChange={(e) => setParams((p) => ({ ...p, link_to_current: e.target.value }))} style={inputStyle}>
+            <option value="true">true</option>
+            <option value="false">false</option>
+          </select>
+        </div>
+        {field('copy_fields', 'copy_fields (comma-sep)', 'severity,priority')}
+      </>
+    )
+
+    if (type === 'assign_to') return (
+      <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={labelStyle}>target_type</span>
+          <select value={params['target_type'] ?? 'team'} onChange={(e) => setParams((p) => ({ ...p, target_type: e.target.value }))} style={inputStyle}>
+            <option value="team">team</option>
+            <option value="user">user</option>
+          </select>
+        </div>
+        {field('target_id', 'target_id', 'UUID of team/user')}
+        {field('target_name', 'target_name (template)', '{assigned_team}')}
+      </>
+    )
+
+    if (type === 'update_field') return (
+      <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={labelStyle}>field</span>
+          <select value={params['field'] ?? 'severity'} onChange={(e) => setParams((p) => ({ ...p, field: e.target.value }))} style={inputStyle}>
+            <option value="severity">severity</option>
+            <option value="priority">priority</option>
+            <option value="status">status</option>
+            <option value="description">description</option>
+            <option value="category">category</option>
+          </select>
+        </div>
+        {field('value', 'value', 'critical or {field}')}
+      </>
+    )
+
+    if (type === 'call_webhook') return (
+      <>
+        {field('url', 'url', 'https://example.com/hook')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={labelStyle}>method</span>
+          <select value={params['method'] ?? 'POST'} onChange={(e) => setParams((p) => ({ ...p, method: e.target.value }))} style={inputStyle}>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="GET">GET</option>
+          </select>
+        </div>
+        {field('payload_template', 'payload_template (JSON)', '{}')}
+      </>
+    )
+
+    return null
+  }
+
+  const cancelBtnStyle: React.CSSProperties = {
+    flex: 1, padding: '6px 0', backgroundColor: '#f1f5f9', border: '1px solid #e2e6f0',
+    borderRadius: 6, fontSize: 12, cursor: 'pointer', color: 'var(--color-slate)',
+  }
+
+  const renderActionList = (
+    actions: AnyAction[],
+    onRemove: (i: number) => void,
+    forKey: 'enter' | 'exit',
+  ) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {actions.map((a, i) => {
+        const isEditing = editingAction?.list === forKey && editingAction?.index === i
+        return (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Badge row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+              <button
+                onClick={() => {
+                  if (isEditing) {
+                    setEditingAction(null)
+                  } else {
+                    setAddingFor(null)
+                    setEditingAction({ list: forKey, index: i, type: a.type, params: paramsToRaw(a.type, a.params) })
+                  }
+                }}
+                style={{
+                  background:   'none',
+                  border:       isEditing ? '1px solid #06b6d4' : '1px solid transparent',
+                  borderRadius: 5,
+                  padding:      1,
+                  cursor:       'pointer',
+                  display:      'flex',
+                  transition:   'border-color 150ms',
+                }}
+              >
+                <ActionBadge type={a.type} params={a.params} />
+              </button>
+              <button
+                onClick={() => { setEditingAction(null); onRemove(i) }}
+                title={t('workflow.removeAction')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 2, flexShrink: 0, display: 'flex' }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+
+            {/* Inline edit form */}
+            {isEditing && editingAction && (
+              <div style={{ border: '1px solid #06b6d4', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: '#ecfeff' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#0891b2' }}>
+                  {actionLabel(t, a.type, a.params)}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {t('workflow.actionType')}
+                  </span>
+                  <select
+                    value={editingAction.type}
+                    onChange={(e) => setEditingAction((prev) => prev ? { ...prev, type: e.target.value, params: {} } : null)}
+                    style={inputStyle}
+                  >
+                    <option value="sla_start">sla_start</option>
+                    <option value="sla_stop">sla_stop</option>
+                    <option value="schedule_job">schedule_job</option>
+                    <option value="cancel_job">cancel_job</option>
+                    <option value="create_entity">create_entity</option>
+                    <option value="assign_to">assign_to</option>
+                    <option value="update_field">update_field</option>
+                    <option value="call_webhook">call_webhook</option>
+                  </select>
+                </div>
+                {renderParamFields(
+                  editingAction.type,
+                  editingAction.params,
+                  (updater) => setEditingAction((prev) => prev ? { ...prev, params: updater(prev.params) } : null),
+                )}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={() => {
+                      const updated: AnyAction = { type: editingAction.type, params: buildActionParams(editingAction.type, editingAction.params) }
+                      if (forKey === 'enter') setEditableEnterActions((prev) => prev.map((x, idx) => idx === i ? updated : x))
+                      else                    setEditableExitActions((prev)  => prev.map((x, idx) => idx === i ? updated : x))
+                      setEditingAction(null)
+                    }}
+                    style={{ ...saveButtonStyle(false), flex: 1, padding: '6px 0' }}
+                  >
+                    Aggiorna
+                  </button>
+                  <button onClick={() => setEditingAction(null)} style={cancelBtnStyle}>
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Add form */}
+      {addingFor === forKey ? (
+        <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: '#f8fafc' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {t('workflow.actionType')}
+            </span>
+            <select value={newActionType} onChange={(e) => { setNewActionType(e.target.value); setNewActionParams({}) }} style={inputStyle}>
+              <option value="sla_start">sla_start</option>
+              <option value="sla_stop">sla_stop</option>
+              <option value="schedule_job">schedule_job</option>
+              <option value="cancel_job">cancel_job</option>
+              <option value="create_entity">create_entity</option>
+              <option value="assign_to">assign_to</option>
+              <option value="update_field">update_field</option>
+              <option value="call_webhook">call_webhook</option>
+            </select>
+          </div>
+          {renderParamFields(newActionType, newActionParams, (updater) => setNewActionParams((p) => updater(p)))}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(false), flex: 1, padding: '6px 0' }}>
+              {t('common.confirm')}
+            </button>
+            <button onClick={() => { setAddingFor(null); setNewActionParams({}) }} style={cancelBtnStyle}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => { setEditingAction(null); setAddingFor(forKey); setNewActionType('sla_start'); setNewActionParams({}) }}
+          style={{ padding: '5px 10px', backgroundColor: 'transparent', border: `1px dashed ${ACCENT_COLOR}`, borderRadius: 6, fontSize: 12, color: ACCENT_COLOR, cursor: 'pointer', textAlign: 'left' }}
+        >
+          + {t('workflow.addAction')}
+        </button>
+      )}
+    </div>
+  )
 
   return (
     <div style={panelStyle}>
@@ -442,21 +724,21 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
             <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.type}</code>
           </PanelField>
 
-          {otherEnterActions.length > 0 && (
-            <PanelField label="Enter Actions">
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {otherEnterActions.map((a, i) => <ActionBadge key={i} type={a.type} />)}
-              </div>
-            </PanelField>
-          )}
+          <PanelField label="Enter Actions">
+            {renderActionList(
+              editableEnterActions,
+              (i) => setEditableEnterActions((prev) => prev.filter((_, idx) => idx !== i)),
+              'enter',
+            )}
+          </PanelField>
 
-          {exitActions.length > 0 && (
-            <PanelField label="Exit Actions">
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {exitActions.map((a, i) => <ActionBadge key={i} type={a.type} />)}
-              </div>
-            </PanelField>
-          )}
+          <PanelField label="Exit Actions">
+            {renderActionList(
+              editableExitActions,
+              (i) => setEditableExitActions((prev) => prev.filter((_, idx) => idx !== i)),
+              'exit',
+            )}
+          </PanelField>
         </>
       )}
 
@@ -713,17 +995,162 @@ function PanelField({ label, children }: { label: string; children: React.ReactN
   )
 }
 
-function ActionBadge({ type }: { type: string }) {
+// ── Action descriptions ───────────────────────────────────────────────────────
+
+const ACTION_DESCRIPTIONS: Record<string, string> = {
+  sla_start:    'Avvia timer SLA',
+  sla_stop:     'Ferma timer SLA',
+  schedule_job: 'Pianifica job automatico',
+  cancel_job:   'Annulla job pianificato',
+  notify_rule:  'Regola notifica',
+}
+void ACTION_DESCRIPTIONS // used as fallback reference; i18n is primary
+
+function actionLabel(t: (key: string) => string, type: string, params?: Record<string, unknown>): string {
+  const base = t(`workflow.actions.${type}`)
+
+  if (type === 'sla_start' || type === 'sla_stop') {
+    const slaType = params?.['sla_type'] as string | undefined
+    if (slaType === 'response') return `${base} ${t('workflow.actions.sla_response')}`
+    if (slaType === 'resolve')  return `${base} ${t('workflow.actions.sla_resolve')}`
+    return base
+  }
+
+  if (type === 'schedule_job') {
+    const job   = params?.['job']         as string | undefined
+    const hours = params?.['delay_hours'] as number | string | undefined
+    if (job) {
+      const raw      = t(`workflow.actions.${job}`)
+      const display  = raw !== `workflow.actions.${job}` ? raw : job
+      const verb     = base.split(' ')[0]
+      return hours
+        ? `${verb} ${display} ${t('workflow.actions.after')} ${hours}h`
+        : `${verb} ${display}`
+    }
+    return base
+  }
+
+  if (type === 'cancel_job') {
+    const job = params?.['job'] as string | undefined
+    if (job) {
+      const raw     = t(`workflow.actions.${job}`)
+      const display = raw !== `workflow.actions.${job}` ? raw : job
+      return `${base.split(' ')[0]} ${display}`
+    }
+    return base
+  }
+
+  if (type === 'create_entity') {
+    const et = params?.['entity_type'] as string | undefined
+    return et ? `${base}: ${et}` : base
+  }
+
+  if (type === 'assign_to') {
+    const tt = params?.['target_type'] as string | undefined
+    const tid = (params?.['target_id'] ?? params?.['target_name']) as string | undefined
+    return tid ? `${base} → ${tt ?? ''} ${tid.slice(0, 8)}` : base
+  }
+
+  if (type === 'update_field') {
+    const f = params?.['field'] as string | undefined
+    const v = params?.['value'] as string | undefined
+    return f ? `${base}: ${f}=${v ?? '?'}` : base
+  }
+
+  if (type === 'call_webhook') {
+    const url = params?.['url'] as string | undefined
+    if (url) {
+      try { return `${base}: ${new URL(url).hostname}` } catch { return base }
+    }
+    return base
+  }
+
+  return base
+}
+
+function paramsToRaw(type: string, params?: Record<string, unknown>): Record<string, string> {
+  if (!params) return {}
+  if (type === 'sla_start' || type === 'sla_stop') return { sla_type: String(params['sla_type'] ?? 'response') }
+  if (type === 'schedule_job') return { job: String(params['job'] ?? ''), delay_hours: String(params['delay_hours'] ?? '') }
+  if (type === 'cancel_job')   return { job: String(params['job'] ?? '') }
+  if (type === 'create_entity') return {
+    entity_type:     String(params['entity_type']     ?? 'incident'),
+    title_template:  String(params['title_template']  ?? ''),
+    link_to_current: String(params['link_to_current'] ?? 'true'),
+    copy_fields:     Array.isArray(params['copy_fields']) ? (params['copy_fields'] as string[]).join(',') : String(params['copy_fields'] ?? ''),
+  }
+  if (type === 'assign_to') return {
+    target_type: String(params['target_type'] ?? 'team'),
+    target_id:   String(params['target_id']   ?? ''),
+    target_name: String(params['target_name'] ?? ''),
+  }
+  if (type === 'update_field') return {
+    field: String(params['field'] ?? 'severity'),
+    value: String(params['value'] ?? ''),
+  }
+  if (type === 'call_webhook') return {
+    url:              String(params['url']              ?? ''),
+    method:           String(params['method']           ?? 'POST'),
+    payload_template: String(params['payload_template'] ?? ''),
+  }
+  return {}
+}
+
+function buildActionParams(type: string, raw: Record<string, string>): Record<string, unknown> {
+  if (type === 'sla_start' || type === 'sla_stop') {
+    return { sla_type: raw['sla_type'] ?? 'response' }
+  }
+  if (type === 'schedule_job') {
+    return { job: raw['job'] ?? '', delay_hours: raw['delay_hours'] ? Number(raw['delay_hours']) : 0 }
+  }
+  if (type === 'cancel_job') {
+    return { job: raw['job'] ?? '' }
+  }
+  if (type === 'create_entity') {
+    const copyFields = raw['copy_fields'] ? raw['copy_fields'].split(',').map((s) => s.trim()).filter(Boolean) : []
+    return {
+      entity_type:     raw['entity_type']    ?? 'incident',
+      title_template:  raw['title_template'] ?? '',
+      link_to_current: raw['link_to_current'] !== 'false',
+      ...(copyFields.length > 0 ? { copy_fields: copyFields } : {}),
+    }
+  }
+  if (type === 'assign_to') {
+    return {
+      target_type: raw['target_type'] ?? 'team',
+      ...(raw['target_id']   ? { target_id:   raw['target_id']   } : {}),
+      ...(raw['target_name'] ? { target_name: raw['target_name'] } : {}),
+    }
+  }
+  if (type === 'update_field') {
+    return { field: raw['field'] ?? 'severity', value: raw['value'] ?? '' }
+  }
+  if (type === 'call_webhook') {
+    return {
+      url:              raw['url']              ?? '',
+      method:           raw['method']           ?? 'POST',
+      payload_template: raw['payload_template'] ?? '',
+    }
+  }
+  return {}
+}
+
+function ActionBadge({ type, params }: { type: string; params?: Record<string, unknown> }) {
+  const { t } = useTranslation()
   return (
-    <span style={{
-      fontSize:        10,
-      padding:         '2px 6px',
-      borderRadius:    4,
-      backgroundColor: colors.brandLight,
-      color:           colors.brand,
-      fontWeight:      500,
-    }}>
-      {type}
+    <span
+      title={type}
+      style={{
+        fontSize:        10,
+        padding:         '2px 6px',
+        borderRadius:    4,
+        backgroundColor: colors.brandLight,
+        color:           colors.brand,
+        fontWeight:      500,
+        cursor:          'default',
+      }}
+    >
+      {actionLabel(t, type, params)}
     </span>
   )
 }

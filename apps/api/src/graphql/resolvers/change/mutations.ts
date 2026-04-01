@@ -141,7 +141,7 @@ export async function createChange(
           instanceId, toStepName: 'approved',
           triggeredBy: 'system', triggerType: 'automatic',
           notes: 'Standard change — auto-approvato',
-        }, { userId: ctx.userId })
+        }, { userId: ctx.userId, entityData: {} })
       }
     }
   }, true)
@@ -994,7 +994,7 @@ export async function executeChangeTransition(
       triggeredBy: ctx.userId,
       triggerType: 'manual',
       notes:       args.notes,
-    }, { userId: ctx.userId })
+    }, { userId: ctx.userId, entityData: {} })
 
     // Publish change.approved when transition reaches 'scheduled'
     if (result.success && args.toStep === 'scheduled') {

@@ -355,7 +355,7 @@ async function executeProblemTransition(
     const result = await workflowEngine.transition(
       session,
       { instanceId, toStepName: args.toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.notes ?? undefined },
-      { userId: ctx.userId },
+      { userId: ctx.userId, entityData: {} },
     )
 
     if (result.success) {

@@ -6,6 +6,7 @@ import type {
   WorkflowActionConfig,
   TransitionInput,
   TransitionResult,
+  ActionContext,
 } from './types.js'
 import { runAction } from './actions.js'
 
@@ -104,7 +105,7 @@ export class WorkflowEngine {
   async transition(
     session: Session,
     input: TransitionInput,
-    context: { userId: string },
+    context: ActionContext,
   ): Promise<TransitionResult> {
     const now = new Date().toISOString()
 
@@ -258,7 +259,7 @@ export class WorkflowEngine {
 
       for (const action of [...exitActions, ...enterActions]) {
         try {
-          await runAction(action, instance, { userId: context.userId, notes: input.notes })
+          await runAction(action, instance, { ...context, notes: context.notes ?? input.notes })
           actionsRun.push(action.type)
         } catch (e) {
           workflowLogger.error({ err: e, actionType: action.type }, 'Workflow action failed')

@@ -177,9 +177,9 @@ export const ADD_CI_DEPENDENCY = gql`
 `
 
 export const UPDATE_WORKFLOW_STEP = gql`
-  mutation UpdateWorkflowStep($definitionId: ID!, $stepName: String!, $label: String!, $enterActions: String) {
-    updateWorkflowStep(definitionId: $definitionId, stepName: $stepName, label: $label, enterActions: $enterActions) {
-      id name label type enterActions
+  mutation UpdateWorkflowStep($definitionId: ID!, $stepName: String!, $label: String!, $enterActions: String, $exitActions: String) {
+    updateWorkflowStep(definitionId: $definitionId, stepName: $stepName, label: $label, enterActions: $enterActions, exitActions: $exitActions) {
+      id name label type enterActions exitActions
     }
   }
 `

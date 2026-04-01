@@ -211,7 +211,7 @@ export async function assignIncidentToTeam(
         await workflowEngine.transition(
           session,
           { instanceId, toStepName: 'assigned', triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes },
-          { userId: ctx.userId },
+          { userId: ctx.userId, entityData: {} },
         )
       } else {
         await session.executeWrite((tx) => tx.run(`
@@ -302,7 +302,7 @@ export async function assignIncidentToUser(
         await workflowEngine.transition(
           session,
           { instanceId, toStepName: 'in_progress', triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato a ${userName}` },
-          { userId: ctx.userId },
+          { userId: ctx.userId, entityData: {} },
         )
       } else {
         await session.executeWrite((tx) => tx.run(`
