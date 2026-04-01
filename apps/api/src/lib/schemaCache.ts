@@ -1,6 +1,6 @@
 import { makeExecutableSchema } from '@graphql-tools/schema'
 import type { GraphQLSchema } from 'graphql'
-import { loadMetamodel, generateSDL } from '@opengraphity/schema-generator'
+import { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL } from '@opengraphity/schema-generator'
 import { buildBaseSDL } from '../graphql/schema-base.js'
 import { buildResolvers } from '../graphql/resolvers/index.js'
 import { logger } from './logger.js'
@@ -33,21 +33,27 @@ export async function getSchemaForTenant(tenantId: string): Promise<GraphQLSchem
 export async function regenerateSchema(tenantId: string): Promise<GraphQLSchema> {
   logger.info({ tenantId }, 'Rigenerando schema GraphQL')
 
-  const types = await loadMetamodel(tenantId)
-  registerCITypes(types)
-  const dynamicSDL = generateSDL(types)
-  const baseSDL = buildBaseSDL()
-  const resolvers = buildResolvers(types)
+  const [ciTypes, itilTypes] = await Promise.all([
+    loadMetamodel(tenantId),
+    loadITILTypes(tenantId),
+  ])
+  registerCITypes(ciTypes)
+  const dynamicSDL    = generateSDL(ciTypes)
+  const itilEnumsSDL  = generateITILEnumsSDL(itilTypes)
+  const baseSDL       = buildBaseSDL()
+  const resolvers     = buildResolvers(ciTypes)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const schema = makeExecutableSchema({
-    typeDefs: [baseSDL, dynamicSDL],
+    typeDefs: itilEnumsSDL
+      ? [baseSDL, dynamicSDL, itilEnumsSDL]
+      : [baseSDL, dynamicSDL],
     resolvers: resolvers as any,
   })
 
   cache.set(tenantId, { schema, generatedAt: Date.now(), tenantId })
 
-  logger.info({ tenantId, types: types.length }, 'Schema rigenerato')
+  logger.info({ tenantId, ciTypes: ciTypes.length, itilTypes: itilTypes.length }, 'Schema rigenerato')
 
   return schema
 }

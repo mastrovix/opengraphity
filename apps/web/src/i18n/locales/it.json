@@ -50,6 +50,7 @@
     "topologyMap": "Mappa Topologica",
     "configuration": "Configurazione",
     "ciTypeDesigner": "CI Type Designer",
+    "itilDesigner": "ITIL Designer",
     "workflowDesigner": "Workflow Designer",
     "profile": "Profilo",
     "logs": "Log",
@@ -457,5 +458,21 @@
       "resolved":      { "title": "Problem Risolto" },
       "closed":        { "title": "Problem Chiuso" }
     }
+  },
+  "itilDesigner": {
+    "title":           "ITIL Type Designer",
+    "subtitle":        "Configura i campi delle entità ITIL",
+    "systemField":     "Campo di sistema",
+    "customField":     "Campo personalizzato",
+    "addField":        "Aggiungi campo",
+    "addEnumValue":    "Aggiungi valore",
+    "removeEnumValue": "Rimuovi valore",
+    "fieldName":       "Nome campo",
+    "fieldLabel":      "Etichetta",
+    "fieldType":       "Tipo",
+    "enumValues":      "Valori enum",
+    "required":        "Obbligatorio",
+    "save":            "Salva",
+    "saved":           "Modifiche salvate"
   }
 }

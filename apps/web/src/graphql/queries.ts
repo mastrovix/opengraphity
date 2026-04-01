@@ -375,6 +375,18 @@ export const GET_CI_TYPES = gql`
   }
 `
 
+export const GET_ITIL_TYPES = gql`
+  query GetITILTypes {
+    itilTypes {
+      id name label active
+      fields {
+        id name label fieldType
+        required enumValues order isSystem
+      }
+    }
+  }
+`
+
 export const GET_REPORT_TEMPLATES = gql`
   query GetReportTemplates {
     reportTemplates {

@@ -682,3 +682,40 @@ export const DELETE_NOTIFICATION_RULE = gql`
     deleteNotificationRule(id: $id)
   }
 `
+
+const ITIL_TYPE_FRAGMENT = gql`
+  fragment ITILTypeFields on CITypeDefinition {
+    id name label active
+    fields {
+      id name label fieldType
+      required enumValues order isSystem
+    }
+  }
+`
+
+export const CREATE_ITIL_FIELD = gql`
+  ${ITIL_TYPE_FRAGMENT}
+  mutation CreateITILField($typeId: ID!, $input: ITILFieldInput!) {
+    createITILField(typeId: $typeId, input: $input) {
+      ...ITILTypeFields
+    }
+  }
+`
+
+export const UPDATE_ITIL_FIELD = gql`
+  ${ITIL_TYPE_FRAGMENT}
+  mutation UpdateITILField($typeId: ID!, $fieldId: ID!, $input: ITILFieldInput!) {
+    updateITILField(typeId: $typeId, fieldId: $fieldId, input: $input) {
+      ...ITILTypeFields
+    }
+  }
+`
+
+export const DELETE_ITIL_FIELD = gql`
+  ${ITIL_TYPE_FRAGMENT}
+  mutation DeleteITILField($typeId: ID!, $fieldId: ID!) {
+    deleteITILField(typeId: $typeId, fieldId: $fieldId) {
+      ...ITILTypeFields
+    }
+  }
+`

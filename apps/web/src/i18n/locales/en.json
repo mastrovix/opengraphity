@@ -50,6 +50,7 @@
     "topologyMap": "Topology Map",
     "configuration": "Configuration",
     "ciTypeDesigner": "CI Type Designer",
+    "itilDesigner": "ITIL Designer",
     "workflowDesigner": "Workflow Designer",
     "profile": "Profile",
     "logs": "Logs",
@@ -457,5 +458,21 @@
       "resolved":      { "title": "Problem Resolved" },
       "closed":        { "title": "Problem Closed" }
     }
+  },
+  "itilDesigner": {
+    "title":           "ITIL Type Designer",
+    "subtitle":        "Configure ITIL entity fields",
+    "systemField":     "System field",
+    "customField":     "Custom field",
+    "addField":        "Add field",
+    "addEnumValue":    "Add value",
+    "removeEnumValue": "Remove value",
+    "fieldName":       "Field name",
+    "fieldLabel":      "Label",
+    "fieldType":       "Type",
+    "enumValues":      "Enum values",
+    "required":        "Required",
+    "save":            "Save",
+    "saved":           "Changes saved"
   }
 }

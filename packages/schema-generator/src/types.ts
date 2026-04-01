@@ -4,7 +4,7 @@ export interface CITypeDefinition {
   label: string
   icon: string
   color: string
-  scope: 'base' | 'tenant'
+  scope: 'base' | 'tenant' | 'itil'
   tenantId: string
   active: boolean
   neo4jLabel: string
@@ -20,7 +20,7 @@ export interface CIFieldDefinition {
   defaultValue: string | null
   enumValues: string[]
   order: number
-  scope: 'base' | 'tenant'
+  scope: 'base' | 'tenant' | 'itil'
   tenantId: string
   validationScript: string | null
   visibilityScript: string | null

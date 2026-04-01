@@ -366,6 +366,21 @@ async function provisionNeo4j(): Promise<void> {
     } else {
       console.log(`  ✓ ${ciCount} CITypeDefinition base disponibili`)
     }
+
+    // 6e. Verify ITIL CITypeDefinitions (shared, scope='itil')
+    const itilResult = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (t:CITypeDefinition)
+         WHERE t.scope = 'itil' AND t.active = true
+         RETURN count(t) AS total`,
+      ),
+    )
+    const itilCount = (itilResult.records[0]?.get('total') as { toNumber(): number })?.toNumber() ?? 0
+    if (itilCount === 0) {
+      console.warn(`  ⚠ Nessun CITypeDefinition scope='itil' trovato — esegui seed-itil-metamodel.ts`)
+    } else {
+      console.log(`  ✓ ${itilCount} CITypeDefinition ITIL disponibili`)
+    }
   } finally {
     await session.close()
   }

@@ -28,6 +28,8 @@ export function buildBaseSDL(): string {
     ciChanges(ciId: ID!): [Change!]!
     baseCIType: CITypeDefinition!
     ciTypes: [CITypeDefinition!]!
+    itilTypes: [CITypeDefinition!]!
+    itilTypeFields(typeId: ID!): [CIFieldDef!]!
 
     # Teams
     teams(filters: String): [Team!]!
@@ -226,6 +228,11 @@ export function buildBaseSDL(): string {
     # Anomaly Detection
     resolveAnomaly(id: ID!, resolutionStatus: ResolutionStatus!, note: String!): Anomaly!
     runAnomalyScanner: Boolean!
+
+    # ITIL Designer
+    createITILField(typeId: ID!, input: ITILFieldInput!): CITypeDefinition!
+    updateITILField(typeId: ID!, fieldId: ID!, input: ITILFieldInput!): CITypeDefinition!
+    deleteITILField(typeId: ID!, fieldId: ID!): CITypeDefinition!
   }
 
   # ── CMDB — interface & base types ────────────────────────────────────────────
@@ -304,43 +311,10 @@ export function buildBaseSDL(): string {
   }
 
   # ── Domain enums ─────────────────────────────────────────────────────────────
-
-  enum IncidentSeverity { low medium high critical }
-
-  enum IncidentStatus { open new assigned in_progress pending escalated resolved closed }
-
-  # Includes all workflow step names across Standard / Normal / Emergency change types
-  enum ChangeStatus {
-    draft
-    assessment
-    cab_approval
-    scheduled
-    emergency_approval
-    deployment
-    validation
-    post_review
-    completed
-    failed
-    rejected
-  }
-
-  enum ChangeType     { standard normal emergency }
-  enum ChangePriority { low medium high critical }
-
-  enum ProblemStatus {
-    new
-    under_investigation
-    change_requested
-    change_in_progress
-    deferred
-    resolved
-    closed
-    rejected
-  }
-
-  enum ProblemPriority         { low medium high critical }
-  enum ServiceRequestStatus    { open in_progress completed cancelled }
-  enum ServiceRequestPriority  { low medium high critical }
+  # NOTE: IncidentSeverity, IncidentStatus, ChangeStatus, ChangeType, ChangePriority,
+  # ProblemStatus, ProblemPriority, ServiceRequestStatus, ServiceRequestPriority
+  # are generated at runtime from the ITIL metamodel (scope: 'itil') by the schema
+  # generator. They are NOT hardcoded here — see loadITILTypes + generateITILEnumsSDL.
 
   # ── Incident ──────────────────────────────────────────────────────────────────
 
@@ -1117,6 +1091,15 @@ export function buildBaseSDL(): string {
     severityOverride: String
     channels:         [String!]
     target:           String
+  }
+
+  input ITILFieldInput {
+    name:        String!
+    label:       String!
+    fieldType:   String!
+    required:    Boolean
+    enumValues:  [String!]
+    order:       Int
   }
 
   type QueueJobCounts {

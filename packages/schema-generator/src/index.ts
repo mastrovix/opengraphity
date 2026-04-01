@@ -1,4 +1,4 @@
-export { loadMetamodel, generateSDL } from './generator.js'
+export { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL } from './generator.js'
 export type {
   CITypeWithDefinitions,
   CIFieldDefinition,

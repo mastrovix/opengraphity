@@ -119,6 +119,89 @@ function mapSystemRelation(sr: Record<string, unknown>): CISystemRelationDefinit
   }
 }
 
+// ── ITIL metamodel loader ─────────────────────────────────────────────────────
+
+/**
+ * Loads ITIL type definitions (scope: 'itil') from Neo4j.
+ * Returns the type+fields needed to generate GraphQL enum definitions.
+ */
+export async function loadITILTypes(tenantId: string): Promise<CITypeWithDefinitions[]> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const result = await session.executeRead(tx =>
+      tx.run(`
+        MATCH (t:CITypeDefinition)
+        WHERE t.scope = 'itil'
+          AND t.active = true
+        OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
+        RETURN t, collect(DISTINCT f) AS fields
+        ORDER BY t.name
+      `, { tenantId }),
+    )
+
+    return result.records.map(record => {
+      const t = record.get('t').properties as Record<string, unknown>
+      const fields = (record.get('fields') as Array<{ properties: Record<string, unknown> }>)
+        .filter(f => f && f.properties)
+        .map(f => mapField(f.properties))
+        .sort((a, b) => a.order - b.order)
+
+      return {
+        id:               t['id'] as string,
+        name:             t['name'] as string,
+        label:            t['label'] as string,
+        icon:             (t['icon'] as string) ?? '',
+        color:            (t['color'] as string) ?? '',
+        scope:            'itil' as const,
+        tenantId:         t['tenant_id'] as string,
+        active:           t['active'] as boolean,
+        neo4jLabel:       (t['neo4j_label'] as string) ?? '',
+        validationScript: (t['validation_script'] as string | null) ?? null,
+        fields,
+        relations:        [],
+        systemRelations:  [],
+      }
+    })
+  } finally {
+    await session.close()
+  }
+}
+
+// ── ITIL enum SDL generator ───────────────────────────────────────────────────
+
+/**
+ * Generates GraphQL enum definitions from ITIL type fields.
+ * Enum name convention: PascalCase(typeName) + PascalCase(fieldName)
+ * e.g., incident.status → IncidentStatus, service_request.priority → ServiceRequestPriority
+ *
+ * Only generates enums — no types, queries, or mutations.
+ * The ITIL types themselves are defined as-is in schema-base.ts.
+ */
+export function generateITILEnumsSDL(itilTypes: CITypeWithDefinitions[]): string {
+  if (itilTypes.length === 0) return ''
+
+  const seen = new Set<string>()
+  const parts: string[] = []
+
+  for (const itilType of itilTypes) {
+    const typePascal = toPascalCase(itilType.name)
+
+    for (const field of itilType.fields) {
+      if (field.fieldType !== 'enum') continue
+      if (!field.enumValues || field.enumValues.length === 0) continue
+
+      const enumName = `${typePascal}${toPascalCase(field.name)}`
+      if (seen.has(enumName)) continue
+      seen.add(enumName)
+
+      const values = field.enumValues.map(v => `  ${v}`).join('\n')
+      parts.push(`enum ${enumName} {\n${values}\n}`)
+    }
+  }
+
+  return parts.join('\n\n')
+}
+
 /**
  * Generates SDL for all dynamic CI types.
  * Does NOT re-emit types already defined in schema-base.ts:

@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Layers,
   Settings,
+  Settings2,
   Activity,
   ShieldAlert,
   Share2,
@@ -46,9 +47,10 @@ const ANALYSIS_ITEM_DEFS = [
 ]
 
 const CONFIG_ITEM_DEFS = [
-  { to: '/settings/ci-types', labelKey: 'sidebar.ciTypeDesigner',  icon: Layers },
-  { to: '/workflow',          labelKey: 'sidebar.workflowDesigner', icon: Route },
-  { to: '/profile',           labelKey: 'sidebar.profile',          icon: UserCircle },
+  { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
+  { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
+  { to: '/workflow',                  labelKey: 'sidebar.workflowDesigner', icon: Route    },
+  { to: '/profile',                   labelKey: 'sidebar.profile',          icon: UserCircle },
 ]
 
 const ITSM_ITEM_DEFS = [
@@ -89,7 +91,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { t } = useTranslation()
   const { pathname } = useLocation()
   const [configOpen, setConfigOpen] = useState(
-    () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/workflow') || pathname.startsWith('/profile'),
+    () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/settings/itil-designer') || pathname.startsWith('/workflow') || pathname.startsWith('/profile'),
   )
   const [itsmOpen, setItsmOpen] = useState(
     () => ITSM_ITEM_DEFS.some(({ to }) => pathname.startsWith(to)),
