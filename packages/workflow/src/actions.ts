@@ -50,8 +50,13 @@ export function resolveTemplate(template: string, ctx: Record<string, unknown>):
     const parts = path.trim().split('.')
     let value: unknown = ctx
     for (const part of parts) {
-      if (value == null || typeof value !== 'object') return match
+      if (value == null || typeof value !== 'object') { value = null; break }
       value = (value as Record<string, unknown>)[part]
+    }
+    // Fallback: if dotted traversal failed (e.g. "{incident.title}" on a flat entityData),
+    // try the last segment as a flat key on ctx directly.
+    if (value == null && parts.length > 1) {
+      value = ctx[parts[parts.length - 1] ?? '']
     }
     return value != null ? String(value) : match
   })
@@ -97,7 +102,10 @@ export async function runAction(
 ): Promise<void> {
   const now = new Date().toISOString()
 
+  console.log('[workflow-action] Running:', action.type, JSON.stringify(action.params))
+
   // Evaluate conditions before running
+  console.log('[workflow-action] Conditions:', JSON.stringify(action.conditions), 'Logic:', action.conditions_logic)
   if (!evaluateConditions(action.conditions, action.conditions_logic, ctx.entityData)) {
     log.info({ type: action.type, entityId: instance.entityId }, 'action skipped: conditions not met')
     return
@@ -194,6 +202,8 @@ export async function runAction(
     // ── New: create_entity ─────────────────────────────────────────────────────
 
     case 'create_entity': {
+      console.log('[workflow-action] create_entity executing for entity:', instance.entityId)
+      console.log('[workflow-action] context.createEntity available?', typeof ctx.createEntity)
       if (!ctx.createEntity) {
         log.warn({ entityId: instance.entityId }, 'create_entity: createEntity callback not provided — skipped')
         break
@@ -204,7 +214,9 @@ export async function runAction(
         log.warn({ entity_type: p.entity_type }, 'create_entity: unsupported entity_type — skipped')
         break
       }
+      console.log('[workflow-action] entityData:', JSON.stringify(ctx.entityData))
       const title = resolveTemplate(p.title_template ?? '', ctx.entityData)
+      console.log('[workflow-action] resolved title:', title)
       const data: Record<string, unknown> = { title, tenant_id: instance.tenantId }
       if (p.link_to_current) {
         data['parent_id']   = instance.entityId
@@ -215,8 +227,13 @@ export async function runAction(
           if (field in ctx.entityData) data[field] = ctx.entityData[field]
         }
       }
-      const newId = await ctx.createEntity(p.entity_type, data)
-      await ctx.publishEvent?.(`${p.entity_type}.created`, { id: newId, tenant_id: instance.tenantId, created_by: ctx.userId })
+      try {
+        const newId = await ctx.createEntity(p.entity_type, data)
+        console.log('[workflow-action] create_entity result:', newId)
+        await ctx.publishEvent?.(`${p.entity_type}.created`, { id: newId, tenant_id: instance.tenantId, created_by: ctx.userId })
+      } catch (err) {
+        console.error('[workflow-action] create_entity ERROR:', err)
+      }
       break
     }
 

@@ -37,7 +37,10 @@ export function TeamsPage() {
 
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',      label: t('pages.teams.name'),      type: 'text' },
-    { key: 'type',      label: t('pages.teams.type'),      type: 'enum', enumValues: ['owner', 'support'] },
+    { key: 'type',      label: t('pages.teams.type'),      type: 'enum', options: [
+      { value: 'owner',   label: 'Owner'   },
+      { value: 'support', label: 'Support' },
+    ]},
     { key: 'createdAt', label: t('pages.teams.createdAt'), type: 'date' },
   ]
 

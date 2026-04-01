@@ -1,18 +1,16 @@
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
+import type { GraphQLResolveInfo } from 'graphql'
 import { withSession, mapCI, ciTypeFromLabels } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapChange, mapChangeTask, mapUser, mapTeam, type Props } from './mappers.js'
 import { buildAdvancedWhere } from '../../../lib/filterBuilder.js'
-
-const CHANGE_ALLOWED_FIELDS = new Set(['title', 'type', 'priority', 'status', 'scheduledStart', 'createdAt', 'assignedTeam'])
-const CHANGE_RELATION_FIELDS = {
-  assignedTeam: { relType: 'ASSIGNED_TO_TEAM', targetLabel: 'Team', searchProp: 'name' },
-}
+import { getScalarFields } from '../../../lib/schemaFields.js'
 
 export async function changes(
   _: unknown,
   args: { status?: string; type?: string; priority?: string; search?: string; limit?: number; offset?: number; filters?: string },
   ctx: GraphQLContext,
+  info: GraphQLResolveInfo,
 ) {
   const { status, type, priority, search, limit = 50, offset = 0, filters } = args
   return withSession(async (session) => {
@@ -25,7 +23,8 @@ export async function changes(
       offset,
       limit,
     }
-    const advWhere = filters ? buildAdvancedWhere(filters, params, CHANGE_ALLOWED_FIELDS, 'c', CHANGE_RELATION_FIELDS) : ''
+    const allowedFields = getScalarFields(info.schema, 'Change')
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'c') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR c.status   = $status)
         AND ($type     IS NULL OR c.type     = $type)

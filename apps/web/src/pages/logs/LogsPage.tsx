@@ -126,7 +126,14 @@ export function LogsPage() {
 
   const LOGS_FILTER_FIELDS: FieldConfig[] = [
     { key: 'message',   label: t('pages.logs.filterMessage'), type: 'text' },
-    { key: 'level',     label: t('pages.logs.filterLevel'),   type: 'enum', enumValues: ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] },
+    { key: 'level',     label: t('pages.logs.filterLevel'),   type: 'enum', options: [
+      { value: 'trace', label: 'Trace' },
+      { value: 'debug', label: 'Debug' },
+      { value: 'info',  label: 'Info'  },
+      { value: 'warn',  label: 'Warn'  },
+      { value: 'error', label: 'Error' },
+      { value: 'fatal', label: 'Fatal' },
+    ]},
     { key: 'module',    label: t('pages.logs.filterModule'),  type: 'text' },
     { key: 'timestamp', label: t('pages.logs.filterDate'),    type: 'date' },
   ]

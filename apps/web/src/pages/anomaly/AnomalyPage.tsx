@@ -479,9 +479,27 @@ export function AnomalyPage() {
 
   const ANOMALY_FILTER_FIELDS: FieldConfig[] = [
     { key: 'title',      label: t('common.title'),                    type: 'text' },
-    { key: 'severity',   label: t('pages.anomalies.severity'),        type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
-    { key: 'status',     label: t('pages.anomalies.status'),          type: 'enum', enumValues: ['open', 'resolved', 'false_positive', 'accepted_risk'] },
-    { key: 'ruleKey',    label: t('pages.anomalies.type'),            type: 'enum', enumValues: ['orphan_ci', 'spof', 'dependency_cycle', 'missing_owner', 'unauthorized_relation', 'isolated_cluster', 'risk_concentration'] },
+    { key: 'severity',   label: t('pages.anomalies.severity'),        type: 'enum', options: [
+      { value: 'critical', label: 'Critical' },
+      { value: 'high',     label: 'High'     },
+      { value: 'medium',   label: 'Medium'   },
+      { value: 'low',      label: 'Low'      },
+    ]},
+    { key: 'status',     label: t('pages.anomalies.status'),          type: 'enum', options: [
+      { value: 'open',           label: t('pages.anomalies.statusOpen')          },
+      { value: 'resolved',       label: t('pages.anomalies.statusResolved')      },
+      { value: 'false_positive', label: t('pages.anomalies.statusFalsePositive') },
+      { value: 'accepted_risk',  label: t('pages.anomalies.statusAcceptedRisk')  },
+    ]},
+    { key: 'ruleKey',    label: t('pages.anomalies.type'),            type: 'enum', options: [
+      { value: 'orphan_ci',             label: t('anomaly.rules.orphan_ci')             },
+      { value: 'spof',                  label: t('anomaly.rules.spof')                  },
+      { value: 'dependency_cycle',      label: t('anomaly.rules.dependency_cycle')      },
+      { value: 'missing_owner',         label: t('anomaly.rules.missing_owner')         },
+      { value: 'unauthorized_relation', label: t('anomaly.rules.unauthorized_relation') },
+      { value: 'isolated_cluster',      label: t('anomaly.rules.isolated_cluster')      },
+      { value: 'risk_concentration',    label: t('anomaly.rules.risk_concentration')    },
+    ]},
     { key: 'detectedAt', label: t('pages.anomalies.detectedAtCol'),   type: 'date' },
   ]
   const [mutLoading, setMutLoading]     = useState(false)

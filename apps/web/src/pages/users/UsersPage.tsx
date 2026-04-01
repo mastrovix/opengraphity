@@ -39,7 +39,11 @@ export function UsersPage() {
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',      label: t('pages.users.name'),      type: 'text' },
     { key: 'email',     label: t('pages.users.email'),     type: 'text' },
-    { key: 'role',      label: t('pages.users.role'),      type: 'enum', enumValues: ['admin', 'operator', 'viewer'] },
+    { key: 'role',      label: t('pages.users.role'),      type: 'enum', options: [
+      { value: 'admin',    label: 'Admin'    },
+      { value: 'operator', label: 'Operator' },
+      { value: 'viewer',   label: 'Viewer'   },
+    ]},
     { key: 'createdAt', label: t('pages.users.createdAt'), type: 'date' },
   ]
 

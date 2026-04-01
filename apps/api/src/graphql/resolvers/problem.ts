@@ -1,10 +1,12 @@
 import { GraphQLError } from 'graphql'
+import type { GraphQLResolveInfo } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { mapUser, mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { getScalarFields } from '../../lib/schemaFields.js'
 import type { GraphQLContext } from '../../context.js'
 import * as problemService from '../../services/problemService.js'
 
@@ -50,15 +52,11 @@ function mapProblemComment(props: Props, authorProps: Props | null) {
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
-const PROBLEM_ALLOWED_FIELDS = new Set(['title', 'priority', 'status', 'createdAt', 'assignedTeam'])
-const PROBLEM_RELATION_FIELDS = {
-  assignedTeam: { relType: 'ASSIGNED_TO_TEAM', targetLabel: 'Team', searchProp: 'name' },
-}
-
 async function problems(
   _: unknown,
   args: { limit?: number; offset?: number; status?: string; priority?: string; search?: string; filters?: string },
   ctx: GraphQLContext,
+  info: GraphQLResolveInfo,
 ) {
   const { limit = 50, offset = 0, status, priority, search, filters } = args
 
@@ -71,7 +69,8 @@ async function problems(
       offset,
       limit,
     }
-    const advWhere = filters ? buildAdvancedWhere(filters, params, PROBLEM_ALLOWED_FIELDS, 'p', PROBLEM_RELATION_FIELDS) : ''
+    const allowedFields = getScalarFields(info.schema, 'Problem')
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'p') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR p.status   = $status)
         AND ($priority IS NULL OR p.priority = $priority)

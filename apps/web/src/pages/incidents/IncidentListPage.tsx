@@ -8,7 +8,8 @@ import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_INCIDENTS } from '@/graphql/queries'
-import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
+import { useEntityFields } from '@/hooks/useEntityFields'
 
 interface Incident {
   id:        string
@@ -52,13 +53,7 @@ export function IncidentListPage() {
     },
   ]
 
-  const FILTER_FIELDS: FieldConfig[] = [
-    { key: 'title',       label: t('pages.incidents.title_col'),    type: 'text' },
-    { key: 'severity',    label: t('pages.incidents.severity'),     type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
-    { key: 'status',      label: t('pages.incidents.status'),       type: 'text' },
-    { key: 'assignedTeam',label: t('pages.incidents.assignedTeam'), type: 'text' },
-    { key: 'createdAt',   label: t('pages.incidents.createdAt'),    type: 'date' },
-  ]
+  const filterFields = useEntityFields('Incident')
   const navigate = useNavigate()
   const location = useLocation()
   const [page, setPage] = useState(0)
@@ -102,7 +97,7 @@ export function IncidentListPage() {
       </div>
 
       <FilterBuilder
-        fields={FILTER_FIELDS}
+        fields={filterFields}
         onApply={(group) => { setFilterGroup(group); setPage(0) }}
       />
 

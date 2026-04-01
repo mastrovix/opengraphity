@@ -1,7 +1,10 @@
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
+import type { GraphQLResolveInfo } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { mapUser } from '../../lib/mappers.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
 
 type Props = Record<string, unknown>
@@ -28,26 +31,31 @@ function mapRequest(props: Props) {
 
 async function serviceRequests(
   _: unknown,
-  args: { status?: string; priority?: string; limit?: number; offset?: number },
+  args: { status?: string; priority?: string; limit?: number; offset?: number; filters?: string },
   ctx: GraphQLContext,
+  info: GraphQLResolveInfo,
 ) {
-  const { status, priority, limit = 20, offset = 0 } = args
+  const { status, priority, limit = 20, offset = 0, filters } = args
   return withSession(async (session) => {
-    const cypher = `
-      MATCH (r:ServiceRequest {tenant_id: $tenantId})
-      WHERE ($status   IS NULL OR r.status   = $status)
-        AND ($priority IS NULL OR r.priority = $priority)
-      WITH r ORDER BY r.created_at DESC
-      SKIP toInteger($offset) LIMIT toInteger($limit)
-      RETURN properties(r) as props
-    `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
+    const params: Record<string, unknown> = {
       tenantId: ctx.tenantId,
       status:   status   ?? null,
       priority: priority ?? null,
       offset,
       limit,
-    })
+    }
+    const allowedFields = getScalarFields(info.schema, 'ServiceRequest')
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r') : ''
+    const cypher = `
+      MATCH (r:ServiceRequest {tenant_id: $tenantId})
+      WHERE ($status   IS NULL OR r.status   = $status)
+        AND ($priority IS NULL OR r.priority = $priority)
+        ${advWhere}
+      WITH r ORDER BY r.created_at DESC
+      SKIP toInteger($offset) LIMIT toInteger($limit)
+      RETURN properties(r) as props
+    `
+    const rows = await runQuery<{ props: Props }>(session, cypher, params)
     return rows.map((r) => mapRequest(r.props))
   })
 }

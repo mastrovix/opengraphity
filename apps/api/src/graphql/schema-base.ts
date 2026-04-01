@@ -17,7 +17,7 @@ export function buildBaseSDL(): string {
     changeImpactAnalysis(ciIds: [ID!]!): ImpactAnalysis!
 
     # Service Requests
-    serviceRequests(status: String, priority: String, limit: Int, offset: Int): [ServiceRequest!]!
+    serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String): [ServiceRequest!]!
     serviceRequest(id: ID!): ServiceRequest
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
@@ -303,6 +303,45 @@ export function buildBaseSDL(): string {
     order: Int!
   }
 
+  # ── Domain enums ─────────────────────────────────────────────────────────────
+
+  enum IncidentSeverity { low medium high critical }
+
+  enum IncidentStatus { open new assigned in_progress pending escalated resolved closed }
+
+  # Includes all workflow step names across Standard / Normal / Emergency change types
+  enum ChangeStatus {
+    draft
+    assessment
+    cab_approval
+    scheduled
+    emergency_approval
+    deployment
+    validation
+    post_review
+    completed
+    failed
+    rejected
+  }
+
+  enum ChangeType     { standard normal emergency }
+  enum ChangePriority { low medium high critical }
+
+  enum ProblemStatus {
+    new
+    under_investigation
+    change_requested
+    change_in_progress
+    deferred
+    resolved
+    closed
+    rejected
+  }
+
+  enum ProblemPriority         { low medium high critical }
+  enum ServiceRequestStatus    { open in_progress completed cancelled }
+  enum ServiceRequestPriority  { low medium high critical }
+
   # ── Incident ──────────────────────────────────────────────────────────────────
 
   type Incident {
@@ -310,8 +349,8 @@ export function buildBaseSDL(): string {
     tenantId: String!
     title: String!
     description: String
-    severity: String!
-    status: String!
+    severity: IncidentSeverity!
+    status: IncidentStatus!
     createdAt: String!
     updatedAt: String!
     resolvedAt: String
@@ -338,8 +377,8 @@ export function buildBaseSDL(): string {
     id: ID!
     title: String!
     description: String
-    priority: String!
-    status: String!
+    priority: ProblemPriority!
+    status: ProblemStatus!
     rootCause: String
     workaround: String
     affectedUsers: Int
@@ -378,9 +417,9 @@ export function buildBaseSDL(): string {
     tenantId:       String!
     title:          String!
     description:    String
-    type:           String!
-    priority:       String!
-    status:         String!
+    type:           ChangeType!
+    priority:       ChangePriority!
+    status:         ChangeStatus!
     scheduledStart: String
     scheduledEnd:   String
     implementedAt:  String
@@ -492,8 +531,8 @@ export function buildBaseSDL(): string {
     tenantId: String!
     title: String!
     description: String
-    status: String!
-    priority: String!
+    status: ServiceRequestStatus!
+    priority: ServiceRequestPriority!
     dueDate: String
     createdAt: String!
     updatedAt: String!
@@ -583,21 +622,21 @@ export function buildBaseSDL(): string {
   input CreateIncidentInput {
     title: String!
     description: String
-    severity: String!
+    severity: IncidentSeverity!
     affectedCIIds: [ID!]
   }
 
   input UpdateIncidentInput {
     title: String
     description: String
-    severity: String
-    status: String
+    severity: IncidentSeverity
+    status: IncidentStatus
   }
 
   input CreateProblemInput {
     title: String!
     description: String
-    priority: String!
+    priority: ProblemPriority!
     affectedCIs: [ID!]
     relatedIncidents: [ID!]
     workaround: String
@@ -606,7 +645,7 @@ export function buildBaseSDL(): string {
   input UpdateProblemInput {
     title: String
     description: String
-    priority: String
+    priority: ProblemPriority
     rootCause: String
     workaround: String
     affectedUsers: Int
@@ -615,8 +654,8 @@ export function buildBaseSDL(): string {
   input CreateChangeInput {
     title:              String!
     description:        String
-    type:               String!
-    priority:           String!
+    type:               ChangeType!
+    priority:           ChangePriority!
     affectedCIIds:      [ID!]
     relatedIncidentIds: [ID!]
   }
@@ -650,15 +689,15 @@ export function buildBaseSDL(): string {
   input UpdateServiceRequestInput {
     title: String
     description: String
-    status: String
-    priority: String
+    status: ServiceRequestStatus
+    priority: ServiceRequestPriority
     dueDate: String
   }
 
   input CreateServiceRequestInput {
     title: String!
     description: String
-    priority: String!
+    priority: ServiceRequestPriority!
     dueDate: String
   }
 

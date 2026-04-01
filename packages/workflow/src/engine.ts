@@ -107,6 +107,7 @@ export class WorkflowEngine {
     input: TransitionInput,
     context: ActionContext,
   ): Promise<TransitionResult> {
+    console.log('[workflow-engine] transition() called with toStepName:', input.toStepName)
     const now = new Date().toISOString()
 
     try {
@@ -241,6 +242,7 @@ export class WorkflowEngine {
       })
 
       // 6. Esegui exit actions dello step corrente + enter actions del prossimo
+      console.log('[workflow-engine] Entering step:', nextStepName, 'enter_actions:', enterActionsRaw)
       const exitActions:  WorkflowActionConfig[] = JSON.parse(exitActionsRaw  ?? '[]')
       const enterActions: WorkflowActionConfig[] = JSON.parse(enterActionsRaw ?? '[]')
       const actionsRun:   string[]               = []

@@ -476,14 +476,40 @@ async function executeWorkflowTransition(
       createEntity: async (type, data) => {
         const label = ENTITY_LABELS[type]
         if (!label) throw new Error(`Unknown entity type: ${type}`)
+
+        // Extract relation metadata — must not be stored as node properties
+        const { parent_id, parent_type, ...nodeData } = data as Record<string, unknown>
+
         const id = uuidv4()
         const now = new Date().toISOString()
         await session.executeWrite((tx) =>
           tx.run(
             `CREATE (e:${label} $props) RETURN e.id AS id`,
-            { props: { id, created_at: now, updated_at: now, ...data } },
+            { props: { id, status: 'new', created_at: now, updated_at: now, ...nodeData } },
           ),
         )
+
+        // Create relation to parent entity when link_to_current was set
+        if (parent_id && parent_type) {
+          const parentLabel = ENTITY_LABELS[parent_type as string]
+          if (parentLabel) {
+            // Convention: (problem)-[:CAUSED_BY]->(incident)
+            //             (child)-[:RELATED_TO]->(parent) for other combos
+            const relType =
+              type === 'problem' && parent_type === 'incident' ? 'CAUSED_BY' : 'RELATED_TO'
+            const [childLabel, parentLabelFinal] =
+              relType === 'CAUSED_BY' ? [label, parentLabel] : [label, parentLabel]
+            await session.executeWrite((tx) =>
+              tx.run(
+                `MATCH (child:${childLabel} {id: $childId})
+                 MATCH (parent:${parentLabelFinal} {id: $parentId})
+                 MERGE (child)-[:${relType}]->(parent)`,
+                { childId: id, parentId: parent_id },
+              ),
+            )
+          }
+        }
+
         return id
       },
 
@@ -524,6 +550,7 @@ async function executeWorkflowTransition(
       },
     }
 
+    console.log('[resolver-workflow] Transitioning to:', toStep, 'instanceId:', instanceId)
     const result = await workflowEngine.transition(
       session,
       {
@@ -535,6 +562,7 @@ async function executeWorkflowTransition(
       },
       actionCtx,
     )
+    console.log('[resolver-workflow] Transition result:', result.success)
 
     if (result.success) {
       const wiResult = await session.executeRead((tx) =>

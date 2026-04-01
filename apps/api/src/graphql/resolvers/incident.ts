@@ -1,9 +1,11 @@
 import { GraphQLError } from 'graphql'
+import type { GraphQLResolveInfo } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { mapUser, mapTeam, mapIncident } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { getScalarFields } from '../../lib/schemaFields.js'
 import type { GraphQLContext } from '../../context.js'
 import * as incidentService from '../../services/incidentService.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
@@ -14,15 +16,11 @@ type Props = Record<string, unknown>
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
-const INCIDENT_ALLOWED_FIELDS = new Set(['title', 'severity', 'status', 'createdAt', 'assignedTeam'])
-const INCIDENT_RELATION_FIELDS = {
-  assignedTeam: { relType: 'ASSIGNED_TO_TEAM', targetLabel: 'Team', searchProp: 'name' },
-}
-
 async function incidents(
   _: unknown,
   args: { status?: string; severity?: string; limit?: number; offset?: number; filters?: string },
   ctx: GraphQLContext,
+  info: GraphQLResolveInfo,
 ) {
   const { status, severity, limit = 50, offset = 0, filters } = args
 
@@ -34,7 +32,8 @@ async function incidents(
       offset,
       limit,
     }
-    const advWhere = filters ? buildAdvancedWhere(filters, params, INCIDENT_ALLOWED_FIELDS, 'i', INCIDENT_RELATION_FIELDS) : ''
+    const allowedFields = getScalarFields(info.schema, 'Incident')
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'i') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR i.status   = $status)
         AND ($severity IS NULL OR i.severity = $severity)

@@ -7,7 +7,8 @@ import { GET_CHANGES } from '@/graphql/queries'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { TypeBadge, PriorityBadge, StepBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
-import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
+import { useEntityFields } from '@/hooks/useEntityFields'
 
 interface WorkflowInstance { id: string; currentStep: string; status: string }
 interface Team { id: string; name: string }
@@ -109,15 +110,7 @@ export function ChangeListPage() {
     },
   ]
 
-  const FILTER_FIELDS: FieldConfig[] = [
-    { key: 'title',          label: t('pages.changes.title_col'),     type: 'text' },
-    { key: 'type',           label: t('pages.changes.type'),          type: 'enum', enumValues: ['standard', 'normal', 'emergency'] },
-    { key: 'priority',       label: t('pages.changes.priority'),      type: 'enum', enumValues: ['critical', 'high', 'medium', 'low'] },
-    { key: 'status',         label: t('pages.changes.status'),        type: 'text' },
-    { key: 'assignedTeam',   label: t('pages.changes.team'),          type: 'text' },
-    { key: 'scheduledStart', label: t('pages.changes.scheduledStart'), type: 'date' },
-    { key: 'createdAt',      label: t('pages.changes.createdAt'),     type: 'date' },
-  ]
+  const filterFields = useEntityFields('Change')
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -150,7 +143,7 @@ export function ChangeListPage() {
       </div>
 
       <FilterBuilder
-        fields={FILTER_FIELDS}
+        fields={filterFields}
         onApply={(group) => { setFilterGroup(group); setPage(0) }}
       />
 

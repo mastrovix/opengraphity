@@ -112,6 +112,7 @@
       "allStatuses": "All statuses",
       "allPriorities": "All priorities",
       "searchPlaceholder": "Search by title...",
+      "statusNew": "New",
       "statusUnderInvestigation": "Under Investigation",
       "statusChangeRequested": "Change Requested",
       "statusChangeInProgress": "Change in Progress",
@@ -126,7 +127,9 @@
       "priorityLabel": "Priority",
       "workaroundLabel": "Workaround",
       "workaroundPlaceholder": "Temporary workaround...",
-      "problemCreated": "Problem created"
+      "problemCreated": "Problem created",
+      "category": "Category",
+      "assignedUser": "Assigned User"
     },
     "requests": {
       "title": "Requests",

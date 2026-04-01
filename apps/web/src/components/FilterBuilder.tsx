@@ -24,10 +24,10 @@ export interface FilterGroup {
 }
 
 export interface FieldConfig {
-  key:         string
-  label:       string
-  type:        'text' | 'date' | 'enum'
-  enumValues?: string[]
+  key:      string
+  label:    string
+  type:     'text' | 'date' | 'enum'
+  options?: { value: string; label: string }[]  // for enum type
 }
 
 // ── Operator definitions ──────────────────────────────────────────────────────
@@ -55,6 +55,8 @@ const OPERATORS_BY_TYPE: Record<string, { value: FilterOperator; labelKey: strin
     { value: 'not_equals',   labelKey: 'filter.notEquals'    },
     { value: 'in',           labelKey: 'filter.isOneOf'      },
     { value: 'not_in',       labelKey: 'filter.isNotOneOf'   },
+    { value: 'is_empty',     labelKey: 'filter.isEmpty'      },
+    { value: 'is_not_empty', labelKey: 'filter.isNotEmpty'   },
   ],
 }
 
@@ -141,8 +143,9 @@ function ValueInput({
   }
 
   if ((rule.operator === 'in' || rule.operator === 'not_in') && type === 'enum') {
+    const opts     = fieldCfg.options ?? []
     const selected = Array.isArray(rule.value) ? rule.value : []
-    const toggle = (v: string) => {
+    const toggle   = (v: string) => {
       const next = selected.includes(v)
         ? selected.filter((x) => x !== v)
         : [...selected, v]
@@ -150,9 +153,9 @@ function ValueInput({
     }
     return (
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        {(fieldCfg.enumValues ?? []).map((v) => (
+        {opts.map((opt) => (
           <label
-            key={v}
+            key={opt.value}
             style={{
               display:         'flex',
               alignItems:      'center',
@@ -160,20 +163,20 @@ function ValueInput({
               fontSize:        11,
               padding:         '2px 8px',
               borderRadius:    4,
-              border:          `1px solid ${selected.includes(v) ? '#0284c7' : '#e2e8f0'}`,
-              backgroundColor: selected.includes(v) ? 'rgba(2,132,199,0.1)' : '#fff',
-              color:           selected.includes(v) ? 'var(--color-brand)' : 'var(--color-slate)',
+              border:          `1px solid ${selected.includes(opt.value) ? '#0284c7' : '#e2e8f0'}`,
+              backgroundColor: selected.includes(opt.value) ? 'rgba(2,132,199,0.1)' : '#fff',
+              color:           selected.includes(opt.value) ? 'var(--color-brand)' : 'var(--color-slate)',
               cursor:          'pointer',
               userSelect:      'none',
             }}
           >
             <input
               type="checkbox"
-              checked={selected.includes(v)}
-              onChange={() => toggle(v)}
+              checked={selected.includes(opt.value)}
+              onChange={() => toggle(opt.value)}
               style={{ display: 'none' }}
             />
-            {v}
+            {opt.label}
           </label>
         ))}
       </div>
@@ -185,11 +188,11 @@ function ValueInput({
       <select
         value={typeof rule.value === 'string' ? rule.value : ''}
         onChange={(e) => onChange({ value: e.target.value })}
-        style={{ ...SEL, minWidth: 120 }}
+        style={{ ...SEL, minWidth: 140 }}
       >
         <option value="">Seleziona…</option>
-        {(fieldCfg.enumValues ?? []).map((v) => (
-          <option key={v} value={v}>{v}</option>
+        {(fieldCfg.options ?? []).map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
     )

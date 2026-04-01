@@ -67,8 +67,16 @@ export function CMDBPage() {
 
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
-    { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
-    { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', enumValues: ['production', 'staging', 'development'] },
+    { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: [
+      { value: 'active',      label: 'Active'      },
+      { value: 'inactive',    label: 'Inactive'    },
+      { value: 'maintenance', label: 'Maintenance' },
+    ]},
+    { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: [
+      { value: 'production',  label: 'Production'  },
+      { value: 'staging',     label: 'Staging'     },
+      { value: 'development', label: 'Development' },
+    ]},
     { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
   ]
   const navigate = useNavigate()

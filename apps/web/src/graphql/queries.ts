@@ -120,8 +120,8 @@ export const GET_CHANGES = gql`
 `
 
 export const GET_SERVICE_REQUESTS = gql`
-  query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int) {
-    serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset) {
+  query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int, $filters: String) {
+    serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset, filters: $filters) {
       id
       title
       priority

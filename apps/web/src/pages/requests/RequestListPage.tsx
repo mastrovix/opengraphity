@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +7,8 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
+import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
+import { useEntityFields } from '@/hooks/useEntityFields'
 import { GET_SERVICE_REQUESTS } from '@/graphql/queries'
 
 interface ServiceRequest {
@@ -18,22 +21,26 @@ interface ServiceRequest {
 
 export function RequestListPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+
+  const filterFields = useEntityFields('ServiceRequest')
 
   const columns: ColumnDef<ServiceRequest>[] = [
     { key: 'title',    label: t('pages.requests.title_col'), sortable: true },
     {
-      key:     'priority',
-      label:   t('pages.requests.priority'),
-      width:   '130px',
+      key:      'priority',
+      label:    t('pages.requests.priority'),
+      width:    '130px',
       sortable: true,
-      render:  (v) => <SeverityBadge value={String(v)} />,
+      render:   (v) => <SeverityBadge value={String(v)} />,
     },
     {
-      key:     'status',
-      label:   t('pages.requests.status'),
-      width:   '130px',
+      key:      'status',
+      label:    t('pages.requests.status'),
+      width:    '130px',
       sortable: true,
-      render:  (v) => <StatusBadge value={String(v)} />,
+      render:   (v) => <StatusBadge value={String(v)} />,
     },
     {
       key:      'createdAt',
@@ -41,14 +48,20 @@ export function RequestListPage() {
       width:    '120px',
       sortable: true,
       render:   (v) => (
-        <span style={{ color: "var(--color-slate-light)" }}>
+        <span style={{ color: 'var(--color-slate-light)' }}>
           {new Date(String(v)).toLocaleDateString()}
         </span>
       ),
     },
   ]
-  const navigate = useNavigate()
-  const { data, loading } = useQuery<{ serviceRequests: ServiceRequest[] }>(GET_SERVICE_REQUESTS)
+
+  const filtersJson = filterGroup ? JSON.stringify(filterGroup) : undefined
+
+  const { data, loading } = useQuery<{ serviceRequests: ServiceRequest[] }>(GET_SERVICE_REQUESTS, {
+    variables: { filters: filtersJson },
+  })
+
+  const items = data?.serviceRequests ?? []
 
   return (
     <div>
@@ -58,7 +71,7 @@ export function RequestListPage() {
             {t('pages.requests.title')}
           </h1>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : t('pages.requests.count', { count: data?.serviceRequests?.length ?? 0 })}
+            {loading ? '—' : t('pages.requests.count', { count: items.length })}
           </p>
         </div>
         <button
@@ -71,9 +84,14 @@ export function RequestListPage() {
         </button>
       </div>
 
+      <FilterBuilder
+        fields={filterFields}
+        onApply={(group) => { setFilterGroup(group) }}
+      />
+
       <SortableFilterTable<ServiceRequest>
         columns={columns}
-        data={data?.serviceRequests ?? []}
+        data={items}
         loading={loading}
         emptyComponent={<EmptyState icon={<Inbox size={32} />} title={t('pages.requests.noResults')} description={t('pages.requests.noResultsDesc')} />}
       />

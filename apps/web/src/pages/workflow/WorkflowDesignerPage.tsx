@@ -332,7 +332,33 @@ interface NotifyRuleAction {
   params: { title_key: string; severity: string; channels: string[]; target: string }
 }
 
-type AnyAction = { type: string; params?: Record<string, unknown> }
+interface ConditionRow {
+  field:    string
+  operator: string
+  value:    string
+}
+
+type AnyAction = {
+  type:              string
+  params?:           Record<string, unknown>
+  conditions?:       ConditionRow[]
+  conditions_logic?: 'AND' | 'OR'
+}
+
+const COND_FIELDS = ['severity', 'status', 'priority', 'category', 'assigned_team', 'assigned_user'] as const
+
+const COND_OPERATORS: { value: string; label: string; noValue?: boolean }[] = [
+  { value: 'eq',         label: 'è uguale a'   },
+  { value: 'ne',         label: 'è diverso da' },
+  { value: 'gt',         label: 'maggiore di'  },
+  { value: 'lt',         label: 'minore di'    },
+  { value: 'contains',   label: 'contiene'     },
+  { value: 'is_null',    label: 'è vuoto',     noValue: true },
+  { value: 'is_not_null',label: 'non è vuoto', noValue: true },
+]
+
+const SEVERITY_VALUES = ['critical', 'high', 'medium', 'low']
+const PRIORITY_VALUES = ['critical', 'high', 'medium', 'low']
 
 const NR_CHANNELS = ['in_app', 'slack', 'teams', 'email'] as const
 const NR_SEVERITIES = ['info', 'success', 'warning', 'error'] as const
@@ -361,16 +387,20 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
   const [editableExitActions,  setEditableExitActions]  = useState<AnyAction[]>(initExitActions)
 
   // Inline "add action" form
-  const [addingFor,       setAddingFor]       = useState<'enter' | 'exit' | null>(null)
-  const [newActionType,   setNewActionType]   = useState('sla_start')
-  const [newActionParams, setNewActionParams] = useState<Record<string, string>>({})
+  const [addingFor,           setAddingFor]           = useState<'enter' | 'exit' | null>(null)
+  const [newActionType,       setNewActionType]       = useState('sla_start')
+  const [newActionParams,     setNewActionParams]     = useState<Record<string, string>>({})
+  const [newActionConditions, setNewActionConditions] = useState<ConditionRow[]>([])
+  const [newActionLogic,      setNewActionLogic]      = useState<'AND' | 'OR'>('AND')
 
   // Inline "edit action" form (one at a time)
   const [editingAction, setEditingAction] = useState<{
-    list:   'enter' | 'exit'
-    index:  number
-    type:   string
-    params: Record<string, string>
+    list:             'enter' | 'exit'
+    index:            number
+    type:             string
+    params:           Record<string, string>
+    conditions:       ConditionRow[]
+    conditions_logic: 'AND' | 'OR'
   } | null>(null)
 
   const [notifyEnabled,  setNotifyEnabled]  = useState(!!existingNR)
@@ -433,12 +463,19 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
   }
 
   const handleConfirmAdd = (forKey: 'enter' | 'exit') => {
-    const action: AnyAction = { type: newActionType, params: buildActionParams(newActionType, newActionParams) }
+    const validConditions = newActionConditions.filter((c) => c.field && c.operator)
+    const action: AnyAction = {
+      type:   newActionType,
+      params: buildActionParams(newActionType, newActionParams),
+      ...(validConditions.length > 0 ? { conditions: validConditions, conditions_logic: newActionLogic } : {}),
+    }
     if (forKey === 'enter') setEditableEnterActions((prev) => [...prev, action])
     else                    setEditableExitActions((prev)  => [...prev, action])
     setAddingFor(null)
     setNewActionType('sla_start')
     setNewActionParams({})
+    setNewActionConditions([])
+    setNewActionLogic('AND')
   }
 
   const toggleChannel = (ch: string) => {
@@ -562,6 +599,104 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
     return null
   }
 
+  // ── Conditions section (shared by add and edit forms) ─────────────────────────
+  const renderConditionsSection = (
+    conditions:    ConditionRow[],
+    logic:         'AND' | 'OR',
+    setConditions: (c: ConditionRow[]) => void,
+    setLogic:      (l: 'AND' | 'OR') => void,
+  ) => {
+    const lbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
+
+    const updateRow = (i: number, patch: Partial<ConditionRow>) =>
+      setConditions(conditions.map((c, idx) => idx === i ? { ...c, ...patch } : c))
+
+    const addRow = () => setConditions([...conditions, { field: 'severity', operator: 'eq', value: '' }])
+    const removeRow = (i: number) => setConditions(conditions.filter((_, idx) => idx !== i))
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span style={lbl}>Condizioni</span>
+
+        {conditions.map((cond, i) => {
+          const op = COND_OPERATORS.find((o) => o.value === cond.operator)
+          const needsValue = !op?.noValue
+          const isEnumField = cond.field === 'severity' || cond.field === 'priority'
+          const enumOptions = cond.field === 'severity' ? SEVERITY_VALUES : PRIORITY_VALUES
+
+          return (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e6f0', borderRadius: 6 }}>
+              {/* AND/OR connector (from 2nd condition onward) */}
+              {i > 0 && conditions.length >= 2 && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
+                  {(['AND', 'OR'] as const).map((opt) => (
+                    <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer', color: logic === opt ? ACCENT_COLOR : 'var(--color-slate-light)', fontWeight: logic === opt ? 700 : 400 }}>
+                      <input type="radio" name={`logic-${i}`} value={opt} checked={logic === opt} onChange={() => setLogic(opt)} style={{ accentColor: ACCENT_COLOR }} />
+                      {opt}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                {/* Field */}
+                <select
+                  value={cond.field}
+                  onChange={(e) => updateRow(i, { field: e.target.value, value: '' })}
+                  style={{ ...inputStyle, flex: 1, fontSize: 11, padding: '5px 6px' }}
+                >
+                  {COND_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+
+                {/* Remove */}
+                <button onClick={() => removeRow(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 2, flexShrink: 0, display: 'flex' }}>
+                  <X size={11} />
+                </button>
+              </div>
+
+              {/* Operator */}
+              <select
+                value={cond.operator}
+                onChange={(e) => updateRow(i, { operator: e.target.value })}
+                style={{ ...inputStyle, fontSize: 11, padding: '5px 6px' }}
+              >
+                {COND_OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+
+              {/* Value */}
+              {needsValue && (
+                isEnumField ? (
+                  <select
+                    value={cond.value}
+                    onChange={(e) => updateRow(i, { value: e.target.value })}
+                    style={{ ...inputStyle, fontSize: 11, padding: '5px 6px' }}
+                  >
+                    <option value="">— seleziona —</option>
+                    {enumOptions.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    value={cond.value}
+                    onChange={(e) => updateRow(i, { value: e.target.value })}
+                    placeholder="valore..."
+                    style={{ ...inputStyle, fontSize: 11, padding: '5px 6px' }}
+                  />
+                )
+              )}
+            </div>
+          )
+        })}
+
+        <button
+          onClick={addRow}
+          style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed #94a3b8', borderRadius: 5, fontSize: 11, color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
+        >
+          + Aggiungi condizione
+        </button>
+      </div>
+    )
+  }
+
   const cancelBtnStyle: React.CSSProperties = {
     flex: 1, padding: '6px 0', backgroundColor: '#f1f5f9', border: '1px solid #e2e6f0',
     borderRadius: 6, fontSize: 12, cursor: 'pointer', color: 'var(--color-slate)',
@@ -585,7 +720,14 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
                     setEditingAction(null)
                   } else {
                     setAddingFor(null)
-                    setEditingAction({ list: forKey, index: i, type: a.type, params: paramsToRaw(a.type, a.params) })
+                    setEditingAction({
+                      list:             forKey,
+                      index:            i,
+                      type:             a.type,
+                      params:           paramsToRaw(a.type, a.params),
+                      conditions:       (a.conditions ?? []) as ConditionRow[],
+                      conditions_logic: a.conditions_logic ?? 'AND',
+                    })
                   }
                 }}
                 style={{
@@ -639,10 +781,21 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
                   editingAction.params,
                   (updater) => setEditingAction((prev) => prev ? { ...prev, params: updater(prev.params) } : null),
                 )}
+                {renderConditionsSection(
+                  editingAction.conditions,
+                  editingAction.conditions_logic,
+                  (c) => setEditingAction((prev) => prev ? { ...prev, conditions: c } : null),
+                  (l) => setEditingAction((prev) => prev ? { ...prev, conditions_logic: l } : null),
+                )}
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button
                     onClick={() => {
-                      const updated: AnyAction = { type: editingAction.type, params: buildActionParams(editingAction.type, editingAction.params) }
+                      const validConditions = editingAction.conditions.filter((c) => c.field && c.operator)
+                      const updated: AnyAction = {
+                        type:   editingAction.type,
+                        params: buildActionParams(editingAction.type, editingAction.params),
+                        ...(validConditions.length > 0 ? { conditions: validConditions, conditions_logic: editingAction.conditions_logic } : {}),
+                      }
                       if (forKey === 'enter') setEditableEnterActions((prev) => prev.map((x, idx) => idx === i ? updated : x))
                       else                    setEditableExitActions((prev)  => prev.map((x, idx) => idx === i ? updated : x))
                       setEditingAction(null)
@@ -680,18 +833,24 @@ function StepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
             </select>
           </div>
           {renderParamFields(newActionType, newActionParams, (updater) => setNewActionParams((p) => updater(p)))}
+          {renderConditionsSection(
+            newActionConditions,
+            newActionLogic,
+            setNewActionConditions,
+            setNewActionLogic,
+          )}
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(false), flex: 1, padding: '6px 0' }}>
               {t('common.confirm')}
             </button>
-            <button onClick={() => { setAddingFor(null); setNewActionParams({}) }} style={cancelBtnStyle}>
+            <button onClick={() => { setAddingFor(null); setNewActionParams({}); setNewActionConditions([]); setNewActionLogic('AND') }} style={cancelBtnStyle}>
               {t('common.cancel')}
             </button>
           </div>
         </div>
       ) : (
         <button
-          onClick={() => { setEditingAction(null); setAddingFor(forKey); setNewActionType('sla_start'); setNewActionParams({}) }}
+          onClick={() => { setEditingAction(null); setAddingFor(forKey); setNewActionType('sla_start'); setNewActionParams({}); setNewActionConditions([]); setNewActionLogic('AND') }}
           style={{ padding: '5px 10px', backgroundColor: 'transparent', border: `1px dashed ${ACCENT_COLOR}`, borderRadius: 6, fontSize: 12, color: ACCENT_COLOR, cursor: 'pointer', textAlign: 'left' }}
         >
           + {t('workflow.addAction')}

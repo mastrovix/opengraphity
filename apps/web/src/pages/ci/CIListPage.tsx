@@ -122,18 +122,31 @@ export function CIListPage() {
     if (!ciType) return []
     const base: FieldConfig[] = [
       { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
-      { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', enumValues: ['active', 'inactive', 'maintenance'] },
-      { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', enumValues: ['production', 'staging', 'development'] },
+      { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: [
+        { value: 'active',      label: 'Active'      },
+        { value: 'inactive',    label: 'Inactive'    },
+        { value: 'maintenance', label: 'Maintenance' },
+      ]},
+      { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: [
+        { value: 'production',  label: 'Production'  },
+        { value: 'staging',     label: 'Staging'     },
+        { value: 'development', label: 'Development' },
+      ]},
       { key: 'ownerGroup',  label: t('pages.cmdb.ownerGroup'),  type: 'text' },
       { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
     ]
     const custom: FieldConfig[] = ciType.fields
       .filter((f) => !f.isSystem)
       .map((f) => ({
-        key:        f.name,
-        label:      f.label,
-        type:       f.fieldType === 'date' ? 'date' : f.fieldType === 'enum' ? 'enum' : 'text',
-        enumValues: f.enumValues?.length ? f.enumValues : undefined,
+        key:     f.name,
+        label:   f.label,
+        type:    f.fieldType === 'date' ? 'date' : f.fieldType === 'enum' ? 'enum' : 'text',
+        options: f.enumValues?.length
+          ? f.enumValues.map((v: string) => ({
+              value: v,
+              label: v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            }))
+          : undefined,
       } as FieldConfig))
     return [...base, ...custom]
   }, [ciType])
