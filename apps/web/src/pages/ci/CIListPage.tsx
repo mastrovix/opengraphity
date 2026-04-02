@@ -13,17 +13,9 @@ import { CIIcon } from '@/lib/ciIcon'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { CIDynamicForm } from '@/components/CIDynamicForm'
 
+import { toPascalCase, pluralize } from '@opengraphity/schema-generator'
+
 const PAGE_SIZE = 50
-
-function toPascalCase(str: string): string {
-  return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
-}
-
-function pluralize(str: string): string {
-  if (str.endsWith('s')) return str + 'es'
-  if (str.endsWith('y')) return str.slice(0, -1) + 'ies'
-  return str + 's'
-}
 
 interface CIItem {
   id: string

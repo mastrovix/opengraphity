@@ -25,8 +25,16 @@ app.use(helmet({
   contentSecurityPolicy: process.env['NODE_ENV'] === 'production',
 }))
 
+const CORS_ORIGIN = (() => {
+  if (process.env['CORS_ORIGIN']) return process.env['CORS_ORIGIN']
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error('CORS_ORIGIN environment variable is required in production.')
+  }
+  return 'http://localhost:5173'
+})()
+
 app.use(cors({
-  origin:      process.env['CORS_ORIGIN'] ?? 'http://localhost:5173',
+  origin:      CORS_ORIGIN,
   credentials: true,
 }))
 

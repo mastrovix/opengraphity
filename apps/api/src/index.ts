@@ -7,6 +7,7 @@ import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startWorkflowJobWorker } from './jobs/workflowJobWorker.js'
 import { registerAllConnectors } from './discovery/registerConnectors.js'
 import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
+import { logger } from './lib/logger.js'
 
 async function main() {
   const httpServer = await startServer()
@@ -29,7 +30,7 @@ async function main() {
   startSyncWorker()
   await loadScheduledSyncs()
 
-  console.log('[api] All consumers started')
+  logger.info('All consumers started')
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
 
@@ -37,12 +38,12 @@ async function main() {
   const shutdown = async (signal: string) => {
     if (shuttingDown) return
     shuttingDown = true
-    console.log(`\n[api] Received ${signal} — shutting down gracefully...`)
+    logger.info({ signal }, 'Received signal — shutting down gracefully')
     httpServer.close(() => {
-      console.log('[api] HTTP server closed')
+      logger.info('HTTP server closed')
     })
     await closeConnection()
-    console.log('[api] Redis connection closed')
+    logger.info('Redis connection closed')
     process.exit(0)
   }
 
@@ -51,6 +52,6 @@ async function main() {
 }
 
 main().catch((err: unknown) => {
-  console.error('[api] Fatal startup error:', err)
+  logger.fatal({ err }, 'Fatal startup error')
   process.exit(1)
 })

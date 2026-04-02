@@ -1,5 +1,6 @@
 import { getSession } from '@opengraphity/neo4j'
 import type { CITypeWithDefinitions, CIFieldDefinition, CIRelationDefinition, CISystemRelationDefinition } from './types.js'
+import { toPascalCase, pluralize } from './stringUtils.js'
 
 export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinitions[]> {
   const session = getSession(undefined, 'READ')
@@ -365,18 +366,6 @@ ${inputTypes.join('\n')}
 `)
 
   return parts.join('\n')
-}
-
-function toPascalCase(str: string): string {
-  return str.split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join('')
-}
-
-function pluralize(str: string): string {
-  if (str.endsWith('s')) return str + 'es'
-  if (str.endsWith('y')) return str.slice(0, -1) + 'ies'
-  return str + 's'
 }
 
 function graphqlFieldType(fieldType: string): string {

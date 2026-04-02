@@ -1,4 +1,5 @@
 import { getSession } from '@opengraphity/neo4j'
+import { toPascalCase } from '@opengraphity/schema-generator'
 
 export interface NavigableField {
   name:       string
@@ -179,12 +180,6 @@ const FIXED_RELATIONS: Array<NavigableRelation & { sourceEntityType: string }> =
     targetNeo4jLabel: 'ChangeTask',
   },
 ]
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function toPascalCase(str: string): string {
-  return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
-}
 
 // ── Main exports ──────────────────────────────────────────────────────────────
 

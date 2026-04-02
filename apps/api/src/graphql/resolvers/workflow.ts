@@ -5,6 +5,7 @@ import { publish } from '@opengraphity/events'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import * as incidentService from '../../services/incidentService.js'
+import { workflowLogger } from '../../lib/logger.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -550,7 +551,7 @@ async function executeWorkflowTransition(
       },
     }
 
-    console.log('[resolver-workflow] Transitioning to:', toStep, 'instanceId:', instanceId)
+    workflowLogger.debug({ toStep, instanceId }, 'Transitioning workflow step')
     const result = await workflowEngine.transition(
       session,
       {
@@ -562,7 +563,7 @@ async function executeWorkflowTransition(
       },
       actionCtx,
     )
-    console.log('[resolver-workflow] Transition result:', result.success)
+    workflowLogger.debug({ instanceId, success: result.success }, 'Workflow transition result')
 
     if (result.success) {
       const wiResult = await session.executeRead((tx) =>

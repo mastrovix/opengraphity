@@ -5,8 +5,14 @@ import { getSession } from '@opengraphity/neo4j'
 import { verifyKeycloakToken } from './auth/keycloak.js'
 import { authLogger } from './lib/logger.js'
 
-const JWT_SECRET =
-  process.env['JWT_SECRET'] ?? 'opengraphity_dev_secret_change_in_production'
+const _jwtSecret = process.env['JWT_SECRET']
+if (!_jwtSecret) {
+  throw new Error(
+    'JWT_SECRET environment variable is required. ' +
+    'Set it in your .env file or deployment configuration.',
+  )
+}
+const JWT_SECRET: string = _jwtSecret
 
 export interface GraphQLContext {
   tenantId:  string

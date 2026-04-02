@@ -19,7 +19,7 @@ import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestP
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
 import { CIListPage } from '@/pages/ci/CIListPage'
 import { CIDetailPage } from '@/pages/ci/CIDetailPage'
-import { ProfilePage as NewProfilePage } from '@/pages/profile/ProfilePage'
+import { ProfilePage as UserProfilePage } from '@/pages/profile/ProfilePage'
 function CIDetailRedirect({ typeName }: { typeName: string }) {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
@@ -116,7 +116,7 @@ const router = createBrowserRouter([
       { path: 'settings/notifications',      element: <NotificationsPage />,       errorElement: <RouteError /> },
       { path: 'settings/notification-rules', element: <NotificationRulesPage />, errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
-      { path: 'profile',                   element: <NewProfilePage />,          errorElement: <RouteError /> },
+      { path: 'profile',                   element: <UserProfilePage />,         errorElement: <RouteError /> },
       { path: 'settings/ci-types',         element: <CITypeDesignerPage />,      errorElement: <RouteError /> },
       { path: 'settings/itil-designer',   element: <ITILTypeDesignerPage />,    errorElement: <RouteError /> },
       { path: 'settings/sync',            element: <SyncPage />,                errorElement: <RouteError /> },

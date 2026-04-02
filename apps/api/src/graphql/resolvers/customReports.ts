@@ -1,10 +1,33 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { getNavigableEntities, getNavigableRelations } from '../../lib/navigableGraph.js'
 import type { NavigableEntity } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import type { ReportSectionDef } from '../../lib/reportQueryBuilder.js'
+
+/**
+ * Allowed Neo4j node labels that can be used in reachableEntities queries.
+ * This whitelist prevents Cypher label injection from user-supplied input.
+ */
+const ALLOWED_NEO4J_LABELS = new Set([
+  'ConfigurationItem',
+  'Application',
+  'Server',
+  'Database',
+  'DatabaseInstance',
+  'Certificate',
+  'Incident',
+  'Change',
+  'Problem',
+  'ServiceRequest',
+  'Team',
+  'User',
+  'WorkflowDefinition',
+  'WorkflowInstance',
+  'ReportTemplate',
+])
 
 type Props = Record<string, unknown>
 
@@ -320,6 +343,16 @@ const Query = {
     ctx: GraphQLContext,
   ) {
     const { fromNeo4jLabel } = args
+
+    // Also allow dynamic CI type labels loaded from the metamodel
+    const navigableEntities = await getNavigableEntities(ctx.tenantId)
+    const dynamicLabels = new Set(navigableEntities.map(e => e.neo4jLabel))
+    if (!ALLOWED_NEO4J_LABELS.has(fromNeo4jLabel) && !dynamicLabels.has(fromNeo4jLabel)) {
+      throw new GraphQLError(`Invalid entity type: ${fromNeo4jLabel}`, {
+        extensions: { code: 'BAD_USER_INPUT' },
+      })
+    }
+
     const session = getSession(undefined, 'READ')
     try {
       const result = await session.executeRead(tx =>
@@ -339,7 +372,7 @@ const Query = {
         `, { tenantId: ctx.tenantId }),
       )
 
-      const allEntities = await getNavigableEntities(ctx.tenantId)
+      const allEntities = navigableEntities
       const allFixed: NavigableEntity[] = [
         { entityType: 'Incident', label: 'Incident', neo4jLabel: 'Incident', fields: [], relations: [] },
         { entityType: 'Change',   label: 'Change',   neo4jLabel: 'Change',   fields: [], relations: [] },

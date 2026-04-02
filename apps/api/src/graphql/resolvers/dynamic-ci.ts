@@ -1,6 +1,7 @@
 import { withSession } from './ci-utils.js'
 import { getSession } from '@opengraphity/neo4j'
 import { neo4jDateToISO } from '../../lib/mappers.js'
+import { toPascalCase, pluralize } from '@opengraphity/schema-generator'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
@@ -40,18 +41,8 @@ function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unkn
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function toPascalCase(str: string): string {
-  return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
-}
-
 function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
-}
-
-function pluralize(str: string): string {
-  if (str.endsWith('s')) return str + 'es'
-  if (str.endsWith('y')) return str.slice(0, -1) + 'ies'
-  return str + 's'
 }
 
 // ── Field resolvers per ogni tipo CI ─────────────────────────────────────────

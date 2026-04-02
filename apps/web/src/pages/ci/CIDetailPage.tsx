@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { toPascalCase } from '@opengraphity/schema-generator'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -42,10 +43,6 @@ interface CIDetail {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function toPascalCase(str: string): string {
-  return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
-}
 
 function RelationList({
   relations,
