@@ -5,6 +5,7 @@ import { runQuery } from '@opengraphity/neo4j'
 import type { DomainEvent } from '@opengraphity/types'
 import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { mapIncident } from '../lib/mappers.js'
+import { NotFoundError, ValidationError } from '../lib/errors.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -117,7 +118,7 @@ export async function createIncident(
       title: input.title, description: input.description ?? null,
       severity: input.severity, now,
     })
-    if (!rows[0]) throw new Error('Failed to create incident')
+    if (!rows[0]) throw new ValidationError('Failed to create incident')
     return mapIncident(rows[0].props)
   }, true)
 
@@ -160,7 +161,7 @@ export async function resolveIncident(
           i.root_cause = coalesce($rootCause, i.root_cause), i.updated_at = $now
       RETURN properties(i) as props
     `, { id, tenantId: ctx.tenantId, now, rootCause: notes ?? null })
-    if (!rows[0]) throw new Error('Incident not found')
+    if (!rows[0]) throw new NotFoundError('Incident', id)
     return mapIncident(rows[0].props)
   }, true)
 
@@ -178,7 +179,7 @@ export async function assignIncidentToTeam(
   teamId: string,
   ctx: ServiceCtx,
 ) {
-  if (!teamId?.trim()) throw new Error('teamId è obbligatorio')
+  if (!teamId?.trim()) throw new ValidationError('teamId è obbligatorio')
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
@@ -237,7 +238,7 @@ export async function assignIncidentToTeam(
       `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
       { id, tenantId: ctx.tenantId },
     ))
-    if (!r.records[0]) throw new Error('Incident not found')
+    if (!r.records[0]) throw new NotFoundError('Incident', id)
     const assigned = mapIncident(r.records[0].get('props') as Props)
     await publish(buildEvent('incident.assigned', ctx.tenantId, ctx.userId, {
       id:         assigned.id,
@@ -270,7 +271,7 @@ export async function assignIncidentToUser(
         `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
         { id, tenantId: ctx.tenantId },
       ))
-      if (!r.records[0]) throw new Error('Incident not found')
+      if (!r.records[0]) throw new NotFoundError('Incident', id)
       return mapIncident(r.records[0].get('props') as Props)
     }
 
@@ -328,7 +329,7 @@ export async function assignIncidentToUser(
       `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
       { id, tenantId: ctx.tenantId },
     ))
-    if (!r.records[0]) throw new Error('Incident not found')
+    if (!r.records[0]) throw new NotFoundError('Incident', id)
     const assigned = mapIncident(r.records[0].get('props') as Props)
     const assignedPayload = await loadIncidentPayload(session, id, ctx.tenantId)
     await publish(buildEvent('incident.assigned', ctx.tenantId, ctx.userId,

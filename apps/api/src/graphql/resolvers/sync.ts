@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import {
   encryptCredentials,
   decryptCredentials,
@@ -8,6 +8,8 @@ import {
 } from '@opengraphity/discovery'
 import type { GraphQLContext } from '../../context.js'
 import { syncQueue } from '../../discovery/syncWorker.js'
+import { withSession } from './ci-utils.js'
+import { NotFoundError } from '../../lib/errors.js'
 
 const ENCRYPTION_KEY = process.env['DISCOVERY_ENCRYPTION_KEY'] ?? ''
 
@@ -88,30 +90,24 @@ function mapConflict(p: Props) {
 export const syncResolvers = {
   Query: {
     syncSources: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         const rows = await runQuery<{ p: Props }>(session,
           `MATCH (n:SyncSource {tenant_id: $tenantId})
            RETURN properties(n) AS p ORDER BY n.name`,
           { tenantId: ctx.tenantId },
         )
         return rows.map(r => mapSource(r.p))
-      } finally {
-        await session.close()
-      }
+      })
     },
 
     syncSource: async (_: unknown, args: { id: string }, ctx: GraphQLContext) => {
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         const row = await runQueryOne<{ p: Props }>(session,
           `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`,
           { id: args.id, tenantId: ctx.tenantId },
         )
         return row ? mapSource(row.p) : null
-      } finally {
-        await session.close()
-      }
+      })
     },
 
     syncRuns: async (
@@ -131,8 +127,7 @@ export const syncResolvers = {
       const orderBy = sortCol
         ? `n.${sortCol} ${args.sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'}`
         : 'n.started_at DESC'
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         type Row = { p: Props; total: unknown }
         const rows = await runQuery<Row>(session,
           `MATCH (n:SyncRun {source_id: $sourceId, tenant_id: $tenantId})
@@ -144,9 +139,7 @@ export const syncResolvers = {
         )
         const total = rows[0] ? toNum(rows[0].total) : 0
         return { items: rows.map(r => mapRun(r.p)), total }
-      } finally {
-        await session.close()
-      }
+      })
     },
 
     syncConflicts: async (
@@ -156,8 +149,7 @@ export const syncResolvers = {
     ) => {
       const limit  = args.limit  ?? 20
       const offset = args.offset ?? 0
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         const filters: string[] = ['n.tenant_id = $tenantId']
         const params: Record<string, unknown> = { tenantId: ctx.tenantId, offset, limit }
         if (args.sourceId) { filters.push('n.source_id = $sourceId'); params['sourceId'] = args.sourceId }
@@ -174,14 +166,11 @@ export const syncResolvers = {
         )
         const total = rows[0] ? toNum(rows[0].total) : 0
         return { items: rows.map(r => mapConflict(r.p)), total }
-      } finally {
-        await session.close()
-      }
+      })
     },
 
     syncStats: async (_: unknown, args: { sourceId?: string }, ctx: GraphQLContext) => {
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         type StatsRow = {
           totalSources: unknown; enabledSources: unknown; lastSyncAt: unknown
           ciManaged: unknown; openConflicts: unknown; totalRuns: unknown
@@ -213,9 +202,7 @@ export const syncResolvers = {
           totalRuns:      total,
           successRate:    total > 0 ? Math.round((success / total) * 100) / 100 : 0,
         }
-      } finally {
-        await session.close()
-      }
+      })
     },
 
     availableConnectors: (_: unknown, __: unknown, _ctx: GraphQLContext) => {
@@ -262,8 +249,7 @@ export const syncResolvers = {
 
       const id  = randomUUID()
       const now = new Date().toISOString()
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         await session.executeWrite(tx => tx.run(
           `CREATE (n:SyncSource {
             id: $id, tenant_id: $tenantId, name: $name,
@@ -284,9 +270,7 @@ export const syncResolvers = {
           `MATCH (n:SyncSource {id: $id}) RETURN properties(n) AS p`, { id },
         )
         return mapSource(row!.p)
-      } finally {
-        await session.close()
-      }
+      }, true)
     },
 
     updateSyncSource: async (
@@ -314,8 +298,7 @@ export const syncResolvers = {
         params['encryptedCreds'] = enc
       }
 
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         await session.executeWrite(tx => tx.run(
           `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) SET ${sets.join(', ')}`,
           params,
@@ -324,22 +307,17 @@ export const syncResolvers = {
           `MATCH (n:SyncSource {id: $id}) RETURN properties(n) AS p`, { id },
         )
         return mapSource(row!.p)
-      } finally {
-        await session.close()
-      }
+      }, true)
     },
 
     deleteSyncSource: async (_: unknown, args: { id: string }, ctx: GraphQLContext) => {
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         await session.executeWrite(tx => tx.run(
           `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) DETACH DELETE n`,
           { id: args.id, tenantId: ctx.tenantId },
         ))
         return true
-      } finally {
-        await session.close()
-      }
+      }, true)
     },
 
     triggerSync: async (
@@ -351,8 +329,7 @@ export const syncResolvers = {
       const now      = new Date().toISOString()
       const syncType = args.syncType ?? 'manual'
 
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         await session.executeWrite(tx => tx.run(
           `CREATE (r:SyncRun {
             id: $runId, source_id: $sourceId, tenant_id: $tenantId,
@@ -375,9 +352,7 @@ export const syncResolvers = {
           `MATCH (r:SyncRun {id: $id}) RETURN properties(r) AS p`, { id: runId },
         )
         return mapRun(row!.p)
-      } finally {
-        await session.close()
-      }
+      }, true)
     },
 
     resolveConflict: async (
@@ -386,14 +361,13 @@ export const syncResolvers = {
       ctx: GraphQLContext,
     ) => {
       const now = new Date().toISOString()
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         // Load conflict data
         const conflictRow = await runQueryOne<{ p: Props }>(session,
           `MATCH (c:SyncConflict {id: $id, tenant_id: $tenantId}) RETURN properties(c) AS p`,
           { id: args.conflictId, tenantId: ctx.tenantId },
         )
-        if (!conflictRow) throw new Error('Conflict not found')
+        if (!conflictRow) throw new NotFoundError('Conflict', args.conflictId)
 
         const conflict = mapConflict(conflictRow.p)
         const discovered = JSON.parse(conflict.discoveredCi) as Record<string, unknown>
@@ -513,9 +487,7 @@ export const syncResolvers = {
           `MATCH (c:SyncConflict {id: $id}) RETURN properties(c) AS p`, { id: args.conflictId },
         )
         return mapConflict(row!.p)
-      } finally {
-        await session.close()
-      }
+      }, true)
     },
 
     testSyncConnection: async (
@@ -523,8 +495,7 @@ export const syncResolvers = {
       args: { sourceId: string },
       ctx: GraphQLContext,
     ) => {
-      const session = getSession()
-      try {
+      return withSession(async (session) => {
         const row = await runQueryOne<{ p: Props }>(session,
           `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`,
           { id: args.sourceId, tenantId: ctx.tenantId },
@@ -562,9 +533,7 @@ export const syncResolvers = {
           message: result.message,
           details: result.details ? JSON.stringify(result.details) : null,
         }
-      } finally {
-        await session.close()
-      }
+      })
     },
   },
 }

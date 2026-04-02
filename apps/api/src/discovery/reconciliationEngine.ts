@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
+import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type {
   DiscoveredCI,
   DiscoveredRelation,
@@ -343,8 +344,7 @@ export async function markStale(
   runId:     string,
   seenIds:   Set<string>,
 ): Promise<number> {
-  const session = getSession()
-  try {
+  return withSession(async (session) => {
     const result = await session.executeWrite(tx => tx.run(
       `MATCH (ci:ConfigurationItem {discovery_source_id: $sourceId, tenant_id: $tenantId, discovery_status: 'active'})
        WHERE NOT ci.discovery_external_id IN $seenIds
@@ -353,7 +353,5 @@ export async function markStale(
       { sourceId, tenantId, seenIds: Array.from(seenIds), now: new Date().toISOString() },
     ))
     return (result.records[0]?.get('n') as { toNumber(): number } | undefined)?.toNumber() ?? 0
-  } finally {
-    await session.close()
-  }
+  }, true)
 }

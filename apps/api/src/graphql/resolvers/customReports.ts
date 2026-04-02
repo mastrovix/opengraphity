@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
+import { NotFoundError } from '../../lib/errors.js'
 import { getNavigableEntities, getNavigableRelations } from '../../lib/navigableGraph.js'
 import type { NavigableEntity } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
@@ -412,7 +413,7 @@ const Query = {
 
   async executeReport(_: unknown, args: { templateId: string }, ctx: GraphQLContext) {
     const template = await loadFullTemplate(args.templateId, ctx.tenantId)
-    if (!template) throw new Error('Report template not found')
+    if (!template) throw new NotFoundError('ReportTemplate', args.templateId)
 
     const results = await Promise.all(
       template.sections.map(sec => executeReportSection(sec, ctx.tenantId)),
@@ -638,7 +639,7 @@ const Mutation = {
           RETURN r.id AS templateId, s.order AS order
         `, { sectionId: args.sectionId }),
       )
-      if (!res.records.length) throw new Error('Section not found')
+      if (!res.records.length) throw new NotFoundError('ReportSection', args.sectionId)
       templateId = res.records[0].get('templateId') as string
       const order = Math.round(Number(res.records[0].get('order') ?? 0))
 

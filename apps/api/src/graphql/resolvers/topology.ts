@@ -1,7 +1,7 @@
-import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { cache } from '../../lib/cache.js'
+import { withSession } from './ci-utils.js'
 
 interface TopologyArgs {
   types?:        string[]
@@ -72,8 +72,7 @@ export const topologyResolvers = {
       const cached = cache.get<{ nodes: unknown[]; edges: unknown[]; truncated: boolean }>(cacheKey)
       if (cached) return cached
 
-      const session = getSession(undefined, 'READ')
-      try {
+      return withSession(async (session) => {
 
         // ── BRANCH A: ego-network from a specific CI ──────────────────────
         if (args.selectedCiId) {
@@ -258,9 +257,7 @@ export const topologyResolvers = {
         cache.set(cacheKey, result, 30)
         return result
 
-      } finally {
-        await session.close()
-      }
+      })
     },
   },
 }

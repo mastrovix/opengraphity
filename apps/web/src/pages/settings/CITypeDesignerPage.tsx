@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { Layers, Layout, Plus, Trash2, Check, X } from 'lucide-react'
+import { Layers, Layout, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_CI_TYPES, GET_BASE_CI_TYPE } from '@/graphql/queries'
 import {
@@ -13,6 +13,11 @@ import { EmptyState } from '@/components/EmptyState'
 import { CIIcon } from '@/lib/ciIcon'
 import { CIDynamicForm } from '@/components/CIDynamicForm'
 import type { CITypeDef, CIFieldDef, CIRelationDef } from '@/contexts/MetamodelContext'
+import { CITypeList } from './citype/CITypeList'
+import { CIFieldEditor, CIFieldTable, fieldToForm, btnPrimary, btnSecondary, btnDanger } from './citype/CIFieldEditor'
+import type { FieldForm } from './citype/CIFieldEditor'
+import { CIRelationEditor, CIRelationTable } from './citype/CIRelationEditor'
+import type { RelationForm } from './citype/CIRelationEditor'
 
 // ── Style constants ────────────────────────────────────────────────────────────
 
@@ -37,27 +42,7 @@ const labelS: React.CSSProperties = {
   display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
 }
 
-const btnPrimary: React.CSSProperties = {
-  padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
-}
-
-const btnSecondary: React.CSSProperties = {
-  padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: 'var(--color-slate)', fontSize: 14, cursor: 'pointer',
-}
-
-const btnDanger: React.CSSProperties = {
-  padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: 'var(--color-trigger-sla-breach)', fontSize: 12, cursor: 'pointer',
-}
-
-// ── Available icons ────────────────────────────────────────────────────────────
-
 const ICONS = ['box', 'database', 'server', 'shield', 'hard-drive', 'cloud', 'globe', 'cpu', 'network', 'monitor', 'lock']
-const FIELD_TYPES = ['string', 'number', 'date', 'boolean', 'enum']
-
-// ── FormField helper ───────────────────────────────────────────────────────────
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -65,223 +50,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label style={labelS}>{label}</label>
       {children}
     </div>
-  )
-}
-
-// ── FieldModal ────────────────────────────────────────────────────────────────
-
-interface FieldForm {
-  name: string; label: string; fieldType: string
-  required: boolean; defaultValue: string; enumValues: string
-  validationScript: string; visibilityScript: string; defaultScript: string
-  order: number
-}
-
-const emptyFieldForm = (): FieldForm => ({
-  name: '', label: '', fieldType: 'string', required: false,
-  defaultValue: '', enumValues: '[]', validationScript: '',
-  visibilityScript: '', defaultScript: '', order: 0,
-})
-
-function fieldToForm(f: CIFieldDef): FieldForm {
-  return {
-    name: f.name, label: f.label, fieldType: f.fieldType,
-    required: f.required, defaultValue: '',
-    enumValues: JSON.stringify(f.enumValues ?? []),
-    validationScript: f.validationScript ?? '',
-    visibilityScript: f.visibilityScript ?? '',
-    defaultScript: f.defaultScript ?? '',
-    order: f.order,
-  }
-}
-
-function FieldModal({
-  open, onClose, onSave, initial, existingCount,
-}: {
-  open: boolean
-  onClose: () => void
-  onSave: (form: FieldForm) => Promise<void>
-  initial: FieldForm | null
-  existingCount: number
-}) {
-  const [form, setForm] = useState<FieldForm>(initial ?? { ...emptyFieldForm(), order: existingCount })
-  const [saving, setSaving] = useState(false)
-  const [scriptTab, setScriptTab] = useState<'validation' | 'visibility' | 'default'>('validation')
-
-  const set = (k: keyof FieldForm, v: unknown) => setForm(p => ({ ...p, [k]: v }))
-
-  // Reset when re-opened
-  const handleOpen = () => { setForm(initial ?? { ...emptyFieldForm(), order: existingCount }) }
-
-  return (
-    <Modal open={open} onClose={onClose} title={initial ? `Modifica campo: ${initial.name}` : 'Aggiungi campo'} width={560}
-      footer={
-        <>
-          <button style={btnSecondary} onClick={onClose}>Annulla</button>
-          <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
-            onClick={async () => {
-              setSaving(true)
-              try { await onSave(form) } finally { setSaving(false) }
-            }}>
-            {saving ? 'Salvataggio…' : 'Salva'}
-          </button>
-        </>
-      }>
-      <div onClick={handleOpen} style={{ display: 'none' }} />
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-        <Field label="name (slug) *">
-          <input style={inputS} value={form.name} disabled={!!initial}
-            onChange={e => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
-        </Field>
-        <Field label="label *">
-          <input style={inputS} value={form.label} onChange={e => set('label', e.target.value)} />
-        </Field>
-        <Field label="Tipo">
-          <select style={selectS} value={form.fieldType} onChange={e => set('fieldType', e.target.value)}>
-            {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </Field>
-        <Field label="Order">
-          <input style={inputS} type="number" value={form.order} onChange={e => set('order', Number(e.target.value))} />
-        </Field>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <input type="checkbox" id="req" checked={form.required} onChange={e => set('required', e.target.checked)} style={{ cursor: 'pointer' }} />
-        <label htmlFor="req" style={{ fontSize: 14, cursor: 'pointer' }}>Obbligatorio</label>
-      </div>
-
-      {form.fieldType === 'enum' && (
-        <Field label="Valori enum (array JSON)">
-          <textarea style={textareaS} value={form.enumValues} onChange={e => set('enumValues', e.target.value)} placeholder='["valore1","valore2"]' />
-        </Field>
-      )}
-
-      <Field label="Valore di default">
-        <input style={inputS} value={form.defaultValue} onChange={e => set('defaultValue', e.target.value)} />
-      </Field>
-
-      {/* Script tabs */}
-      <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 8, paddingTop: 16 }}>
-        <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
-          {(['validation', 'visibility', 'default'] as const).map(tab => (
-            <button key={tab} onClick={() => setScriptTab(tab)}
-              style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 12, cursor: 'pointer',
-                background: scriptTab === tab ? 'var(--color-brand-light)' : '#f9fafb',
-                color: scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
-                fontWeight: scriptTab === tab ? 600 : 400 }}>
-              {tab}Script
-            </button>
-          ))}
-        </div>
-
-        {scriptTab === 'validation' && (
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-              Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'messaggio'</code> per errore.
-            </p>
-            <textarea style={{ ...textareaS, minHeight: 100 }} value={form.validationScript}
-              onChange={e => set('validationScript', e.target.value)}
-              placeholder={"// Esempio:\nif (!value.startsWith('http')) throw 'URL non valido'"} />
-          </div>
-        )}
-        {scriptTab === 'visibility' && (
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-              Variabili: <code>input</code>. Ritorna <code>true/false</code>.
-            </p>
-            <textarea style={{ ...textareaS, minHeight: 100 }} value={form.visibilityScript}
-              onChange={e => set('visibilityScript', e.target.value)}
-              placeholder={"// Mostra solo se altro campo è valorizzato:\nreturn !!input.instanceType"} />
-          </div>
-        )}
-        {scriptTab === 'default' && (
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-              Variabili: <code>input</code>. Ritorna il valore di default.
-            </p>
-            <textarea style={{ ...textareaS, minHeight: 100 }} value={form.defaultScript}
-              onChange={e => set('defaultScript', e.target.value)}
-              placeholder={"// Esempio:\nreturn input.instanceType === 'PostgreSQL' ? 5432 : 3306"} />
-          </div>
-        )}
-      </div>
-    </Modal>
-  )
-}
-
-// ── RelationModal ─────────────────────────────────────────────────────────────
-
-interface RelationForm {
-  name: string; label: string; relationshipType: string
-  targetType: string; cardinality: string; direction: string; order: number
-}
-
-const emptyRelForm = (): RelationForm => ({
-  name: '', label: '', relationshipType: 'DEPENDS_ON',
-  targetType: 'any', cardinality: 'many', direction: 'outgoing', order: 0,
-})
-
-function RelationModal({
-  open, onClose, onSave, allTypes,
-}: {
-  open: boolean
-  onClose: () => void
-  onSave: (form: RelationForm) => Promise<void>
-  allTypes: CITypeDef[]
-}) {
-  const [form, setForm] = useState<RelationForm>(emptyRelForm())
-  const [saving, setSaving] = useState(false)
-  const set = (k: keyof RelationForm, v: unknown) => setForm(p => ({ ...p, [k]: v }))
-
-  return (
-    <Modal open={open} onClose={onClose} title="Aggiungi relazione CI" width={500}
-      footer={
-        <>
-          <button style={btnSecondary} onClick={onClose}>Annulla</button>
-          <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
-            onClick={async () => {
-              setSaving(true)
-              try { await onSave(form) } finally { setSaving(false) }
-            }}>
-            {saving ? 'Salvataggio…' : 'Salva'}
-          </button>
-        </>
-      }>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-        <Field label="name (slug) *">
-          <input style={inputS} value={form.name}
-            onChange={e => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
-        </Field>
-        <Field label="label *">
-          <input style={inputS} value={form.label} onChange={e => set('label', e.target.value)} />
-        </Field>
-        <Field label="Tipo relazione Neo4j *">
-          <input style={inputS} value={form.relationshipType}
-            onChange={e => set('relationshipType', e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
-            placeholder="DEPENDS_ON" />
-        </Field>
-        <Field label="Tipo target">
-          <select style={selectS} value={form.targetType} onChange={e => set('targetType', e.target.value)}>
-            <option value="any">qualsiasi</option>
-            {allTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Cardinalità">
-          <select style={selectS} value={form.cardinality} onChange={e => set('cardinality', e.target.value)}>
-            <option value="one">one</option>
-            <option value="many">many</option>
-          </select>
-        </Field>
-        <Field label="Direzione">
-          <select style={selectS} value={form.direction} onChange={e => set('direction', e.target.value)}>
-            <option value="outgoing">outgoing</option>
-            <option value="incoming">incoming</option>
-          </select>
-        </Field>
-      </div>
-    </Modal>
   )
 }
 
@@ -351,48 +119,57 @@ export function CITypeDesignerPage() {
   const ciTypes: CITypeDef[] = data?.ciTypes ?? []
   const baseType: CITypeDef | null = baseData?.baseCIType ?? null
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId]   = useState<string | null>(null)
   const [selectedBase, setSelectedBase] = useState(false)
-  const [showCreate, setShowCreate] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>('settings')
+  const [showCreate, setShowCreate]   = useState(false)
+  const [activeTab, setActiveTab]     = useState<Tab>('settings')
 
-  // Field state
   const [showFieldModal, setShowFieldModal] = useState(false)
-  const [editingField, setEditingField] = useState<CIFieldDef | null>(null)
+  const [editingField, setEditingField]     = useState<CIFieldDef | null>(null)
+  const [showRelModal, setShowRelModal]     = useState(false)
 
-  // Relation state
-  const [showRelModal, setShowRelModal] = useState(false)
-
-  // Settings form
   const [settingsForm, setSettingsForm] = useState<{ label: string; icon: string; color: string; validationScript: string } | null>(null)
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   const selected = ciTypes.find(t => t.id === selectedId) ?? null
 
-  // Sync settings form when selected type changes
   const selectType = (t: CITypeDef) => {
     setSelectedBase(false)
     setSelectedId(t.id)
     setActiveTab('settings')
-    setSettingsForm({
-      label: t.label,
-      icon: t.icon ?? 'box',
-      color: t.color ?? 'var(--color-brand)',
-      validationScript: t.validationScript ?? '',
-    })
+    setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '' })
   }
 
-  // Mutations
   const [createType] = useMutation(CREATE_CI_TYPE, { onCompleted: () => { refetch(); toast.success('Tipo creato') } })
   const [updateType] = useMutation(UPDATE_CI_TYPE, { onCompleted: () => { refetch(); toast.success('Salvato') } })
-  const [deleteType] = useMutation(DELETE_CI_TYPE, {
-    onCompleted: () => { refetch(); setSelectedId(null); toast.success('Tipo eliminato') },
-  })
-  const [addField] = useMutation(ADD_CI_FIELD, { onCompleted: () => { refetch(); setShowFieldModal(false); toast.success('Campo aggiunto') } })
-  const [addBaseField] = useMutation(ADD_CI_FIELD, { onCompleted: () => { refetchBase(); setShowFieldModal(false); toast.success('Campo base aggiunto') } })
-  const [removeField] = useMutation(REMOVE_CI_FIELD, { onCompleted: () => { refetch(); toast.success('Campo rimosso') } })
-  const [addRelation] = useMutation(ADD_CI_RELATION, { onCompleted: () => { refetch(); setShowRelModal(false); toast.success('Relazione aggiunta') } })
+  const [deleteType] = useMutation(DELETE_CI_TYPE, { onCompleted: () => { refetch(); setSelectedId(null); toast.success('Tipo eliminato') } })
+  const [addField]     = useMutation(ADD_CI_FIELD,    { onCompleted: () => { refetch();     setShowFieldModal(false); toast.success('Campo aggiunto') } })
+  const [addBaseField] = useMutation(ADD_CI_FIELD,    { onCompleted: () => { refetchBase(); setShowFieldModal(false); toast.success('Campo base aggiunto') } })
+  const [removeField]  = useMutation(REMOVE_CI_FIELD, { onCompleted: () => { refetch(); toast.success('Campo rimosso') } })
+  const [addRelation]  = useMutation(ADD_CI_RELATION, { onCompleted: () => { refetch(); setShowRelModal(false); toast.success('Relazione aggiunta') } })
   const [removeRelation] = useMutation(REMOVE_CI_RELATION, { onCompleted: () => { refetch(); toast.success('Relazione rimossa') } })
+
+  async function handleSaveField(form: FieldForm) {
+    const targetId = selectedBase ? baseType?.id : selected?.id
+    if (!targetId) return
+    let enumValues: string[] = []
+    if (form.fieldType === 'enum') {
+      try { enumValues = JSON.parse(form.enumValues) } catch { enumValues = [] }
+    }
+    const input = {
+      name: form.name, label: form.label, fieldType: form.fieldType,
+      required: form.required, defaultValue: form.defaultValue || null,
+      enumValues, order: form.order,
+      validationScript: form.validationScript || null,
+      visibilityScript: form.visibilityScript || null,
+      defaultScript:    form.defaultScript    || null,
+    }
+    if (selectedBase) {
+      await addBaseField({ variables: { typeId: targetId, input } })
+    } else {
+      await addField({ variables: { typeId: targetId, input } })
+    }
+  }
 
   return (
     <div>
@@ -403,80 +180,21 @@ export function CITypeDesignerPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
 
-        {/* ── Left: type list ─────────────────────────────────────────── */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #e5e7eb' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Tipi CI</span>
-            <button onClick={() => setShowCreate(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', border: 'none', borderRadius: 5, background: 'var(--color-brand)', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
-              <Plus size={12} /> Nuovo
-            </button>
-          </div>
+        {/* Left: type list */}
+        <CITypeList
+          ciTypes={ciTypes}
+          selectedId={selectedId}
+          selectedBase={selectedBase}
+          loading={loading}
+          onSelectType={selectType}
+          onSelectBase={() => { setSelectedBase(true); setSelectedId(null) }}
+          onNew={() => setShowCreate(true)}
+        />
 
-          {loading && <div style={{ padding: 20, color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento…</div>}
-
-          <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
-            {/* ── Campi Base special entry ── */}
-            <div onClick={() => { setSelectedBase(true); setSelectedId(null) }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 16px', cursor: 'pointer',
-                borderBottom: '1px solid #e5e7eb',
-                background: selectedBase ? 'var(--color-brand-light)' : '#f9fafb',
-                borderLeft: selectedBase ? '3px solid #0284c7' : '3px solid transparent',
-              }}>
-              <Layout size={16} color="var(--color-brand)" />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
-                  Campi Base
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Condivisi da tutti i tipi</div>
-              </div>
-              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 600,
-                background: '#cffafe', color: 'var(--color-brand)' }}>
-                Sistema
-              </span>
-            </div>
-            {/* ── Separator ── */}
-            <div style={{ padding: '6px 16px 4px', fontSize: 10, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
-              Tipi CI
-            </div>
-
-            {ciTypes.map(t => {
-              const isSelected = t.id === selectedId
-              return (
-                <div key={t.id} onClick={() => selectType(t)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 16px', cursor: 'pointer',
-                    borderBottom: '1px solid #f3f4f6',
-                    background: isSelected ? 'var(--color-brand-light)' : 'transparent',
-                    borderLeft: isSelected ? '3px solid #0284c7' : '3px solid transparent',
-                  }}>
-                  <CIIcon icon={t.icon} size={16} color={t.color ?? 'var(--color-brand)'} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {t.label}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{t.name}</div>
-                  </div>
-                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 500,
-                    background: t.active ? '#dcfce7' : '#f3f4f6',
-                    color: t.active ? '#16a34a' : 'var(--color-slate-light)' }}>
-                    {t.active ? 'active' : 'inactive'}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* ── Right: type editor ──────────────────────────────────────── */}
+        {/* Right: type editor */}
         <div>
           {selectedBase && baseType ? (
-            /* ── Campi Base panel ────────────────────────────────────── */
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-              {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
                 <Layout size={22} color="var(--color-brand)" />
                 <div>
@@ -484,13 +202,11 @@ export function CITypeDesignerPage() {
                   <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Ereditati da tutti i tipi CI</div>
                 </div>
               </div>
-              {/* Description */}
               <div style={{ padding: '12px 24px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb' }}>
                 <p style={{ fontSize: 14, color: 'var(--color-slate)', margin: 0 }}>
                   Questi campi sono presenti in tutti i tipi CI e non possono essere eliminati.
                 </p>
               </div>
-              {/* Fields */}
               <div style={{ padding: '20px 24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -500,39 +216,11 @@ export function CITypeDesignerPage() {
                     <Plus size={12} style={{ marginRight: 4 }} />Aggiungi campo base
                   </button>
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                      {['#', 'name', 'label', 'tipo', 'req', ''].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...baseType.fields].sort((a, b) => a.order - b.order).map(f => (
-                      <tr key={f.id} style={{ borderBottom: '1px solid #f3f4f6', background: '#f9fafb' }}>
-                        <td style={{ padding: '8px', color: 'var(--color-slate-light)', fontSize: 12 }}>{f.order}</td>
-                        <td style={{ padding: '8px' }}>
-                          <span style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12 }}>{f.name}</span>
-                          <span style={{ marginLeft: 6, padding: '1px 5px', fontSize: 10, borderRadius: 3, background: '#cffafe', color: 'var(--color-brand)', fontWeight: 600 }}>Sistema</span>
-                        </td>
-                        <td style={{ padding: '8px' }}>{f.label}</td>
-                        <td style={{ padding: '8px' }}>
-                          <span style={{ padding: '2px 8px', borderRadius: 4, background: '#f3f4f6', fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{f.fieldType}</span>
-                        </td>
-                        <td style={{ padding: '8px', textAlign: 'center' }}>
-                          {f.required ? <Check size={14} color="#16a34a" /> : <span style={{ color: '#d1d5db' }}>—</span>}
-                        </td>
-                        <td style={{ padding: '8px' }}>
-                          <button style={{ ...btnSecondary, padding: '3px 10px', fontSize: 12 }}
-                            onClick={() => { setEditingField(f); setShowFieldModal(true) }}>
-                            Modifica
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <CIFieldTable
+                  fields={[...baseType.fields].sort((a, b) => a.order - b.order)}
+                  showActions={false}
+                  onEdit={(f) => { setEditingField(f); setShowFieldModal(true) }}
+                />
               </div>
             </div>
           ) : !selected ? (
@@ -549,7 +237,6 @@ export function CITypeDesignerPage() {
                     <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selected.label}</div>
                     <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{selected.name}</div>
                   </div>
-                  {/* Active toggle */}
                   <button
                     onClick={() => updateType({ variables: { id: selected.id, input: { active: !selected.active } } })}
                     style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 100, fontSize: 12, cursor: 'pointer', background: selected.active ? '#dcfce7' : '#f3f4f6', color: selected.active ? '#16a34a' : 'var(--color-slate-light)', fontWeight: 500 }}>
@@ -577,7 +264,7 @@ export function CITypeDesignerPage() {
 
               <div style={{ padding: '20px 24px' }}>
 
-                {/* ── Tab: Impostazioni ─────────────────────────────── */}
+                {/* Tab: Impostazioni */}
                 {activeTab === 'settings' && settingsForm && (
                   <div style={{ maxWidth: 480 }}>
                     <Field label="Label">
@@ -617,10 +304,8 @@ export function CITypeDesignerPage() {
                           setSettingsSaving(true)
                           try {
                             await updateType({ variables: { id: selected.id, input: {
-                              label: settingsForm.label,
-                              icon: settingsForm.icon,
-                              color: settingsForm.color,
-                              validationScript: settingsForm.validationScript || null,
+                              label: settingsForm.label, icon: settingsForm.icon,
+                              color: settingsForm.color, validationScript: settingsForm.validationScript || null,
                             } } })
                           } finally { setSettingsSaving(false) }
                         }}>
@@ -630,99 +315,45 @@ export function CITypeDesignerPage() {
                   </div>
                 )}
 
-                {/* ── Tab: Campi ───────────────────────────────────── */}
+                {/* Tab: Campi */}
                 {activeTab === 'fields' && (() => {
-                  const sortedFields = [...selected.fields].sort((a, b) => a.order - b.order)
-                  const systemFields  = sortedFields.filter(f => f.isSystem)
+                  const sortedFields   = [...selected.fields].sort((a, b) => a.order - b.order)
+                  const systemFields   = sortedFields.filter(f => f.isSystem)
                   const specificFields = sortedFields.filter(f => !f.isSystem)
-
-                  const FieldTable = ({ fields, showActions }: { fields: CIFieldDef[]; showActions: boolean }) => (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                      <thead>
-                        <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                          {['#', 'name', 'label', 'tipo', 'req', ''].map(h => (
-                            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {fields.map(f => (
-                          <tr key={f.id} style={{ borderBottom: '1px solid #f3f4f6', background: f.isSystem ? '#f9fafb' : 'transparent' }}>
-                            <td style={{ padding: '8px', color: 'var(--color-slate-light)', fontSize: 12 }}>{f.order}</td>
-                            <td style={{ padding: '8px' }}>
-                              <span style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12 }}>{f.name}</span>
-                              {f.isSystem && (
-                                <span style={{ marginLeft: 6, padding: '1px 5px', fontSize: 10, borderRadius: 3, background: '#cffafe', color: 'var(--color-brand)', fontWeight: 600 }}>Sistema</span>
-                              )}
-                            </td>
-                            <td style={{ padding: '8px' }}>{f.label}</td>
-                            <td style={{ padding: '8px' }}>
-                              <span style={{ padding: '2px 8px', borderRadius: 4, background: '#f3f4f6', fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{f.fieldType}</span>
-                            </td>
-                            <td style={{ padding: '8px', textAlign: 'center' }}>
-                              {f.required ? <Check size={14} color="#16a34a" /> : <span style={{ color: '#d1d5db' }}>—</span>}
-                            </td>
-                            <td style={{ padding: '8px' }}>
-                              {showActions && (
-                                <div style={{ display: 'flex', gap: 4 }}>
-                                  <button style={{ ...btnSecondary, padding: '3px 10px', fontSize: 12 }}
-                                    onClick={() => { setEditingField(f); setShowFieldModal(true) }}>
-                                    Modifica
-                                  </button>
-                                  <button style={{ ...btnDanger, padding: '3px 10px' }}
-                                    onClick={() => {
-                                      if (!confirm(`Eliminare il campo "${f.name}"?`)) return
-                                      removeField({ variables: { typeId: selected.id, fieldId: f.id } })
-                                    }}>
-                                    <X size={12} />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )
-
                   return (
                     <div>
-                      {/* Campi base */}
                       <div style={{ marginBottom: 20 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Campi base ({systemFields.length})
-                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Campi base ({systemFields.length})</span>
                           <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Ereditati da __base__ — non modificabili</span>
                         </div>
-                        {systemFields.length === 0 ? (
-                          <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessun campo base.</p>
-                        ) : (
-                          <FieldTable fields={systemFields} showActions={false} />
-                        )}
+                        {systemFields.length === 0
+                          ? <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessun campo base.</p>
+                          : <CIFieldTable fields={systemFields} showActions={false} />
+                        }
                       </div>
-
-                      {/* Campi specifici */}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Campi specifici ({specificFields.length})
-                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Campi specifici ({specificFields.length})</span>
                           <button style={btnPrimary} onClick={() => { setEditingField(null); setShowFieldModal(true) }}>
                             <Plus size={12} style={{ marginRight: 4 }} />Aggiungi campo
                           </button>
                         </div>
-                        {specificFields.length === 0 ? (
-                          <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessun campo specifico. Clicca "Aggiungi campo" per crearne uno.</p>
-                        ) : (
-                          <FieldTable fields={specificFields} showActions={true} />
-                        )}
+                        {specificFields.length === 0
+                          ? <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessun campo specifico. Clicca "Aggiungi campo" per crearne uno.</p>
+                          : <CIFieldTable
+                              fields={specificFields}
+                              showActions={true}
+                              onEdit={(f) => { setEditingField(f); setShowFieldModal(true) }}
+                              onRemove={(f) => removeField({ variables: { typeId: selected.id, fieldId: f.id } })}
+                            />
+                        }
                       </div>
                     </div>
                   )
                 })()}
 
-                {/* ── Tab: Relazioni ────────────────────────────────── */}
+                {/* Tab: Relazioni */}
                 {activeTab === 'relations' && (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
@@ -730,59 +361,23 @@ export function CITypeDesignerPage() {
                         <Plus size={12} style={{ marginRight: 4 }} />Aggiungi relazione
                       </button>
                     </div>
-
-                    {selected.relations.length === 0 ? (
-                      <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessuna relazione CI configurata.</p>
-                    ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                            {['name', 'label', 'tipo Neo4j', 'target', 'card.', 'dir.', ''].map(h => (
-                              <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...selected.relations].sort((a: CIRelationDef, b: CIRelationDef) => a.order - b.order).map(r => (
-                            <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                              <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12 }}>{r.name}</td>
-                              <td style={{ padding: '8px' }}>{r.label}</td>
-                              <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12 }}>{r.relationshipType}</td>
-                              <td style={{ padding: '8px', fontSize: 12 }}>{r.targetType}</td>
-                              <td style={{ padding: '8px', fontSize: 12 }}>{r.cardinality}</td>
-                              <td style={{ padding: '8px', fontSize: 12 }}>{r.direction}</td>
-                              <td style={{ padding: '8px' }}>
-                                <button style={{ ...btnDanger, padding: '3px 10px' }}
-                                  onClick={() => {
-                                    if (!confirm(`Eliminare la relazione "${r.name}"?`)) return
-                                    removeRelation({ variables: { typeId: selected.id, relationId: r.id } })
-                                  }}>
-                                  <X size={12} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                    <CIRelationTable
+                      relations={selected.relations}
+                      onRemove={(r: CIRelationDef) => removeRelation({ variables: { typeId: selected.id, relationId: r.id } })}
+                    />
                   </div>
                 )}
 
-                {/* ── Tab: Preview ─────────────────────────────────── */}
+                {/* Tab: Preview */}
                 {activeTab === 'preview' && (
                   <div style={{ maxWidth: 520 }}>
                     <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 16 }}>
                       Anteprima del form di creazione CI — campi specifici del tipo.
                     </p>
-                    {selected.fields.length === 0 ? (
-                      <p style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>Nessun campo specifico da mostrare. Aggiungi campi nella tab "Campi".</p>
-                    ) : (
-                      <CIDynamicForm
-                        ciType={selected}
-                        onSubmit={async () => { toast.info('Preview — nessun dato salvato') }}
-                        onCancel={() => setActiveTab('fields')}
-                      />
-                    )}
+                    {selected.fields.length === 0
+                      ? <p style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>Nessun campo specifico da mostrare. Aggiungi campi nella tab "Campi".</p>
+                      : <CIDynamicForm ciType={selected} onSubmit={async () => { toast.info('Preview — nessun dato salvato') }} onCancel={() => setActiveTab('fields')} />
+                    }
                   </div>
                 )}
               </div>
@@ -792,61 +387,30 @@ export function CITypeDesignerPage() {
       </div>
 
       {/* Dialogs */}
-      <CreateTypeDialog open={showCreate} onClose={() => setShowCreate(false)}
-        onSave={async (form) => {
-          await createType({ variables: { input: form } })
-        }} />
+      <CreateTypeDialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSave={async (form) => { await createType({ variables: { input: form } }) }}
+      />
 
-      <FieldModal
+      <CIFieldEditor
         open={showFieldModal}
         onClose={() => setShowFieldModal(false)}
         initial={editingField ? fieldToForm(editingField) : null}
         existingCount={selectedBase ? (baseType?.fields.length ?? 0) : (selected?.fields.length ?? 0)}
-        onSave={async (form) => {
-          const targetId = selectedBase ? baseType?.id : selected?.id
-          if (!targetId) return
-          let enumValues: string[] = []
-          if (form.fieldType === 'enum') {
-            try { enumValues = JSON.parse(form.enumValues) } catch { enumValues = [] }
-          }
-          const input = {
-            name:             form.name,
-            label:            form.label,
-            fieldType:        form.fieldType,
-            required:         form.required,
-            defaultValue:     form.defaultValue || null,
-            enumValues,
-            order:            form.order,
-            validationScript: form.validationScript || null,
-            visibilityScript: form.visibilityScript || null,
-            defaultScript:    form.defaultScript    || null,
-          }
-          if (selectedBase) {
-            await addBaseField({ variables: { typeId: targetId, input } })
-          } else {
-            await addField({ variables: { typeId: targetId, input } })
-          }
-        }}
+        onSave={handleSaveField}
       />
 
-      <RelationModal
+      <CIRelationEditor
         open={showRelModal}
         onClose={() => setShowRelModal(false)}
         allTypes={ciTypes}
-        onSave={async (form) => {
+        onSave={async (form: RelationForm) => {
           if (!selected) return
           await addRelation({
             variables: {
               typeId: selected.id,
-              input: {
-                name:             form.name,
-                label:            form.label,
-                relationshipType: form.relationshipType,
-                targetType:       form.targetType,
-                cardinality:      form.cardinality,
-                direction:        form.direction,
-                order:            form.order,
-              },
+              input: { name: form.name, label: form.label, relationshipType: form.relationshipType, targetType: form.targetType, cardinality: form.cardinality, direction: form.direction, order: form.order },
             },
           })
         }}

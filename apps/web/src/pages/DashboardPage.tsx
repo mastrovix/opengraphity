@@ -1,198 +1,18 @@
-import { useState, useEffect } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useState } from 'react'
+import { useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import type { DragEndEvent } from '@dnd-kit/core'
-import {
-  SortableContext,
-  rectSortingStrategy,
-  useSortable,
-  arrayMove,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import {
-  GET_MY_DASHBOARDS,
-  GET_DASHBOARD,
-  GET_REPORT_TEMPLATES,
-  GET_TEAMS,
-} from '@/graphql/queries'
 import {
   CREATE_DASHBOARD,
   UPDATE_DASHBOARD,
   DELETE_DASHBOARD,
-  ADD_DASHBOARD_WIDGET,
-  REMOVE_DASHBOARD_WIDGET,
-  REORDER_DASHBOARD_WIDGETS,
-  UPDATE_DASHBOARD_WIDGET,
 } from '@/graphql/mutations'
-import { ReportChartRenderer } from '@/components/ReportChartRenderer'
+import { DashboardWidget } from './dashboard/DashboardWidget'
+import { DashboardEditMode } from './dashboard/DashboardEditMode'
+import { useDashboard } from './dashboard/useDashboard'
+import type { DashboardConfig, Team } from './dashboard/useDashboard'
+import type { ReportTemplate, ReportSection } from './dashboard/useDashboard'
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface Team {
-  id: string
-  name: string
-}
-
-interface ReportSection {
-  id: string
-  title: string
-  chartType: string
-  order: number
-}
-
-interface ReportTemplate {
-  id: string
-  name: string
-  sections: ReportSection[]
-}
-
-interface DashboardWidget {
-  id: string
-  order: number
-  colSpan: number
-  reportTemplateId: string
-  reportSectionId: string
-  data: string | null
-  error: string | null
-  reportSection: { id: string; title: string; chartType: string } | null
-  reportTemplate: { id: string; name: string } | null
-}
-
-interface DashboardConfig {
-  id: string
-  name: string
-  isDefault: boolean
-  isPersonal: boolean
-  visibility: string
-  createdAt: string
-  createdBy: { id: string; name: string } | null
-  sharedWith: Team[]
-  widgets: DashboardWidget[]
-}
-
-interface PendingWidget {
-  tempId: string
-  serverId?: string
-  reportTemplateId: string
-  reportSectionId: string
-  colSpan: number
-  order: number
-  reportSection: { id: string; title: string; chartType: string } | null
-  reportTemplate: { id: string; name: string } | null
-  data: string | null
-  isNew: boolean
-  isDeleted: boolean
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function serverWidgetToPending(w: DashboardWidget, idx: number): PendingWidget {
-  return {
-    tempId:           w.id,
-    serverId:         w.id,
-    reportTemplateId: w.reportTemplateId,
-    reportSectionId:  w.reportSectionId,
-    colSpan:          w.colSpan,
-    order:            idx,
-    reportSection:    w.reportSection,
-    reportTemplate:   w.reportTemplate,
-    data:             w.data,
-    isNew:            false,
-    isDeleted:        false,
-  }
-}
-
-// ── SortableItem ─────────────────────────────────────────────────────────────
-
-interface SortableItemProps {
-  widget: PendingWidget
-  onRemove: (tempId: string) => void
-  onUpdateColSpan: (tempId: string, colSpan: number) => void
-}
-
-function SortableItem({ widget, onRemove, onUpdateColSpan }: SortableItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: widget.tempId })
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    gridColumn: `span ${widget.colSpan}`,
-    opacity: isDragging ? 0.5 : 1,
-  }
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes}>
-      <div style={{
-        border: '2px dashed #0284c7',
-        borderRadius: 10,
-        background: '#fff',
-        overflow: 'hidden',
-        position: 'relative',
-      }}>
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span
-            {...listeners}
-            style={{ cursor: 'grab', fontSize: 14, color: 'var(--color-slate-light)', userSelect: 'none', lineHeight: 1 }}
-            title="Trascina per riordinare"
-          >
-            ⠿
-          </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {widget.reportSection?.title ?? 'Widget'}
-              {widget.isNew && (
-                <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--color-brand)', fontWeight: 400 }}>nuovo</span>
-              )}
-            </div>
-            {widget.reportTemplate?.name && (
-              <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 1 }}>{widget.reportTemplate.name}</div>
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <select
-              value={widget.colSpan}
-              onChange={(e) => onUpdateColSpan(widget.tempId, Number(e.target.value))}
-              style={{ fontSize: 12, padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', cursor: 'pointer' }}
-            >
-              {[2, 3, 4, 6, 12].map((s) => (
-                <option key={s} value={s}>{s} col</option>
-              ))}
-            </select>
-            <button
-              onClick={() => onRemove(widget.tempId)}
-              style={{
-                width: 20, height: 20, borderRadius: 4, border: '1px solid #fca5a5',
-                background: '#fef2f2', color: 'var(--color-danger)', fontSize: 12, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-              }}
-            >
-              ×
-            </button>
-          </div>
-        </div>
-        <div style={{ position: 'relative' }}>
-          <ReportChartRenderer
-            chartType={widget.reportSection?.chartType ?? 'bar'}
-            data={widget.data ?? ''}
-            title={widget.reportSection?.title ?? ''}
-            error={null}
-          />
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', background: 'rgba(255,255,255,0.4)' }} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── CreateDashboardDialog ──────────────────────────────────────────────────────
+// ── CreateDashboardDialog ─────────────────────────────────────────────────────
 
 interface CreateDashboardDialogProps {
   teams: Team[]
@@ -201,10 +21,10 @@ interface CreateDashboardDialogProps {
 }
 
 function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDialogProps) {
-  const [name, setName]                 = useState('')
-  const [visibility, setVisibility]     = useState('private')
+  const [name, setName]                   = useState('')
+  const [visibility, setVisibility]       = useState('private')
   const [selectedTeams, setSelectedTeams] = useState<string[]>([])
-  const [creating, setCreating]         = useState(false)
+  const [creating, setCreating]           = useState(false)
 
   const [createDashboard] = useMutation(CREATE_DASHBOARD)
 
@@ -269,12 +89,7 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
             <div style={{ border: '1px solid #d1d5db', borderRadius: 6, maxHeight: 120, overflowY: 'auto' }}>
               {teams.map((t) => (
                 <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedTeams.includes(t.id)}
-                    onChange={() => toggleTeam(t.id)}
-                    style={{ margin: 0 }}
-                  />
+                  <input type="checkbox" checked={selectedTeams.includes(t.id)} onChange={() => toggleTeam(t.id)} style={{ margin: 0 }} />
                   <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{t.name}</span>
                 </label>
               ))}
@@ -300,7 +115,7 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
   )
 }
 
-// ── SettingsDialog ─────────────────────────────────────────────────────────────
+// ── SettingsDialog ────────────────────────────────────────────────────────────
 
 interface SettingsDialogProps {
   dashboard: DashboardConfig
@@ -312,11 +127,11 @@ interface SettingsDialogProps {
 }
 
 function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpdated }: SettingsDialogProps) {
-  const [name, setName]                 = useState(dashboard.name)
-  const [visibility, setVisibility]     = useState(dashboard.visibility)
+  const [name, setName]                   = useState(dashboard.name)
+  const [visibility, setVisibility]       = useState(dashboard.visibility)
   const [selectedTeams, setSelectedTeams] = useState<string[]>(dashboard.sharedWith.map((t) => t.id))
-  const [saving, setSaving]             = useState(false)
-  const [deleting, setDeleting]         = useState(false)
+  const [saving, setSaving]               = useState(false)
+  const [deleting, setDeleting]           = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const [updateDashboard] = useMutation(UPDATE_DASHBOARD)
@@ -328,11 +143,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
       await updateDashboard({
         variables: {
           id: dashboard.id,
-          input: {
-            name: name.trim() || dashboard.name,
-            visibility,
-            sharedWithTeamIds: visibility === 'teams' ? selectedTeams : [],
-          },
+          input: { name: name.trim() || dashboard.name, visibility, sharedWithTeamIds: visibility === 'teams' ? selectedTeams : [] },
         },
       })
       toast.success('Dashboard aggiornata')
@@ -404,12 +215,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
             <div style={{ border: '1px solid #d1d5db', borderRadius: 6, maxHeight: 120, overflowY: 'auto' }}>
               {teams.map((t) => (
                 <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedTeams.includes(t.id)}
-                    onChange={() => toggleTeam(t.id)}
-                    style={{ margin: 0 }}
-                  />
+                  <input type="checkbox" checked={selectedTeams.includes(t.id)} onChange={() => toggleTeam(t.id)} style={{ margin: 0 }} />
                   <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{t.name}</span>
                 </label>
               ))}
@@ -467,166 +273,39 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
 // ── DashboardPage ─────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
-  const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null)
-  const [editMode, setEditMode]                   = useState(false)
-  const [pendingWidgets, setPendingWidgets]        = useState<PendingWidget[]>([])
-  const [expandedTemplates, setExpandedTemplates] = useState<Set<string>>(new Set())
-  const [saving, setSaving]                       = useState(false)
-  const [showCreate, setShowCreate]               = useState(false)
-  const [showSettings, setShowSettings]           = useState(false)
-  const [dropdownOpen, setDropdownOpen]           = useState(false)
-
-  const { data: listData, loading: listLoading, refetch: refetchList } =
-    useQuery<{ myDashboards: DashboardConfig[] }>(GET_MY_DASHBOARDS)
-
-  const { data: dashData, loading: dashLoading, refetch: refetchDash } =
-    useQuery<{ dashboard: DashboardConfig | null }>(GET_DASHBOARD, {
-      variables: { id: activeDashboardId },
-      skip: !activeDashboardId,
-    })
-
-  const { data: templatesData } = useQuery<{ reportTemplates: ReportTemplate[] }>(GET_REPORT_TEMPLATES)
-  const { data: teamsData }     = useQuery<{ teams: Team[] }>(GET_TEAMS)
-
-  const dashboards = listData?.myDashboards ?? []
-  const activeDash = dashData?.dashboard ?? null
-  const templates  = templatesData?.reportTemplates ?? []
-  const teams      = teamsData?.teams ?? []
-
-  // Auto-select default dashboard on first load
-  useEffect(() => {
-    if (!activeDashboardId && dashboards.length > 0) {
-      const def = dashboards.find((d) => d.isDefault) ?? dashboards[0]
-      setActiveDashboardId(def.id)
-    }
-  }, [dashboards, activeDashboardId])
-
-  // Sync pending widgets when dashboard data loads (outside edit mode)
-  useEffect(() => {
-    if (!editMode && activeDash?.widgets) {
-      setPendingWidgets(activeDash.widgets.map(serverWidgetToPending))
-    }
-  }, [activeDash?.widgets, editMode])
-
-  const [addWidgetMutation]     = useMutation(ADD_DASHBOARD_WIDGET)
-  const [removeWidgetMutation]  = useMutation(REMOVE_DASHBOARD_WIDGET)
-  const [reorderWidgetsMutation] = useMutation(REORDER_DASHBOARD_WIDGETS)
-  const [updateWidgetMutation]  = useMutation(UPDATE_DASHBOARD_WIDGET)
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-  const visiblePending = pendingWidgets.filter((w) => !w.isDeleted)
-
-  function enterEditMode() {
-    if (activeDash?.widgets) setPendingWidgets(activeDash.widgets.map(serverWidgetToPending))
-    setEditMode(true)
-  }
-
-  function cancelEditMode() {
-    if (activeDash?.widgets) setPendingWidgets(activeDash.widgets.map(serverWidgetToPending))
-    setEditMode(false)
-  }
-
-  async function handleSave() {
-    if (!activeDashboardId) return
-    setSaving(true)
-    try {
-      // 1. Add new widgets
-      for (const w of pendingWidgets.filter((w) => w.isNew && !w.isDeleted)) {
-        await addWidgetMutation({
-          variables: { input: { dashboardId: activeDashboardId, reportTemplateId: w.reportTemplateId, reportSectionId: w.reportSectionId, colSpan: w.colSpan } },
-        })
-      }
-
-      // 2. Remove deleted existing widgets
-      for (const w of pendingWidgets.filter((w) => w.isDeleted && !w.isNew && w.serverId)) {
-        await removeWidgetMutation({ variables: { widgetId: w.serverId } })
-      }
-
-      // 3. Update colSpan for changed existing widgets
-      const serverWidgets = activeDash?.widgets ?? []
-      for (const pw of pendingWidgets.filter((w) => !w.isNew && !w.isDeleted && w.serverId)) {
-        const original = serverWidgets.find((sw) => sw.id === pw.serverId)
-        if (original && original.colSpan !== pw.colSpan) {
-          await updateWidgetMutation({ variables: { widgetId: pw.serverId, input: { colSpan: pw.colSpan } } })
-        }
-      }
-
-      // 4. Reorder existing widgets
-      const existingIds = pendingWidgets
-        .filter((w) => !w.isNew && !w.isDeleted && w.serverId)
-        .map((w) => w.serverId as string)
-      if (existingIds.length > 1) {
-        await reorderWidgetsMutation({ variables: { dashboardId: activeDashboardId, widgetIds: existingIds } })
-      }
-
-      await refetchDash()
-      setEditMode(false)
-      toast.success('Dashboard salvata')
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Errore durante il salvataggio')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    if (over && active.id !== over.id) {
-      setPendingWidgets((prev) => {
-        const visibleIds = prev.filter((w) => !w.isDeleted).map((w) => w.tempId)
-        const oldIdx = visibleIds.indexOf(active.id as string)
-        const newIdx = visibleIds.indexOf(over.id as string)
-        const reorderedVisible = arrayMove(visibleIds, oldIdx, newIdx)
-        const deleted = prev.filter((w) => w.isDeleted)
-        const reordered = reorderedVisible.map((tid) => prev.find((w) => w.tempId === tid)!)
-        return [...reordered, ...deleted]
-      })
-    }
-  }
-
-  function handleRemoveWidget(tempId: string) {
-    setPendingWidgets((prev) =>
-      prev
-        .map((w) => w.tempId !== tempId ? w : { ...w, isDeleted: true })
-        .filter((w) => !(w.isNew && w.isDeleted)),
-    )
-  }
-
-  function handleUpdateColSpan(tempId: string, colSpan: number) {
-    setPendingWidgets((prev) => prev.map((w) => w.tempId === tempId ? { ...w, colSpan } : w))
-  }
-
-  function handleAddWidget(template: ReportTemplate, section: ReportSection) {
-    const newWidget: PendingWidget = {
-      tempId:           `temp-${Date.now()}`,
-      reportTemplateId: template.id,
-      reportSectionId:  section.id,
-      colSpan:          4,
-      order:            visiblePending.length,
-      reportSection:    { id: section.id, title: section.title, chartType: section.chartType },
-      reportTemplate:   { id: template.id, name: template.name },
-      data:             null,
-      isNew:            true,
-      isDeleted:        false,
-    }
-    setPendingWidgets((prev) => [...prev, newWidget])
-  }
-
-  function toggleTemplate(templateId: string) {
-    setExpandedTemplates((prev) => {
-      const next = new Set(prev)
-      if (next.has(templateId)) next.delete(templateId); else next.add(templateId)
-      return next
-    })
-  }
-
-  function handleSelectDashboard(id: string) {
-    setActiveDashboardId(id)
-    setDropdownOpen(false)
-    setEditMode(false)
-  }
-
-  const activeDashName = dashboards.find((d) => d.id === activeDashboardId)?.name ?? '…'
+  const {
+    activeDashboardId,
+    editMode,
+    pendingWidgets,
+    expandedTemplates,
+    saving,
+    showCreate,
+    showSettings,
+    dropdownOpen,
+    dashboards,
+    activeDash,
+    templates,
+    teams,
+    listLoading,
+    dashLoading,
+    dashData,
+    activeDashName,
+    setShowCreate,
+    setShowSettings,
+    setDropdownOpen,
+    refetchList,
+    refetchDash,
+    enterEditMode,
+    cancelEditMode,
+    handleSave,
+    handleDragEnd,
+    handleRemoveWidget,
+    handleUpdateColSpan,
+    handleAddWidget,
+    toggleTemplate,
+    handleSelectDashboard,
+    setActiveDashboardId,
+  } = useDashboard()
 
   // ── Header ──────────────────────────────────────────────────────────────────
 
@@ -639,34 +318,19 @@ export function DashboardPage() {
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setDropdownOpen((v) => !v)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '5px 10px', borderRadius: 6, border: '1px solid #d1d5db',
-              background: '#fff', color: 'var(--color-slate)', fontSize: 14, fontWeight: 500,
-              cursor: 'pointer',
-            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
           >
             <span>{activeDashName}</span>
             <span style={{ fontSize: 10, color: 'var(--color-slate-light)' }}>▼</span>
           </button>
 
           {dropdownOpen && (
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 4,
-              background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.1)', minWidth: 220, zIndex: 100,
-            }}>
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', minWidth: 220, zIndex: 100 }}>
               {dashboards.map((d) => (
                 <button
                   key={d.id}
                   onClick={() => handleSelectDashboard(d.id)}
-                  style={{
-                    width: '100%', padding: '8px 12px', textAlign: 'left',
-                    background: d.id === activeDashboardId ? '#f0f9ff' : 'none',
-                    border: 'none', cursor: 'pointer', fontSize: 14,
-                    color: d.id === activeDashboardId ? 'var(--color-brand-hover)' : 'var(--color-slate)',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
+                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: d.id === activeDashboardId ? '#f0f9ff' : 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: d.id === activeDashboardId ? 'var(--color-brand-hover)' : 'var(--color-slate)', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   {d.isDefault && <span style={{ fontSize: 10, color: '#f59e0b' }}>★</span>}
                   <span>{d.name}</span>
@@ -680,11 +344,7 @@ export function DashboardPage() {
               <div style={{ borderTop: '1px solid #f3f4f6', padding: 4 }}>
                 <button
                   onClick={() => { setDropdownOpen(false); setShowCreate(true) }}
-                  style={{
-                    width: '100%', padding: '7px 12px', textAlign: 'left',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 14, color: 'var(--color-brand)', fontWeight: 500,
-                  }}
+                  style={{ width: '100%', padding: '7px 12px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-brand)', fontWeight: 500 }}
                 >
                   + Nuova dashboard
                 </button>
@@ -714,16 +374,10 @@ export function DashboardPage() {
           </>
         ) : (
           <>
-            <button
-              onClick={enterEditMode}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
-            >
+            <button onClick={enterEditMode} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
               ✏ Personalizza
             </button>
-            <button
-              onClick={() => setShowSettings(true)}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
-            >
+            <button onClick={() => setShowSettings(true)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
               ⚙ Impostazioni
             </button>
           </>
@@ -752,24 +406,7 @@ export function DashboardPage() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16, padding: 24 }}>
             {viewWidgets.map((widget) => (
-              <div key={widget.id} style={{ gridColumn: `span ${widget.colSpan}` }}>
-                <div className="card-border" style={{ overflow: 'hidden' }}>
-                  <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)' }}>
-                      {widget.reportSection?.title ?? 'Widget'}
-                    </div>
-                    {widget.reportTemplate?.name && (
-                      <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 1 }}>{widget.reportTemplate.name}</div>
-                    )}
-                  </div>
-                  <ReportChartRenderer
-                    chartType={widget.reportSection?.chartType ?? 'bar'}
-                    data={widget.data ?? ''}
-                    title={widget.reportSection?.title ?? ''}
-                    error={widget.error}
-                  />
-                </div>
-              </div>
+              <DashboardWidget key={widget.id} widget={widget} />
             ))}
           </div>
         )}
@@ -809,80 +446,16 @@ export function DashboardPage() {
   return (
     <div>
       {header}
-      <div style={{ display: 'flex', gap: 16, padding: 24, alignItems: 'flex-start' }}>
-        {/* Draggable grid */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {visiblePending.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 14, border: '2px dashed #e5e7eb', borderRadius: 10 }}>
-              Nessun widget. Aggiungi un report dal pannello a destra.
-            </div>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={visiblePending.map((w) => w.tempId)} strategy={rectSortingStrategy}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
-                  {visiblePending.map((widget) => (
-                    <SortableItem
-                      key={widget.tempId}
-                      widget={widget}
-                      onRemove={handleRemoveWidget}
-                      onUpdateColSpan={handleUpdateColSpan}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          )}
-        </div>
-
-        {/* Add widget sidebar */}
-        <div style={{ width: 280, flexShrink: 0, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 14, fontWeight: 600, color: 'var(--color-slate)' }}>
-            Aggiungi widget
-          </div>
-          <div style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-            {templates.length === 0 && (
-              <div style={{ padding: 16, fontSize: 12, color: 'var(--color-slate-light)' }}>Nessun template disponibile.</div>
-            )}
-            {templates.map((template) => (
-              <div key={template.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <button
-                  onClick={() => toggleTemplate(template.id)}
-                  style={{
-                    width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center',
-                    justifyContent: 'space-between', background: 'none', border: 'none',
-                    cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'left',
-                  }}
-                >
-                  <span>{template.name}</span>
-                  <span style={{ color: 'var(--color-slate-light)', fontSize: 10 }}>{expandedTemplates.has(template.id) ? '▲' : '▼'}</span>
-                </button>
-                {expandedTemplates.has(template.id) && (
-                  <div style={{ background: '#f9fafb', paddingBottom: 4 }}>
-                    {(template.sections ?? []).length === 0 && (
-                      <div style={{ padding: '6px 14px', fontSize: 12, color: 'var(--color-slate-light)' }}>Nessuna sezione</div>
-                    )}
-                    {(template.sections ?? []).map((section) => (
-                      <div key={section.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px', gap: 8 }}>
-                        <span style={{ fontSize: 12, color: '#4b5563', flex: 1, minWidth: 0 }}>{section.title}</span>
-                        <button
-                          onClick={() => handleAddWidget(template, section)}
-                          style={{
-                            padding: '3px 8px', borderRadius: 4, border: '1px solid #0284c7',
-                            background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 12, fontWeight: 600,
-                            cursor: 'pointer', whiteSpace: 'nowrap',
-                          }}
-                        >
-                          + Aggiungi
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <DashboardEditMode
+        pendingWidgets={pendingWidgets}
+        templates={templates}
+        expandedTemplates={expandedTemplates}
+        onDragEnd={handleDragEnd}
+        onRemoveWidget={handleRemoveWidget}
+        onUpdateColSpan={handleUpdateColSpan}
+        onAddWidget={(template, section) => handleAddWidget(template as ReportTemplate, section as ReportSection)}
+        onToggleTemplate={toggleTemplate}
+      />
     </div>
   )
 }

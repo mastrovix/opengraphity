@@ -1,15 +1,13 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { ArrowLeft, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { CountBadge } from '@/components/ui/CountBadge'
-import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_INCIDENTS, GET_CHANGES } from '@/graphql/queries'
-import { ciPath } from '@/lib/ciPath'
 import {
   UPDATE_PROBLEM,
   LINK_INCIDENT_TO_PROBLEM,
@@ -22,16 +20,9 @@ import {
   EXECUTE_PROBLEM_TRANSITION,
   ADD_PROBLEM_COMMENT,
 } from '@/graphql/mutations'
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function groupByField<T>(items: T[], key: keyof T): Record<string, T[]> {
-  return items.reduce<Record<string, T[]>>((acc, item) => {
-    const k = String(item[key])
-    ;(acc[k] ??= []).push(item)
-    return acc
-  }, {})
-}
+import { ProblemHeader } from './ProblemHeader'
+import { ProblemTimeline } from './ProblemTimeline'
+import { ProblemCIList, ProblemIncidentList, ProblemChangeList } from './ProblemLinkedEntities'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -138,13 +129,6 @@ function timeAgo(s: string): string {
   return formatDate(s)
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 60_000)     return '< 1 min'
-  if (ms < 3_600_000)  return `${Math.floor(ms / 60_000)} min`
-  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)} ore`
-  return `${Math.floor(ms / 86_400_000)} giorni`
-}
-
 const PRIORITY_COLOR: Record<string, string> = {
   critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: '#ca8a04', low: '#16a34a',
 }
@@ -171,14 +155,6 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   )
 }
 
-function MicroBadge({ children, color }: { children: React.ReactNode; color?: string }) {
-  return (
-    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: color ?? 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 500 }}>
-      {children}
-    </span>
-  )
-}
-
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -186,14 +162,6 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
       <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{children}</div>
     </div>
   )
-}
-
-function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProperties {
-  const base: React.CSSProperties = { padding: '6px 14px', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, border: '1px solid transparent', transition: 'opacity 0.15s' }
-  if (toStep === 'resolved') return { ...base, backgroundColor: 'var(--color-trigger-automatic)', color: '#fff', borderColor: 'var(--color-trigger-automatic)' }
-  if (toStep === 'rejected') return { ...base, backgroundColor: 'var(--color-trigger-sla-breach)', color: '#fff', borderColor: 'var(--color-trigger-sla-breach)' }
-  if (toStep === 'closed')   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
-  return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -221,8 +189,8 @@ export function ProblemDetailPage() {
   const [changeSearch,     setChangeSearch]     = useState('')
   const [showChangeSearch, setShowChangeSearch] = useState(false)
 
-  const [editRootCause,  setEditRootCause]  = useState<string | null>(null)
-  const [editWorkaround, setEditWorkaround] = useState<string | null>(null)
+  const [editRootCause,     setEditRootCause]     = useState<string | null>(null)
+  const [editWorkaround,    setEditWorkaround]    = useState<string | null>(null)
   const [editAffectedUsers, setEditAffectedUsers] = useState<string | null>(null)
 
   const [descOpen,       setDescOpen]       = useState(true)
@@ -303,10 +271,10 @@ export function ProblemDetailPage() {
     onError: (err) => toast.error(err.message),
   })
 
-  const problem      = data?.problem
-  const users        = usersData?.users ?? []
-  const teams        = teamsData?.teams ?? []
-  const ciResults    = ciSearchData?.allCIs?.items ?? []
+  const problem         = data?.problem
+  const users           = usersData?.users ?? []
+  const teams           = teamsData?.teams ?? []
+  const ciResults       = ciSearchData?.allCIs?.items ?? []
   const incidentResults = incidentSearchData?.incidents?.items ?? []
   const changeResults   = changeSearchData?.changes?.items   ?? []
 
@@ -350,34 +318,13 @@ export function ProblemDetailPage() {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
 
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <button onClick={() => navigate(-1)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, padding: 0 }}>
-          <ArrowLeft size={14} />
-          Indietro
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>
-          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : '#f3f4f6', color: PRIORITY_COLOR[problem.priority] ?? 'var(--color-slate)', fontSize: 12, fontWeight: 600, border: `1px solid ${PRIORITY_COLOR[problem.priority] ?? '#e5e7eb'}` }}>
-            {problem.priority}
-          </span>
-          <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? 'var(--color-slate)', fontSize: 12, fontWeight: 500 }}>
-            {problem.status.replace(/_/g, ' ')}
-          </span>
-        </div>
-        <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--text-muted)' }}>{problem.id}</div>
-      </div>
-
-      {/* Workflow action buttons */}
-      {manualTransitions.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24 }}>
-          {manualTransitions.map((tr) => (
-            <button key={tr.toStep} onClick={() => handleTransitionClick(tr)} disabled={transitioning} style={transitionButtonStyle(tr.toStep, transitioning)}>
-              {tr.label}
-            </button>
-          ))}
-        </div>
-      )}
+      <ProblemHeader
+        problem={problem}
+        manualTransitions={manualTransitions}
+        transitioning={transitioning}
+        onBack={() => navigate(-1)}
+        onTransitionClick={handleTransitionClick}
+      />
 
       {/* Body grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
@@ -454,204 +401,52 @@ export function ProblemDetailPage() {
             )}
           </Card>
 
-          {/* CI Impattati */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setCiOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
-                <CountBadge count={problem.affectedCIs.length} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={(e) => { e.stopPropagation(); setShowCISearch((s) => !s); if (!ciOpen) setCiOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
-                  {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
-                </button>
-                {ciOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-              </div>
-            </div>
-            {ciOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
-                {showCISearch && (
-                  <div style={{ marginBottom: 12, position: 'relative' }}>
-                    <input type="text" value={ciSearch} onChange={(e) => setCiSearch(e.target.value)} placeholder="Cerca CI (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
-                    {ciResults.length > 0 && (
-                      <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                        {ciResults.filter((ci) => !problem.affectedCIs.find((a) => a.id === ci.id)).map((ci) => (
-                          <div key={ci.id} onClick={() => void addCI({ variables: { problemId: problem.id, ciId: ci.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
-                            <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{ci.type} · {ci.environment}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {problem.affectedCIs.length === 0 ? (
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
-                ) : (
-                  <div>
-                    {Object.entries(groupByField(problem.affectedCIs, 'type')).map(([type, cis]) => (
-                      <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={cis.length}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {cis.map((ci) => (
-                            <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
-                              <button onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
-                              <MicroBadge>{ci.status}</MicroBadge>
-                              <MicroBadge>{ci.environment}</MicroBadge>
-                              <button onClick={() => void removeCI({ variables: { problemId: problem.id, ciId: ci.id } })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
-                            </div>
-                          ))}
-                        </div>
-                      </CollapsibleGroup>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
+          <ProblemCIList
+            problemId={problem.id}
+            affectedCIs={problem.affectedCIs}
+            ciOpen={ciOpen}
+            showCISearch={showCISearch}
+            ciSearch={ciSearch}
+            ciResults={ciResults}
+            onToggle={() => setCiOpen((p) => !p)}
+            onToggleSearch={(e) => { e.stopPropagation(); setShowCISearch((s) => !s); if (!ciOpen) setCiOpen(true) }}
+            onSearchChange={setCiSearch}
+            onAddCI={(ciId) => void addCI({ variables: { problemId: problem.id, ciId } })}
+            onRemoveCI={(ciId) => void removeCI({ variables: { problemId: problem.id, ciId } })}
+          />
 
-          {/* Incident Correlati */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setIncidentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Incident Correlati</span>
-                <CountBadge count={problem.relatedIncidents.length} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={(e) => { e.stopPropagation(); setShowIncidentSearch((s) => !s); if (!incidentsOpen) setIncidentsOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
-                  {showIncidentSearch ? 'Chiudi' : '+ Collega Incident'}
-                </button>
-                {incidentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-              </div>
-            </div>
-            {incidentsOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
-                {showIncidentSearch && (
-                  <div style={{ marginBottom: 12 }}>
-                    <input type="text" value={incidentSearch} onChange={(e) => setIncidentSearch(e.target.value)} placeholder="Filtra incident per titolo..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
-                    {incidentResults.length > 0 && (
-                      <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                        {incidentResults.filter((i) => !problem.relatedIncidents.find((r) => r.id === i.id) && (incidentSearch.length < 2 || i.title.toLowerCase().includes(incidentSearch.toLowerCase()))).map((inc) => (
-                          <div key={inc.id} onClick={() => void linkIncident({ variables: { problemId: problem.id, incidentId: inc.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
-                            <span style={{ fontWeight: 500 }}>{inc.title}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{inc.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {problem.relatedIncidents.length === 0 ? (
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessun incident correlato.</p>
-                ) : (
-                  <div>
-                    {Object.entries(groupByField(problem.relatedIncidents, 'status')).map(([status, incidents]) => (
-                      <CollapsibleGroup key={status} title={status.replace(/_/g, ' ')} count={incidents.length}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {incidents.map((inc) => (
-                            <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                              <button onClick={() => navigate(`/incidents/${inc.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{inc.title}</button>
-                              <MicroBadge>{inc.severity}</MicroBadge>
-                              <button onClick={() => void unlinkIncident({ variables: { problemId: problem.id, incidentId: inc.id } })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 'auto' }} title="Scollega"><X size={14} /></button>
-                            </div>
-                          ))}
-                        </div>
-                      </CollapsibleGroup>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
+          <ProblemIncidentList
+            problemId={problem.id}
+            relatedIncidents={problem.relatedIncidents}
+            incidentsOpen={incidentsOpen}
+            showIncidentSearch={showIncidentSearch}
+            incidentSearch={incidentSearch}
+            incidentResults={incidentResults}
+            onToggle={() => setIncidentsOpen((p) => !p)}
+            onToggleSearch={(e) => { e.stopPropagation(); setShowIncidentSearch((s) => !s); if (!incidentsOpen) setIncidentsOpen(true) }}
+            onSearchChange={setIncidentSearch}
+            onLink={(incidentId) => void linkIncident({ variables: { problemId: problem.id, incidentId } })}
+            onUnlink={(incidentId) => void unlinkIncident({ variables: { problemId: problem.id, incidentId } })}
+          />
 
-          {/* Change Correlate */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setChangesOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: changesOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Change Correlate</span>
-                <CountBadge count={problem.relatedChanges.length} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={(e) => { e.stopPropagation(); setShowChangeSearch((s) => !s); if (!changesOpen) setChangesOpen(true) }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
-                  {showChangeSearch ? 'Chiudi' : '+ Collega Change'}
-                </button>
-                {changesOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-              </div>
-            </div>
-            {changesOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
-                {showChangeSearch && (
-                  <div style={{ marginBottom: 12 }}>
-                    <input type="text" value={changeSearch} onChange={(e) => setChangeSearch(e.target.value)} placeholder="Cerca change (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
-                    {changeResults.length > 0 && (
-                      <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                        {changeResults.filter((c) => !problem.relatedChanges.find((r) => r.id === c.id)).map((ch) => (
-                          <div key={ch.id} onClick={() => void linkChange({ variables: { problemId: problem.id, changeId: ch.id } })} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
-                            <span style={{ fontWeight: 500 }}>{ch.title}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{ch.type} · {ch.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {problem.relatedChanges.length === 0 ? (
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna change correlata.</p>
-                ) : (
-                  <div>
-                    {Object.entries(groupByField(problem.relatedChanges, 'type')).map(([type, changes]) => (
-                      <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={changes.length}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {changes.map((ch) => (
-                            <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                              <button onClick={() => navigate(`/changes/${ch.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ch.title}</button>
-                              <MicroBadge>{ch.status}</MicroBadge>
-                            </div>
-                          ))}
-                        </div>
-                      </CollapsibleGroup>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
+          <ProblemChangeList
+            problemId={problem.id}
+            relatedChanges={problem.relatedChanges}
+            changesOpen={changesOpen}
+            showChangeSearch={showChangeSearch}
+            changeSearch={changeSearch}
+            changeResults={changeResults}
+            onToggle={() => setChangesOpen((p) => !p)}
+            onToggleSearch={(e) => { e.stopPropagation(); setShowChangeSearch((s) => !s); if (!changesOpen) setChangesOpen(true) }}
+            onSearchChange={setChangeSearch}
+            onLink={(changeId) => void linkChange({ variables: { problemId: problem.id, changeId } })}
+          />
 
-          {/* Timeline */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setTimelineOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline workflow</span>
-              {timelineOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {timelineOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
-                {historyDesc.length === 0 ? (
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                    {historyDesc.map((exec, idx) => {
-                      const isCurrent = idx === 0
-                      return (
-                      <div key={exec.id} style={{ display: 'flex', gap: 12, paddingBottom: idx < historyDesc.length - 1 ? 16 : 0, position: 'relative' }}>
-                        {idx < historyDesc.length - 1 && (
-                          <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: 'var(--color-slate)', opacity: 0.3 }} />
-                        )}
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? 'var(--color-brand)' : 'var(--color-slate)', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
-                          <div style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'flex', gap: 6 }}>
-                            <span>{timeAgo(exec.enteredAt)}</span>
-                            {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
-                          </div>
-                          {exec.notes && <div style={{ fontSize: 12, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
-                        </div>
-                      </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
+          <ProblemTimeline
+            historyDesc={historyDesc}
+            timelineOpen={timelineOpen}
+            onToggle={() => setTimelineOpen((p) => !p)}
+          />
 
           {/* Commenti */}
           <Card style={{ marginBottom: 16, padding: 0 }}>

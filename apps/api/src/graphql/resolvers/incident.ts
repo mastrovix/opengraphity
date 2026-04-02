@@ -1,5 +1,5 @@
-import { GraphQLError } from 'graphql'
 import type { GraphQLResolveInfo } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
@@ -150,7 +150,7 @@ async function updateIncident(
       now,
     })
     const row = rows[0]
-    if (!row) throw new GraphQLError('Incident not found')
+    if (!row) throw new NotFoundError('Incident', id)
     return mapIncident(row.props)
   }, true)
 }
@@ -197,7 +197,7 @@ async function addAffectedCI(
       { id: args.incidentId, tenantId: ctx.tenantId },
     ))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('Incident not found')
+    if (!row) throw new NotFoundError('Incident', args.incidentId)
     return mapIncident(row.get('props') as Props)
   }, true)
 }
@@ -219,7 +219,7 @@ async function removeAffectedCI(
       { id: args.incidentId, tenantId: ctx.tenantId },
     ))
     const row = r.records[0]
-    if (!row) throw new GraphQLError('Incident not found')
+    if (!row) throw new NotFoundError('Incident', args.incidentId)
     return mapIncident(row.get('props') as Props)
   }, true)
 }
@@ -251,7 +251,7 @@ async function addIncidentComment(
       id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, commentId, text: args.text, now,
     })
     const row = rows[0]
-    if (!row) throw new GraphQLError('Incident not found')
+    if (!row) throw new NotFoundError('Incident', args.id)
     return {
       id:        row.cProps['id']         as string,
       text:      row.cProps['text']       as string,

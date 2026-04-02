@@ -6,8 +6,10 @@ import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
-import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { cache } from '../../lib/cache.js'
+import { ALLOWED_BASE_FIELDS, ALL_CIS_ALLOWED_FIELDS, ciOrderBy, buildBaseWhere, buildAdvancedWhere } from './buildCIQuery.js'
+import { buildFieldResolvers, mapTeamProps } from './ciFieldResolvers.js'
+import { buildCreateMutation, buildUpdateMutation, buildDeleteMutation } from './ciMutations.js'
 
 type Props = Record<string, unknown>
 
@@ -45,105 +47,7 @@ function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
 }
 
-// ── Field resolvers per ogni tipo CI ─────────────────────────────────────────
-
-type PrefetchedCI = { _ownerGroup?: TeamResult | null; _supportGroup?: TeamResult | null; _prefetched?: boolean }
-type TeamResult = { id: string; tenantId: string; name: string; description: string | null; type: string | null; createdAt: string | null }
-
-function mapTeamProps(p: Props): TeamResult {
-  return { id: p['id'] as string, tenantId: p['tenant_id'] as string, name: p['name'] as string,
-    description: (p['description'] as string | null) ?? null, type: (p['type'] as string | null) ?? null,
-    createdAt: neo4jDateToISO(p['created_at']) }
-}
-
-function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CITypeWithDefinitions[]) {
-  return {
-    ownerGroup: async (parent: { id: string } & PrefetchedCI) => {
-      if (parent._prefetched) return parent._ownerGroup ?? null
-      return withSession(async session => {
-        const r = await session.executeRead(tx =>
-          tx.run('MATCH (n {id: $id})-[:OWNED_BY]->(t:Team) RETURN properties(t) AS p',
-            { id: parent.id }),
-        )
-        if (!r.records.length) return null
-        return mapTeamProps(r.records[0].get('p') as Props)
-      })
-    },
-
-    supportGroup: async (parent: { id: string } & PrefetchedCI) => {
-      if (parent._prefetched) return parent._supportGroup ?? null
-      return withSession(async session => {
-        const r = await session.executeRead(tx =>
-          tx.run('MATCH (n {id: $id})-[:SUPPORTED_BY]->(t:Team) RETURN properties(t) AS p',
-            { id: parent.id }),
-        )
-        if (!r.records.length) return null
-        return mapTeamProps(r.records[0].get('p') as Props)
-      })
-    },
-
-    dependencies: async (parent: { id: string }, _: unknown, ctx: GraphQLContext) =>
-      withSession(async session => {
-        const outgoing = ciType.relations.filter(r => r.direction === 'outgoing')
-        if (!outgoing.length) return []
-        // Collect all relationship types, handle pipe-separated values
-        const relTypes = [...new Set(outgoing.flatMap(r => r.relationshipType.split('|')))].join('|')
-        const r = await session.executeRead(tx =>
-          tx.run(
-            `MATCH (n {id: $id})-[rel:${relTypes}]->(d)
-             WHERE d.tenant_id = $tenantId
-             RETURN properties(d) AS props, labels(d)[0] AS label, type(rel) AS relation
-             ORDER BY d.name`,
-            { id: parent.id, tenantId: ctx.tenantId },
-          ),
-        )
-        return r.records.map(rec => {
-          const props = rec.get('props') as Props
-          const label = rec.get('label') as string
-          const relation = rec.get('relation') as string
-          const targetType = allTypes.find(t => t.neo4jLabel === label)
-          if (!targetType) return null
-          return { ci: mapCI(props, targetType), relation }
-        }).filter(Boolean)
-      }),
-
-    dependents: async (parent: { id: string }, _: unknown, ctx: GraphQLContext) =>
-      withSession(async session => {
-        const incoming = ciType.relations.filter(r => r.direction === 'incoming')
-        if (!incoming.length) return []
-        const relTypes = [...new Set(incoming.flatMap(r => r.relationshipType.split('|')))].join('|')
-        const r = await session.executeRead(tx =>
-          tx.run(
-            `MATCH (n {id: $id})<-[rel:${relTypes}]-(d)
-             WHERE d.tenant_id = $tenantId
-             RETURN properties(d) AS props, labels(d)[0] AS label, type(rel) AS relation
-             ORDER BY d.name`,
-            { id: parent.id, tenantId: ctx.tenantId },
-          ),
-        )
-        return r.records.map(rec => {
-          const props = rec.get('props') as Props
-          const label = rec.get('label') as string
-          const relation = rec.get('relation') as string
-          const targetType = allTypes.find(t => t.neo4jLabel === label)
-          if (!targetType) return null
-          return { ci: mapCI(props, targetType), relation }
-        }).filter(Boolean)
-      }),
-  }
-}
-
-// ── Advanced filter — allowed base fields ────────────────────────────────────
-
-// Allowed base field keys (camelCase) — validated before use in Cypher
-const ALLOWED_BASE_FIELDS = new Set([
-  'name', 'status', 'environment', 'description', 'notes',
-  'createdAt', 'updatedAt', 'ownerGroup',
-])
-
 // ── Query generiche ───────────────────────────────────────────────────────────
-
-const ALL_CIS_ALLOWED_FIELDS = new Set(['name', 'status', 'environment', 'createdAt'])
 
 function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
   return async (
@@ -926,23 +830,12 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
         limit,
         offset,
       }
-      const CI_SORT_WHITELIST: Record<string, string> = {
-        name: 'n.name', status: 'n.status', environment: 'n.environment', createdAt: 'n.created_at',
-      }
-      const sortCol = sortField && CI_SORT_WHITELIST[sortField]
-      const sortDir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
-      const orderBy = sortCol ? `${sortCol} ${sortDir}` : 'n.name ASC'
-      const baseWhere = `($status IS NULL OR n.status = $status)
-        AND ($environment IS NULL OR n.environment = $environment)
-        AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))`
+      const orderBy = ciOrderBy(sortField, sortDirection)
       const allowedFields = new Set([
         ...ALLOWED_BASE_FIELDS,
         ...ciType.fields.filter(f => !f.isSystem).map(f => f.name),
       ])
-      const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'n', {
-        ownerGroup: { relType: 'OWNED_BY', targetLabel: 'Team', searchProp: 'name' },
-      }) : ''
-      const WHERE = advWhere ? `${baseWhere} AND (${advWhere})` : baseWhere
+      const WHERE = buildBaseWhere(filters, params, allowedFields)
 
       const cacheKey = `ci:${ctx.tenantId}:${neo4jLabel}:${JSON.stringify(params)}:${orderBy}`
       const cachedResult = cache.get<{ items: unknown[]; total: number }>(cacheKey)
@@ -1001,98 +894,10 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
         return r.records.length ? mapCI(r.records[0].get('props') as Props, ciType) : null
       })
 
-    // ── Mutation: create ───────────────────────────────────────────────────
-    Mutation[`create${typeName}`] = async (_: unknown, args: { input: Record<string, unknown> }, ctx: GraphQLContext) =>
-      withSession(async (session) => {
-        const { input } = args
-        const id  = crypto.randomUUID()
-        const now = new Date().toISOString()
-
-        const props: Record<string, unknown> = {
-          id, tenant_id: ctx.tenantId,
-          name:        input['name'],
-          status:      input['status']      ?? 'active',
-          environment: input['environment'] ?? null,
-          description: input['description'] ?? null,
-          notes:       input['notes']       ?? null,
-          created_at:  now, updated_at: now,
-        }
-        for (const field of ciType.fields) {
-          if (input[field.name] !== undefined) {
-            props[toSnakeCase(field.name)] = input[field.name]
-          }
-        }
-
-        const result = await session.executeWrite(tx =>
-          tx.run(`CREATE (n:${neo4jLabel} $props) RETURN properties(n) AS p`, { props }),
-        )
-
-        if (input['ownerGroupId']) {
-          await session.executeWrite(tx =>
-            tx.run(
-              `MATCH (n:${neo4jLabel} {id: $id}) MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-               MERGE (n)-[:OWNED_BY]->(t)`,
-              { id, teamId: input['ownerGroupId'], tenantId: ctx.tenantId },
-            ),
-          )
-        }
-        if (input['supportGroupId']) {
-          await session.executeWrite(tx =>
-            tx.run(
-              `MATCH (n:${neo4jLabel} {id: $id}) MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-               MERGE (n)-[:SUPPORTED_BY]->(t)`,
-              { id, teamId: input['supportGroupId'], tenantId: ctx.tenantId },
-            ),
-          )
-        }
-
-        cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
-        cache.invalidate(`topology:${ctx.tenantId}`)
-        return mapCI(result.records[0].get('p') as Props, ciType)
-      }, true)
-
-    // ── Mutation: update ───────────────────────────────────────────────────
-    Mutation[`update${typeName}`] = async (
-      _: unknown,
-      args: { id: string; input: Record<string, unknown> },
-      ctx: GraphQLContext,
-    ) =>
-      withSession(async session => {
-        const { id, input } = args
-        const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
-        for (const f of ['name', 'status', 'environment', 'description', 'notes']) {
-          if (input[f] !== undefined) updates[f] = input[f]
-        }
-        for (const field of ciType.fields) {
-          if (input[field.name] !== undefined) {
-            updates[toSnakeCase(field.name)] = input[field.name]
-          }
-        }
-        const result = await session.executeWrite(tx =>
-          tx.run(
-            `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) SET n += $updates RETURN properties(n) AS p`,
-            { id, tenantId: ctx.tenantId, updates },
-          ),
-        )
-        if (!result.records.length) throw new Error('CI non trovato')
-        cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
-        cache.invalidate(`topology:${ctx.tenantId}`)
-        return mapCI(result.records[0].get('p') as Props, ciType)
-      }, true)
-
-    // ── Mutation: delete ───────────────────────────────────────────────────
-    Mutation[`delete${typeName}`] = async (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
-      withSession(async session => {
-        await session.executeWrite(tx =>
-          tx.run(
-            `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) DETACH DELETE n`,
-            { id: args.id, tenantId: ctx.tenantId },
-          ),
-        )
-        cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
-        cache.invalidate(`topology:${ctx.tenantId}`)
-        return true
-      }, true)
+    // ── Mutations: create / update / delete ───────────────────────────────
+    Mutation[`create${typeName}`] = buildCreateMutation(ciType, neo4jLabel, mapCI)
+    Mutation[`update${typeName}`] = buildUpdateMutation(ciType, neo4jLabel, mapCI)
+    Mutation[`delete${typeName}`] = buildDeleteMutation(neo4jLabel)
 
     // ── Field resolvers ────────────────────────────────────────────────────
     const fieldResolvers = buildFieldResolvers(ciType, types)
