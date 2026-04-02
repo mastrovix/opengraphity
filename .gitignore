@@ -9,3 +9,4 @@ coverage/
 # Pi5 deploy certs (generated on device)
 certs_pi5/
 keycloak-realm_pi5_local.json
+backups/
