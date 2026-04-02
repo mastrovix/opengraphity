@@ -58,10 +58,17 @@ export function IncidentListPage() {
   const location = useLocation()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (field: string, dir: 'asc' | 'desc') => {
+    setSortField(field); setSortDir(dir); setPage(0)
+  }
+
   const { data, loading, refetch } = useQuery<{
     incidents: { items: Incident[]; total: number }
   }>(GET_INCIDENTS, {
-    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null },
+    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
   })
 
@@ -107,6 +114,9 @@ export function IncidentListPage() {
         loading={loading}
         emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title={t('pages.incidents.noResults')} description={t('pages.incidents.noResultsDesc')} />}
         onRowClick={(row) => navigate(`/incidents/${row.id}`)}
+        onSort={handleSort}
+        sortField={sortField}
+        sortDir={sortDir}
       />
 
       {total > 0 && (

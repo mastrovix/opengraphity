@@ -3,15 +3,15 @@ export function buildBaseSDL(): string {
 
   type Query {
     # Incidents
-    incidents(status: String, severity: String, limit: Int, offset: Int, filters: String): IncidentsResult!
+    incidents(status: String, severity: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): IncidentsResult!
     incident(id: ID!): Incident
 
     # Problems
-    problems(limit: Int, offset: Int, status: String, priority: String, search: String, filters: String): ProblemsResult!
+    problems(limit: Int, offset: Int, status: String, priority: String, search: String, filters: String, sortField: String, sortDirection: String): ProblemsResult!
     problem(id: ID!): Problem
 
     # Changes
-    changes(status: String, type: String, priority: String, search: String, limit: Int, offset: Int, filters: String): ChangesResult!
+    changes(status: String, type: String, priority: String, search: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): ChangesResult!
     change(id: ID!): Change
     changeTasks(changeId: ID!, taskType: String): [ChangeTask!]!
     changeImpactAnalysis(ciIds: [ID!]!): ImpactAnalysis!
@@ -21,7 +21,7 @@ export function buildBaseSDL(): string {
     serviceRequest(id: ID!): ServiceRequest
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
-    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, filters: String): AllCIsResult!
+    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, filters: String, sortField: String, sortDirection: String): AllCIsResult!
     ciById(id: ID!): CIBase
     blastRadius(id: ID!): [BlastRadiusItem!]!
     ciIncidents(ciId: ID!): [Incident!]!
@@ -67,7 +67,7 @@ export function buildBaseSDL(): string {
     logs(level: String, module: String, search: String, limit: Int, offset: Int, filters: String): LogsResult!
 
     # Anomaly Detection
-    anomalies(status: String, severity: String, ruleKey: String, limit: Int, offset: Int, filters: String): AnomaliesResult!
+    anomalies(status: String, severity: String, ruleKey: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): AnomaliesResult!
     anomaly(id: ID!): Anomaly
     anomalyStats: AnomalyStats!
     anomalyScanStatus: AnomalyScanStatus!
@@ -89,7 +89,7 @@ export function buildBaseSDL(): string {
     # Discovery / Sync
     syncSources: [SyncSource!]!
     syncSource(id: ID!): SyncSource
-    syncRuns(sourceId: ID!, limit: Int, offset: Int): SyncRunsResult!
+    syncRuns(sourceId: ID!, limit: Int, offset: Int, sortField: String, sortDirection: String): SyncRunsResult!
     syncConflicts(sourceId: ID, status: String, limit: Int, offset: Int): SyncConflictsResult!
     syncStats(sourceId: ID): SyncStats!
     availableConnectors: [ConnectorInfo!]!

@@ -34,12 +34,28 @@ function mapCI(props: Props, label?: string) {
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
+// col maps to either `ci.PROPERTY` or the `label` alias from `labels(ci)[0]`
+const CI_SORT_WHITELIST: Record<string, string> = {
+  name:        'ci.name',
+  status:      'ci.status',
+  environment: 'ci.environment',
+  createdAt:   'ci.created_at',
+  type:        'label',
+}
+
+function ciOrderBy(sortField?: string | null, sortDirection?: string | null): string {
+  const col = sortField && CI_SORT_WHITELIST[sortField]
+  if (!col) return 'ci.name ASC'
+  const dir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
+  return `${col} ${dir}`
+}
+
 async function configurationItems(
   _: unknown,
-  args: { type?: string; environment?: string; status?: string; search?: string; limit?: number; offset?: number },
+  args: { type?: string; environment?: string; status?: string; search?: string; limit?: number; offset?: number; sortField?: string; sortDirection?: string },
   ctx: GraphQLContext,
 ) {
-  const { type, environment, status, search, limit = 50, offset = 0 } = args
+  const { type, environment, status, search, limit = 50, offset = 0, sortField, sortDirection } = args
   // Type filter: use label directly — ci.type property is never set on CI nodes
   const labelClause = type ? `:ConfigurationItem:${type}` : ':ConfigurationItem'
   return withSession(async (session) => {
@@ -60,7 +76,7 @@ async function configurationItems(
     const itemRows  = await runQuery<{ props: Props; label: string }>(session, `
       MATCH (ci${labelClause} {tenant_id: $tenantId})
       ${whereClause}
-      WITH ci, labels(ci)[0] AS label ORDER BY ci.name
+      WITH ci, labels(ci)[0] AS label ORDER BY ${ciOrderBy(sortField, sortDirection)}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       RETURN properties(ci) as props, label
     `, params)

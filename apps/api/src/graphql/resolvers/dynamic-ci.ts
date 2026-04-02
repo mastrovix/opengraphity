@@ -923,10 +923,10 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
     // ── Query: lista ───────────────────────────────────────────────────────
     Query[queryListKey] = async (
       _: unknown,
-      args: { limit?: number; offset?: number; status?: string; environment?: string; search?: string; filters?: string },
+      args: { limit?: number; offset?: number; status?: string; environment?: string; search?: string; filters?: string; sortField?: string; sortDirection?: string },
       ctx: GraphQLContext,
     ) => {
-      const { limit = 50, offset = 0, status, environment, search, filters } = args
+      const { limit = 50, offset = 0, status, environment, search, filters, sortField, sortDirection } = args
       const params: Record<string, unknown> = {
         tenantId: ctx.tenantId,
         status: status ?? null,
@@ -935,6 +935,12 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
         limit,
         offset,
       }
+      const CI_SORT_WHITELIST: Record<string, string> = {
+        name: 'n.name', status: 'n.status', environment: 'n.environment', createdAt: 'n.created_at',
+      }
+      const sortCol = sortField && CI_SORT_WHITELIST[sortField]
+      const sortDir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
+      const orderBy = sortCol ? `${sortCol} ${sortDir}` : 'n.name ASC'
       const baseWhere = `($status IS NULL OR n.status = $status)
         AND ($environment IS NULL OR n.environment = $environment)
         AND ($search IS NULL OR toLower(n.name) CONTAINS toLower($search))`
@@ -947,7 +953,7 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
       }) : ''
       const WHERE = advWhere ? `${baseWhere} AND (${advWhere})` : baseWhere
 
-      const cacheKey = `ci:${ctx.tenantId}:${neo4jLabel}:${JSON.stringify(params)}`
+      const cacheKey = `ci:${ctx.tenantId}:${neo4jLabel}:${JSON.stringify(params)}:${orderBy}`
       const cachedResult = cache.get<{ items: unknown[]; total: number }>(cacheKey)
       if (cachedResult) return cachedResult
 
@@ -962,7 +968,7 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
              RETURN properties(n) AS props,
                CASE WHEN og IS NOT NULL THEN properties(og) END AS ogProps,
                CASE WHEN sg IS NOT NULL THEN properties(sg) END AS sgProps
-             ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
+             ORDER BY ${orderBy} SKIP toInteger($offset) LIMIT toInteger($limit)`,
             params,
           )),
           s2.executeRead(tx => tx.run(

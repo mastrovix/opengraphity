@@ -506,6 +506,12 @@ export function AnomalyPage() {
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [page, setPage]                 = useState(0)
   const [filterGroup, setFilterGroup]   = useState<FilterGroup | null>(null)
+  const [sortField, setSortField]       = useState<string | null>(null)
+  const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (field: string, dir: 'asc' | 'desc') => {
+    setSortField(field); setSortDir(dir); setPage(0)
+  }
 
   const { data: statsData, refetch: refetchStats } = useQuery<{ anomalyStats: AnomalyStats }>(
     GET_ANOMALY_STATS,
@@ -517,10 +523,13 @@ export function AnomalyPage() {
     GET_ANOMALIES,
     {
       variables: {
-        limit:   PAGE_SIZE,
-        offset:  page * PAGE_SIZE,
-        filters: filterGroup ? JSON.stringify(filterGroup) : null,
+        limit:         PAGE_SIZE,
+        offset:        page * PAGE_SIZE,
+        filters:       filterGroup ? JSON.stringify(filterGroup) : null,
+        sortField,
+        sortDirection: sortDir,
       },
+      fetchPolicy: 'cache-and-network',
     },
   )
 
@@ -623,6 +632,9 @@ export function AnomalyPage() {
             columns={columns}
             loading={loading}
             onRowClick={(row) => setSelected(row)}
+            onSort={handleSort}
+            sortField={sortField}
+            sortDir={sortDir}
           />
         )}
       </div>

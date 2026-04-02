@@ -52,6 +52,12 @@ export function CIListPage() {
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: string, dir: 'asc' | 'desc') => {
+    setSortField(field); setSortDir(dir); setPage(0)
+  }
 
   const ciType = typeName ? getCIType(typeName) : undefined
   const ciTypeLabel = (typeName && CI_TYPE_KEYS[typeName]) ? t(CI_TYPE_KEYS[typeName]) : (ciType?.label ?? '')
@@ -67,11 +73,13 @@ export function CIListPage() {
     const query = gql`
       query DynamicList_${pascal}(
         $limit: Int, $offset: Int,
-        $status: String, $environment: String, $search: String, $filters: String
+        $status: String, $environment: String, $search: String, $filters: String,
+        $sortField: String, $sortDirection: String
       ) {
         ${key}(
           limit: $limit, offset: $offset,
-          status: $status, environment: $environment, search: $search, filters: $filters
+          status: $status, environment: $environment, search: $search, filters: $filters,
+          sortField: $sortField, sortDirection: $sortDirection
         ) {
           total
           items {
@@ -92,7 +100,7 @@ export function CIListPage() {
   const { data, loading, refetch } = useQuery<Record<string, { total: number; items: CIItem[] }>>(
     listQuery ?? gql`query EmptyCIList { __typename }`,
     {
-      variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null },
+      variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
       fetchPolicy: 'cache-and-network',
       skip: !listQuery || !typeName,
     },
@@ -217,6 +225,9 @@ export function CIListPage() {
           data={items}
           loading={loading}
           onRowClick={(row) => navigate(`/ci/${typeName}/${row.id}`)}
+          onSort={handleSort}
+          sortField={sortField}
+          sortDir={sortDir}
         />
       )}
 

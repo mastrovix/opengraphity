@@ -1,8 +1,8 @@
 import { gql } from '@apollo/client'
 
 export const GET_INCIDENTS = gql`
-  query GetIncidents($status: String, $severity: String, $limit: Int, $offset: Int, $filters: String) {
-    incidents(status: $status, severity: $severity, limit: $limit, offset: $offset, filters: $filters) {
+  query GetIncidents($status: String, $severity: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    incidents(status: $status, severity: $severity, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id title severity status createdAt
@@ -67,8 +67,8 @@ export const GET_TEAMS = gql`
 `
 
 export const GET_PROBLEMS = gql`
-  query GetProblems($limit: Int, $offset: Int, $status: String, $priority: String, $search: String, $filters: String) {
-    problems(limit: $limit, offset: $offset, status: $status, priority: $priority, search: $search, filters: $filters) {
+  query GetProblems($limit: Int, $offset: Int, $status: String, $priority: String, $search: String, $filters: String, $sortField: String, $sortDirection: String) {
+    problems(limit: $limit, offset: $offset, status: $status, priority: $priority, search: $search, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id title priority status
@@ -103,8 +103,8 @@ export const GET_PROBLEM = gql`
 `
 
 export const GET_CHANGES = gql`
-  query GetChanges($status: String, $type: String, $priority: String, $search: String, $limit: Int, $offset: Int, $filters: String) {
-    changes(status: $status, type: $type, priority: $priority, search: $search, limit: $limit, offset: $offset, filters: $filters) {
+  query GetChanges($status: String, $type: String, $priority: String, $search: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    changes(status: $status, type: $type, priority: $priority, search: $search, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id title type priority status
@@ -132,8 +132,8 @@ export const GET_SERVICE_REQUESTS = gql`
 `
 
 export const GET_ALL_CIS = gql`
-  query GetAllCIs($limit: Int, $offset: Int, $type: String, $environment: String, $status: String, $search: String, $filters: String) {
-    allCIs(limit: $limit, offset: $offset, type: $type, environment: $environment, status: $status, search: $search, filters: $filters) {
+  query GetAllCIs($limit: Int, $offset: Int, $type: String, $environment: String, $status: String, $search: String, $filters: String, $sortField: String, $sortDirection: String) {
+    allCIs(limit: $limit, offset: $offset, type: $type, environment: $environment, status: $status, search: $search, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id name type status environment description createdAt
@@ -493,8 +493,8 @@ export const GET_DASHBOARD = gql`
 `
 
 export const GET_ANOMALIES = gql`
-  query GetAnomalies($status: String, $severity: String, $ruleKey: String, $limit: Int, $offset: Int, $filters: String) {
-    anomalies(status: $status, severity: $severity, ruleKey: $ruleKey, limit: $limit, offset: $offset, filters: $filters) {
+  query GetAnomalies($status: String, $severity: String, $ruleKey: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    anomalies(status: $status, severity: $severity, ruleKey: $ruleKey, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id ruleKey title severity status

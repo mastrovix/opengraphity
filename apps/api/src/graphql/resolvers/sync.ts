@@ -116,11 +116,21 @@ export const syncResolvers = {
 
     syncRuns: async (
       _: unknown,
-      args: { sourceId: string; limit?: number; offset?: number },
+      args: { sourceId: string; limit?: number; offset?: number; sortField?: string; sortDirection?: string },
       ctx: GraphQLContext,
     ) => {
       const limit  = args.limit  ?? 20
       const offset = args.offset ?? 0
+      const SYNC_RUN_SORT_WHITELIST: Record<string, string> = {
+        syncType:  'sync_type',
+        status:    'status',
+        startedAt: 'started_at',
+        durationMs: 'duration_ms',
+      }
+      const sortCol = args.sortField && SYNC_RUN_SORT_WHITELIST[args.sortField]
+      const orderBy = sortCol
+        ? `n.${sortCol} ${args.sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'}`
+        : 'n.started_at DESC'
       const session = getSession()
       try {
         type Row = { p: Props; total: unknown }
@@ -129,7 +139,7 @@ export const syncResolvers = {
            WITH count(n) AS total, collect(n) AS all
            UNWIND all AS n
            RETURN properties(n) AS p, total
-           ORDER BY n.started_at DESC SKIP $offset LIMIT $limit`,
+           ORDER BY ${orderBy} SKIP $offset LIMIT $limit`,
           { sourceId: args.sourceId, tenantId: ctx.tenantId, offset, limit },
         )
         const total = rows[0] ? toNum(rows[0].total) : 0
@@ -378,11 +388,127 @@ export const syncResolvers = {
       const now = new Date().toISOString()
       const session = getSession()
       try {
+        // Load conflict data
+        const conflictRow = await runQueryOne<{ p: Props }>(session,
+          `MATCH (c:SyncConflict {id: $id, tenant_id: $tenantId}) RETURN properties(c) AS p`,
+          { id: args.conflictId, tenantId: ctx.tenantId },
+        )
+        if (!conflictRow) throw new Error('Conflict not found')
+
+        const conflict = mapConflict(conflictRow.p)
+        const discovered = JSON.parse(conflict.discoveredCi) as Record<string, unknown>
+        const discoveredProps  = (discovered['properties']  ?? {}) as Record<string, unknown>
+        const discoveredTags   = (discovered['tags']        ?? {}) as Record<string, string>
+        const discoveredName   = discovered['name']        as string | undefined
+        const discoveredExtId  = discovered['external_id'] as string | undefined
+        const discoveredSource = discovered['source']      as string | undefined
+        const ciLabel = conflict.ciType
+          .split('_')
+          .map((s: string) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join('')
+
+        if (args.resolution === 'merged') {
+          // Update existing CI with discovered properties
+          const propSets: string[] = [
+            'ci.updated_at = $now',
+            'ci.discovery_source = $source',
+            'ci.discovery_external_id = $externalId',
+            'ci.discovery_last_seen_at = $now',
+          ]
+          if (discoveredName) propSets.push('ci.name = $discoveredName')
+          const propsJson = JSON.stringify(discoveredProps)
+          const tagsJson  = JSON.stringify(discoveredTags)
+
+          await session.executeWrite(tx => tx.run(
+            `MATCH (ci:ConfigurationItem {id: $existingCiId, tenant_id: $tenantId})
+             SET ${propSets.join(', ')}, ci.properties = $propsJson, ci.tags = $tagsJson`,
+            {
+              existingCiId:   conflict.existingCiId,
+              tenantId:       ctx.tenantId,
+              now,
+              source:         discoveredSource ?? '',
+              externalId:     discoveredExtId  ?? '',
+              discoveredName: discoveredName   ?? '',
+              propsJson,
+              tagsJson,
+            },
+          ))
+
+        } else if (args.resolution === 'distinct') {
+          // Create a brand-new CI from discovered data
+          const newCiId = randomUUID()
+          await session.executeWrite(tx => tx.run(
+            `CREATE (ci:ConfigurationItem:${ciLabel} {
+               id: $newCiId,
+               tenant_id: $tenantId,
+               name: $name,
+               ci_type: $ciType,
+               status: 'active',
+               discovery_source: $source,
+               discovery_external_id: $externalId,
+               discovery_last_seen_at: $now,
+               properties: $propsJson,
+               tags: $tagsJson,
+               created_at: $now,
+               updated_at: $now
+             })`,
+            {
+              newCiId,
+              tenantId: ctx.tenantId,
+              name:      discoveredName  ?? discoveredExtId ?? 'Unknown',
+              ciType:    conflict.ciType,
+              source:    discoveredSource ?? '',
+              externalId: discoveredExtId ?? '',
+              now,
+              propsJson:  JSON.stringify(discoveredProps),
+              tagsJson:   JSON.stringify(discoveredTags),
+            },
+          ))
+
+        } else if (args.resolution === 'linked') {
+          // Create new CI from discovered data AND link it bidirectionally to existing CI
+          const newCiId = randomUUID()
+          await session.executeWrite(tx => tx.run(
+            `CREATE (ci:ConfigurationItem:${ciLabel} {
+               id: $newCiId,
+               tenant_id: $tenantId,
+               name: $name,
+               ci_type: $ciType,
+               status: 'active',
+               discovery_source: $source,
+               discovery_external_id: $externalId,
+               discovery_last_seen_at: $now,
+               properties: $propsJson,
+               tags: $tagsJson,
+               created_at: $now,
+               updated_at: $now
+             })
+             WITH ci
+             MATCH (existing:ConfigurationItem {id: $existingCiId, tenant_id: $tenantId})
+             MERGE (ci)-[:RELATED_TO {created_at: $now}]->(existing)
+             MERGE (existing)-[:RELATED_TO {created_at: $now}]->(ci)`,
+            {
+              newCiId,
+              tenantId:    ctx.tenantId,
+              name:        discoveredName  ?? discoveredExtId ?? 'Unknown',
+              ciType:      conflict.ciType,
+              source:      discoveredSource ?? '',
+              externalId:  discoveredExtId  ?? '',
+              existingCiId: conflict.existingCiId,
+              now,
+              propsJson:   JSON.stringify(discoveredProps),
+              tagsJson:    JSON.stringify(discoveredTags),
+            },
+          ))
+        }
+
+        // Mark conflict as resolved
         await session.executeWrite(tx => tx.run(
           `MATCH (c:SyncConflict {id: $id, tenant_id: $tenantId})
            SET c.status = 'resolved', c.resolution = $resolution, c.resolved_at = $now`,
           { id: args.conflictId, tenantId: ctx.tenantId, resolution: args.resolution, now },
         ))
+
         const row = await runQueryOne<{ p: Props }>(session,
           `MATCH (c:SyncConflict {id: $id}) RETURN properties(c) AS p`, { id: args.conflictId },
         )
@@ -414,8 +540,23 @@ export const syncResolvers = {
           { id: args.sourceId },
         )
         const creds = decryptCredentials(encRow!.enc, ENCRYPTION_KEY)
-        const config = JSON.parse(source.config) as import('@opengraphity/discovery').SyncSourceConfig
-        const result = await connector.testConnection(config, creds)
+        const syncConfig: import('@opengraphity/discovery').SyncSourceConfig = {
+          id:                    source.id,
+          tenant_id:             source.tenantId,
+          name:                  source.name,
+          connector_type:        source.connectorType,
+          encrypted_credentials: encRow!.enc,
+          config:                JSON.parse(source.config) as Record<string, unknown>,
+          mapping_rules:         JSON.parse(source.mappingRules),
+          schedule_cron:         source.scheduleCron,
+          enabled:               source.enabled,
+          last_sync_at:          source.lastSyncAt,
+          last_sync_status:      source.lastSyncStatus as 'completed' | 'failed' | null,
+          last_sync_duration_ms: source.lastSyncDurationMs,
+          created_at:            source.createdAt,
+          updated_at:            source.updatedAt,
+        }
+        const result = await connector.testConnection(syncConfig, creds)
         return {
           ok:      result.ok,
           message: result.message,

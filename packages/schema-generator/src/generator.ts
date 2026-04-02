@@ -258,7 +258,7 @@ type ${typeName}sResult {
     const typeName = toPascalCase(type.name)
     const plural = pluralize(typeName)
     const pluralKey = plural.charAt(0).toLowerCase() + plural.slice(1)
-    return `  ${pluralKey}(limit: Int, offset: Int, status: String, environment: String, search: String, filters: String): ${typeName}sResult!
+    return `  ${pluralKey}(limit: Int, offset: Int, status: String, environment: String, search: String, filters: String, sortField: String, sortDirection: String): ${typeName}sResult!
   ${type.name}(id: ID!): ${typeName}`
   }).join('\n')
 

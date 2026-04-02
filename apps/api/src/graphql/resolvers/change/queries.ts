@@ -6,13 +6,29 @@ import { mapChange, mapChangeTask, mapUser, mapTeam, type Props } from './mapper
 import { buildAdvancedWhere } from '../../../lib/filterBuilder.js'
 import { getScalarFields } from '../../../lib/schemaFields.js'
 
+const CHANGE_SORT_WHITELIST: Record<string, string> = {
+  title:          'title',
+  type:           'type',
+  priority:       'priority',
+  status:         'status',
+  scheduledStart: 'scheduled_start',
+  createdAt:      'created_at',
+}
+
+function changeOrderBy(sortField?: string | null, sortDirection?: string | null): string {
+  const col = sortField && CHANGE_SORT_WHITELIST[sortField]
+  if (!col) return 'c.created_at DESC'
+  const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+  return `c.${col} ${dir}`
+}
+
 export async function changes(
   _: unknown,
-  args: { status?: string; type?: string; priority?: string; search?: string; limit?: number; offset?: number; filters?: string },
+  args: { status?: string; type?: string; priority?: string; search?: string; limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
   ctx: GraphQLContext,
   info: GraphQLResolveInfo,
 ) {
-  const { status, type, priority, search, limit = 50, offset = 0, filters } = args
+  const { status, type, priority, search, limit = 50, offset = 0, filters, sortField, sortDirection } = args
   return withSession(async (session) => {
     const params: Record<string, unknown> = {
       tenantId: ctx.tenantId,
@@ -37,7 +53,7 @@ export async function changes(
       ${whereClause}
       OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (c)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      WITH c, u, t ORDER BY c.created_at DESC
+      WITH c, u, t ORDER BY ${changeOrderBy(sortField, sortDirection)}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       OPTIONAL MATCH (c)-[:AFFECTS]->(ci)
       WITH c, u, t, collect(DISTINCT {props: properties(ci), label: labels(ci)[0]}) AS cis

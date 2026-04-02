@@ -16,13 +16,27 @@ type Props = Record<string, unknown>
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
+const INCIDENT_SORT_WHITELIST: Record<string, string> = {
+  title:     'title',
+  severity:  'severity',
+  status:    'status',
+  createdAt: 'created_at',
+}
+
+function incidentOrderBy(sortField?: string | null, sortDirection?: string | null): string {
+  const col = sortField && INCIDENT_SORT_WHITELIST[sortField]
+  if (!col) return 'i.created_at DESC'
+  const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+  return `i.${col} ${dir}`
+}
+
 async function incidents(
   _: unknown,
-  args: { status?: string; severity?: string; limit?: number; offset?: number; filters?: string },
+  args: { status?: string; severity?: string; limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
   ctx: GraphQLContext,
   info: GraphQLResolveInfo,
 ) {
-  const { status, severity, limit = 50, offset = 0, filters } = args
+  const { status, severity, limit = 50, offset = 0, filters, sortField, sortDirection } = args
 
   return withSession(async (session) => {
     const params: Record<string, unknown> = {
@@ -44,7 +58,7 @@ async function incidents(
       ${whereClause}
       OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      WITH i, u, t ORDER BY i.created_at DESC
+      WITH i, u, t ORDER BY ${incidentOrderBy(sortField, sortDirection)}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
       WITH i, u, t, collect(DISTINCT {props: properties(ci), label: labels(ci)[0]}) AS cis

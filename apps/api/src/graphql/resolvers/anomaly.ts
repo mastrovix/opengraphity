@@ -48,10 +48,21 @@ export const anomalyResolvers = {
   Query: {
     anomalies: async (
       _: unknown,
-      args: { status?: string; severity?: string; ruleKey?: string; limit?: number; offset?: number; filters?: string },
+      args: { status?: string; severity?: string; ruleKey?: string; limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
       ctx: GraphQLContext,
     ) => {
-      const { status, severity, ruleKey, limit = 50, offset = 0, filters } = args
+      const { status, severity, ruleKey, limit = 50, offset = 0, filters, sortField, sortDirection } = args
+      const ANOMALY_SORT_WHITELIST: Record<string, string> = {
+        title:      'title',
+        severity:   'severity',
+        status:     'status',
+        entityName: 'entity_name',
+        detectedAt: 'detected_at',
+      }
+      const sortCol = sortField && ANOMALY_SORT_WHITELIST[sortField]
+      const orderByClause = sortCol
+        ? `a.${sortCol} ${sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'}`
+        : 'a.detected_at DESC'
       const session = getSession()
       try {
         // Build filter clause — same params used for both queries
@@ -69,7 +80,7 @@ export const anomalyResolvers = {
         const itemRows = await runQuery<{ props: Props }>(session, `
           MATCH (a:Anomaly)
           ${where}
-          WITH a ORDER BY a.detected_at DESC
+          WITH a ORDER BY ${orderByClause}
           SKIP toInteger($offset) LIMIT toInteger($limit)
           RETURN properties(a) AS props
         `, params)

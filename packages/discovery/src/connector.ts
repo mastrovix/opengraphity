@@ -14,7 +14,7 @@ export interface CredentialFieldDefinition {
 export interface ConfigFieldDefinition {
   name:          string
   label:         string
-  type:          'text' | 'select' | 'multiselect' | 'boolean'
+  type:          'text' | 'textarea' | 'select' | 'multiselect' | 'boolean'
   required:      boolean
   options?:      { value: string; label: string }[]
   default_value?: unknown

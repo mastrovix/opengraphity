@@ -19,6 +19,10 @@ interface Props<T> {
   loading?:        boolean
   emptyMessage?:   string
   emptyComponent?: React.ReactNode
+  /** Server-side sort: when provided, sorting is delegated to the caller */
+  onSort?:         (field: string, direction: 'asc' | 'desc') => void
+  sortField?:      string | null
+  sortDir?:        'asc' | 'desc'
 }
 
 const thStyle: React.CSSProperties = {
@@ -38,18 +42,33 @@ export function SortableFilterTable<T extends object>({
   loading = false,
   emptyMessage,
   emptyComponent,
+  onSort,
+  sortField: controlledSortField,
+  sortDir: controlledSortDir,
 }: Props<T>) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = emptyMessage ?? t('common.noResults')
-  const [sortKey, setSortKey] = useState<keyof T | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  // Uncontrolled (client-side) sort state — only used when onSort is not provided
+  const [localSortKey, setLocalSortKey] = useState<keyof T | null>(null)
+  const [localSortDir, setLocalSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const isControlled = onSort != null
+  const activeSortKey = isControlled ? controlledSortField ?? null : localSortKey ? String(localSortKey) : null
+  const activeSortDir = isControlled ? (controlledSortDir ?? 'asc') : localSortDir
 
   const handleSort = (key: keyof T) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    const keyStr = String(key)
+    if (isControlled) {
+      const newDir = activeSortKey === keyStr && activeSortDir === 'asc' ? 'desc' : 'asc'
+      onSort(keyStr, newDir)
     } else {
-      setSortKey(key)
-      setSortDir('asc')
+      if (localSortKey === key) {
+        setLocalSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setLocalSortKey(key)
+        setLocalSortDir('asc')
+      }
     }
   }
 
@@ -63,15 +82,16 @@ export function SortableFilterTable<T extends object>({
     return v
   }
 
-  const sorted = sortKey == null
+  // Only sort client-side when in uncontrolled mode
+  const sorted = isControlled || localSortKey == null
     ? data
     : [...data].sort((a, b) => {
-        const av = getSortVal(a, sortKey)
-        const bv = getSortVal(b, sortKey)
+        const av = getSortVal(a, localSortKey)
+        const bv = getSortVal(b, localSortKey)
         if (av == null) return 1
         if (bv == null) return -1
         const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
-        return sortDir === 'asc' ? cmp : -cmp
+        return localSortDir === 'asc' ? cmp : -cmp
       })
 
   return (
@@ -86,7 +106,7 @@ export function SortableFilterTable<T extends object>({
         <thead>
           <tr>
             {columns.map((col) => {
-              const isActive = sortKey === col.key
+              const isActive = activeSortKey === String(col.key)
               return (
                 <th key={String(col.key)} style={thStyle}>
                   <div
@@ -106,7 +126,7 @@ export function SortableFilterTable<T extends object>({
                     {col.label}
                     {col.sortable && (
                       <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? colors.brand : colors.slateDark, display: 'flex' }}>
-                        {isActive && sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        {isActive && activeSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </span>
                     )}
                   </div>

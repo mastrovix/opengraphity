@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { RefreshCw, Plus, Trash2, Play, CheckCircle, XCircle, Clock, AlertTriangle, Database, Cloud } from 'lucide-react'
+import { RefreshCw, Plus, Trash2, Play, CheckCircle, XCircle, Clock, AlertTriangle, Database, Cloud, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -150,6 +150,136 @@ function StatusBadge({ status }: { status: string }) {
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: c.color, fontSize: 12, fontWeight: 500 }}>
       {c.icon}{status}
     </span>
+  )
+}
+
+// ── TextareaFileField ─────────────────────────────────────────────────────────
+// Textarea with Inline / Carica file toggle for csv_content and json_content.
+
+function acceptForField(fieldName: string): string {
+  if (fieldName === 'csv_content') return '.csv,.tsv'
+  if (fieldName === 'json_content') return '.json'
+  return '*'
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+interface TextareaFileFieldProps {
+  fieldName: string
+  value:     string
+  onChange:  (v: string) => void
+  required?: boolean
+}
+
+function TextareaFileField({ fieldName, value, onChange, required }: TextareaFileFieldProps) {
+  const [mode, setMode]         = useState<'inline' | 'file'>('inline')
+  const [fileName, setFileName] = useState<string | null>(null)
+  const [fileSize, setFileSize] = useState<number | null>(null)
+  const fileRef                 = useRef<HTMLInputElement>(null)
+  const accept                  = acceptForField(fieldName)
+
+  function loadFile(file: File) {
+    setFileName(file.name)
+    setFileSize(file.size)
+    const reader = new FileReader()
+    reader.onload = ev => onChange((ev.target?.result as string) ?? '')
+    reader.readAsText(file)
+  }
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) loadFile(file)
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    e.currentTarget.style.borderColor = '#d1d5db'
+    const file = e.dataTransfer.files[0]
+    if (file) loadFile(file)
+  }
+
+  function handleRemove() {
+    setFileName(null)
+    setFileSize(null)
+    onChange('')
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  function switchMode(m: 'inline' | 'file') {
+    setMode(m)
+    setFileName(null)
+    setFileSize(null)
+    onChange('')
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const toggleBase: React.CSSProperties = {
+    padding: '4px 14px', fontSize: 12, border: 'none', cursor: 'pointer', fontWeight: 500,
+  }
+
+  return (
+    <div>
+      {/* Mode toggle */}
+      <div style={{ display: 'inline-flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #d1d5db', marginBottom: 8 }}>
+        <button type="button" onClick={() => switchMode('inline')}
+          style={{ ...toggleBase, background: mode === 'inline' ? '#2563eb' : '#fff', color: mode === 'inline' ? '#fff' : '#374151', borderRight: '1px solid #d1d5db' }}>
+          Inline
+        </button>
+        <button type="button" onClick={() => switchMode('file')}
+          style={{ ...toggleBase, background: mode === 'file' ? '#2563eb' : '#fff', color: mode === 'file' ? '#fff' : '#374151' }}>
+          Carica file
+        </button>
+      </div>
+
+      {mode === 'inline' ? (
+        <textarea
+          style={{ ...inputStyle, height: 140, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          required={required}
+        />
+      ) : (
+        <div>
+          <input ref={fileRef} type="file" accept={accept} style={{ display: 'none' }} onChange={handleInputChange} />
+
+          {fileName ? (
+            <div style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, background: '#f9fafb' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{fileName}</div>
+                {fileSize != null && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{formatBytes(fileSize)}</div>}
+              </div>
+              <button type="button" onClick={handleRemove}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, fontWeight: 500, border: '1px solid #fca5a5', borderRadius: 6, background: '#fff', color: '#dc2626', cursor: 'pointer' }}>
+                <X size={12} /> Rimuovi
+              </button>
+            </div>
+          ) : (
+            <div
+              onClick={() => fileRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#2563eb' }}
+              onDragLeave={e => { e.currentTarget.style.borderColor = '#d1d5db' }}
+              onDrop={handleDrop}
+              style={{ border: '2px dashed #d1d5db', borderRadius: 8, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: '#f9fafb', marginBottom: 8, transition: 'border-color 0.15s' }}
+            >
+              <Upload size={20} style={{ color: '#9ca3af', margin: '0 auto 8px', display: 'block' }} />
+              <div style={{ fontSize: 13, color: '#374151' }}>
+                Trascina qui o <span style={{ color: '#2563eb', textDecoration: 'underline' }}>Sfoglia</span>
+              </div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{accept}</div>
+            </div>
+          )}
+          {/* Invisible required sentinel so browser validation fires when no file selected */}
+          {required && (
+            <input type="text" value={value} required readOnly tabIndex={-1}
+              style={{ opacity: 0, height: 0, padding: 0, border: 'none', position: 'absolute' }} />
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -339,6 +469,13 @@ function SourcesTab() {
                             <select style={inputStyle} value={form[f.name] ?? f.defaultValue ?? ''} onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}>
                               {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
+                          ) : f.type === 'textarea' ? (
+                            <TextareaFileField
+                              fieldName={f.name}
+                              value={form[f.name] ?? ''}
+                              onChange={v => setForm(c => ({ ...c, [f.name]: v }))}
+                              required={f.required}
+                            />
                           ) : (
                             <input
                               style={inputStyle}
@@ -492,8 +629,9 @@ function ConflictsTab() {
                   </div>
                   {c.status === 'open' && (
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => handleResolve(c.id, 'use_discovered')} style={btnStyle('#fff', '#2563eb')}>Use imported</button>
-                      <button onClick={() => handleResolve(c.id, 'keep_existing')}  style={btnStyle('#fff', '#374151')}>Keep existing</button>
+                      <button onClick={() => handleResolve(c.id, 'merged')}   style={btnStyle('#2563eb', '#fff')} title="Aggiorna il CI esistente con i dati importati">Unisci</button>
+                      <button onClick={() => handleResolve(c.id, 'distinct')} style={btnStyle('#fff', '#374151')} title="Crea un nuovo CI separato dai dati importati">Sono diversi</button>
+                      <button onClick={() => handleResolve(c.id, 'linked')}   style={btnStyle('#fff', '#7c3aed')} title="Crea un nuovo CI e collega entrambi con RELATED_TO">Collega</button>
                     </div>
                   )}
                 </div>

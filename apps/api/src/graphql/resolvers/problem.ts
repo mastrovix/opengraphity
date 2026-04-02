@@ -52,13 +52,27 @@ function mapProblemComment(props: Props, authorProps: Props | null) {
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
+const PROBLEM_SORT_WHITELIST: Record<string, string> = {
+  title:     'title',
+  priority:  'priority',
+  status:    'status',
+  createdAt: 'created_at',
+}
+
+function problemOrderBy(sortField?: string | null, sortDirection?: string | null): string {
+  const col = sortField && PROBLEM_SORT_WHITELIST[sortField]
+  if (!col) return 'p.created_at DESC'
+  const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+  return `p.${col} ${dir}`
+}
+
 async function problems(
   _: unknown,
-  args: { limit?: number; offset?: number; status?: string; priority?: string; search?: string; filters?: string },
+  args: { limit?: number; offset?: number; status?: string; priority?: string; search?: string; filters?: string; sortField?: string; sortDirection?: string },
   ctx: GraphQLContext,
   info: GraphQLResolveInfo,
 ) {
-  const { limit = 50, offset = 0, status, priority, search, filters } = args
+  const { limit = 50, offset = 0, status, priority, search, filters, sortField, sortDirection } = args
 
   return withSession(async (session) => {
     const params: Record<string, unknown> = {
@@ -82,7 +96,7 @@ async function problems(
       ${whereClause}
       OPTIONAL MATCH (p)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (p)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      WITH p, u, t ORDER BY p.created_at DESC
+      WITH p, u, t ORDER BY ${problemOrderBy(sortField, sortDirection)}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       OPTIONAL MATCH (p)-[:AFFECTS]->(ci)
       WITH p, u, t, collect(DISTINCT {props: properties(ci), label: labels(ci)[0]}) AS cis

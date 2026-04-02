@@ -1,17 +1,19 @@
-import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
-import type { Connector, CredentialFieldDefinition, ConfigFieldDefinition, DiscoveredCI } from '@opengraphity/discovery'
-import type { SyncSourceConfig } from '@opengraphity/discovery'
+import type { Connector, CredentialFieldDefinition, ConfigFieldDefinition, DiscoveredCI, SyncSourceConfig } from '@opengraphity/discovery'
 
 // ── CSV Connector ─────────────────────────────────────────────────────────────
-// Supports a local file path or an inline CSV payload (for testing/import).
-// The CSV must have a header row. Required columns: external_id, name.
-// Optional: ci_type, any additional columns become properties.
+// User pastes CSV content directly in the csv_content config field.
+// The CSV must have a header row. Required column: name.
+// Optional column: ci_type. All other columns become CI properties.
+// external_id is derived from the name column.
+
+type CsvConfig = {
+  csv_content?: string
+}
 
 async function* parseCsvStream(
   readable: NodeJS.ReadableStream,
-  source:   SyncSourceConfig,
 ): AsyncIterable<DiscoveredCI> {
   const rl = createInterface({ input: readable, crlfDelay: Infinity })
   let headers: string[] | null = null
@@ -30,23 +32,22 @@ async function* parseCsvStream(
     const row: Record<string, string> = {}
     headers.forEach((h, i) => { row[h] = (cols[i] ?? '').trim() })
 
-    const externalId = row['external_id'] ?? row['id']
-    const name       = row['name']
-    if (!externalId || !name) continue
+    const name = row['name']
+    if (!name) continue
 
     const properties: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(row)) {
-      if (k === 'external_id' || k === 'id' || k === 'name' || k === 'ci_type') continue
+      if (k === 'name' || k === 'ci_type') continue
       if (v !== '') properties[k] = v
     }
 
     yield {
-      external_id: externalId,
+      external_id: name,
       source:      'csv',
       ci_type:     row['ci_type'] ?? 'server',
       name,
       properties,
-      tags:        {},
+      tags:          {},
       relationships: [],
     }
   }
@@ -54,8 +55,8 @@ async function* parseCsvStream(
 
 function splitCsvLine(line: string): string[] {
   const result: string[] = []
-  let current   = ''
-  let inQuotes  = false
+  let current  = ''
+  let inQuotes = false
 
   for (let i = 0; i < line.length; i++) {
     const ch = line[i]!
@@ -83,25 +84,22 @@ export const csvConnector: Connector = {
   supportedCITypes: ['server', 'application', 'database', 'database_instance', 'certificate', 'network', 'storage'],
 
   async *scan(config: SyncSourceConfig, _creds: Record<string, string>): AsyncIterable<DiscoveredCI> {
-    const cfg      = config.config as { file_path?: string; csv_content?: string }
-    const filePath = cfg.file_path
-    const content  = cfg.csv_content
+    const cfg     = (config.config ?? {}) as CsvConfig
+    const content = cfg.csv_content?.trim()
+    if (!content) throw new Error('CSV connector: csv_content is required')
 
-    if (content) {
-      yield* parseCsvStream(Readable.from([content]), config)
-    } else if (filePath) {
-      yield* parseCsvStream(createReadStream(filePath, 'utf-8'), config)
-    } else {
-      throw new Error('CSV connector: either file_path or csv_content is required')
-    }
+    yield* parseCsvStream(Readable.from([content]))
   },
 
   async testConnection(config: SyncSourceConfig, _creds: Record<string, string>) {
-    const cfg = config.config as { file_path?: string; csv_content?: string }
-    if (!cfg.file_path && !cfg.csv_content) {
-      return { ok: false, message: 'No file_path or csv_content configured' }
-    }
-    return { ok: true, message: 'CSV source configured successfully' }
+    const cfg     = (config.config ?? {}) as CsvConfig
+    const content = cfg.csv_content?.trim()
+    if (!content) return { ok: false, message: 'CSV content is required' }
+
+    // Count non-empty, non-header lines
+    const lines = content.split('\n').map(l => l.trim()).filter(Boolean)
+    const rows  = Math.max(0, lines.length - 1)
+    return { ok: true, message: `CSV source configured — ${rows} data row(s) detected` }
   },
 
   getRequiredCredentialFields(): CredentialFieldDefinition[] {
@@ -111,18 +109,11 @@ export const csvConnector: Connector = {
   getConfigFields(): ConfigFieldDefinition[] {
     return [
       {
-        name:      'file_path',
-        label:     'File Path',
-        type:      'text',
-        required:  false,
-        help_text: 'Absolute path to the CSV file on the server',
-      },
-      {
         name:      'csv_content',
         label:     'CSV Content',
-        type:      'text' as 'text',
-        required:  false,
-        help_text: 'Paste CSV content directly (for one-off imports)',
+        type:      'textarea',
+        required:  true,
+        help_text: 'Paste the CSV content here. Required column: name. Optional: ci_type. All other columns become properties.',
       },
     ]
   },

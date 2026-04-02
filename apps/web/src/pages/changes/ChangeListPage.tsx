@@ -114,8 +114,15 @@ export function ChangeListPage() {
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (field: string, dir: 'asc' | 'desc') => {
+    setSortField(field); setSortDir(dir); setPage(0)
+  }
+
   const { data, loading } = useQuery<{ changes: { items: Change[]; total: number } }>(GET_CHANGES, {
-    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null },
+    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
   })
 
@@ -153,6 +160,9 @@ export function ChangeListPage() {
         loading={loading}
         emptyComponent={<EmptyState icon={<GitPullRequest size={32} />} title={t('pages.changes.noResults')} description={t('pages.changes.noResultsDesc')} />}
         onRowClick={(row) => navigate(`/changes/${row.id}`)}
+        onSort={handleSort}
+        sortField={sortField}
+        sortDir={sortDir}
       />
 
       {total > 0 && (

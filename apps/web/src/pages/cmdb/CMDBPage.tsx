@@ -89,18 +89,26 @@ export function CMDBPage() {
 
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   useEffect(() => {
     setPage(0)
   }, [typeFromUrl])
+
+  const handleSort = (field: string, dir: 'asc' | 'desc') => {
+    setSortField(field); setSortDir(dir); setPage(0)
+  }
 
   const { data, loading } = useQuery<{
     allCIs: { items: CI[]; total: number }
   }>(GET_ALL_CIS, {
     variables: {
-      limit:   PAGE_SIZE,
-      offset:  page * PAGE_SIZE,
-      type:    typeFromUrl || undefined,
-      filters: filterGroup ? JSON.stringify(filterGroup) : null,
+      limit:         PAGE_SIZE,
+      offset:        page * PAGE_SIZE,
+      type:          typeFromUrl || undefined,
+      filters:       filterGroup ? JSON.stringify(filterGroup) : null,
+      sortField,
+      sortDirection: sortDir,
     },
     fetchPolicy: 'cache-and-network',
   })
@@ -138,6 +146,9 @@ export function CMDBPage() {
         data={items}
         loading={loading}
         emptyComponent={<EmptyState icon={<Server size={32} />} title={t('pages.cmdb.noResults')} description={t('pages.cmdb.noResultsDesc')} />}
+        onSort={handleSort}
+        sortField={sortField}
+        sortDir={sortDir}
         onRowClick={(row) => {
           switch (row.type) {
             case 'application':       navigate(`/applications/${row.id}`);       break

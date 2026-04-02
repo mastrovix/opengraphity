@@ -57,9 +57,15 @@ export function ProblemListPage() {
   const filterFields = useEntityFields('Problem')
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (field: string, dir: 'asc' | 'desc') => {
+    setSortField(field); setSortDir(dir); setPage(0)
+  }
 
   const { data, loading } = useQuery<{ problems: { items: Problem[]; total: number } }>(GET_PROBLEMS, {
-    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null },
+    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
   })
 
@@ -89,6 +95,9 @@ export function ProblemListPage() {
         loading={loading}
         emptyComponent={<EmptyState icon={<Bug size={32} />} title={t('pages.problems.noResults')} description={t('pages.problems.noResultsDesc')} />}
         onRowClick={(row) => navigate(`/problems/${row.id}`)}
+        onSort={handleSort}
+        sortField={sortField}
+        sortDir={sortDir}
       />
 
       {totalPages > 1 && (
