@@ -220,7 +220,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {collapsed ? (
           <img src="/opengrafo-icon-dark.svg" alt="OPENGRAFO" style={{ width: 32, height: 32 }} />
         ) : (
-          <img src="/opengrafo_logo_fs54_centered.svg" alt="OPENGRAFO" style={{ height: 36, width: 'auto' }} />
+          <img src="/opengrafo_logo_v2.svg" alt="OPENGRAFO" style={{ height: 36, width: 'auto' }} />
         )}
       </div>
 
