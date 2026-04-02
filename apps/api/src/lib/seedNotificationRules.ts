@@ -29,6 +29,10 @@ const DEFAULT_RULES: RuleDef[] = [
   { event_type: 'problem.closed',               severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.problem.closed.title'        },
   { event_type: 'sla.warning',                  severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.sla.warning.title'           },
   { event_type: 'sla.breached',                 severity: 'error',   channels: ['in_app'],          target: 'all',      title_key: 'notification.sla.breached.title'          },
+  // Discovery / Sync
+  { event_type: 'sync.completed',               severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.sync.completed.title'        },
+  { event_type: 'sync.failed',                  severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.sync.failed.title'           },
+  { event_type: 'conflict.created',             severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.sync.conflict.title'         },
 ]
 
 export async function seedNotificationRules(tenantId: string, session: Session): Promise<void> {

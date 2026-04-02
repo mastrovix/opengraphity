@@ -18,6 +18,7 @@ import { anomalyResolvers } from './anomaly.js'
 import { topologyResolvers } from './topology.js'
 import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
+import { syncResolvers } from './sync.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -119,6 +120,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...topologyResolvers.Query,
       ...notificationRuleResolvers.Query,
       ...queueStatsResolvers.Query,
+      ...syncResolvers.Query,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
       ...meStub,
@@ -138,6 +140,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...dashboardResolvers.Mutation,
       ...anomalyResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
+      ...syncResolvers.Mutation,
     },
     Incident: {
       ...incidentResolvers.Incident,

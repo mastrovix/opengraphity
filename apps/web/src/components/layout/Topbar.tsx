@@ -51,6 +51,7 @@ function Breadcrumb() {
     database:           t('sidebar.database'),
     database_instance:  t('sidebar.dbInstance'),
     'ci-types':         t('sidebar.ciTypeDesigner'),
+    sync:               t('sidebar.cmdbSync'),
     new:                t('common.create'),
     anomalies:          t('sidebar.anomalies'),
     topology:           t('pages.topology.title'),

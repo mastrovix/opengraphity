@@ -61,6 +61,7 @@
     "notifications": "Notifiche",
     "notificationChannels": "Canali Notifica",
     "notificationRules": "Regole Notifiche",
+    "cmdbSync": "Sync CMDB",
     "bullBoard": "Coda Jobs"
   },
   "pages": {

@@ -33,6 +33,7 @@ import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
+import { SyncPage }             from '@/pages/settings/SyncPage'
 import ReportsPage from '@/pages/reports/ReportsPage'
 import { CustomReportsPage } from '@/pages/reports/CustomReportsPage'
 import { TeamsPage } from '@/pages/teams/TeamsPage'
@@ -118,6 +119,7 @@ const router = createBrowserRouter([
       { path: 'profile',                   element: <NewProfilePage />,          errorElement: <RouteError /> },
       { path: 'settings/ci-types',         element: <CITypeDesignerPage />,      errorElement: <RouteError /> },
       { path: 'settings/itil-designer',   element: <ITILTypeDesignerPage />,    errorElement: <RouteError /> },
+      { path: 'settings/sync',            element: <SyncPage />,                errorElement: <RouteError /> },
       { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },
       { path: 'custom-reports',            element: <CustomReportsPage />,       errorElement: <RouteError /> },
       { path: 'teams',                     element: <TeamsPage />,               errorElement: <RouteError /> },

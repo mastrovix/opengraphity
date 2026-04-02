@@ -47,6 +47,19 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'ServiceRequest.id',
     cypher: 'CREATE CONSTRAINT service_request_id_unique IF NOT EXISTS FOR (n:ServiceRequest) REQUIRE n.id IS UNIQUE',
   },
+  // Discovery / Sync
+  {
+    label: 'SyncSource.id',
+    cypher: 'CREATE CONSTRAINT sync_source_id_unique IF NOT EXISTS FOR (n:SyncSource) REQUIRE n.id IS UNIQUE',
+  },
+  {
+    label: 'SyncRun.id',
+    cypher: 'CREATE CONSTRAINT sync_run_id_unique IF NOT EXISTS FOR (n:SyncRun) REQUIRE n.id IS UNIQUE',
+  },
+  {
+    label: 'SyncConflict.id',
+    cypher: 'CREATE CONSTRAINT sync_conflict_id_unique IF NOT EXISTS FOR (n:SyncConflict) REQUIRE n.id IS UNIQUE',
+  },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -145,6 +158,17 @@ const INDEXES: SchemaStatement[] = [
   { label: 'Anomaly(tenant_id, rule_key)',              cypher: 'CREATE INDEX anomaly_tenant_rule IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id, a.rule_key)' },
   // Team by id (lookup in OWNED_BY / SUPPORTED_BY joins)
   { label: 'Team(tenant_id, id)',                       cypher: 'CREATE INDEX team_id IF NOT EXISTS FOR (t:Team) ON (t.tenant_id, t.id)' },
+  // SyncSource
+  { label: 'SyncSource(tenant_id)',                     cypher: 'CREATE INDEX sync_source_tenant IF NOT EXISTS FOR (n:SyncSource) ON (n.tenant_id)' },
+  { label: 'SyncSource(tenant_id, enabled)',            cypher: 'CREATE INDEX sync_source_enabled IF NOT EXISTS FOR (n:SyncSource) ON (n.tenant_id, n.enabled)' },
+  // SyncRun
+  { label: 'SyncRun(tenant_id)',                        cypher: 'CREATE INDEX sync_run_tenant IF NOT EXISTS FOR (n:SyncRun) ON (n.tenant_id)' },
+  { label: 'SyncRun(source_id, started_at)',            cypher: 'CREATE INDEX sync_run_source_date IF NOT EXISTS FOR (n:SyncRun) ON (n.source_id, n.started_at)' },
+  { label: 'SyncRun(tenant_id, status)',                cypher: 'CREATE INDEX sync_run_status IF NOT EXISTS FOR (n:SyncRun) ON (n.tenant_id, n.status)' },
+  // SyncConflict
+  { label: 'SyncConflict(tenant_id)',                   cypher: 'CREATE INDEX sync_conflict_tenant IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id)' },
+  { label: 'SyncConflict(source_id)',                   cypher: 'CREATE INDEX sync_conflict_source IF NOT EXISTS FOR (n:SyncConflict) ON (n.source_id)' },
+  { label: 'SyncConflict(tenant_id, status)',           cypher: 'CREATE INDEX sync_conflict_status IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id, n.status)' },
 ]
 
 async function runStatements(statements: SchemaStatement[], kind: string): Promise<void> {

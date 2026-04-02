@@ -61,6 +61,7 @@
     "notifications": "Notifications",
     "notificationChannels": "Notification Channels",
     "notificationRules": "Notification Rules",
+    "cmdbSync": "CMDB Sync",
     "bullBoard": "Job Queue"
   },
   "pages": {

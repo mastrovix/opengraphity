@@ -85,6 +85,14 @@ export function buildBaseSDL(): string {
 
     # Queue Stats (admin only)
     queueStats: [QueueStat!]!
+
+    # Discovery / Sync
+    syncSources: [SyncSource!]!
+    syncSource(id: ID!): SyncSource
+    syncRuns(sourceId: ID!, limit: Int, offset: Int): SyncRunsResult!
+    syncConflicts(sourceId: ID, status: String, limit: Int, offset: Int): SyncConflictsResult!
+    syncStats(sourceId: ID): SyncStats!
+    availableConnectors: [ConnectorInfo!]!
   }
 
   type AuthPayload {
@@ -233,6 +241,14 @@ export function buildBaseSDL(): string {
     createITILField(typeId: ID!, input: ITILFieldInput!): CITypeDefinition!
     updateITILField(typeId: ID!, fieldId: ID!, input: ITILFieldInput!): CITypeDefinition!
     deleteITILField(typeId: ID!, fieldId: ID!): CITypeDefinition!
+
+    # Discovery / Sync
+    createSyncSource(input: CreateSyncSourceInput!): SyncSource!
+    updateSyncSource(id: ID!, input: UpdateSyncSourceInput!): SyncSource!
+    deleteSyncSource(id: ID!): Boolean!
+    triggerSync(sourceId: ID!, syncType: String): SyncRun!
+    resolveConflict(conflictId: ID!, resolution: String!): SyncConflict!
+    testSyncConnection(sourceId: ID!): SyncConnectionTestResult!
   }
 
   # ── CMDB — interface & base types ────────────────────────────────────────────
@@ -1114,6 +1130,129 @@ export function buildBaseSDL(): string {
   type QueueStat {
     name:   String!
     counts: QueueJobCounts!
+  }
+
+  # ── Discovery / Sync ──────────────────────────────────────────────────────────
+
+  type SyncSource {
+    id:                  ID!
+    tenantId:            String!
+    name:                String!
+    connectorType:       String!
+    config:              String!
+    mappingRules:        String!
+    scheduleCron:        String
+    enabled:             Boolean!
+    lastSyncAt:          String
+    lastSyncStatus:      String
+    lastSyncDurationMs:  Int
+    createdAt:           String!
+    updatedAt:           String!
+  }
+
+  type SyncRun {
+    id:              ID!
+    sourceId:        String!
+    tenantId:        String!
+    syncType:        String!
+    status:          String!
+    ciCreated:       Int!
+    ciUpdated:       Int!
+    ciUnchanged:     Int!
+    ciStale:         Int!
+    ciConflicts:     Int!
+    relationsCreated: Int!
+    relationsRemoved: Int!
+    durationMs:      Int
+    errorMessage:    String
+    startedAt:       String!
+    completedAt:     String
+  }
+
+  type SyncConflict {
+    id:             ID!
+    sourceId:       String!
+    tenantId:       String!
+    runId:          String!
+    externalId:     String!
+    ciType:         String!
+    conflictFields: String!
+    resolution:     String
+    status:         String!
+    discoveredCi:   String!
+    existingCiId:   String!
+    matchReason:    String!
+    createdAt:      String!
+    resolvedAt:     String
+  }
+
+  type SyncStats {
+    totalSources:    Int!
+    enabledSources:  Int!
+    lastSyncAt:      String
+    ciManaged:       Int!
+    openConflicts:   Int!
+    totalRuns:       Int!
+    successRate:     Float!
+  }
+
+  type ConnectorInfo {
+    type:            String!
+    displayName:     String!
+    supportedCITypes: [String!]!
+    credentialFields: [ConnectorFieldDef!]!
+    configFields:     [ConnectorFieldDef!]!
+  }
+
+  type ConnectorFieldDef {
+    name:         String!
+    label:        String!
+    type:         String!
+    required:     Boolean!
+    placeholder:  String
+    helpText:     String
+    options:      [ConnectorFieldOption!]
+    defaultValue: String
+  }
+
+  type ConnectorFieldOption {
+    value: String!
+    label: String!
+  }
+
+  type SyncRunsResult {
+    items: [SyncRun!]!
+    total: Int!
+  }
+
+  type SyncConflictsResult {
+    items: [SyncConflict!]!
+    total: Int!
+  }
+
+  type SyncConnectionTestResult {
+    ok:      Boolean!
+    message: String!
+    details: String
+  }
+
+  input CreateSyncSourceInput {
+    name:           String!
+    connectorType:  String!
+    credentials:    String!
+    config:         String!
+    mappingRules:   String
+    scheduleCron:   String
+    enabled:        Boolean
+  }
+
+  input UpdateSyncSourceInput {
+    name:          String
+    credentials:   String
+    config:        String
+    mappingRules:  String
+    scheduleCron:  String
+    enabled:       Boolean
   }
 `
 }

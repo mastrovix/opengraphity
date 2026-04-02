@@ -5,6 +5,8 @@ import { closeConnection } from '@opengraphity/events'
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startWorkflowJobWorker } from './jobs/workflowJobWorker.js'
+import { registerAllConnectors } from './discovery/registerConnectors.js'
+import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
 
 async function main() {
   const httpServer = await startServer()
@@ -21,6 +23,11 @@ async function main() {
 
   // Start workflow job worker (BullMQ, processes auto_close and other scheduled jobs)
   startWorkflowJobWorker()
+
+  // Register discovery connectors and start sync worker
+  registerAllConnectors()
+  startSyncWorker()
+  await loadScheduledSyncs()
 
   console.log('[api] All consumers started')
 
