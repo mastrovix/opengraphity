@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
+import { logger } from '../../lib/logger.js'
 
 interface AuditEntry {
   id:         string
@@ -60,15 +61,23 @@ export async function auditLog(
     params['entityType'] = args.entityType
   }
   if (args.fromDate) {
+    // fromDate is "YYYY-MM-DD" — ISO timestamps start with same prefix, >= works
     conditions.push('a.created_at >= $fromDate')
     params['fromDate'] = args.fromDate
   }
   if (args.toDate) {
+    // toDate is "YYYY-MM-DD" — ISO timestamp "2026-04-03T..." > "2026-04-03",
+    // so append end-of-day suffix to include all entries on that day
     conditions.push('a.created_at <= $toDate')
-    params['toDate'] = args.toDate
+    params['toDate'] = args.toDate + 'T23:59:59.999Z'
   }
 
   const where = conditions.join(' AND ')
+
+  logger.debug(
+    { tenantId: ctx.tenantId, page, pageSize, skip, action: args.action, entityType: args.entityType, fromDate: args.fromDate, toDate: args.toDate, where },
+    '[auditLog] query params',
+  )
 
   const session = getSession(undefined, 'READ')
   try {
@@ -86,9 +95,11 @@ export async function auditLog(
                a.ip_address AS ipAddress,
                a.created_at AS createdAt
         ORDER BY a.created_at DESC
-        SKIP $skip LIMIT $limit
+        SKIP toInteger($skip) LIMIT toInteger($limit)
       `, params),
     )
+
+    logger.debug({ count: dataRes.records.length, tenantId: ctx.tenantId }, '[auditLog] data rows returned')
 
     const countRes = await session.executeRead((tx) =>
       tx.run(`
