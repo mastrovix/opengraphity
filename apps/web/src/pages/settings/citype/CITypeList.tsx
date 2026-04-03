@@ -1,6 +1,7 @@
 import { Layers, Layout, Plus } from 'lucide-react'
 import { CIIcon } from '@/lib/ciIcon'
 import type { CITypeDef } from '@/contexts/MetamodelContext'
+import { btnPrimary } from '../shared/designerStyles'
 
 interface CITypeListProps {
   ciTypes: CITypeDef[]
@@ -11,6 +12,26 @@ interface CITypeListProps {
   onSelectBase: () => void
   onNew: () => void
 }
+
+const baseEntryStyle = (selected: boolean): React.CSSProperties => ({
+  width: '100%', textAlign: 'left',
+  display: 'flex', alignItems: 'center', gap: 10,
+  padding: '10px 16px', cursor: 'pointer',
+  background: selected ? '#f0f9ff' : '#f9fafb',
+  borderLeft: `3px solid ${selected ? 'var(--color-brand)' : 'transparent'}`,
+  borderTop: 'none', borderRight: 'none',
+  borderBottom: '1px solid #e5e7eb',
+})
+
+const typeEntryStyle = (selected: boolean): React.CSSProperties => ({
+  width: '100%', textAlign: 'left',
+  display: 'flex', alignItems: 'center', gap: 10,
+  padding: '10px 16px', cursor: 'pointer',
+  background: selected ? '#f0f9ff' : 'transparent',
+  borderLeft: `3px solid ${selected ? 'var(--color-brand)' : 'transparent'}`,
+  borderTop: 'none', borderRight: 'none',
+  borderBottom: '1px solid #f3f4f6',
+})
 
 export function CITypeList({
   ciTypes,
@@ -23,80 +44,65 @@ export function CITypeList({
 }: CITypeListProps) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #e5e7eb' }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Tipi CI</span>
-        <button
-          onClick={onNew}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', border: 'none', borderRadius: 5, background: 'var(--color-brand)', color: '#fff', fontSize: 12, cursor: 'pointer' }}
-        >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e5e7eb' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Tipi CI</span>
+        <button onClick={onNew} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 12 }}>
           <Plus size={12} /> Nuovo
         </button>
       </div>
 
-      {loading && <div style={{ padding: 20, color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento…</div>}
+      {loading && (
+        <div style={{ padding: 20, color: '#94a3b8', fontSize: 13 }}>Caricamento…</div>
+      )}
 
       <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
         {/* Campi Base special entry */}
-        <div
-          onClick={onSelectBase}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '10px 16px', cursor: 'pointer',
-            borderBottom: '1px solid #e5e7eb',
-            background: selectedBase ? 'var(--color-brand-light)' : '#f9fafb',
-            borderLeft: selectedBase ? '3px solid #0284c7' : '3px solid transparent',
-          }}
-        >
-          <Layout size={16} color="var(--color-brand)" />
+        <button onClick={onSelectBase} style={baseEntryStyle(selectedBase)}>
+          <Layout size={15} color={selectedBase ? 'var(--color-brand)' : '#64748b'} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+            <div style={{ fontSize: 13, fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
               Campi Base
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Condivisi da tutti i tipi</div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>Condivisi da tutti i tipi</div>
           </div>
-          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 600, background: '#cffafe', color: 'var(--color-brand)' }}>
+          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 600, background: '#cffafe', color: 'var(--color-brand)', flexShrink: 0 }}>
             Sistema
           </span>
-        </div>
+        </button>
 
         {/* Separator */}
-        <div style={{ padding: '6px 16px 4px', fontSize: 10, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ padding: '5px 16px 4px', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
           Tipi CI
         </div>
 
         {ciTypes.map((t) => {
           const isSelected = t.id === selectedId
           return (
-            <div
-              key={t.id}
-              onClick={() => onSelectType(t)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 16px', cursor: 'pointer',
-                borderBottom: '1px solid #f3f4f6',
-                background: isSelected ? 'var(--color-brand-light)' : 'transparent',
-                borderLeft: isSelected ? '3px solid #0284c7' : '3px solid transparent',
-              }}
-            >
-              <CIIcon icon={t.icon} size={16} color={t.color ?? 'var(--color-brand)'} />
+            <button key={t.id} onClick={() => onSelectType(t)} style={typeEntryStyle(isSelected)}>
+              <CIIcon icon={t.icon} size={15} color={isSelected ? 'var(--color-brand)' : (t.color ?? 'var(--color-brand)')} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {t.label}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{t.name}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>{t.name}</div>
               </div>
-              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: t.active ? '#dcfce7' : '#f3f4f6', color: t.active ? '#16a34a' : 'var(--color-slate-light)' }}>
-                {t.active ? 'active' : 'inactive'}
-              </span>
-            </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: t.active ? '#dcfce7' : '#f3f4f6', color: t.active ? '#16a34a' : '#94a3b8' }}>
+                  {t.active ? 'active' : 'inactive'}
+                </span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                  {t.fields.length} campi
+                </span>
+              </div>
+            </button>
           )
         })}
       </div>
 
       {!loading && ciTypes.length === 0 && (
         <div style={{ padding: '16px 16px 20px', textAlign: 'center' }}>
-          <Layers size={24} color="var(--color-slate-light)" style={{ marginBottom: 8 }} />
-          <div style={{ fontSize: 13, color: 'var(--color-slate-light)' }}>Nessun tipo CI</div>
+          <Layers size={24} color="#94a3b8" style={{ marginBottom: 8 }} />
+          <div style={{ fontSize: 13, color: '#94a3b8' }}>Nessun tipo CI</div>
         </div>
       )}
     </div>
