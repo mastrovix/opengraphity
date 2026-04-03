@@ -355,7 +355,7 @@ input CIFieldInput {
   fieldType: String!
   required: Boolean
   defaultValue: String
-  enumValues: [String!]
+  enumTypeId: ID
   order: Int
   validationScript: String
   visibilityScript: String

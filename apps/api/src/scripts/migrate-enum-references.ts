@@ -3,10 +3,14 @@
  * inline enum_values to the matching EnumTypeDefinition via USES_ENUM.
  *
  * Matching strategy:
- *   - Exact match:  field values == enum values (ignoring order)
- *   - Subset match: field values ⊆ enum values
- *   In both cases the USES_ENUM relation is created (MERGE) and
- *   enum_values is removed from the field node.
+ *   1. Exact name match + exact value set (prefers same-named enum)
+ *   2. Unique exact value match (name-agnostic)
+ *   3. Name-hinted subset (enum.name === fieldName, field ⊆ enum)
+ *   4. Smallest superset fallback
+ *   If no match found, creates a new custom EnumTypeDefinition for this field
+ *   using the field name converted to snake_case as the enum name.
+ *
+ * In all cases: MERGE (f)-[:USES_ENUM]->(e), SET f.enum_values = null
  *
  * Usage:
  *   pnpm tsx apps/api/src/scripts/migrate-enum-references.ts --slug <tenant>
@@ -15,6 +19,7 @@
  */
 
 import { parseArgs } from 'node:util'
+import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 
 // ── Args ──────────────────────────────────────────────────────────────────────
@@ -41,7 +46,26 @@ interface FieldRecord {
   fieldId:      string
   fieldName:    string
   typeName:     string
+  typeScope:    string
   enumValues:   string[]
+}
+
+/** camelCase / PascalCase → snake_case */
+function toSnakeCase(s: string): string {
+  return s
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .replace(/([a-z\d])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+}
+
+/** Derive scope for the new enum from the parent CI type scope */
+function scopeFromType(typeScope: string): string {
+  if (typeScope === 'itil') return 'itil'
+  if (typeScope === 'base')  return 'cmdb'
+  return 'cmdb'
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -149,7 +173,8 @@ async function main() {
         RETURN f.id          AS fieldId,
                f.name        AS fieldName,
                f.enum_values AS enumValuesJson,
-               t.name        AS typeName
+               t.name        AS typeName,
+               t.scope       AS typeScope
         ORDER BY t.name, f.name
       `, { tenantId }),
     )
@@ -163,6 +188,7 @@ async function main() {
           fieldId:    r.get('fieldId')   as string,
           fieldName:  r.get('fieldName') as string,
           typeName:   r.get('typeName')  as string,
+          typeScope:  r.get('typeScope') as string,
           enumValues,
         }
       })
@@ -172,16 +198,56 @@ async function main() {
 
     // 3. Match and migrate
     let migrated = 0
-    let skipped  = 0
+    let created  = 0
     let alreadyDone = 0
 
     for (const field of fields) {
-      const match = findMatch(field.enumValues, field.fieldName, enumDefs)
+      let match = findMatch(field.enumValues, field.fieldName, enumDefs)
 
       if (!match) {
-        console.info(`  SKIP  ${field.typeName}.${field.fieldName} [${field.enumValues.join(', ')}] — no matching enum found`)
-        skipped++
-        continue
+        // Auto-create a custom EnumTypeDefinition for this unmatched field
+        const enumName  = toSnakeCase(field.fieldName)
+        const enumLabel = field.fieldName
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/^./, (c) => c.toUpperCase())
+          .trim()
+        const scope     = scopeFromType(field.typeScope)
+        const newId     = uuidv4()
+        const now       = new Date().toISOString()
+
+        const createResult = await session.executeWrite((tx) =>
+          tx.run(`
+            MERGE (e:EnumTypeDefinition {name: $name, tenant_id: $tenantId})
+            ON CREATE SET
+              e.id         = $id,
+              e.label      = $label,
+              e.values     = $values,
+              e.is_system  = false,
+              e.scope      = $scope,
+              e.created_at = $now,
+              e.updated_at = $now
+            ON MATCH SET
+              e.values     = $values,
+              e.updated_at = $now
+            RETURN e.id AS id, e.name AS name, e.label AS label
+          `, {
+            name: enumName, tenantId, id: newId,
+            label: enumLabel, values: field.enumValues, scope, now,
+          }),
+        )
+
+        const createdRec = createResult.records[0]
+        match = {
+          id:     createdRec?.get('id')    as string,
+          name:   createdRec?.get('name')  as string,
+          label:  createdRec?.get('label') as string,
+          values: field.enumValues,
+        }
+
+        // Also add to local enumDefs so subsequent fields can reuse it
+        enumDefs.push(match)
+        console.info(`  NEW   ${field.typeName}.${field.fieldName} → created enum "${match.name}" [${field.enumValues.join(', ')}]`)
+        created++
       }
 
       // Create USES_ENUM relation (MERGE = idempotent) and remove inline enum_values
@@ -197,7 +263,9 @@ async function main() {
       )
 
       if (writeResult.records.length) {
-        console.info(`  OK    ${field.typeName}.${field.fieldName} → ${match.name} (${match.label})`)
+        if (created === 0 || enumDefs[enumDefs.length - 1]?.id !== match.id) {
+          console.info(`  OK    ${field.typeName}.${field.fieldName} → ${match.name} (${match.label})`)
+        }
         migrated++
       } else {
         console.info(`  WARN  ${field.typeName}.${field.fieldName} — write returned no records`)
@@ -219,8 +287,8 @@ async function main() {
 ╔═══════════════════════════════════════════╗
 ║  Migration complete for tenant: ${tenantId!.padEnd(8)} ║
 ╠═══════════════════════════════════════════╣
-║  Fields migrated this run : ${String(migrated).padEnd(14)} ║
-║  Fields skipped (no match): ${String(skipped).padEnd(14)} ║
+║  Fields migrated (matched)  : ${String(migrated).padEnd(14)} ║
+║  Enums auto-created         : ${String(created).padEnd(14)} ║
 ║  Total fields with USES_ENUM: ${String(totalLinked).padEnd(12)} ║
 ╚═══════════════════════════════════════════╝
 `)

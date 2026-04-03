@@ -71,98 +71,27 @@ const FIELD_TYPES = ['string', 'number', 'date', 'boolean', 'enum'] as const
 // ── FieldForm ─────────────────────────────────────────────────────────────────
 
 interface FieldFormState {
-  name:        string
-  label:       string
-  fieldType:   string
-  required:    boolean
-  enumValues:  string[]
-  order:       number
-  enumMode:    'reference' | 'inline'
-  enumTypeId:  string | null
+  name:       string
+  label:      string
+  fieldType:  string
+  required:   boolean
+  order:      number
+  enumTypeId: string | null
 }
 
 function emptyForm(order: number): FieldFormState {
-  return { name: '', label: '', fieldType: 'string', required: false, enumValues: [], order, enumMode: 'inline', enumTypeId: null }
+  return { name: '', label: '', fieldType: 'string', required: false, order, enumTypeId: null }
 }
 
 function fieldToForm(f: ITILField): FieldFormState {
-  const hasRef = f.fieldType === 'enum' && !!f.enumTypeId
   return {
     name:       f.name,
     label:      f.label,
     fieldType:  f.fieldType,
     required:   f.required,
-    enumValues: f.enumValues ?? [],
     order:      f.order,
-    enumMode:   hasRef ? 'reference' : 'inline',
-    enumTypeId: hasRef ? f.enumTypeId : null,
+    enumTypeId: f.enumTypeId ?? null,
   }
-}
-
-// ── EnumValuesEditor ──────────────────────────────────────────────────────────
-
-function EnumValuesEditor({
-  values, onChange,
-}: { values: string[]; onChange: (v: string[]) => void }) {
-  const { t } = useTranslation()
-  const [newVal, setNewVal] = useState('')
-
-  return (
-    <div>
-      <label style={labelS}>{t('itilDesigner.enumValues')}</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-        {values.map((v, i) => (
-          <span
-            key={i}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '3px 10px', background: '#f1f5f9', borderRadius: 12,
-              fontSize: 12, color: 'var(--color-slate-dark)',
-            }}
-          >
-            {v}
-            <button
-              type="button"
-              onClick={() => onChange(values.filter((_, j) => j !== i))}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94a3b8', lineHeight: 1 }}
-              title={t('itilDesigner.removeEnumValue')}
-            >
-              <X size={11} />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          style={{ ...inputS, flex: 1 }}
-          value={newVal}
-          placeholder={t('itilDesigner.addEnumValue')}
-          onChange={(e) => setNewVal(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && newVal.trim()) {
-              e.preventDefault()
-              if (!values.includes(newVal.trim())) {
-                onChange([...values, newVal.trim()])
-              }
-              setNewVal('')
-            }
-          }}
-        />
-        <button
-          type="button"
-          style={{ ...btnSecondary, padding: '7px 12px' }}
-          onClick={() => {
-            if (newVal.trim() && !values.includes(newVal.trim())) {
-              onChange([...values, newVal.trim()])
-            }
-            setNewVal('')
-          }}
-        >
-          <Plus size={13} />
-        </button>
-      </div>
-    </div>
-  )
 }
 
 // ── FieldEditor ───────────────────────────────────────────────────────────────
@@ -242,73 +171,35 @@ function FieldEditor({
 
       {form.fieldType === 'enum' && (
         <div style={{ marginBottom: 12 }}>
-          {/* Enum mode toggle */}
-          <div style={{ marginBottom: 10 }}>
-            <label style={labelS}>Tipo enum</label>
-            <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
-                <input
-                  type="radio"
-                  name="enumMode"
-                  value="inline"
-                  checked={form.enumMode === 'inline'}
-                  onChange={() => setForm((f) => ({ ...f, enumMode: 'inline', enumTypeId: null }))}
-                />
-                Valori personalizzati
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
-                <input
-                  type="radio"
-                  name="enumMode"
-                  value="reference"
-                  checked={form.enumMode === 'reference'}
-                  onChange={() => setForm((f) => ({ ...f, enumMode: 'reference', enumValues: [] }))}
-                />
-                Usa enum esistente
-              </label>
+          <label htmlFor="enum-ref" style={labelS}>Enum di riferimento *</label>
+          <select
+            id="enum-ref"
+            style={selectS}
+            value={form.enumTypeId ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, enumTypeId: e.target.value || null }))}
+          >
+            <option value="">— Seleziona enum —</option>
+            {(enumTypesData?.enumTypes ?? []).map((e) => (
+              <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
+            ))}
+          </select>
+          {form.enumTypeId && (
+            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {(enumTypesData?.enumTypes ?? [])
+                .find((e) => e.id === form.enumTypeId)
+                ?.values.map((v) => (
+                  <span
+                    key={v}
+                    style={{
+                      padding: '2px 8px', background: '#f0f4ff',
+                      borderRadius: 12, fontSize: 11, color: 'var(--color-brand)',
+                    }}
+                  >
+                    {v}
+                  </span>
+                ))}
             </div>
-
-            {form.enumMode === 'reference' && (
-              <div>
-                <label htmlFor="enum-ref" style={labelS}>Enum di riferimento</label>
-                <select
-                  id="enum-ref"
-                  style={selectS}
-                  value={form.enumTypeId ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, enumTypeId: e.target.value || null }))}
-                >
-                  <option value="">— Seleziona enum —</option>
-                  {(enumTypesData?.enumTypes ?? []).map((e) => (
-                    <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
-                  ))}
-                </select>
-                {form.enumTypeId && (
-                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {(enumTypesData?.enumTypes ?? [])
-                      .find((e) => e.id === form.enumTypeId)
-                      ?.values.map((v) => (
-                        <span
-                          key={v}
-                          style={{
-                            padding: '2px 8px', background: '#f0f4ff',
-                            borderRadius: 12, fontSize: 11, color: 'var(--color-brand)',
-                          }}
-                        >
-                          {v}
-                        </span>
-                      ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {form.enumMode === 'inline' && (
-              <EnumValuesEditor
-                values={form.enumValues}
-                onChange={(v) => set('enumValues', v)}
-              />
-            )}
-          </div>
+          )}
         </div>
       )}
 
@@ -421,7 +312,10 @@ export function ITILTypeDesignerPage() {
   }
 
   const handleSaveField = (typeId: string, fieldId: string | null, form: FieldFormState) => {
-    const isRef = form.fieldType === 'enum' && form.enumMode === 'reference' && !!form.enumTypeId
+    if (form.fieldType === 'enum' && !form.enumTypeId) {
+      toast.error('Seleziona un enum di riferimento per i campi di tipo enum')
+      return
+    }
 
     const variables = {
       typeId,
@@ -430,10 +324,7 @@ export function ITILTypeDesignerPage() {
         label:      form.label,
         fieldType:  form.fieldType,
         required:   form.required,
-        // Send inline values only when not using an enum reference
-        enumValues: form.fieldType === 'enum' && !isRef ? form.enumValues : [],
-        // Send enumTypeId when in reference mode (backend creates USES_ENUM)
-        enumTypeId: isRef ? form.enumTypeId : null,
+        enumTypeId: form.fieldType === 'enum' ? form.enumTypeId : null,
         order:      form.order,
       },
     }

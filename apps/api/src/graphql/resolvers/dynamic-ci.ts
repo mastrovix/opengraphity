@@ -165,7 +165,7 @@ function mapITILField(f: Props, enumRef?: { id: string; name: string; label: str
     fieldType:        f['field_type'],
     required:         f['required']      ?? false,
     defaultValue:     f['default_value'] ?? null,
-    enumValues:       enumRef ? enumRef.values : (f['enum_values'] ? JSON.parse(f['enum_values'] as string) as string[] : []),
+    enumValues:       enumRef?.values ?? [],
     order:            f['order']          ?? 0,
     validationScript: f['validation_script'] ?? null,
     visibilityScript: f['visibility_script'] ?? null,
@@ -321,6 +321,13 @@ function buildITILMutations() {
       const { typeId, input } = args
       const fieldId     = crypto.randomUUID()
       const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
+
+      if (input['fieldType'] === 'enum' && !enumTypeId) {
+        throw new GraphQLError('enumTypeId obbligatorio per campi di tipo enum', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        })
+      }
+
       // When linking to an existing enum, don't store inline enum_values
       const enumValues  = enumTypeId
         ? null
@@ -382,6 +389,13 @@ function buildITILMutations() {
       requireAdmin(ctx)
       const { typeId, fieldId, input } = args
       const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
+
+      if (input['fieldType'] === 'enum' && !enumTypeId) {
+        throw new GraphQLError('enumTypeId obbligatorio per campi di tipo enum', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        })
+      }
+
       // When linking to an existing enum, clear inline enum_values
       const enumValues  = enumTypeId
         ? null
@@ -475,12 +489,14 @@ function buildCITypesResolver() {
              AND t.name <> '__base__'
            OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
              WHERE f.scope = 'base' OR (f.scope = 'tenant' AND f.tenant_id = $tenantId)
+           OPTIONAL MATCH (f)-[:USES_ENUM]->(fEnum:EnumTypeDefinition)
            OPTIONAL MATCH (t)-[:HAS_RELATION]->(rel:CIRelationDefinition)
            OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
            OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})-[:HAS_FIELD]->(bf:CIFieldDefinition)
+           OPTIONAL MATCH (bf)-[:USES_ENUM]->(bfEnum:EnumTypeDefinition)
            RETURN t,
-             collect(DISTINCT f)  AS typeFields,
-             collect(DISTINCT bf) AS baseFields,
+             collect(DISTINCT {f: f, enumId: fEnum.id, enumName: fEnum.name, enumValues: fEnum.values})  AS typeFields,
+             collect(DISTINCT {f: bf, enumId: bfEnum.id, enumName: bfEnum.name, enumValues: bfEnum.values}) AS baseFields,
              collect(DISTINCT rel) AS relations,
              collect(DISTINCT sr) AS systemRels
            ORDER BY t.name`,
@@ -490,25 +506,31 @@ function buildCITypesResolver() {
       return r.records.map(rec => {
         const t = rec.get('t').properties as Props
 
-        const mapF = (f: Props) => ({
-          id:               f['id'],
-          name:             f['name'],
-          label:            f['label'],
-          fieldType:        f['field_type'],
-          required:         f['required']      ?? false,
-          defaultValue:     f['default_value'] ?? null,
-          enumValues:       f['enum_values'] ? JSON.parse(f['enum_values'] as string) as string[] : [],
-          order:            f['order']          ?? 0,
-          validationScript: f['validation_script'] ?? null,
-          visibilityScript: f['visibility_script'] ?? null,
-          defaultScript:    f['default_script']    ?? null,
-          isSystem:         f['is_system']          ?? false,
-        })
+        type FRow = { f: { properties: Props } | null; enumId: string | null; enumName: string | null; enumValues: string[] | null }
+        const mapF = (fd: FRow) => {
+          const f = fd.f!.properties
+          return {
+            id:               f['id'],
+            name:             f['name'],
+            label:            f['label'],
+            fieldType:        f['field_type'],
+            required:         f['required']      ?? false,
+            defaultValue:     f['default_value'] ?? null,
+            enumValues:       fd.enumValues      ?? [],
+            enumTypeId:       fd.enumId          ?? null,
+            enumTypeName:     fd.enumName        ?? null,
+            order:            f['order']          ?? 0,
+            validationScript: f['validation_script'] ?? null,
+            visibilityScript: f['visibility_script'] ?? null,
+            defaultScript:    f['default_script']    ?? null,
+            isSystem:         f['is_system']          ?? false,
+          }
+        }
 
-        const typeFields = (rec.get('typeFields') as Array<{ properties: Props }>)
-          .filter(f => f?.properties).map(f => mapF(f.properties))
-        const baseFields = (rec.get('baseFields') as Array<{ properties: Props }>)
-          .filter(f => f?.properties).map(f => mapF(f.properties))
+        const typeFields = (rec.get('typeFields') as FRow[])
+          .filter(fd => fd?.f?.properties).map(fd => mapF(fd))
+        const baseFields = (rec.get('baseFields') as FRow[])
+          .filter(fd => fd?.f?.properties).map(fd => mapF(fd))
 
         const seen = new Set<string>()
         const fields = [...baseFields, ...typeFields]
@@ -547,7 +569,9 @@ function buildCITypesResolver() {
 
 // ── Metamodel helpers ─────────────────────────────────────────────────────────
 
-function mapCITypeNode(t: Props, fields: Props[], relations: Props[], systemRels: Props[]) {
+type CIFieldRow = { f: { properties: Props } | null; enumId: string | null; enumName: string | null; enumValues: string[] | null }
+
+function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[], systemRels: Props[]) {
   return {
     id:               t['id'],
     name:             t['name'],
@@ -557,21 +581,26 @@ function mapCITypeNode(t: Props, fields: Props[], relations: Props[], systemRels
     active:           t['active'] ?? true,
     validationScript: t['validation_script'] ?? null,
     fields: fields
-      .filter(f => f && Object.keys(f).length)
-      .map(f => ({
-        id:               f['id'],
-        name:             f['name'],
-        label:            f['label'],
-        fieldType:        f['field_type'],
-        required:         f['required'] ?? false,
-        defaultValue:     f['default_value'] ?? null,
-        enumValues:       f['enum_values'] ? JSON.parse(f['enum_values'] as string) as string[] : [],
-        order:            f['order'] ?? 0,
-        validationScript: f['validation_script'] ?? null,
-        visibilityScript: f['visibility_script'] ?? null,
-        defaultScript:    f['default_script']    ?? null,
-        isSystem:         f['is_system']         ?? false,
-      }))
+      .filter(fd => fd?.f?.properties)
+      .map(fd => {
+        const f = fd.f!.properties
+        return {
+          id:               f['id'],
+          name:             f['name'],
+          label:            f['label'],
+          fieldType:        f['field_type'],
+          required:         f['required'] ?? false,
+          defaultValue:     f['default_value'] ?? null,
+          enumValues:       fd.enumValues ?? [],
+          enumTypeId:       fd.enumId     ?? null,
+          enumTypeName:     fd.enumName   ?? null,
+          order:            f['order'] ?? 0,
+          validationScript: f['validation_script'] ?? null,
+          visibilityScript: f['visibility_script'] ?? null,
+          defaultScript:    f['default_script']    ?? null,
+          isSystem:         f['is_system']         ?? false,
+        }
+      })
       .sort((a, b) => (a.order as number) - (b.order as number)),
     relations: relations
       .filter(r => r && Object.keys(r).length)
@@ -607,20 +636,21 @@ async function fetchCITypeById(id: string, tenantId: string) {
         MATCH (t:CITypeDefinition {id: $id})
         WHERE t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId)
         OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
+        OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
         OPTIONAL MATCH (t)-[:HAS_RELATION]->(rel:CIRelationDefinition)
         OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
         RETURN t,
-          collect(DISTINCT f) AS fields,
+          collect(DISTINCT {f: f, enumId: enumDef.id, enumName: enumDef.name, enumValues: enumDef.values}) AS fields,
           collect(DISTINCT rel) AS relations,
           collect(DISTINCT sr) AS systemRels
       `, { id, tenantId }),
     )
     if (!r.records.length) throw new GraphQLError('CIType non trovato')
     const rec = r.records[0]
+    type FRow = { f: { properties: Props } | null; enumId: string | null; enumName: string | null; enumValues: string[] | null }
     return mapCITypeNode(
       rec.get('t').properties as Props,
-      (rec.get('fields') as Array<{ properties: Props } | null>)
-        .filter(Boolean).map(f => f!.properties),
+      (rec.get('fields') as FRow[]).filter(fd => fd?.f?.properties),
       (rec.get('relations') as Array<{ properties: Props } | null>)
         .filter(Boolean).map(r => r!.properties),
       (rec.get('systemRels') as Array<{ properties: Props } | null>)
@@ -731,10 +761,14 @@ function buildMetamodelMutations() {
     ) => {
       requireAdmin(ctx)
       const { typeId, input } = args
-      const fieldId = crypto.randomUUID()
-      const enumValues = Array.isArray(input['enumValues'])
-        ? JSON.stringify(input['enumValues'])
-        : null
+      const fieldId    = crypto.randomUUID()
+      const enumTypeId = (input['enumTypeId'] as string | null | undefined) ?? null
+
+      if (input['fieldType'] === 'enum' && !enumTypeId) {
+        throw new GraphQLError('enumTypeId obbligatorio per campi di tipo enum', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        })
+      }
 
       await withSession(async session => {
         await session.executeWrite(tx =>
@@ -747,7 +781,6 @@ function buildMetamodelMutations() {
               field_type:        $fieldType,
               required:          $required,
               default_value:     $defaultValue,
-              enum_values:       $enumValues,
               order:             $order,
               scope:             CASE WHEN t.name = '__base__' THEN 'base' ELSE 'tenant' END,
               tenant_id:         $tenantId,
@@ -757,6 +790,15 @@ function buildMetamodelMutations() {
               default_script:    $defaultScript
             })
             CREATE (t)-[:HAS_FIELD]->(f)
+            WITH f
+            CALL {
+              WITH f
+              MATCH (e:EnumTypeDefinition {id: $enumTypeId})
+              WHERE $enumTypeId IS NOT NULL
+              MERGE (f)-[:USES_ENUM]->(e)
+              RETURN count(e) AS linked
+            }
+            RETURN f
           `, {
             typeId,
             fieldId,
@@ -765,7 +807,7 @@ function buildMetamodelMutations() {
             fieldType:        input['fieldType'],
             required:         input['required']          ?? false,
             defaultValue:     input['defaultValue']      ?? null,
-            enumValues,
+            enumTypeId,
             order:            input['order']             ?? 0,
             tenantId:         ctx.tenantId,
             validationScript: input['validationScript']  ?? null,
@@ -868,7 +910,8 @@ function buildBaseCITypeResolver() {
            WITH t ORDER BY t.tenant_id DESC
            LIMIT 1
            OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
-           RETURN t, collect(DISTINCT f) AS fields`,
+           OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
+           RETURN t, collect(DISTINCT {f: f, enumId: enumDef.id, enumName: enumDef.name, enumValues: enumDef.values}) AS fields`,
           { tenantId: ctx.tenantId },
         ),
       )
@@ -876,8 +919,7 @@ function buildBaseCITypeResolver() {
       const rec = r.records[0]
       return mapCITypeNode(
         rec.get('t').properties as Props,
-        (rec.get('fields') as Array<{ properties: Props } | null>)
-          .filter(Boolean).map(f => f!.properties),
+        (rec.get('fields') as CIFieldRow[]).filter(fd => fd?.f?.properties),
         [],
         [],
       )

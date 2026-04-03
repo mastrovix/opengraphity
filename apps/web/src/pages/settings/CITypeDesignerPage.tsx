@@ -152,14 +152,14 @@ export function CITypeDesignerPage() {
   async function handleSaveField(form: FieldForm) {
     const targetId = selectedBase ? baseType?.id : selected?.id
     if (!targetId) return
-    let enumValues: string[] = []
-    if (form.fieldType === 'enum') {
-      try { enumValues = JSON.parse(form.enumValues) } catch { enumValues = [] }
-    }
     const input = {
-      name: form.name, label: form.label, fieldType: form.fieldType,
-      required: form.required, defaultValue: form.defaultValue || null,
-      enumValues, order: form.order,
+      name:             form.name,
+      label:            form.label,
+      fieldType:        form.fieldType,
+      required:         form.required,
+      defaultValue:     form.defaultValue || null,
+      enumTypeId:       form.fieldType === 'enum' ? form.enumTypeId : null,
+      order:            form.order,
       validationScript: form.validationScript || null,
       visibilityScript: form.visibilityScript || null,
       defaultScript:    form.defaultScript    || null,

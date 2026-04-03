@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Check, X, Plus } from 'lucide-react'
+import { Check, X } from 'lucide-react'
+import { useQuery } from '@apollo/client/react'
 import { Modal } from '@/components/Modal'
+import { GET_ENUM_TYPES } from '@/graphql/queries'
 import type { CIFieldDef } from '@/contexts/MetamodelContext'
 
 // ── Style constants ────────────────────────────────────────────────────────────
@@ -26,17 +28,17 @@ const labelS: React.CSSProperties = {
   display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
 }
 
-const btnPrimary: React.CSSProperties = {
+export const btnPrimary: React.CSSProperties = {
   padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
   color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
 }
 
-const btnSecondary: React.CSSProperties = {
+export const btnSecondary: React.CSSProperties = {
   padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
   color: 'var(--color-slate)', fontSize: 14, cursor: 'pointer',
 }
 
-const btnDanger: React.CSSProperties = {
+export const btnDanger: React.CSSProperties = {
   padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
   color: 'var(--color-trigger-sla-breach)', fontSize: 12, cursor: 'pointer',
 }
@@ -56,27 +58,35 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export interface FieldForm {
   name: string; label: string; fieldType: string
-  required: boolean; defaultValue: string; enumValues: string
+  required: boolean; defaultValue: string
+  enumTypeId: string | null
   validationScript: string; visibilityScript: string; defaultScript: string
   order: number
 }
 
 export const emptyFieldForm = (): FieldForm => ({
   name: '', label: '', fieldType: 'string', required: false,
-  defaultValue: '', enumValues: '[]', validationScript: '',
+  defaultValue: '', enumTypeId: null, validationScript: '',
   visibilityScript: '', defaultScript: '', order: 0,
 })
 
 export function fieldToForm(f: CIFieldDef): FieldForm {
   return {
-    name: f.name, label: f.label, fieldType: f.fieldType,
-    required: f.required, defaultValue: '',
-    enumValues: JSON.stringify(f.enumValues ?? []),
+    name:             f.name,
+    label:            f.label,
+    fieldType:        f.fieldType,
+    required:         f.required,
+    defaultValue:     '',
+    enumTypeId:       (f as unknown as { enumTypeId?: string | null }).enumTypeId ?? null,
     validationScript: f.validationScript ?? '',
     visibilityScript: f.visibilityScript ?? '',
-    defaultScript: f.defaultScript ?? '',
-    order: f.order,
+    defaultScript:    f.defaultScript ?? '',
+    order:            f.order,
   }
+}
+
+interface EnumTypeOption {
+  id: string; name: string; label: string; values: string[]; scope: string
 }
 
 interface FieldModalProps {
@@ -92,9 +102,16 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
   const [saving, setSaving] = useState(false)
   const [scriptTab, setScriptTab] = useState<'validation' | 'visibility' | 'default'>('validation')
 
+  const { data: enumData } = useQuery<{ enumTypes: EnumTypeOption[] }>(GET_ENUM_TYPES, {
+    fetchPolicy: 'cache-and-network',
+  })
+  const enumTypes = enumData?.enumTypes ?? []
+
   const set = (k: keyof FieldForm, v: unknown) => setForm(p => ({ ...p, [k]: v }))
 
   const handleOpen = () => { setForm(initial ?? { ...emptyFieldForm(), order: existingCount }) }
+
+  const selectedEnum = form.enumTypeId ? enumTypes.find(e => e.id === form.enumTypeId) : null
 
   return (
     <Modal open={open} onClose={onClose} title={initial ? `Modifica campo: ${initial.name}` : 'Aggiungi campo'} width={560}
@@ -121,7 +138,10 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
           <input style={inputS} value={form.label} onChange={e => set('label', e.target.value)} />
         </Field>
         <Field label="Tipo">
-          <select style={selectS} value={form.fieldType} onChange={e => set('fieldType', e.target.value)}>
+          <select style={selectS} value={form.fieldType} onChange={e => {
+            set('fieldType', e.target.value)
+            if (e.target.value !== 'enum') set('enumTypeId', null)
+          }}>
             {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </Field>
@@ -136,8 +156,29 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
       </div>
 
       {form.fieldType === 'enum' && (
-        <Field label="Valori enum (array JSON)">
-          <textarea style={textareaS} value={form.enumValues} onChange={e => set('enumValues', e.target.value)} placeholder='["valore1","valore2"]' />
+        <Field label="Enum di riferimento *">
+          <select
+            style={selectS}
+            value={form.enumTypeId ?? ''}
+            onChange={e => set('enumTypeId', e.target.value || null)}
+          >
+            <option value="">— Seleziona enum —</option>
+            {enumTypes.map(e => (
+              <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
+            ))}
+          </select>
+          {selectedEnum && (
+            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {selectedEnum.values.map(v => (
+                <span key={v} style={{
+                  padding: '2px 8px', background: '#f0f4ff',
+                  borderRadius: 12, fontSize: 11, color: 'var(--color-brand)',
+                }}>
+                  {v}
+                </span>
+              ))}
+            </div>
+          )}
         </Field>
       )}
 
@@ -261,5 +302,5 @@ export function CIFieldTable({ fields, showActions, onEdit, onRemove }: FieldTab
   )
 }
 
-// Re-export btn styles for use in parent
-export { btnPrimary, btnSecondary, btnDanger, Plus }
+// Re-export for use in parent
+export { Plus } from 'lucide-react'
