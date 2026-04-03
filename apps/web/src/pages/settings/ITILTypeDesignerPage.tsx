@@ -7,7 +7,6 @@ import { GET_ITIL_TYPES, GET_ENUM_TYPES } from '@/graphql/queries'
 import { CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD } from '@/graphql/mutations'
 import {
   inputS, selectS, labelS, btnPrimary, btnSecondary, FIELD_TYPES,
-  activeCardStyle, inactiveCardStyle,
 } from './shared/designerStyles'
 import type { EnumTypeRef } from './shared/designerStyles'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
@@ -259,32 +258,48 @@ export function ITILTypeDesignerPage() {
       {!loading && (
         <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20 }}>
           {/* Left: Type list */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 8 }}>
-              ENTITÀ ITIL
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            {/* Section header — same style as "TIPI CI" in CITypeList */}
+            <div style={{
+              padding: '5px 16px 4px', fontSize: 10, fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+              color: '#94a3b8', background: '#f9fafb',
+              borderBottom: '1px solid #f3f4f6',
+            }}>
+              {t('itilDesigner.title')}
             </div>
-            {itilTypes.map((itilType) => {
-              const isSelected = itilType.id === selectedTypeId
-              return (
-                <button
-                  key={itilType.id}
-                  onClick={() => { setSelectedTypeId(itilType.id); setEditingFieldId(null); setAddingField(false) }}
-                  style={{
-                    width: '100%', textAlign: 'left', padding: '10px 14px',
-                    ...(isSelected ? activeCardStyle : inactiveCardStyle),
-                    fontWeight: isSelected ? 600 : 400, fontSize: 14,
-                    cursor: 'pointer', marginBottom: 4, borderRadius: 8,
-                    display: 'flex', alignItems: 'center', gap: 8,
-                  }}
-                >
-                  <Settings2 size={14} style={{ flexShrink: 0 }} />
-                  {itilType.label}
-                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>
-                    {itilType.fields.length}
-                  </span>
-                </button>
-              )
-            })}
+
+            <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+              {itilTypes.map((itilType) => {
+                const isSelected = itilType.id === selectedTypeId
+                return (
+                  <button
+                    key={itilType.id}
+                    onClick={() => { setSelectedTypeId(itilType.id); setEditingFieldId(null); setAddingField(false) }}
+                    style={{
+                      width: '100%', textAlign: 'left', padding: '10px 16px',
+                      background: isSelected ? '#f0f9ff' : 'transparent',
+                      borderLeft: `3px solid ${isSelected ? 'var(--color-brand)' : 'transparent'}`,
+                      borderTop: 'none', borderRight: 'none',
+                      borderBottom: '1px solid #f3f4f6',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                    }}
+                  >
+                    <Settings2 size={15} color={isSelected ? 'var(--color-brand)' : '#64748b'} style={{ flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {itilType.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{itilType.name}</div>
+                    </div>
+                    <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>
+                      {itilType.fields.length} campi
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Right: Fields panel */}
