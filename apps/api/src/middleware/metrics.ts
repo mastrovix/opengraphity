@@ -395,8 +395,8 @@ export function getRequestMetrics(): RequestMetricsData {
   const bucketCounts: { le: number; count: number }[] = []
 
   for (const line of histLines) {
-    const sumMatch   = /_sum\s+([\d.]+)/.exec(line)
-    const countMatch = /_count\s+([\d.]+)/.exec(line)
+    const sumMatch    = /_sum(?:\{[^}]*\})?\s+([\d.eE+\-]+)/.exec(line)
+    const countMatch  = /_count(?:\{[^}]*\})?\s+([\d.eE+\-]+)/.exec(line)
     const bucketMatch = /le="([\d.]+)"[^}]*}\s+([\d.]+)/.exec(line)
 
     if (sumMatch)   histSum   += parseFloat(sumMatch[1]!)
