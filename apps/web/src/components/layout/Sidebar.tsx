@@ -69,8 +69,9 @@ const REPORTING_ITEM_DEFS = [
 ]
 
 const ADMIN_NAV_ITEM_DEFS = [
-  { to: '/logs',        labelKey: 'sidebar.logs',     icon: ScrollText  },
-  { to: '/admin/audit', labelKey: 'sidebar.auditLog', icon: ShieldCheck },
+  { to: '/logs',              labelKey: 'sidebar.logs',       icon: ScrollText  },
+  { to: '/admin/audit',       labelKey: 'sidebar.auditLog',   icon: ShieldCheck },
+  { to: '/admin/monitoring',  labelKey: 'sidebar.monitoring', icon: Activity    },
 ]
 
 // ── colours ──────────────────────────────────────────────────────────────────

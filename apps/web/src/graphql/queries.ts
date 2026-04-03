@@ -586,3 +586,47 @@ export const GET_QUEUE_STATS = gql`
     }
   }
 `
+
+export const GET_SYSTEM_HEALTH = gql`
+  query GetSystemHealth {
+    systemHealth {
+      status uptime
+      checks {
+        neo4j    { status latencyMs error }
+        redis    { status latencyMs error }
+        keycloak { status latencyMs error }
+      }
+    }
+  }
+`
+
+export const GET_SYSTEM_METRICS = gql`
+  query GetSystemMetrics {
+    systemMetrics {
+      requests {
+        totalRequests requestsPerMinute averageResponseMs p95ResponseMs errorRate
+        statusCodes { code count }
+      }
+      graphql {
+        totalOperations
+        slowestResolvers { name averageMs maxMs count }
+        errorsByResolver { name count lastError }
+      }
+      queues { name waiting active completed failed delayed }
+      neo4j {
+        totalQueries averageQueryMs connectionPoolActive connectionPoolIdle
+        slowQueries { query durationMs timestamp }
+      }
+      system { memoryUsageMb memoryRssMb cpuUsagePercent nodeVersion uptimeSeconds pid }
+    }
+  }
+`
+
+export const GET_TRACE_INFO = gql`
+  query GetTraceInfo {
+    traceInfo {
+      enabled endpoint
+      recentTraces { traceId operationName durationMs status timestamp spanCount }
+    }
+  }
+`

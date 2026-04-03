@@ -1,3 +1,6 @@
+import { initTelemetry } from './telemetry.js'
+initTelemetry()
+
 import { startServer } from './server.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine } from '@opengraphity/sla'

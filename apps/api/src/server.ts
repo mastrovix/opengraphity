@@ -18,7 +18,7 @@ import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import { graphqlRateLimiterMiddleware } from './middleware/graphqlRateLimiter.js'
-import { metricsMiddleware, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
+import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
 import http from 'http'
 
 const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
@@ -78,7 +78,7 @@ app.use(compression({
 
 // ── Prometheus metrics ─────────────────────────────────────────────────────────
 
-app.use(metricsMiddleware)
+app.use(metricsMiddlewareWithRpm)
 app.get('/metrics', metricsHandler)
 
 const CORS_ORIGIN = (() => {

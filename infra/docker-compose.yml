@@ -56,6 +56,21 @@ services:
     networks:
       - opengrafo-network
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=memory
+      - MEMORY_MAX_TRACES=10000
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4318:4318"     # OTLP HTTP receiver
+    mem_limit: 512m
+    restart: unless-stopped
+    networks:
+      - opengrafo-network
+
   loki:
     image: grafana/loki:2.9.0
     container_name: opengrafo-loki

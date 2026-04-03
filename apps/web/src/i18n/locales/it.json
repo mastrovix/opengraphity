@@ -63,7 +63,8 @@
     "notificationChannels": "Canali Notifica",
     "notificationRules": "Regole Notifiche",
     "cmdbSync": "Sync CMDB",
-    "bullBoard": "Coda Jobs"
+    "bullBoard": "Coda Jobs",
+    "monitoring": "Monitoring"
   },
   "pages": {
     "incidents": {
@@ -520,6 +521,57 @@
       "deferred":      { "title": "Problem Posticipato" },
       "resolved":      { "title": "Problem Risolto" },
       "closed":        { "title": "Problem Chiuso" }
+    }
+  },
+  "pages": {
+    "monitoring": {
+      "title": "Monitoring",
+      "subtitle": "Salute del sistema, metriche e tracciamento in tempo reale",
+      "health": {
+        "title":    "Salute del Sistema",
+        "neo4j":    "Neo4j",
+        "redis":    "Redis",
+        "keycloak": "Keycloak",
+        "uptime":   "Uptime",
+        "ok":       "Operativo",
+        "error":    "Errore",
+        "latency":  "Latenza"
+      },
+      "requests": {
+        "title":     "Metriche Richieste",
+        "rpm":       "Richieste/min",
+        "avg":       "Risposta Media",
+        "p95":       "Risposta P95",
+        "errorRate": "Tasso Errori"
+      },
+      "queues": {
+        "title":     "BullMQ Code",
+        "waiting":   "In attesa",
+        "active":    "Attivi",
+        "completed": "Completati",
+        "failed":    "Falliti",
+        "delayed":   "Ritardati"
+      },
+      "neo4j": {
+        "title":        "Neo4j",
+        "totalQueries": "Query Totali",
+        "avgQuery":     "Tempo Query Medio",
+        "slowQueries":  "Query Lente (>500ms)"
+      },
+      "tracing": {
+        "title":     "OpenTelemetry Tracing",
+        "enabled":   "Abilitato",
+        "disabled":  "Disabilitato",
+        "noTracing": "Tracing non attivo. Impostare OTEL_ENABLED=true e avviare Jaeger."
+      },
+      "process": {
+        "title":   "Processo",
+        "memory":  "Heap Memory",
+        "rss":     "RSS",
+        "cpu":     "CPU",
+        "pid":     "PID",
+        "version": "Node.js"
+      }
     }
   },
   "itilDesigner": {

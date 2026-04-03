@@ -21,6 +21,7 @@ import { queueStatsResolvers } from './queueStats.js'
 import { syncResolvers } from './sync.js'
 import { auditLog } from './auditLog.js'
 import { enumTypeResolvers } from './enumType.js'
+import { monitoringResolvers } from './monitoring.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -122,6 +123,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...topologyResolvers.Query,
       ...notificationRuleResolvers.Query,
       ...queueStatsResolvers.Query,
+      ...monitoringResolvers.Query,
       ...syncResolvers.Query,
       ...enumTypeResolvers.Query,
       auditLog,

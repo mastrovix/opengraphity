@@ -270,6 +270,319 @@ export const graphqlMetricsPlugin: ApolloServerPlugin<GraphQLContext> = {
   },
 }
 
+// ── Structured data interfaces ────────────────────────────────────────────────
+
+export interface RequestMetricsData {
+  totalRequests: number
+  requestsPerMinute: number
+  averageResponseMs: number
+  p95ResponseMs: number
+  errorRate: number
+  statusCodes: { code: string; count: number }[]
+}
+
+export interface ResolverMetricData {
+  name: string
+  averageMs: number
+  maxMs: number
+  count: number
+}
+
+export interface ResolverErrorData {
+  name: string
+  count: number
+  lastError: string | null
+}
+
+export interface GraphQLMetricsData {
+  totalOperations: number
+  slowestResolvers: ResolverMetricData[]
+  errorsByResolver: ResolverErrorData[]
+}
+
+export interface SlowQueryEntry {
+  query: string
+  durationMs: number
+  timestamp: string
+}
+
+export interface Neo4jMetricsData {
+  totalQueries: number
+  averageQueryMs: number
+  slowQueries: SlowQueryEntry[]
+  connectionPoolActive: number
+  connectionPoolIdle: number
+}
+
+export interface ProcessMetricsData {
+  memoryUsageMb: number
+  memoryRssMb: number
+  cpuUsagePercent: number
+  nodeVersion: string
+  uptimeSeconds: number
+  pid: number
+}
+
+// ── Slow query buffer ─────────────────────────────────────────────────────────
+
+const slowQueryBuffer: SlowQueryEntry[] = []
+const MAX_SLOW_QUERIES = 20
+
+export function recordSlowQuery(query: string, durationMs: number): void {
+  slowQueryBuffer.push({
+    query: query.slice(0, 200),
+    durationMs,
+    timestamp: new Date().toISOString(),
+  })
+  if (slowQueryBuffer.length > MAX_SLOW_QUERIES) slowQueryBuffer.shift()
+}
+
+// ── Resolver error tracking ───────────────────────────────────────────────────
+
+const resolverErrors = new Map<string, { count: number; lastError: string }>()
+
+export function recordResolverError(resolverName: string, error: string): void {
+  const existing = resolverErrors.get(resolverName)
+  if (existing) {
+    existing.count += 1
+    existing.lastError = error
+  } else {
+    resolverErrors.set(resolverName, { count: 1, lastError: error })
+  }
+}
+
+// ── Rolling requests-per-minute window ───────────────────────────────────────
+
+const rpmWindow: number[] = []  // timestamps in ms
+const RPM_WINDOW_MS = 60_000
+
+function recordRequest(): void {
+  const now = Date.now()
+  rpmWindow.push(now)
+  // prune stale entries
+  const cutoff = now - RPM_WINDOW_MS
+  while (rpmWindow.length > 0 && rpmWindow[0]! < cutoff) rpmWindow.shift()
+}
+
+// ── Structured getters ────────────────────────────────────────────────────────
+
+export function getRequestMetrics(): RequestMetricsData {
+  // Compute totals from httpRequestsTotal
+  const metricsText = httpRequestsTotal.collect()
+  const lines = metricsText.split('\n').filter(l => !l.startsWith('#') && l.trim())
+
+  let totalRequests = 0
+  let errorRequests = 0
+  const statusCodeMap = new Map<string, number>()
+
+  for (const line of lines) {
+    const match = /status_code="(\d+)"[^}]*}\s+([\d.]+)/.exec(line)
+    if (match) {
+      const code  = match[1]!
+      const count = parseInt(match[2]!, 10)
+      totalRequests += count
+      statusCodeMap.set(code, (statusCodeMap.get(code) ?? 0) + count)
+      if (code.startsWith('5')) errorRequests += count
+    }
+  }
+
+  // Response time from histogram
+  const histText = httpRequestDurationSeconds.collect()
+  const histLines = histText.split('\n').filter(l => !l.startsWith('#'))
+
+  let histSum   = 0
+  let histCount = 0
+  const bucketCounts: { le: number; count: number }[] = []
+
+  for (const line of histLines) {
+    const sumMatch   = /_sum\s+([\d.]+)/.exec(line)
+    const countMatch = /_count\s+([\d.]+)/.exec(line)
+    const bucketMatch = /le="([\d.]+)"[^}]*}\s+([\d.]+)/.exec(line)
+
+    if (sumMatch)   histSum   += parseFloat(sumMatch[1]!)
+    if (countMatch) histCount += parseInt(countMatch[1]!, 10)
+    if (bucketMatch && bucketMatch[1] !== '+Inf') {
+      const le    = parseFloat(bucketMatch[1]!)
+      const count = parseInt(bucketMatch[2]!, 10)
+      bucketCounts.push({ le, count })
+    }
+  }
+
+  const averageResponseMs = histCount > 0 ? (histSum / histCount) * 1000 : 0
+
+  // p95 estimate
+  let p95ResponseMs = 0
+  if (histCount > 0) {
+    const p95Target = histCount * 0.95
+    const sorted = [...bucketCounts].sort((a, b) => a.le - b.le)
+    for (const b of sorted) {
+      if (b.count >= p95Target) {
+        p95ResponseMs = b.le * 1000
+        break
+      }
+    }
+    if (p95ResponseMs === 0 && sorted.length > 0) {
+      p95ResponseMs = (sorted[sorted.length - 1]!.le) * 1000
+    }
+  }
+
+  const statusCodes = Array.from(statusCodeMap.entries()).map(([code, count]) => ({ code, count }))
+
+  return {
+    totalRequests,
+    requestsPerMinute: rpmWindow.length,
+    averageResponseMs,
+    p95ResponseMs,
+    errorRate: totalRequests > 0 ? errorRequests / totalRequests : 0,
+    statusCodes,
+  }
+}
+
+export function getGraphQLMetrics(): GraphQLMetricsData {
+  const text   = graphqlResolverDurationSeconds.collect()
+  const lines  = text.split('\n').filter(l => !l.startsWith('#') && l.trim())
+
+  const resolverMap = new Map<string, { sum: number; count: number; max: number }>()
+
+  for (const line of lines) {
+    const sumMatch   = /resolver="([^"]+)"[^}]*}_sum\s+([\d.]+)/.exec(line)
+    const countMatch = /resolver="([^"]+)"[^}]*}_count\s+([\d.]+)/.exec(line)
+    if (sumMatch) {
+      const resolver = sumMatch[1]!
+      const sum      = parseFloat(sumMatch[2]!)
+      const entry    = resolverMap.get(resolver) ?? { sum: 0, count: 0, max: 0 }
+      entry.sum += sum
+      resolverMap.set(resolver, entry)
+    }
+    if (countMatch) {
+      const resolver = countMatch[1]!
+      const count    = parseInt(countMatch[2]!, 10)
+      const entry    = resolverMap.get(resolver) ?? { sum: 0, count: 0, max: 0 }
+      entry.count += count
+      resolverMap.set(resolver, entry)
+    }
+  }
+
+  const resolverList: ResolverMetricData[] = Array.from(resolverMap.entries()).map(([name, s]) => ({
+    name,
+    averageMs: s.count > 0 ? (s.sum / s.count) * 1000 : 0,
+    maxMs:     s.max * 1000,
+    count:     s.count,
+  }))
+
+  resolverList.sort((a, b) => b.averageMs - a.averageMs)
+
+  const totalOperations = resolverList.reduce((acc, r) => acc + r.count, 0)
+
+  const errorsByResolver: ResolverErrorData[] = Array.from(resolverErrors.entries()).map(([name, e]) => ({
+    name,
+    count:     e.count,
+    lastError: e.lastError,
+  }))
+
+  return {
+    totalOperations,
+    slowestResolvers: resolverList.slice(0, 10),
+    errorsByResolver,
+  }
+}
+
+export function getNeo4jMetrics(): Neo4jMetricsData {
+  const text  = neo4jQueryDurationSeconds.collect()
+  const lines = text.split('\n').filter(l => !l.startsWith('#') && l.trim())
+
+  let totalSum   = 0
+  let totalCount = 0
+
+  for (const line of lines) {
+    const sumMatch   = /_sum\s+([\d.]+)/.exec(line)
+    const countMatch = /_count\s+([\d.]+)/.exec(line)
+    if (sumMatch)   totalSum   += parseFloat(sumMatch[1]!)
+    if (countMatch) totalCount += parseInt(countMatch[1]!, 10)
+  }
+
+  return {
+    totalQueries:        totalCount,
+    averageQueryMs:      totalCount > 0 ? (totalSum / totalCount) * 1000 : 0,
+    slowQueries:         [...slowQueryBuffer],
+    connectionPoolActive: 0,
+    connectionPoolIdle:   0,
+  }
+}
+
+let lastCpuUsage = process.cpuUsage()
+let lastCpuTime  = Date.now()
+
+export function getProcessMetrics(): ProcessMetricsData {
+  const mem = process.memoryUsage()
+
+  const now     = Date.now()
+  const elapsed = now - lastCpuTime
+  const cpu     = process.cpuUsage(lastCpuUsage)
+  lastCpuUsage  = process.cpuUsage()
+  lastCpuTime   = now
+
+  const cpuPercent = elapsed > 0
+    ? ((cpu.user + cpu.system) / 1000 / elapsed) * 100
+    : 0
+
+  return {
+    memoryUsageMb:    mem.heapUsed   / 1024 / 1024,
+    memoryRssMb:      mem.rss        / 1024 / 1024,
+    cpuUsagePercent:  cpuPercent,
+    nodeVersion:      process.version,
+    uptimeSeconds:    Math.floor(process.uptime()),
+    pid:              process.pid,
+  }
+}
+
+// ── BullMQ structured data ────────────────────────────────────────────────────
+
+export interface QueueMetricsData {
+  name:      string
+  waiting:   number
+  active:    number
+  completed: number
+  failed:    number
+  delayed:   number
+}
+
+// Reads the current snapshot from the gauge data (set by startBullMQMetricsCollector)
+export function getQueueMetricsSnapshot(): QueueMetricsData[] {
+  const text  = bullmqQueueDepth.collect()
+  const lines = text.split('\n').filter(l => !l.startsWith('#') && l.trim())
+
+  const queueMap = new Map<string, QueueMetricsData>()
+
+  for (const line of lines) {
+    const m = /queue="([^"]+)",status="([^"]+)"\s+([\d.]+)/.exec(line)
+    if (!m) continue
+    const name  = m[1]!
+    const status = m[2]!
+    const value  = m[3]!
+    const val = parseInt(value, 10)
+
+    const entry = queueMap.get(name) ?? { name, waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 }
+    if (status === 'waiting')   entry.waiting   = val
+    if (status === 'active')    entry.active     = val
+    if (status === 'completed') entry.completed  = val
+    if (status === 'failed')    entry.failed     = val
+    if (status === 'delayed')   entry.delayed    = val
+    queueMap.set(name, entry)
+  }
+
+  return Array.from(queueMap.values())
+}
+
+// ── Patch metricsMiddleware to record rpm window ───────────────────────────────
+
+const _origMiddleware = metricsMiddleware
+
+export function metricsMiddlewareWithRpm(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction): void {
+  recordRequest()
+  _origMiddleware(req, res, next)
+}
+
 // ── BullMQ gauge collector ────────────────────────────────────────────────────
 
 export function startBullMQMetricsCollector(queues: Queue[]): NodeJS.Timeout {

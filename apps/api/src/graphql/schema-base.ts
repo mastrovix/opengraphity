@@ -13,6 +13,7 @@ import { anomalySDL } from './schema-anomaly.js'
 import { topologySDL } from './schema-topology.js'
 import { discoverySDL } from './schema-discovery.js'
 import { adminSDL } from './schema-admin.js'
+import { monitoringSDL } from './schema-monitoring.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -105,6 +106,11 @@ export function buildBaseSDL(): string {
 
     # Queue Stats (admin only)
     queueStats: [QueueStat!]!
+
+    # Monitoring (admin only)
+    systemHealth:  SystemHealth!
+    systemMetrics: SystemMetrics!
+    traceInfo:     TraceInfo!
 
     # Audit Log (admin only)
     auditLog(page: Int, pageSize: Int, action: String, entityType: String, fromDate: String, toDate: String): AuditEntriesResult!
@@ -298,6 +304,7 @@ export function buildBaseSDL(): string {
   ${topologySDL()}
   ${discoverySDL()}
   ${adminSDL()}
+  ${monitoringSDL()}
   ${cmdbSDL()}
   ${enumTypeSDL()}
   `

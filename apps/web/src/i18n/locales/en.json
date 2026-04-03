@@ -63,7 +63,8 @@
     "notificationChannels": "Notification Channels",
     "notificationRules": "Notification Rules",
     "cmdbSync": "CMDB Sync",
-    "bullBoard": "Job Queue"
+    "bullBoard": "Job Queue",
+    "monitoring": "Monitoring"
   },
   "pages": {
     "incidents": {
@@ -520,6 +521,57 @@
       "deferred":      { "title": "Problem Deferred" },
       "resolved":      { "title": "Problem Resolved" },
       "closed":        { "title": "Problem Closed" }
+    }
+  },
+  "pages": {
+    "monitoring": {
+      "title": "Monitoring",
+      "subtitle": "Real-time system health, metrics, and tracing",
+      "health": {
+        "title":    "System Health",
+        "neo4j":    "Neo4j",
+        "redis":    "Redis",
+        "keycloak": "Keycloak",
+        "uptime":   "Uptime",
+        "ok":       "Operational",
+        "error":    "Error",
+        "latency":  "Latency"
+      },
+      "requests": {
+        "title":     "Request Metrics",
+        "rpm":       "Requests/min",
+        "avg":       "Avg Response",
+        "p95":       "P95 Response",
+        "errorRate": "Error Rate"
+      },
+      "queues": {
+        "title":     "BullMQ Queues",
+        "waiting":   "Waiting",
+        "active":    "Active",
+        "completed": "Completed",
+        "failed":    "Failed",
+        "delayed":   "Delayed"
+      },
+      "neo4j": {
+        "title":        "Neo4j",
+        "totalQueries": "Total Queries",
+        "avgQuery":     "Avg Query Time",
+        "slowQueries":  "Slow Queries (>500ms)"
+      },
+      "tracing": {
+        "title":     "OpenTelemetry Tracing",
+        "enabled":   "Enabled",
+        "disabled":  "Disabled",
+        "noTracing": "Tracing not active. Set OTEL_ENABLED=true and start Jaeger."
+      },
+      "process": {
+        "title":   "Process",
+        "memory":  "Heap Memory",
+        "rss":     "RSS",
+        "cpu":     "CPU",
+        "pid":     "PID",
+        "version": "Node.js"
+      }
     }
   },
   "itilDesigner": {
