@@ -1,10 +1,16 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Settings2, Lock, Trash2, Plus, X, Check } from 'lucide-react'
+import { Settings2, Plus, X, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_ITIL_TYPES, GET_ENUM_TYPES } from '@/graphql/queries'
 import { CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD } from '@/graphql/mutations'
+import {
+  inputS, selectS, labelS, btnPrimary, btnSecondary, FIELD_TYPES,
+  activeCardStyle, inactiveCardStyle,
+} from './shared/designerStyles'
+import type { EnumTypeRef } from './shared/designerStyles'
+import { DesignerFieldRow } from './shared/DesignerFieldRow'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,45 +34,6 @@ interface ITILType {
   active: boolean
   fields: ITILField[]
 }
-
-// ── Style constants ───────────────────────────────────────────────────────────
-
-const inputS: React.CSSProperties = {
-  width: '100%', padding: '7px 10px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 13, color: 'var(--color-slate-dark)',
-  outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box',
-}
-
-const selectS: React.CSSProperties = {
-  ...inputS,
-  appearance: 'none',
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer',
-}
-
-const labelS: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
-}
-
-const btnPrimary: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer',
-}
-
-const btnSecondary: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: 'var(--color-slate)', fontSize: 13, cursor: 'pointer',
-}
-
-const btnDanger: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '4px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: '#ef4444', fontSize: 12, cursor: 'pointer',
-}
-
-const FIELD_TYPES = ['string', 'number', 'date', 'boolean', 'enum'] as const
 
 // ── FieldForm ─────────────────────────────────────────────────────────────────
 
@@ -94,14 +61,7 @@ function fieldToForm(f: ITILField): FieldFormState {
   }
 }
 
-// ── FieldEditor ───────────────────────────────────────────────────────────────
-
-interface EnumTypeRef {
-  id:     string
-  label:  string
-  values: string[]
-  scope:  string
-}
+// ── FieldEditor (inline) ──────────────────────────────────────────────────────
 
 function FieldEditor({
   field, isSystem, onSave, onCancel, enumTypesData,
@@ -114,7 +74,6 @@ function FieldEditor({
 }) {
   const { t } = useTranslation()
   const [form, setForm] = useState<FieldFormState>(field)
-
   const set = (key: keyof FieldFormState, val: unknown) =>
     setForm((f) => ({ ...f, [key]: val }))
 
@@ -171,9 +130,9 @@ function FieldEditor({
 
       {form.fieldType === 'enum' && (
         <div style={{ marginBottom: 12 }}>
-          <label htmlFor="enum-ref" style={labelS}>Enum di riferimento *</label>
+          <label htmlFor="itil-enum-ref" style={labelS}>Enum di riferimento *</label>
           <select
-            id="enum-ref"
+            id="itil-enum-ref"
             style={selectS}
             value={form.enumTypeId ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, enumTypeId: e.target.value || null }))}
@@ -190,10 +149,7 @@ function FieldEditor({
                 ?.values.map((v) => (
                   <span
                     key={v}
-                    style={{
-                      padding: '2px 8px', background: '#f0f4ff',
-                      borderRadius: 12, fontSize: 11, color: 'var(--color-brand)',
-                    }}
+                    style={{ padding: '2px 8px', background: '#f0f4ff', borderRadius: 12, fontSize: 11, color: 'var(--color-brand)' }}
                   >
                     {v}
                   </span>
@@ -210,63 +166,6 @@ function FieldEditor({
         <button style={btnPrimary} onClick={() => onSave(form)}>
           <Check size={13} /> {t('itilDesigner.save')}
         </button>
-      </div>
-    </div>
-  )
-}
-
-// ── FieldRow ──────────────────────────────────────────────────────────────────
-
-function FieldRow({
-  field,
-  onEdit,
-  onDelete,
-}: {
-  field: ITILField
-  onEdit: () => void
-  onDelete: () => void
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb',
-        borderRadius: 6, marginBottom: 4,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-        {field.isSystem ? (
-          <span title={t('itilDesigner.systemField')}><Lock size={12} color="#94a3b8" style={{ flexShrink: 0 }} /></span>
-        ) : (
-          <div style={{ width: 12 }} />
-        )}
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-slate-dark)' }}>
-            {field.label}
-            <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6, fontWeight: 400 }}>
-              {field.name}
-            </span>
-          </div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
-            {field.fieldType}
-            {field.required && <span style={{ marginLeft: 6, color: '#ef4444' }}>required</span>}
-            {field.fieldType === 'enum' && field.enumValues.length > 0 && (
-              <span style={{ marginLeft: 6 }}>
-                [{field.enumValues.join(', ')}]
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button style={btnSecondary} onClick={onEdit}>{t('common.edit')}</button>
-        {!field.isSystem && (
-          <button style={btnDanger} onClick={onDelete}>
-            <Trash2 size={12} />
-          </button>
-        )}
       </div>
     </div>
   )
@@ -307,7 +206,6 @@ export function ITILTypeDesignerPage() {
   const selectedType = itilTypes.find((t) => t.id === selectedTypeId) ?? (itilTypes[0] ?? null)
 
   if (!selectedTypeId && itilTypes.length > 0 && selectedType) {
-    // Auto-select first type
     setSelectedTypeId(selectedType.id)
   }
 
@@ -316,7 +214,6 @@ export function ITILTypeDesignerPage() {
       toast.error('Seleziona un enum di riferimento per i campi di tipo enum')
       return
     }
-
     const variables = {
       typeId,
       input: {
@@ -328,7 +225,6 @@ export function ITILTypeDesignerPage() {
         order:      form.order,
       },
     }
-
     if (fieldId) {
       void updateField({ variables: { ...variables, fieldId } })
     } else {
@@ -345,7 +241,8 @@ export function ITILTypeDesignerPage() {
     <div style={{ maxWidth: 1100 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
+        <h1 className="ty-page-title" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
+          <Settings2 size={22} color="var(--color-brand)" />
           {t('itilDesigner.title')}
         </h1>
         <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
@@ -374,17 +271,15 @@ export function ITILTypeDesignerPage() {
                   onClick={() => { setSelectedTypeId(itilType.id); setEditingFieldId(null); setAddingField(false) }}
                   style={{
                     width: '100%', textAlign: 'left', padding: '10px 14px',
-                    border: isSelected ? '1px solid var(--color-brand)' : '1px solid #e5e7eb',
-                    borderRadius: 8, background: isSelected ? '#f0f9ff' : '#fff',
-                    color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)',
+                    ...(isSelected ? activeCardStyle : inactiveCardStyle),
                     fontWeight: isSelected ? 600 : 400, fontSize: 14,
-                    cursor: 'pointer', marginBottom: 4,
+                    cursor: 'pointer', marginBottom: 4, borderRadius: 8,
                     display: 'flex', alignItems: 'center', gap: 8,
                   }}
                 >
                   <Settings2 size={14} style={{ flexShrink: 0 }} />
                   {itilType.label}
-                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>
                     {itilType.fields.length}
                   </span>
                 </button>
@@ -448,11 +343,13 @@ export function ITILTypeDesignerPage() {
                             enumTypesData={enumTypesData}
                           />
                         ) : (
-                          <FieldRow
+                          <DesignerFieldRow
                             key={f.id}
                             field={f}
                             onEdit={() => setEditingFieldId(f.id)}
                             onDelete={() => handleDeleteField(selectedType.id, f.id)}
+                            editLabel={t('common.edit')}
+                            systemFieldLabel={t('itilDesigner.systemField')}
                           />
                         )
                       ))}
@@ -479,11 +376,13 @@ export function ITILTypeDesignerPage() {
                             enumTypesData={enumTypesData}
                           />
                         ) : (
-                          <FieldRow
+                          <DesignerFieldRow
                             key={f.id}
                             field={f}
                             onEdit={() => setEditingFieldId(f.id)}
                             onDelete={() => handleDeleteField(selectedType.id, f.id)}
+                            editLabel={t('common.edit')}
+                            systemFieldLabel={t('itilDesigner.systemField')}
                           />
                         )
                       ))}
