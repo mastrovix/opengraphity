@@ -1,7 +1,15 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Settings2, Plus, X, Check } from 'lucide-react'
+import { Settings2, Plus, X, Check, AlertCircle, Bug, GitPullRequest, Inbox } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+const ITIL_TYPE_ICONS: Record<string, LucideIcon> = {
+  incident:        AlertCircle,
+  problem:         Bug,
+  change:          GitPullRequest,
+  service_request: Inbox,
+}
 import { toast } from 'sonner'
 import { GET_ITIL_TYPES, GET_ENUM_TYPES } from '@/graphql/queries'
 import { CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD } from '@/graphql/mutations'
@@ -259,19 +267,20 @@ export function ITILTypeDesignerPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20 }}>
           {/* Left: Type list */}
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-            {/* Section header — same style as "TIPI CI" in CITypeList */}
+            {/* Section header */}
             <div style={{
               padding: '5px 16px 4px', fontSize: 10, fontWeight: 600,
               textTransform: 'uppercase', letterSpacing: '0.06em',
               color: '#94a3b8', background: '#f9fafb',
               borderBottom: '1px solid #f3f4f6',
             }}>
-              {t('itilDesigner.title')}
+              ITIL Types
             </div>
 
             <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
               {itilTypes.map((itilType) => {
                 const isSelected = itilType.id === selectedTypeId
+                const Icon = ITIL_TYPE_ICONS[itilType.name] ?? Settings2
                 return (
                   <button
                     key={itilType.id}
@@ -286,13 +295,10 @@ export function ITILTypeDesignerPage() {
                       display: 'flex', alignItems: 'center', gap: 10,
                     }}
                   >
-                    <Settings2 size={15} color={isSelected ? 'var(--color-brand)' : '#64748b'} style={{ flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {itilType.label}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{itilType.name}</div>
-                    </div>
+                    <Icon size={15} color={isSelected ? 'var(--color-brand)' : '#64748b'} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {itilType.label}
+                    </span>
                     <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>
                       {itilType.fields.length} campi
                     </span>
