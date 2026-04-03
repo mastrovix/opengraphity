@@ -46,26 +46,55 @@ interface FieldRecord {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Returns the best-matching EnumDef for a field's values, or null. */
-function findMatch(fieldValues: string[], enums: EnumDef[]): EnumDef | null {
+/**
+ * Returns the best-matching EnumDef for a field's values, or null.
+ *
+ * Resolution order:
+ *   1. Exact name match: enum.name === fieldName  AND  values match exactly
+ *   2. Exact value match: same value set (name-agnostic)
+ *   3. Name-hinted subset: enum.name === fieldName AND field values ⊆ enum values
+ *   4. Smallest superset (name-agnostic subset match)
+ *
+ * Steps 1 and 3 prevent semantic mismatches when two enums share the same
+ * values (e.g. "priority" and "severity" both have low/medium/high/critical).
+ */
+function findMatch(fieldValues: string[], fieldName: string, enums: EnumDef[]): EnumDef | null {
   const fieldSet = new Set(fieldValues)
 
-  // 1. Exact match (same set regardless of order)
+  // 1. Exact name match + exact value set
   for (const e of enums) {
+    if (e.name !== fieldName) continue
     const enumSet = new Set(e.values)
-    if (
-      fieldSet.size === enumSet.size &&
-      [...fieldSet].every((v) => enumSet.has(v))
-    ) return e
+    if (fieldSet.size === enumSet.size && [...fieldSet].every((v) => enumSet.has(v))) return e
   }
 
-  // 2. Subset match (field values ⊆ enum values) — pick the smallest superset
+  // 2. Exact value set (name-agnostic) — for fields without a same-named enum
+  const exactMatches: EnumDef[] = []
+  for (const e of enums) {
+    const enumSet = new Set(e.values)
+    if (fieldSet.size === enumSet.size && [...fieldSet].every((v) => enumSet.has(v))) {
+      exactMatches.push(e)
+    }
+  }
+  if (exactMatches.length === 1) return exactMatches[0]!
+  if (exactMatches.length > 1) {
+    // Multiple exact matches — prefer same name, otherwise first alphabetically
+    return exactMatches.find((e) => e.name === fieldName) ?? exactMatches.sort((a, b) => a.name.localeCompare(b.name))[0]!
+  }
+
+  // 3. Name-hinted subset: enum.name === fieldName AND field values ⊆ enum values
+  for (const e of enums) {
+    if (e.name !== fieldName) continue
+    const enumSet = new Set(e.values)
+    if ([...fieldSet].every((v) => enumSet.has(v))) return e
+  }
+
+  // 4. Smallest superset (name-agnostic)
   const supersets = enums.filter((e) => {
     const enumSet = new Set(e.values)
     return [...fieldSet].every((v) => enumSet.has(v))
   })
   if (supersets.length > 0) {
-    // Choose the enum with the fewest extra values
     return supersets.sort((a, b) => a.values.length - b.values.length)[0]!
   }
 
@@ -147,7 +176,7 @@ async function main() {
     let alreadyDone = 0
 
     for (const field of fields) {
-      const match = findMatch(field.enumValues, enumDefs)
+      const match = findMatch(field.enumValues, field.fieldName, enumDefs)
 
       if (!match) {
         console.info(`  SKIP  ${field.typeName}.${field.fieldName} [${field.enumValues.join(', ')}] — no matching enum found`)

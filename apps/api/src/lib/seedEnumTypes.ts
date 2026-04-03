@@ -13,8 +13,8 @@ const SYSTEM_ENUMS: SystemEnum[] = [
   { name: 'severity',        label: 'Severity',        values: ['low', 'medium', 'high', 'critical'],              scope: 'shared' },
   { name: 'environment',     label: 'Environment',     values: ['production', 'staging', 'development', 'testing', 'dr'], scope: 'shared' },
   { name: 'ci_status',       label: 'CI Status',       values: ['active', 'inactive', 'maintenance', 'decommissioned'], scope: 'cmdb' },
-  { name: 'status_incident', label: 'Incident Status', values: ['new', 'assigned', 'in_progress', 'pending', 'escalated', 'resolved', 'closed'], scope: 'itil' },
-  { name: 'status_change',   label: 'Change Status',   values: ['draft', 'assessment', 'cab_approval', 'scheduled', 'deployment', 'validation', 'completed', 'failed', 'cancelled'], scope: 'itil' },
+  { name: 'status_incident', label: 'Incident Status', values: ['new', 'open', 'assigned', 'in_progress', 'pending', 'escalated', 'resolved', 'closed'], scope: 'itil' },
+  { name: 'status_change',   label: 'Change Status',   values: ['draft', 'assessment', 'cab_approval', 'emergency_approval', 'scheduled', 'deployment', 'validation', 'post_review', 'completed', 'approved', 'failed', 'rejected', 'cancelled'], scope: 'itil' },
   { name: 'status_problem',  label: 'Problem Status',  values: ['new', 'under_investigation', 'change_requested', 'change_in_progress', 'resolved', 'closed', 'rejected', 'deferred'], scope: 'itil' },
   { name: 'change_type',     label: 'Change Type',     values: ['standard', 'normal', 'emergency'],                scope: 'itil' },
 ]
