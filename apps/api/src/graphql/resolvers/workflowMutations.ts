@@ -6,6 +6,7 @@ import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import * as incidentService from '../../services/incidentService.js'
 import { workflowLogger } from '../../lib/logger.js'
+import { audit } from '../../lib/audit.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -333,14 +334,19 @@ export async function executeWorkflowTransition(
 
         if (toStep === 'resolved') {
           await incidentService.resolveIncident(incidentId, { tenantId, userId: ctx.userId })
+          void audit(ctx, 'incident.resolved',    'Incident', incidentId)
         } else if (toStep === 'escalated') {
           await incidentService.escalateIncident(incidentId, { tenantId, userId: ctx.userId })
+          void audit(ctx, 'incident.escalated',   'Incident', incidentId)
         } else if (toStep === 'closed') {
           await incidentService.closeIncident(incidentId, { tenantId, userId: ctx.userId })
+          void audit(ctx, 'incident.closed',      'Incident', incidentId)
         } else if (toStep === 'in_progress') {
           await incidentService.inProgressIncident(incidentId, { tenantId, userId: ctx.userId })
+          void audit(ctx, 'incident.in_progress', 'Incident', incidentId)
         } else if (toStep === 'pending') {
           await incidentService.onHoldIncident(incidentId, { tenantId, userId: ctx.userId })
+          void audit(ctx, 'incident.on_hold',     'Incident', incidentId)
         }
 
         // Publish workflow.step.entered for any notify_rule enter_actions on this step
@@ -414,6 +420,8 @@ export async function saveWorkflowChanges(
     )
     if (!wdResult.records.length) throw new Error('WorkflowDefinition non trovata')
     const wd = wdResult.records[0].get('wd').properties as Record<string, unknown>
+
+    void audit(ctx, 'workflow.updated', 'WorkflowDefinition', definitionId)
 
     const stepsResult = await session.executeRead((tx) =>
       tx.run(`MATCH (wd:WorkflowDefinition {id: $definitionId})-[:HAS_STEP]->(s:WorkflowStep) RETURN collect(s) AS steps`,

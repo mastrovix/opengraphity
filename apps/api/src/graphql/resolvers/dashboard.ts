@@ -2,6 +2,7 @@ import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import { withSession } from './ci-utils.js'
+import { audit } from '../../lib/audit.js'
 
 type Props = Record<string, unknown>
 
@@ -318,6 +319,7 @@ async function createDashboard(
     )
     const props = created.records[0].get('props') as Props
     const dashId = props['id'] as string
+    void audit(ctx, 'dashboard.created', 'DashboardConfig', dashId)
 
     // Create SHARED_WITH rels
     if (sharedWithTeamIds && sharedWithTeamIds.length > 0) {
@@ -411,6 +413,7 @@ async function updateDashboard(
     const updated = await session.executeRead((tx) =>
       tx.run(`MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId}) RETURN properties(d) AS props`, { id: args.id, tenantId: ctx.tenantId }),
     )
+    void audit(ctx, 'dashboard.updated', 'DashboardConfig', args.id)
     return mapDashboardConfig(updated.records[0].get('props') as Props)
   } finally {
     await session.close()
@@ -440,6 +443,7 @@ async function deleteDashboard(
         { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId },
       ),
     )
+    void audit(ctx, 'dashboard.deleted', 'DashboardConfig', args.id)
     return true
   } finally {
     await session.close()

@@ -159,21 +159,30 @@ export async function executeChangeTransition(
       notes:       args.notes,
     }, { userId: ctx.userId, entityData: {} })
 
+    // Hook: assign assessment tasks
+    if (result.success && args.toStep === 'assessment') {
+      void audit(ctx, 'change.task_assigned', 'Change', changeId)
+    }
+
     // Publish change.approved when transition reaches 'scheduled'
     if (result.success && args.toStep === 'scheduled') {
       await changeService.approveChange(changeId, { tenantId, userId: ctx.userId })
+      void audit(ctx, 'change.approved', 'Change', changeId)
     }
 
     if (result.success && args.toStep === 'completed') {
       await changeService.completeChange(changeId, { tenantId, userId: ctx.userId })
+      void audit(ctx, 'change.completed', 'Change', changeId)
     }
 
     if (result.success && args.toStep === 'failed') {
       await changeService.failChange(changeId, { tenantId, userId: ctx.userId })
+      void audit(ctx, 'change.failed', 'Change', changeId)
     }
 
     if (result.success && args.toStep === 'rejected') {
       await changeService.rejectChange(changeId, { tenantId, userId: ctx.userId })
+      void audit(ctx, 'change.rejected', 'Change', changeId)
     }
 
     // Audit comment when rejected

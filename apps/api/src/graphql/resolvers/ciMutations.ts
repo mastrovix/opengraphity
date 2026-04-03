@@ -2,6 +2,7 @@ import { withSession } from './ci-utils.js'
 import { cache } from '../../lib/cache.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
+import { audit } from '../../lib/audit.js'
 
 type Props = Record<string, unknown>
 
@@ -60,6 +61,7 @@ export function buildCreateMutation(
 
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)
+      void audit(ctx, 'ci.created', 'ConfigurationItem', id)
       return mapCI(result.records[0].get('p') as Props, ciType)
     }, true)
 }
@@ -94,6 +96,7 @@ export function buildUpdateMutation(
       if (!result.records.length) throw new Error('CI non trovato')
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)
+      void audit(ctx, 'ci.updated', 'ConfigurationItem', id)
       return mapCI(result.records[0].get('p') as Props, ciType)
     }, true)
 }
@@ -111,6 +114,7 @@ export function buildDeleteMutation(
       )
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)
+      void audit(ctx, 'ci.deleted', 'ConfigurationItem', args.id)
       return true
     }, true)
 }

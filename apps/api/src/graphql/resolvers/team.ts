@@ -4,6 +4,7 @@ import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import { mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { audit } from '../../lib/audit.js'
 
 type Props = Record<string, unknown>
 
@@ -67,6 +68,7 @@ async function createTeam(
     })
     const row = rows[0]
     if (!row) throw new Error('Failed to create Team')
+    void audit(ctx, 'team.created', 'Team', id)
     return mapTeam(row.props)
   }, true)
 }

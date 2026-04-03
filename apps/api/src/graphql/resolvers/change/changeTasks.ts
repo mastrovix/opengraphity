@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { withSession, getSession } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapChange, mapChangeTask, mapChangeComment, type Props } from './mappers.js'
+import { audit } from '../../../lib/audit.js'
 
 // ── createChangeComment helper ────────────────────────────────────────────────
 
@@ -447,6 +448,7 @@ export async function completeAssessmentTask(
       RETURN t.change_id AS changeId
     `, { taskId: args.taskId, tenantId: ctx.tenantId }))
     const changeId = taskData.records[0]?.get('changeId') as string | null
+    if (changeId) void audit(ctx, 'change.task_completed', 'Change', changeId)
     if (changeId) {
       const stepsResult = await session.executeRead((tx) => tx.run(`
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})

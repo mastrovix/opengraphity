@@ -6,6 +6,7 @@ import { withSession } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapChange, type Props } from './mappers.js'
 import { validateStringLength } from '../../../lib/validation.js'
+import { audit } from '../../../lib/audit.js'
 
 export async function createChange(
   _: unknown,
@@ -105,5 +106,6 @@ export async function createChange(
     }
   }, true)
 
+  void audit(ctx, 'change.created', 'Change', id)
   return created
 }

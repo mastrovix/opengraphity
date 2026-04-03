@@ -212,6 +212,7 @@ export const anomalyResolvers = {
         console.error('[anomaly] runAnomalyScanner: failed to enqueue job:', err)
         return false
       }
+      void audit(ctx, 'anomaly.scan_triggered', 'AnomalyScanner', ctx.tenantId)
       return true
     },
   },

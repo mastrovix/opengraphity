@@ -3,6 +3,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError } from '../../lib/errors.js'
+import { audit } from '../../lib/audit.js'
 import { getNavigableEntities, getNavigableRelations } from '../../lib/navigableGraph.js'
 import type { NavigableEntity } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
@@ -517,6 +518,7 @@ const Mutation = {
       await session.close()
     }
 
+    void audit(ctx, 'report.created', 'ReportTemplate', id)
     return loadFullTemplate(id, ctx.tenantId)
   },
 
@@ -582,6 +584,7 @@ const Mutation = {
       await session.close()
     }
 
+    void audit(ctx, 'report.updated', 'ReportTemplate', args.id)
     return loadFullTemplate(args.id, ctx.tenantId)
   },
 
@@ -596,6 +599,7 @@ const Mutation = {
           DETACH DELETE r, s, n
         `, { id: args.id, tenantId: ctx.tenantId }),
       )
+      void audit(ctx, 'report.deleted', 'ReportTemplate', args.id)
       return true
     } finally {
       await session.close()

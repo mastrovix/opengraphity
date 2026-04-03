@@ -171,7 +171,9 @@ async function assignIncidentToTeam(
   args: { id: string; teamId: string },
   ctx: GraphQLContext,
 ) {
-  return incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
+  const result = await incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
+  void audit(ctx, 'incident.assigned', 'Incident', args.id)
+  return result
 }
 
 async function assignIncidentToUser(
@@ -179,7 +181,9 @@ async function assignIncidentToUser(
   args: { id: string; userId: string | null },
   ctx: GraphQLContext,
 ) {
-  return incidentService.assignIncidentToUser(args.id, args.userId, ctx)
+  const result = await incidentService.assignIncidentToUser(args.id, args.userId, ctx)
+  void audit(ctx, 'incident.assigned', 'Incident', args.id)
+  return result
 }
 
 async function addAffectedCI(

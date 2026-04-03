@@ -6,6 +6,7 @@ import { mapUser } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
+import { audit } from '../../lib/audit.js'
 
 type Props = Record<string, unknown>
 
@@ -84,7 +85,9 @@ async function createServiceRequest(
   args: { input: { title: string; description?: string; priority: string; dueDate?: string } },
   ctx: GraphQLContext,
 ) {
-  return requestService.createRequest(args.input, ctx)
+  const result = await requestService.createRequest(args.input, ctx)
+  void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
+  return result
 }
 
 async function updateServiceRequest(
@@ -118,6 +121,7 @@ async function updateServiceRequest(
     })
     const row = rows[0]
     if (!row) throw new Error('ServiceRequest not found')
+    void audit(ctx, 'request.updated', 'ServiceRequest', id)
     return mapRequest(row.props)
   }, true)
 }
@@ -127,7 +131,9 @@ async function completeServiceRequest(
   args: { id: string },
   ctx: GraphQLContext,
 ) {
-  return requestService.completeRequest(args.id, ctx)
+  const result = await requestService.completeRequest(args.id, ctx)
+  void audit(ctx, 'request.resolved', 'ServiceRequest', args.id)
+  return result
 }
 
 // ── Field resolvers ──────────────────────────────────────────────────────────

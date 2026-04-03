@@ -3,6 +3,7 @@ import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { invalidateRuleCache } from '@opengraphity/notifications'
 import { validateEnum } from '../../lib/validation.js'
+import { audit } from '../../lib/audit.js'
 
 function mapRule(props: Record<string, unknown>) {
   return {
@@ -73,6 +74,7 @@ async function updateNotificationRule(
     const props = result.records[0].get('r').properties as Record<string, unknown>
     const rule = mapRule(props)
     invalidateRuleCache(ctx.tenantId, rule.eventType)
+    void audit(ctx, 'notification_rule.updated', 'NotificationRule', id)
     return rule
   }, true)
 }
@@ -125,6 +127,7 @@ async function createNotificationRule(
       ),
     )
     const props = result.records[0].get('r').properties as Record<string, unknown>
+    void audit(ctx, 'notification_rule.created', 'NotificationRule', id)
     return mapRule(props)
   }, true)
 }
@@ -148,6 +151,7 @@ async function deleteNotificationRule(
     if (!result.records.length) throw new Error('Regola non trovata o non eliminabile')
     const eventType = result.records[0].get('eventType') as string
     invalidateRuleCache(ctx.tenantId, eventType)
+    void audit(ctx, 'notification_rule.deleted', 'NotificationRule', id)
     return true
   }, true)
 }

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Shield } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 
@@ -41,27 +41,30 @@ const PAGE_SIZE = 50
 
 // Actions grouped by entity type — drives the synced filter logic
 const ENTITY_ACTIONS: Record<string, string[]> = {
-  Incident:          ['incident.created'],
-  Change:            ['change.transitioned'],
-  Problem:           ['problem.created', 'problem.updated', 'problem.deleted',
-                      'problem.investigating', 'problem.deferred', 'problem.resolved', 'problem.closed'],
-  SyncSource:        ['sync_source.created', 'sync_source.deleted', 'sync.triggered'],
-  SyncRun:           ['sync.triggered'],
-  SyncConflict:      ['sync_conflict.resolved'],
-  Anomaly:           ['anomaly.resolved'],
-  ConfigurationItem: ['ci.deleted'],
+  Incident:           ['incident.created', 'incident.assigned', 'incident.in_progress',
+                       'incident.on_hold', 'incident.escalated', 'incident.resolved', 'incident.closed'],
+  Change:             ['change.created', 'change.approved', 'change.rejected', 'change.completed',
+                       'change.failed', 'change.transitioned', 'change.task_assigned', 'change.task_completed'],
+  Problem:            ['problem.created', 'problem.updated', 'problem.deleted',
+                       'problem.under_investigation', 'problem.deferred', 'problem.resolved',
+                       'problem.closed', 'problem.change_requested', 'problem.rejected'],
+  ServiceRequest:     ['request.created', 'request.updated', 'request.resolved', 'request.closed'],
+  ConfigurationItem:  ['ci.created', 'ci.updated', 'ci.deleted'],
+  Team:               ['team.created', 'team.updated', 'team.member_added', 'team.member_removed'],
+  Workflow:           ['workflow.created', 'workflow.updated', 'workflow.transition'],
+  Dashboard:          ['dashboard.created', 'dashboard.updated', 'dashboard.deleted'],
+  Report:             ['report.created', 'report.updated', 'report.deleted'],
+  NotificationRule:   ['notification_rule.created', 'notification_rule.updated', 'notification_rule.deleted'],
+  SyncSource:         ['sync_source.created', 'sync_source.updated', 'sync_source.deleted'],
+  SyncRun:            ['sync.triggered'],
+  SyncConflict:       ['sync_conflict.resolved'],
+  Anomaly:            ['anomaly.resolved', 'anomaly.scan_triggered'],
+  EnumTypeDefinition: ['enum_type.created', 'enum_type.updated', 'enum_type.deleted'],
 }
 
-const ALL_ACTIONS = [
-  'incident.created',
-  'change.transitioned',
-  'problem.created', 'problem.updated', 'problem.deleted',
-  'problem.investigating', 'problem.deferred', 'problem.resolved', 'problem.closed',
-  'sync_source.created', 'sync_source.deleted', 'sync.triggered',
-  'sync_conflict.resolved',
-  'anomaly.resolved',
-  'ci.deleted',
-]
+const ALL_ACTIONS = Object.values(ENTITY_ACTIONS).flat().filter(
+  (a, i, arr) => arr.indexOf(a) === i,
+)
 
 // Reverse map: action → primary entity (first entity in ENTITY_ACTIONS wins)
 const ACTION_TO_ENTITY: Record<string, string> = {}
@@ -72,8 +75,9 @@ for (const [entity, actions] of Object.entries(ENTITY_ACTIONS)) {
 }
 
 const ENTITY_OPTIONS = [
-  '', 'Incident', 'Change', 'Problem', 'SyncSource', 'SyncRun',
-  'SyncConflict', 'Anomaly', 'ConfigurationItem',
+  '', 'Incident', 'Change', 'Problem', 'ServiceRequest', 'ConfigurationItem',
+  'Team', 'Workflow', 'Dashboard', 'Report', 'NotificationRule',
+  'SyncSource', 'SyncRun', 'SyncConflict', 'Anomaly', 'EnumTypeDefinition',
 ]
 
 const selectStyle: React.CSSProperties = {
@@ -169,7 +173,7 @@ export function AuditLogPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Shield size={22} color="var(--color-brand)" />
+            <ShieldCheck size={22} color="var(--color-brand)" />
             {t('pages.audit.title')}
           </h1>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
@@ -198,9 +202,14 @@ export function AuditLogPage() {
           aria-label={t('pages.audit.filterByAction')}
         >
           <option value="">{t('pages.audit.allActions')}</option>
-          {availableActions.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
+          {entityType
+            ? availableActions.map((a) => <option key={a} value={a}>{a}</option>)
+            : Object.entries(ENTITY_ACTIONS).map(([group, actions]) => (
+                <optgroup key={group} label={group}>
+                  {actions.map((a) => <option key={a} value={a}>{a}</option>)}
+                </optgroup>
+              ))
+          }
         </select>
 
         <input
@@ -238,7 +247,7 @@ export function AuditLogPage() {
         loading={loading}
         emptyComponent={
           <EmptyState
-            icon={<Shield size={32} color="var(--color-slate-light)" />}
+            icon={<ShieldCheck size={32} color="var(--color-slate-light)" />}
             title={t('pages.audit.empty')}
           />
         }
