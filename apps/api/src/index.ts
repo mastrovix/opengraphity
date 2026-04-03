@@ -8,6 +8,7 @@ import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startWorkflowJobWorker } from './jobs/workflowJobWorker.js'
 import { registerAllConnectors } from './discovery/registerConnectors.js'
 import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
+import { startMaintenanceWorker } from './workers/maintenance.worker.js'
 import { logger } from './lib/logger.js'
 import type { Worker } from 'bullmq'
 
@@ -29,12 +30,15 @@ async function main() {
 
   // Register discovery connectors and start sync worker
   registerAllConnectors()
-  const syncWorker = startSyncWorker()
+  const syncWorker        = startSyncWorker()
   await loadScheduledSyncs()
+
+  // Start maintenance worker (backup scheduler)
+  const maintenanceWorker = startMaintenanceWorker()
 
   logger.info('All consumers started')
 
-  const bullWorkers: Worker[] = [anomalyWorker, workflowWorker, syncWorker]
+  const bullWorkers: Worker[] = [anomalyWorker, workflowWorker, syncWorker, maintenanceWorker]
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
 

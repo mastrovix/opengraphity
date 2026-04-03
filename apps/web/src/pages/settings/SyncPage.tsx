@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { RefreshCw, Plus, Trash2, Play, CheckCircle, XCircle, Clock, AlertTriangle, Database, Cloud, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -176,6 +177,7 @@ interface TextareaFileFieldProps {
 }
 
 function TextareaFileField({ fieldName, value, onChange, required }: TextareaFileFieldProps) {
+  const { t } = useTranslation()
   const [mode, setMode]         = useState<'inline' | 'file'>('inline')
   const [fileName, setFileName] = useState<string | null>(null)
   const [fileSize, setFileSize] = useState<number | null>(null)
@@ -227,11 +229,11 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
       <div style={{ display: 'inline-flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #d1d5db', marginBottom: 8 }}>
         <button type="button" onClick={() => switchMode('inline')}
           style={{ ...toggleBase, background: mode === 'inline' ? '#2563eb' : '#fff', color: mode === 'inline' ? '#fff' : '#374151', borderRight: '1px solid #d1d5db' }}>
-          Inline
+          {t('pages.sync.modeInline')}
         </button>
         <button type="button" onClick={() => switchMode('file')}
           style={{ ...toggleBase, background: mode === 'file' ? '#2563eb' : '#fff', color: mode === 'file' ? '#fff' : '#374151' }}>
-          Carica file
+          {t('pages.sync.modeFile')}
         </button>
       </div>
 
@@ -254,7 +256,7 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
               </div>
               <button type="button" onClick={handleRemove}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, fontWeight: 500, border: '1px solid #fca5a5', borderRadius: 6, background: '#fff', color: '#dc2626', cursor: 'pointer' }}>
-                <X size={12} /> Rimuovi
+                <X size={12} /> {t('pages.sync.fileRemove')}
               </button>
             </div>
           ) : (
@@ -267,7 +269,7 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
             >
               <Upload size={20} style={{ color: '#9ca3af', margin: '0 auto 8px', display: 'block' }} />
               <div style={{ fontSize: 13, color: '#374151' }}>
-                Trascina qui o <span style={{ color: '#2563eb', textDecoration: 'underline' }}>Sfoglia</span>
+                {t('pages.sync.dropHint')} <span style={{ color: '#2563eb', textDecoration: 'underline' }}>{t('pages.sync.browse')}</span>
               </div>
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{accept}</div>
             </div>
@@ -307,6 +309,7 @@ function StatsBar({ stats }: { stats: SyncStats }) {
 }
 
 function SourcesTab() {
+  const { t } = useTranslation()
   const { data, loading } = useQuery(SYNC_SOURCES)
   const [createSource] = useMutation(CREATE_SYNC_SOURCE, { refetchQueries: ['SyncSources', 'SyncStats'] })
   const [deleteSource] = useMutation(DELETE_SYNC_SOURCE, { refetchQueries: ['SyncSources', 'SyncStats'] })
@@ -341,7 +344,7 @@ function SourcesTab() {
           },
         },
       })
-      toast.success('Sync source created')
+      toast.success(t('pages.sync.sourceCreated'))
       setShowCreate(false)
       setForm({}); setCredForm({}); setSelectedType('')
     } catch (err) {
@@ -352,7 +355,7 @@ function SourcesTab() {
   async function handleTrigger(sourceId: string) {
     try {
       await triggerSync({ variables: { sourceId } })
-      toast.success('Sync triggered')
+      toast.success(t('pages.sync.syncTriggered'))
     } catch (err) {
       toast.error((err as Error).message)
     }

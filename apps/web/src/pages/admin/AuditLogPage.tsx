@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { SortableFilterTable } from '@/components/SortableFilterTable'
 
 import type { ColumnDef } from '@/components/SortableFilterTable'
@@ -48,6 +49,7 @@ const ENTITY_OPTIONS = [
 ]
 
 export function AuditLogPage() {
+  const { t } = useTranslation()
   const [page, setPage]               = useState(1)
   const [action, setAction]           = useState('')
   const [entityType, setEntityType]   = useState('')
@@ -72,14 +74,14 @@ export function AuditLogPage() {
 
   const columns: ColumnDef<AuditEntry>[] = [
     {
-      key: 'createdAt', label: 'Data', sortable: false,
-      render: (v) => new Date(v as string).toLocaleString('it-IT'),
+      key: 'createdAt', label: t('pages.audit.colDate'), sortable: false,
+      render: (v) => new Date(v as string).toLocaleString(),
     },
-    { key: 'userEmail',  label: 'Utente',       sortable: false },
-    { key: 'action',     label: 'Azione',        sortable: false },
-    { key: 'entityType', label: 'Tipo Entità',   sortable: false },
-    { key: 'entityId',   label: 'ID Entità',     sortable: false, render: (v) => <code style={{ fontSize: 11 }}>{String(v).slice(0, 8)}…</code> },
-    { key: 'ipAddress',  label: 'IP',            sortable: false, render: (v) => v ? String(v) : '—' },
+    { key: 'userEmail',  label: t('pages.audit.colUser'),       sortable: false },
+    { key: 'action',     label: t('pages.audit.colAction'),     sortable: false },
+    { key: 'entityType', label: t('pages.audit.colEntityType'), sortable: false },
+    { key: 'entityId',   label: t('pages.audit.colEntityId'),   sortable: false, render: (v) => <code style={{ fontSize: 11 }}>{String(v).slice(0, 8)}…</code> },
+    { key: 'ipAddress',  label: t('pages.audit.colIp'),         sortable: false, render: (v) => v ? String(v) : '—' },
   ]
 
   const filterStyle: React.CSSProperties = {
@@ -89,26 +91,26 @@ export function AuditLogPage() {
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1400 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 24 }}>Audit Log</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 24 }}>{t('pages.audit.title')}</h1>
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         <select style={filterStyle} value={action} onChange={(e) => { setAction(e.target.value); setPage(1) }}
-          aria-label="Filtra per azione">
-          {ACTION_OPTIONS.map((a) => <option key={a} value={a}>{a || '— Tutte le azioni —'}</option>)}
+          aria-label={t('pages.audit.filterByAction')}>
+          {ACTION_OPTIONS.map((a) => <option key={a} value={a}>{a || t('pages.audit.allActions')}</option>)}
         </select>
         <select style={filterStyle} value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1) }}
-          aria-label="Filtra per tipo entità">
-          {ENTITY_OPTIONS.map((e) => <option key={e} value={e}>{e || '— Tutti i tipi —'}</option>)}
+          aria-label={t('pages.audit.filterByEntityType')}>
+          {ENTITY_OPTIONS.map((e) => <option key={e} value={e}>{e || t('pages.audit.allTypes')}</option>)}
         </select>
         <input type="date" style={filterStyle} value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(1) }}
-          aria-label="Data da" />
+          aria-label={t('pages.audit.dateFrom')} />
         <input type="date" style={filterStyle} value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(1) }}
-          aria-label="Data a" />
+          aria-label={t('pages.audit.dateTo')} />
         {(action || entityType || fromDate || toDate) && (
           <button style={{ ...filterStyle, cursor: 'pointer', background: '#f1f3f9' }}
             onClick={() => { setAction(''); setEntityType(''); setFromDate(''); setToDate(''); setPage(1) }}>
-            Rimuovi filtri
+            {t('pages.audit.removeFilters')}
           </button>
         )}
       </div>
@@ -117,9 +119,9 @@ export function AuditLogPage() {
         columns={columns}
         data={items}
         loading={loading}
-        label="Audit log operazioni"
+        label={t('pages.audit.title')}
         onRowClick={(row) => setExpandedId(expandedId === row.id ? null : row.id)}
-        emptyMessage="Nessuna voce di audit trovata"
+        emptyMessage={t('pages.audit.empty')}
       />
 
       {/* Expanded detail */}
@@ -130,7 +132,7 @@ export function AuditLogPage() {
         try { parsed = JSON.parse(entry.details) } catch { parsed = entry.details }
         return (
           <div style={{ marginTop: 12, padding: 16, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <strong style={{ fontSize: 13 }}>Dettagli — {entry.action}</strong>
+            <strong style={{ fontSize: 13 }}>{t('pages.audit.details', { action: entry.action })}</strong>
             <pre style={{ marginTop: 8, fontSize: 12, overflowX: 'auto' }}>
               {JSON.stringify(parsed, null, 2)}
             </pre>
@@ -143,13 +145,13 @@ export function AuditLogPage() {
         <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
           <button disabled={page === 1} onClick={() => setPage((p) => p - 1)}
             style={{ padding: '4px 12px', cursor: page === 1 ? 'not-allowed' : 'pointer' }}
-            aria-label="Pagina precedente">
+            aria-label={t('pages.audit.prevPage')}>
             ←
           </button>
-          <span>Pagina {page} · {total} totali</span>
+          <span>{t('pages.audit.page', { page, total })}</span>
           <button disabled={page * 50 >= total} onClick={() => setPage((p) => p + 1)}
             style={{ padding: '4px 12px', cursor: page * 50 >= total ? 'not-allowed' : 'pointer' }}
-            aria-label="Pagina successiva">
+            aria-label={t('pages.audit.nextPage')}>
             →
           </button>
         </div>

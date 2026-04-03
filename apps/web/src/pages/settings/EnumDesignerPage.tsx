@@ -49,18 +49,13 @@ const btnDanger: React.CSSProperties = {
   color: '#ef4444', fontSize: 13, cursor: 'pointer',
 }
 
-const SCOPE_LABELS: Record<string, string> = {
-  shared: 'Condivisi',
-  itil:   'ITIL',
-  cmdb:   'CMDB',
-}
-
 // ── CreateEnumDialog ──────────────────────────────────────────────────────────
 
 function CreateEnumDialog({
   onClose,
   onCreated,
 }: { onClose: () => void; onCreated: (e: EnumType) => void }) {
+  const { t } = useTranslation()
   const [name, setName]   = useState('')
   const [label, setLabel] = useState('')
   const [scope, setScope] = useState<'shared' | 'itil' | 'cmdb'>('shared')
@@ -69,7 +64,7 @@ function CreateEnumDialog({
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: (d: unknown) => {
       const result = (d as { createEnumType: EnumType }).createEnumType
-      toast.success(`Enum "${result.label}" creato`)
+      toast.success(t('pages.dictionary.created', { label: result.label }))
       onCreated(result)
     },
     onError: (e) => toast.error(e.message),
@@ -78,7 +73,7 @@ function CreateEnumDialog({
   const handleSubmit = (ev: React.FormEvent) => {
     ev.preventDefault()
     if (!name.match(/^[a-z][a-z0-9_]*$/)) {
-      toast.error('Il nome deve essere in snake_case (es. "my_enum")')
+      toast.error(t('pages.dictionary.invalidName'))
       return
     }
     void createEnum({ variables: { input: { name, label, values: [], scope } } })
@@ -100,50 +95,50 @@ function CreateEnumDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="create-enum-title" style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>
-          Nuovo Enum Type
+          {t('pages.dictionary.createTitle')}
         </h2>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label htmlFor="enum-name" style={labelS}>Nome (snake_case)</label>
+            <label htmlFor="enum-name" style={labelS}>{t('pages.dictionary.nameFieldLabel')}</label>
             <input
               id="enum-name"
               style={inputS}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="es. priority"
+              placeholder={t('pages.dictionary.namePlaceholder')}
               required
               pattern="[a-z][a-z0-9_]*"
               autoFocus
             />
           </div>
           <div>
-            <label htmlFor="enum-label" style={labelS}>Label</label>
+            <label htmlFor="enum-label" style={labelS}>{t('pages.dictionary.labelLabel')}</label>
             <input
               id="enum-label"
               style={inputS}
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="es. Priority"
+              placeholder={t('pages.dictionary.labelPlaceholder')}
               required
             />
           </div>
           <div>
-            <label htmlFor="enum-scope" style={labelS}>Scope</label>
+            <label htmlFor="enum-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
             <select
               id="enum-scope"
               style={inputS}
               value={scope}
               onChange={(e) => setScope(e.target.value as 'shared' | 'itil' | 'cmdb')}
             >
-              <option value="shared">Condiviso</option>
-              <option value="itil">ITIL</option>
-              <option value="cmdb">CMDB</option>
+              <option value="shared">{t('pages.dictionary.scopeShared')}</option>
+              <option value="itil">{t('pages.dictionary.scopeItil')}</option>
+              <option value="cmdb">{t('pages.dictionary.scopeCmdb')}</option>
             </select>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-            <button type="button" style={btnSecondary} onClick={onClose}>Annulla</button>
+            <button type="button" style={btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
             <button type="submit" style={btnPrimary} disabled={loading}>
-              <Plus size={14} aria-hidden="true" /> Crea
+              <Plus size={14} aria-hidden="true" /> {t('common.create')}
             </button>
           </div>
         </form>
@@ -155,6 +150,7 @@ function CreateEnumDialog({
 // ── EnumEditor ────────────────────────────────────────────────────────────────
 
 function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted: () => void }) {
+  const { t } = useTranslation()
   const [label, setLabel]   = useState(e.label)
   const [scope, setScope]   = useState(e.scope)
   const [values, setValues] = useState<string[]>(e.values)
@@ -164,13 +160,13 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
 
   const [updateEnum, { loading: saving }] = useMutation(UPDATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
-    onCompleted: () => { toast.success('Enum aggiornato'); setDirty(false) },
+    onCompleted: () => { toast.success(t('pages.dictionary.updated')); setDirty(false) },
     onError: (err) => toast.error(err.message),
   })
 
   const [deleteEnum, { loading: deleting }] = useMutation(DELETE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
-    onCompleted: () => { toast.success('Enum eliminato'); onDeleted() },
+    onCompleted: () => { toast.success(t('pages.dictionary.deleted')); onDeleted() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -213,7 +209,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
             background: '#f0f4ff', color: 'var(--color-brand)', padding: '2px 8px',
             borderRadius: 20, fontWeight: 500,
           }}>
-            <Lock size={10} aria-hidden="true" /> Sistema
+            <Lock size={10} aria-hidden="true" /> {t('pages.dictionary.systemBadge')}
           </span>
         )}
       </div>
@@ -223,13 +219,13 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
           fontSize: 12, color: 'var(--color-slate)', background: '#f8fafc',
           padding: '10px 14px', borderRadius: 6, margin: 0,
         }}>
-          Enum di sistema — puoi aggiungere valori ma non eliminare l'enum.
+          {t('pages.dictionary.systemNote')}
         </p>
       )}
 
       {/* Nome (readonly) */}
       <div>
-        <label htmlFor="editor-name" style={labelS}>Nome (tecnico)</label>
+        <label htmlFor="editor-name" style={labelS}>{t('pages.dictionary.nameLabel')}</label>
         <input
           id="editor-name"
           style={{ ...inputS, background: '#f8fafc', color: '#8892a4' }}
@@ -240,7 +236,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
 
       {/* Label */}
       <div>
-        <label htmlFor="editor-label" style={labelS}>Label</label>
+        <label htmlFor="editor-label" style={labelS}>{t('pages.dictionary.labelLabel')}</label>
         <input
           id="editor-label"
           style={inputS}
@@ -251,7 +247,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
 
       {/* Scope */}
       <div>
-        <label htmlFor="editor-scope" style={labelS}>Scope</label>
+        <label htmlFor="editor-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
         <select
           id="editor-scope"
           style={{ ...inputS, ...(e.isSystem ? { background: '#f8fafc', color: '#8892a4' } : {}) }}
@@ -259,15 +255,15 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
           onChange={(ev) => setDirtyScope(ev.target.value)}
           disabled={e.isSystem}
         >
-          <option value="shared">Condiviso</option>
-          <option value="itil">ITIL</option>
-          <option value="cmdb">CMDB</option>
+          <option value="shared">{t('pages.dictionary.scopeShared')}</option>
+          <option value="itil">{t('pages.dictionary.scopeItil')}</option>
+          <option value="cmdb">{t('pages.dictionary.scopeCmdb')}</option>
         </select>
       </div>
 
-      {/* Valori */}
+      {/* Values */}
       <div>
-        <label style={labelS}>Valori</label>
+        <label style={labelS}>{t('pages.dictionary.valuesLabel')}</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10, minHeight: 32 }}>
           {values.map((v) => (
             <span
@@ -286,14 +282,14 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
                   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                   display: 'flex', color: '#8892a4', lineHeight: 1,
                 }}
-                aria-label={`Rimuovi valore ${v}`}
+                aria-label={t('pages.dictionary.removeValueLabel', { value: v })}
               >
                 <X size={10} aria-hidden="true" />
               </button>
             </span>
           ))}
           {values.length === 0 && (
-            <span style={{ fontSize: 12, color: '#8892a4' }}>Nessun valore</span>
+            <span style={{ fontSize: 12, color: '#8892a4' }}>{t('pages.dictionary.noValues')}</span>
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -302,10 +298,10 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
             value={newVal}
             onChange={(ev) => setNewVal(ev.target.value)}
             onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); addValue() } }}
-            placeholder="Aggiungi valore…"
-            aria-label="Nuovo valore enum"
+            placeholder={t('pages.dictionary.addValuePlaceholder')}
+            aria-label={t('pages.dictionary.addValueLabel')}
           />
-          <button type="button" style={btnPrimary} onClick={addValue} aria-label="Aggiungi valore">
+          <button type="button" style={btnPrimary} onClick={addValue} aria-label={t('pages.dictionary.addValueLabel')}>
             <Plus size={14} aria-hidden="true" />
           </button>
         </div>
@@ -316,10 +312,10 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
         {dirty && (
           <>
             <button type="button" style={btnPrimary} onClick={handleSave} disabled={saving}>
-              <Save size={14} aria-hidden="true" /> Salva
+              <Save size={14} aria-hidden="true" /> {t('common.save')}
             </button>
             <button type="button" style={btnSecondary} onClick={handleCancel}>
-              Annulla
+              {t('common.cancel')}
             </button>
           </>
         )}
@@ -327,21 +323,21 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
           <div style={{ marginLeft: 'auto' }}>
             {!confirmDelete ? (
               <button type="button" style={btnDanger} onClick={() => setConfirmDelete(true)}>
-                <Trash2 size={13} aria-hidden="true" /> Elimina
+                <Trash2 size={13} aria-hidden="true" /> {t('common.delete')}
               </button>
             ) : (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#ef4444' }}>Conferma eliminazione?</span>
+                <span style={{ fontSize: 12, color: '#ef4444' }}>{t('pages.dictionary.confirmDelete')}</span>
                 <button
                   type="button"
                   style={{ ...btnDanger, fontWeight: 600 }}
                   onClick={() => { void deleteEnum({ variables: { id: e.id } }) }}
                   disabled={deleting}
                 >
-                  Sì, elimina
+                  {t('pages.dictionary.confirmYes')}
                 </button>
                 <button type="button" style={btnSecondary} onClick={() => setConfirmDelete(false)}>
-                  No
+                  {t('common.no')}
                 </button>
               </div>
             )}
@@ -365,7 +361,13 @@ export function EnumDesignerPage() {
 
   const allEnums: EnumType[] = data?.enumTypes ?? []
 
-  // Group by scope
+  // Group by scope (use i18n scope labels)
+  const SCOPE_LABELS: Record<string, string> = {
+    shared: t('pages.dictionary.scopeShared'),
+    itil:   t('pages.dictionary.scopeItil'),
+    cmdb:   t('pages.dictionary.scopeCmdb'),
+  }
+
   const groups: Record<string, EnumType[]> = {}
   for (const e of allEnums) {
     const g = SCOPE_LABELS[e.scope] ?? e.scope
@@ -380,19 +382,16 @@ export function EnumDesignerPage() {
     setSelectedId(e.id)
   }
 
-  // suppress unused warning — t is used for i18n readiness
-  void t
-
   return (
     <div style={{ maxWidth: 1100 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 className="ty-page-title" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
           <Tag size={22} color="var(--color-brand)" />
-          Dictionary Designer
+          {t('pages.dictionary.title')}
         </h1>
         <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
-          Definisci e gestisci i dizionari di valori per i campi enum dell'applicazione
+          {t('pages.dictionary.subtitle')}
         </p>
       </div>
 
@@ -400,20 +399,20 @@ export function EnumDesignerPage() {
         {/* Left: enum list */}
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e5e7eb' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Dizionari</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('pages.dictionary.listHeader')}</span>
             <button
               type="button"
               style={{ ...btnPrimary, padding: '4px 10px', fontSize: 12 }}
               onClick={() => setShowCreate(true)}
-              aria-label="Nuovo enum type"
+              aria-label={t('pages.dictionary.createTitle')}
             >
-              <Plus size={12} aria-hidden="true" /> Nuovo
+              <Plus size={12} aria-hidden="true" /> {t('pages.dictionary.newButton')}
             </button>
           </div>
 
           <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
             {loading && !allEnums.length && (
-              <p style={{ padding: '20px 16px', fontSize: 12, color: '#8892a4' }}>Caricamento…</p>
+              <p style={{ padding: '20px 16px', fontSize: 12, color: '#8892a4' }}>{t('pages.dictionary.loading')}</p>
             )}
             {Object.entries(groups).map(([groupName, items]) => (
               <div key={groupName}>
@@ -469,7 +468,7 @@ export function EnumDesignerPage() {
               background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
               padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13,
             }}>
-              Seleziona un dizionario dalla lista o creane uno nuovo
+              {t('common.noResults')}
             </div>
           )}
         </div>

@@ -1,8 +1,10 @@
 import express, { type Application, type Request, type Response, type NextFunction } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
+import compression from 'compression'
 import { rateLimit } from 'express-rate-limit'
 import { ApolloServer } from '@apollo/server'
+import { ApolloServerPluginLandingPageLocalDefault, ApolloServerPluginLandingPageProductionDefault } from '@apollo/server/plugin/landingPage/default'
 import { expressMiddleware } from '@apollo/server/express4'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
 import type { ValidationRule } from 'graphql'
@@ -16,6 +18,7 @@ import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import { graphqlRateLimiterMiddleware } from './middleware/graphqlRateLimiter.js'
+import { metricsMiddleware, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
 import http from 'http'
 
 const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
@@ -61,6 +64,22 @@ export const app: Application = express()
 app.use(helmet({
   contentSecurityPolicy: process.env['NODE_ENV'] === 'production',
 }))
+
+// ── Compression ────────────────────────────────────────────────────────────────
+
+app.use(compression({
+  threshold: 1024,
+  level:     6,
+  filter:    (req: Request, res: Response) => {
+    if (req.path === '/api/sse') return false
+    return compression.filter(req, res)
+  },
+}))
+
+// ── Prometheus metrics ─────────────────────────────────────────────────────────
+
+app.use(metricsMiddleware)
+app.get('/metrics', metricsHandler)
 
 const CORS_ORIGIN = (() => {
   if (process.env['CORS_ORIGIN']) return process.env['CORS_ORIGIN']
@@ -147,6 +166,10 @@ export async function startServer(): Promise<http.Server> {
       return formattedError
     },
     plugins: [
+      process.env['NODE_ENV'] !== 'production'
+        ? ApolloServerPluginLandingPageLocalDefault({ embed: true })
+        : ApolloServerPluginLandingPageProductionDefault(),
+      graphqlMetricsPlugin,
       {
         async requestDidStart() {
           return {
