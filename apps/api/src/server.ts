@@ -19,6 +19,7 @@ import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import { graphqlRateLimiterMiddleware } from './middleware/graphqlRateLimiter.js'
 import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
+import { updateActiveSpanName } from './telemetry.js'
 import http from 'http'
 
 const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
@@ -173,6 +174,13 @@ export async function startServer(): Promise<http.Server> {
       {
         async requestDidStart() {
           return {
+            async executionDidStart(ctx) {
+              // Rename the active OTEL HTTP span to include the GraphQL operation name.
+              // This ensures traces show "GraphQL incidents" instead of "POST /graphql"
+              // when @opentelemetry/instrumentation-graphql hasn't yet produced its own span.
+              const opName = ctx.request.operationName
+              if (opName) updateActiveSpanName(opName)
+            },
             async didEncounterErrors(ctx: GraphQLRequestContextDidEncounterErrors<GraphQLContext>) {
               ctx.errors.forEach((err) => {
                 const e = err as { extensions?: { code?: string }; message?: string; path?: unknown }

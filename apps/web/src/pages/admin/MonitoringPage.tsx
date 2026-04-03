@@ -322,7 +322,14 @@ export function MonitoringPage() {
                   <tbody>
                     {[...trace.recentTraces].reverse().slice(0, 20).map((tr) => (
                       <tr key={tr.traceId} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={{ padding: '6px 0', fontFamily: 'monospace' }}>{tr.operationName}</td>
+                        <td style={{ padding: '6px 0', fontFamily: 'monospace' }}>
+                          {tr.operationName}
+                          {tr.spanCount > 1 && (
+                            <span style={{ color: '#9ca3af', marginLeft: 8, fontSize: 11 }}>
+                              — {tr.spanCount} spans
+                            </span>
+                          )}
+                        </td>
                         <td style={{ textAlign: 'right', padding: '6px 12px', fontWeight: 600 }}>{tr.durationMs.toFixed(1)}ms</td>
                         <td style={{ textAlign: 'right', padding: '6px 12px' }}>
                           <span style={{ color: tr.status === 'OK' ? '#16a34a' : '#ef4444', fontWeight: 600 }}>
