@@ -72,36 +72,40 @@ export async function auditLog(
 
   const session = getSession(undefined, 'READ')
   try {
-    const [dataRes, countRes] = await Promise.all([
-      session.executeRead((tx) =>
-        tx.run(`
-          MATCH (a:AuditEntry)
-          WHERE ${where}
-          RETURN a.id         AS id,
-                 a.user_id    AS userId,
-                 a.user_email AS userEmail,
-                 a.action     AS action,
-                 a.entity_type AS entityType,
-                 a.entity_id  AS entityId,
-                 a.details    AS details,
-                 a.ip_address AS ipAddress,
-                 a.created_at AS createdAt
-          ORDER BY a.created_at DESC
-          SKIP $skip LIMIT $limit
-        `, params),
-      ),
-      session.executeRead((tx) =>
-        tx.run(`
-          MATCH (a:AuditEntry)
-          WHERE ${where}
-          RETURN count(a) AS total
-        `, params),
-      ),
-    ])
+    const dataRes = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (a:AuditEntry)
+        WHERE ${where}
+        RETURN a.id         AS id,
+               a.user_id    AS userId,
+               a.user_email AS userEmail,
+               a.action     AS action,
+               a.entity_type AS entityType,
+               a.entity_id  AS entityId,
+               a.details    AS details,
+               a.ip_address AS ipAddress,
+               a.created_at AS createdAt
+        ORDER BY a.created_at DESC
+        SKIP $skip LIMIT $limit
+      `, params),
+    )
+
+    const countRes = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (a:AuditEntry)
+        WHERE ${where}
+        RETURN count(a) AS total
+      `, params),
+    )
+
+    const rawTotal = countRes.records[0]?.get('total')
+    const total = rawTotal != null && typeof (rawTotal as { toNumber(): number }).toNumber === 'function'
+      ? (rawTotal as { toNumber(): number }).toNumber()
+      : Number(rawTotal ?? 0)
 
     return {
       items: dataRes.records.map(mapAuditEntry),
-      total: (countRes.records[0]?.get('total') as number | null) ?? 0,
+      total,
     }
   } finally {
     await session.close()

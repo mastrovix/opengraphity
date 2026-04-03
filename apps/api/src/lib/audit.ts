@@ -11,6 +11,7 @@ export async function audit(
   details?: Record<string, unknown>,
   ipAddress?: string,
 ): Promise<void> {
+  logger.debug({ action, entityType, entityId, tenantId: ctx.tenantId, userId: ctx.userId }, '[audit] writing entry')
   const session = getSession(undefined, 'WRITE')
   try {
     const now = new Date().toISOString()
@@ -41,9 +42,10 @@ export async function audit(
         createdAt:   now,
       }),
     )
+    logger.debug({ action, entityType, entityId }, '[audit] entry written OK')
   } catch (err) {
     // Audit failure MUST NOT propagate to the caller
-    logger.warn({ err, action, entityType, entityId }, 'Audit log write failed')
+    logger.warn({ err, action, entityType, entityId, tenantId: ctx.tenantId }, '[audit] write failed')
   } finally {
     await session.close()
   }
