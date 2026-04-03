@@ -5,7 +5,14 @@ import { startServer } from './server.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine } from '@opengraphity/sla'
 import { closeConnection } from '@opengraphity/events'
-import { closeDriver } from '@opengraphity/neo4j'
+import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
+import { neo4jQueryDurationSeconds, recordSlowQuery } from './middleware/metrics.js'
+
+// Instrument every Neo4j session.run() — covers all 400+ call sites
+registerSessionTracker((durationMs, query) => {
+  neo4jQueryDurationSeconds.observe({ operation: 'QUERY' }, durationMs / 1000)
+  if (durationMs > 500) recordSlowQuery(query || 'unknown', durationMs)
+})
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startWorkflowJobWorker } from './jobs/workflowJobWorker.js'

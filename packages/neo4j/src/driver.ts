@@ -6,6 +6,48 @@ const NEO4J_PASSWORD = process.env['NEO4J_PASSWORD'] ?? 'opengraphity_local'
 
 let _driver: Driver | null = null
 
+// ── Session tracker (optional instrumentation hook) ───────────────────────────
+type SessionTracker = (durationMs: number, query: string) => void
+let _tracker: SessionTracker | null = null
+
+export function registerSessionTracker(fn: SessionTracker | null): void {
+  _tracker = fn
+}
+
+function wrapSession(session: Session): Session {
+  if (!_tracker) return session
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new Proxy(session as any, {
+    get(target: Record<string, unknown>, prop: string) {
+      if (prop !== 'run') return target[prop]
+      return (query: unknown, params?: unknown) => {
+        const t0 = performance.now()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = (target['run'] as (...args: unknown[]) => Record<string, any>)(query, params)
+        const tracker = _tracker
+        if (!tracker) return result
+        const queryStr = typeof query === 'string' ? query : ''
+        const originalSubscribe = (result['subscribe'] as (...args: unknown[]) => unknown).bind(result as unknown)
+        result['subscribe'] = (observer: Record<string, ((...args: unknown[]) => void) | undefined>) => {
+          return originalSubscribe({
+            onKeys:      observer['onKeys'],
+            onNext:      observer['onNext'],
+            onCompleted: (...args: unknown[]) => {
+              tracker(performance.now() - t0, queryStr)
+              observer['onCompleted']?.(...args)
+            },
+            onError: (...args: unknown[]) => {
+              tracker(performance.now() - t0, queryStr)
+              observer['onError']?.(...args)
+            },
+          })
+        }
+        return result
+      }
+    },
+  }) as Session
+}
+
 function createDriver(): Driver {
   const d = neo4j.driver(
     NEO4J_URI,
@@ -37,10 +79,11 @@ export function getSession(
   database?: string,
   accessMode: SessionMode = neo4j.session.READ,
 ): Session {
-  return getDriver().session({
+  const session = getDriver().session({
     database,
     defaultAccessMode: accessMode,
   })
+  return wrapSession(session)
 }
 
 export async function closeDriver(): Promise<void> {

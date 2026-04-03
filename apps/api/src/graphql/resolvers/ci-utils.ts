@@ -1,7 +1,6 @@
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { neo4jDateToISO } from '../../lib/mappers.js'
-import { neo4jQueryDurationSeconds, recordSlowQuery } from '../../middleware/metrics.js'
 
 export { ciTypeFromLabels }
 
@@ -16,16 +15,11 @@ export function labelToType(label: string): string {
 export type Props = Record<string, unknown>
 
 export async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
-  const operation = write ? 'WRITE' : 'READ'
-  const session = getSession(undefined, operation)
-  const t0 = performance.now()
+  const session = getSession(undefined, write ? 'WRITE' : 'READ')
   try {
     return await fn(session)
   } finally {
     await session.close()
-    const durationMs = performance.now() - t0
-    neo4jQueryDurationSeconds.observe({ operation }, durationMs / 1000)
-    if (durationMs > 500) recordSlowQuery(`${operation} session`, durationMs)
   }
 }
 
