@@ -23,6 +23,7 @@ interface Props<T> {
   onSort?:         (field: string, direction: 'asc' | 'desc') => void
   sortField?:      string | null
   sortDir?:        'asc' | 'desc'
+  label?:          string  // aria-label per la tabella
 }
 
 const thStyle: React.CSSProperties = {
@@ -45,6 +46,7 @@ export function SortableFilterTable<T extends object>({
   onSort,
   sortField: controlledSortField,
   sortDir: controlledSortDir,
+  label,
 }: Props<T>) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = emptyMessage ?? t('common.noResults')
@@ -96,7 +98,7 @@ export function SortableFilterTable<T extends object>({
 
   return (
     <div className="card-border" style={{ overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table role="table" aria-label={label} style={{ width: '100%', borderCollapse: 'collapse' }}>
         <colgroup>
           {columns.map((col) => (
             <col key={String(col.key)} style={{ width: col.width }} />
@@ -108,7 +110,16 @@ export function SortableFilterTable<T extends object>({
             {columns.map((col) => {
               const isActive = activeSortKey === String(col.key)
               return (
-                <th key={String(col.key)} style={thStyle}>
+                <th
+                  key={String(col.key)}
+                  scope="col"
+                  aria-sort={col.sortable
+                    ? (activeSortKey === String(col.key)
+                        ? activeSortDir === 'asc' ? 'ascending' : 'descending'
+                        : 'none')
+                    : undefined}
+                  style={thStyle}
+                >
                   <div
                     style={{
                       display:       'flex',
@@ -126,7 +137,7 @@ export function SortableFilterTable<T extends object>({
                     {col.label}
                     {col.sortable && (
                       <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? colors.brand : colors.slateDark, display: 'flex' }}>
-                        {isActive && activeSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        {isActive && activeSortDir === 'asc' ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}
                       </span>
                     )}
                   </div>

@@ -238,11 +238,12 @@ export function CIFieldTable({ fields, showActions, onEdit, onRemove }: FieldTab
                     Modifica
                   </button>
                   <button style={{ ...btnDanger, padding: '3px 10px' }}
+                    aria-label={`Elimina campo ${f.name}`}
                     onClick={() => {
                       if (!confirm(`Eliminare il campo "${f.name}"?`)) return
                       onRemove?.(f)
                     }}>
-                    <X size={12} />
+                    <X size={12} aria-hidden="true" />
                   </button>
                 </div>
               )}

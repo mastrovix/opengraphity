@@ -6,6 +6,7 @@ import type { WorkflowInstance } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../../context.js'
 import { mapChange, type Props } from './mappers.js'
 import * as changeService from '../../../services/changeService.js'
+import { audit } from '../../../lib/audit.js'
 
 // ── createChangeComment helper ────────────────────────────────────────────────
 
@@ -182,6 +183,10 @@ export async function executeChangeTransition(
         `Change rigettato da step ${fromStep}${args.notes ? `: ${args.notes}` : ''}`,
         'rejected', ctx.userId,
       )
+    }
+
+    if (result.success) {
+      void audit(ctx, 'change.transitioned', 'Change', changeId, { toStep: args.toStep })
     }
 
     const inst = result.instance as WorkflowInstance | undefined

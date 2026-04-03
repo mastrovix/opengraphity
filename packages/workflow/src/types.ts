@@ -74,9 +74,10 @@ export interface WorkflowActionConfig {
 // Passed by callers so that packages/workflow never imports from apps/api.
 
 export interface ActionContext {
-  userId:       string
-  notes?:       string
-  entityData:   Record<string, unknown>      // entity properties for template/condition eval
+  userId:           string
+  notes?:           string
+  entityData:       Record<string, unknown>      // entity properties for template/condition eval
+  isWebhookRetry?:  boolean
   createEntity?: (type: string, data: Record<string, unknown>) => Promise<string>
   assignTo?:    (entityId: string, targetType: string, targetId: string) => Promise<void>
   updateField?: (entityId: string, field: string, value: unknown) => Promise<void>

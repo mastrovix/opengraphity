@@ -5,6 +5,8 @@ import { rateLimit } from 'express-rate-limit'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@apollo/server/express4'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
+import type { ValidationRule } from 'graphql'
+import { GraphQLError } from 'graphql'
 import { buildContext, type GraphQLContext } from './context.js'
 import { getSchemaForTenant } from './lib/schemaCache.js'
 import { healthRouter } from './rest/health.js'
@@ -13,9 +15,44 @@ import { reportStreamRouter } from './rest/report-stream.js'
 import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
+import { graphqlRateLimiterMiddleware } from './middleware/graphqlRateLimiter.js'
 import http from 'http'
 
 const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
+
+// ── GraphQL depth limit (inline, no external dependency) ─────────────────────
+
+interface SelectionSetNode { selections: unknown[] }
+interface FieldLikeNode { selectionSet?: SelectionSetNode }
+
+function getDepth(node: FieldLikeNode, current: number): number {
+  if (!node.selectionSet) return current
+  return Math.max(
+    ...node.selectionSet.selections.map((sel) =>
+      getDepth(sel as FieldLikeNode, current + 1),
+    ),
+  )
+}
+
+function depthLimit(maxDepth: number): ValidationRule {
+  return (context) => ({
+    Document(node) {
+      for (const def of node.definitions) {
+        if (def.kind === 'OperationDefinition') {
+          const depth = getDepth(def as unknown as FieldLikeNode, 0)
+          if (depth > maxDepth) {
+            context.reportError(
+              new GraphQLError(
+                `Query depth ${depth} exceeds maximum allowed depth of ${maxDepth}`,
+                { nodes: [def] },
+              ),
+            )
+          }
+        }
+      }
+    },
+  })
+}
 
 // ── Express app ──────────────────────────────────────────────────────────────
 
@@ -77,6 +114,10 @@ app.use(rateLimit({
   legacyHeaders:   false,
 }))
 
+// ── GraphQL per-mutation rate limiter ─────────────────────────────────────────
+
+app.use(graphqlRateLimiterMiddleware)
+
 // ── REST routes ───────────────────────────────────────────────────────────────
 
 app.use('/',    healthRouter)
@@ -93,6 +134,7 @@ export async function startServer(): Promise<http.Server> {
   const apolloServer = new ApolloServer<GraphQLContext>({
     schema,
     introspection: true,
+    validationRules: [depthLimit(10)],
     formatError: (formattedError, error) => {
       if (formattedError.extensions?.['code'] !== 'UNAUTHORIZED') {
         graphqlLogger.error({

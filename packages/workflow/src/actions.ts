@@ -21,6 +21,19 @@ const redisConnection = {
   port: parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
 }
 
+// ── Webhook retry job data ────────────────────────────────────────────────────
+
+export interface WebhookRetryJobData {
+  type:     'webhook_retry'
+  url:      string
+  method:   string
+  headers:  Record<string, string>
+  payload:  string
+  attempt:  number
+  tenantId: string
+  entityId: string
+}
+
 // ── SSRF protection ───────────────────────────────────────────────────────────
 
 const PRIVATE_IP_RE = [
@@ -102,10 +115,10 @@ export async function runAction(
 ): Promise<void> {
   const now = new Date().toISOString()
 
-  console.log('[workflow-action] Running:', action.type, JSON.stringify(action.params))
+  log.debug({ type: action.type, params: action.params }, 'workflow-action: running')
 
   // Evaluate conditions before running
-  console.log('[workflow-action] Conditions:', JSON.stringify(action.conditions), 'Logic:', action.conditions_logic)
+  log.debug({ conditions: action.conditions, logic: action.conditions_logic }, 'workflow-action: evaluating conditions')
   if (!evaluateConditions(action.conditions, action.conditions_logic, ctx.entityData)) {
     log.info({ type: action.type, entityId: instance.entityId }, 'action skipped: conditions not met')
     return
@@ -202,8 +215,7 @@ export async function runAction(
     // ── New: create_entity ─────────────────────────────────────────────────────
 
     case 'create_entity': {
-      console.log('[workflow-action] create_entity executing for entity:', instance.entityId)
-      console.log('[workflow-action] context.createEntity available?', typeof ctx.createEntity)
+      log.debug({ entityId: instance.entityId, createEntityAvailable: typeof ctx.createEntity }, 'workflow-action: create_entity executing')
       if (!ctx.createEntity) {
         log.warn({ entityId: instance.entityId }, 'create_entity: createEntity callback not provided — skipped')
         break
@@ -214,9 +226,9 @@ export async function runAction(
         log.warn({ entity_type: p.entity_type }, 'create_entity: unsupported entity_type — skipped')
         break
       }
-      console.log('[workflow-action] entityData:', JSON.stringify(ctx.entityData))
+      log.debug({ entityData: ctx.entityData }, 'workflow-action: create_entity entityData')
       const title = resolveTemplate(p.title_template ?? '', ctx.entityData)
-      console.log('[workflow-action] resolved title:', title)
+      log.debug({ title }, 'workflow-action: create_entity resolved title')
       const data: Record<string, unknown> = { title, tenant_id: instance.tenantId }
       if (p.link_to_current) {
         data['parent_id']   = instance.entityId
@@ -229,10 +241,10 @@ export async function runAction(
       }
       try {
         const newId = await ctx.createEntity(p.entity_type, data)
-        console.log('[workflow-action] create_entity result:', newId)
+        log.info({ entityType: p.entity_type, newId }, 'workflow-action: create_entity succeeded')
         await ctx.publishEvent?.(`${p.entity_type}.created`, { id: newId, tenant_id: instance.tenantId, created_by: ctx.userId })
       } catch (err) {
-        console.error('[workflow-action] create_entity ERROR:', err)
+        log.error({ entityId: instance.entityId, err }, 'workflow-action: create_entity failed')
       }
       break
     }
@@ -309,8 +321,36 @@ export async function runAction(
         })
         log.info({ url: p.url, status: res.status, durationMs: Date.now() - t0 }, 'call_webhook completed')
       } catch (err) {
-        log.error({ url: p.url, durationMs: Date.now() - t0, err }, 'call_webhook failed — workflow continues')
-        // fire-and-forget: do not rethrow
+        log.error({ url: p.url, durationMs: Date.now() - t0, err }, 'call_webhook failed — scheduling retry')
+
+        // Solo se non è già un retry (evita loop)
+        if (!ctx.isWebhookRetry) {
+          try {
+            const retryQueue = new Queue('workflow-jobs', { connection: redisConnection })
+            await retryQueue.add(
+              'webhook_retry',
+              {
+                type:     'webhook_retry',
+                url:      p.url,
+                method:   p.method ?? 'POST',
+                headers:  p.headers ?? {},
+                payload:  rawPayload,
+                attempt:  1,
+                tenantId: instance.tenantId,
+                entityId: instance.entityId,
+              } satisfies WebhookRetryJobData,
+              {
+                attempts:  3,
+                backoff: { type: 'exponential', delay: 30_000 },
+                removeOnComplete: true,
+                removeOnFail:     false,
+              },
+            )
+            await retryQueue.close()
+          } catch (retryErr) {
+            log.error({ retryErr }, 'call_webhook: failed to schedule retry job')
+          }
+        }
       } finally {
         clearTimeout(timer)
       }

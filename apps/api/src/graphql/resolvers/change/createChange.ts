@@ -5,6 +5,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import { withSession } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapChange, type Props } from './mappers.js'
+import { validateStringLength } from '../../../lib/validation.js'
 
 export async function createChange(
   _: unknown,
@@ -15,6 +16,9 @@ export async function createChange(
   ctx: GraphQLContext,
 ) {
   const { input } = args
+  validateStringLength(input.title, 'title', 1, 500)
+  validateStringLength(input.description, 'description', 0, 10000)
+
   const id  = uuidv4()
   const now = new Date().toISOString()
 

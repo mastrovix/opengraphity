@@ -229,7 +229,7 @@ async function publishSyncEvent(
 
 // ── Queue & Worker setup ──────────────────────────────────────────────────────
 
-export function startSyncWorker(): void {
+export function startSyncWorker(): Worker<SyncJobPayload> {
   const worker = new Worker<SyncJobPayload>(
     'discovery-sync',
     processSyncJob,
@@ -245,6 +245,7 @@ export function startSyncWorker(): void {
   })
 
   logger.info('[sync] Sync worker started (concurrency: 2)')
+  return worker
 }
 
 // ── Scheduled sync loader ─────────────────────────────────────────────────────

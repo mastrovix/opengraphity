@@ -8,6 +8,7 @@ import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import type { GraphQLContext } from '../../context.js'
 import * as incidentService from '../../services/incidentService.js'
+import { audit } from '../../lib/audit.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -117,7 +118,9 @@ async function createIncident(
   args: { input: { title: string; description?: string; severity: string; affectedCIIds?: string[] } },
   ctx: GraphQLContext,
 ) {
-  return incidentService.createIncident(args.input, ctx)
+  const result = await incidentService.createIncident(args.input, ctx)
+  void audit(ctx, 'incident.created', 'Incident', result.id as string)
+  return result
 }
 
 async function updateIncident(

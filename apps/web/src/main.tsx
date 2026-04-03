@@ -42,6 +42,7 @@ import { UsersPage } from '@/pages/users/UsersPage'
 import { UserDetailPage } from '@/pages/users/UserDetailPage'
 import { LogsPage } from '@/pages/logs/LogsPage'
 import { QueueStatsPage } from '@/pages/admin/QueueStatsPage'
+import { AuditLogPage } from '@/pages/admin/AuditLogPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
@@ -128,6 +129,7 @@ const router = createBrowserRouter([
       { path: 'users/:id',                 element: <UserDetailPage />,          errorElement: <RouteError /> },
       { path: 'logs',                      element: <LogsPage />,                errorElement: <RouteError /> },
       { path: 'admin/queues',              element: <QueueStatsPage />,          errorElement: <RouteError /> },
+      { path: 'admin/audit',              element: <AuditLogPage />,            errorElement: <RouteError /> },
     ],
   },
 ])

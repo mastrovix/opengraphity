@@ -55,7 +55,7 @@ export function WorkflowToolbar({
             padding:      0,
           }}
         >
-          <ArrowLeft size={13} />
+          <ArrowLeft size={13} aria-hidden="true" />
           Workflow
         </button>
 

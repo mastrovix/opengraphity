@@ -151,11 +151,12 @@ export function CIRelationTable({ relations, onRemove }: RelationTableProps) {
             <td style={{ padding: '8px', fontSize: 12 }}>{r.direction}</td>
             <td style={{ padding: '8px' }}>
               <button style={{ ...btnDanger, padding: '3px 10px' }}
+                aria-label={`Elimina relazione ${r.name}`}
                 onClick={() => {
                   if (!confirm(`Eliminare la relazione "${r.name}"?`)) return
                   onRemove(r)
                 }}>
-                <X size={12} />
+                <X size={12} aria-hidden="true" />
               </button>
             </td>
           </tr>

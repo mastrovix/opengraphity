@@ -19,6 +19,7 @@ import { topologyResolvers } from './topology.js'
 import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
 import { syncResolvers } from './sync.js'
+import { auditLog } from './auditLog.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -121,6 +122,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...notificationRuleResolvers.Query,
       ...queueStatsResolvers.Query,
       ...syncResolvers.Query,
+      auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
       ...meStub,

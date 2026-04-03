@@ -3,6 +3,8 @@ import type { GraphQLContext } from '../../context.js'
 import { anomalyScannerQueue } from '../../anomaly/anomalyEngine.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { cache } from '../../lib/cache.js'
+import { validateStringLength } from '../../lib/validation.js'
+import { audit } from '../../lib/audit.js'
 
 type Props = Record<string, unknown>
 
@@ -172,6 +174,7 @@ export const anomalyResolvers = {
       args: { id: string; resolutionStatus: string; note: string },
       ctx: GraphQLContext,
     ) => {
+      validateStringLength(args.note, 'note', 10, 10000)
       const now = new Date().toISOString()
       const session = getSession(undefined, 'WRITE')
       try {
@@ -193,6 +196,7 @@ export const anomalyResolvers = {
         })
         if (!row) throw new Error('Anomaly not found')
         cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
+        void audit(ctx, 'anomaly.resolved', 'Anomaly', args.id, { resolutionStatus: args.resolutionStatus })
         return mapAnomaly(row.props)
       } finally {
         await session.close()

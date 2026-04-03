@@ -28,6 +28,7 @@ import {
   Settings2,
   Activity,
   ShieldAlert,
+  ShieldCheck,
   Share2,
   Bell,
   CircleUser,
@@ -66,7 +67,8 @@ const REPORTING_ITEM_DEFS = [
 ]
 
 const ADMIN_NAV_ITEM_DEFS = [
-  { to: '/logs', labelKey: 'sidebar.logs', icon: ScrollText },
+  { to: '/logs',        labelKey: 'sidebar.logs',     icon: ScrollText  },
+  { to: '/admin/audit', labelKey: 'sidebar.auditLog', icon: ShieldCheck },
 ]
 
 // ── colours ──────────────────────────────────────────────────────────────────
@@ -226,6 +228,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
       {/* Nav */}
       <nav
+        aria-label="Menu principale"
         style={{
           flex:      1,
           overflowY: 'auto',
@@ -260,7 +263,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseEnter={(e) => hoverOn(e, isActive)}
               onMouseLeave={(e) => hoverOff(e, isActive)}
             >
-              <Icon size={16} style={{ flexShrink: 0, color: C.brand }} />
+              <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
               {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
             </NavLink>
           )
@@ -275,7 +278,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             onMouseEnter={(e) => hoverOn(e, itsmActive)}
             onMouseLeave={(e) => hoverOff(e, itsmActive)}
           >
-            <ListChecks size={16} style={{ flexShrink: 0, color: C.brand }} />
+            <ListChecks size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -286,14 +289,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => hoverOff(e, itsmActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ListChecks size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <ListChecks size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? C.brand : C.textDefault }}>
                   {t('sidebar.itilProcesses')}
                 </span>
               </div>
               {itsmOpen
-                ? <ChevronDown size={12} color={C.textChevron} />
-                : <ChevronRight size={12} color={C.textChevron} />}
+                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
+                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
             </div>
 
             {itsmOpen && (
@@ -301,7 +304,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {ITSM_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                      <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                       {t(labelKey)}
                     </span>
                   </NavLink>
@@ -320,7 +323,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             onMouseEnter={(e) => hoverOn(e, reportingActive)}
             onMouseLeave={(e) => hoverOff(e, reportingActive)}
           >
-            <BarChart2 size={16} style={{ flexShrink: 0, color: C.brand }} />
+            <BarChart2 size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -331,14 +334,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => hoverOff(e, reportingActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <BarChart2 size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <BarChart2 size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: reportingActive ? 600 : 400, color: reportingActive ? C.brand : C.textDefault }}>
                   {t('sidebar.reporting')}
                 </span>
               </div>
               {reportingOpen
-                ? <ChevronDown size={12} color={C.textChevron} />
-                : <ChevronRight size={12} color={C.textChevron} />}
+                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
+                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
             </div>
 
             {reportingOpen && (
@@ -346,7 +349,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {REPORTING_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                      <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                       {t(labelKey)}
                     </span>
                   </NavLink>
@@ -365,7 +368,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             onMouseEnter={(e) => hoverOn(e, analysisActive)}
             onMouseLeave={(e) => hoverOff(e, analysisActive)}
           >
-            <Activity size={16} style={{ flexShrink: 0, color: C.brand }} />
+            <Activity size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -376,14 +379,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => hoverOff(e, analysisActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Activity size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <Activity size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: analysisActive ? 600 : 400, color: analysisActive ? C.brand : C.textDefault }}>
                   {t('sidebar.analysis')}
                 </span>
               </div>
               {analysisOpen
-                ? <ChevronDown size={12} color={C.textChevron} />
-                : <ChevronRight size={12} color={C.textChevron} />}
+                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
+                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
             </div>
 
             {analysisOpen && (
@@ -391,15 +394,18 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {ANALYSIS_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                      <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                       {t(labelKey)}
                     </span>
                     {to === '/anomalies' && anomalyCritical > 0 && (
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, lineHeight: 1,
-                        padding: '2px 5px', borderRadius: 8,
-                        background: 'var(--danger)', color: '#fff',
-                      }}>
+                      <span
+                        aria-label={`${anomalyCritical} anomalie critiche`}
+                        style={{
+                          fontSize: 10, fontWeight: 700, lineHeight: 1,
+                          padding: '2px 5px', borderRadius: 8,
+                          background: 'var(--danger)', color: '#fff',
+                        }}
+                      >
                         {anomalyCritical}
                       </span>
                     )}
@@ -419,7 +425,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             onMouseEnter={(e) => hoverOn(e, cmdbActive)}
             onMouseLeave={(e) => hoverOff(e, cmdbActive)}
           >
-            <Server size={16} style={{ flexShrink: 0, color: C.brand }} />
+            <Server size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -430,21 +436,21 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => hoverOff(e, cmdbActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Server size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <Server size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? C.brand : C.textDefault }}>
                   {t('sidebar.cmdb')}
                 </span>
               </div>
               {cmdbOpen
-                ? <ChevronDown size={12} color={C.textChevron} />
-                : <ChevronRight size={12} color={C.textChevron} />}
+                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
+                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
             </div>
 
             {cmdbOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 <NavLink to="/cmdb" end style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Server size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                    <Server size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                     {t('sidebar.all')}
                   </span>
                 </NavLink>
@@ -485,25 +491,25 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => hoverOff(e, false)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Users size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <Users size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: 400, color: C.textDefault }}>{t('sidebar.teamsUsers')}</span>
               </div>
               {teamsOpen
-                ? <ChevronDown size={12} color={C.textChevron} />
-                : <ChevronRight size={12} color={C.textChevron} />}
+                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
+                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
             </div>
 
             {teamsOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 <NavLink to="/teams" style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <UsersRound size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                    <UsersRound size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                     {t('sidebar.teams')}
                   </span>
                 </NavLink>
                 <NavLink to="/users" style={({ isActive }) => subItemStyle(isActive)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <User size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                    <User size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                     {t('sidebar.users')}
                   </span>
                 </NavLink>
@@ -521,7 +527,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             onMouseEnter={(e) => hoverOn(e, configActive)}
             onMouseLeave={(e) => hoverOff(e, configActive)}
           >
-            <SlidersHorizontal size={16} style={{ flexShrink: 0, color: C.brand }} />
+            <SlidersHorizontal size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
         ) : (
           <div style={{ marginBottom: 2 }}>
@@ -532,21 +538,21 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               onMouseLeave={(e) => hoverOff(e, configActive)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <SlidersHorizontal size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <SlidersHorizontal size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                 <span style={{ fontSize: 13, fontWeight: configActive ? 600 : 400, color: configActive ? C.brand : C.textDefault }}>
                   {t('sidebar.configuration')}
                 </span>
               </div>
               {configOpen
-                ? <ChevronDown size={12} color={C.textChevron} />
-                : <ChevronRight size={12} color={C.textChevron} />}
+                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
+                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
             </div>
             {configOpen && (
               <div style={{ paddingLeft: 28, marginTop: 2 }}>
                 {CONFIG_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
                   <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                      <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                       {t(labelKey)}
                     </span>
                   </NavLink>
@@ -576,7 +582,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   onMouseEnter={(e) => hoverOn(e, isActive)}
                   onMouseLeave={(e) => hoverOff(e, isActive)}
                 >
-                  <Icon size={16} style={{ flexShrink: 0, color: C.brand }} />
+                  <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                   {!collapsed && label}
                 </NavLink>
               )
@@ -591,7 +597,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 onMouseEnter={(e) => hoverOn(e, settingsActive)}
                 onMouseLeave={(e) => hoverOff(e, settingsActive)}
               >
-                <Settings size={16} style={{ flexShrink: 0, color: C.brand }} />
+                <Settings size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
               </NavLink>
             ) : (
               <div style={{ marginBottom: 2 }}>
@@ -602,44 +608,44 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   onMouseLeave={(e) => hoverOff(e, settingsActive)}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Settings size={16} style={{ flexShrink: 0, color: C.brand }} />
+                    <Settings size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                     <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? C.brand : C.textDefault }}>
                       {t('sidebar.settings')}
                     </span>
                   </div>
                   {settingsOpen
-                    ? <ChevronDown size={12} color={C.textChevron} />
-                    : <ChevronRight size={12} color={C.textChevron} />}
+                    ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
+                    : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
                 </div>
                 {settingsOpen && (
                   <div style={{ paddingLeft: 28, marginTop: 2 }}>
                     <NavLink to="/settings/notifications" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Bell size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                        <Bell size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                         {t('sidebar.notificationChannels')}
                       </span>
                     </NavLink>
                     <NavLink to="/settings/notification-rules" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Bell size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                        <Bell size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                         {t('sidebar.notificationRules')}
                       </span>
                     </NavLink>
                     <NavLink to="/settings/sync" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Activity size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                        <Activity size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                         {t('sidebar.cmdbSync')}
                       </span>
                     </NavLink>
                     <NavLink to="/admin/queues" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Activity size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                        <Activity size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                         {t('sidebar.bullBoard')}
                       </span>
                     </NavLink>
                     <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CircleUser size={12} style={{ color: C.brand, flexShrink: 0 }} />
+                        <CircleUser size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                         {t('sidebar.profile')}
                       </span>
                     </NavLink>
@@ -654,6 +660,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
       {/* Collapse toggle */}
       <button
         onClick={onToggle}
+        aria-label={collapsed ? t('sidebar.expand', 'Espandi sidebar') : t('sidebar.collapse', 'Comprimi sidebar')}
         style={{
           display:         'flex',
           alignItems:      'center',
@@ -674,8 +681,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
       >
         {collapsed
-          ? <ChevronRight size={14} />
-          : <><ChevronLeft size={14} /><span>{t('sidebar.collapse', 'Collapse')}</span></>
+          ? <ChevronRight size={14} aria-hidden="true" />
+          : <><ChevronLeft size={14} aria-hidden="true" /><span>{t('sidebar.collapse', 'Collapse')}</span></>
         }
       </button>
     </aside>

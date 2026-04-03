@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { invalidateRuleCache } from '@opengraphity/notifications'
+import { validateEnum } from '../../lib/validation.js'
 
 function mapRule(props: Record<string, unknown>) {
   return {
@@ -43,6 +44,9 @@ async function updateNotificationRule(
   },
   ctx: GraphQLContext,
 ) {
+  if (input.severityOverride) {
+    validateEnum(input.severityOverride, ['low', 'medium', 'high', 'critical', ''] as const, 'severityOverride')
+  }
   return withSession(async (session) => {
     const now = new Date().toISOString()
     const result = await session.executeWrite((tx) =>

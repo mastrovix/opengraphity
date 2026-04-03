@@ -6,6 +6,7 @@ import type { DomainEvent } from '@opengraphity/types'
 import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { mapIncident } from '../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
+import { validateStringLength } from '../lib/validation.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -97,6 +98,9 @@ export async function createIncident(
   input: { title: string; description?: string; severity: string; affectedCIIds?: string[] },
   ctx: ServiceCtx,
 ) {
+  validateStringLength(input.title, 'title', 1, 500)
+  validateStringLength(input.description, 'description', 0, 10000)
+
   const id  = uuidv4()
   const now = new Date().toISOString()
 

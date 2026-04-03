@@ -10,6 +10,8 @@ import type { GraphQLContext } from '../../context.js'
 import { syncQueue } from '../../discovery/syncWorker.js'
 import { withSession } from './ci-utils.js'
 import { NotFoundError } from '../../lib/errors.js'
+import { validateStringLength, validateCronExpression } from '../../lib/validation.js'
+import { audit } from '../../lib/audit.js'
 
 const ENCRYPTION_KEY = process.env['DISCOVERY_ENCRYPTION_KEY'] ?? ''
 
@@ -244,6 +246,8 @@ export const syncResolvers = {
       ctx: GraphQLContext,
     ) => {
       const { input } = args
+      validateStringLength(input.name, 'name', 1, 200)
+      validateCronExpression(input.scheduleCron)
       const creds = JSON.parse(input.credentials) as Record<string, string>
       const encryptedCreds = encryptCredentials(creds, ENCRYPTION_KEY)
 
@@ -269,7 +273,9 @@ export const syncResolvers = {
         const row = await runQueryOne<{ p: Props }>(session,
           `MATCH (n:SyncSource {id: $id}) RETURN properties(n) AS p`, { id },
         )
-        return mapSource(row!.p)
+        const newSource = mapSource(row!.p)
+        void audit(ctx, 'sync_source.created', 'SyncSource', id)
+        return newSource
       }, true)
     },
 
@@ -316,6 +322,7 @@ export const syncResolvers = {
           `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) DETACH DELETE n`,
           { id: args.id, tenantId: ctx.tenantId },
         ))
+        void audit(ctx, 'sync_source.deleted', 'SyncSource', args.id)
         return true
       }, true)
     },
@@ -351,6 +358,7 @@ export const syncResolvers = {
         const row = await runQueryOne<{ p: Props }>(session,
           `MATCH (r:SyncRun {id: $id}) RETURN properties(r) AS p`, { id: runId },
         )
+        void audit(ctx, 'sync.triggered', 'SyncRun', runId)
         return mapRun(row!.p)
       }, true)
     },
@@ -486,6 +494,7 @@ export const syncResolvers = {
         const row = await runQueryOne<{ p: Props }>(session,
           `MATCH (c:SyncConflict {id: $id}) RETURN properties(c) AS p`, { id: args.conflictId },
         )
+        void audit(ctx, 'sync_conflict.resolved', 'SyncConflict', args.conflictId, { resolution: args.resolution })
         return mapConflict(row!.p)
       }, true)
     },

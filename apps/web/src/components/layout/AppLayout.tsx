@@ -18,6 +18,28 @@ export function AppLayout() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: '#f1f5f9' }}>
+      {/* Skip to main content — visibile solo su focus */}
+      <a
+        href="#main-content"
+        className="skip-link"
+        style={{
+          position:        'absolute',
+          top:             '-40px',
+          left:            '16px',
+          zIndex:          9999,
+          padding:         '8px 16px',
+          backgroundColor: '#1a2332',
+          color:           '#fff',
+          textDecoration:  'none',
+          borderRadius:    '4px',
+          fontSize:        '14px',
+          transition:      'top 0.2s',
+        }}
+        onFocus={(e) => { e.currentTarget.style.top = '16px' }}
+        onBlur={(e) => { e.currentTarget.style.top = '-40px' }}
+      >
+        Salta al contenuto
+      </a>
       <Sidebar
         collapsed={collapsed}
         width={sidebarWidth}
@@ -38,6 +60,7 @@ export function AppLayout() {
       >
         <Topbar />
         <main
+          id="main-content"
           style={{
             flex:            1,
             overflowY:       'auto',
