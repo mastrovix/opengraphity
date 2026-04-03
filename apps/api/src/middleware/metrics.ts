@@ -495,8 +495,8 @@ export function getNeo4jMetrics(): Neo4jMetricsData {
   let totalCount = 0
 
   for (const line of lines) {
-    const sumMatch   = /_sum\s+([\d.]+)/.exec(line)
-    const countMatch = /_count\s+([\d.]+)/.exec(line)
+    const sumMatch   = /_sum(?:\{[^}]*\})?\s+([\d.eE+\-]+)/.exec(line)
+    const countMatch = /_count(?:\{[^}]*\})?\s+([\d.eE+\-]+)/.exec(line)
     if (sumMatch)   totalSum   += parseFloat(sumMatch[1]!)
     if (countMatch) totalCount += parseInt(countMatch[1]!, 10)
   }
