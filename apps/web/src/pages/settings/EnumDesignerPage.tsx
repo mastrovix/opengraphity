@@ -436,7 +436,7 @@ export function EnumDesignerPage() {
                   aria-current={selectedId === e.id ? 'true' : undefined}
                 >
                   {e.isSystem
-                    ? <Lock     size={11} style={{ color: '#8892a4', flexShrink: 0 }} aria-hidden="true" />
+                    ? <Lock     size={11} style={{ color: 'var(--color-brand)', flexShrink: 0 }} aria-hidden="true" />
                     : <LockOpen size={11} style={{ color: '#8892a4', flexShrink: 0 }} aria-hidden="true" />
                   }
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--color-slate-dark)' }}>
