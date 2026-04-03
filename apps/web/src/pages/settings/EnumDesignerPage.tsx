@@ -384,90 +384,95 @@ export function EnumDesignerPage() {
   void t
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      {/* Left panel */}
-      <div style={{
-        width: 280, borderRight: '1px solid #f1f3f9', display: 'flex',
-        flexDirection: 'column', background: '#fff', flexShrink: 0,
-      }}>
-        <div style={{
-          padding: '16px 16px 12px', borderBottom: '1px solid #f1f3f9',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <h1 style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-            <Tag size={15} color="var(--color-brand)" />
-            Dictionary Designer
-          </h1>
-          <button
-            type="button"
-            style={{ ...btnPrimary, padding: '5px 10px', fontSize: 12 }}
-            onClick={() => setShowCreate(true)}
-            aria-label="Nuovo enum type"
-          >
-            <Plus size={13} aria-hidden="true" /> Nuovo
-          </button>
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-          {loading && !allEnums.length && (
-            <p style={{ padding: '20px 16px', fontSize: 12, color: '#8892a4' }}>Caricamento…</p>
-          )}
-          {Object.entries(groups).map(([groupName, items]) => (
-            <div key={groupName}>
-              <div style={{
-                padding: '5px 16px 4px', fontSize: 10, fontWeight: 600,
-                textTransform: 'uppercase', letterSpacing: '0.06em',
-                color: '#94a3b8', background: '#f9fafb',
-                borderBottom: '1px solid #f3f4f6',
-              }}>
-                {groupName}
-              </div>
-              {items.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => setSelectedId(e.id)}
-                  style={{
-                    width: '100%', textAlign: 'left', padding: '8px 16px',
-                    background: selectedId === e.id ? '#f0f4ff' : 'transparent',
-                    border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-                    borderLeft: selectedId === e.id ? '3px solid var(--color-brand)' : '3px solid transparent',
-                  }}
-                  aria-current={selectedId === e.id ? 'true' : undefined}
-                >
-                  {e.isSystem
-                    ? <Lock     size={11} style={{ color: 'var(--color-brand)', flexShrink: 0 }} aria-hidden="true" />
-                    : <LockOpen size={11} style={{ color: '#8892a4', flexShrink: 0 }} aria-hidden="true" />
-                  }
-                  <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--color-slate-dark)' }}>
-                    {e.label}
-                  </span>
-                  <span style={{ fontSize: 11, color: '#8892a4' }}>
-                    {e.values.length}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
+    <div style={{ maxWidth: 1100 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 className="ty-page-title" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
+          <Tag size={22} color="var(--color-brand)" />
+          Dictionary Designer
+        </h1>
+        <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+          Definisci e gestisci i dizionari di valori per i campi enum dell'applicazione
+        </p>
       </div>
 
-      {/* Right panel */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 32 }}>
-        {selected ? (
-          <EnumEditor
-            key={selected.id}
-            enumType={selected}
-            onDeleted={() => setSelectedId(null)}
-          />
-        ) : (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            height: '100%', color: '#8892a4', fontSize: 14,
-          }}>
-            Seleziona un enum dalla lista o creane uno nuovo
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
+        {/* Left: enum list */}
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e5e7eb' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Dizionari</span>
+            <button
+              type="button"
+              style={{ ...btnPrimary, padding: '4px 10px', fontSize: 12 }}
+              onClick={() => setShowCreate(true)}
+              aria-label="Nuovo enum type"
+            >
+              <Plus size={12} aria-hidden="true" /> Nuovo
+            </button>
           </div>
-        )}
+
+          <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+            {loading && !allEnums.length && (
+              <p style={{ padding: '20px 16px', fontSize: 12, color: '#8892a4' }}>Caricamento…</p>
+            )}
+            {Object.entries(groups).map(([groupName, items]) => (
+              <div key={groupName}>
+                <div style={{
+                  padding: '5px 16px 4px', fontSize: 10, fontWeight: 600,
+                  textTransform: 'uppercase', letterSpacing: '0.06em',
+                  color: '#94a3b8', background: '#f9fafb',
+                  borderBottom: '1px solid #f3f4f6',
+                }}>
+                  {groupName}
+                </div>
+                {items.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => setSelectedId(e.id)}
+                    style={{
+                      width: '100%', textAlign: 'left', padding: '8px 16px',
+                      background: selectedId === e.id ? '#f0f9ff' : 'transparent',
+                      border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                      borderLeft: selectedId === e.id ? '3px solid var(--color-brand)' : '3px solid transparent',
+                      borderBottom: '1px solid #f3f4f6',
+                    }}
+                    aria-current={selectedId === e.id ? 'true' : undefined}
+                  >
+                    {e.isSystem
+                      ? <Lock     size={11} style={{ color: 'var(--color-brand)', flexShrink: 0 }} aria-hidden="true" />
+                      : <LockOpen size={11} style={{ color: '#8892a4', flexShrink: 0 }} aria-hidden="true" />
+                    }
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: selectedId === e.id ? 600 : 500, color: selectedId === e.id ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {e.label}
+                    </span>
+                    <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>
+                      {e.values.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: editor */}
+        <div>
+          {selected ? (
+            <EnumEditor
+              key={selected.id}
+              enumType={selected}
+              onDeleted={() => setSelectedId(null)}
+            />
+          ) : (
+            <div style={{
+              background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+              padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13,
+            }}>
+              Seleziona un dizionario dalla lista o creane uno nuovo
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Create dialog */}
