@@ -319,10 +319,12 @@ function buildITILMutations() {
     ) => {
       requireAdmin(ctx)
       const { typeId, input } = args
-      const fieldId = crypto.randomUUID()
-      const enumValues = Array.isArray(input['enumValues'])
-        ? JSON.stringify(input['enumValues'])
-        : null
+      const fieldId     = crypto.randomUUID()
+      const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
+      // When linking to an existing enum, don't store inline enum_values
+      const enumValues  = enumTypeId
+        ? null
+        : Array.isArray(input['enumValues']) ? JSON.stringify(input['enumValues']) : null
 
       await withSession(async session => {
         await session.executeWrite(tx =>
@@ -343,6 +345,15 @@ function buildITILMutations() {
               created_at:  $now
             })
             CREATE (t)-[:HAS_FIELD]->(f)
+            WITH f
+            CALL {
+              WITH f
+              MATCH (e:EnumTypeDefinition {id: $enumTypeId})
+              WHERE $enumTypeId IS NOT NULL
+              MERGE (f)-[:USES_ENUM]->(e)
+              RETURN count(e) AS linked
+            }
+            RETURN f
           `, {
             typeId,
             fieldId,
@@ -351,6 +362,7 @@ function buildITILMutations() {
             fieldType:  input['fieldType'],
             required:   input['required']  ?? false,
             enumValues,
+            enumTypeId,
             order:      input['order']     ?? 99,
             tenantId:   ctx.tenantId,
             now:        new Date().toISOString(),
@@ -369,9 +381,11 @@ function buildITILMutations() {
     ) => {
       requireAdmin(ctx)
       const { typeId, fieldId, input } = args
-      const enumValues = Array.isArray(input['enumValues'])
-        ? JSON.stringify(input['enumValues'])
-        : null
+      const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
+      // When linking to an existing enum, clear inline enum_values
+      const enumValues  = enumTypeId
+        ? null
+        : Array.isArray(input['enumValues']) ? JSON.stringify(input['enumValues']) : null
 
       await withSession(async session => {
         // For is_system fields: only allow label + enum_values update
@@ -386,6 +400,19 @@ function buildITILMutations() {
                 f.field_type  = CASE WHEN f.is_system = true THEN f.field_type ELSE $fieldType END,
                 f.name        = CASE WHEN f.is_system = true THEN f.name ELSE $name END,
                 f.order       = $order
+            WITH f
+            // Remove any existing USES_ENUM relation first (clean slate for enum reference)
+            OPTIONAL MATCH (f)-[oldRel:USES_ENUM]->(:EnumTypeDefinition)
+            DELETE oldRel
+            WITH f
+            CALL {
+              WITH f
+              MATCH (e:EnumTypeDefinition {id: $enumTypeId})
+              WHERE $enumTypeId IS NOT NULL
+              MERGE (f)-[:USES_ENUM]->(e)
+              RETURN count(e) AS linked
+            }
+            RETURN f
           `, {
             typeId,
             fieldId,
@@ -394,6 +421,7 @@ function buildITILMutations() {
             fieldType: input['fieldType'],
             name:      input['name'],
             enumValues,
+            enumTypeId,
             order:     input['order'] ?? 0,
           }),
         )

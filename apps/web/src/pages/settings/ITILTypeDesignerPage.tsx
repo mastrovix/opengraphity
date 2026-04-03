@@ -9,14 +9,16 @@ import { CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD } from '@/graph
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ITILField {
-  id:         string
-  name:       string
-  label:      string
-  fieldType:  string
-  required:   boolean
-  enumValues: string[]
-  order:      number
-  isSystem:   boolean
+  id:           string
+  name:         string
+  label:        string
+  fieldType:    string
+  required:     boolean
+  enumValues:   string[]
+  order:        number
+  isSystem:     boolean
+  enumTypeId:   string | null
+  enumTypeName: string | null
 }
 
 interface ITILType {
@@ -84,9 +86,17 @@ function emptyForm(order: number): FieldFormState {
 }
 
 function fieldToForm(f: ITILField): FieldFormState {
-  return { name: f.name, label: f.label, fieldType: f.fieldType,
-           required: f.required, enumValues: f.enumValues ?? [], order: f.order,
-           enumMode: 'inline', enumTypeId: null }
+  const hasRef = f.fieldType === 'enum' && !!f.enumTypeId
+  return {
+    name:       f.name,
+    label:      f.label,
+    fieldType:  f.fieldType,
+    required:   f.required,
+    enumValues: f.enumValues ?? [],
+    order:      f.order,
+    enumMode:   hasRef ? 'reference' : 'inline',
+    enumTypeId: hasRef ? f.enumTypeId : null,
+  }
 }
 
 // ── EnumValuesEditor ──────────────────────────────────────────────────────────
@@ -383,7 +393,9 @@ export function ITILTypeDesignerPage() {
     fetchPolicy: 'cache-and-network',
   })
 
-  const { data: enumTypesData } = useQuery<{ enumTypes: EnumTypeRef[] }>(GET_ENUM_TYPES)
+  const { data: enumTypesData } = useQuery<{ enumTypes: EnumTypeRef[] }>(GET_ENUM_TYPES, {
+    fetchPolicy: 'cache-and-network',
+  })
 
   const [createField] = useMutation(CREATE_ITIL_FIELD, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); setAddingField(false); void refetch() },
@@ -409,14 +421,7 @@ export function ITILTypeDesignerPage() {
   }
 
   const handleSaveField = (typeId: string, fieldId: string | null, form: FieldFormState) => {
-    // When enumMode === 'reference', we use the values from the referenced enum inline.
-    // TODO: implement USES_ENUM relationship via dedicated mutation once backend agent
-    // adds the relation. Currently enumTypeId is not persisted — only values are sent.
-    let resolvedEnumValues = form.enumValues
-    if (form.fieldType === 'enum' && form.enumMode === 'reference' && form.enumTypeId) {
-      const refEnum = enumTypesData?.enumTypes.find((e) => e.id === form.enumTypeId)
-      resolvedEnumValues = refEnum?.values ?? []
-    }
+    const isRef = form.fieldType === 'enum' && form.enumMode === 'reference' && !!form.enumTypeId
 
     const variables = {
       typeId,
@@ -425,7 +430,10 @@ export function ITILTypeDesignerPage() {
         label:      form.label,
         fieldType:  form.fieldType,
         required:   form.required,
-        enumValues: form.fieldType === 'enum' ? resolvedEnumValues : [],
+        // Send inline values only when not using an enum reference
+        enumValues: form.fieldType === 'enum' && !isRef ? form.enumValues : [],
+        // Send enumTypeId when in reference mode (backend creates USES_ENUM)
+        enumTypeId: isRef ? form.enumTypeId : null,
         order:      form.order,
       },
     }

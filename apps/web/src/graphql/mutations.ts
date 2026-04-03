@@ -689,6 +689,7 @@ const ITIL_TYPE_FRAGMENT = gql`
     fields {
       id name label fieldType
       required enumValues order isSystem
+      enumTypeId enumTypeName
     }
   }
 `

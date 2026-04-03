@@ -382,6 +382,7 @@ export const GET_ITIL_TYPES = gql`
       fields {
         id name label fieldType
         required enumValues order isSystem
+        enumTypeId enumTypeName
       }
     }
   }

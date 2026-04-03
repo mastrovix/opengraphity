@@ -83,6 +83,7 @@ export function cmdbSDL(): string {
     fieldType:   String!
     required:    Boolean
     enumValues:  [String!]
+    enumTypeId:  ID
     order:       Int
   }
 
