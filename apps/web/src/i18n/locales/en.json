@@ -320,7 +320,9 @@
       "filterByAction": "Filter by action",
       "filterByEntityType": "Filter by entity type",
       "dateFrom": "From date",
-      "dateTo": "To date"
+      "dateTo": "To date",
+      "subtitle": "Record of system operations and changes",
+      "entries": "entries"
     },
     "dictionary": {
       "title": "Dictionary Designer",
@@ -521,9 +523,7 @@
       "deferred":      { "title": "Problem Deferred" },
       "resolved":      { "title": "Problem Resolved" },
       "closed":        { "title": "Problem Closed" }
-    }
-  },
-  "pages": {
+    },
     "monitoring": {
       "title": "Monitoring",
       "subtitle": "Real-time system health, metrics, and tracing",

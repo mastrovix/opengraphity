@@ -320,7 +320,9 @@
       "filterByAction": "Filtra per azione",
       "filterByEntityType": "Filtra per tipo entità",
       "dateFrom": "Data da",
-      "dateTo": "Data a"
+      "dateTo": "Data a",
+      "subtitle": "Registro delle operazioni e modifiche del sistema",
+      "entries": "voci"
     },
     "dictionary": {
       "title": "Dictionary Designer",
@@ -521,9 +523,7 @@
       "deferred":      { "title": "Problem Posticipato" },
       "resolved":      { "title": "Problem Risolto" },
       "closed":        { "title": "Problem Chiuso" }
-    }
-  },
-  "pages": {
+    },
     "monitoring": {
       "title": "Monitoring",
       "subtitle": "Salute del sistema, metriche e tracciamento in tempo reale",

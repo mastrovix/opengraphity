@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { SortableFilterTable } from '@/components/SortableFilterTable'
-
-import type { ColumnDef } from '@/components/SortableFilterTable'
+import { Shield } from 'lucide-react'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { EmptyState } from '@/components/EmptyState'
 
 const GET_AUDIT_LOG = gql`
   query GetAuditLog(
@@ -37,6 +37,8 @@ interface AuditEntry {
   createdAt: string
 }
 
+const PAGE_SIZE = 50
+
 const ACTION_OPTIONS = [
   '', 'incident.created', 'change.transitioned', 'sync_source.created',
   'sync_source.deleted', 'sync.triggered', 'sync_conflict.resolved',
@@ -48,92 +50,155 @@ const ENTITY_OPTIONS = [
   'SyncConflict', 'Anomaly', 'ConfigurationItem',
 ]
 
+const selectStyle: React.CSSProperties = {
+  padding: '6px 10px', borderRadius: 6, border: '1px solid #e2e8f0',
+  fontSize: 13, background: '#fff', color: '#1a2332', cursor: 'pointer',
+}
+
 export function AuditLogPage() {
   const { t } = useTranslation()
-  const [page, setPage]               = useState(1)
-  const [action, setAction]           = useState('')
-  const [entityType, setEntityType]   = useState('')
-  const [fromDate, setFromDate]       = useState('')
-  const [toDate, setToDate]           = useState('')
-  const [expandedId, setExpandedId]   = useState<string | null>(null)
 
-  const { data, loading } = useQuery<{ auditLog: { items: AuditEntry[]; total: number } }>(GET_AUDIT_LOG, {
-    variables: {
-      page,
-      pageSize: 50,
-      action:     action     || undefined,
-      entityType: entityType || undefined,
-      fromDate:   fromDate   || undefined,
-      toDate:     toDate     || undefined,
+  const [page, setPage]             = useState(0)
+  const [action, setAction]         = useState('')
+  const [entityType, setEntityType] = useState('')
+  const [fromDate, setFromDate]     = useState('')
+  const [toDate, setToDate]         = useState('')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const { data, loading } = useQuery<{ auditLog: { items: AuditEntry[]; total: number } }>(
+    GET_AUDIT_LOG,
+    {
+      variables: {
+        page:       page + 1,   // API is 1-based
+        pageSize:   PAGE_SIZE,
+        action:     action     || undefined,
+        entityType: entityType || undefined,
+        fromDate:   fromDate   || undefined,
+        toDate:     toDate     || undefined,
+      },
+      fetchPolicy: 'cache-and-network',
     },
-    fetchPolicy: 'cache-and-network',
-  })
+  )
 
   const items: AuditEntry[] = data?.auditLog?.items ?? []
   const total: number       = data?.auditLog?.total  ?? 0
+  const totalPages          = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  const hasFilters = !!(action || entityType || fromDate || toDate)
 
   const columns: ColumnDef<AuditEntry>[] = [
     {
       key: 'createdAt', label: t('pages.audit.colDate'), sortable: false,
-      render: (v) => new Date(v as string).toLocaleString(),
+      render: (v) => (
+        <span style={{ color: 'var(--color-slate-light)' }}>
+          {new Date(v as string).toLocaleString()}
+        </span>
+      ),
     },
     { key: 'userEmail',  label: t('pages.audit.colUser'),       sortable: false },
     { key: 'action',     label: t('pages.audit.colAction'),     sortable: false },
     { key: 'entityType', label: t('pages.audit.colEntityType'), sortable: false },
-    { key: 'entityId',   label: t('pages.audit.colEntityId'),   sortable: false, render: (v) => <code style={{ fontSize: 11 }}>{String(v).slice(0, 8)}…</code> },
-    { key: 'ipAddress',  label: t('pages.audit.colIp'),         sortable: false, render: (v) => v ? String(v) : '—' },
+    {
+      key: 'entityId', label: t('pages.audit.colEntityId'), sortable: false,
+      render: (v) => <code style={{ fontSize: 11 }}>{String(v).slice(0, 8)}…</code>,
+    },
+    {
+      key: 'ipAddress', label: t('pages.audit.colIp'), sortable: false,
+      render: (v) => v ? String(v) : <span style={{ color: '#c4cad4' }}>—</span>,
+    },
   ]
 
-  const filterStyle: React.CSSProperties = {
-    padding: '6px 10px', borderRadius: 6, border: '1px solid #e2e8f0',
-    fontSize: 13, background: '#fff', color: '#1a2332',
-  }
-
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 1400 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 24 }}>{t('pages.audit.title')}</h1>
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Shield size={22} color="var(--color-brand)" />
+            {t('pages.audit.title')}
+          </h1>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${total} ${t('pages.audit.entries')}`}
+          </p>
+        </div>
+      </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
-        <select style={filterStyle} value={action} onChange={(e) => { setAction(e.target.value); setPage(1) }}
-          aria-label={t('pages.audit.filterByAction')}>
-          {ACTION_OPTIONS.map((a) => <option key={a} value={a}>{a || t('pages.audit.allActions')}</option>)}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20, alignItems: 'center' }}>
+        <select
+          style={selectStyle}
+          value={action}
+          onChange={(e) => { setAction(e.target.value); setPage(0) }}
+          aria-label={t('pages.audit.filterByAction')}
+        >
+          {ACTION_OPTIONS.map((a) => (
+            <option key={a} value={a}>{a || t('pages.audit.allActions')}</option>
+          ))}
         </select>
-        <select style={filterStyle} value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1) }}
-          aria-label={t('pages.audit.filterByEntityType')}>
-          {ENTITY_OPTIONS.map((e) => <option key={e} value={e}>{e || t('pages.audit.allTypes')}</option>)}
+
+        <select
+          style={selectStyle}
+          value={entityType}
+          onChange={(e) => { setEntityType(e.target.value); setPage(0) }}
+          aria-label={t('pages.audit.filterByEntityType')}
+        >
+          {ENTITY_OPTIONS.map((e) => (
+            <option key={e} value={e}>{e || t('pages.audit.allTypes')}</option>
+          ))}
         </select>
-        <input type="date" style={filterStyle} value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(1) }}
-          aria-label={t('pages.audit.dateFrom')} />
-        <input type="date" style={filterStyle} value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(1) }}
-          aria-label={t('pages.audit.dateTo')} />
-        {(action || entityType || fromDate || toDate) && (
-          <button style={{ ...filterStyle, cursor: 'pointer', background: '#f1f3f9' }}
-            onClick={() => { setAction(''); setEntityType(''); setFromDate(''); setToDate(''); setPage(1) }}>
+
+        <input
+          type="date"
+          style={selectStyle}
+          value={fromDate}
+          onChange={(e) => { setFromDate(e.target.value); setPage(0) }}
+          aria-label={t('pages.audit.dateFrom')}
+          title={t('pages.audit.dateFrom')}
+        />
+
+        <input
+          type="date"
+          style={selectStyle}
+          value={toDate}
+          onChange={(e) => { setToDate(e.target.value); setPage(0) }}
+          aria-label={t('pages.audit.dateTo')}
+          title={t('pages.audit.dateTo')}
+        />
+
+        {hasFilters && (
+          <button
+            style={{ ...selectStyle, cursor: 'pointer', background: '#f1f3f9', color: 'var(--color-slate)' }}
+            onClick={() => { setAction(''); setEntityType(''); setFromDate(''); setToDate(''); setPage(0) }}
+          >
             {t('pages.audit.removeFilters')}
           </button>
         )}
       </div>
 
+      {/* Table */}
       <SortableFilterTable<AuditEntry>
         columns={columns}
         data={items}
         loading={loading}
-        label={t('pages.audit.title')}
+        emptyComponent={
+          <EmptyState
+            icon={<Shield size={32} color="var(--color-slate-light)" />}
+            title={t('pages.audit.empty')}
+          />
+        }
         onRowClick={(row) => setExpandedId(expandedId === row.id ? null : row.id)}
-        emptyMessage={t('pages.audit.empty')}
       />
 
       {/* Expanded detail */}
       {expandedId && (() => {
         const entry = items.find((i) => i.id === expandedId)
-        if (!entry || !entry.details) return null
+        if (!entry?.details) return null
         let parsed: unknown
         try { parsed = JSON.parse(entry.details) } catch { parsed = entry.details }
         return (
           <div style={{ marginTop: 12, padding: 16, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
             <strong style={{ fontSize: 13 }}>{t('pages.audit.details', { action: entry.action })}</strong>
-            <pre style={{ marginTop: 8, fontSize: 12, overflowX: 'auto' }}>
+            <pre style={{ marginTop: 8, fontSize: 12, overflowX: 'auto', margin: '8px 0 0 0' }}>
               {JSON.stringify(parsed, null, 2)}
             </pre>
           </div>
@@ -141,19 +206,30 @@ export function AuditLogPage() {
       })()}
 
       {/* Pagination */}
-      {total > 50 && (
-        <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)}
-            style={{ padding: '4px 12px', cursor: page === 1 ? 'not-allowed' : 'pointer' }}
-            aria-label={t('pages.audit.prevPage')}>
-            ←
-          </button>
-          <span>{t('pages.audit.page', { page, total })}</span>
-          <button disabled={page * 50 >= total} onClick={() => setPage((p) => p + 1)}
-            style={{ padding: '4px 12px', cursor: page * 50 >= total ? 'not-allowed' : 'pointer' }}
-            aria-label={t('pages.audit.nextPage')}>
-            →
-          </button>
+      {total > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+          <span>
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {t('pages.audit.entries')}
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+            >
+              {t('common.prev')}
+            </button>
+            <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>
+              {page + 1} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+            >
+              {t('common.next')}
+            </button>
+          </div>
         </div>
       )}
     </div>
