@@ -415,8 +415,9 @@ export function EnumDesignerPage() {
           {Object.entries(groups).map(([groupName, items]) => (
             <div key={groupName}>
               <div style={{
-                padding: '8px 16px 4px', fontSize: 11, fontWeight: 600,
-                textTransform: 'uppercase', letterSpacing: '0.5px', color: '#8892a4',
+                padding: '5px 16px', fontSize: 10, fontWeight: 600,
+                textTransform: 'uppercase', letterSpacing: '0.08em',
+                color: '#94a3b8', background: '#3d4856',
               }}>
                 {groupName}
               </div>
