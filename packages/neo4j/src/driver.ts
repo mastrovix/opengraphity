@@ -14,36 +14,52 @@ export function registerSessionTracker(fn: SessionTracker | null): void {
   _tracker = fn
 }
 
+// Wrap a ManagedTransaction (tx inside executeRead/executeWrite) so tx.run() is tracked.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function wrapManagedTransaction(tx: any): any {
+  return new Proxy(tx, {
+    get(target: Record<string, unknown>, prop: string, receiver: unknown) {
+      if (prop !== 'run') return Reflect.get(target, prop, receiver)
+      return async (query: unknown, params?: unknown) => {
+        const t0       = performance.now()
+        const queryStr = typeof query === 'string' ? query : ''
+        try {
+          return await (target['run'] as (...a: unknown[]) => Promise<unknown>)(query, params)
+        } finally {
+          _tracker?.(performance.now() - t0, queryStr)
+        }
+      }
+    },
+  })
+}
+
 function wrapSession(session: Session): Session {
-  if (!_tracker) return session
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new Proxy(session as any, {
-    get(target: Record<string, unknown>, prop: string) {
-      if (prop !== 'run') return target[prop]
-      return (query: unknown, params?: unknown) => {
-        const t0 = performance.now()
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = (target['run'] as (...args: unknown[]) => Record<string, any>)(query, params)
-        const tracker = _tracker
-        if (!tracker) return result
-        const queryStr = typeof query === 'string' ? query : ''
-        const originalSubscribe = (result['subscribe'] as (...args: unknown[]) => unknown).bind(result as unknown)
-        result['subscribe'] = (observer: Record<string, ((...args: unknown[]) => void) | undefined>) => {
-          return originalSubscribe({
-            onKeys:      observer['onKeys'],
-            onNext:      observer['onNext'],
-            onCompleted: (...args: unknown[]) => {
-              tracker(performance.now() - t0, queryStr)
-              observer['onCompleted']?.(...args)
-            },
-            onError: (...args: unknown[]) => {
-              tracker(performance.now() - t0, queryStr)
-              observer['onError']?.(...args)
-            },
-          })
+    get(target: Record<string, unknown>, prop: string, receiver: unknown) {
+      // session.run() — used by runQuery / runQueryOne
+      if (prop === 'run') {
+        return async (query: unknown, params?: unknown) => {
+          const t0       = performance.now()
+          const queryStr = typeof query === 'string' ? query : ''
+          try {
+            return await (target['run'] as (...a: unknown[]) => Promise<unknown>)(query, params)
+          } finally {
+            _tracker?.(performance.now() - t0, queryStr)
+          }
         }
-        return result
       }
+
+      // session.executeRead/executeWrite — used by the majority of resolvers.
+      // Proxy the ManagedTransaction passed to the callback so tx.run() is tracked.
+      if (prop === 'executeRead' || prop === 'executeWrite') {
+        return (work: (tx: unknown) => unknown, txConfig?: unknown) => {
+          const wrappedWork = (tx: unknown) => work(wrapManagedTransaction(tx))
+          return (target[prop] as (...a: unknown[]) => unknown)(wrappedWork, txConfig)
+        }
+      }
+
+      return Reflect.get(target, prop, receiver)
     },
   }) as Session
 }
