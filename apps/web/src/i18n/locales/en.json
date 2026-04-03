@@ -51,6 +51,7 @@
     "configuration": "Configuration",
     "ciTypeDesigner": "CI Type Designer",
     "itilDesigner": "ITIL Designer",
+    "enumDesigner": "Dictionary Designer",
     "workflowDesigner": "Workflow Designer",
     "profile": "Profile",
     "logs": "Logs",

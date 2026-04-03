@@ -394,7 +394,7 @@ export function EnumDesignerPage() {
           padding: '16px 16px 12px', borderBottom: '1px solid #f1f3f9',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <h1 style={{ fontSize: 15, fontWeight: 600 }}>Enum Designer</h1>
+          <h1 style={{ fontSize: 15, fontWeight: 600 }}>Dictionary Designer</h1>
           <button
             type="button"
             style={{ ...btnPrimary, padding: '5px 10px', fontSize: 12 }}
