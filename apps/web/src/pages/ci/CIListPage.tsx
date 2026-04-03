@@ -13,7 +13,7 @@ import { CIIcon } from '@/lib/ciIcon'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { CIDynamicForm } from '@/components/CIDynamicForm'
 
-import { toPascalCase, pluralize } from '@opengraphity/schema-generator'
+import { toPascalCase, pluralize } from '@/lib/stringUtils'
 
 const PAGE_SIZE = 50
 

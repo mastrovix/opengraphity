@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { toPascalCase } from '@opengraphity/schema-generator'
+import { toPascalCase } from '@/lib/stringUtils'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useMetamodel } from '@/contexts/MetamodelContext'
