@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Lock, Plus, X, Save, Trash2, Tag } from 'lucide-react'
+import { Lock, LockOpen, Plus, X, Save, Trash2, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import {
@@ -435,9 +435,10 @@ export function EnumDesignerPage() {
                   }}
                   aria-current={selectedId === e.id ? 'true' : undefined}
                 >
-                  {e.isSystem && (
-                    <Lock size={11} style={{ color: '#8892a4', flexShrink: 0 }} aria-hidden="true" />
-                  )}
+                  {e.isSystem
+                    ? <Lock     size={11} style={{ color: '#8892a4', flexShrink: 0 }} aria-hidden="true" />
+                    : <LockOpen size={11} style={{ color: '#8892a4', flexShrink: 0 }} aria-hidden="true" />
+                  }
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--color-slate-dark)' }}>
                     {e.label}
                   </span>
