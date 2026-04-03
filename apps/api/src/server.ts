@@ -19,7 +19,7 @@ import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import { graphqlRateLimiterMiddleware } from './middleware/graphqlRateLimiter.js'
 import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
-import { updateActiveSpanName } from './telemetry.js'
+import { startGraphQLSpan, updateActiveSpanName, type GraphQLSpanHandle } from './telemetry.js'
 import http from 'http'
 
 const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
@@ -172,23 +172,47 @@ export async function startServer(): Promise<http.Server> {
         : ApolloServerPluginLandingPageProductionDefault(),
       graphqlMetricsPlugin,
       {
-        async requestDidStart() {
+        // ── GraphQL tracing plugin ─────────────────────────────────────────────
+        // Creates an explicit OTEL root span per GraphQL operation. This is
+        // necessary because Apollo Server 4 + expressMiddleware processes POST
+        // bodies in its own pipeline, breaking out of the HTTP auto-instrumentation
+        // context — so POST spans never appear in Jaeger without manual creation.
+        async requestDidStart(reqCtx) {
+          // Start the span with the client-supplied operation name (if any).
+          // We refine the name in executionDidStart once the AST is parsed.
+          const initialName = reqCtx.request.operationName ?? 'anonymous'
+          const handle: GraphQLSpanHandle = startGraphQLSpan(`GraphQL ${initialName}`)
+
           return {
             async executionDidStart(ctx) {
-              // Rename the active OTEL HTTP span to include the GraphQL operation name.
-              // This ensures traces show "GraphQL incidents" instead of "POST /graphql"
-              // when @opentelemetry/instrumentation-graphql hasn't yet produced its own span.
-              const opName = ctx.request.operationName
-              if (opName) updateActiveSpanName(opName)
+              // After parsing we have the full operation type and canonical name.
+              const opName = ctx.request.operationName ?? ctx.operation?.name?.value ?? 'anonymous'
+              const opType: string = ctx.operation?.operation ?? 'query'
+              const type   = opType.charAt(0).toUpperCase() + opType.slice(1)
+              const label  = `GraphQL ${type}.${opName}`
+
+              handle.updateName(label)
+              handle.setAttribute('graphql.operation.name', opName)
+              handle.setAttribute('graphql.operation.type', opType)
+              handle.setAttribute('graphql.document', (ctx.request.query ?? '').slice(0, 200))
+
+              // Also rename the active HTTP span (auto-instrumentation) as best-effort.
+              updateActiveSpanName(`${type}.${opName}`)
             },
+
+            async willSendResponse() {
+              handle.end()
+            },
+
             async didEncounterErrors(ctx: GraphQLRequestContextDidEncounterErrors<GraphQLContext>) {
               ctx.errors.forEach((err) => {
                 const e = err as { extensions?: { code?: string }; message?: string; path?: unknown }
                 if (e.extensions?.['code'] !== 'UNAUTHORIZED') {
+                  handle.setError(e.message ?? 'GraphQL error')
                   graphqlLogger.error({
-                    operation:     ctx.operation?.operation,
-                    message:       e.message,
-                    path:          e.path,
+                    operation: ctx.operation?.operation,
+                    message:   e.message,
+                    path:      e.path,
                   }, 'GraphQL operation error')
                 }
               })

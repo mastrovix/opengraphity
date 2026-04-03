@@ -49,33 +49,77 @@ const NOISE_GQL_OPS      = new Set([
   'GetSystemHealth', 'GetSystemMetrics', 'GetTraceInfo', 'GetQueueStats',
 ])
 
+/** Extract the bare GraphQL operation name from any of our span name formats:
+ *  "GraphQL Query.GetSystemHealth" → "GetSystemHealth"
+ *  "Query.GetSystemHealth"         → "GetSystemHealth"
+ *  "GraphQL GetSystemHealth"       → "GetSystemHealth"
+ */
+function extractGqlOpName(operationName: string): string {
+  let name = operationName
+  if (name.startsWith('GraphQL ')) name = name.slice(8)
+  if (name.includes('.'))          name = name.split('.')[1] ?? name
+  return name
+}
+
 function isNoisyTrace(operationName: string, httpTarget: string): boolean {
-  // Filter plain HTTP method spans (no route detail)
   const method = operationName.split(' ')[0] ?? ''
+  // Filter GET/HEAD/OPTIONS spans (health, metrics, SSE, assets)
   if (NOISE_HTTP_METHODS.has(method)) return true
+  // Filter POST /graphql HTTP spans — the Apollo plugin span is authoritative;
+  // drop any duplicate from HTTP auto-instrumentation to avoid double entries.
+  if (method === 'POST' && httpTarget.startsWith('/graphql')) return true
   // Filter by HTTP path
   if (NOISE_HTTP_PATHS.some(p => httpTarget.startsWith(p))) return true
-  // Filter dashboard monitoring queries
-  const gqlOp = operationName.includes('.') ? (operationName.split('.')[1] ?? '') : operationName
-  if (NOISE_GQL_OPS.has(gqlOp)) return true
+  // Filter dashboard self-monitoring queries (poll every 15s)
+  if (NOISE_GQL_OPS.has(extractGqlOpName(operationName))) return true
   return false
 }
 
-// ── Active-span API (set during initTelemetry, used by Apollo plugin) ─────────
+// ── OTEL API references (set during initTelemetry) ───────────────────────────
 
-interface SpanApi {
+interface OtelSpan {
   updateName(name: string): void
   setAttribute(key: string, value: string): void
+  setStatus(status: { code: number; message?: string }): void
+  end(): void
 }
-interface TraceApi {
-  getActiveSpan(): SpanApi | undefined
+interface OtelTracer { startSpan(name: string): OtelSpan }
+interface TraceApi   { getActiveSpan(): OtelSpan | undefined }
+
+let _tracer:   OtelTracer | null = null
+let _traceApi: TraceApi   | null = null
+
+// ── Explicit GraphQL span (created by Apollo plugin) ─────────────────────────
+
+export interface GraphQLSpanHandle {
+  updateName(name: string): void
+  setAttribute(key: string, value: string): void
+  setError(message: string): void
+  end(): void
 }
-let _traceApi: TraceApi | null = null
+
+const NO_OP_HANDLE: GraphQLSpanHandle = {
+  updateName()   {},
+  setAttribute() {},
+  setError()     {},
+  end()          {},
+}
+
+/** Create a standalone root span for a GraphQL operation. No-op if OTEL is disabled. */
+export function startGraphQLSpan(initialName: string): GraphQLSpanHandle {
+  if (!_tracer) return NO_OP_HANDLE
+  const span = _tracer.startSpan(initialName)
+  return {
+    updateName(name: string)                 { span.updateName(name) },
+    setAttribute(key: string, val: string)   { span.setAttribute(key, val) },
+    setError(message: string)                { span.setStatus({ code: 2 /* ERROR */, message }) },
+    end()                                    { span.end() },
+  }
+}
 
 /**
- * Called by the Apollo Server plugin to rename the active HTTP span
- * to include the GraphQL operation name (e.g. "GraphQL incidents").
- * No-op when OTEL is disabled.
+ * Rename the currently active HTTP span (from auto-instrumentation) to include
+ * the GraphQL operation. No-op when OTEL is disabled.
  */
 export function updateActiveSpanName(operationName: string): void {
   if (!_traceApi) return
@@ -104,8 +148,8 @@ export function initTelemetry(): void {
 
       const telLogger = logger.child({ module: 'telemetry' })
 
-      // Store trace API for use by updateActiveSpanName()
-      _traceApi = trace
+      // Store API references for exported helpers (set after sdk.start below)
+      // _tracer and _traceApi are set after sdk.start()
 
       // Custom SpanProcessor: accumulates spans by traceId, extracts GraphQL
       // operation names from auto-instrumentation attributes, filters noise,
@@ -188,6 +232,9 @@ export function initTelemetry(): void {
       })
 
       sdk.start()
+      // Tracer must be obtained AFTER sdk.start() — before that it returns a no-op tracer
+      _traceApi = trace
+      _tracer   = trace.getTracer('opengrafo-api', '0.17.0')
       telLogger.info({ endpoint: otelEndpoint }, 'OpenTelemetry SDK started')
 
       process.on('SIGTERM', () => { sdk.shutdown().catch(() => {}) })
