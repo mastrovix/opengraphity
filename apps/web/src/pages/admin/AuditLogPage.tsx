@@ -39,11 +39,37 @@ interface AuditEntry {
 
 const PAGE_SIZE = 50
 
-const ACTION_OPTIONS = [
-  '', 'incident.created', 'change.transitioned', 'sync_source.created',
-  'sync_source.deleted', 'sync.triggered', 'sync_conflict.resolved',
-  'anomaly.resolved', 'ci.deleted',
+// Actions grouped by entity type — drives the synced filter logic
+const ENTITY_ACTIONS: Record<string, string[]> = {
+  Incident:          ['incident.created'],
+  Change:            ['change.transitioned'],
+  Problem:           ['problem.created', 'problem.updated', 'problem.deleted',
+                      'problem.investigating', 'problem.deferred', 'problem.resolved', 'problem.closed'],
+  SyncSource:        ['sync_source.created', 'sync_source.deleted', 'sync.triggered'],
+  SyncRun:           ['sync.triggered'],
+  SyncConflict:      ['sync_conflict.resolved'],
+  Anomaly:           ['anomaly.resolved'],
+  ConfigurationItem: ['ci.deleted'],
+}
+
+const ALL_ACTIONS = [
+  'incident.created',
+  'change.transitioned',
+  'problem.created', 'problem.updated', 'problem.deleted',
+  'problem.investigating', 'problem.deferred', 'problem.resolved', 'problem.closed',
+  'sync_source.created', 'sync_source.deleted', 'sync.triggered',
+  'sync_conflict.resolved',
+  'anomaly.resolved',
+  'ci.deleted',
 ]
+
+// Reverse map: action → primary entity (first entity in ENTITY_ACTIONS wins)
+const ACTION_TO_ENTITY: Record<string, string> = {}
+for (const [entity, actions] of Object.entries(ENTITY_ACTIONS)) {
+  for (const a of actions) {
+    if (!ACTION_TO_ENTITY[a]) ACTION_TO_ENTITY[a] = entity
+  }
+}
 
 const ENTITY_OPTIONS = [
   '', 'Incident', 'Change', 'Problem', 'SyncSource', 'SyncRun',
@@ -64,6 +90,35 @@ export function AuditLogPage() {
   const [fromDate, setFromDate]     = useState('')
   const [toDate, setToDate]         = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // Synced filter handlers
+  const handleEntityChange = (newEntity: string) => {
+    setEntityType(newEntity)
+    setPage(0)
+    if (!newEntity) {
+      // "All types" → reset action too
+      setAction('')
+    } else if (action && !ENTITY_ACTIONS[newEntity]?.includes(action)) {
+      // Current action doesn't belong to new entity → clear it
+      setAction('')
+    }
+  }
+
+  const handleActionChange = (newAction: string) => {
+    setAction(newAction)
+    setPage(0)
+    if (!newAction) {
+      // "All actions" → reset entity too
+      setEntityType('')
+    } else {
+      // Auto-select entity from action
+      const inferred = ACTION_TO_ENTITY[newAction]
+      if (inferred) setEntityType(inferred)
+    }
+  }
+
+  // Actions visible in dropdown: filtered to selected entity, or all
+  const availableActions = entityType ? (ENTITY_ACTIONS[entityType] ?? ALL_ACTIONS) : ALL_ACTIONS
 
   const { data, loading } = useQuery<{ auditLog: { items: AuditEntry[]; total: number } }>(
     GET_AUDIT_LOG,
@@ -127,23 +182,24 @@ export function AuditLogPage() {
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20, alignItems: 'center' }}>
         <select
           style={selectStyle}
-          value={action}
-          onChange={(e) => { setAction(e.target.value); setPage(0) }}
-          aria-label={t('pages.audit.filterByAction')}
+          value={entityType}
+          onChange={(e) => handleEntityChange(e.target.value)}
+          aria-label={t('pages.audit.filterByEntityType')}
         >
-          {ACTION_OPTIONS.map((a) => (
-            <option key={a} value={a}>{a || t('pages.audit.allActions')}</option>
+          {ENTITY_OPTIONS.map((e) => (
+            <option key={e} value={e}>{e || t('pages.audit.allTypes')}</option>
           ))}
         </select>
 
         <select
           style={selectStyle}
-          value={entityType}
-          onChange={(e) => { setEntityType(e.target.value); setPage(0) }}
-          aria-label={t('pages.audit.filterByEntityType')}
+          value={action}
+          onChange={(e) => handleActionChange(e.target.value)}
+          aria-label={t('pages.audit.filterByAction')}
         >
-          {ENTITY_OPTIONS.map((e) => (
-            <option key={e} value={e}>{e || t('pages.audit.allTypes')}</option>
+          <option value="">{t('pages.audit.allActions')}</option>
+          {availableActions.map((a) => (
+            <option key={a} value={a}>{a}</option>
           ))}
         </select>
 

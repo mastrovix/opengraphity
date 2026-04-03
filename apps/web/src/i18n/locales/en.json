@@ -64,7 +64,8 @@
     "notificationRules": "Notification Rules",
     "cmdbSync": "CMDB Sync",
     "bullBoard": "Job Queue",
-    "monitoring": "Monitoring"
+    "monitoring": "Monitoring",
+    "auditLog": "Audit Log"
   },
   "pages": {
     "incidents": {

@@ -64,7 +64,8 @@
     "notificationRules": "Regole Notifiche",
     "cmdbSync": "Sync CMDB",
     "bullBoard": "Coda Jobs",
-    "monitoring": "Monitoring"
+    "monitoring": "Monitoring",
+    "auditLog": "Registro Audit"
   },
   "pages": {
     "incidents": {

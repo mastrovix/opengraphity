@@ -7,6 +7,7 @@ import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { mapUser, mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
+import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
 import * as problemService from '../../services/problemService.js'
 
@@ -152,6 +153,7 @@ async function createProblem(
   ctx: GraphQLContext,
 ) {
   const props = await problemService.createProblem(args.input, ctx)
+  void audit(ctx, 'problem.created', 'Problem', (props as Props)['id'] as string)
   return mapProblem(props as Props)
 }
 
@@ -189,6 +191,7 @@ async function updateProblem(
     })
     const row = rows[0]
     if (!row) throw new GraphQLError('Problem not found')
+    void audit(ctx, 'problem.updated', 'Problem', id)
     return mapProblem(row.props)
   }, true)
 }
@@ -203,6 +206,7 @@ async function deleteProblem(
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})
       DETACH DELETE p
     `, { id: args.id, tenantId: ctx.tenantId }))
+    void audit(ctx, 'problem.deleted', 'Problem', args.id)
     return true
   }, true)
 }
@@ -373,10 +377,10 @@ async function executeProblemTransition(
 
     if (result.success) {
       const svcCtx = { tenantId: ctx.tenantId, userId: ctx.userId }
-      if      (args.toStep === 'under_investigation') await problemService.investigateProblem(args.problemId, svcCtx)
-      else if (args.toStep === 'deferred')            await problemService.deferProblem(args.problemId, svcCtx)
-      else if (args.toStep === 'resolved')            await problemService.resolveProblem(args.problemId, svcCtx)
-      else if (args.toStep === 'closed')              await problemService.closeProblem(args.problemId, svcCtx)
+      if      (args.toStep === 'under_investigation') { await problemService.investigateProblem(args.problemId, svcCtx); void audit(ctx, 'problem.investigating', 'Problem', args.problemId) }
+      else if (args.toStep === 'deferred')            { await problemService.deferProblem(args.problemId, svcCtx);      void audit(ctx, 'problem.deferred',      'Problem', args.problemId) }
+      else if (args.toStep === 'resolved')            { await problemService.resolveProblem(args.problemId, svcCtx);    void audit(ctx, 'problem.resolved',      'Problem', args.problemId) }
+      else if (args.toStep === 'closed')              { await problemService.closeProblem(args.problemId, svcCtx);      void audit(ctx, 'problem.closed',        'Problem', args.problemId) }
     }
 
     const row = await runQueryOne<{ props: Props }>(session, `
