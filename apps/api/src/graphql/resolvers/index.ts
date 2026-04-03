@@ -20,6 +20,7 @@ import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
 import { syncResolvers } from './sync.js'
 import { auditLog } from './auditLog.js'
+import { enumTypeResolvers } from './enumType.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -122,6 +123,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...notificationRuleResolvers.Query,
       ...queueStatsResolvers.Query,
       ...syncResolvers.Query,
+      ...enumTypeResolvers.Query,
       auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
@@ -143,6 +145,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...anomalyResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
       ...syncResolvers.Mutation,
+      ...enumTypeResolvers.Mutation,
     },
     Incident: {
       ...incidentResolvers.Incident,

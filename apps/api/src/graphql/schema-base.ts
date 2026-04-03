@@ -1,4 +1,5 @@
 import { cmdbSDL } from './schema-common.js'
+import { enumTypeSDL } from './schema-enum.js'
 import { incidentSDL } from './schema-incident.js'
 import { problemSDL } from './schema-problem.js'
 import { changeSDL } from './schema-change.js'
@@ -97,6 +98,10 @@ export function buildBaseSDL(): string {
     workflowDefinition(entityType: String!): WorkflowDefinition
     workflowDefinitionById(id: ID!): WorkflowDefinition
     workflowDefinitions(entityType: String): [WorkflowDefinition!]!
+
+    # Enum Types
+    enumTypes(scope: String): [EnumTypeDefinition!]!
+    enumType(id: ID!): EnumTypeDefinition
 
     # Queue Stats (admin only)
     queueStats: [QueueStat!]!
@@ -267,6 +272,11 @@ export function buildBaseSDL(): string {
     triggerSync(sourceId: ID!, syncType: String): SyncRun!
     resolveConflict(conflictId: ID!, resolution: String!): SyncConflict!
     testSyncConnection(sourceId: ID!): SyncConnectionTestResult!
+
+    # Enum Types
+    createEnumType(input: CreateEnumTypeInput!): EnumTypeDefinition!
+    updateEnumType(id: ID!, input: UpdateEnumTypeInput!): EnumTypeDefinition!
+    deleteEnumType(id: ID!): Boolean!
   }
 
   # ── Domain enums ─────────────────────────────────────────────────────────────
@@ -289,5 +299,6 @@ export function buildBaseSDL(): string {
   ${discoverySDL()}
   ${adminSDL()}
   ${cmdbSDL()}
+  ${enumTypeSDL()}
   `
 }

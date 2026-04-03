@@ -135,16 +135,26 @@ export async function loadITILTypes(tenantId: string): Promise<CITypeWithDefinit
         WHERE t.scope = 'itil'
           AND t.active = true
         OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
-        RETURN t, collect(DISTINCT f) AS fields
+        OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
+        RETURN t, collect(DISTINCT {props: f, enumTypeId: enumDef.id, enumTypeValues: enumDef.values}) AS fieldData
         ORDER BY t.name
       `, { tenantId }),
     )
 
     return result.records.map(record => {
       const t = record.get('t').properties as Record<string, unknown>
-      const fields = (record.get('fields') as Array<{ properties: Record<string, unknown> }>)
-        .filter(f => f && f.properties)
-        .map(f => mapField(f.properties))
+
+      type FieldData = { props: { properties: Record<string, unknown> } | null; enumTypeId: string | null; enumTypeValues: string[] | null }
+      const rawFieldData = record.get('fieldData') as FieldData[]
+      const fields = rawFieldData
+        .filter(d => d.props)
+        .map(d => {
+          const field = mapField(d.props!.properties)
+          if (d.enumTypeId && d.enumTypeValues) {
+            field.enumValues = d.enumTypeValues
+          }
+          return field
+        })
         .sort((a, b) => a.order - b.order)
 
       return {

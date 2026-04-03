@@ -52,6 +52,8 @@ export function cmdbSDL(): string {
     visibilityScript: String
     defaultScript: String
     isSystem: Boolean!
+    enumTypeId:   ID
+    enumTypeName: String
   }
 
   type CIRelationDef {

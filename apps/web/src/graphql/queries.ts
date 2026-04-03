@@ -537,6 +537,22 @@ export const GET_ANOMALY_SCAN_STATUS = gql`
   }
 `
 
+export const GET_ENUM_TYPES = gql`
+  query GetEnumTypes($scope: String) {
+    enumTypes(scope: $scope) {
+      id name label values isSystem scope createdAt updatedAt
+    }
+  }
+`
+
+export const GET_ENUM_TYPE = gql`
+  query GetEnumType($id: ID!) {
+    enumType(id: $id) {
+      id name label values isSystem scope createdAt updatedAt
+    }
+  }
+`
+
 export const GET_TOPOLOGY = gql`
   query GetTopology($types: [String!], $environment: String, $status: String, $selectedCiId: ID, $maxHops: Int) {
     topology(types: $types, environment: $environment, status: $status, selectedCiId: $selectedCiId, maxHops: $maxHops) {

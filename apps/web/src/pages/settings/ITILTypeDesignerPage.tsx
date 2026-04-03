@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Settings2, Lock, Trash2, Plus, X, Check } from 'lucide-react'
 import { toast } from 'sonner'
-import { GET_ITIL_TYPES } from '@/graphql/queries'
+import { GET_ITIL_TYPES, GET_ENUM_TYPES } from '@/graphql/queries'
 import { CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD } from '@/graphql/mutations'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -75,15 +75,18 @@ interface FieldFormState {
   required:    boolean
   enumValues:  string[]
   order:       number
+  enumMode:    'reference' | 'inline'
+  enumTypeId:  string | null
 }
 
 function emptyForm(order: number): FieldFormState {
-  return { name: '', label: '', fieldType: 'string', required: false, enumValues: [], order }
+  return { name: '', label: '', fieldType: 'string', required: false, enumValues: [], order, enumMode: 'inline', enumTypeId: null }
 }
 
 function fieldToForm(f: ITILField): FieldFormState {
   return { name: f.name, label: f.label, fieldType: f.fieldType,
-           required: f.required, enumValues: f.enumValues ?? [], order: f.order }
+           required: f.required, enumValues: f.enumValues ?? [], order: f.order,
+           enumMode: 'inline', enumTypeId: null }
 }
 
 // ── EnumValuesEditor ──────────────────────────────────────────────────────────
@@ -154,13 +157,21 @@ function EnumValuesEditor({
 
 // ── FieldEditor ───────────────────────────────────────────────────────────────
 
+interface EnumTypeRef {
+  id:     string
+  label:  string
+  values: string[]
+  scope:  string
+}
+
 function FieldEditor({
-  field, isSystem, onSave, onCancel,
+  field, isSystem, onSave, onCancel, enumTypesData,
 }: {
-  field: FieldFormState
-  isSystem: boolean
-  onSave: (f: FieldFormState) => void
-  onCancel: () => void
+  field:         FieldFormState
+  isSystem:      boolean
+  onSave:        (f: FieldFormState) => void
+  onCancel:      () => void
+  enumTypesData: { enumTypes: EnumTypeRef[] } | undefined
 }) {
   const { t } = useTranslation()
   const [form, setForm] = useState<FieldFormState>(field)
@@ -221,10 +232,73 @@ function FieldEditor({
 
       {form.fieldType === 'enum' && (
         <div style={{ marginBottom: 12 }}>
-          <EnumValuesEditor
-            values={form.enumValues}
-            onChange={(v) => set('enumValues', v)}
-          />
+          {/* Enum mode toggle */}
+          <div style={{ marginBottom: 10 }}>
+            <label style={labelS}>Tipo enum</label>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                <input
+                  type="radio"
+                  name="enumMode"
+                  value="inline"
+                  checked={form.enumMode === 'inline'}
+                  onChange={() => setForm((f) => ({ ...f, enumMode: 'inline', enumTypeId: null }))}
+                />
+                Valori personalizzati
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                <input
+                  type="radio"
+                  name="enumMode"
+                  value="reference"
+                  checked={form.enumMode === 'reference'}
+                  onChange={() => setForm((f) => ({ ...f, enumMode: 'reference', enumValues: [] }))}
+                />
+                Usa enum esistente
+              </label>
+            </div>
+
+            {form.enumMode === 'reference' && (
+              <div>
+                <label htmlFor="enum-ref" style={labelS}>Enum di riferimento</label>
+                <select
+                  id="enum-ref"
+                  style={selectS}
+                  value={form.enumTypeId ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, enumTypeId: e.target.value || null }))}
+                >
+                  <option value="">— Seleziona enum —</option>
+                  {(enumTypesData?.enumTypes ?? []).map((e) => (
+                    <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
+                  ))}
+                </select>
+                {form.enumTypeId && (
+                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {(enumTypesData?.enumTypes ?? [])
+                      .find((e) => e.id === form.enumTypeId)
+                      ?.values.map((v) => (
+                        <span
+                          key={v}
+                          style={{
+                            padding: '2px 8px', background: '#f0f4ff',
+                            borderRadius: 12, fontSize: 11, color: 'var(--color-brand)',
+                          }}
+                        >
+                          {v}
+                        </span>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {form.enumMode === 'inline' && (
+              <EnumValuesEditor
+                values={form.enumValues}
+                onChange={(v) => set('enumValues', v)}
+              />
+            )}
+          </div>
         </div>
       )}
 
@@ -309,6 +383,8 @@ export function ITILTypeDesignerPage() {
     fetchPolicy: 'cache-and-network',
   })
 
+  const { data: enumTypesData } = useQuery<{ enumTypes: EnumTypeRef[] }>(GET_ENUM_TYPES)
+
   const [createField] = useMutation(CREATE_ITIL_FIELD, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); setAddingField(false); void refetch() },
     onError: (e) => toast.error(e.message),
@@ -333,6 +409,15 @@ export function ITILTypeDesignerPage() {
   }
 
   const handleSaveField = (typeId: string, fieldId: string | null, form: FieldFormState) => {
+    // When enumMode === 'reference', we use the values from the referenced enum inline.
+    // TODO: implement USES_ENUM relationship via dedicated mutation once backend agent
+    // adds the relation. Currently enumTypeId is not persisted — only values are sent.
+    let resolvedEnumValues = form.enumValues
+    if (form.fieldType === 'enum' && form.enumMode === 'reference' && form.enumTypeId) {
+      const refEnum = enumTypesData?.enumTypes.find((e) => e.id === form.enumTypeId)
+      resolvedEnumValues = refEnum?.values ?? []
+    }
+
     const variables = {
       typeId,
       input: {
@@ -340,7 +425,7 @@ export function ITILTypeDesignerPage() {
         label:      form.label,
         fieldType:  form.fieldType,
         required:   form.required,
-        enumValues: form.fieldType === 'enum' ? form.enumValues : [],
+        enumValues: form.fieldType === 'enum' ? resolvedEnumValues : [],
         order:      form.order,
       },
     }
@@ -440,6 +525,7 @@ export function ITILTypeDesignerPage() {
                     isSystem={false}
                     onSave={(form) => handleSaveField(selectedType.id, null, form)}
                     onCancel={() => setAddingField(false)}
+                    enumTypesData={enumTypesData}
                   />
                 )}
 
@@ -460,6 +546,7 @@ export function ITILTypeDesignerPage() {
                             isSystem={true}
                             onSave={(form) => handleSaveField(selectedType.id, f.id, form)}
                             onCancel={() => setEditingFieldId(null)}
+                            enumTypesData={enumTypesData}
                           />
                         ) : (
                           <FieldRow
@@ -490,6 +577,7 @@ export function ITILTypeDesignerPage() {
                             isSystem={false}
                             onSave={(form) => handleSaveField(selectedType.id, f.id, form)}
                             onCancel={() => setEditingFieldId(null)}
+                            enumTypesData={enumTypesData}
                           />
                         ) : (
                           <FieldRow
