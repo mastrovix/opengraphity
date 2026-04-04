@@ -65,7 +65,10 @@
     "cmdbSync": "Sync CMDB",
     "bullBoard": "Coda Jobs",
     "monitoring": "Monitoring",
-    "auditLog": "Registro Audit"
+    "auditLog": "Registro Audit",
+    "approvals": "Approvazioni",
+    "knowledgeBase": "Knowledge Base",
+    "kbAdmin": "KB Admin"
   },
   "pages": {
     "incidents": {
@@ -573,7 +576,66 @@
         "pid":     "PID",
         "version": "Node.js"
       }
+    },
+    "approvals": {
+      "title":       "Approvazioni",
+      "subtitle":    "Gestisci le richieste di approvazione",
+      "tabMine":     "Da approvare",
+      "tabAll":      "Tutte",
+      "noPending":   "Nessuna approvazione in attesa",
+      "noApprovals": "Nessuna richiesta trovata",
+      "allStatuses": "Tutti gli stati"
+    },
+    "kb": {
+      "title":           "Knowledge Base",
+      "subtitle":        "Cerca articoli e soluzioni",
+      "searchPlaceholder": "Cerca articoli...",
+      "browseCategories": "Sfoglia per categoria",
+      "category":        "Categoria",
+      "noArticles":      "Nessun articolo trovato",
+      "articleNotFound": "Articolo non trovato",
+      "backToList":      "Torna alla lista",
+      "wasHelpful":      "Questo articolo ti è stato utile?",
+      "yes":             "Sì",
+      "no":              "No",
+      "thanks":          "Grazie per il tuo feedback!",
+      "related":         "Articoli correlati",
+      "info":            "Informazioni",
+      "author":          "Autore",
+      "published":       "Pubblicato",
+      "updated":         "Aggiornato",
+      "views":           "Visualizzazioni"
+    },
+    "kbAdmin": {
+      "title":       "Knowledge Base Admin",
+      "new":         "+ Nuovo articolo",
+      "newArticle":  "Nuovo articolo",
+      "editArticle": "Modifica articolo",
+      "created":     "Articolo creato",
+      "updated":     "Articolo aggiornato",
+      "deleted":     "Articolo eliminato",
+      "noArticles":  "Nessun articolo",
+      "allStatuses": "Tutti gli stati"
     }
+  },
+  "attachments": {
+    "title":       "Allegati",
+    "dropHint":    "Trascina qui i file o clicca per selezionare",
+    "maxSize":     "Max 10MB per file • PDF, Word, Excel, immagini, ZIP",
+    "uploading":   "Caricamento in corso...",
+    "uploaded":    "File caricato",
+    "deleted":     "Allegato eliminato",
+    "noAttachments": "Nessun allegato",
+    "invalidType": "Tipo file non consentito: {{type}}",
+    "tooLarge":    "File troppo grande (max 10MB)"
+  },
+  "comments": {
+    "title":        "Commenti",
+    "noComments":   "Nessun commento",
+    "placeholder":  "Scrivi un commento...",
+    "internal":     "Interno",
+    "internalNote": "Nota interna",
+    "send":         "Invia"
   },
   "itilDesigner": {
     "title":           "ITIL Type Designer",

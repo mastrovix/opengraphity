@@ -45,6 +45,10 @@ import { LogsPage } from '@/pages/logs/LogsPage'
 import { QueueStatsPage } from '@/pages/admin/QueueStatsPage'
 import { AuditLogPage } from '@/pages/admin/AuditLogPage'
 import { MonitoringPage } from '@/pages/admin/MonitoringPage'
+import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage'
+import { KnowledgeBasePage } from '@/pages/knowledge-base/KnowledgeBasePage'
+import { KBArticlePage } from '@/pages/knowledge-base/KBArticlePage'
+import { KBAdminPage } from '@/pages/admin/KBAdminPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
@@ -134,6 +138,10 @@ const router = createBrowserRouter([
       { path: 'admin/queues',              element: <QueueStatsPage />,          errorElement: <RouteError /> },
       { path: 'admin/audit',              element: <AuditLogPage />,            errorElement: <RouteError /> },
       { path: 'admin/monitoring',         element: <MonitoringPage />,          errorElement: <RouteError /> },
+      { path: 'admin/knowledge-base',     element: <KBAdminPage />,             errorElement: <RouteError /> },
+      { path: 'approvals',                element: <ApprovalsPage />,           errorElement: <RouteError /> },
+      { path: 'knowledge-base',           element: <KnowledgeBasePage />,       errorElement: <RouteError /> },
+      { path: 'knowledge-base/:slug',     element: <KBArticlePage />,           errorElement: <RouteError /> },
     ],
   },
 ])

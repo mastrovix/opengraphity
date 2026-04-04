@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
+import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { GET_ANOMALY_STATS } from '@/graphql/queries'
 import {
@@ -34,13 +35,23 @@ import {
   CircleUser,
   UserCircle,
   Tag,
+  CheckSquare,
+  BookOpen,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
 
+const MY_PENDING_APPROVALS_COUNT = gql`
+  query MyPendingApprovalsCount {
+    myPendingApprovals { id }
+  }
+`
+
 const NAV_ITEM_DEFS = [
-  { to: '/dashboard', labelKey: 'sidebar.dashboard', icon: LayoutDashboard },
+  { to: '/dashboard',      labelKey: 'sidebar.dashboard',     icon: LayoutDashboard },
+  { to: '/approvals',      labelKey: 'sidebar.approvals',     icon: CheckSquare },
+  { to: '/knowledge-base', labelKey: 'sidebar.knowledgeBase', icon: BookOpen },
 ]
 
 const ANALYSIS_ITEM_DEFS = [
@@ -69,9 +80,10 @@ const REPORTING_ITEM_DEFS = [
 ]
 
 const ADMIN_NAV_ITEM_DEFS = [
-  { to: '/logs',              labelKey: 'sidebar.logs',       icon: ScrollText  },
-  { to: '/admin/audit',       labelKey: 'sidebar.auditLog',   icon: ShieldCheck },
-  { to: '/admin/monitoring',  labelKey: 'sidebar.monitoring', icon: Activity    },
+  { to: '/logs',                   labelKey: 'sidebar.logs',          icon: ScrollText  },
+  { to: '/admin/audit',            labelKey: 'sidebar.auditLog',      icon: ShieldCheck },
+  { to: '/admin/monitoring',       labelKey: 'sidebar.monitoring',    icon: Activity    },
+  { to: '/admin/knowledge-base',   labelKey: 'sidebar.kbAdmin',       icon: BookOpen    },
 ]
 
 // ── colours ──────────────────────────────────────────────────────────────────
@@ -126,6 +138,12 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     { pollInterval: 60_000, fetchPolicy: 'cache-and-network' },
   )
   const anomalyCritical = anomalyStatsData?.anomalyStats?.critical ?? 0
+
+  const { data: pendingApprovalsData } = useQuery<{ myPendingApprovals: { id: string }[] }>(
+    MY_PENDING_APPROVALS_COUNT,
+    { pollInterval: 60_000, fetchPolicy: 'cache-and-network' },
+  )
+  const pendingApprovalsCount = pendingApprovalsData?.myPendingApprovals?.length ?? 0
 
   const navItemStyle = (isActive: boolean, isCollapsed: boolean): React.CSSProperties => ({
     display:         'flex',
@@ -256,6 +274,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {NAV_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => {
           const label = t(labelKey)
           const isActive = pathname === to || (to !== '/dashboard' && pathname.startsWith(to))
+          const badge = to === '/approvals' && pendingApprovalsCount > 0 ? pendingApprovalsCount : 0
 
           return (
             <NavLink
@@ -268,6 +287,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             >
               <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
               {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
+              {!collapsed && badge > 0 && (
+                <span
+                  aria-label={`${badge} approvazioni in attesa`}
+                  style={{ fontSize: 10, fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: 8, background: 'var(--danger)', color: '#fff' }}
+                >
+                  {badge}
+                </span>
+              )}
             </NavLink>
           )
         })}

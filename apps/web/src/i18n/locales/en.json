@@ -65,7 +65,10 @@
     "cmdbSync": "CMDB Sync",
     "bullBoard": "Job Queue",
     "monitoring": "Monitoring",
-    "auditLog": "Audit Log"
+    "auditLog": "Audit Log",
+    "approvals": "Approvals",
+    "knowledgeBase": "Knowledge Base",
+    "kbAdmin": "KB Admin"
   },
   "pages": {
     "incidents": {
@@ -573,7 +576,66 @@
         "pid":     "PID",
         "version": "Node.js"
       }
+    },
+    "approvals": {
+      "title":       "Approvals",
+      "subtitle":    "Manage approval requests",
+      "tabMine":     "Pending my approval",
+      "tabAll":      "All",
+      "noPending":   "No pending approvals",
+      "noApprovals": "No requests found",
+      "allStatuses": "All statuses"
+    },
+    "kb": {
+      "title":           "Knowledge Base",
+      "subtitle":        "Search articles and solutions",
+      "searchPlaceholder": "Search articles...",
+      "browseCategories": "Browse by category",
+      "category":        "Category",
+      "noArticles":      "No articles found",
+      "articleNotFound": "Article not found",
+      "backToList":      "Back to list",
+      "wasHelpful":      "Was this article helpful?",
+      "yes":             "Yes",
+      "no":              "No",
+      "thanks":          "Thank you for your feedback!",
+      "related":         "Related articles",
+      "info":            "Info",
+      "author":          "Author",
+      "published":       "Published",
+      "updated":         "Updated",
+      "views":           "Views"
+    },
+    "kbAdmin": {
+      "title":       "Knowledge Base Admin",
+      "new":         "+ New article",
+      "newArticle":  "New article",
+      "editArticle": "Edit article",
+      "created":     "Article created",
+      "updated":     "Article updated",
+      "deleted":     "Article deleted",
+      "noArticles":  "No articles",
+      "allStatuses": "All statuses"
     }
+  },
+  "attachments": {
+    "title":       "Attachments",
+    "dropHint":    "Drag files here or click to select",
+    "maxSize":     "Max 10MB per file • PDF, Word, Excel, images, ZIP",
+    "uploading":   "Uploading...",
+    "uploaded":    "File uploaded",
+    "deleted":     "Attachment deleted",
+    "noAttachments": "No attachments",
+    "invalidType": "File type not allowed: {{type}}",
+    "tooLarge":    "File too large (max 10MB)"
+  },
+  "comments": {
+    "title":        "Comments",
+    "noComments":   "No comments yet",
+    "placeholder":  "Write a comment...",
+    "internal":     "Internal",
+    "internalNote": "Internal note",
+    "send":         "Send"
   },
   "itilDesigner": {
     "title":           "ITIL Type Designer",

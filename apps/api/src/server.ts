@@ -16,6 +16,7 @@ import { sseRouter } from './rest/sse.js'
 import { reportStreamRouter } from './rest/report-stream.js'
 import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
+import { attachmentRouter } from './rest/attachments.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import { graphqlRateLimiterMiddleware } from './middleware/graphqlRateLimiter.js'
 import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
@@ -144,6 +145,7 @@ app.use('/',    healthRouter)
 app.use('/api', sseRouter)
 app.use('/api', reportStreamRouter)
 app.use('/api', clientLogRouter)
+app.use('/api', attachmentRouter)
 
 // ── startServer ───────────────────────────────────────────────────────────────
 

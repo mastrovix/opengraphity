@@ -14,6 +14,10 @@ import { topologySDL } from './schema-topology.js'
 import { discoverySDL } from './schema-discovery.js'
 import { adminSDL } from './schema-admin.js'
 import { monitoringSDL } from './schema-monitoring.js'
+import { approvalSDL } from './schema-approval.js'
+import { attachmentsSDL } from './schema-attachments.js'
+import { commentsSDL } from './schema-comments.js'
+import { knowledgeBaseSDL } from './schema-kb.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -114,6 +118,22 @@ export function buildBaseSDL(): string {
 
     # Audit Log (admin only)
     auditLog(page: Int, pageSize: Int, action: String, entityType: String, fromDate: String, toDate: String): AuditEntriesResult!
+
+    # Approval Workflow
+    approvalRequests(status: String, entityType: String, page: Int, pageSize: Int): ApprovalRequestsResult!
+    myPendingApprovals: [ApprovalRequest!]!
+
+    # Attachments
+    attachments(entityType: String!, entityId: String!): [Attachment!]!
+
+    # Comments
+    comments(entityType: String!, entityId: String!, includeInternal: Boolean): [EntityComment!]!
+
+    # Knowledge Base
+    kbArticles(search: String, category: String, status: String, page: Int, pageSize: Int): KBArticlesResult!
+    kbArticle(id: ID!): KBArticle!
+    kbArticleBySlug(slug: String!): KBArticle!
+    kbCategories: [KBCategory!]!
 
     # Discovery / Sync
     syncSources: [SyncSource!]!
@@ -283,6 +303,26 @@ export function buildBaseSDL(): string {
     createEnumType(input: CreateEnumTypeInput!): EnumTypeDefinition!
     updateEnumType(id: ID!, input: UpdateEnumTypeInput!): EnumTypeDefinition!
     deleteEnumType(id: ID!): Boolean!
+
+    # Approval Workflow
+    createApprovalRequest(entityType: String!, entityId: String!, title: String!, description: String, approvers: [String!]!, approvalType: String, dueDate: String): ApprovalRequest!
+    approveRequest(id: ID!, note: String): ApprovalRequest!
+    rejectRequest(id: ID!, note: String!): ApprovalRequest!
+    cancelApprovalRequest(id: ID!): ApprovalRequest!
+
+    # Attachments
+    deleteAttachment(id: ID!): Boolean!
+
+    # Comments
+    addComment(entityType: String!, entityId: String!, body: String!, isInternal: Boolean): EntityComment!
+    updateComment(id: ID!, body: String!): EntityComment!
+    deleteComment(id: ID!): Boolean!
+
+    # Knowledge Base
+    createKBArticle(title: String!, body: String!, category: String!, tags: [String!], status: String): KBArticle!
+    updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!], status: String): KBArticle!
+    deleteKBArticle(id: ID!): Boolean!
+    rateKBArticle(id: ID!, helpful: Boolean!): KBArticle!
   }
 
   # ── Domain enums ─────────────────────────────────────────────────────────────
@@ -307,5 +347,9 @@ export function buildBaseSDL(): string {
   ${monitoringSDL()}
   ${cmdbSDL()}
   ${enumTypeSDL()}
+  ${approvalSDL()}
+  ${attachmentsSDL()}
+  ${commentsSDL()}
+  ${knowledgeBaseSDL()}
   `
 }
