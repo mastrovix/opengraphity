@@ -116,9 +116,13 @@ export const CHANGE_BACK   = new Set(['rejected→draft'])
 // ── Step node visual ──────────────────────────────────────────────────────────
 
 export const STEP_BG: Record<string, string> = {
-  start:    '#ECFDF5',
-  end:      '#F9FAFB',
-  standard: '#FFFFFF',
+  start:          '#ECFDF5',
+  end:            '#F9FAFB',
+  standard:       '#FFFFFF',
+  parallel_fork:  '#EFF6FF',
+  parallel_join:  '#F0FDF4',
+  timer_wait:     '#FFF7ED',
+  sub_workflow:   '#F5F3FF',
 }
 
 export const TRIGGER_COLOR: Record<string, string> = {
@@ -171,7 +175,13 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         borderRadius:    4,
         marginBottom:    6,
       }}>
-        {step.type === 'start' ? 'START' : step.type === 'end' ? 'END' : step.name.replace(/_/g, ' ')}
+        {step.type === 'start'         ? 'START'
+        : step.type === 'end'           ? 'END'
+        : step.type === 'parallel_fork' ? '⑂ FORK'
+        : step.type === 'parallel_join' ? '⑂ JOIN'
+        : step.type === 'timer_wait'    ? '⏱ TIMER'
+        : step.type === 'sub_workflow'  ? '⊞ SUB'
+        : step.name.replace(/_/g, ' ')}
       </div>
 
       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-slate-dark)', lineHeight: 1.3, marginBottom: 4 }}>

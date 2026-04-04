@@ -665,6 +665,8 @@ export const UPDATE_NOTIFICATION_RULE = gql`
   mutation UpdateNotificationRule($id: ID!, $input: UpdateNotificationRuleInput!) {
     updateNotificationRule(id: $id, input: $input) {
       id eventType enabled severityOverride titleKey channels target isSeed
+      escalationDelayMinutes escalationTarget escalationMessage
+      slaWarningThresholdPercent slaWarningTarget digestTime digestRecipients
     }
   }
 `
@@ -673,6 +675,8 @@ export const CREATE_NOTIFICATION_RULE = gql`
   mutation CreateNotificationRule($input: CreateNotificationRuleInput!) {
     createNotificationRule(input: $input) {
       id eventType enabled severityOverride titleKey channels target isSeed
+      escalationDelayMinutes escalationTarget escalationMessage
+      slaWarningThresholdPercent slaWarningTarget digestTime digestRecipients
     }
   }
 `
@@ -740,5 +744,33 @@ export const UPDATE_ENUM_TYPE = gql`
 export const DELETE_ENUM_TYPE = gql`
   mutation DeleteEnumType($id: ID!) {
     deleteEnumType(id: $id)
+  }
+`
+
+export const ADD_WORKFLOW_STEP = gql`
+  mutation AddWorkflowStep($definitionId: ID!, $name: String!, $label: String!, $type: String!, $timerDelayMinutes: Int, $subWorkflowId: String) {
+    addWorkflowStep(definitionId: $definitionId, name: $name, label: $label, type: $type, timerDelayMinutes: $timerDelayMinutes, subWorkflowId: $subWorkflowId) {
+      id name version steps { id name label type timerDelayMinutes subWorkflowId }
+    }
+  }
+`
+
+export const REMOVE_WORKFLOW_STEP = gql`
+  mutation RemoveWorkflowStep($definitionId: ID!, $stepName: String!) {
+    removeWorkflowStep(definitionId: $definitionId, stepName: $stepName) {
+      id name version steps { id name label type }
+    }
+  }
+`
+
+export const EXPORT_REPORT_PDF = gql`
+  mutation ExportReportPDF($templateId: ID!) {
+    exportReportPDF(templateId: $templateId)
+  }
+`
+
+export const EXPORT_REPORT_EXCEL = gql`
+  mutation ExportReportExcel($templateId: ID!) {
+    exportReportExcel(templateId: $templateId)
   }
 `

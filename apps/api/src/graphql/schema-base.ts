@@ -142,6 +142,7 @@ export function buildBaseSDL(): string {
     syncConflicts(sourceId: ID, status: String, limit: Int, offset: Int): SyncConflictsResult!
     syncStats(sourceId: ID): SyncStats!
     availableConnectors: [ConnectorInfo!]!
+    syncChangeHistory(ciId: ID!, limit: Int, offset: Int): SyncChangeRecordsResult!
   }
 
   type AuthPayload {
@@ -216,6 +217,20 @@ export function buildBaseSDL(): string {
     assignCISupportGroup(ciId: ID!, teamId: ID!): CIBase!
 
     # Workflow
+    addWorkflowStep(
+      definitionId:      ID!
+      name:              String!
+      label:             String!
+      type:              String!
+      timerDelayMinutes: Int
+      subWorkflowId:     String
+    ): WorkflowDefinition!
+
+    removeWorkflowStep(
+      definitionId: ID!
+      stepName:     String!
+    ): WorkflowDefinition!
+
     updateWorkflowStep(
       definitionId: ID!
       stepName:     String!
@@ -323,6 +338,10 @@ export function buildBaseSDL(): string {
     updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!], status: String): KBArticle!
     deleteKBArticle(id: ID!): Boolean!
     rateKBArticle(id: ID!, helpful: Boolean!): KBArticle!
+
+    # Report Export
+    exportReportPDF(templateId: ID!): String!
+    exportReportExcel(templateId: ID!): String!
   }
 
   # ── Domain enums ─────────────────────────────────────────────────────────────

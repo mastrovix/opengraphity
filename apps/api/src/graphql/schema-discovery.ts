@@ -104,6 +104,22 @@ export function discoverySDL(): string {
     details: String
   }
 
+  type SyncChangeRecord {
+    id:         ID!
+    ciId:       String!
+    sourceId:   String!
+    tenantId:   String!
+    changedAt:  String!
+    changedFields: String!
+    oldValues:  String!
+    newValues:  String!
+  }
+
+  type SyncChangeRecordsResult {
+    items: [SyncChangeRecord!]!
+    total: Int!
+  }
+
   input CreateSyncSourceInput {
     name:           String!
     connectorType:  String!

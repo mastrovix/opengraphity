@@ -221,12 +221,18 @@ async function updateCI(
 ): Promise<boolean> {
   const newProps = normalizeProperties(ci.properties)
   const updates: Record<string, unknown> = {}
+  const changedFields: string[] = []
+  const oldValues: Record<string, unknown> = {}
+  const newValues: Record<string, unknown> = {}
 
   for (const [k, v] of Object.entries(newProps)) {
     if (SYSTEM_FIELDS.has(k)) continue
     if (existing.discoveryLocked.includes(k)) continue
     if (String(existing.props[k]) !== String(v)) {
       updates[k] = v
+      changedFields.push(k)
+      oldValues[k] = existing.props[k]
+      newValues[k] = v
     }
   }
 
@@ -235,12 +241,37 @@ async function updateCI(
   updates['discovery_status']     = 'active'
   updates['updated_at']           = now
 
-  if (Object.keys(updates).length <= 3) return false   // only meta fields changed
+  if (changedFields.length === 0) return false
 
   const setClause = Object.keys(updates).map(k => `ci.${k} = $${k}`).join(', ')
   await session.executeWrite(tx => tx.run(
     `MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId}) SET ${setClause}`,
     { id: existing.id, tenantId, ...updates },
+  ))
+
+  // Record the change for sync history
+  const changeId = randomUUID()
+  await session.executeWrite(tx => tx.run(
+    `CREATE (r:SyncChangeRecord {
+       id:             $id,
+       ci_id:          $ciId,
+       source_id:      $sourceId,
+       tenant_id:      $tenantId,
+       changed_at:     $changedAt,
+       changed_fields: $changedFields,
+       old_values:     $oldValues,
+       new_values:     $newValues
+     })`,
+    {
+      id:            changeId,
+      ciId:          existing.id,
+      sourceId:      source.id,
+      tenantId,
+      changedAt:     now,
+      changedFields: JSON.stringify(changedFields),
+      oldValues:     JSON.stringify(oldValues),
+      newValues:     JSON.stringify(newValues),
+    },
   ))
 
   return true

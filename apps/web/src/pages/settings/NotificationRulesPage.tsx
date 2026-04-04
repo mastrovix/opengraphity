@@ -17,6 +17,13 @@ interface NotificationRule {
   channels:         string[]
   target:           string
   isSeed:           boolean
+  escalationDelayMinutes?:     number | null
+  escalationTarget?:           string | null
+  escalationMessage?:          string | null
+  slaWarningThresholdPercent?: number | null
+  slaWarningTarget?:           string | null
+  digestTime?:                 string | null
+  digestRecipients?:           string[] | null
 }
 
 interface UpdateInput {
@@ -33,6 +40,13 @@ interface CreateInput {
   titleKey:         string
   channels:         string[]
   target:           string
+  escalationDelayMinutes?:     number | null
+  escalationTarget?:           string | null
+  escalationMessage?:          string | null
+  slaWarningThresholdPercent?: number | null
+  slaWarningTarget?:           string | null
+  digestTime?:                 string | null
+  digestRecipients?:           string[] | null
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -40,9 +54,11 @@ interface CreateInput {
 const STANDARD_EVENTS = [
   'incident.created', 'incident.assigned', 'incident.in_progress',
   'incident.on_hold', 'incident.escalated', 'incident.resolved', 'incident.closed',
+  'incident.escalation',
   'change.approved', 'change.completed', 'change.failed', 'change.rejected', 'change.task_assigned',
   'problem.created', 'problem.under_investigation', 'problem.deferred', 'problem.resolved', 'problem.closed',
   'sla.warning', 'sla.breached',
+  'digest.daily',
 ]
 
 const CATEGORIES: { key: string; events: string[] }[] = [
@@ -70,6 +86,14 @@ const CATEGORIES: { key: string; events: string[] }[] = [
   {
     key: 'SLA',
     events: ['sla.warning', 'sla.breached'],
+  },
+  {
+    key: 'Escalation',
+    events: ['incident.escalation'],
+  },
+  {
+    key: 'Digest',
+    events: ['digest.daily'],
   },
 ]
 
@@ -252,16 +276,28 @@ function NewRuleDialog({
   saving:  boolean
 }) {
   const { t } = useTranslation()
-  const [eventTypeSelect, setEventTypeSelect] = useState('')
-  const [customEventType, setCustomEventType] = useState('')
-  const [titleKey,         setTitleKey]        = useState('')
-  const [severity,         setSeverity]        = useState<string>('info')
-  const [channels,         setChannels]        = useState<string[]>(['in_app'])
-  const [target,           setTarget]          = useState('all')
+  const [eventTypeSelect, setEventTypeSelect]   = useState('')
+  const [customEventType, setCustomEventType]   = useState('')
+  const [titleKey,         setTitleKey]          = useState('')
+  const [severity,         setSeverity]          = useState<string>('info')
+  const [channels,         setChannels]          = useState<string[]>(['in_app'])
+  const [target,           setTarget]            = useState('all')
+  // Escalation fields
+  const [escalationDelay,   setEscalationDelay]  = useState('')
+  const [escalationTarget,  setEscalationTarget] = useState('')
+  const [escalationMessage, setEscalationMessage]= useState('')
+  // SLA warning fields
+  const [slaThreshold,     setSlaThreshold]      = useState('80')
+  const [slaTarget,        setSlaTarget]         = useState('all')
+  // Digest fields
+  const [digestTime,       setDigestTime]        = useState('08:00')
 
-  const isCustom     = eventTypeSelect === CUSTOM_SENTINEL
-  const eventType    = isCustom ? customEventType.trim() : eventTypeSelect
-  const canSave      = !!eventType && !!titleKey.trim() && channels.length > 0
+  const isCustom          = eventTypeSelect === CUSTOM_SENTINEL
+  const eventType         = isCustom ? customEventType.trim() : eventTypeSelect
+  const isEscalation      = eventType === 'incident.escalation'
+  const isSlaWarning      = eventType === 'sla.warning'
+  const isDigest          = eventType === 'digest.daily'
+  const canSave           = !!eventType && !!titleKey.trim() && channels.length > 0
 
   const toggleCh = (ch: string) =>
     setChannels((prev) => prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch])
@@ -377,6 +413,46 @@ function NewRuleDialog({
           </select>
         </label>
 
+        {/* Escalation conditional fields */}
+        {isEscalation && (
+          <>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>Ritardo escalation (minuti)</span>
+              <input type="number" min={1} value={escalationDelay} onChange={e => setEscalationDelay(e.target.value)} style={inputStyle} placeholder="es. 30" />
+            </label>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>Target escalation (userId o &apos;all&apos;)</span>
+              <input value={escalationTarget} onChange={e => setEscalationTarget(e.target.value)} style={inputStyle} placeholder="all" />
+            </label>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>Messaggio escalation</span>
+              <input value={escalationMessage} onChange={e => setEscalationMessage(e.target.value)} style={inputStyle} placeholder="Incident non risolto dopo N minuti" />
+            </label>
+          </>
+        )}
+
+        {/* SLA warning conditional fields */}
+        {isSlaWarning && (
+          <>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>Soglia avviso SLA (%)</span>
+              <input type="number" min={1} max={100} value={slaThreshold} onChange={e => setSlaThreshold(e.target.value)} style={inputStyle} placeholder="80" />
+            </label>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>Target avviso SLA</span>
+              <input value={slaTarget} onChange={e => setSlaTarget(e.target.value)} style={inputStyle} placeholder="all" />
+            </label>
+          </>
+        )}
+
+        {/* Digest conditional fields */}
+        {isDigest && (
+          <label style={labelStyle}>
+            <span style={labelTextStyle}>Orario digest (HH:MM)</span>
+            <input type="time" value={digestTime} onChange={e => setDigestTime(e.target.value)} style={inputStyle} />
+          </label>
+        )}
+
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
           <button
@@ -389,7 +465,15 @@ function NewRuleDialog({
             {t('notificationRules.cancel')}
           </button>
           <button
-            onClick={() => onSave({ eventType, titleKey: titleKey.trim(), severityOverride: severity, channels, target, enabled: true })}
+            onClick={() => onSave({
+              eventType, titleKey: titleKey.trim(), severityOverride: severity, channels, target, enabled: true,
+              escalationDelayMinutes: isEscalation && escalationDelay ? Number(escalationDelay) : undefined,
+              escalationTarget:  isEscalation ? escalationTarget || undefined : undefined,
+              escalationMessage: isEscalation ? escalationMessage || undefined : undefined,
+              slaWarningThresholdPercent: isSlaWarning && slaThreshold ? Number(slaThreshold) : undefined,
+              slaWarningTarget: isSlaWarning ? slaTarget || undefined : undefined,
+              digestTime: isDigest ? digestTime || undefined : undefined,
+            })}
             disabled={!canSave || saving}
             style={{
               padding: '8px 18px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: fontWeight.semibold,

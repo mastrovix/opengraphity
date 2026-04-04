@@ -123,12 +123,14 @@ export class WorkflowEngine {
             wi,
             currentStep.id           AS currentStepId,
             currentStep.exit_actions AS exitActions,
-            nextStep.id              AS nextStepId,
-            nextStep.name            AS nextStepName,
-            nextStep.type            AS nextStepType,
-            nextStep.enter_actions   AS nextEnterActions,
-            tr.condition             AS condition,
-            exec.entered_at          AS enteredAt
+            nextStep.id                   AS nextStepId,
+            nextStep.name                 AS nextStepName,
+            nextStep.type                 AS nextStepType,
+            nextStep.enter_actions        AS nextEnterActions,
+            nextStep.timer_delay_minutes  AS timerDelayMinutes,
+            nextStep.sub_workflow_id      AS subWorkflowId,
+            tr.condition                  AS condition,
+            exec.entered_at               AS enteredAt
           LIMIT 1
         `, { instanceId: input.instanceId, toStepName: input.toStepName }),
       )
@@ -140,15 +142,17 @@ export class WorkflowEngine {
         } as unknown as TransitionResult
       }
 
-      const rec          = stateResult.records[0]
-      const wi           = rec.get('wi').properties as Record<string, unknown>
-      const nextStepId   = rec.get('nextStepId')    as string
-      const nextStepName = rec.get('nextStepName')  as string
-      const nextStepType = rec.get('nextStepType')  as string
-      const condition    = rec.get('condition')     as string | null
-      const enteredAt    = rec.get('enteredAt')     as string | null
-      const exitActionsRaw   = rec.get('exitActions')    as string | null
-      const enterActionsRaw  = rec.get('nextEnterActions') as string | null
+      const rec               = stateResult.records[0]
+      const wi                = rec.get('wi').properties as Record<string, unknown>
+      const nextStepId        = rec.get('nextStepId')         as string
+      const nextStepName      = rec.get('nextStepName')       as string
+      const nextStepType      = rec.get('nextStepType')       as string
+      const timerDelayMinutes = rec.get('timerDelayMinutes')  as number | null
+      const subWorkflowId     = rec.get('subWorkflowId')      as string | null
+      const condition         = rec.get('condition')          as string | null
+      const enteredAt         = rec.get('enteredAt')          as string | null
+      const exitActionsRaw    = rec.get('exitActions')        as string | null
+      const enterActionsRaw   = rec.get('nextEnterActions')   as string | null
 
       // 2. Verifica condizione
       if (condition === 'rootCause != null' && !input.notes) {
@@ -267,6 +271,39 @@ export class WorkflowEngine {
           workflowLogger.error({ err: e, actionType: action.type }, 'Workflow action failed')
           // Non bloccare la transizione se un'azione fallisce
         }
+      }
+
+      // Schedule timer job when entering timer_wait step
+      if (nextStepType === 'timer_wait' && timerDelayMinutes && timerDelayMinutes > 0) {
+        try {
+          const { Queue } = await import('bullmq')
+          const { getRedisOptions } = await import('@opengraphity/events')
+          const queue = new Queue('notification-jobs', { connection: getRedisOptions() })
+          // Find the automatic transition from this step to know where to go
+          const nextTransRes = await session.executeRead(tx =>
+            tx.run(`
+              MATCH (step:WorkflowStep {id: $stepId})-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(nextStep:WorkflowStep)
+              RETURN nextStep.name AS toStep LIMIT 1
+            `, { stepId: nextStepId }),
+          )
+          const toStep = nextTransRes.records[0]?.get('toStep') as string | null
+          if (toStep) {
+            await queue.add('timer_wait', {
+              instanceId: input.instanceId,
+              toStep,
+              tenantId:   wi['tenant_id'] as string,
+            }, { delay: timerDelayMinutes * 60 * 1000 })
+            workflowLogger.info({ instanceId: input.instanceId, toStep, delayMinutes: timerDelayMinutes }, '[workflow-engine] timer_wait job scheduled')
+          }
+          await queue.close()
+        } catch (e) {
+          workflowLogger.error({ err: e }, '[workflow-engine] failed to schedule timer_wait job')
+        }
+      }
+
+      // Schedule sub_workflow creation when entering sub_workflow step
+      if (nextStepType === 'sub_workflow' && subWorkflowId) {
+        workflowLogger.info({ instanceId: input.instanceId, subWorkflowId }, '[workflow-engine] sub_workflow step entered — sub-workflow definitionId stored')
       }
 
       return {

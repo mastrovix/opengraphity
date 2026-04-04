@@ -76,6 +76,7 @@ export function WorkflowDesignerPage() {
         hasChanges={hasChanges}
         pendingCount={pendingChanges.length}
         onSave={handleSave}
+        onRefetch={refetch}
       />
 
       <WorkflowCanvas

@@ -26,6 +26,7 @@ import { approvalResolvers } from './approval.js'
 import { attachmentResolvers } from './attachments.js'
 import { commentResolvers } from './comments.js'
 import { knowledgeBaseResolvers } from './knowledgeBase.js'
+import { reportExportResolvers } from './reportExport.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -160,6 +161,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...attachmentResolvers.Mutation,
       ...commentResolvers.Mutation,
       ...knowledgeBaseResolvers.Mutation,
+      ...reportExportResolvers.Mutation,
     },
     Incident: {
       ...incidentResolvers.Incident,

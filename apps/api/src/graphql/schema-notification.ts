@@ -23,6 +23,16 @@ export function notificationSDL(): string {
     target:           String!
     conditions:       String
     isSeed:           Boolean!
+    # Escalation fields (eventType = 'incident.escalation')
+    escalationDelayMinutes: Int
+    escalationTarget:       String
+    escalationMessage:      String
+    # SLA warning fields (eventType = 'sla.warning')
+    slaWarningThresholdPercent: Int
+    slaWarningTarget:           String
+    # Digest fields (eventType = 'digest.daily')
+    digestTime:       String
+    digestRecipients: [String!]
   }
 
   input CreateNotificationChannelInput {
@@ -40,6 +50,16 @@ export function notificationSDL(): string {
     titleKey:         String!
     channels:         [String!]!
     target:           String!
+    # Escalation
+    escalationDelayMinutes: Int
+    escalationTarget:       String
+    escalationMessage:      String
+    # SLA warning
+    slaWarningThresholdPercent: Int
+    slaWarningTarget:           String
+    # Digest
+    digestTime:       String
+    digestRecipients: [String!]
   }
 
   input UpdateNotificationRuleInput {
@@ -47,6 +67,16 @@ export function notificationSDL(): string {
     severityOverride: String
     channels:         [String!]
     target:           String
+    # Escalation
+    escalationDelayMinutes: Int
+    escalationTarget:       String
+    escalationMessage:      String
+    # SLA warning
+    slaWarningThresholdPercent: Int
+    slaWarningTarget:           String
+    # Digest
+    digestTime:       String
+    digestRecipients: [String!]
   }
   `
 }

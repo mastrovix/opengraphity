@@ -4,9 +4,11 @@ export interface WFStep {
   id:           string
   name:         string
   label:        string
-  type:         'start' | 'standard' | 'end'
+  type:         'start' | 'standard' | 'end' | 'parallel_fork' | 'parallel_join' | 'timer_wait' | 'sub_workflow'
   enterActions: string | null
   exitActions:  string | null
+  timerDelayMinutes?: number | null
+  subWorkflowId?:     string | null
 }
 
 export interface WFTransition {

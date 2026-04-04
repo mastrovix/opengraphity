@@ -207,6 +207,43 @@ export const syncResolvers = {
       })
     },
 
+    syncChangeHistory: async (
+      _: unknown,
+      args: { ciId: string; limit?: number; offset?: number },
+      ctx: GraphQLContext,
+    ) => {
+      return withSession(async (session) => {
+        const limit  = args.limit  ?? 50
+        const offset = args.offset ?? 0
+        const result = await session.executeRead(tx =>
+          tx.run(`
+            MATCH (r:SyncChangeRecord {ci_id: $ciId, tenant_id: $tenantId})
+            RETURN properties(r) AS p
+            ORDER BY r.changed_at DESC
+            SKIP toInteger($offset) LIMIT toInteger($limit)
+          `, { ciId: args.ciId, tenantId: ctx.tenantId, offset, limit }),
+        )
+        const countRes = await session.executeRead(tx =>
+          tx.run(`MATCH (r:SyncChangeRecord {ci_id: $ciId, tenant_id: $tenantId}) RETURN count(r) AS cnt`, { ciId: args.ciId, tenantId: ctx.tenantId }),
+        )
+        const total = toNum(countRes.records[0]?.get('cnt') ?? 0)
+        const items = result.records.map(rec => {
+          const p = rec.get('p') as Props
+          return {
+            id:            toStr(p['id']),
+            ciId:          toStr(p['ci_id']),
+            sourceId:      toStr(p['source_id']),
+            tenantId:      toStr(p['tenant_id']),
+            changedAt:     toStr(p['changed_at']),
+            changedFields: toStr(p['changed_fields'] ?? '[]'),
+            oldValues:     toStr(p['old_values']     ?? '{}'),
+            newValues:     toStr(p['new_values']     ?? '{}'),
+          }
+        })
+        return { items, total }
+      })
+    },
+
     availableConnectors: (_: unknown, __: unknown, _ctx: GraphQLContext) => {
       return getAllConnectors().map(c => ({
         type:             c.type,

@@ -30,12 +30,14 @@ export function workflowSDL(): string {
   }
 
   type WorkflowStep {
-    id:           ID!
-    name:         String!
-    label:        String!
-    type:         String!
-    enterActions: String
-    exitActions:  String
+    id:                  ID!
+    name:                String!
+    label:               String!
+    type:                String!
+    enterActions:        String
+    exitActions:         String
+    timerDelayMinutes:   Int
+    subWorkflowId:       String
   }
 
   type WorkflowTransitionDef {

@@ -15,7 +15,7 @@ registerSessionTracker((durationMs, query) => {
 })
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
-import { startWorkflowJobWorker } from './jobs/workflowJobWorker.js'
+import { startWorkflowJobWorker, startNotificationJobWorker } from './jobs/workflowJobWorker.js'
 import { registerAllConnectors } from './discovery/registerConnectors.js'
 import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
 import { startMaintenanceWorker } from './workers/maintenance.worker.js'
@@ -37,6 +37,9 @@ async function main() {
 
   // Start workflow job worker (BullMQ, processes auto_close and other scheduled jobs)
   const workflowWorker = startWorkflowJobWorker()
+
+  // Start notification job worker (escalation_check, digest, timer_wait)
+  const _notificationWorker = startNotificationJobWorker()
 
   // Register discovery connectors and start sync worker
   registerAllConnectors()

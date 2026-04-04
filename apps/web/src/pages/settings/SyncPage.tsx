@@ -86,6 +86,12 @@ const TEST_CONNECTION = gql`
   }
 `
 
+const UPDATE_SYNC_SOURCE = gql`
+  mutation UpdateSyncSource($id: ID!, $input: UpdateSyncSourceInput!) {
+    updateSyncSource(id: $id, input: $input) { id scheduleCron enabled }
+  }
+`
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SyncSource {
@@ -308,6 +314,14 @@ function StatsBar({ stats }: { stats: SyncStats }) {
   )
 }
 
+const CRON_PRESETS = [
+  { label: 'Every hour',       value: '0 * * * *' },
+  { label: 'Every 6 hours',    value: '0 */6 * * *' },
+  { label: 'Every 12 hours',   value: '0 */12 * * *' },
+  { label: 'Daily at midnight',value: '0 0 * * *' },
+  { label: 'Custom…',          value: '__custom__' },
+]
+
 function SourcesTab() {
   const { t } = useTranslation()
   const { data, loading } = useQuery(SYNC_SOURCES)
@@ -315,8 +329,12 @@ function SourcesTab() {
   const [deleteSource] = useMutation(DELETE_SYNC_SOURCE, { refetchQueries: ['SyncSources', 'SyncStats'] })
   const [triggerSync]  = useMutation(TRIGGER_SYNC,  { refetchQueries: ['SyncRuns'] })
   const [testConn]     = useMutation(TEST_CONNECTION)
+  const [updateSource] = useMutation(UPDATE_SYNC_SOURCE, { refetchQueries: ['SyncSources'] })
 
-  const [showCreate, setShowCreate] = useState(false)
+  const [showCreate,   setShowCreate]   = useState(false)
+  const [schedSource,  setSchedSource]  = useState<SyncSource | null>(null)
+  const [schedPreset,  setSchedPreset]  = useState('0 */6 * * *')
+  const [schedCustom,  setSchedCustom]  = useState('')
   const [selectedType, setSelectedType] = useState('')
   const [form, setForm] = useState<Record<string, string>>({})
   const [credForm, setCredForm] = useState<Record<string, string>>({})
@@ -382,6 +400,25 @@ function SourcesTab() {
     }
   }
 
+  function openSchedule(s: SyncSource) {
+    const preset = CRON_PRESETS.find(p => p.value === s.scheduleCron && p.value !== '__custom__')
+    if (preset) { setSchedPreset(preset.value); setSchedCustom('') }
+    else         { setSchedPreset('__custom__'); setSchedCustom(s.scheduleCron ?? '') }
+    setSchedSource(s)
+  }
+
+  async function handleSaveSchedule() {
+    if (!schedSource) return
+    const cron = schedPreset === '__custom__' ? schedCustom.trim() : schedPreset
+    try {
+      await updateSource({ variables: { id: schedSource.id, input: { scheduleCron: cron || null } } })
+      toast.success('Schedule saved')
+      setSchedSource(null)
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
   if (loading) return <div style={{ padding: 24, color: '#6b7280' }}>Loading…</div>
 
   return (
@@ -418,13 +455,40 @@ function SourcesTab() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => handleTest(s.id)}   style={btnStyle('#fff', '#374151')}>Test</button>
-              <button onClick={() => handleTrigger(s.id)} style={btnStyle('#2563eb', '#fff')}><Play size={12} />Sync Now</button>
-              <button onClick={() => handleDelete(s.id)}  style={btnStyle('#fff', '#dc2626')}><Trash2 size={12} /></button>
+              <button onClick={() => handleTest(s.id)}     style={btnStyle('#fff', '#374151')}>Test</button>
+              <button onClick={() => openSchedule(s)}      style={btnStyle('#fff', '#7c3aed')}><Clock size={12} />Schedule</button>
+              <button onClick={() => handleTrigger(s.id)}  style={btnStyle('#2563eb', '#fff')}><Play size={12} />Sync Now</button>
+              <button onClick={() => handleDelete(s.id)}   style={btnStyle('#fff', '#dc2626')}><Trash2 size={12} /></button>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Schedule modal */}
+      {schedSource && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: 24, width: 400 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Schedule — {schedSource.name}</h3>
+              <button onClick={() => setSchedSource(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={18} /></button>
+            </div>
+            <label style={labelStyle}>Cron preset</label>
+            <select style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
+              {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+            {schedPreset === '__custom__' && (
+              <>
+                <label style={{ ...labelStyle, marginTop: 8 }}>Custom cron expression</label>
+                <input style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder="e.g. 0 */4 * * *" />
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={() => setSchedSource(null)} style={{ ...btnStyle('#fff', '#374151') }}>Cancel</button>
+              <button onClick={() => void handleSaveSchedule()} style={{ ...btnStyle('#2563eb', '#fff') }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create modal */}
       {showCreate && (

@@ -13,8 +13,11 @@ import {
   ADD_REPORT_SECTION,
   UPDATE_REPORT_SECTION,
   REMOVE_REPORT_SECTION,
+  EXPORT_REPORT_PDF,
+  EXPORT_REPORT_EXCEL,
 } from '@/graphql/mutations'
 import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon, LayoutGrid } from 'lucide-react'
+import { toast } from 'sonner'
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
 import { ReportSectionBuilder, type ReportSectionInput } from '@/components/ReportSectionBuilder'
 
@@ -131,6 +134,31 @@ export function CustomReportsPage() {
   const [addSection]    = useMutation(ADD_REPORT_SECTION,    { onCompleted: () => { refetch(); setView('detail') } })
   const [updateSection] = useMutation(UPDATE_REPORT_SECTION, { onCompleted: () => { refetch(); setView('detail') } })
   const [removeSection] = useMutation(REMOVE_REPORT_SECTION, { onCompleted: () => refetch() })
+
+  const [exportPDF,   { loading: exportingPDF }]   = useMutation<{ exportReportPDF: string }>(EXPORT_REPORT_PDF, {
+    onError: (e: { message: string }) => toast.error(e.message),
+  })
+  const [exportExcel, { loading: exportingExcel }] = useMutation<{ exportReportExcel: string }>(EXPORT_REPORT_EXCEL, {
+    onError: (e: { message: string }) => toast.error(e.message),
+  })
+
+  function triggerDownload(url: string) {
+    const a = document.createElement('a')
+    a.href = url
+    a.click()
+  }
+
+  async function handleExportPDF() {
+    if (!selectedId) return
+    const res = await exportPDF({ variables: { templateId: selectedId } })
+    if (res.data?.exportReportPDF) triggerDownload(res.data.exportReportPDF)
+  }
+
+  async function handleExportExcel() {
+    if (!selectedId) return
+    const res = await exportExcel({ variables: { templateId: selectedId } })
+    if (res.data?.exportReportExcel) triggerDownload(res.data.exportReportExcel)
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -358,6 +386,12 @@ export function CustomReportsPage() {
               disabled={execLoading}
               style={{ ...btnGhost, fontSize: 12 }}
             >{execLoading ? tr('common.loading') : `▶ ${tr('pages.reportBuilder.execute')}`}</button>
+            <button onClick={() => void handleExportPDF()} disabled={exportingPDF} style={{ ...btnGhost, fontSize: 12 }}>
+              {exportingPDF ? '…' : '↓ PDF'}
+            </button>
+            <button onClick={() => void handleExportExcel()} disabled={exportingExcel} style={{ ...btnGhost, fontSize: 12 }}>
+              {exportingExcel ? '…' : '↓ Excel'}
+            </button>
             <button onClick={() => setView('add-section')} style={btnPrimary}>+ Sezione</button>
           </div>
 

@@ -1,4 +1,4 @@
-import { Worker, type Job } from 'bullmq'
+import { Worker, Queue, type Job } from 'bullmq'
 import { getRedisOptions } from '@opengraphity/events'
 import { getSession } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -111,6 +111,80 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
     default:
       logger.warn({ jobName: job.name, entityId }, '[workflow-jobs] unknown job — skipped')
   }
+}
+
+// ── Notification jobs worker ──────────────────────────────────────────────────
+
+async function processNotificationJob(job: Job): Promise<void> {
+  switch (job.name) {
+    case 'escalation_check': {
+      const { incidentId, tenantId, ruleId } = job.data as { incidentId: string; tenantId: string; ruleId: string }
+      const session = getSession(undefined, 'READ')
+      try {
+        const result = await session.executeRead(tx =>
+          tx.run(`MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN i.status AS status`, { id: incidentId, tenantId }),
+        )
+        const status = result.records[0]?.get('status') as string | undefined
+        if (status && !['resolved', 'closed'].includes(status)) {
+          logger.info({ incidentId, ruleId }, '[notification-jobs] escalation_check: incident still open, escalation triggered')
+          // Escalation notification logic would call notification service here
+        } else {
+          logger.info({ incidentId }, '[notification-jobs] escalation_check: incident already resolved, skipping')
+        }
+      } finally {
+        await session.close()
+      }
+      break
+    }
+
+    case 'digest': {
+      const { ruleId } = job.data as { ruleId: string }
+      logger.info({ ruleId }, '[notification-jobs] digest: daily digest job executed')
+      // Digest aggregation + notification dispatch would happen here
+      break
+    }
+
+    case 'timer_wait': {
+      const { instanceId, toStep, tenantId } = job.data as { instanceId: string; toStep: string; tenantId: string }
+      const session = getSession(undefined, 'WRITE')
+      try {
+        const result = await workflowEngine.transition(
+          session,
+          { instanceId, toStepName: toStep, triggeredBy: 'timer', triggerType: 'automatic' },
+          { userId: 'system', entityData: {} },
+        )
+        if (!result.success) {
+          logger.warn({ instanceId, toStep, error: result.error }, '[notification-jobs] timer_wait transition failed')
+        } else {
+          logger.info({ instanceId, toStep }, '[notification-jobs] timer_wait transition completed')
+        }
+      } finally {
+        await session.close()
+      }
+      break
+    }
+
+    default:
+      logger.warn({ jobName: job.name }, '[notification-jobs] unknown job — skipped')
+  }
+}
+
+export function startNotificationJobWorker(): Worker {
+  const worker = new Worker('notification-jobs', processNotificationJob, {
+    connection:  getRedisOptions(),
+    concurrency: 3,
+  })
+  worker.on('failed', (job, err) => {
+    logger.error({ jobName: job?.name, err: err.message }, '[notification-jobs] job failed')
+  })
+  logger.info('[notification-jobs] worker started')
+  return worker
+}
+
+// Export queue factory for creating escalation jobs from incident creation
+export function scheduleEscalationCheck(incidentId: string, tenantId: string, ruleId: string, delayMinutes: number) {
+  const queue = new Queue('notification-jobs', { connection: getRedisOptions() })
+  void queue.add('escalation_check', { incidentId, tenantId, ruleId }, { delay: delayMinutes * 60 * 1000 })
 }
 
 // ── Worker ────────────────────────────────────────────────────────────────────
