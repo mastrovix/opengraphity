@@ -162,7 +162,7 @@ async function createRealm(token: string): Promise<void> {
   }
 }
 
-// ── Step 2: Client ────────────────────────────────────────────────────────────
+// ── Step 2: Clients ───────────────────────────────────────────────────────────
 
 async function createClient(token: string): Promise<string> {
   const { id, created } = await kcPost(token, `/admin/realms/${slug}/clients`, {
@@ -170,15 +170,17 @@ async function createClient(token: string): Promise<string> {
     publicClient: true,
     enabled:      true,
     redirectUris: [
+      // Production
       `https://${slug}.${domain}/*`,
-      `http://${slug}.localhost:5173/*`,
       ...(piIp ? [`https://${slug}.${piIp}.nip.io/*`] : []),
+      // Local Docker / dev — all access patterns
+      `http://${slug}.localhost/*`,          // nginx-dev on port 80
+      `http://${slug}.localhost:5173/*`,     // web container direct
+      `http://*.localhost/*`,                // any localhost subdomain (port 80)
+      `http://*.localhost:5173/*`,           // any localhost subdomain on 5173
+      `http://*.localhost:8080/*`,           // Keycloak post-login redirects
     ],
-    webOrigins: [
-      `https://${slug}.${domain}`,
-      `http://${slug}.localhost:5173`,
-      ...(piIp ? [`https://${slug}.${piIp}.nip.io`] : []),
-    ],
+    webOrigins: ['+'],  // derive allowed origins from redirectUris
   })
 
   if (created && id) {
@@ -197,6 +199,32 @@ async function createClient(token: string): Promise<string> {
   }
   console.log(`  ↩ Client "opengrafo-web" già esistente (id: ${existing.id}) — skip`)
   return existing.id
+}
+
+async function createPortalClient(token: string): Promise<void> {
+  const { id, created } = await kcPost(token, `/admin/realms/${slug}/clients`, {
+    clientId:     'opengrafo-portal',
+    publicClient: true,
+    enabled:      true,
+    redirectUris: [
+      // Production
+      `https://portal.${slug}.${domain}/*`,
+      ...(piIp ? [`https://portal.${slug}.${piIp}.nip.io/*`] : []),
+      // Local Docker / dev
+      `http://portal.${slug}.localhost/*`,       // nginx-dev on port 80
+      `http://portal.${slug}.localhost:5174/*`,  // portal container direct
+      `http://*.localhost/*`,                    // any localhost subdomain (port 80)
+      `http://*.localhost:5174/*`,               // any localhost subdomain on 5174
+      `http://localhost:5174/*`,                 // bare localhost (VITE_TENANT_SLUG fallback)
+    ],
+    webOrigins: ['+'],
+  })
+
+  if (created && id) {
+    console.log(`  ✓ Client "opengrafo-portal" creato (id: ${id})`)
+  } else {
+    console.log(`  ↩ Client "opengrafo-portal" già esistente — skip`)
+  }
 }
 
 // ── Step 3: Roles ─────────────────────────────────────────────────────────────
@@ -403,6 +431,7 @@ async function main() {
   const token    = await getAdminToken()
   await createRealm(token)
   const clientId = await createClient(token)
+  await createPortalClient(token)
   await createRoles(token)
   await addRoleMapper(token, clientId)
   await createAdminUser(token)
