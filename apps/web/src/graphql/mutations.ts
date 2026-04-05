@@ -1,15 +1,5 @@
 import { gql } from '@apollo/client'
 
-export const LOGIN = gql`
-  mutation Login($email: String!, $password: String!) {
-    login(email: $email, password: $password) {
-      token
-      expiresAt
-      user { id name email role }
-    }
-  }
-`
-
 export const CREATE_INCIDENT = gql`
   mutation CreateIncident($input: CreateIncidentInput!) {
     createIncident(input: $input) {
@@ -23,30 +13,10 @@ export const CREATE_INCIDENT = gql`
   }
 `
 
-export const RESOLVE_INCIDENT = gql`
-  mutation ResolveIncident($id: ID!, $rootCause: String) {
-    resolveIncident(id: $id, rootCause: $rootCause) {
-      id
-      status
-      resolvedAt
-    }
-  }
-`
-
-export const CREATE_PROBLEM = gql`
-  mutation CreateProblem($input: CreateProblemInput!) {
-    createProblem(input: $input) { id title priority status createdAt }
-  }
-`
-
 export const UPDATE_PROBLEM = gql`
   mutation UpdateProblem($id: ID!, $input: UpdateProblemInput!) {
     updateProblem(id: $id, input: $input) { id title description priority status rootCause workaround affectedUsers updatedAt }
   }
-`
-
-export const DELETE_PROBLEM = gql`
-  mutation DeleteProblem($id: ID!) { deleteProblem(id: $id) }
 `
 
 export const LINK_INCIDENT_TO_PROBLEM = gql`
@@ -131,24 +101,6 @@ export const CREATE_CHANGE = gql`
   }
 `
 
-export const APPROVE_CHANGE = gql`
-  mutation ApproveChange($id: ID!) {
-    approveChange(id: $id) {
-      id
-      status
-    }
-  }
-`
-
-export const REJECT_CHANGE = gql`
-  mutation RejectChange($id: ID!, $reason: String) {
-    rejectChange(id: $id, reason: $reason) {
-      id
-      status
-    }
-  }
-`
-
 export const CREATE_SERVICE_REQUEST = gql`
   mutation CreateServiceRequest($input: CreateServiceRequestInput!) {
     createServiceRequest(input: $input) {
@@ -167,12 +119,6 @@ export const UPDATE_CI = gql`
       id name status environment
       ipAddress location vendor version port url region expiryDate notes
     }
-  }
-`
-
-export const ADD_CI_DEPENDENCY = gql`
-  mutation AddCIDependency($fromId: ID!, $toId: ID!, $type: String!) {
-    addCIDependency(fromId: $fromId, toId: $toId, type: $type)
   }
 `
 
@@ -196,46 +142,6 @@ export const SAVE_WORKFLOW_CHANGES = gql`
       positions: $positions
     ) {
       id name version
-    }
-  }
-`
-
-export const SAVE_WORKFLOW_LAYOUT = gql`
-  mutation SaveWorkflowLayout(
-    $definitionId: ID!
-    $positions: [StepPositionInput!]!
-  ) {
-    saveWorkflowLayout(
-      definitionId: $definitionId
-      positions: $positions
-    )
-  }
-`
-
-export const UPDATE_WORKFLOW_TRANSITION = gql`
-  mutation UpdateWorkflowTransition(
-    $definitionId: ID!
-    $transitionId: ID!
-    $label: String
-    $trigger: String
-    $requiresInput: Boolean!
-    $inputField: String
-    $condition: String
-    $timerHours: Int
-  ) {
-    updateWorkflowTransition(
-      definitionId: $definitionId
-      transitionId: $transitionId
-      input: {
-        label: $label
-        trigger: $trigger
-        requiresInput: $requiresInput
-        inputField: $inputField
-        condition: $condition
-        timerHours: $timerHours
-      }
-    ) {
-      id name
     }
   }
 `
@@ -293,16 +199,6 @@ export const REMOVE_AFFECTED_CI = gql`
     removeAffectedCI(incidentId: $incidentId, ciId: $ciId) {
       id
       affectedCIs { id name type status environment }
-    }
-  }
-`
-
-export const COMPLETE_SERVICE_REQUEST = gql`
-  mutation CompleteServiceRequest($id: ID!) {
-    completeServiceRequest(id: $id) {
-      id
-      status
-      completedAt
     }
   }
 `
@@ -592,14 +488,6 @@ export const REMOVE_REPORT_SECTION = gql`
   }
 `
 
-export const REORDER_REPORT_SECTIONS = gql`
-  mutation ReorderReportSections($templateId: ID!, $sectionIds: [ID!]!) {
-    reorderReportSections(templateId: $templateId, sectionIds: $sectionIds) {
-      id sections { id order title }
-    }
-  }
-`
-
 export const CREATE_DASHBOARD = gql`
   mutation CreateDashboard($input: CreateDashboardInput!) {
     createDashboard(input: $input) {
@@ -751,14 +639,6 @@ export const ADD_WORKFLOW_STEP = gql`
   mutation AddWorkflowStep($definitionId: ID!, $name: String!, $label: String!, $type: String!, $timerDelayMinutes: Int, $subWorkflowId: String) {
     addWorkflowStep(definitionId: $definitionId, name: $name, label: $label, type: $type, timerDelayMinutes: $timerDelayMinutes, subWorkflowId: $subWorkflowId) {
       id name version steps { id name label type timerDelayMinutes subWorkflowId }
-    }
-  }
-`
-
-export const REMOVE_WORKFLOW_STEP = gql`
-  mutation RemoveWorkflowStep($definitionId: ID!, $stepName: String!) {
-    removeWorkflowStep(definitionId: $definitionId, stepName: $stepName) {
-      id name version steps { id name label type }
     }
   }
 `

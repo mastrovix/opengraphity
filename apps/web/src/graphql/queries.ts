@@ -144,39 +144,6 @@ export const GET_ALL_CIS = gql`
   }
 `
 
-export const GET_CI_BY_ID = gql`
-  query GetCIById($id: ID!) {
-    ciById(id: $id) {
-      id name type status environment description createdAt updatedAt notes
-      ownerGroup { id name }
-      supportGroup { id name }
-      ... on Application {
-        url
-        dependencies { relation ci { id name type environment status } }
-        dependents { relation ci { id name type environment status } }
-      }
-      ... on Database {
-        port instanceType
-        dependencies { relation ci { id name type environment status } }
-        dependents { relation ci { id name type environment status } }
-      }
-      ... on DatabaseInstance {
-        ipAddress port instanceType version
-        dependencies { relation ci { id name type environment status } }
-        dependents { relation ci { id name type environment status } }
-      }
-      ... on Server {
-        ipAddress location vendor os version
-        dependencies { relation ci { id name type environment status } }
-        dependents { relation ci { id name type environment status } }
-      }
-      ... on Certificate {
-        serialNumber expiresAt certificateType
-      }
-    }
-  }
-`
-
 export const GET_CHANGE = gql`
   query GetChange($id: ID!) {
     change(id: $id) {
@@ -263,18 +230,6 @@ export const GET_WORKFLOW_DEFINITION = gql`
   }
 `
 
-export const GET_WORKFLOW_DEFINITIONS = gql`
-  query GetWorkflowDefinitions($entityType: String) {
-    workflowDefinitions(entityType: $entityType) {
-      id name entityType version active
-      steps { id name label type enterActions exitActions }
-      transitions {
-        id fromStepName toStepName trigger label requiresInput inputField condition
-      }
-    }
-  }
-`
-
 export const GET_TEAM = gql`
   query GetTeam($id: ID!) {
     team(id: $id) {
@@ -282,23 +237,6 @@ export const GET_TEAM = gql`
       members { id name email role }
       ownedCIs { id name type environment status }
       supportedCIs { id name type environment status }
-    }
-  }
-`
-
-export const GET_DASHBOARD_STATS = gql`
-  query GetDashboardStats {
-    openIncidents: incidents(status: "open", limit: 1) {
-      total
-    }
-    openProblems: problems(status: "open", limit: 1000) {
-      id
-    }
-    pendingChanges: changes(limit: 1) {
-      total
-    }
-    openRequests: serviceRequests(status: "open", limit: 1000) {
-      id
     }
   }
 `

@@ -12,8 +12,10 @@ import { withSession } from './ci-utils.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { validateStringLength, validateCronExpression } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
+import { logger } from '../../lib/logger.js'
 
 const ENCRYPTION_KEY = process.env['DISCOVERY_ENCRYPTION_KEY'] ?? ''
+if (!ENCRYPTION_KEY) logger.warn('[sync] DISCOVERY_ENCRYPTION_KEY is not set — credential operations will fail')
 
 type Props = Record<string, unknown>
 

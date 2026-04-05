@@ -21,9 +21,8 @@ import {
   BrainCircuit,
   LayoutGrid,
   ScrollText,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
+  ChevronRight,
   Layers,
   Settings,
   Settings2,
@@ -41,6 +40,8 @@ import {
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
+import { C, navItemStyle, subItemStyle, parentGroupStyle, hoverOn, hoverOff, NavItem } from './SidebarNavItems'
+import { SidebarCollapseButton } from './SidebarUserMenu'
 
 const MY_PENDING_APPROVALS_COUNT = gql`
   query MyPendingApprovalsCount {
@@ -85,18 +86,6 @@ const ADMIN_NAV_ITEM_DEFS = [
   { to: '/admin/monitoring',       labelKey: 'sidebar.monitoring',    icon: Activity    },
   { to: '/admin/knowledge-base',   labelKey: 'sidebar.kbAdmin',       icon: BookOpen    },
 ]
-
-// ── colours ──────────────────────────────────────────────────────────────────
-const C = {
-  bg:           '#3d4856',
-  border:       '#4f5e70',
-  textDefault:  '#e2e8f0',
-  textSection:  '#94a3b8',
-  textChevron:  '#94a3b8',
-  hoverBg:      'rgba(255,255,255,0.08)',
-  activeBg:     'rgba(255,255,255,0.08)',
-  brand:        '#38bdf8',
-}
 
 interface SidebarProps {
   collapsed: boolean
@@ -145,41 +134,6 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   )
   const pendingApprovalsCount = pendingApprovalsData?.myPendingApprovals?.length ?? 0
 
-  const navItemStyle = (isActive: boolean, isCollapsed: boolean): React.CSSProperties => ({
-    display:         'flex',
-    alignItems:      'center',
-    gap:             isCollapsed ? 0 : 10,
-    justifyContent:  isCollapsed ? 'center' : 'flex-start',
-    padding:         isCollapsed ? 0 : '7px 10px',
-    width:           isCollapsed ? 40 : 'auto',
-    height:          isCollapsed ? 40 : 'auto',
-    margin:          isCollapsed ? '2px auto' : '1px 0',
-    borderRadius:    6,
-    textDecoration:  'none',
-    fontWeight:      isActive ? 600 : 400,
-    fontSize:        13,
-    color:           isActive ? C.brand : C.textDefault,
-    backgroundColor: isActive ? C.activeBg : 'transparent',
-    borderLeft:      isActive ? `2px solid ${C.brand}` : '2px solid transparent',
-    transition:      'background 150ms, color 150ms',
-    cursor:          'pointer',
-    boxSizing:       'border-box' as const,
-  })
-
-  const subItemStyle = (isActive: boolean): React.CSSProperties => ({
-    display:        'flex',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-    padding:        '5px 8px',
-    borderRadius:   4,
-    fontSize:       12,
-    color:          isActive ? C.brand : C.textDefault,
-    fontWeight:     isActive ? 600 : 400,
-    textDecoration: 'none',
-    cursor:         'pointer',
-    marginBottom:   1,
-  })
-
   const configActive    = CONFIG_ITEM_DEFS.some(({ to }) => pathname.startsWith(to))
   const itsmActive      = ITSM_ITEM_DEFS.some(({ to }) => pathname.startsWith(to))
   const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
@@ -189,26 +143,6 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     || pathname.startsWith('/applications') || pathname.startsWith('/databases')
     || pathname.startsWith('/database-instances') || pathname.startsWith('/servers')
     || pathname.startsWith('/certificates')
-
-  const hoverOn  = (e: React.MouseEvent, active: boolean) => {
-    if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg
-  }
-  const hoverOff = (e: React.MouseEvent, active: boolean) => {
-    if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-  }
-
-  const parentGroupStyle = (isActive: boolean): React.CSSProperties => ({
-    display:         'flex',
-    alignItems:      'center',
-    justifyContent:  'space-between',
-    padding:         '7px 10px',
-    borderRadius:    6,
-    cursor:          'pointer',
-    backgroundColor: isActive ? C.activeBg : 'transparent',
-    borderLeft:      isActive ? `2px solid ${C.brand}` : '2px solid transparent',
-    transition:      'background 150ms',
-    margin:          '1px 0',
-  })
 
   return (
     <aside
@@ -275,27 +209,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           const label = t(labelKey)
           const isActive = pathname === to || (to !== '/dashboard' && pathname.startsWith(to))
           const badge = to === '/approvals' && pendingApprovalsCount > 0 ? pendingApprovalsCount : 0
-
           return (
-            <NavLink
-              key={to}
-              to={to}
-              title={collapsed ? label : undefined}
-              style={navItemStyle(isActive, collapsed)}
-              onMouseEnter={(e) => hoverOn(e, isActive)}
-              onMouseLeave={(e) => hoverOff(e, isActive)}
-            >
-              <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-              {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
-              {!collapsed && badge > 0 && (
-                <span
-                  aria-label={`${badge} approvazioni in attesa`}
-                  style={{ fontSize: 10, fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: 8, background: 'var(--danger)', color: '#fff' }}
-                >
-                  {badge}
-                </span>
-              )}
-            </NavLink>
+            <NavItem key={to} to={to} label={label} icon={Icon} collapsed={collapsed} isActive={isActive} badge={badge} />
           )
         })}
 
@@ -688,33 +603,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
       </nav>
 
       {/* Collapse toggle */}
-      <button
-        onClick={onToggle}
-        aria-label={collapsed ? t('sidebar.expand', 'Espandi sidebar') : t('sidebar.collapse', 'Comprimi sidebar')}
-        style={{
-          display:         'flex',
-          alignItems:      'center',
-          justifyContent:  collapsed ? 'center' : 'flex-start',
-          gap:             8,
-          padding:         collapsed ? '12px 0' : '12px 16px',
-          background:      'none',
-          border:          'none',
-          borderTop:       `1px solid ${C.border}`,
-          color:           C.textSection,
-          cursor:          'pointer',
-          width:           '100%',
-          flexShrink:      0,
-          fontSize:        12,
-          transition:      'background 150ms',
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
-      >
-        {collapsed
-          ? <ChevronRight size={14} aria-hidden="true" />
-          : <><ChevronLeft size={14} aria-hidden="true" /><span>{t('sidebar.collapse', 'Collapse')}</span></>
-        }
-      </button>
+      <SidebarCollapseButton collapsed={collapsed} onToggle={onToggle} />
     </aside>
   )
 }

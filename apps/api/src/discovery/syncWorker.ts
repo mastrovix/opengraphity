@@ -18,6 +18,7 @@ const connection = {
 }
 
 const ENCRYPTION_KEY = process.env['DISCOVERY_ENCRYPTION_KEY'] ?? ''
+if (!ENCRYPTION_KEY) logger.warn('[syncWorker] DISCOVERY_ENCRYPTION_KEY is not set — credential decryption will fail')
 const BATCH_SIZE     = 50
 
 // ── Job payload ───────────────────────────────────────────────────────────────
