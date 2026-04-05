@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
-import { AlertCircle, GitPullRequest } from 'lucide-react'
+import { PageContainer } from '@/components/PageContainer'
+import { AlertCircle, GitPullRequest, Route, BookOpen } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { Skeleton } from '@/components/ui/skeleton'
 import { GET_WORKFLOW_LIST } from '@/graphql/queries'
 
@@ -19,10 +21,10 @@ export function WorkflowListPage() {
   const defs = data?.workflowDefinitions ?? []
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 24px 0' }}>
+    <PageContainer style={{ maxWidth: 900, margin: '0 auto' }}>
+      <PageTitle icon={<Route size={22} color="var(--color-brand)" />}>
         Workflow
-      </h1>
+      </PageTitle>
 
       {loading ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
@@ -35,9 +37,10 @@ export function WorkflowListPage() {
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           {defs.map((def) => {
-            const isIncident = def.entityType === 'incident'
             const color = 'var(--color-brand)'
-            const Icon  = isIncident ? AlertCircle : GitPullRequest
+            const Icon  = def.entityType === 'incident' ? AlertCircle
+                        : def.entityType === 'kb_article' ? BookOpen
+                        : GitPullRequest
 
             return (
               <div
@@ -92,6 +95,6 @@ export function WorkflowListPage() {
           })}
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

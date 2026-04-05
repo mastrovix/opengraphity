@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useMutation } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { toast } from 'sonner'
+import { LayoutDashboard } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import {
   CREATE_DASHBOARD,
   UPDATE_DASHBOARD,
@@ -312,7 +315,9 @@ export function DashboardPage() {
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>Dashboard</h1>
+        <PageTitle icon={<LayoutDashboard size={22} color="var(--color-brand)" />}>
+          Dashboard
+        </PageTitle>
 
         {/* Dashboard selector dropdown */}
         <div style={{ position: 'relative' }}>
@@ -397,7 +402,7 @@ export function DashboardPage() {
   if (!editMode) {
     const viewWidgets = activeDash?.widgets ?? []
     return (
-      <div>
+      <PageContainer>
         {header}
         {viewWidgets.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 14 }}>
@@ -437,14 +442,14 @@ export function DashboardPage() {
             }}
           />
         )}
-      </div>
+      </PageContainer>
     )
   }
 
   // ── EDIT MODE ────────────────────────────────────────────────────────────────
 
   return (
-    <div>
+    <PageContainer>
       {header}
       <DashboardEditMode
         pendingWidgets={pendingWidgets}
@@ -456,7 +461,7 @@ export function DashboardPage() {
         onAddWidget={(template, section) => handleAddWidget(template as ReportTemplate, section as ReportSection)}
         onToggleTemplate={toggleTemplate}
       />
-    </div>
+    </PageContainer>
   )
 }
 

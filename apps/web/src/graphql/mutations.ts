@@ -774,3 +774,9 @@ export const EXPORT_REPORT_EXCEL = gql`
     exportReportExcel(templateId: $templateId)
   }
 `
+
+export const RETRY_QUEUE_JOB = gql`
+  mutation RetryQueueJob($queueName: String!, $jobId: ID!) {
+    retryQueueJob(queueName: $queueName, jobId: $jobId)
+  }
+`

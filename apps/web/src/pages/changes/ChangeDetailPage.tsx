@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import {
@@ -210,7 +211,7 @@ export function ChangeDetailPage() {
   // ── Render ────────────────────────────────────────────────
 
   return (
-    <div>
+    <PageContainer>
       <button
         onClick={() => navigate('/changes')}
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 14, padding: 0, marginBottom: 16 }}
@@ -405,6 +406,6 @@ export function ChangeDetailPage() {
           </div>
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }

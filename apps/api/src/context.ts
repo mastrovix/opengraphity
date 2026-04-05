@@ -18,14 +18,14 @@ export interface GraphQLContext {
   tenantId:  string
   userId:    string
   userEmail: string
-  role:      'admin' | 'operator' | 'viewer'
+  role:      'admin' | 'operator' | 'viewer' | 'end_user'
 }
 
 interface JWTPayload {
   tenant_id: string
   user_id:   string
   email:     string
-  role:      'admin' | 'operator' | 'viewer'
+  role:      'admin' | 'operator' | 'viewer' | 'end_user'
 }
 
 const ITSM_ROLES = ['admin', 'operator', 'viewer'] as const

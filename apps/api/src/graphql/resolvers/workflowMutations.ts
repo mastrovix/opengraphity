@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
 import { publish } from '@opengraphity/events'
+import { sseManager } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import * as incidentService from '../../services/incidentService.js'
@@ -280,6 +281,71 @@ export async function executeWorkflowTransition(
           payload,
         })
       },
+
+      createApprovalRequest: async ({ entityId, entityType, title, approverRole, approvalType }) => {
+        const now = new Date().toISOString()
+
+        // Find approvers by role
+        const adminsRes = await session.executeRead((tx) =>
+          tx.run(
+            `MATCH (u:User {tenant_id: $tenantId, role: $role}) RETURN u.id AS id`,
+            { tenantId: ctx.tenantId, role: approverRole ?? 'admin' },
+          ),
+        )
+        const approverIds = adminsRes.records.map((r) => r.get('id') as string)
+        const finalApprovers = approverIds.length > 0 ? approverIds : [ctx.userId]
+
+        const approvalId = uuidv4()
+        await session.executeWrite((tx) =>
+          tx.run(`
+            CREATE (ap:ApprovalRequest {
+              id:              $id,
+              tenant_id:       $tenantId,
+              entity_type:     $entityType,
+              entity_id:       $entityId,
+              title:           $title,
+              description:     null,
+              status:          'pending',
+              requested_by:    $requestedBy,
+              requested_at:    $now,
+              approvers:       $approvers,
+              approved_by:     '[]',
+              rejected_by:     null,
+              approval_type:   $approvalType,
+              due_date:        null,
+              resolved_at:     null,
+              resolution_note: null
+            })
+          `, {
+            id:           approvalId,
+            tenantId:     ctx.tenantId,
+            entityType,
+            entityId,
+            title,
+            requestedBy:  ctx.userId,
+            now,
+            approvers:    JSON.stringify(finalApprovers),
+            approvalType: approvalType ?? 'any',
+          }),
+        )
+
+        // Notify each approver via SSE
+        for (const approverId of finalApprovers) {
+          sseManager.sendToUser(ctx.tenantId, approverId, {
+            id:          uuidv4(),
+            type:        'approval.requested',
+            title:       'Approvazione richiesta',
+            message:     title,
+            severity:    'info',
+            entity_id:   approvalId,
+            entity_type: 'ApprovalRequest',
+            timestamp:   now,
+            read:        false,
+          })
+        }
+
+        return approvalId
+      },
     }
 
     workflowLogger.debug({ toStep, instanceId }, 'Transitioning workflow step')
@@ -351,6 +417,31 @@ export async function executeWorkflowTransition(
 
         // Publish workflow.step.entered for any notify_rule enter_actions on this step
         await publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'incident', incidentId)
+      }
+
+      // ── KB Article post-transition ────────────────────────────────────────
+      const kbResult = await session.executeRead((tx) =>
+        tx.run(`
+          MATCH (wi:WorkflowInstance {id: $instanceId})
+          WHERE wi.entity_type = 'kb_article'
+          MATCH (a:KBArticle {id: wi.entity_id, tenant_id: wi.tenant_id})
+          RETURN a.id AS id, wi.tenant_id AS tenantId, a.requested_by AS requestedBy
+        `, { instanceId }),
+      )
+      if (kbResult.records.length > 0) {
+        const kbId     = kbResult.records[0].get('id')     as string
+        const tenantId = kbResult.records[0].get('tenantId') as string
+        if (toStep === 'published') {
+          const pubNow = new Date().toISOString()
+          await session.executeWrite((tx) =>
+            tx.run(`
+              MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
+              SET a.published_at = $now, a.updated_at = $now
+            `, { id: kbId, tenantId, now: pubNow }),
+          )
+          void audit(ctx, 'kb_article.published', 'KBArticle', kbId)
+        }
+        await publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'kb_article', kbId)
       }
     }
 

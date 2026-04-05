@@ -317,6 +317,7 @@
       "allActions": "— All actions —",
       "allTypes": "— All types —",
       "removeFilters": "Remove filters",
+      "search": "Search",
       "details": "Details — {{action}}",
       "page": "Page {{page}} · {{total}} total",
       "prevPage": "Previous page",
@@ -367,6 +368,95 @@
       "modeFile": "Upload file",
       "dropHint": "Drag here or",
       "browse": "Browse"
+    },
+    "monitoring": {
+      "title": "Monitoring",
+      "subtitle": "Real-time system health, metrics, and tracing",
+      "health": {
+        "title":    "System Health",
+        "neo4j":    "Neo4j",
+        "redis":    "Redis",
+        "keycloak": "Keycloak",
+        "uptime":   "Uptime",
+        "ok":       "Operational",
+        "error":    "Error",
+        "latency":  "Latency"
+      },
+      "requests": {
+        "title":     "Request Metrics",
+        "rpm":       "Requests/min",
+        "avg":       "Avg Response",
+        "p95":       "P95 Response",
+        "errorRate": "Error Rate"
+      },
+      "queues": {
+        "title":     "BullMQ Queues",
+        "waiting":   "Waiting",
+        "active":    "Active",
+        "completed": "Completed",
+        "failed":    "Failed",
+        "delayed":   "Delayed"
+      },
+      "neo4j": {
+        "title":        "Neo4j",
+        "totalQueries": "Total Queries",
+        "avgQuery":     "Avg Query Time",
+        "slowQueries":  "Slow Queries (>500ms)"
+      },
+      "tracing": {
+        "title":     "OpenTelemetry Tracing",
+        "enabled":   "Enabled",
+        "disabled":  "Disabled",
+        "noTracing": "Tracing not active. Set OTEL_ENABLED=true and start Jaeger."
+      },
+      "process": {
+        "title":   "Process",
+        "memory":  "Heap Memory",
+        "rss":     "RSS",
+        "cpu":     "CPU",
+        "pid":     "PID",
+        "version": "Node.js"
+      }
+    },
+    "approvals": {
+      "title":       "Approvals",
+      "subtitle":    "Manage approval requests",
+      "tabMine":     "Pending my approval",
+      "tabAll":      "All",
+      "noPending":   "No pending approvals",
+      "noApprovals": "No requests found",
+      "allStatuses": "All statuses"
+    },
+    "kb": {
+      "title":             "Knowledge Base",
+      "subtitle":          "Search articles and solutions",
+      "searchPlaceholder": "Search articles...",
+      "browseCategories":  "Browse by category",
+      "category":          "Category",
+      "noArticles":        "No articles found",
+      "articleNotFound":   "Article not found",
+      "backToList":        "Back to list",
+      "wasHelpful":        "Was this article helpful?",
+      "yes":               "Yes",
+      "no":                "No",
+      "thanks":            "Thank you for your feedback!",
+      "related":           "Related articles",
+      "info":              "Info",
+      "author":            "Author",
+      "published":         "Published",
+      "updated":           "Updated",
+      "views":             "Views"
+    },
+    "kbAdmin": {
+      "title":       "Knowledge Base Admin",
+      "new":         "New article",
+      "newArticle":  "New article",
+      "editArticle": "Edit article",
+      "created":     "Article created",
+      "updated":     "Article updated",
+      "deleted":     "Article deleted",
+      "noArticles":  "No articles",
+      "allStatuses": "All statuses"
     }
   },
   "filter": {
@@ -527,95 +617,6 @@
       "deferred":      { "title": "Problem Deferred" },
       "resolved":      { "title": "Problem Resolved" },
       "closed":        { "title": "Problem Closed" }
-    },
-    "monitoring": {
-      "title": "Monitoring",
-      "subtitle": "Real-time system health, metrics, and tracing",
-      "health": {
-        "title":    "System Health",
-        "neo4j":    "Neo4j",
-        "redis":    "Redis",
-        "keycloak": "Keycloak",
-        "uptime":   "Uptime",
-        "ok":       "Operational",
-        "error":    "Error",
-        "latency":  "Latency"
-      },
-      "requests": {
-        "title":     "Request Metrics",
-        "rpm":       "Requests/min",
-        "avg":       "Avg Response",
-        "p95":       "P95 Response",
-        "errorRate": "Error Rate"
-      },
-      "queues": {
-        "title":     "BullMQ Queues",
-        "waiting":   "Waiting",
-        "active":    "Active",
-        "completed": "Completed",
-        "failed":    "Failed",
-        "delayed":   "Delayed"
-      },
-      "neo4j": {
-        "title":        "Neo4j",
-        "totalQueries": "Total Queries",
-        "avgQuery":     "Avg Query Time",
-        "slowQueries":  "Slow Queries (>500ms)"
-      },
-      "tracing": {
-        "title":     "OpenTelemetry Tracing",
-        "enabled":   "Enabled",
-        "disabled":  "Disabled",
-        "noTracing": "Tracing not active. Set OTEL_ENABLED=true and start Jaeger."
-      },
-      "process": {
-        "title":   "Process",
-        "memory":  "Heap Memory",
-        "rss":     "RSS",
-        "cpu":     "CPU",
-        "pid":     "PID",
-        "version": "Node.js"
-      }
-    },
-    "approvals": {
-      "title":       "Approvals",
-      "subtitle":    "Manage approval requests",
-      "tabMine":     "Pending my approval",
-      "tabAll":      "All",
-      "noPending":   "No pending approvals",
-      "noApprovals": "No requests found",
-      "allStatuses": "All statuses"
-    },
-    "kb": {
-      "title":           "Knowledge Base",
-      "subtitle":        "Search articles and solutions",
-      "searchPlaceholder": "Search articles...",
-      "browseCategories": "Browse by category",
-      "category":        "Category",
-      "noArticles":      "No articles found",
-      "articleNotFound": "Article not found",
-      "backToList":      "Back to list",
-      "wasHelpful":      "Was this article helpful?",
-      "yes":             "Yes",
-      "no":              "No",
-      "thanks":          "Thank you for your feedback!",
-      "related":         "Related articles",
-      "info":            "Info",
-      "author":          "Author",
-      "published":       "Published",
-      "updated":         "Updated",
-      "views":           "Views"
-    },
-    "kbAdmin": {
-      "title":       "Knowledge Base Admin",
-      "new":         "+ New article",
-      "newArticle":  "New article",
-      "editArticle": "Edit article",
-      "created":     "Article created",
-      "updated":     "Article updated",
-      "deleted":     "Article deleted",
-      "noArticles":  "No articles",
-      "allStatuses": "All statuses"
     }
   },
   "attachments": {

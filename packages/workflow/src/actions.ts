@@ -12,6 +12,7 @@ import type {
   AssignToParams,
   UpdateFieldParams,
   CallWebhookParams,
+  CreateApprovalRequestParams,
 } from './types.js'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow:actions' })
@@ -293,6 +294,30 @@ export async function runAction(
         value:      resolved,
         updated_by: ctx.userId,
       })
+      break
+    }
+
+    // ── New: create_approval_request ─────────────────────────────────────────
+
+    case 'create_approval_request': {
+      if (!ctx.createApprovalRequest) {
+        log.warn({ entityId: instance.entityId }, 'create_approval_request: callback not provided — skipped')
+        break
+      }
+      const p     = action.params as unknown as CreateApprovalRequestParams
+      const title = resolveTemplate(p.title_template ?? '', ctx.entityData)
+      try {
+        const approvalId = await ctx.createApprovalRequest({
+          entityId:     instance.entityId,
+          entityType:   instance.entityType,
+          title,
+          approverRole: p.approver_role,
+          approvalType: p.approval_type,
+        })
+        log.info({ approvalId, entityId: instance.entityId }, 'workflow-action: create_approval_request succeeded')
+      } catch (err) {
+        log.error({ entityId: instance.entityId, err }, 'workflow-action: create_approval_request failed')
+      }
       break
     }
 

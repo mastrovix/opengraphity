@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { User } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_USERS } from '@/graphql/queries'
@@ -80,13 +82,12 @@ export function UsersPage() {
   const pageItems  = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   return (
-    <div>
+    <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <User size={22} color="var(--color-brand)" />
+          <PageTitle icon={<User size={22} color="var(--color-brand)" />}>
             {t('pages.users.title')}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.users.count', { count: total })}
           </p>
@@ -144,6 +145,6 @@ export function UsersPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

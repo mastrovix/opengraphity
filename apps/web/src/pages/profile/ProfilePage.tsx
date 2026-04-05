@@ -1,16 +1,17 @@
 import { useTranslation } from 'react-i18next'
 import { UserCircle } from 'lucide-react'
+import { PageContainer } from '@/components/PageContainer'
+import { PageTitle } from '@/components/PageTitle'
 
 export function ProfilePage() {
   const { t, i18n } = useTranslation()
 
   return (
-    <div>
+    <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <UserCircle size={22} color="var(--color-brand)" />
+        <PageTitle icon={<UserCircle size={22} color="var(--color-brand)" />}>
           {t('pages.profile.title')}
-        </h1>
+        </PageTitle>
       </div>
 
       <div className="card-border" style={{ padding: '20px 24px', maxWidth: 480 }}>
@@ -40,6 +41,6 @@ export function ProfilePage() {
           <option value="it">{t('pages.profile.italian')}</option>
         </select>
       </div>
-    </div>
+    </PageContainer>
   )
 }

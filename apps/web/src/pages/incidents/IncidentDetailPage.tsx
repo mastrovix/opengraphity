@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
@@ -306,7 +307,7 @@ export function IncidentDetailPage() {
   const historyDesc       = [...incident.workflowHistory].reverse()
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
+    <PageContainer style={{ maxWidth: 1100, margin: '0 auto' }}>
 
       {/* Header + action buttons */}
       <IncidentHeader
@@ -622,6 +623,6 @@ export function IncidentDetailPage() {
           </>
         )}
       </Modal>
-    </div>
+    </PageContainer>
   )
 }

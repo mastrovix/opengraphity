@@ -22,6 +22,7 @@ import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
 import { seedNotificationRules } from '../lib/seedNotificationRules.js'
 import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
+import { seedKBWorkflowForTenant } from '@opengraphity/workflow'
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
@@ -408,6 +409,8 @@ async function main() {
 
   console.log('\n▶ Neo4j')
   await provisionNeo4j()
+  await seedKBWorkflowForTenant(slug!)
+  console.log(`  ✓ KB Article workflow seeded`)
 
   console.log(`
 ╔══════════════════════════════════════════════════════╗

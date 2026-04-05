@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import { PageContainer } from '@/components/PageContainer'
 import { Settings2, Plus, X, Check, AlertCircle, Bug, GitPullRequest, Inbox } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import type { LucideIcon } from 'lucide-react'
 
 const ITIL_TYPE_ICONS: Record<string, LucideIcon> = {
@@ -245,13 +247,12 @@ export function ITILTypeDesignerPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <PageContainer style={{ maxWidth: 1100 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 className="ty-page-title" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
-          <Settings2 size={22} color="var(--color-brand)" />
+        <PageTitle icon={<Settings2 size={22} color="var(--color-brand)" />}>
           {t('itilDesigner.title')}
-        </h1>
+        </PageTitle>
         <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
           {t('itilDesigner.subtitle')}
         </p>
@@ -424,6 +425,6 @@ export function ITILTypeDesignerPage() {
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

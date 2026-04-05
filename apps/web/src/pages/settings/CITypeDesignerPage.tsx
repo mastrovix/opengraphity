@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { Layers, Layout, Plus, Trash2, X, Check } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
+import { PageContainer } from '@/components/PageContainer'
 import { toast } from 'sonner'
 import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES } from '@/graphql/queries'
 import {
@@ -335,13 +337,12 @@ export function CITypeDesignerPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <PageContainer style={{ maxWidth: 1100 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 className="ty-page-title" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
-          <Layers size={22} color="var(--color-brand)" />
+        <PageTitle icon={<Layers size={22} color="var(--color-brand)" />}>
           CI Type Designer
-        </h1>
+        </PageTitle>
         <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
           Definisci e gestisci i tipi di Configuration Item e i loro campi
         </p>
@@ -634,6 +635,6 @@ export function CITypeDesignerPage() {
           })
         }}
       />
-    </div>
+    </PageContainer>
   )
 }

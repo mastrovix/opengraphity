@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react'
 import { gql } from '@apollo/client'
+import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw, Plus, Trash2, Play, CheckCircle, XCircle, Clock, AlertTriangle, Database, Cloud, Upload, X } from 'lucide-react'
+import { RefreshCw, Plus, Trash2, Play, CheckCircle, XCircle, Clock, AlertTriangle, Database, Cloud, Upload, X, Activity } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { toast } from 'sonner'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -426,7 +428,7 @@ function SourcesTab() {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <button
           onClick={() => setShowCreate(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
           <Plus size={14} />Add Source
         </button>
@@ -742,10 +744,12 @@ export function SyncPage() {
   const stats: SyncStats | null = (statsData as { syncStats?: SyncStats } | undefined)?.syncStats ?? null
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 1000, margin: '0 auto' }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', margin: 0 }}>CMDB Sync</h1>
-        <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0' }}>
+    <PageContainer>
+      <div style={{ marginBottom: 24 }}>
+        <PageTitle icon={<Activity size={22} color="var(--color-brand)" />}>
+          CMDB Sync
+        </PageTitle>
+        <p style={{ fontSize: 13, color: '#0f172a', margin: '4px 0 0' }}>
           Import and sync configuration items from external sources
         </p>
       </div>
@@ -753,16 +757,16 @@ export function SyncPage() {
       {stats && <StatsBar stats={stats} />}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e5e7eb', marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>
         {TABS.map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             style={{
-              padding: '8px 20px', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: 13, fontWeight: 600, color: tab === t ? '#2563eb' : '#6b7280',
-              borderBottom: tab === t ? '2px solid #2563eb' : '2px solid transparent',
-              marginBottom: -2,
+              padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer',
+              fontSize: 13, fontWeight: 500,
+              background: tab === t ? '#38bdf8' : 'transparent',
+              color: tab === t ? '#fff' : 'var(--color-slate)',
             }}
           >
             {t}
@@ -773,6 +777,6 @@ export function SyncPage() {
       {tab === 'Sources'   && <SourcesTab />}
       {tab === 'History'   && <HistoryTab />}
       {tab === 'Conflicts' && <ConflictsTab />}
-    </div>
+    </PageContainer>
   )
 }

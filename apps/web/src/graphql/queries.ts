@@ -633,3 +633,14 @@ export const GET_TRACE_INFO = gql`
     }
   }
 `
+
+export const GET_QUEUE_JOBS = gql`
+  query GetQueueJobs($queueName: String!, $status: String, $limit: Int) {
+    queueJobs(queueName: $queueName, status: $status, limit: $limit) {
+      id name queueName status data
+      timestamp processedOn finishedOn
+      failedReason stacktrace
+      attemptsMade maxAttempts returnValue
+    }
+  }
+`

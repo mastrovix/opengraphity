@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Inbox } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -64,12 +66,12 @@ export function RequestListPage() {
   const items = data?.serviceRequests ?? []
 
   return (
-    <div>
+    <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
+          <PageTitle icon={<Inbox size={22} color="var(--color-brand)" />}>
             {t('pages.requests.title')}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.requests.count', { count: items.length })}
           </p>
@@ -95,6 +97,6 @@ export function RequestListPage() {
         loading={loading}
         emptyComponent={<EmptyState icon={<Inbox size={32} />} title={t('pages.requests.noResults')} description={t('pages.requests.noResultsDesc')} />}
       />
-    </div>
+    </PageContainer>
   )
 }

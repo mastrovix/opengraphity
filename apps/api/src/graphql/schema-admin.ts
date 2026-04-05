@@ -30,6 +30,22 @@ export function adminSDL(): string {
     counts: QueueJobCounts!
   }
 
+  type QueueJob {
+    id:           ID!
+    name:         String!
+    queueName:    String!
+    status:       String!
+    data:         String!
+    timestamp:    String!
+    processedOn:  String
+    finishedOn:   String
+    failedReason: String
+    stacktrace:   [String!]!
+    attemptsMade: Int!
+    maxAttempts:  Int!
+    returnValue:  String
+  }
+
   # ── Audit Log ─────────────────────────────────────────────────────────────────
 
   type AuditEntry {

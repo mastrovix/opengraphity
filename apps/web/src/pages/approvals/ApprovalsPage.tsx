@@ -1,10 +1,15 @@
 import { useState } from 'react'
 import { gql } from '@apollo/client'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
+import { Link } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { CheckSquare, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { CheckSquare, Clock, CheckCircle, XCircle, ChevronDown, ChevronRight, ExternalLink, BookOpen, GitPullRequest, AlertCircle } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { toast } from 'sonner'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 const MY_PENDING = gql`
   query MyPendingApprovals {
@@ -39,6 +44,14 @@ const REJECT = gql`
   }
 `
 
+const GET_KB_ARTICLE_PREVIEW = gql`
+  query KBArticlePreview($id: ID!) {
+    kbArticle(id: $id) {
+      id title body category tags status authorName updatedAt
+    }
+  }
+`
+
 interface ApprovalRequest {
   id:             string
   entityType:     string
@@ -57,6 +70,11 @@ interface ApprovalRequest {
   resolutionNote: string | null
 }
 
+interface KBPreviewData {
+  id: string; title: string; body: string; category: string
+  tags?: string[]; status: string; authorName: string; updatedAt?: string
+}
+
 const STATUS_COLORS: Record<string, { bg: string; color: string; label: string }> = {
   pending:   { bg: '#FEF9C3', color: '#854D0E', label: 'In attesa' },
   approved:  { bg: '#DCFCE7', color: '#166534', label: 'Approvato' },
@@ -71,6 +89,132 @@ function StatusBadge({ status }: { status: string }) {
     <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: s.bg, color: s.color }}>
       {s.label}
     </span>
+  )
+}
+
+/** Link to the entity's detail page, based on entityType. */
+function EntityLink({ entityType, entityId }: { entityType: string; entityId: string }) {
+  if (entityType === 'change') {
+    return (
+      <Link
+        to={`/changes/${entityId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--color-brand)', textDecoration: 'none' }}
+      >
+        <GitPullRequest size={11} /> Vai al change <ExternalLink size={10} />
+      </Link>
+    )
+  }
+  if (entityType === 'incident') {
+    return (
+      <Link
+        to={`/incidents/${entityId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--color-brand)', textDecoration: 'none' }}
+      >
+        <AlertCircle size={11} /> Vai all'incident <ExternalLink size={10} />
+      </Link>
+    )
+  }
+  return null
+}
+
+/** Expandable KB article preview panel. Fetches content lazily on first open. */
+function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
+  const [open, setOpen] = useState(false)
+
+  const [fetchArticle, { data, loading, error }] = useLazyQuery<{ kbArticle: KBPreviewData }>(
+    GET_KB_ARTICLE_PREVIEW,
+  )
+
+  function toggle() {
+    if (!open && !data) void fetchArticle({ variables: { id: entityId } })
+    setOpen((v) => !v)
+  }
+
+  const article = data?.kbArticle
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button
+        onClick={toggle}
+        style={{
+          display:     'inline-flex',
+          alignItems:  'center',
+          gap:         4,
+          padding:     '4px 10px',
+          borderRadius: 6,
+          border:      '1px solid #e2e8f0',
+          background:  open ? '#f0f9ff' : '#fff',
+          color:       open ? 'var(--color-brand)' : 'var(--color-slate)',
+          fontSize:    12,
+          cursor:      'pointer',
+          fontWeight:  500,
+        }}
+      >
+        <BookOpen size={13} />
+        Anteprima articolo
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+      </button>
+
+      {open && (
+        <div style={{
+          marginTop:    8,
+          border:       '1px solid #e2e8f0',
+          borderRadius: 8,
+          background:   '#fafbfc',
+          overflow:     'hidden',
+        }}>
+          {loading && (
+            <div style={{ padding: '20px 16px', fontSize: 13, color: '#94a3b8' }}>Caricamento...</div>
+          )}
+          {error && (
+            <div style={{ padding: '12px 16px', fontSize: 13, color: '#ef4444' }}>
+              Errore nel caricamento dell'articolo.
+            </div>
+          )}
+          {article && (
+            <>
+              {/* Header */}
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1a2332' }}>{article.title}</h4>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 11, color: '#94a3b8' }}>
+                      <span>{article.category}</span>
+                      <span>·</span>
+                      <span>di {article.authorName}</span>
+                      <span>·</span>
+                      {article.updatedAt && <span>aggiornato {new Date(article.updatedAt).toLocaleDateString()}</span>}
+                    </div>
+                  </div>
+                  {(article.tags ?? []).length > 0 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {(article.tags ?? []).map((tag) => (
+                        <span key={tag} style={{ padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: '#64748b', fontSize: 11 }}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: '16px', maxHeight: 400, overflowY: 'auto' }}>
+                <div className="kb-preview-body" style={{ fontSize: 13, lineHeight: 1.7, color: '#334155' }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {article.body}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -103,7 +247,12 @@ function ApprovalCard({
                'maggioranza richiesta'}
             </span>
           </div>
-          <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{req.title}</h3>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{req.title}</h3>
+            <EntityLink entityType={req.entityType} entityId={req.entityId} />
+          </div>
+
           {req.description && (
             <p style={{ margin: '0 0 8px', fontSize: 13, color: '#475569' }}>{req.description}</p>
           )}
@@ -116,6 +265,11 @@ function ApprovalCard({
             <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569', fontStyle: 'italic' }}>
               Nota: {req.resolutionNote}
             </p>
+          )}
+
+          {/* Inline preview for KB articles */}
+          {req.entityType === 'kb_article' && (
+            <KBArticlePreviewPanel entityId={req.entityId} />
           )}
         </div>
 
@@ -213,18 +367,17 @@ export function ApprovalsPage() {
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500,
-    background: active ? '#38bdf8' : 'transparent',
+    background: active ? 'var(--color-brand)' : 'transparent',
     color: active ? '#fff' : 'var(--color-slate)',
   })
 
   return (
-    <div>
+    <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <CheckSquare size={22} color="var(--color-brand)" />
+          <PageTitle icon={<CheckSquare size={22} color="var(--color-brand)" />}>
             {t('pages.approvals.title')}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {t('pages.approvals.subtitle')}
           </p>
@@ -302,6 +455,6 @@ export function ApprovalsPage() {
           )}
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }

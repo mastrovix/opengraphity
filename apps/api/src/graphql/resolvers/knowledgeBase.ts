@@ -1,26 +1,29 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 
 interface KBArticle {
-  id:              string
-  title:           string
-  slug:            string
-  body:            string
-  category:        string
-  tags:            string[]
-  status:          string
-  authorId:        string
-  authorName:      string
-  views:           number
-  helpfulCount:    number
-  notHelpfulCount: number
-  createdAt:       string
-  updatedAt:       string
-  publishedAt:     string | null
+  id:                 string
+  title:              string
+  slug:               string
+  body:               string
+  category:           string
+  tags:               string[]
+  status:             string
+  authorId:           string
+  authorName:         string
+  views:              number
+  helpfulCount:       number
+  notHelpfulCount:    number
+  createdAt:          string
+  updatedAt:          string
+  publishedAt:        string | null
+  workflowInstanceId: string | null
+  currentStep:        string | null
 }
 
 interface KBCategory {
@@ -38,24 +41,27 @@ function toInt(v: unknown): number {
 
 function mapArticle(r: { get: (k: string) => unknown }): KBArticle {
   return {
-    id:              r.get('id')              as string,
-    title:           r.get('title')           as string,
-    slug:            r.get('slug')            as string,
-    body:            r.get('body')            as string,
-    category:        r.get('category')        as string,
-    tags:            JSON.parse((r.get('tags') as string | null) ?? '[]') as string[],
-    status:          r.get('status')          as string,
-    authorId:        r.get('authorId')        as string,
-    authorName:      r.get('authorName')      as string,
-    views:           toInt(r.get('views')),
-    helpfulCount:    toInt(r.get('helpfulCount')),
-    notHelpfulCount: toInt(r.get('notHelpfulCount')),
-    createdAt:       r.get('createdAt')       as string,
-    updatedAt:       r.get('updatedAt')       as string,
-    publishedAt:     r.get('publishedAt')     as string | null,
+    id:                 r.get('id')                 as string,
+    title:              r.get('title')              as string,
+    slug:               r.get('slug')               as string,
+    body:               r.get('body')               as string,
+    category:           r.get('category')           as string,
+    tags:               JSON.parse((r.get('tags') as string | null) ?? '[]') as string[],
+    status:             r.get('status')             as string,
+    authorId:           r.get('authorId')           as string,
+    authorName:         r.get('authorName')         as string,
+    views:              toInt(r.get('views')),
+    helpfulCount:       toInt(r.get('helpfulCount')),
+    notHelpfulCount:    toInt(r.get('notHelpfulCount')),
+    createdAt:          r.get('createdAt')          as string,
+    updatedAt:          r.get('updatedAt')          as string,
+    publishedAt:        r.get('publishedAt')        as string | null,
+    workflowInstanceId: (r.get('workflowInstanceId') ?? null) as string | null,
+    currentStep:        (r.get('currentStep')        ?? null) as string | null,
   }
 }
 
+// Base RETURN — used in queries that already do the OPTIONAL MATCH for WorkflowInstance
 const ARTICLE_RETURN = `
   RETURN a.id               AS id,
          a.title             AS title,
@@ -71,7 +77,15 @@ const ARTICLE_RETURN = `
          a.not_helpful_count AS notHelpfulCount,
          a.created_at        AS createdAt,
          a.updated_at        AS updatedAt,
-         a.published_at      AS publishedAt
+         a.published_at      AS publishedAt,
+         wi.id               AS workflowInstanceId,
+         wi.current_step     AS currentStep
+`
+
+// Full RETURN including the OPTIONAL MATCH for WorkflowInstance
+const ARTICLE_RETURN_WITH_WI = `
+  OPTIONAL MATCH (a)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+  ${ARTICLE_RETURN}
 `
 
 function generateSlug(title: string): string {
@@ -114,7 +128,7 @@ export async function kbArticles(
     const dataRes = await session.executeRead((tx) => tx.run(`
       MATCH (a:KBArticle)
       WHERE ${where}
-      ${ARTICLE_RETURN}
+      ${ARTICLE_RETURN_WITH_WI}
       ORDER BY a.updated_at DESC
       SKIP toInteger($skip) LIMIT toInteger($limit)
     `, params))
@@ -142,7 +156,8 @@ export async function kbArticle(
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
       SET a.views = a.views + 1
-      ${ARTICLE_RETURN}
+      WITH a
+      ${ARTICLE_RETURN_WITH_WI}
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (!res.records.length) {
@@ -164,7 +179,8 @@ export async function kbArticleBySlug(
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {slug: $slug, tenant_id: $tenantId})
       SET a.views = a.views + 1
-      ${ARTICLE_RETURN}
+      WITH a
+      ${ARTICLE_RETURN_WITH_WI}
     `, { slug: args.slug, tenantId: ctx.tenantId }))
 
     if (!res.records.length) {
@@ -210,31 +226,50 @@ export async function createKBArticle(
 
   const id     = uuidv4()
   const now    = new Date().toISOString()
-  const status = args.status ?? 'draft'
+  // Publishing goes through approval — treat status=published at creation as draft
+  const status = args.status === 'published' ? 'draft' : (args.status ?? 'draft')
   const slug   = generateSlug(args.title) + '-' + id.slice(0, 8)
 
-  const session = getSession(undefined, 'WRITE')
+  // Step 1: create the article node
+  const createSession = getSession(undefined, 'WRITE')
+  let created: KBArticle
   try {
-    const res = await session.executeWrite((tx) => tx.run(`
+    const res = await createSession.executeWrite((tx) => tx.run(`
       CREATE (a:KBArticle {
-        id:               $id,
-        tenant_id:        $tenantId,
-        title:            $title,
-        slug:             $slug,
-        body:             $body,
-        category:         $category,
-        tags:             $tags,
-        status:           $status,
-        author_id:        $authorId,
-        author_name:      $authorName,
-        views:            0,
-        helpful_count:    0,
+        id:                $id,
+        tenant_id:         $tenantId,
+        title:             $title,
+        slug:              $slug,
+        body:              $body,
+        category:          $category,
+        tags:              $tags,
+        status:            $status,
+        author_id:         $authorId,
+        author_name:       $authorName,
+        views:             0,
+        helpful_count:     0,
         not_helpful_count: 0,
-        created_at:       $now,
-        updated_at:       $now,
-        published_at:     $publishedAt
+        created_at:        $now,
+        updated_at:        $now,
+        published_at:      $publishedAt
       })
-      ${ARTICLE_RETURN}
+      RETURN a.id               AS id,
+             a.title             AS title,
+             a.slug              AS slug,
+             a.body              AS body,
+             a.category          AS category,
+             a.tags              AS tags,
+             a.status            AS status,
+             a.author_id         AS authorId,
+             a.author_name       AS authorName,
+             a.views             AS views,
+             a.helpful_count     AS helpfulCount,
+             a.not_helpful_count AS notHelpfulCount,
+             a.created_at        AS createdAt,
+             a.updated_at        AS updatedAt,
+             a.published_at      AS publishedAt,
+             null                AS workflowInstanceId,
+             null                AS currentStep
     `, {
       id,
       tenantId:    ctx.tenantId,
@@ -250,17 +285,30 @@ export async function createKBArticle(
       publishedAt: status === 'published' ? now : null,
     }))
 
-    const created = mapArticle(res.records[0])
+    created = mapArticle(res.records[0])
     void audit(ctx, 'kb_article.created', 'KBArticle', id)
-    return created
   } finally {
-    await session.close()
+    await createSession.close()
   }
+
+  // Step 2: create workflow instance in a fresh session (best-effort)
+  const wiSession = getSession(undefined, 'WRITE')
+  try {
+    await workflowEngine.createInstance(wiSession, ctx.tenantId, id, 'kb_article')
+    created.workflowInstanceId = null  // will be populated on next fetch
+    created.currentStep        = 'draft'
+  } catch (err) {
+    logger.warn({ err, tenantId: ctx.tenantId }, 'kb_article: workflow instance creation failed — skipping')
+  } finally {
+    await wiSession.close()
+  }
+
+  return created
 }
 
 export async function updateKBArticle(
   _: unknown,
-  args: { id: string; title?: string; body?: string; category?: string; tags?: string[]; status?: string },
+  args: { id: string; title?: string; body?: string; category?: string; tags?: string[] },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
   if (args.body && args.body.length > 50_000) {
@@ -271,39 +319,27 @@ export async function updateKBArticle(
   try {
     const loadRes = await session.executeRead((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
-      RETURN a.status AS status, a.published_at AS publishedAt
+      RETURN a.id AS id
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (!loadRes.records.length) {
       throw new GraphQLError('Article not found', { extensions: { code: 'NOT_FOUND' } })
     }
 
-    const currentStatus    = loadRes.records[0].get('status')      as string
-    const currentPublishedAt = loadRes.records[0].get('publishedAt') as string | null
-    const now              = new Date().toISOString()
-
+    const now     = new Date().toISOString()
     const setters: string[] = ['a.updated_at = $now']
     const params: Record<string, unknown> = { id: args.id, tenantId: ctx.tenantId, now }
 
-    if (args.title)    { setters.push('a.title = $title');       params['title']       = args.title }
-    if (args.body)     { setters.push('a.body = $body');         params['body']        = args.body }
-    if (args.category) { setters.push('a.category = $category'); params['category']    = args.category }
-    if (args.tags)     { setters.push('a.tags = $tags');         params['tags']        = JSON.stringify(args.tags) }
-    if (args.status) {
-      setters.push('a.status = $status')
-      params['status'] = args.status
-      if (args.status === 'published' && currentStatus !== 'published') {
-        setters.push('a.published_at = $publishedAt')
-        params['publishedAt'] = now
-      } else {
-        params['publishedAt'] = currentPublishedAt
-      }
-    }
+    if (args.title)    { setters.push('a.title = $title');       params['title']    = args.title }
+    if (args.body)     { setters.push('a.body = $body');         params['body']     = args.body }
+    if (args.category) { setters.push('a.category = $category'); params['category'] = args.category }
+    if (args.tags)     { setters.push('a.tags = $tags');         params['tags']     = JSON.stringify(args.tags) }
 
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
       SET ${setters.join(', ')}
-      ${ARTICLE_RETURN}
+      WITH a
+      ${ARTICLE_RETURN_WITH_WI}
     `, params))
 
     const updated = mapArticle(res.records[0])
@@ -354,7 +390,8 @@ export async function rateKBArticle(
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
       SET ${field} = ${field} + 1
-      ${ARTICLE_RETURN}
+      WITH a
+      ${ARTICLE_RETURN_WITH_WI}
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (!res.records.length) {

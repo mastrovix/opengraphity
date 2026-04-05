@@ -1,0 +1,113 @@
+{
+  "portal": {
+    "title": "IT Portal",
+    "poweredBy": "Powered by OpenGrafo"
+  },
+  "nav": {
+    "home": "Home",
+    "tickets": "My tickets",
+    "kb": "Knowledge Base"
+  },
+  "home": {
+    "greeting": "Hello {{name}}, how can we help you?",
+    "search": "Search the Knowledge Base...",
+    "newTicket": "Open a new ticket",
+    "newTicketDesc": "Report a problem or make a request",
+    "searchKB": "Search the Knowledge Base",
+    "searchKBDesc": "Find solutions to common issues",
+    "recentTickets": "Your recent tickets",
+    "noTickets": "You have no open tickets.",
+    "needHelp": "Need help?",
+    "open": "Open",
+    "inProgress": "In progress",
+    "total": "Total"
+  },
+  "ticket": {
+    "new": "New ticket",
+    "status": {
+      "new": "New",
+      "open": "Open",
+      "assigned": "Assigned",
+      "in_progress": "In progress",
+      "escalated": "Escalated",
+      "pending": "Pending",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "priority": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "category": {
+      "hardware": "Hardware",
+      "software": "Software",
+      "access": "Access",
+      "network": "Network",
+      "other": "Other"
+    },
+    "fields": {
+      "title": "Describe the problem in one sentence",
+      "description": "Provide all useful details: what you were doing, what error you saw, since when it occurred...",
+      "priority": "Priority",
+      "category": "Category",
+      "attachments": "Attachments"
+    },
+    "filters": {
+      "all": "All",
+      "open": "Open",
+      "inProgress": "In progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "submit": "Submit ticket",
+    "created": "Ticket created! The IT team has been notified.",
+    "resolved": "This ticket has been resolved",
+    "reopen": "Reopen ticket",
+    "reply": "Reply",
+    "replyPlaceholder": "Write your reply...",
+    "assignedTo": "Assigned to",
+    "createdAt": "Opened on",
+    "updatedAt": "Last update",
+    "statusChanged": "Status changed from {{from}} to {{to}}",
+    "attachments": "Attachments",
+    "suggestedArticles": "Articles that might help",
+    "foundAnswer": "Found the answer? If so, no need to open a ticket.",
+    "dropFiles": "Drop files here or click to attach",
+    "empty": {
+      "all": "You have no tickets yet.",
+      "open": "No open tickets.",
+      "inProgress": "No tickets in progress.",
+      "resolved": "No resolved tickets.",
+      "closed": "No closed tickets."
+    },
+    "prev": "← Previous",
+    "next": "Next →"
+  },
+  "kb": {
+    "title": "Knowledge Base",
+    "search": "Search articles...",
+    "noResults": "No articles found. Try different words or open a ticket.",
+    "categories": "Categories",
+    "articles": "articles",
+    "helpful": "Was this article helpful?",
+    "yes": "Yes",
+    "no": "No",
+    "related": "Related articles",
+    "notSolved": "Problem not solved?",
+    "openTicket": "Open a ticket",
+    "published": "Published on",
+    "by": "by",
+    "views": "views",
+    "breadcrumb": "Knowledge Base"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "logout": "Logout",
+    "profile": "Profile",
+    "cancel": "Cancel",
+    "save": "Save",
+    "back": "← Back"
+  }
+}

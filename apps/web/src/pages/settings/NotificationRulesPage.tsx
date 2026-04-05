@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus, X, Lock, Unlock } from 'lucide-react'
+import { Trash2, Plus, X, Lock, Unlock, Bell } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { GET_NOTIFICATION_RULES } from '@/graphql/queries'
 import { UPDATE_NOTIFICATION_RULE, CREATE_NOTIFICATION_RULE, DELETE_NOTIFICATION_RULE } from '@/graphql/mutations'
 import { colors, fontSize, fontWeight } from '@/lib/tokens'
@@ -548,13 +550,13 @@ export default function NotificationRulesPage() {
   )
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1140 }}>
+    <PageContainer style={{ maxWidth: 1140 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontSize: fontSize.pageTitle, fontWeight: fontWeight.bold, color: '#0f172a', margin: '0 0 6px' }}>
+          <PageTitle icon={<Bell size={22} color="var(--color-brand)" />}>
             {t('notificationRules.title')}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: fontSize.body, color: '#64748b', margin: 0 }}>
             {t('notificationRules.description')}
           </p>
@@ -563,9 +565,9 @@ export default function NotificationRulesPage() {
           onClick={() => setShowDialog(true)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '8px 16px', borderRadius: 7, border: 'none',
-            background: colors.brand, color: '#fff',
-            fontSize: 13, fontWeight: fontWeight.semibold, cursor: 'pointer', flexShrink: 0,
+            padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff',
+            border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500,
+            cursor: 'pointer', transition: 'background-color 150ms',
           }}
         >
           <Plus size={14} />
@@ -635,6 +637,6 @@ export default function NotificationRulesPage() {
           saving={creating}
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

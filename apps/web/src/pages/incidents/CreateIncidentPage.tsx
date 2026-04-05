@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
@@ -87,7 +88,7 @@ export function CreateIncidentPage() {
   }
 
   return (
-    <div style={{ minHeight: '100%', backgroundColor: '#f8fafc', padding: '32px 16px 64px' }}>
+    <PageContainer style={{ minHeight: '100%', backgroundColor: '#f8fafc', paddingBottom: '64px' }}>
       <div style={{ maxWidth: 580, margin: '0 auto' }}>
 
         {/* Header */}
@@ -327,6 +328,6 @@ export function CreateIncidentPage() {
 
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }

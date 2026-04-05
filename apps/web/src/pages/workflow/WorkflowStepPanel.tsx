@@ -282,6 +282,27 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
       </>
     )
 
+    if (type === 'create_approval_request') return (
+      <>
+        {field('title_template', 'title_template', 'Pubblicazione: {title}')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={labelStyle}>approver_role</span>
+          <select value={params['approver_role'] ?? 'admin'} onChange={(e) => setParams((p) => ({ ...p, approver_role: e.target.value }))} style={inputStyle}>
+            <option value="admin">admin</option>
+            <option value="manager">manager</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={labelStyle}>approval_type</span>
+          <select value={params['approval_type'] ?? 'any'} onChange={(e) => setParams((p) => ({ ...p, approval_type: e.target.value }))} style={inputStyle}>
+            <option value="any">any (1 approver sufficient)</option>
+            <option value="all">all (all approvers required)</option>
+            <option value="majority">majority</option>
+          </select>
+        </div>
+      </>
+    )
+
     return null
   }
 
@@ -448,6 +469,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
                     <option value="assign_to">assign_to</option>
                     <option value="update_field">update_field</option>
                     <option value="call_webhook">call_webhook</option>
+                    <option value="create_approval_request">create_approval_request</option>
                   </select>
                 </div>
                 {renderParamFields(

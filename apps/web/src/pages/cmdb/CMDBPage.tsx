@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Server } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
@@ -118,12 +120,12 @@ export function CMDBPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
-    <div>
+    <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
+          <PageTitle icon={<Server size={22} color="var(--color-brand)" />}>
             {pageTitle}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.cmdb.count', { count: total })}
           </p>
@@ -187,6 +189,6 @@ export function CMDBPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { ChevronDown, ChevronRight, Users } from 'lucide-react'
 import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -148,7 +149,7 @@ export function TeamDetailPage() {
   }
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1200 }}>
+    <PageContainer style={{ maxWidth: 1200 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/teams')}>
@@ -230,6 +231,6 @@ export function TeamDetailPage() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }

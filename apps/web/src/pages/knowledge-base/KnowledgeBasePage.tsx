@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { BookOpen, Search, Eye, ThumbsUp, Tag } from 'lucide-react'
@@ -64,7 +65,7 @@ export function KnowledgeBasePage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto' }}>
+    <PageContainer style={{ maxWidth: 900, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ textAlign: 'center', paddingBottom: 32, borderBottom: '1px solid #e2e8f0', marginBottom: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 12 }}>
@@ -204,6 +205,6 @@ export function KnowledgeBasePage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   )
 }

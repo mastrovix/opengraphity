@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { gql } from '@apollo/client'
-import { useQuery } from '@apollo/client/react'
+import { useLazyQuery } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { ShieldCheck } from 'lucide-react'
+import { ShieldCheck, Search } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 
@@ -95,49 +97,72 @@ export function AuditLogPage() {
   const [toDate, setToDate]         = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  // Synced filter handlers
+  const [executeQuery, { data, loading, error }] = useLazyQuery<
+    { auditLog: { items: AuditEntry[]; total: number } }
+  >(GET_AUDIT_LOG, { fetchPolicy: 'network-only' })
+
+  const runQuery = (opts: { page?: number; action?: string; entityType?: string; fromDate?: string; toDate?: string } = {}) => {
+    const p          = opts.page       ?? page
+    const act        = opts.action     !== undefined ? opts.action     : action
+    const ent        = opts.entityType !== undefined ? opts.entityType : entityType
+    const from       = opts.fromDate   !== undefined ? opts.fromDate   : fromDate
+    const to         = opts.toDate     !== undefined ? opts.toDate     : toDate
+    void executeQuery({
+      variables: {
+        page:       p + 1,  // API is 1-based
+        pageSize:   PAGE_SIZE,
+        action:     act  || undefined,
+        entityType: ent  || undefined,
+        fromDate:   from || undefined,
+        toDate:     to   || undefined,
+      },
+    })
+  }
+
+  // Load data on mount
+  useEffect(() => { runQuery() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Synced filter handlers (update state only — do NOT auto-run query)
   const handleEntityChange = (newEntity: string) => {
     setEntityType(newEntity)
-    setPage(0)
     if (!newEntity) {
-      // "All types" → reset action too
       setAction('')
     } else if (action && !ENTITY_ACTIONS[newEntity]?.includes(action)) {
-      // Current action doesn't belong to new entity → clear it
       setAction('')
     }
   }
 
   const handleActionChange = (newAction: string) => {
     setAction(newAction)
-    setPage(0)
     if (!newAction) {
-      // "All actions" → reset entity too
       setEntityType('')
     } else {
-      // Auto-select entity from action
       const inferred = ACTION_TO_ENTITY[newAction]
       if (inferred) setEntityType(inferred)
     }
   }
 
+  const handleSearch = () => {
+    setPage(0)
+    runQuery({ page: 0 })
+  }
+
+  const handleReset = () => {
+    setAction('')
+    setEntityType('')
+    setFromDate('')
+    setToDate('')
+    setPage(0)
+    runQuery({ page: 0, action: '', entityType: '', fromDate: '', toDate: '' })
+  }
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage)
+    runQuery({ page: newPage })
+  }
+
   // Actions visible in dropdown: filtered to selected entity, or all
   const availableActions = entityType ? (ENTITY_ACTIONS[entityType] ?? ALL_ACTIONS) : ALL_ACTIONS
-
-  const { data, loading } = useQuery<{ auditLog: { items: AuditEntry[]; total: number } }>(
-    GET_AUDIT_LOG,
-    {
-      variables: {
-        page:       page + 1,   // API is 1-based
-        pageSize:   PAGE_SIZE,
-        action:     action     || undefined,
-        entityType: entityType || undefined,
-        fromDate:   fromDate   || undefined,
-        toDate:     toDate     || undefined,
-      },
-      fetchPolicy: 'cache-and-network',
-    },
-  )
 
   const items: AuditEntry[] = data?.auditLog?.items ?? []
   const total: number       = data?.auditLog?.total  ?? 0
@@ -168,14 +193,13 @@ export function AuditLogPage() {
   ]
 
   return (
-    <div>
+    <PageContainer>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <ShieldCheck size={22} color="var(--color-brand)" />
+          <PageTitle icon={<ShieldCheck size={22} color="var(--color-brand)" />}>
             {t('pages.audit.title')}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} ${t('pages.audit.entries')}`}
           </p>
@@ -216,7 +240,7 @@ export function AuditLogPage() {
           type="date"
           style={selectStyle}
           value={fromDate}
-          onChange={(e) => { setFromDate(e.target.value); setPage(0) }}
+          onChange={(e) => setFromDate(e.target.value)}
           aria-label={t('pages.audit.dateFrom')}
           title={t('pages.audit.dateFrom')}
         />
@@ -225,20 +249,40 @@ export function AuditLogPage() {
           type="date"
           style={selectStyle}
           value={toDate}
-          onChange={(e) => { setToDate(e.target.value); setPage(0) }}
+          onChange={(e) => setToDate(e.target.value)}
           aria-label={t('pages.audit.dateTo')}
           title={t('pages.audit.dateTo')}
         />
 
+        <button
+          onClick={handleSearch}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px', borderRadius: 6, border: 'none',
+            background: '#38bdf8', color: '#fff', fontSize: 13,
+            fontWeight: 500, cursor: 'pointer',
+          }}
+        >
+          <Search size={14} />
+          {t('pages.audit.search')}
+        </button>
+
         {hasFilters && (
           <button
             style={{ ...selectStyle, cursor: 'pointer', background: '#f1f3f9', color: 'var(--color-slate)' }}
-            onClick={() => { setAction(''); setEntityType(''); setFromDate(''); setToDate(''); setPage(0) }}
+            onClick={handleReset}
           >
             {t('pages.audit.removeFilters')}
           </button>
         )}
       </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 13, marginBottom: 16 }}>
+          {(error as { graphQLErrors?: Array<{ message: string }> }).graphQLErrors?.[0]?.message ?? error.message}
+        </div>
+      )}
 
       {/* Table */}
       <SortableFilterTable<AuditEntry>
@@ -278,7 +322,7 @@ export function AuditLogPage() {
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              onClick={() => handlePageChange(Math.max(0, page - 1))}
               disabled={page === 0}
               style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
@@ -288,7 +332,7 @@ export function AuditLogPage() {
               {page + 1} / {totalPages}
             </span>
             <button
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              onClick={() => handlePageChange(Math.min(totalPages - 1, page + 1))}
               disabled={page >= totalPages - 1}
               style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
@@ -297,6 +341,6 @@ export function AuditLogPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

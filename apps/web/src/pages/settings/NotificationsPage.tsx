@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { PageContainer } from '@/components/PageContainer'
 import { Modal } from '@/components/Modal'
+import { Bell } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 
 const GET_NOTIFICATION_CHANNELS = gql`
   query GetNotificationChannels {
@@ -148,9 +151,11 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 800 }}>
+    <PageContainer style={{ maxWidth: 800 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>Notifiche</h1>
+        <PageTitle icon={<Bell size={22} color="var(--color-brand)" />}>
+          Notifiche
+        </PageTitle>
         <button
           onClick={openCreate}
           style={{ fontSize: 14, fontWeight: 600, color: '#fff', background: 'var(--color-brand)', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer' }}
@@ -273,6 +278,6 @@ export default function NotificationsPage() {
           </div>
         </div>
       </Modal>
-    </div>
+    </PageContainer>
   )
 }

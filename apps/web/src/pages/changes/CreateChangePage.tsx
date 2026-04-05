@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useLazyQuery } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -193,7 +194,7 @@ export function CreateChangePage() {
   const prioConf = PRIORITY_CONFIG.find(p => p.value === priority)!
 
   return (
-    <div style={{ minHeight: '100%', backgroundColor: '#f8fafc', padding: '32px 16px 64px' }}>
+    <PageContainer style={{ minHeight: '100%', backgroundColor: '#f8fafc', paddingBottom: '64px' }}>
       <div style={{ maxWidth: 580, margin: '0 auto' }}>
 
         {/* Header */}
@@ -445,6 +446,6 @@ export function CreateChangePage() {
         )}
 
       </div>
-    </div>
+    </PageContainer>
   )
 }

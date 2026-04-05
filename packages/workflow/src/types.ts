@@ -20,6 +20,7 @@ export type WorkflowActionType =
   | 'assign_to'
   | 'update_field'
   | 'call_webhook'
+  | 'create_approval_request'
 
 // ── Typed params per action type ──────────────────────────────────────────────
 
@@ -46,6 +47,12 @@ export interface CallWebhookParams {
   method:            'GET' | 'POST' | 'PUT'
   headers?:          Record<string, string>
   payload_template?: string
+}
+
+export interface CreateApprovalRequestParams {
+  title_template: string
+  approver_role?: string
+  approval_type?: 'any' | 'all' | 'majority'
 }
 
 // ── Conditions ────────────────────────────────────────────────────────────────
@@ -82,6 +89,13 @@ export interface ActionContext {
   assignTo?:    (entityId: string, targetType: string, targetId: string) => Promise<void>
   updateField?: (entityId: string, field: string, value: unknown) => Promise<void>
   publishEvent?: (type: string, payload: Record<string, unknown>) => Promise<void>
+  createApprovalRequest?: (params: {
+    entityId:     string
+    entityType:   string
+    title:        string
+    approverRole?: string
+    approvalType?: string
+  }) => Promise<string>
 }
 
 // ── Step / Transition / Definition ────────────────────────────────────────────

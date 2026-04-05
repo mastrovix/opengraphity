@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { PageContainer } from '@/components/PageContainer'
+import { UserCircle } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 
 const GET_ME = gql`
   query Me {
@@ -75,10 +78,12 @@ export default function ProfilePage() {
   }
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 640 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 24px' }}>
-        Profilo
-      </h1>
+    <PageContainer style={{ maxWidth: 640 }}>
+      <div style={{ marginBottom: 24 }}>
+        <PageTitle icon={<UserCircle size={22} color="var(--color-brand)" />}>
+          Profilo
+        </PageTitle>
+      </div>
 
       <div style={card}>
         <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>
@@ -140,6 +145,6 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   )
 }

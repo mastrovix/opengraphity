@@ -64,7 +64,7 @@ export function AppLayout() {
           style={{
             flex:            1,
             overflowY:       'auto',
-            padding:         24,
+            padding:         0,
             backgroundColor: '#f8fafc',
           }}
         >

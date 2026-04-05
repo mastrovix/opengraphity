@@ -1,5 +1,6 @@
 import { gql } from '@apollo/client'
 import { useMutation } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { useQuery } from '@apollo/client/react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -70,7 +71,7 @@ export function KBArticlePage() {
   if (error || !article) return <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.articleNotFound')} />
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 32, maxWidth: 1100, margin: '0 auto' }}>
+    <PageContainer style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 32, maxWidth: 1100, margin: '0 auto' }}>
       {/* Main content */}
       <div>
         <Link to="/knowledge-base" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#64748b', textDecoration: 'none', fontSize: 13, marginBottom: 20 }}>
@@ -177,6 +178,6 @@ export function KBArticlePage() {
           </div>
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }

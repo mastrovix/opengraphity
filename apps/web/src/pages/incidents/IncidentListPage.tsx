@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -83,12 +85,12 @@ export function IncidentListPage() {
   }, [location.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div>
+    <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
+          <PageTitle icon={<AlertCircle size={22} color="var(--color-brand)" />}>
             {t('pages.incidents.title')}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.incidents.count', { count: total })}
           </p>
@@ -145,6 +147,6 @@ export function IncidentListPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

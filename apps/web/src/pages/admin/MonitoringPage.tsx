@@ -1,7 +1,9 @@
 import { useQuery }         from '@apollo/client/react'
 import { useTranslation }   from 'react-i18next'
+import { PageContainer } from '@/components/PageContainer'
 import { useState, useEffect, useRef } from 'react'
 import { Activity }         from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import ReactECharts         from 'echarts-for-react'
 import { GET_SYSTEM_HEALTH, GET_SYSTEM_METRICS, GET_TRACE_INFO } from '@/graphql/queries'
 
@@ -124,12 +126,11 @@ export function MonitoringPage() {
   ]
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1200, margin: '0 auto' }}>
+    <PageContainer>
       {/* Header */}
-      <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 22, fontWeight: 700, color: 'var(--color-slate-dark)', margin: 0 }}>
-        <Activity size={22} color="var(--color-brand)" />
+      <PageTitle icon={<Activity size={22} color="var(--color-brand)" />}>
         {t('pages.monitoring.title')}
-      </h1>
+      </PageTitle>
       <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 24 }}>
         {t('pages.monitoring.subtitle')}
       </p>
@@ -397,6 +398,6 @@ export function MonitoringPage() {
           </div>
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }

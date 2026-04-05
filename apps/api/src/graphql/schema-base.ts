@@ -18,6 +18,7 @@ import { approvalSDL } from './schema-approval.js'
 import { attachmentsSDL } from './schema-attachments.js'
 import { commentsSDL } from './schema-comments.js'
 import { knowledgeBaseSDL } from './schema-kb.js'
+import { portalSDL } from './schema-portal.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -110,6 +111,7 @@ export function buildBaseSDL(): string {
 
     # Queue Stats (admin only)
     queueStats: [QueueStat!]!
+    queueJobs(queueName: String!, status: String, limit: Int): [QueueJob!]!
 
     # Monitoring (admin only)
     systemHealth:  SystemHealth!
@@ -134,6 +136,11 @@ export function buildBaseSDL(): string {
     kbArticle(id: ID!): KBArticle!
     kbArticleBySlug(slug: String!): KBArticle!
     kbCategories: [KBCategory!]!
+
+    # Portal (Self-Service)
+    myTickets(status: String, page: Int, pageSize: Int): MyTicketsResult!
+    myTicket(id: ID!): MyTicketDetail!
+    myTicketStats: MyTicketStats!
 
     # Discovery / Sync
     syncSources: [SyncSource!]!
@@ -335,13 +342,21 @@ export function buildBaseSDL(): string {
 
     # Knowledge Base
     createKBArticle(title: String!, body: String!, category: String!, tags: [String!], status: String): KBArticle!
-    updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!], status: String): KBArticle!
+    updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!]): KBArticle!
     deleteKBArticle(id: ID!): Boolean!
     rateKBArticle(id: ID!, helpful: Boolean!): KBArticle!
+
+    # Queue Jobs (admin only)
+    retryQueueJob(queueName: String!, jobId: ID!): Boolean!
 
     # Report Export
     exportReportPDF(templateId: ID!): String!
     exportReportExcel(templateId: ID!): String!
+
+    # Portal (Self-Service)
+    createTicket(title: String!, description: String, priority: String, category: String!): MyTicket!
+    addTicketComment(ticketId: ID!, body: String!): EntityComment!
+    reopenTicket(ticketId: ID!): MyTicket!
   }
 
   # ── Domain enums ─────────────────────────────────────────────────────────────
@@ -370,5 +385,6 @@ export function buildBaseSDL(): string {
   ${attachmentsSDL()}
   ${commentsSDL()}
   ${knowledgeBaseSDL()}
+  ${portalSDL()}
   `
 }

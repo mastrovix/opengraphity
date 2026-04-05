@@ -27,6 +27,7 @@ import { attachmentResolvers } from './attachments.js'
 import { commentResolvers } from './comments.js'
 import { knowledgeBaseResolvers } from './knowledgeBase.js'
 import { reportExportResolvers } from './reportExport.js'
+import { portalResolvers } from './portal.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -135,6 +136,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...attachmentResolvers.Query,
       ...commentResolvers.Query,
       ...knowledgeBaseResolvers.Query,
+      ...portalResolvers.Query,
       auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
@@ -162,6 +164,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...commentResolvers.Mutation,
       ...knowledgeBaseResolvers.Mutation,
       ...reportExportResolvers.Mutation,
+      ...portalResolvers.Mutation,
+      ...queueStatsResolvers.Mutation,
     },
     Incident: {
       ...incidentResolvers.Incident,

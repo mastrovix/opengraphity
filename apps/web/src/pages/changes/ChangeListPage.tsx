@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { GitPullRequest } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { GET_CHANGES } from '@/graphql/queries'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { TypeBadge, PriorityBadge, StepBadge } from '@/components/Badges'
@@ -131,10 +133,12 @@ export function ChangeListPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
-    <div>
+    <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{t('pages.changes.title')}</h1>
+          <PageTitle icon={<GitPullRequest size={22} color="var(--color-brand)" />}>
+            {t('pages.changes.title')}
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.changes.count', { count: total })}
           </p>
@@ -191,6 +195,6 @@ export function ChangeListPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

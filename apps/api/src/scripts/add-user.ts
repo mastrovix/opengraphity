@@ -25,6 +25,7 @@ import { getSession } from '@opengraphity/neo4j'
 const { values: args } = parseArgs({
   options: {
     'slug':       { type: 'string' },
+    'username':   { type: 'string' },   // Keycloak username (optional, defaults to email)
     'email':      { type: 'string' },
     'password':   { type: 'string' },
     'first-name': { type: 'string' },
@@ -36,19 +37,22 @@ const { values: args } = parseArgs({
 const slug      = args['slug']
 const email     = args['email']
 const password  = args['password']
-const firstName = args['first-name']
-const lastName  = args['last-name']
 const role      = args['role']!
 
-const ALLOWED_ROLES = ['admin', 'user', 'manager'] as const
+// first-name / last-name opzionali: derivati da username o email se assenti
+const rawUsername = args['username'] ?? email ?? ''
+const firstName   = args['first-name'] ?? rawUsername.split(/[@._]/)[0] ?? 'Utente'
+const lastName    = args['last-name']  ?? ''
+
+const ALLOWED_ROLES = ['admin', 'user', 'manager', 'operator', 'viewer', 'end_user'] as const
 if (!ALLOWED_ROLES.includes(role as typeof ALLOWED_ROLES[number])) {
   console.error(`Errore: --role deve essere uno di: ${ALLOWED_ROLES.join(', ')}`)
   process.exit(1)
 }
 
-if (!slug || !email || !password || !firstName || !lastName) {
+if (!slug || !email || !password) {
   console.error('Errore: argomenti mancanti.')
-  console.error('Uso: --slug <slug> --email <email> --password <pwd> --first-name <nome> --last-name <cognome> [--role user]')
+  console.error('Uso: --slug <slug> --email <email> --password <pwd> [--username <u>] [--first-name <n>] [--last-name <c>] [--role user]')
   process.exit(1)
 }
 
@@ -144,7 +148,7 @@ async function verifyRealm(token: string): Promise<void> {
 async function upsertKeycloakUser(token: string): Promise<void> {
   // Try to create
   const { status, id: newId } = await kcPost(token, `/admin/realms/${slug}/users`, {
-    username:      email,
+    username:      rawUsername || email,
     email,
     emailVerified: true,
     enabled:       true,
@@ -180,17 +184,20 @@ async function upsertKeycloakUser(token: string): Promise<void> {
     temporary: false,
   })
 
-  // Assign role (idempotent)
+  // Assign role — create it in the realm if it doesn't exist yet
   const { data: roles } = await kcGet<{ id: string; name: string }[]>(
     token,
     `/admin/realms/${slug}/roles`,
   )
-  const targetRole = roles.find((r) => r.name === role)
+  let targetRole = roles.find((r) => r.name === role)
   if (!targetRole) {
-    throw new Error(
-      `Ruolo "${role}" non trovato nel realm "${slug}". ` +
-      `Verifica che i ruoli siano stati creati con onboard-tenant.ts.`,
+    await kcPost(token, `/admin/realms/${slug}/roles`, { name: role, description: `Portal role: ${role}` })
+    console.log(`  + Ruolo "${role}" creato nel realm "${slug}"`)
+    const { data: refreshed } = await kcGet<{ id: string; name: string }[]>(
+      token, `/admin/realms/${slug}/roles`,
     )
+    targetRole = refreshed.find((r) => r.name === role)
+    if (!targetRole) throw new Error(`Impossibile creare il ruolo "${role}" nel realm "${slug}"`)
   }
   await kcPost(token, `/admin/realms/${slug}/users/${userId}/role-mappings/realm`, [
     { id: targetRole.id, name: targetRole.name },

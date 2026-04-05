@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -12,6 +13,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { CIIcon } from '@/lib/ciIcon'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { CIDynamicForm } from '@/components/CIDynamicForm'
+import { PageTitle } from '@/components/PageTitle'
 
 import { toPascalCase, pluralize } from '@/lib/stringUtils'
 
@@ -180,13 +182,12 @@ export function CIListPage() {
 
 
   return (
-    <div>
+    <PageContainer>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <CIIcon icon={ciType.icon} size={22} color={ciType.color} />
+          <PageTitle icon={<CIIcon icon={ciType.icon} size={22} color="var(--color-brand)" />}>
             {ciTypeLabel}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} ${ciTypeLabel.toLowerCase()}`}
           </p>
@@ -265,6 +266,6 @@ export function CIListPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

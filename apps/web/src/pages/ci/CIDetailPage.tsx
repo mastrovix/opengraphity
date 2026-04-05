@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { toPascalCase } from '@/lib/stringUtils'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -149,7 +150,7 @@ export function CIDetailPage() {
   }
 
   return (
-    <div>
+    <PageContainer>
       <button
         onClick={() => navigate(`/ci/${typeName}`)}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-slate-light)', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 12 }}
@@ -287,6 +288,6 @@ export function CIDetailPage() {
           </div>
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }

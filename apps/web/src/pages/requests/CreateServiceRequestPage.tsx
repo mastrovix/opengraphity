@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
@@ -86,7 +87,7 @@ export function CreateServiceRequestPage() {
   }
 
   return (
-    <div style={{ maxWidth: 680, margin: '0 auto', paddingTop: 32 }}>
+    <PageContainer style={{ maxWidth: 680, margin: '0 auto' }}>
 
       {/* Back link */}
       <button
@@ -205,6 +206,6 @@ export function CreateServiceRequestPage() {
 
         </form>
       </div>
-    </div>
+    </PageContainer>
   )
 }

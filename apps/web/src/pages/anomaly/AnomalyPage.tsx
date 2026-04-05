@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { ShieldAlert, ShieldCheck, Radar, RefreshCw, X, Lightbulb } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import {
@@ -566,14 +568,13 @@ export function AnomalyPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <PageContainer style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <h1 className="ty-page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <ShieldAlert size={22} color={colors.danger} />
+          <PageTitle icon={<ShieldAlert size={22} color="var(--color-brand)" />}>
             {t('pages.anomalies.title')}
-          </h1>
+          </PageTitle>
           <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.anomalies.count', { count: total })}
           </p>
@@ -682,6 +683,6 @@ export function AnomalyPage() {
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
-    </div>
+    </PageContainer>
   )
 }

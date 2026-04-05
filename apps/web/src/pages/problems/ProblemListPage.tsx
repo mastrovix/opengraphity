@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Bug } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -74,14 +76,24 @@ export function ProblemListPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', margin: 0 }}>
-          {t('pages.problems.title')}
-        </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
-          {loading ? '—' : t('pages.problems.count', { count: total })}
-        </p>
+    <PageContainer>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <PageTitle icon={<Bug size={22} color="var(--color-brand)" />}>
+            {t('pages.problems.title')}
+          </PageTitle>
+          <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : t('pages.problems.count', { count: total })}
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/problems/new')}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
+        >
+          {t('pages.problems.new')}
+        </button>
       </div>
 
       <FilterBuilder
@@ -126,6 +138,6 @@ export function ProblemListPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

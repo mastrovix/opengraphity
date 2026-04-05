@@ -317,6 +317,7 @@
       "allActions": "— Tutte le azioni —",
       "allTypes": "— Tutti i tipi —",
       "removeFilters": "Rimuovi filtri",
+      "search": "Cerca",
       "details": "Dettagli — {{action}}",
       "page": "Pagina {{page}} · {{total}} totali",
       "prevPage": "Pagina precedente",
@@ -367,6 +368,95 @@
       "modeFile": "Carica file",
       "dropHint": "Trascina qui o",
       "browse": "Sfoglia"
+    },
+    "monitoring": {
+      "title": "Monitoring",
+      "subtitle": "Salute del sistema, metriche e tracciamento in tempo reale",
+      "health": {
+        "title":    "Salute del Sistema",
+        "neo4j":    "Neo4j",
+        "redis":    "Redis",
+        "keycloak": "Keycloak",
+        "uptime":   "Uptime",
+        "ok":       "Operativo",
+        "error":    "Errore",
+        "latency":  "Latenza"
+      },
+      "requests": {
+        "title":     "Metriche Richieste",
+        "rpm":       "Richieste/min",
+        "avg":       "Risposta Media",
+        "p95":       "Risposta P95",
+        "errorRate": "Tasso Errori"
+      },
+      "queues": {
+        "title":     "BullMQ Code",
+        "waiting":   "In attesa",
+        "active":    "Attivi",
+        "completed": "Completati",
+        "failed":    "Falliti",
+        "delayed":   "Ritardati"
+      },
+      "neo4j": {
+        "title":        "Neo4j",
+        "totalQueries": "Query Totali",
+        "avgQuery":     "Tempo Query Medio",
+        "slowQueries":  "Query Lente (>500ms)"
+      },
+      "tracing": {
+        "title":     "OpenTelemetry Tracing",
+        "enabled":   "Abilitato",
+        "disabled":  "Disabilitato",
+        "noTracing": "Tracing non attivo. Impostare OTEL_ENABLED=true e avviare Jaeger."
+      },
+      "process": {
+        "title":   "Processo",
+        "memory":  "Heap Memory",
+        "rss":     "RSS",
+        "cpu":     "CPU",
+        "pid":     "PID",
+        "version": "Node.js"
+      }
+    },
+    "approvals": {
+      "title":       "Approvazioni",
+      "subtitle":    "Gestisci le richieste di approvazione",
+      "tabMine":     "Da approvare",
+      "tabAll":      "Tutte",
+      "noPending":   "Nessuna approvazione in attesa",
+      "noApprovals": "Nessuna richiesta trovata",
+      "allStatuses": "Tutti gli stati"
+    },
+    "kb": {
+      "title":             "Knowledge Base",
+      "subtitle":          "Cerca articoli e soluzioni",
+      "searchPlaceholder": "Cerca articoli...",
+      "browseCategories":  "Sfoglia per categoria",
+      "category":          "Categoria",
+      "noArticles":        "Nessun articolo trovato",
+      "articleNotFound":   "Articolo non trovato",
+      "backToList":        "Torna alla lista",
+      "wasHelpful":        "Questo articolo ti è stato utile?",
+      "yes":               "Sì",
+      "no":                "No",
+      "thanks":            "Grazie per il tuo feedback!",
+      "related":           "Articoli correlati",
+      "info":              "Informazioni",
+      "author":            "Autore",
+      "published":         "Pubblicato",
+      "updated":           "Aggiornato",
+      "views":             "Visualizzazioni"
+    },
+    "kbAdmin": {
+      "title":       "Knowledge Base Admin",
+      "new":         "Nuovo articolo",
+      "newArticle":  "Nuovo articolo",
+      "editArticle": "Modifica articolo",
+      "created":     "Articolo creato",
+      "updated":     "Articolo aggiornato",
+      "deleted":     "Articolo eliminato",
+      "noArticles":  "Nessun articolo",
+      "allStatuses": "Tutti gli stati"
     }
   },
   "filter": {
@@ -527,95 +617,6 @@
       "deferred":      { "title": "Problem Posticipato" },
       "resolved":      { "title": "Problem Risolto" },
       "closed":        { "title": "Problem Chiuso" }
-    },
-    "monitoring": {
-      "title": "Monitoring",
-      "subtitle": "Salute del sistema, metriche e tracciamento in tempo reale",
-      "health": {
-        "title":    "Salute del Sistema",
-        "neo4j":    "Neo4j",
-        "redis":    "Redis",
-        "keycloak": "Keycloak",
-        "uptime":   "Uptime",
-        "ok":       "Operativo",
-        "error":    "Errore",
-        "latency":  "Latenza"
-      },
-      "requests": {
-        "title":     "Metriche Richieste",
-        "rpm":       "Richieste/min",
-        "avg":       "Risposta Media",
-        "p95":       "Risposta P95",
-        "errorRate": "Tasso Errori"
-      },
-      "queues": {
-        "title":     "BullMQ Code",
-        "waiting":   "In attesa",
-        "active":    "Attivi",
-        "completed": "Completati",
-        "failed":    "Falliti",
-        "delayed":   "Ritardati"
-      },
-      "neo4j": {
-        "title":        "Neo4j",
-        "totalQueries": "Query Totali",
-        "avgQuery":     "Tempo Query Medio",
-        "slowQueries":  "Query Lente (>500ms)"
-      },
-      "tracing": {
-        "title":     "OpenTelemetry Tracing",
-        "enabled":   "Abilitato",
-        "disabled":  "Disabilitato",
-        "noTracing": "Tracing non attivo. Impostare OTEL_ENABLED=true e avviare Jaeger."
-      },
-      "process": {
-        "title":   "Processo",
-        "memory":  "Heap Memory",
-        "rss":     "RSS",
-        "cpu":     "CPU",
-        "pid":     "PID",
-        "version": "Node.js"
-      }
-    },
-    "approvals": {
-      "title":       "Approvazioni",
-      "subtitle":    "Gestisci le richieste di approvazione",
-      "tabMine":     "Da approvare",
-      "tabAll":      "Tutte",
-      "noPending":   "Nessuna approvazione in attesa",
-      "noApprovals": "Nessuna richiesta trovata",
-      "allStatuses": "Tutti gli stati"
-    },
-    "kb": {
-      "title":           "Knowledge Base",
-      "subtitle":        "Cerca articoli e soluzioni",
-      "searchPlaceholder": "Cerca articoli...",
-      "browseCategories": "Sfoglia per categoria",
-      "category":        "Categoria",
-      "noArticles":      "Nessun articolo trovato",
-      "articleNotFound": "Articolo non trovato",
-      "backToList":      "Torna alla lista",
-      "wasHelpful":      "Questo articolo ti è stato utile?",
-      "yes":             "Sì",
-      "no":              "No",
-      "thanks":          "Grazie per il tuo feedback!",
-      "related":         "Articoli correlati",
-      "info":            "Informazioni",
-      "author":          "Autore",
-      "published":       "Pubblicato",
-      "updated":         "Aggiornato",
-      "views":           "Visualizzazioni"
-    },
-    "kbAdmin": {
-      "title":       "Knowledge Base Admin",
-      "new":         "+ Nuovo articolo",
-      "newArticle":  "Nuovo articolo",
-      "editArticle": "Modifica articolo",
-      "created":     "Articolo creato",
-      "updated":     "Articolo aggiornato",
-      "deleted":     "Articolo eliminato",
-      "noArticles":  "Nessun articolo",
-      "allStatuses": "Tutti gli stati"
     }
   },
   "attachments": {

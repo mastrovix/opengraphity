@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@apollo/client/react'
+import { PageContainer } from '@/components/PageContainer'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { ScrollText } from 'lucide-react'
+import { PageTitle } from '@/components/PageTitle'
 
 const GET_LOGS = gql`
   query GetLogs($level: String, $module: String, $search: String, $limit: Int, $offset: Int, $filters: String) {
@@ -186,12 +189,12 @@ export function LogsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1200 }}>
+    <PageContainer style={{ maxWidth: 1200 }}>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
+        <PageTitle icon={<ScrollText size={22} color="var(--color-brand)" />}>
           {t('pages.logs.title')}
-        </h1>
+        </PageTitle>
         <p style={{ color: '#0f172a', fontSize: 13, margin: '4px 0 0' }}>
           {loading ? '—' : total > 0 ? t('pages.logs.count', { count: total }) : t('common.noResults')}
         </p>
@@ -318,6 +321,6 @@ export function LogsPage() {
           </button>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

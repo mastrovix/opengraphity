@@ -1,6 +1,8 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { workflowEngine } from '@opengraphity/workflow'
+import type { ActionContext } from '@opengraphity/workflow'
 import { sseManager } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
@@ -257,7 +259,8 @@ export async function approveRequest(
       MATCH (a:ApprovalRequest {id: $id, tenant_id: $tenantId})
       RETURN a.id AS id, a.status AS status, a.approvers AS approvers,
              a.approved_by AS approvedBy, a.approval_type AS approvalType,
-             a.requested_by AS requestedBy
+             a.requested_by AS requestedBy,
+             a.entity_type AS entityType, a.entity_id AS entityId
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (!loadRes.records.length) {
@@ -270,10 +273,12 @@ export async function approveRequest(
       throw new GraphQLError(`Cannot approve a request with status '${status}'`, { extensions: { code: 'BAD_REQUEST' } })
     }
 
-    const approvers   = JSON.parse((rec.get('approvers')  as string | null) ?? '[]') as string[]
-    const approvedBy  = JSON.parse((rec.get('approvedBy') as string | null) ?? '[]') as string[]
+    const approvers    = JSON.parse((rec.get('approvers')  as string | null) ?? '[]') as string[]
+    const approvedBy   = JSON.parse((rec.get('approvedBy') as string | null) ?? '[]') as string[]
     const approvalType = rec.get('approvalType') as string
     const requestedBy  = rec.get('requestedBy')  as string
+    const entityType   = rec.get('entityType')   as string
+    const entityId     = rec.get('entityId')     as string
 
     if (!approvers.includes(ctx.userId)) {
       throw new GraphQLError('You are not an approver for this request', { extensions: { code: 'FORBIDDEN' } })
@@ -330,17 +335,51 @@ export async function approveRequest(
     void audit(ctx, 'approval.approved', 'ApprovalRequest', args.id)
 
     if (satisfied) {
-      sseManager.sendToUser(ctx.tenantId, requestedBy, {
-        id:          uuidv4(),
-        type:        'approval.approved',
-        title:       'Richiesta approvata',
-        message:     `La richiesta è stata approvata`,
-        severity:    'success',
-        entity_id:   args.id,
-        entity_type: 'ApprovalRequest',
-        timestamp:   new Date().toISOString(),
-        read:        false,
-      })
+      const nowSse = new Date().toISOString()
+
+      if (entityType === 'kb_article') {
+        // ── KB Article: transition workflow to 'published' ────────────────────
+        const wiRes = await session.executeRead((tx) =>
+          tx.run(
+            `MATCH (a:KBArticle {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+             WHERE wi.status = 'active'
+             RETURN wi.id AS instanceId`,
+            { entityId, tenantId: ctx.tenantId },
+          ),
+        )
+        if (wiRes.records.length > 0) {
+          const instanceId = wiRes.records[0].get('instanceId') as string
+          const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
+          await workflowEngine.transition(
+            session,
+            { instanceId, toStepName: 'published', triggeredBy: ctx.userId, triggerType: 'manual' },
+            actionCtx,
+          )
+        }
+        sseManager.sendToUser(ctx.tenantId, requestedBy, {
+          id:          uuidv4(),
+          type:        'kb.published',
+          title:       'Articolo pubblicato',
+          message:     'Il tuo articolo è stato approvato e pubblicato',
+          severity:    'success',
+          entity_id:   entityId,
+          entity_type: 'KBArticle',
+          timestamp:   nowSse,
+          read:        false,
+        })
+      } else {
+        sseManager.sendToUser(ctx.tenantId, requestedBy, {
+          id:          uuidv4(),
+          type:        'approval.approved',
+          title:       'Richiesta approvata',
+          message:     `La richiesta è stata approvata`,
+          severity:    'success',
+          entity_id:   args.id,
+          entity_type: 'ApprovalRequest',
+          timestamp:   nowSse,
+          read:        false,
+        })
+      }
     }
 
     return updated
@@ -358,16 +397,19 @@ export async function rejectRequest(
   try {
     const loadRes = await session.executeRead((tx) => tx.run(`
       MATCH (a:ApprovalRequest {id: $id, tenant_id: $tenantId})
-      RETURN a.status AS status, a.approvers AS approvers, a.requested_by AS requestedBy
+      RETURN a.status AS status, a.approvers AS approvers, a.requested_by AS requestedBy,
+             a.entity_type AS entityType, a.entity_id AS entityId
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (!loadRes.records.length) {
       throw new GraphQLError('ApprovalRequest not found', { extensions: { code: 'NOT_FOUND' } })
     }
 
-    const status     = loadRes.records[0].get('status')     as string
-    const approvers  = JSON.parse((loadRes.records[0].get('approvers') as string | null) ?? '[]') as string[]
+    const status      = loadRes.records[0].get('status')     as string
+    const approvers   = JSON.parse((loadRes.records[0].get('approvers') as string | null) ?? '[]') as string[]
     const requestedBy = loadRes.records[0].get('requestedBy') as string
+    const entityType  = loadRes.records[0].get('entityType')  as string
+    const entityId    = loadRes.records[0].get('entityId')    as string
 
     if (status !== 'pending') {
       throw new GraphQLError(`Cannot reject a request with status '${status}'`, { extensions: { code: 'BAD_REQUEST' } })
@@ -404,14 +446,36 @@ export async function rejectRequest(
     const updated = mapApproval(updateRes.records[0])
     void audit(ctx, 'approval.rejected', 'ApprovalRequest', args.id)
 
+    if (entityType === 'kb_article') {
+      // ── KB Article: transition workflow back to 'draft' ───────────────────
+      const wiRes = await session.executeRead((tx) =>
+        tx.run(
+          `MATCH (a:KBArticle {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+           WHERE wi.status = 'active'
+           RETURN wi.id AS instanceId`,
+          { entityId, tenantId: ctx.tenantId },
+        ),
+      )
+      if (wiRes.records.length > 0) {
+        const instanceId = wiRes.records[0].get('instanceId') as string
+        const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
+        await workflowEngine.transition(
+          session,
+          { instanceId, toStepName: 'draft', triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note },
+          actionCtx,
+        )
+      }
+      void audit(ctx, 'kb_article.publication_rejected', 'KBArticle', entityId)
+    }
+
     sseManager.sendToUser(ctx.tenantId, requestedBy, {
       id:          uuidv4(),
-      type:        'approval.rejected',
-      title:       'Richiesta rifiutata',
+      type:        entityType === 'kb_article' ? 'kb.publication_rejected' : 'approval.rejected',
+      title:       entityType === 'kb_article' ? 'Pubblicazione rifiutata' : 'Richiesta rifiutata',
       message:     args.note,
       severity:    'error',
-      entity_id:   args.id,
-      entity_type: 'ApprovalRequest',
+      entity_id:   entityType === 'kb_article' ? entityId : args.id,
+      entity_type: entityType === 'kb_article' ? 'KBArticle' : 'ApprovalRequest',
       timestamp:   now,
       read:        false,
     })

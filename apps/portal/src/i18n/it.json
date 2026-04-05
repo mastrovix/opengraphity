@@ -1,0 +1,113 @@
+{
+  "portal": {
+    "title": "Portale IT",
+    "poweredBy": "Powered by OpenGrafo"
+  },
+  "nav": {
+    "home": "Home",
+    "tickets": "I miei ticket",
+    "kb": "Knowledge Base"
+  },
+  "home": {
+    "greeting": "Ciao {{name}}, come possiamo aiutarti?",
+    "search": "Cerca nella Knowledge Base...",
+    "newTicket": "Apri un nuovo ticket",
+    "newTicketDesc": "Segnala un problema o fai una richiesta",
+    "searchKB": "Cerca nella Knowledge Base",
+    "searchKBDesc": "Trova soluzioni agli problemi più comuni",
+    "recentTickets": "I tuoi ticket recenti",
+    "noTickets": "Non hai ticket aperti.",
+    "needHelp": "Hai bisogno di assistenza?",
+    "open": "Aperti",
+    "inProgress": "In corso",
+    "total": "Totale"
+  },
+  "ticket": {
+    "new": "Nuovo ticket",
+    "status": {
+      "new": "Nuovo",
+      "open": "Aperto",
+      "assigned": "Assegnato",
+      "in_progress": "In corso",
+      "escalated": "Escalation",
+      "pending": "In attesa",
+      "resolved": "Risolto",
+      "closed": "Chiuso"
+    },
+    "priority": {
+      "low": "Bassa",
+      "medium": "Media",
+      "high": "Alta"
+    },
+    "category": {
+      "hardware": "Hardware",
+      "software": "Software",
+      "access": "Accesso",
+      "network": "Rete",
+      "other": "Altro"
+    },
+    "fields": {
+      "title": "Descrivi il problema in una frase",
+      "description": "Fornisci tutti i dettagli utili: cosa stavi facendo, quale errore hai visto, da quando si verifica...",
+      "priority": "Priorità",
+      "category": "Categoria",
+      "attachments": "Allegati"
+    },
+    "filters": {
+      "all": "Tutti",
+      "open": "Aperti",
+      "inProgress": "In corso",
+      "resolved": "Risolti",
+      "closed": "Chiusi"
+    },
+    "submit": "Invia ticket",
+    "created": "Ticket creato! Il team IT è stato notificato.",
+    "resolved": "Questo ticket è stato risolto",
+    "reopen": "Riapri ticket",
+    "reply": "Rispondi",
+    "replyPlaceholder": "Scrivi la tua risposta...",
+    "assignedTo": "Assegnato a",
+    "createdAt": "Aperto il",
+    "updatedAt": "Ultimo aggiornamento",
+    "statusChanged": "Status cambiato da {{from}} a {{to}}",
+    "attachments": "Allegati",
+    "suggestedArticles": "Articoli che potrebbero aiutarti",
+    "foundAnswer": "Hai trovato la risposta? Se sì, non serve aprire un ticket.",
+    "dropFiles": "Trascina file qui o clicca per allegare",
+    "empty": {
+      "all": "Non hai ancora nessun ticket.",
+      "open": "Nessun ticket aperto.",
+      "inProgress": "Nessun ticket in corso.",
+      "resolved": "Nessun ticket risolto.",
+      "closed": "Nessun ticket chiuso."
+    },
+    "prev": "← Precedente",
+    "next": "Successivo →"
+  },
+  "kb": {
+    "title": "Knowledge Base",
+    "search": "Cerca articoli...",
+    "noResults": "Nessun articolo trovato. Prova con parole diverse o apri un ticket.",
+    "categories": "Categorie",
+    "articles": "articoli",
+    "helpful": "Ti è stato utile questo articolo?",
+    "yes": "Sì",
+    "no": "No",
+    "related": "Articoli correlati",
+    "notSolved": "Non hai risolto il problema?",
+    "openTicket": "Apri un ticket",
+    "published": "Pubblicato il",
+    "by": "di",
+    "views": "visualizzazioni",
+    "breadcrumb": "Knowledge Base"
+  },
+  "common": {
+    "loading": "Caricamento...",
+    "error": "Si è verificato un errore",
+    "logout": "Esci",
+    "profile": "Profilo",
+    "cancel": "Annulla",
+    "save": "Salva",
+    "back": "← Indietro"
+  }
+}
