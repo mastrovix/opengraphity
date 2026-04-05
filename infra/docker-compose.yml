@@ -162,8 +162,11 @@ services:
       REDIS_URL: redis://redis:6379
 
       # Keycloak
+      # Internal URL — used by the API for JWKS fetch and admin calls (Docker network)
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      # Public URL — the origin browsers use; tokens carry this in their `iss` claim
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KEYCLOAK_ADMIN_USER: admin
       KEYCLOAK_ADMIN_PASSWORD: opengrafo_local
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-master}

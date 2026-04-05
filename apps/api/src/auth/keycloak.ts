@@ -1,15 +1,39 @@
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
 
+/**
+ * Internal Keycloak URL used for server-to-server calls (JWKS fetch).
+ * Inside Docker this is http://keycloak:8080; in local dev it equals the public URL.
+ */
+const KEYCLOAK_INTERNAL_URL = process.env['KEYCLOAK_URL']        ?? 'http://localhost:8080'
+
+/**
+ * Public Keycloak URL that browsers use.  Tokens issued to browsers carry this
+ * as their `iss` claim.  We must NOT use it for server-side JWKS fetch inside
+ * Docker because `localhost` inside a container resolves to the container itself.
+ */
+const KEYCLOAK_PUBLIC_URL   = process.env['KEYCLOAK_PUBLIC_URL'] ?? KEYCLOAK_INTERNAL_URL
+
 /** Per-issuer JWKS client cache — one entry per tenant */
 const clientCache = new Map<string, ReturnType<typeof jwksClient>>()
 
+/**
+ * Returns a JWKS client for the given token issuer.
+ *
+ * The issuer in the token is the PUBLIC URL (browser-visible).  To fetch JWKS
+ * inside Docker we replace the public origin with the internal one so the HTTP
+ * request stays inside the Docker network.
+ */
 function getJwksClient(issuer: string): ReturnType<typeof jwksClient> {
   const cached = clientCache.get(issuer)
   if (cached) return cached
 
+  // Swap public origin → internal origin for the JWKS HTTP request.
+  // e.g. "http://localhost:8080/realms/c-one" → "http://keycloak:8080/realms/c-one"
+  const fetchBase = issuer.replace(KEYCLOAK_PUBLIC_URL, KEYCLOAK_INTERNAL_URL)
+
   const client = jwksClient({
-    jwksUri:         `${issuer}/protocol/openid-connect/certs`,
+    jwksUri:         `${fetchBase}/protocol/openid-connect/certs`,
     cache:           true,
     cacheMaxEntries: 10,
     cacheMaxAge:     10 * 60 * 1000, // 10 min
