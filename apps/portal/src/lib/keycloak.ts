@@ -2,26 +2,24 @@ import Keycloak from 'keycloak-js'
 
 export function getTenantSlug(): string {
   const hostname = window.location.hostname
-  const first    = hostname.split('.')[0]!
+  const parts    = hostname.split('.')
+  const first    = parts[0]!
+
+  // portal.c-one.localhost (or portal.slug.domain) → second segment is the tenant slug
+  if (first === 'portal' && parts.length >= 3) return parts[1]!
 
   if (
     first === 'localhost' ||
     first === '127'       ||
-    first === 'portal'   ||
     first.startsWith('192') ||
     first.startsWith('10')  ||
     first === ''
   ) {
-    // In dev on localhost:5174, read slug from env or default
+    // Dev fallback: localhost:5174 with VITE_TENANT_SLUG set
     const envSlug = import.meta.env['VITE_TENANT_SLUG'] as string | undefined
     if (envSlug) return envSlug
     throw new Error('Nessun tenant nel sottodominio. Accedi tramite: portal.c-one.localhost o imposta VITE_TENANT_SLUG.')
   }
-
-  // portal.c-one.localhost → second segment is the tenant slug
-  const parts = hostname.split('.')
-  // "portal.c-one.localhost" → ["portal","c-one","localhost"]
-  if (parts[0] === 'portal' && parts.length >= 3) return parts[1]!
 
   return first
 }

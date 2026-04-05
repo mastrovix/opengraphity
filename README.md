@@ -4,6 +4,20 @@ ITSM platform built on a graph database (Neo4j), with a React frontend, self-ser
 
 ## Quick Start (Docker)
 
+### 1. Add tenant subdomains to `/etc/hosts`
+
+Nginx routes traffic on port 80 using `Host` headers, so your machine needs to resolve `*.localhost` subdomains.
+Add the following lines (replace `c-one` with your tenant slug):
+
+```
+127.0.0.1  c-one.localhost
+127.0.0.1  portal.c-one.localhost
+```
+
+> **macOS shortcut:** `echo "127.0.0.1 c-one.localhost portal.c-one.localhost" | sudo tee -a /etc/hosts`
+
+### 2. Start all services
+
 ```bash
 git clone <repo>
 cd opengraphity
@@ -13,15 +27,15 @@ docker compose -f infra/docker-compose.yml up -d --build
 
 Wait ~60 seconds for all services to come up, then open:
 
-| Service     | URL                            |
-|-------------|-------------------------------|
-| App         | http://localhost:5173          |
-| Portal      | http://localhost:5174          |
-| API health  | http://localhost:4000/health   |
-| Neo4j       | http://localhost:7474          |
-| Keycloak    | http://localhost:8080          |
-| Grafana     | http://localhost:3001          |
-| Jaeger      | http://localhost:16686         |
+| Service                 | URL                                  |
+|-------------------------|--------------------------------------|
+| App (agent)             | http://c-one.localhost               |
+| Portal (self-service)   | http://portal.c-one.localhost        |
+| API health              | http://localhost:4000/health         |
+| Neo4j                   | http://localhost:7474                |
+| Keycloak                | http://localhost:8080                |
+| Grafana                 | http://localhost:3001                |
+| Jaeger                  | http://localhost:16686               |
 
 Or use the helper script:
 
@@ -81,27 +95,36 @@ The apps read their env vars from `apps/api/.env` — copy from `infra/.env.exam
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Browser                                                │
-│  localhost:5173 (web)    localhost:5174 (portal)        │
-└───────┬────────────────────────┬────────────────────────┘
-        │                        │
-┌───────▼──────────┐   ┌─────────▼──────────┐
-│  web (nginx:80)  │   │ portal (nginx:80)   │
-│  /graphql → api  │   │ /graphql → api      │
-│  /api → api      │   │ /api → api          │
-└───────┬──────────┘   └─────────┬──────────┘
-        └──────────┬─────────────┘
-                   │
-         ┌─────────▼──────────┐
-         │  api (node:4000)   │
-         │  Express + Apollo  │
-         │  BullMQ workers    │
-         └──┬──────┬──────────┘
-            │      │
-    ┌───────▼┐  ┌──▼──────┐
-    │ neo4j  │  │  redis  │
-    └────────┘  └─────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│  Browser                                                          │
+│  c-one.localhost:80          portal.c-one.localhost:80            │
+└───────────────────────────────────────────────────────────────────┘
+                               │
+                   ┌───────────▼───────────┐
+                   │  nginx (port 80)      │
+                   │  subdomain routing    │
+                   │  *.localhost → web    │
+                   │  portal.* → portal   │
+                   │  /graphql → api      │
+                   │  /api/* → api        │
+                   └──┬──────────────┬────┘
+                      │              │
+          ┌───────────▼──┐  ┌────────▼──────┐
+          │  web (80)    │  │ portal (80)   │
+          │  React SPA   │  │ React SPA     │
+          └──────────────┘  └───────────────┘
+                      │              │
+                      └──────┬───────┘
+                             │
+                  ┌──────────▼──────────┐
+                  │  api (node:4000)    │
+                  │  Express + Apollo   │
+                  │  BullMQ workers     │
+                  └──┬──────┬───────────┘
+                     │      │
+             ┌───────▼┐  ┌──▼──────┐
+             │ neo4j  │  │  redis  │
+             └────────┘  └─────────┘
 ```
 
 Stack: Neo4j 5, Redis 7, Keycloak 24, Node 20, React 19, Vite 7, Apollo GraphQL, pnpm workspaces.

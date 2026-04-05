@@ -38,8 +38,9 @@ const ITSM_ROLES = ['admin', 'operator', 'viewer'] as const
  */
 function extractTenantFromHost(req: express.Request): string | null {
   const raw = (req.headers['x-forwarded-host'] ?? req.headers['host'] ?? '') as string
-  const host = raw.split(':')[0]!        // strip port
-  const first = host.split('.')[0]!
+  const host   = raw.split(':')[0]!        // strip port
+  const parts  = host.split('.')
+  const first  = parts[0]!
 
   if (
     first === 'localhost' ||
@@ -50,6 +51,9 @@ function extractTenantFromHost(req: express.Request): string | null {
   ) {
     return null
   }
+
+  // portal.c-one.localhost → tenant is the second segment, not "portal"
+  if (first === 'portal' && parts.length >= 3) return parts[1]!
 
   return first
 }

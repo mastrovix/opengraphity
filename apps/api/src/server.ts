@@ -84,16 +84,53 @@ app.use(compression({
 app.use(metricsMiddlewareWithRpm)
 app.get('/metrics', metricsHandler)
 
-const CORS_ORIGIN = (() => {
-  if (process.env['CORS_ORIGIN']) return process.env['CORS_ORIGIN']
-  if (process.env['NODE_ENV'] === 'production') {
-    throw new Error('CORS_ORIGIN environment variable is required in production.')
+/**
+ * Build a cors origin function.
+ *
+ * In development (no CORS_ORIGIN set) any *.localhost origin is allowed so
+ * that subdomain routing (c-one.localhost, portal.c-one.localhost, …) works
+ * without configuration.
+ *
+ * In production CORS_ORIGIN must be set to a comma-separated list of allowed
+ * origins (exact matches).
+ */
+// Matches any localhost origin regardless of subdomain depth or port.
+// e.g. http://localhost, http://c-one.localhost, http://portal.c-one.localhost:5174
+const LOCALHOST_ORIGIN_RE = /^https?:\/\/([a-z0-9-]+\.)*localhost(:\d+)?$/
+
+/**
+ * Build a cors origin function.
+ *
+ * Always allows any *.localhost origin (safe for local dev/Docker).
+ * In production, set CORS_ORIGIN to a comma-separated list of allowed origins
+ * for non-localhost traffic.
+ */
+function buildCorsOrigin(
+  envOrigin: string | undefined,
+): (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => void {
+  const explicit = envOrigin
+    ? new Set(
+        envOrigin.split(',')
+          .map((s) => s.trim())
+          .filter((s) => s && !s.includes('*')),  // skip wildcard placeholders
+      )
+    : new Set<string>()
+
+  return (origin, callback) => {
+    if (!origin || LOCALHOST_ORIGIN_RE.test(origin) || explicit.has(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`))
+    }
   }
-  return 'http://localhost:5173'
-})()
+}
+
+if (!process.env['CORS_ORIGIN'] && process.env['NODE_ENV'] === 'production') {
+  throw new Error('CORS_ORIGIN environment variable is required in production.')
+}
 
 app.use(cors({
-  origin:      CORS_ORIGIN,
+  origin:      buildCorsOrigin(process.env['CORS_ORIGIN']),
   credentials: true,
 }))
 
