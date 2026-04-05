@@ -7,12 +7,6 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-ARG VITE_GRAPHQL_URL=/graphql
-ARG VITE_API_URL=/graphql
-ARG VITE_KEYCLOAK_URL=http://localhost:8080
-ARG VITE_KEYCLOAK_CLIENT_ID=opengrafo-portal
-ARG VITE_TENANT_SLUG=
-
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/portal/package.json apps/portal/
 
@@ -30,7 +24,16 @@ RUN pnpm install --frozen-lockfile
 
 COPY apps/portal/ apps/portal/
 
-ENV VITE_GRAPHQL_URL=$VITE_GRAPHQL_URL
+# ── Build-time vars (baked into the JS bundle at compile time) ────────────────
+# These must be reachable from the BROWSER, not from inside Docker.
+# VITE_TENANT_SLUG: tenant slug used when accessing via plain localhost:5174
+#   (no subdomain). Set to your tenant name, e.g. "c-one".
+#   Leave empty if you always access via portal.{tenant}.localhost.
+ARG VITE_API_URL=/graphql
+ARG VITE_KEYCLOAK_URL=http://localhost:8080
+ARG VITE_KEYCLOAK_CLIENT_ID=opengrafo-portal
+ARG VITE_TENANT_SLUG=
+
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL
 ENV VITE_KEYCLOAK_CLIENT_ID=$VITE_KEYCLOAK_CLIENT_ID

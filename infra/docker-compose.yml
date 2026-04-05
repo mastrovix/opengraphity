@@ -217,7 +217,7 @@ services:
       context: ..
       dockerfile: apps/web/Dockerfile
       args:
-        VITE_GRAPHQL_URL: /graphql
+        # Browser-accessible URLs — NOT internal Docker service names
         VITE_API_URL: /graphql
         VITE_API_BASE_URL: http://localhost:4000
         VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://localhost:8080}
@@ -235,10 +235,11 @@ services:
       context: ..
       dockerfile: apps/portal/Dockerfile
       args:
-        VITE_GRAPHQL_URL: /graphql
+        # Browser-accessible URLs — NOT internal Docker service names
         VITE_API_URL: /graphql
         VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://localhost:8080}
         VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID_PORTAL:-opengrafo-portal}
+        # Set to your tenant slug to access portal at localhost:5174 (no subdomain)
         VITE_TENANT_SLUG: ${VITE_TENANT_SLUG:-}
     ports:
       - "5174:80"

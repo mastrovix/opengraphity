@@ -7,13 +7,6 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# Build-time env vars baked into the SPA bundle
-ARG VITE_GRAPHQL_URL=/graphql
-ARG VITE_API_URL=/graphql
-ARG VITE_API_BASE_URL=http://localhost:4000
-ARG VITE_KEYCLOAK_URL=http://localhost:8080
-ARG VITE_KEYCLOAK_CLIENT_ID=opengrafo-web
-
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/web/package.json apps/web/
 
@@ -32,8 +25,14 @@ RUN pnpm install --frozen-lockfile
 
 COPY apps/web/ apps/web/
 
-# Expose ARGs as ENV so Vite picks them up at build time
-ENV VITE_GRAPHQL_URL=$VITE_GRAPHQL_URL
+# ── Build-time vars (baked into the JS bundle at compile time) ────────────────
+# These must be reachable from the BROWSER, not from inside Docker.
+# Changing any of these values busts the cache from this point on only.
+ARG VITE_API_URL=/graphql
+ARG VITE_API_BASE_URL=http://localhost:4000
+ARG VITE_KEYCLOAK_URL=http://localhost:8080
+ARG VITE_KEYCLOAK_CLIENT_ID=opengrafo-web
+
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL
@@ -46,7 +45,7 @@ FROM nginx:alpine AS runtime
 
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 
-# Inline nginx config: SPA fallback + reverse-proxy to API/Keycloak
+# Inline nginx config: SPA fallback + reverse-proxy to API
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
