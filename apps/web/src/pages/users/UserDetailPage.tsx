@@ -103,7 +103,7 @@ export function UserDetailPage() {
   }
 
   return (
-    <PageContainer style={{ maxWidth: 1200 }}>
+    <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/users')}>

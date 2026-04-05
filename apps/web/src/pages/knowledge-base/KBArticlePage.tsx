@@ -71,7 +71,7 @@ export function KBArticlePage() {
   if (error || !article) return <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.articleNotFound')} />
 
   return (
-    <PageContainer style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 32, maxWidth: 1100, margin: '0 auto' }}>
+    <PageContainer style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 32 }}>
       {/* Main content */}
       <div>
         <Link to="/knowledge-base" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#64748b', textDecoration: 'none', fontSize: 13, marginBottom: 20 }}>

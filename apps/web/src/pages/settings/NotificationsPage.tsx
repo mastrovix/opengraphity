@@ -151,7 +151,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <PageContainer style={{ maxWidth: 800 }}>
+    <PageContainer>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <PageTitle icon={<Bell size={22} color="var(--color-brand)" />}>
           Notifiche

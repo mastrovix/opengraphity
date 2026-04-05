@@ -550,7 +550,7 @@ export default function NotificationRulesPage() {
   )
 
   return (
-    <PageContainer style={{ maxWidth: 1140 }}>
+    <PageContainer>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>

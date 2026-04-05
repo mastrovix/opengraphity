@@ -78,7 +78,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <PageContainer style={{ maxWidth: 640 }}>
+    <PageContainer>
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<UserCircle size={22} color="var(--color-brand)" />}>
           Profilo

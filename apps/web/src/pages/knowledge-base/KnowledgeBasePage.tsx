@@ -65,7 +65,7 @@ export function KnowledgeBasePage() {
   }
 
   return (
-    <PageContainer style={{ maxWidth: 900, margin: '0 auto' }}>
+    <PageContainer>
       {/* Header */}
       <div style={{ textAlign: 'center', paddingBottom: 32, borderBottom: '1px solid #e2e8f0', marginBottom: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 12 }}>

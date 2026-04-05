@@ -189,7 +189,7 @@ export function LogsPage() {
   }
 
   return (
-    <PageContainer style={{ maxWidth: 1200 }}>
+    <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <PageTitle icon={<ScrollText size={22} color="var(--color-brand)" />}>

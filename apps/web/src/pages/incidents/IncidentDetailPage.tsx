@@ -307,7 +307,7 @@ export function IncidentDetailPage() {
   const historyDesc       = [...incident.workflowHistory].reverse()
 
   return (
-    <PageContainer style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <PageContainer>
 
       {/* Header + action buttons */}
       <IncidentHeader

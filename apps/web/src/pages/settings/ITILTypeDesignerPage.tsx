@@ -247,7 +247,7 @@ export function ITILTypeDesignerPage() {
   }
 
   return (
-    <PageContainer style={{ maxWidth: 1100 }}>
+    <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<Settings2 size={22} color="var(--color-brand)" />}>

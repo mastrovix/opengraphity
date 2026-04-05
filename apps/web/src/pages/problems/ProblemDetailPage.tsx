@@ -317,7 +317,7 @@ export function ProblemDetailPage() {
   const historyDesc       = [...problem.workflowHistory].reverse()
 
   return (
-    <PageContainer style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <PageContainer>
 
       <ProblemHeader
         problem={problem}

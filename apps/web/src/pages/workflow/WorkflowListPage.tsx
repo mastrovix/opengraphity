@@ -21,7 +21,7 @@ export function WorkflowListPage() {
   const defs = data?.workflowDefinitions ?? []
 
   return (
-    <PageContainer style={{ maxWidth: 900, margin: '0 auto' }}>
+    <PageContainer>
       <PageTitle icon={<Route size={22} color="var(--color-brand)" />}>
         Workflow
       </PageTitle>

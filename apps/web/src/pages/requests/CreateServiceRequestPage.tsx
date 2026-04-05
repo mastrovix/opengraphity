@@ -87,7 +87,7 @@ export function CreateServiceRequestPage() {
   }
 
   return (
-    <PageContainer style={{ maxWidth: 680, margin: '0 auto' }}>
+    <PageContainer>
 
       {/* Back link */}
       <button
