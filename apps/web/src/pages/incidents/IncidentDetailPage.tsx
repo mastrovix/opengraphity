@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/Modal'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { SeverityBadge } from '@/components/SeverityBadge'
-import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
+import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI } from '@/graphql/mutations'
 import { IncidentHeader } from './IncidentHeader'
 import { IncidentTimeline } from './IncidentTimeline'
@@ -121,6 +121,11 @@ export function IncidentDetailPage() {
     skip: ciSearch.length < 2,
   })
 
+  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
+    GET_ITIL_CI_RELATION_RULES,
+    { variables: { itilType: 'incident' }, fetchPolicy: 'cache-first' },
+  )
+
   const [execTransition, { loading: transitioning }] = useMutation<{
     executeWorkflowTransition: { success: boolean; error: string | null; instance: { currentStep: string } }
   }>(EXECUTE_WORKFLOW_TRANSITION, {
@@ -184,6 +189,8 @@ export function IncidentDetailPage() {
     onCompleted: () => { toast.success('CI aggiunto'); setCiSearch(''); setShowCISearch(false); void refetch() },
     onError: (err) => toast.error(err.message),
   })
+
+  const ciRules = ciRulesData?.itilCIRelationRules ?? []
 
   const [removeCI] = useMutation(REMOVE_AFFECTED_CI, {
     onCompleted: () => { toast.success('CI rimosso'); void refetch() },
@@ -431,10 +438,11 @@ export function IncidentDetailPage() {
             showCISearch={showCISearch}
             ciSearch={ciSearch}
             ciResults={ciResults}
+            rules={ciRules}
             onToggle={() => setCiOpen((p) => !p)}
             onToggleSearch={(e) => { e.stopPropagation(); setShowCISearch((s) => !s); if (!ciOpen) setCiOpen(true) }}
             onSearchChange={setCiSearch}
-            onAddCI={(ciId) => void addCI({ variables: { incidentId: incident.id, ciId } })}
+            onAddCI={(ciId, relationType) => void addCI({ variables: { incidentId: incident.id, ciId, relationType } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
           />
 

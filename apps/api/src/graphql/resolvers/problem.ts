@@ -10,6 +10,7 @@ import { getScalarFields } from '../../lib/schemaFields.js'
 import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
 import * as problemService from '../../services/problemService.js'
+import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 
 type Props = Record<string, unknown>
 
@@ -152,9 +153,16 @@ async function createProblem(
   args: { input: { title: string; description?: string; priority: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string } },
   ctx: GraphQLContext,
 ) {
-  const props = await problemService.createProblem(args.input, ctx)
-  void audit(ctx, 'problem.created', 'Problem', (props as Props)['id'] as string)
-  return mapProblem(props as Props)
+  return withSession(async (session) => {
+    await validateRequiredFields(session, {
+      entityType:  'problem',
+      fieldValues: args.input as Record<string, unknown>,
+      tenantId:    ctx.tenantId,
+    })
+    const props = await problemService.createProblem(args.input, ctx)
+    void audit(ctx, 'problem.created', 'Problem', (props as Props)['id'] as string)
+    return mapProblem(props as Props)
+  })
 }
 
 async function updateProblem(
@@ -166,6 +174,11 @@ async function updateProblem(
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
+    await validateRequiredFields(session, {
+      entityType:  'problem',
+      fieldValues: input as Record<string, unknown>,
+      tenantId:    ctx.tenantId,
+    })
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})
       SET p += {
@@ -272,17 +285,26 @@ async function linkChangeToProblem(
 
 async function addCIToProblem(
   _: unknown,
-  args: { problemId: string; ciId: string },
+  args: { problemId: string; ciId: string; relationType?: string | null },
   ctx: GraphQLContext,
 ) {
+  const { getAllowedCILabels } = await import('./itilRelations.js')
+  const allowedTypes = await getAllowedCILabels(ctx.tenantId, 'problem')
+  const ciWhereClause = allowedTypes.length > 0
+    ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
+    : `(ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)`
+  const allowedLabels = allowedTypes.map((t) =>
+    t.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(''),
+  )
+
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
       MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
-      MERGE (p)-[:AFFECTS]->(ci)
-      SET p.updated_at = $now
-    `, { problemId: args.problemId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
+      WHERE ${ciWhereClause}
+      MERGE (p)-[r:AFFECTS]->(ci)
+      SET p.updated_at = $now, r.relation_type = $relationType
+    `, { problemId: args.problemId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString(), allowedLabels, relationType: args.relationType ?? null }))
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })

@@ -78,13 +78,34 @@ export function cmdbSDL(): string {
   }
 
   input ITILFieldInput {
-    name:        String!
-    label:       String!
-    fieldType:   String!
-    required:    Boolean
-    enumValues:  [String!]
-    enumTypeId:  ID
-    order:       Int
+    name:             String!
+    label:            String!
+    fieldType:        String!
+    required:         Boolean
+    enumValues:       [String!]
+    enumTypeId:       ID
+    order:            Int
+    validationScript: String
+    visibilityScript: String
+    defaultScript:    String
+  }
+
+  input UpdateITILTypeInput {
+    label:            String
+    icon:             String
+    color:            String
+    validationScript: String
+  }
+
+  # ── ITIL-CI Relation Rules ───────────────────────────────────────────────────
+
+  type ITILCIRelationRule {
+    id:           ID!
+    itilType:     String!
+    ciType:       String!
+    relationType: String!
+    direction:    String!
+    description:  String
   }
 
   input CreateTeamInput {

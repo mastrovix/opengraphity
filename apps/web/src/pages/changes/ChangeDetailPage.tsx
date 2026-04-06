@@ -4,7 +4,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import {
-  GET_CHANGE, GET_TEAMS, GET_USERS,
+  GET_CHANGE, GET_TEAMS, GET_USERS, GET_ITIL_CI_RELATION_RULES,
 } from '@/graphql/queries'
 import {
   EXECUTE_CHANGE_TRANSITION,
@@ -49,6 +49,11 @@ export function ChangeDetailPage() {
 
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
   const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
+
+  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
+    GET_ITIL_CI_RELATION_RULES,
+    { variables: { itilType: 'change' } },
+  )
 
   // Transition dialog state
   const [pendingTransition, setPendingTransition] = useState<WorkflowTransition | null>(null)
@@ -243,7 +248,8 @@ export function ChangeDetailPage() {
             changeId={change.id}
             affectedCIs={change.affectedCIs}
             currentStep={currentStep}
-            onAddCI={(ciId) => addCI({ variables: { changeId: change.id, ciId } })}
+            rules={ciRulesData?.itilCIRelationRules ?? []}
+            onAddCI={(ciId, relationType) => addCI({ variables: { changeId: change.id, ciId, relationType } })}
             onRemoveCI={(ciId, ciName) => { setRemoveCIDialog({ ciId, ciName }); setRemoveCIReason('') }}
           />
 

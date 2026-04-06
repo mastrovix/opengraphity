@@ -108,7 +108,8 @@ export function buildITILTypesResolver() {
            WHERE t.scope = 'itil' AND t.active = true
            OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
            OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
-           RETURN t, collect(DISTINCT {f: f, enumTypeId: enumDef.id, enumTypeName: enumDef.name, enumTypeLabel: enumDef.label, enumTypeValues: enumDef.values}) AS fieldData
+           RETURN t,
+             collect(DISTINCT {f: f, enumTypeId: enumDef.id, enumTypeName: enumDef.name, enumTypeLabel: enumDef.label, enumTypeValues: enumDef.values}) AS fieldData
            ORDER BY t.name`,
           { tenantId: ctx.tenantId },
         ),
@@ -140,8 +141,8 @@ export function buildITILTypesResolver() {
           active:           t['active'],
           validationScript: t['validation_script'] ?? null,
           fields,
-          relations:        [],
-          systemRelations:  [],
+          relations:       [],
+          systemRelations: [],
         }
       })
     })
@@ -170,6 +171,32 @@ export function buildITILTypeFieldsResolver() {
 
 export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) {
   return {
+    updateITILType: async (
+      _: unknown,
+      args: { id: string; input: { label?: string; icon?: string; color?: string; validationScript?: string | null } },
+      ctx: GraphQLContext,
+    ) => {
+      requireAdmin(ctx)
+      const updates: Props = {}
+      const { label, icon, color, validationScript } = args.input
+      if (label            !== undefined) updates['label']             = label
+      if (icon             !== undefined) updates['icon']              = icon
+      if (color            !== undefined) updates['color']             = color
+      if (validationScript !== undefined) updates['validation_script'] = validationScript ?? null
+
+      await withSession(async session => {
+        await session.executeWrite(tx =>
+          tx.run(
+            `MATCH (t:CITypeDefinition {id: $id}) WHERE t.scope = 'itil' SET t += $updates`,
+            { id: args.id, updates },
+          ),
+        )
+      }, true)
+
+      invalidateSchema(ctx.tenantId)
+      return fetchITILTypeById(args.id)
+    },
+
     createITILField: async (
       _: unknown,
       args: { typeId: string; input: Record<string, unknown> },
@@ -197,17 +224,20 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             MATCH (t:CITypeDefinition {id: $typeId})
             WHERE t.scope = 'itil'
             CREATE (f:CIFieldDefinition {
-              id:          $fieldId,
-              name:        $name,
-              label:       $label,
-              field_type:  $fieldType,
-              required:    $required,
-              enum_values: $enumValues,
-              order:       $order,
-              scope:       'itil',
-              tenant_id:   $tenantId,
-              is_system:   false,
-              created_at:  $now
+              id:                $fieldId,
+              name:              $name,
+              label:             $label,
+              field_type:        $fieldType,
+              required:          $required,
+              enum_values:       $enumValues,
+              order:             $order,
+              scope:             'itil',
+              tenant_id:         $tenantId,
+              is_system:         false,
+              validation_script: $validationScript,
+              visibility_script: $visibilityScript,
+              default_script:    $defaultScript,
+              created_at:        $now
             })
             CREATE (t)-[:HAS_FIELD]->(f)
             WITH f
@@ -222,15 +252,18 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
           `, {
             typeId,
             fieldId,
-            name:       input['name'],
-            label:      input['label'],
-            fieldType:  input['fieldType'],
-            required:   input['required']  ?? false,
+            name:             input['name'],
+            label:            input['label'],
+            fieldType:        input['fieldType'],
+            required:         input['required']          ?? false,
             enumValues,
             enumTypeId,
-            order:      input['order']     ?? 99,
-            tenantId:   ctx.tenantId,
-            now:        new Date().toISOString(),
+            order:            input['order']             ?? 99,
+            validationScript: (input['validationScript'] as string | null | undefined) ?? null,
+            visibilityScript: (input['visibilityScript'] as string | null | undefined) ?? null,
+            defaultScript:    (input['defaultScript']    as string | null | undefined) ?? null,
+            tenantId:         ctx.tenantId,
+            now:              new Date().toISOString(),
           }),
         )
       }, true)
@@ -264,12 +297,15 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
             WHERE t.scope = 'itil'
-            SET f.label       = $label,
-                f.enum_values = CASE WHEN f.field_type = 'enum' THEN $enumValues ELSE f.enum_values END,
-                f.required    = CASE WHEN f.is_system = true THEN f.required ELSE $required END,
-                f.field_type  = CASE WHEN f.is_system = true THEN f.field_type ELSE $fieldType END,
-                f.name        = CASE WHEN f.is_system = true THEN f.name ELSE $name END,
-                f.order       = $order
+            SET f.label             = $label,
+                f.enum_values       = CASE WHEN f.field_type = 'enum' THEN $enumValues ELSE f.enum_values END,
+                f.required          = CASE WHEN f.is_system = true THEN f.required ELSE $required END,
+                f.field_type        = CASE WHEN f.is_system = true THEN f.field_type ELSE $fieldType END,
+                f.name              = CASE WHEN f.is_system = true THEN f.name ELSE $name END,
+                f.order             = $order,
+                f.validation_script = $validationScript,
+                f.visibility_script = $visibilityScript,
+                f.default_script    = $defaultScript
             WITH f
             // Remove any existing USES_ENUM relation first (clean slate for enum reference)
             OPTIONAL MATCH (f)-[oldRel:USES_ENUM]->(:EnumTypeDefinition)
@@ -286,13 +322,16 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
           `, {
             typeId,
             fieldId,
-            label:     input['label'],
-            required:  input['required'] ?? false,
-            fieldType: input['fieldType'],
-            name:      input['name'],
+            label:            input['label'],
+            required:         input['required']          ?? false,
+            fieldType:        input['fieldType'],
+            name:             input['name'],
             enumValues,
             enumTypeId,
-            order:     input['order'] ?? 0,
+            order:            input['order']             ?? 0,
+            validationScript: (input['validationScript'] as string | null | undefined) ?? null,
+            visibilityScript: (input['visibilityScript'] as string | null | undefined) ?? null,
+            defaultScript:    (input['defaultScript']    as string | null | undefined) ?? null,
           }),
         )
       }, true)

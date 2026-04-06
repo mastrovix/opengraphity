@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { CountBadge } from '@/components/ui/CountBadge'
-import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_INCIDENTS, GET_CHANGES } from '@/graphql/queries'
+import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_INCIDENTS, GET_CHANGES, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import {
   UPDATE_PROBLEM,
   LINK_INCIDENT_TO_PROBLEM,
@@ -159,6 +159,11 @@ export function ProblemDetailPage() {
     skip: ciSearch.length < 2,
   })
 
+  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
+    GET_ITIL_CI_RELATION_RULES,
+    { variables: { itilType: 'problem' }, fetchPolicy: 'cache-first' },
+  )
+
   const { data: incidentSearchData } = useQuery<{ incidents: { items: IncidentRef[] } }>(GET_INCIDENTS, {
     variables: { limit: 50 },
     skip: !showIncidentSearch,
@@ -222,6 +227,7 @@ export function ProblemDetailPage() {
   const problem         = data?.problem
   const users           = usersData?.users ?? []
   const teams           = teamsData?.teams ?? []
+  const ciRules         = ciRulesData?.itilCIRelationRules ?? []
   const ciResults       = ciSearchData?.allCIs?.items ?? []
   const incidentResults = incidentSearchData?.incidents?.items ?? []
   const changeResults   = changeSearchData?.changes?.items   ?? []
@@ -356,10 +362,11 @@ export function ProblemDetailPage() {
             showCISearch={showCISearch}
             ciSearch={ciSearch}
             ciResults={ciResults}
+            rules={ciRules}
             onToggle={() => setCiOpen((p) => !p)}
             onToggleSearch={(e) => { e.stopPropagation(); setShowCISearch((s) => !s); if (!ciOpen) setCiOpen(true) }}
             onSearchChange={setCiSearch}
-            onAddCI={(ciId) => void addCI({ variables: { problemId: problem.id, ciId } })}
+            onAddCI={(ciId, relationType) => void addCI({ variables: { problemId: problem.id, ciId, relationType } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { problemId: problem.id, ciId } })}
           />
 

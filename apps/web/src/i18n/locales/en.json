@@ -652,6 +652,52 @@
     "enumValues":      "Enum values",
     "required":        "Required",
     "save":            "Save",
-    "saved":           "Changes saved"
+    "saved":           "Changes saved",
+    "ciRelations": {
+      "tabTitle":          "CI Relations",
+      "addRelation":       "Add relation",
+      "ciType":            "CI Type",
+      "relationType":      "Relation type",
+      "direction":         "Direction",
+      "description":       "Description",
+      "outgoing":          "Outgoing (ITIL → CI)",
+      "incoming":          "Incoming (CI → ITIL)",
+      "empty":             "No CI relations configured. Click \"Add relation\" to add one.",
+      "suggestions":       "Suggested: IMPACTS, AFFECTED_BY, MODIFIES, TARGETS, ROOT_CAUSE, DEPENDS_ON",
+      "confirmDelete":     "Delete this relation rule?",
+      "selectCIType":      "— Select CI type —",
+      "relationTypeHint":  "Neo4j relation label (uppercase)",
+      "cancel":            "Cancel",
+      "add":               "Add"
+    }
+  },
+  "fieldRules": {
+    "show": "Show",
+    "hide": "Hide",
+    "visibility": {
+      "title":                  "VISIBILITY RULES",
+      "subtitle":               "Show or hide fields based on other field values",
+      "add":                    "Add rule",
+      "empty":                  "No visibility rules. Click \"Add rule\" to add one.",
+      "triggerField":           "Trigger field",
+      "triggerValue":           "Trigger value",
+      "triggerValuePlaceholder":"Enter value…",
+      "action":                 "Action",
+      "targetField":            "Target field",
+      "ruleDesc":               "When {{triggerField}} = {{triggerValue}} → {{action}} {{targetField}}",
+      "created":                "Visibility rule created",
+      "updated":                "Visibility rule updated",
+      "deleted":                "Visibility rule deleted"
+    },
+    "requirement": {
+      "title":      "REQUIRED FIELDS",
+      "subtitle":   "Configure which fields are mandatory, optionally per workflow step",
+      "field":      "Field",
+      "allSteps":   "All steps"
+    },
+    "validation": {
+      "required":         "\"{{field}}\" is required",
+      "requiredForStep":  "\"{{field}}\" is required for step \"{{step}}\""
+    }
   }
 }

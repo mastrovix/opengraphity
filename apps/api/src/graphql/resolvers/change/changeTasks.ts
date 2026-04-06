@@ -43,17 +43,26 @@ export function toInt(v: unknown, fallback = 0): number {
 // ── addAffectedCIToChange ─────────────────────────────────────────────────────
 
 export async function addAffectedCIToChange(
-  _: unknown, args: { changeId: string; ciId: string }, ctx: GraphQLContext,
+  _: unknown, args: { changeId: string; ciId: string; relationType?: string | null }, ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
+  const { getAllowedCILabels } = await import('../itilRelations.js')
+  const allowedTypes = await getAllowedCILabels(ctx.tenantId, 'change')
+  const ciWhereClause = allowedTypes.length > 0
+    ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
+    : `(ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)`
+  const allowedLabels = allowedTypes.map((t) =>
+    t.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(''),
+  )
+
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
-      MERGE (c)-[:AFFECTS]->(ci)
-      SET c.updated_at = $now
-    `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now }))
+      WHERE ${ciWhereClause}
+      MERGE (c)-[r:AFFECTS]->(ci)
+      SET c.updated_at = $now, r.relation_type = $relationType
+    `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now, allowedLabels, relationType: args.relationType ?? null }))
 
     // Auto-create AssessmentTask if change is currently in 'assessment' step
     const wiResult = await session.executeRead((tx) => tx.run(`

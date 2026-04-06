@@ -44,8 +44,8 @@ export const LINK_CHANGE_TO_PROBLEM = gql`
 `
 
 export const ADD_CI_TO_PROBLEM = gql`
-  mutation AddCIToProblem($problemId: ID!, $ciId: ID!) {
-    addCIToProblem(problemId: $problemId, ciId: $ciId) {
+  mutation AddCIToProblem($problemId: ID!, $ciId: ID!, $relationType: String) {
+    addCIToProblem(problemId: $problemId, ciId: $ciId, relationType: $relationType) {
       id affectedCIs { id name type environment status }
     }
   }
@@ -186,8 +186,8 @@ export const ADD_INCIDENT_COMMENT = gql`
 `
 
 export const ADD_AFFECTED_CI = gql`
-  mutation AddAffectedCI($incidentId: ID!, $ciId: ID!) {
-    addAffectedCI(incidentId: $incidentId, ciId: $ciId) {
+  mutation AddAffectedCI($incidentId: ID!, $ciId: ID!, $relationType: String) {
+    addAffectedCI(incidentId: $incidentId, ciId: $ciId, relationType: $relationType) {
       id
       affectedCIs { id name type status environment }
     }
@@ -267,8 +267,8 @@ export const EXECUTE_CHANGE_TRANSITION = gql`
 `
 
 export const ADD_AFFECTED_CI_TO_CHANGE = gql`
-  mutation AddAffectedCIToChange($changeId: ID!, $ciId: ID!) {
-    addAffectedCIToChange(changeId: $changeId, ciId: $ciId) {
+  mutation AddAffectedCIToChange($changeId: ID!, $ciId: ID!, $relationType: String) {
+    addAffectedCIToChange(changeId: $changeId, ciId: $ciId, relationType: $relationType) {
       id affectedCIs { id name type status environment }
     }
   }
@@ -577,11 +577,21 @@ export const DELETE_NOTIFICATION_RULE = gql`
 
 const ITIL_TYPE_FRAGMENT = gql`
   fragment ITILTypeFields on CITypeDefinition {
-    id name label active
+    id name label icon color active validationScript
     fields {
       id name label fieldType
       required enumValues order isSystem
       enumTypeId enumTypeName
+      validationScript visibilityScript defaultScript
+    }
+  }
+`
+
+export const UPDATE_ITIL_TYPE = gql`
+  ${ITIL_TYPE_FRAGMENT}
+  mutation UpdateITILType($id: ID!, $input: UpdateITILTypeInput!) {
+    updateITILType(id: $id, input: $input) {
+      ...ITILTypeFields
     }
   }
 `
@@ -610,6 +620,20 @@ export const DELETE_ITIL_FIELD = gql`
     deleteITILField(typeId: $typeId, fieldId: $fieldId) {
       ...ITILTypeFields
     }
+  }
+`
+
+export const CREATE_ITIL_CI_RELATION_RULE = gql`
+  mutation CreateITILCIRelationRule($itilType: String!, $ciType: String!, $relationType: String!, $direction: String!, $description: String) {
+    createITILCIRelationRule(itilType: $itilType, ciType: $ciType, relationType: $relationType, direction: $direction, description: $description) {
+      id itilType ciType relationType direction description
+    }
+  }
+`
+
+export const DELETE_ITIL_CI_RELATION_RULE = gql`
+  mutation DeleteITILCIRelationRule($id: ID!) {
+    deleteITILCIRelationRule(id: $id)
   }
 `
 
@@ -658,5 +682,41 @@ export const EXPORT_REPORT_EXCEL = gql`
 export const RETRY_QUEUE_JOB = gql`
   mutation RetryQueueJob($queueName: String!, $jobId: ID!) {
     retryQueueJob(queueName: $queueName, jobId: $jobId)
+  }
+`
+
+export const CREATE_FIELD_VISIBILITY_RULE = gql`
+  mutation CreateFieldVisibilityRule($entityType: String!, $triggerField: String!, $triggerValue: String!, $targetField: String!, $action: String!) {
+    createFieldVisibilityRule(entityType: $entityType, triggerField: $triggerField, triggerValue: $triggerValue, targetField: $targetField, action: $action) {
+      id entityType triggerField triggerValue targetField action
+    }
+  }
+`
+
+export const UPDATE_FIELD_VISIBILITY_RULE = gql`
+  mutation UpdateFieldVisibilityRule($id: ID!, $triggerField: String, $triggerValue: String, $targetField: String, $action: String) {
+    updateFieldVisibilityRule(id: $id, triggerField: $triggerField, triggerValue: $triggerValue, targetField: $targetField, action: $action) {
+      id entityType triggerField triggerValue targetField action
+    }
+  }
+`
+
+export const DELETE_FIELD_VISIBILITY_RULE = gql`
+  mutation DeleteFieldVisibilityRule($id: ID!) {
+    deleteFieldVisibilityRule(id: $id)
+  }
+`
+
+export const SET_FIELD_REQUIREMENT = gql`
+  mutation SetFieldRequirement($entityType: String!, $fieldName: String!, $required: Boolean!, $workflowStep: String) {
+    setFieldRequirement(entityType: $entityType, fieldName: $fieldName, required: $required, workflowStep: $workflowStep) {
+      id entityType fieldName required workflowStep
+    }
+  }
+`
+
+export const DELETE_FIELD_REQUIREMENT = gql`
+  mutation DeleteFieldRequirement($id: ID!) {
+    deleteFieldRequirement(id: $id)
   }
 `

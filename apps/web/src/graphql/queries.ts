@@ -316,12 +316,29 @@ export const GET_CI_TYPES = gql`
 export const GET_ITIL_TYPES = gql`
   query GetITILTypes {
     itilTypes {
-      id name label active
+      id name label icon color active validationScript
       fields {
         id name label fieldType
         required enumValues order isSystem
         enumTypeId enumTypeName
+        validationScript visibilityScript defaultScript
       }
+    }
+  }
+`
+
+export const GET_ITIL_CI_RELATION_RULES = gql`
+  query GetITILCIRelationRules($itilType: String!) {
+    itilCIRelationRules(itilType: $itilType) {
+      id itilType ciType relationType direction description
+    }
+  }
+`
+
+export const GET_ALL_ITIL_CI_RELATION_RULES = gql`
+  query GetAllITILCIRelationRules {
+    allITILCIRelationRules {
+      id itilType ciType relationType direction description
     }
   }
 `
@@ -579,6 +596,22 @@ export const GET_QUEUE_JOBS = gql`
       timestamp processedOn finishedOn
       failedReason stacktrace
       attemptsMade maxAttempts returnValue
+    }
+  }
+`
+
+export const GET_FIELD_VISIBILITY_RULES = gql`
+  query GetFieldVisibilityRules($entityType: String!) {
+    fieldVisibilityRules(entityType: $entityType) {
+      id entityType triggerField triggerValue targetField action
+    }
+  }
+`
+
+export const GET_FIELD_REQUIREMENT_RULES = gql`
+  query GetFieldRequirementRules($entityType: String!, $workflowStep: String) {
+    fieldRequirementRules(entityType: $entityType, workflowStep: $workflowStep) {
+      id entityType fieldName required workflowStep
     }
   }
 `

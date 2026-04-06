@@ -19,6 +19,7 @@ import { attachmentsSDL } from './schema-attachments.js'
 import { commentsSDL } from './schema-comments.js'
 import { knowledgeBaseSDL } from './schema-kb.js'
 import { portalSDL } from './schema-portal.js'
+import { fieldRulesSDL } from './schema-fieldRules.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -142,6 +143,14 @@ export function buildBaseSDL(): string {
     myTicket(id: ID!): MyTicketDetail!
     myTicketStats: MyTicketStats!
 
+    # Field Rules (admin)
+    fieldVisibilityRules(entityType: String!): [FieldVisibilityRule!]!
+    fieldRequirementRules(entityType: String!, workflowStep: String): [FieldRequirementRule!]!
+
+    # ITIL-CI Relation Rules
+    itilCIRelationRules(itilType: String!): [ITILCIRelationRule!]!
+    allITILCIRelationRules: [ITILCIRelationRule!]!
+
     # Discovery / Sync
     syncSources: [SyncSource!]!
     syncSource(id: ID!): SyncSource
@@ -169,7 +178,7 @@ export function buildBaseSDL(): string {
     assignIncidentToTeam(id: ID!, teamId: ID!): Incident!
     assignIncidentToUser(id: ID!, userId: ID): Incident!
     addIncidentComment(id: ID!, text: String!): Comment!
-    addAffectedCI(incidentId: ID!, ciId: ID!): Incident!
+    addAffectedCI(incidentId: ID!, ciId: ID!, relationType: String): Incident!
     removeAffectedCI(incidentId: ID!, ciId: ID!): Incident!
 
     # Problems
@@ -179,7 +188,7 @@ export function buildBaseSDL(): string {
     linkIncidentToProblem(problemId: ID!, incidentId: ID!): Problem!
     unlinkIncidentFromProblem(problemId: ID!, incidentId: ID!): Problem!
     linkChangeToProblem(problemId: ID!, changeId: ID!): Problem!
-    addCIToProblem(problemId: ID!, ciId: ID!): Problem!
+    addCIToProblem(problemId: ID!, ciId: ID!, relationType: String): Problem!
     removeCIFromProblem(problemId: ID!, ciId: ID!): Problem!
     assignProblemToTeam(problemId: ID!, teamId: ID!): Problem!
     assignProblemToUser(problemId: ID!, userId: ID!): Problem!
@@ -192,7 +201,7 @@ export function buildBaseSDL(): string {
     rejectChange(id: ID!, reason: String!): Change!
     deployChange(id: ID!): Change!
     failChange(id: ID!, reason: String!): Change!
-    addAffectedCIToChange(changeId: ID!, ciId: ID!): Change!
+    addAffectedCIToChange(changeId: ID!, ciId: ID!, relationType: String): Change!
     removeAffectedCIFromChange(changeId: ID!, ciId: ID!, reason: String!): Change!
     addChangeComment(changeId: ID!, text: String!): ChangeComment!
     saveDeploySteps(changeId: ID!, steps: [CreateDeployStepInput!]!): Change!
@@ -309,9 +318,14 @@ export function buildBaseSDL(): string {
     runAnomalyScanner: Boolean!
 
     # ITIL Designer
+    updateITILType(id: ID!, input: UpdateITILTypeInput!): CITypeDefinition!
     createITILField(typeId: ID!, input: ITILFieldInput!): CITypeDefinition!
     updateITILField(typeId: ID!, fieldId: ID!, input: ITILFieldInput!): CITypeDefinition!
     deleteITILField(typeId: ID!, fieldId: ID!): CITypeDefinition!
+
+    # ITIL-CI Relation Rules
+    createITILCIRelationRule(itilType: String!, ciType: String!, relationType: String!, direction: String!, description: String): ITILCIRelationRule!
+    deleteITILCIRelationRule(id: ID!): Boolean!
 
     # Discovery / Sync
     createSyncSource(input: CreateSyncSourceInput!): SyncSource!
@@ -353,6 +367,13 @@ export function buildBaseSDL(): string {
     exportReportPDF(templateId: ID!): String!
     exportReportExcel(templateId: ID!): String!
 
+    # Field Rules (admin)
+    createFieldVisibilityRule(entityType: String!, triggerField: String!, triggerValue: String!, targetField: String!, action: String!): FieldVisibilityRule!
+    updateFieldVisibilityRule(id: ID!, triggerField: String, triggerValue: String, targetField: String, action: String): FieldVisibilityRule!
+    deleteFieldVisibilityRule(id: ID!): Boolean!
+    setFieldRequirement(entityType: String!, fieldName: String!, required: Boolean!, workflowStep: String): FieldRequirementRule!
+    deleteFieldRequirement(id: ID!): Boolean!
+
     # Portal (Self-Service)
     createTicket(title: String!, description: String, priority: String, category: String!): MyTicket!
     addTicketComment(ticketId: ID!, body: String!): EntityComment!
@@ -386,5 +407,6 @@ export function buildBaseSDL(): string {
   ${commentsSDL()}
   ${knowledgeBaseSDL()}
   ${portalSDL()}
+  ${fieldRulesSDL()}
   `
 }

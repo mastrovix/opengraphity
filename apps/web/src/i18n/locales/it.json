@@ -652,6 +652,52 @@
     "enumValues":      "Valori enum",
     "required":        "Obbligatorio",
     "save":            "Salva",
-    "saved":           "Modifiche salvate"
+    "saved":           "Modifiche salvate",
+    "ciRelations": {
+      "tabTitle":          "Relazioni CI",
+      "addRelation":       "Aggiungi relazione",
+      "ciType":            "Tipo CI",
+      "relationType":      "Tipo relazione",
+      "direction":         "Direzione",
+      "description":       "Descrizione",
+      "outgoing":          "In uscita (ITIL → CI)",
+      "incoming":          "In entrata (CI → ITIL)",
+      "empty":             "Nessuna relazione CI configurata. Clicca \"Aggiungi relazione\" per aggiungerne una.",
+      "suggestions":       "Suggeriti: IMPACTS, AFFECTED_BY, MODIFIES, TARGETS, ROOT_CAUSE, DEPENDS_ON",
+      "confirmDelete":     "Eliminare questa regola di relazione?",
+      "selectCIType":      "— Seleziona tipo CI —",
+      "relationTypeHint":  "Label relazione Neo4j (maiuscolo)",
+      "cancel":            "Annulla",
+      "add":               "Aggiungi"
+    }
+  },
+  "fieldRules": {
+    "show": "Mostra",
+    "hide": "Nascondi",
+    "visibility": {
+      "title":                  "REGOLE DI VISIBILITÀ",
+      "subtitle":               "Mostra o nascondi campi in base ai valori di altri campi",
+      "add":                    "Aggiungi regola",
+      "empty":                  "Nessuna regola di visibilità. Clicca \"Aggiungi regola\" per crearne una.",
+      "triggerField":           "Campo trigger",
+      "triggerValue":           "Valore trigger",
+      "triggerValuePlaceholder":"Inserisci valore…",
+      "action":                 "Azione",
+      "targetField":            "Campo target",
+      "ruleDesc":               "Quando {{triggerField}} = {{triggerValue}} → {{action}} {{targetField}}",
+      "created":                "Regola di visibilità creata",
+      "updated":                "Regola di visibilità aggiornata",
+      "deleted":                "Regola di visibilità eliminata"
+    },
+    "requirement": {
+      "title":      "CAMPI OBBLIGATORI",
+      "subtitle":   "Configura quali campi sono obbligatori, opzionalmente per step workflow",
+      "field":      "Campo",
+      "allSteps":   "Tutti gli step"
+    },
+    "validation": {
+      "required":         "Il campo \"{{field}}\" è obbligatorio",
+      "requiredForStep":  "Il campo \"{{field}}\" è obbligatorio per lo step \"{{step}}\""
+    }
   }
 }
