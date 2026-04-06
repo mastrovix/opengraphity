@@ -5,7 +5,9 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
-import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
+import { FieldWrapper } from '@/components/FieldWrapper'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -45,14 +47,30 @@ export function CreateIncidentPage() {
   const [teamDropdownOpen,  setTeamDropdownOpen]  = useState(false)
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  const formValues = { title, severity, description }
+  const fieldRules = useFormFieldRules('incident', null, formValues)
+
+  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
+    GET_ITIL_CI_RELATION_RULES,
+    { variables: { itilType: 'incident' }, fetchPolicy: 'network-only' },
+  )
+
+  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
+    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
+    : undefined
 
   const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20 },
-    skip: ciSearch.length < 2,
+    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
+    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    fetchPolicy: 'network-only',
   })
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
-  const ciResults     = (ciData?.allCIs?.items ?? []).filter(ci => !selectedCIs.find(s => s.id === ci.id))
+  const ciResults     = (ciData?.allCIs?.items ?? [])
+    .filter(ci => !selectedCIs.find(s => s.id === ci.id))
+    .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const canSubmit     = title.trim().length > 0
@@ -75,6 +93,14 @@ export function CreateIncidentPage() {
 
   const handleSubmit = () => {
     if (!canSubmit || loading) return
+    const missing = validateFormFields(fieldRules, formValues)
+    if (missing.length > 0) {
+      const errs: Record<string, string> = {}
+      missing.forEach((f) => { errs[f] = 'Campo obbligatorio' })
+      setFieldErrors(errs)
+      return
+    }
+    setFieldErrors({})
     void createIncident({
       variables: {
         input: {
@@ -112,21 +138,24 @@ export function CreateIncidentPage() {
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
 
           {/* TITOLO */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
-              Titolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
-            </label>
+          <FieldWrapper
+            visible={fieldRules['title']?.visible ?? true}
+            required={fieldRules['title']?.required ?? false}
+            label="Titolo"
+            error={fieldErrors['title']}
+            style={{ marginBottom: 20 }}
+          >
             <input
               type="text"
               value={title}
-              onChange={e => setTitle(e.target.value)}
+              onChange={e => { setTitle(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['title']; return n }) }}
               placeholder="Es. Database produzione non raggiungibile"
-              style={inputBase}
+              style={{ ...inputBase, borderColor: fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
               autoFocus
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
             />
-          </div>
+          </FieldWrapper>
 
           {/* SEVERITY */}
           <div style={{ marginBottom: 20 }}>
@@ -159,11 +188,13 @@ export function CreateIncidentPage() {
           </div>
 
           {/* DESCRIZIONE */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
-              Descrizione{' '}
-              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
-            </label>
+          <FieldWrapper
+            visible={fieldRules['description']?.visible ?? true}
+            required={fieldRules['description']?.required ?? false}
+            label={`Descrizione${!(fieldRules['description']?.required) ? ' (opzionale)' : ''}`}
+            error={fieldErrors['description']}
+            style={{ marginBottom: 20 }}
+          >
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
@@ -173,7 +204,7 @@ export function CreateIncidentPage() {
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
-          </div>
+          </FieldWrapper>
 
           {/* CI IMPATTATI */}
           <div style={{ marginBottom: 20 }}>

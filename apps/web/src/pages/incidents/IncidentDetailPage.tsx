@@ -116,15 +116,19 @@ export function IncidentDetailPage() {
   )
   const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
-  const { data: ciSearchData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20 },
-    skip: ciSearch.length < 2,
-  })
-
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
     GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'incident' }, fetchPolicy: 'cache-first' },
+    { variables: { itilType: 'incident' }, fetchPolicy: 'network-only' },
   )
+
+  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
+    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
+    : undefined
+
+  const { data: ciSearchData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
+    skip: ciSearch.length < 2 || ciRulesData === undefined,
+  })
 
   const [execTransition, { loading: transitioning }] = useMutation<{
     executeWorkflowTransition: { success: boolean; error: string | null; instance: { currentStep: string } }

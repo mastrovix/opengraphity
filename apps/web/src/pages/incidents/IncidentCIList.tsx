@@ -77,14 +77,14 @@ export function IncidentCIList({
   const [selectedRelType, setSelectedRelType] = useState<Record<string, string>>({})
 
   // Filter CI results by allowed types from rules (if any rules configured)
-  const allowedTypes = rules.map((r) => r.ciType)
+  const allowedTypes = rules.map((r) => r.ciType.toLowerCase())
   const filteredResults = ciResults
     .filter((ci) => !affectedCIs.find((a) => a.id === ci.id))
-    .filter((ci) => allowedTypes.length === 0 || allowedTypes.includes(ci.type))
+    .filter((ci) => allowedTypes.length === 0 || allowedTypes.includes(ci.type.toLowerCase()))
 
   // Get available relation types for a given CI
   const getRelTypes = (ciType: string): string[] => {
-    const matching = rules.filter((r) => r.ciType === ciType).map((r) => r.relationType)
+    const matching = rules.filter((r) => r.ciType.toLowerCase() === ciType.toLowerCase()).map((r) => r.relationType)
     return [...new Set(matching)]
   }
 

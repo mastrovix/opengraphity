@@ -21,15 +21,18 @@ const TYPE_TO_LABEL: Record<string, string> = {
 
 const ALL_CI_LABELS = Object.values(TYPE_TO_LABEL).filter((v, i, a) => a.indexOf(v) === i)
 
-async function allCIs(_: unknown, args: { limit?: number; offset?: number; type?: string; environment?: string; status?: string; search?: string }, ctx: GraphQLContext) {
+async function allCIs(_: unknown, args: { limit?: number; offset?: number; type?: string; environment?: string; status?: string; search?: string; ciTypes?: string[] | null }, ctx: GraphQLContext) {
   const limit  = args.limit  ?? 50
   const offset = args.offset ?? 0
-  const params = { tenantId: ctx.tenantId, environment: args.environment ?? null, status: args.status ?? null, search: args.search ?? null, limit, offset }
+  const allowedCITypes = (args.ciTypes && args.ciTypes.length > 0)
+    ? args.ciTypes.map(t => t.toLowerCase())
+    : null
 
   return withSession(async (session) => {
     if (args.type) {
       // Use the Neo4j label directly — type is derived from label, never from a property
       const label = TYPE_TO_LABEL[args.type.toLowerCase()] ?? args.type
+      const params = { tenantId: ctx.tenantId, environment: args.environment ?? null, status: args.status ?? null, search: args.search ?? null, limit, offset }
       const items = await runQuery<{ props: Props; label: string }>(session,
         `MATCH (n:${label} {tenant_id: $tenantId})
          WHERE ($environment IS NULL OR n.environment = $environment)
@@ -57,8 +60,25 @@ async function allCIs(_: unknown, args: { limit?: number; offset?: number; type?
       }
     }
 
-    // No type filter — union across all CI labels, return Neo4j label for type derivation
-    const labelFilter = ALL_CI_LABELS.map(l => `n:${l}`).join(' OR ')
+    // Build label filter: ciTypes whitelist (from ITIL rules) or all CI labels
+    let labelFilter: string
+    const params: Record<string, unknown> = {
+      tenantId:    ctx.tenantId,
+      environment: args.environment ?? null,
+      status:      args.status      ?? null,
+      search:      args.search      ?? null,
+      limit,
+      offset,
+    }
+    if (allowedCITypes) {
+      // Filter by allowed CI types — uses toLower(label) so stored rules (lowercase) match PascalCase labels
+      labelFilter = 'ANY(lbl IN labels(n) WHERE toLower(lbl) IN $ciTypes)'
+      params['ciTypes'] = allowedCITypes
+    } else {
+      // No restriction — all known CI labels (backward compatible)
+      labelFilter = ALL_CI_LABELS.map(l => `n:${l}`).join(' OR ')
+    }
+
     const items = await runQuery<{ props: Props; label: string }>(session,
       `MATCH (n) WHERE (${labelFilter}) AND n.tenant_id = $tenantId
          AND ($environment IS NULL OR n.environment = $environment)

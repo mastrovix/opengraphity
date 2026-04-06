@@ -87,11 +87,11 @@ export function ProblemCIList({
   const navigate = useNavigate()
   const [selectedRelType, setSelectedRelType] = useState<Record<string, string>>({})
 
-  const allowedTypes    = rules.map((r) => r.ciType)
-  const getRelTypes     = (ciType: string) => [...new Set(rules.filter((r) => r.ciType === ciType).map((r) => r.relationType))]
+  const allowedTypes    = rules.map((r) => r.ciType.toLowerCase())
+  const getRelTypes     = (ciType: string) => [...new Set(rules.filter((r) => r.ciType.toLowerCase() === ciType.toLowerCase()).map((r) => r.relationType))]
   const filteredResults = ciResults
     .filter((ci) => !affectedCIs.find((a) => a.id === ci.id))
-    .filter((ci) => allowedTypes.length === 0 || allowedTypes.includes(ci.type))
+    .filter((ci) => allowedTypes.length === 0 || allowedTypes.includes(ci.type.toLowerCase()))
 
   const handleAdd = (ci: CIRef) => {
     const relTypes = getRelTypes(ci.type)

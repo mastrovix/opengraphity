@@ -19,7 +19,7 @@ interface Props {
   changeId:    string
   affectedCIs: CI[]
   currentStep: string
-  rules:       CIRelationRule[]
+  rules:       CIRelationRule[] | undefined  // undefined = still loading
   onAddCI:     (ciId: string, relationType?: string) => void
   onRemoveCI:  (ciId: string, ciName: string) => void
 }
@@ -30,16 +30,18 @@ export function ChangeCIList({ changeId: _changeId, affectedCIs, currentStep, ru
   const [ciSearch, setCiSearch]     = useState('')
   const [selectedRelType, setSelectedRelType] = useState<Record<string, string>>({})
 
+  const rulesLoaded   = rules !== undefined
+  const allowedTypes  = rules ? [...new Set(rules.map((r) => r.ciType.toLowerCase()))] : []
+  const ciTypesFilter = allowedTypes.length > 0 ? allowedTypes : undefined
+
   const { data: ciSearchData } = useQuery<{ allCIs: { items: CI[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch || null, limit: 20 },
-    skip: ciSearch.length < 2,
+    variables: { search: ciSearch || null, limit: 20, ciTypes: ciTypesFilter },
+    skip: ciSearch.length < 2 || !rulesLoaded,
   })
 
-  const allowedTypes = rules.map((r) => r.ciType)
-  const getRelTypes  = (ciType: string) => [...new Set(rules.filter((r) => r.ciType === ciType).map((r) => r.relationType))]
-  const ciResults    = (ciSearchData?.allCIs?.items ?? [])
+  const getRelTypes = (ciType: string) => [...new Set((rules ?? []).filter((r) => r.ciType.toLowerCase() === ciType.toLowerCase()).map((r) => r.relationType))]
+  const ciResults   = (ciSearchData?.allCIs?.items ?? [])
     .filter((ci) => !affectedCIs.find((a) => a.id === ci.id))
-    .filter((ci) => allowedTypes.length === 0 || allowedTypes.includes(ci.type))
 
   const canEdit = ['draft', 'assessment'].includes(currentStep)
 

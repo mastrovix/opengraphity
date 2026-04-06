@@ -5,9 +5,10 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_ALL_CIS, GET_CHANGE_IMPACT } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_CHANGE_IMPACT, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { ImpactPanel } from '@/components/ImpactPanel'
 import type { ImpactAnalysis } from '@/components/ImpactPanel'
+import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -141,10 +142,24 @@ export function CreateChangePage() {
   const [selectedCIs,    setSelectedCIs]   = useState<CI[]>([])
   const [emergencyReason, setEmergencyReason] = useState('')
   const [submitted,      setSubmitted]     = useState(false)
+  const [_fieldErrors,   setFieldErrors]   = useState<Record<string, string>>({})
+
+  const changeFormValues = { title, description, type: changeType, priority }
+  const changeFieldRules = useFormFieldRules('change', null, changeFormValues)
+
+  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
+    GET_ITIL_CI_RELATION_RULES,
+    { variables: { itilType: 'change' }, fetchPolicy: 'network-only' },
+  )
+
+  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
+    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
+    : undefined
 
   const { data: cisData } = useQuery<{ allCIs: { items: CI[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch || null, limit: 20 },
-    skip: ciSearch.length < 2,
+    variables: { search: ciSearch || null, limit: 20, ciTypes: ciTypesFilter },
+    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    fetchPolicy: 'network-only',
   })
 
   const [getImpact, { data: impactData }] = useLazyQuery<{ changeImpactAnalysis: ImpactAnalysis }>(GET_CHANGE_IMPACT)
@@ -163,7 +178,9 @@ export function CreateChangePage() {
     onError: (e) => toast.error(e.message),
   })
 
-  const availableCIs     = (cisData?.allCIs?.items ?? []).filter(ci => !selectedCIs.find(s => s.id === ci.id))
+  const availableCIs     = (cisData?.allCIs?.items ?? [])
+    .filter(ci => !selectedCIs.find(s => s.id === ci.id))
+    .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const titleMissing     = !title.trim()
   const emergencyMissing = changeType === 'emergency' && !emergencyReason.trim()
   const step2Valid       = !titleMissing && !emergencyMissing
@@ -177,6 +194,14 @@ export function CreateChangePage() {
   }
 
   function handleSubmit() {
+    const missing = validateFormFields(changeFieldRules, changeFormValues)
+    if (missing.length > 0) {
+      const errs: Record<string, string> = {}
+      missing.forEach((f) => { errs[f] = 'Campo obbligatorio' })
+      setFieldErrors(errs)
+      return
+    }
+    setFieldErrors({})
     void createChange({
       variables: {
         input: {

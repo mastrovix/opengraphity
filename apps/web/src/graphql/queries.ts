@@ -132,8 +132,8 @@ export const GET_SERVICE_REQUESTS = gql`
 `
 
 export const GET_ALL_CIS = gql`
-  query GetAllCIs($limit: Int, $offset: Int, $type: String, $environment: String, $status: String, $search: String, $filters: String, $sortField: String, $sortDirection: String) {
-    allCIs(limit: $limit, offset: $offset, type: $type, environment: $environment, status: $status, search: $search, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
+  query GetAllCIs($limit: Int, $offset: Int, $type: String, $environment: String, $status: String, $search: String, $ciTypes: [String], $filters: String, $sortField: String, $sortDirection: String) {
+    allCIs(limit: $limit, offset: $offset, type: $type, environment: $environment, status: $status, search: $search, ciTypes: $ciTypes, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id name type status environment description createdAt

@@ -92,8 +92,8 @@ async function createITILCIRelationRule(
         {
           id,
           tenantId:     ctx.tenantId,
-          itilType:     args.itilType,
-          ciType:       args.ciType,
+          itilType:     args.itilType.toLowerCase(),
+          ciType:       args.ciType.toLowerCase(),
           relationType: args.relationType,
           direction:    args.direction,
           description:  args.description ?? null,

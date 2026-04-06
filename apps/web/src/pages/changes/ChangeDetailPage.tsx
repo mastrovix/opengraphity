@@ -52,7 +52,7 @@ export function ChangeDetailPage() {
 
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
     GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'change' } },
+    { variables: { itilType: 'change' }, fetchPolicy: 'network-only' },
   )
 
   // Transition dialog state
@@ -248,7 +248,7 @@ export function ChangeDetailPage() {
             changeId={change.id}
             affectedCIs={change.affectedCIs}
             currentStep={currentStep}
-            rules={ciRulesData?.itilCIRelationRules ?? []}
+            rules={ciRulesData?.itilCIRelationRules}
             onAddCI={(ciId, relationType) => addCI({ variables: { changeId: change.id, ciId, relationType } })}
             onRemoveCI={(ciId, ciName) => { setRemoveCIDialog({ ciId, ciName }); setRemoveCIReason('') }}
           />

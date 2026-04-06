@@ -44,7 +44,7 @@ export function buildBaseSDL(): string {
     serviceRequest(id: ID!): ServiceRequest
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
-    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, filters: String, sortField: String, sortDirection: String): AllCIsResult!
+    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, ciTypes: [String], filters: String, sortField: String, sortDirection: String): AllCIsResult!
     ciById(id: ID!): CIBase
     blastRadius(id: ID!): [BlastRadiusItem!]!
     ciIncidents(ciId: ID!): [Incident!]!
