@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { Monitor, Code, Key, Wifi, HelpCircle, Paperclip } from 'lucide-react'
 import { CREATE_TICKET } from '@/graphql/mutations'
 import { GET_KB_ARTICLES } from '@/graphql/queries'
+import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 
 const CATEGORIES = [
   { key: 'hardware', icon: Monitor },
@@ -32,6 +33,10 @@ export function TicketNewPage() {
   const [isDragging,  setIsDragging]  = useState(false)
   const fileInputRef                  = useRef<HTMLInputElement>(null)
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [_fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  const ticketFormValues = { title, description, priority, category }
+  const ticketFieldRules = useFormFieldRules('service_request', null, ticketFormValues)
 
   const [createTicket, { loading }] = useMutation<{ createTicket: { id: string } }>(CREATE_TICKET, {
     onCompleted: (data) => {
@@ -72,6 +77,14 @@ export function TicketNewPage() {
 
   function handleSubmit() {
     if (!canSubmit) return
+    const missing = validateFormFields(ticketFieldRules, ticketFormValues)
+    if (missing.length > 0) {
+      const errs: Record<string, string> = {}
+      missing.forEach((f) => { errs[f] = t('common.required') })
+      setFieldErrors(errs)
+      return
+    }
+    setFieldErrors({})
     void createTicket({ variables: { title: title.trim(), description: description.trim() || undefined, priority, category } })
   }
 

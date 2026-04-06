@@ -11,6 +11,7 @@ import { IncidentDetailPage } from '@/pages/incidents/IncidentDetailPage'
 import { CreateIncidentPage } from '@/pages/incidents/CreateIncidentPage'
 import { ProblemListPage } from '@/pages/problems/ProblemListPage'
 import { ProblemDetailPage } from '@/pages/problems/ProblemDetailPage'
+import { CreateProblemPage } from '@/pages/problems/CreateProblemPage'
 import { ChangeListPage } from '@/pages/changes/ChangeListPage'
 import { CreateChangePage } from '@/pages/changes/CreateChangePage'
 import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
@@ -95,6 +96,7 @@ const router = createBrowserRouter([
       { path: 'incidents/new',     element: <CreateIncidentPage />,      errorElement: <RouteError /> },
       { path: 'incidents/:id',     element: <IncidentDetailPage />,      errorElement: <RouteError /> },
       { path: 'problems',          element: <ProblemListPage />,         errorElement: <RouteError /> },
+      { path: 'problems/new',      element: <CreateProblemPage />,       errorElement: <RouteError /> },
       { path: 'problems/:id',      element: <ProblemDetailPage />,       errorElement: <RouteError /> },
       { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
       { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },

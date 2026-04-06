@@ -108,6 +108,7 @@
     "profile": "Profile",
     "cancel": "Cancel",
     "save": "Save",
-    "back": "← Back"
+    "back": "← Back",
+    "required": "Required field"
   }
 }

@@ -27,6 +27,7 @@ import type { EnumTypeRef } from './shared/designerStyles'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
 import { CIFieldInlineEditor, FormField } from './citype/CIFieldInlineEditor'
 import { CreateTypeDialog } from './citype/CreateTypeDialog'
+import { FieldRulesPanel } from './shared/FieldRulesPanel'
 
 // ── Style helpers ──────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ interface EnumTypeOption extends EnumTypeRef { name: string }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-type Tab = 'settings' | 'fields' | 'relations' | 'preview'
+type Tab = 'settings' | 'fields' | 'relations' | 'rules' | 'preview'
 
 export function CITypeDesignerPage() {
   const { data, loading, refetch } = useQuery<{ ciTypes: CITypeDef[] }>(GET_CI_TYPES)
@@ -173,6 +174,7 @@ export function CITypeDesignerPage() {
             </div>
 
           ) : (
+            <>
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
               {/* Type header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
@@ -199,10 +201,10 @@ export function CITypeDesignerPage() {
 
               {/* Tabs */}
               <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', padding: '0 20px' }}>
-                {(['settings', 'fields', 'relations', 'preview'] as Tab[]).map((tab) => (
+                {(['settings', 'fields', 'relations', 'rules', 'preview'] as Tab[]).map((tab) => (
                   <button key={tab} onClick={() => { setActiveTab(tab); setEditingFieldId(null); setAddingField(false) }}
                     style={{ padding: '10px 14px', border: 'none', borderBottom: activeTab === tab ? '2px solid var(--color-brand)' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 13, cursor: 'pointer', color: activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: activeTab === tab ? 600 : 400 }}>
-                    {tab === 'settings' ? 'Impostazioni' : tab === 'fields' ? 'Campi' : tab === 'relations' ? 'Relazioni CI' : 'Preview'}
+                    {tab === 'settings' ? 'Impostazioni' : tab === 'fields' ? 'Campi' : tab === 'relations' ? 'Relazioni CI' : tab === 'rules' ? 'Regole' : 'Preview'}
                   </button>
                 ))}
               </div>
@@ -359,6 +361,21 @@ export function CITypeDesignerPage() {
                   </div>
                 )}
 
+                {/* Tab: Regole */}
+                {activeTab === 'rules' && (
+                  <FieldRulesPanel
+                    flat
+                    entityType={selected.name}
+                    fields={selected.fields.map((f) => ({
+                      name:       f.name,
+                      label:      f.label,
+                      fieldType:  f.fieldType,
+                      enumValues: f.enumValues,
+                    }))}
+                    workflowSteps={[]}
+                  />
+                )}
+
                 {/* Tab: Preview */}
                 {activeTab === 'preview' && (
                   <div style={{ maxWidth: 520 }}>
@@ -373,6 +390,7 @@ export function CITypeDesignerPage() {
                 )}
               </div>
             </div>
+            </>
           )}
         </div>
       </div>

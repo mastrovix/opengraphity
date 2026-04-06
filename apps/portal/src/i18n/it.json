@@ -108,6 +108,7 @@
     "profile": "Profilo",
     "cancel": "Annulla",
     "save": "Salva",
-    "back": "← Indietro"
+    "back": "← Indietro",
+    "required": "Campo obbligatorio"
   }
 }

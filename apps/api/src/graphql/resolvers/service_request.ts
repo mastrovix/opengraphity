@@ -7,6 +7,7 @@ import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
 import { audit } from '../../lib/audit.js'
+import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 
 type Props = Record<string, unknown>
 
@@ -85,9 +86,16 @@ async function createServiceRequest(
   args: { input: { title: string; description?: string; priority: string; dueDate?: string } },
   ctx: GraphQLContext,
 ) {
-  const result = await requestService.createRequest(args.input, ctx)
-  void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
-  return result
+  return withSession(async (session) => {
+    await validateRequiredFields(session, {
+      entityType:  'service_request',
+      fieldValues: args.input as Record<string, unknown>,
+      tenantId:    ctx.tenantId,
+    })
+    const result = await requestService.createRequest(args.input, ctx)
+    void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
+    return result
+  })
 }
 
 async function updateServiceRequest(

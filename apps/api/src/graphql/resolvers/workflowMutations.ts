@@ -8,6 +8,7 @@ import { withSession } from './ci-utils.js'
 import * as incidentService from '../../services/incidentService.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
+import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -346,6 +347,22 @@ export async function executeWorkflowTransition(
 
         return approvalId
       },
+    }
+
+    // Validate required fields for the destination step before allowing transition
+    if (entityData && Object.keys(entityData).length > 0) {
+      const entityTypeRaw = await session.executeRead((tx) =>
+        tx.run(`MATCH (wi:WorkflowInstance {id: $instanceId}) RETURN wi.entity_type AS et`, { instanceId }),
+      )
+      const entityType = entityTypeRaw.records[0]?.get('et') as string | null
+      if (entityType) {
+        await validateRequiredFields(session, {
+          entityType,
+          fieldValues: entityData,
+          tenantId:    ctx.tenantId,
+          toStep,
+        })
+      }
     }
 
     workflowLogger.debug({ toStep, instanceId }, 'Transitioning workflow step')
