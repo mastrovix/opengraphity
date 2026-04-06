@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
@@ -71,17 +72,21 @@ async function loadReportSection(sectionId: string, tenantId: string) {
 
 function mapDashboardConfig(props: Props) {
   return {
-    id:         props['id']          as string,
-    name:       props['name']        as string,
-    isDefault:  (props['is_default']  ?? false) as boolean,
-    isPersonal: (props['is_personal'] ?? false) as boolean,
-    visibility: (props['visibility']  ?? 'private') as string,
-    createdAt:  props['created_at']  as string,
-    updatedAt:  (props['updated_at'] ?? null)   as string | null,
+    id:          props['id']           as string,
+    name:        props['name']         as string,
+    description: (props['description'] ?? null) as string | null,
+    role:        (props['role']        ?? null) as string | null,
+    isDefault:   (props['is_default']  ?? false) as boolean,
+    isPersonal:  (props['is_personal'] ?? false) as boolean,
+    isShared:    (props['is_shared']   ?? false) as boolean,
+    visibility:  (props['visibility']  ?? 'private') as string,
+    createdAt:   props['created_at']   as string,
+    updatedAt:   (props['updated_at']  ?? null) as string | null,
     // resolved by field resolvers
-    widgets:    [] as ReturnType<typeof mapDashboardWidget>[],
-    sharedWith: [] as unknown[],
-    createdBy:  null as unknown,
+    widgets:       [] as ReturnType<typeof mapDashboardWidget>[],
+    customWidgets: [] as unknown[],
+    sharedWith:    [] as unknown[],
+    createdBy:     null as unknown,
   }
 }
 
@@ -146,6 +151,44 @@ async function dashboard(_: unknown, args: { id: string }, ctx: GraphQLContext) 
     )
     if (!result.records.length) return null
     return mapDashboardConfig(result.records[0].get('props') as Props)
+  })
+}
+
+async function myDashboard(_: unknown, __: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    // 1. Dashboard with is_default=true matching user's role
+    const r1 = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (d:DashboardConfig {tenant_id: $tenantId, is_default: true, role: $role})
+         WHERE d.is_shared = true OR d.user_id = $userId
+         RETURN properties(d) AS props LIMIT 1`,
+        { tenantId: ctx.tenantId, role: ctx.role, userId: ctx.userId },
+      ),
+    )
+    if (r1.records.length) return mapDashboardConfig(r1.records[0].get('props') as Props)
+
+    // 2. Dashboard with is_default=true and no role restriction
+    const r2 = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (d:DashboardConfig {tenant_id: $tenantId, is_default: true})
+         WHERE d.role IS NULL AND (d.is_shared = true OR d.user_id = $userId)
+         RETURN properties(d) AS props LIMIT 1`,
+        { tenantId: ctx.tenantId, userId: ctx.userId },
+      ),
+    )
+    if (r2.records.length) return mapDashboardConfig(r2.records[0].get('props') as Props)
+
+    // 3. User's first personal dashboard
+    const r3 = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (d:DashboardConfig {tenant_id: $tenantId, user_id: $userId})
+         RETURN properties(d) AS props ORDER BY d.created_at ASC LIMIT 1`,
+        { tenantId: ctx.tenantId, userId: ctx.userId },
+      ),
+    )
+    if (r3.records.length) return mapDashboardConfig(r3.records[0].get('props') as Props)
+
+    return null
   })
 }
 
@@ -267,11 +310,20 @@ async function widgetError(
 
 async function createDashboard(
   _: unknown,
-  args: { input: { name: string; visibility: string; sharedWithTeamIds?: string[] | null } },
+  args: {
+    input: {
+      name: string
+      description?: string | null
+      role?: string | null
+      visibility: string
+      isShared?: boolean | null
+      sharedWithTeamIds?: string[] | null
+    }
+  },
   ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
-  const { name, visibility, sharedWithTeamIds } = args.input
+  const { name, description, role, visibility, isShared, sharedWithTeamIds } = args.input
   const session = getSession(undefined, 'WRITE')
   try {
     // Check if this is the first dashboard for this user
@@ -291,15 +343,22 @@ async function createDashboard(
           tenant_id: $tenantId,
           user_id: $userId,
           name: $name,
+          description: $description,
+          role: $role,
           visibility: $visibility,
           is_default: $isDefault,
           is_personal: true,
+          is_shared: $isShared,
           created_at: $now,
           updated_at: $now
         })
         RETURN properties(d) AS props
         `,
-        { tenantId: ctx.tenantId, userId: ctx.userId, name, visibility, isDefault: isFirst, now },
+        {
+          tenantId: ctx.tenantId, userId: ctx.userId,
+          name, description: description ?? null, role: role ?? null,
+          visibility, isDefault: isFirst, isShared: isShared ?? false, now,
+        },
       ),
     )
     if (!created.records.length) throw new Error('Failed to create dashboard')
@@ -346,19 +405,30 @@ async function updateDashboard(
   _: unknown,
   args: {
     id: string
-    input: { name?: string | null; visibility?: string | null; sharedWithTeamIds?: string[] | null; isDefault?: boolean | null }
+    input: {
+      name?: string | null
+      description?: string | null
+      role?: string | null
+      visibility?: string | null
+      isShared?: boolean | null
+      sharedWithTeamIds?: string[] | null
+      isDefault?: boolean | null
+    }
   },
   ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
-  const { name, visibility, sharedWithTeamIds, isDefault } = args.input
+  const { name, description, role, visibility, isShared, sharedWithTeamIds, isDefault } = args.input
   const session = getSession(undefined, 'WRITE')
   try {
     const setParts: string[] = ['d.updated_at = $now']
     const params: Record<string, unknown> = { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, now }
 
-    if (name != null) { setParts.push('d.name = $name'); params['name'] = name }
-    if (visibility != null) { setParts.push('d.visibility = $visibility'); params['visibility'] = visibility }
+    if (name        != null) { setParts.push('d.name = $name');               params['name'] = name }
+    if (description != null) { setParts.push('d.description = $description'); params['description'] = description }
+    if (role        != null) { setParts.push('d.role = $role');               params['role'] = role }
+    if (visibility  != null) { setParts.push('d.visibility = $visibility');   params['visibility'] = visibility }
+    if (isShared    != null) { setParts.push('d.is_shared = $isShared');      params['isShared'] = isShared }
 
     const result = await session.executeWrite((tx) =>
       tx.run(
@@ -610,17 +680,104 @@ async function reorderDashboardWidgets(
   }
 }
 
+async function cloneDashboard(_: unknown, args: { id: string; newName: string }, ctx: GraphQLContext) {
+  const newId = uuidv4()
+  const now   = new Date().toISOString()
+  const session = getSession(undefined, 'WRITE')
+  try {
+    // Load source dashboard
+    const src = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId}) RETURN properties(d) AS p`,
+        { id: args.id, tenantId: ctx.tenantId },
+      ),
+    )
+    if (!src.records.length) throw new Error('Dashboard non trovata')
+    const sp = src.records[0].get('p') as Props
+
+    // Create cloned dashboard
+    await session.executeWrite((tx) =>
+      tx.run(
+        `CREATE (d:DashboardConfig {
+           id: $newId, tenant_id: $tenantId, user_id: $userId,
+           name: $name, description: $description, role: $role,
+           visibility: $visibility, is_default: false,
+           is_personal: true, is_shared: $isShared,
+           created_at: $now, updated_at: $now
+         })`,
+        {
+          newId, tenantId: ctx.tenantId, userId: ctx.userId,
+          name:        args.newName,
+          description: (sp['description'] ?? null) as string | null,
+          role:        (sp['role']        ?? null) as string | null,
+          visibility:  (sp['visibility']  ?? 'private') as string,
+          isShared:    (sp['is_shared']   ?? false) as boolean,
+          now,
+        },
+      ),
+    )
+
+    // Clone legacy DashboardWidget nodes
+    await session.executeWrite((tx) =>
+      tx.run(
+        `MATCH (src:DashboardConfig {id: $srcId, tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget)
+         MATCH (dst:DashboardConfig {id: $dstId, tenant_id: $tenantId})
+         CREATE (wc:DashboardWidget {
+           id: randomUUID(), dashboard_id: $dstId,
+           report_template_id: w.report_template_id,
+           report_section_id:  w.report_section_id,
+           col_span: w.col_span, order: w.order, created_at: $now
+         })
+         CREATE (dst)-[:HAS_WIDGET]->(wc)`,
+        { srcId: args.id, dstId: newId, tenantId: ctx.tenantId, now },
+      ),
+    )
+
+    // Clone CustomWidget nodes
+    await session.executeWrite((tx) =>
+      tx.run(
+        `MATCH (src:DashboardConfig {id: $srcId, tenant_id: $tenantId})-[:HAS_CUSTOM_WIDGET]->(w:CustomWidget)
+         MATCH (dst:DashboardConfig {id: $dstId, tenant_id: $tenantId})
+         CREATE (wc:CustomWidget {
+           id: randomUUID(), tenant_id: $tenantId, dashboard_id: $dstId,
+           title: w.title, widget_type: w.widget_type, entity_type: w.entity_type,
+           metric: w.metric, group_by_field: w.group_by_field,
+           filter_field: w.filter_field, filter_value: w.filter_value,
+           time_range: w.time_range, size: w.size, color: w.color,
+           position: w.position, created_by: $userId, created_at: $now
+         })
+         CREATE (dst)-[:HAS_CUSTOM_WIDGET]->(wc)`,
+        { srcId: args.id, dstId: newId, tenantId: ctx.tenantId, userId: ctx.userId, now },
+      ),
+    )
+
+    void audit(ctx, 'dashboard.cloned', 'DashboardConfig', newId, { sourceDashboardId: args.id })
+
+    const res = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId}) RETURN properties(d) AS p`,
+        { id: newId, tenantId: ctx.tenantId },
+      ),
+    )
+    return mapDashboardConfig(res.records[0].get('p') as Props)
+  } finally {
+    await session.close()
+  }
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const dashboardResolvers = {
   Query: {
     myDashboards,
+    myDashboard,
     dashboard,
   },
   Mutation: {
     createDashboard,
     updateDashboard,
     deleteDashboard,
+    cloneDashboard,
     addDashboardWidget,
     removeDashboardWidget,
     updateDashboardWidget,
@@ -630,6 +787,36 @@ export const dashboardResolvers = {
     widgets:    dashboardWidgets,
     createdBy:  dashboardCreatedBy,
     sharedWith: dashboardSharedWith,
+    customWidgets: async (parent: { id: string }, _: unknown, ctx: GraphQLContext) => {
+      const session = getSession(undefined, 'READ')
+      try {
+        const result = await session.executeRead((tx) =>
+          tx.run(
+            `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId})-[:HAS_CUSTOM_WIDGET]->(w:CustomWidget)
+             RETURN properties(w) AS w ORDER BY w.position ASC`,
+            { id: parent.id, tenantId: ctx.tenantId },
+          ),
+        )
+        return result.records.map((r) => {
+          const p = r.get('w') as Props
+          return {
+            id: p['id'] as string, title: p['title'] as string,
+            widgetType: p['widget_type'] as string, entityType: p['entity_type'] as string,
+            metric: p['metric'] as string,
+            groupByField: (p['group_by_field'] ?? null) as string | null,
+            filterField:  (p['filter_field']   ?? null) as string | null,
+            filterValue:  (p['filter_value']   ?? null) as string | null,
+            timeRange:    (p['time_range']      ?? null) as string | null,
+            size:    (p['size']  ?? 'medium') as string,
+            color:   (p['color'] ?? '#0EA5E9') as string,
+            position: Math.round(Number(p['position'] ?? 0)),
+            dashboardId: p['dashboard_id'] as string,
+          }
+        })
+      } finally {
+        await session.close()
+      }
+    },
   },
   DashboardWidget: {
     reportTemplate: widgetReportTemplate,

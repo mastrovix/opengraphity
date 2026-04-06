@@ -30,6 +30,7 @@ import { reportExportResolvers } from './reportExport.js'
 import { portalResolvers } from './portal.js'
 import { fieldRulesResolvers } from './fieldRules.js'
 import { itilRelationsResolvers } from './itilRelations.js'
+import { customWidgetResolvers } from './customWidget.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -141,6 +142,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...portalResolvers.Query,
       ...fieldRulesResolvers.Query,
       ...itilRelationsResolvers.Query,
+      ...customWidgetResolvers.Query,
       auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
@@ -171,6 +173,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...portalResolvers.Mutation,
       ...fieldRulesResolvers.Mutation,
       ...itilRelationsResolvers.Mutation,
+      ...customWidgetResolvers.Mutation,
       ...queueStatsResolvers.Mutation,
     },
     Incident: {

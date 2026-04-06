@@ -3,6 +3,9 @@
  * Incident, Change, Problem, ServiceRequest get CITypeDefinition + CIFieldDefinition nodes
  * so the schema generator can build real GraphQL enums from their enum fields at runtime.
  *
+ * Non-status enum fields are linked to their EnumTypeDefinition via USES_ENUM.
+ * Status fields keep inline enum_values (they are workflow-driven).
+ *
  * Usage:
  *   pnpm tsx apps/api/src/scripts/seed-itil-metamodel.ts [--slug acme]
  *   (--slug defaults to 'system' for shared/global definitions)
@@ -29,6 +32,8 @@ interface FieldDef {
   field_type:   'string' | 'enum' | 'date' | 'number' | 'boolean'
   required:     boolean
   enum_values?: string[]
+  /** Name of the EnumTypeDefinition to link via USES_ENUM (skips inline enum_values) */
+  uses_enum?:   string
   order:        number
 }
 
@@ -50,11 +55,13 @@ const ITIL_TYPES: ITILType[] = [
       { name: 'status',      label: 'Stato',         field_type: 'enum',   required: true,  order: 3,
         enum_values: ['new', 'open', 'assigned', 'in_progress', 'pending', 'escalated', 'resolved', 'closed'] },
       { name: 'severity',    label: 'Severità',      field_type: 'enum',   required: true,  order: 4,
-        enum_values: ['low', 'medium', 'high', 'critical'] },
-      { name: 'root_cause',  label: 'Root Cause',    field_type: 'string', required: false, order: 5 },
-      { name: 'created_at',  label: 'Creato il',     field_type: 'date',   required: true,  order: 6 },
-      { name: 'updated_at',  label: 'Aggiornato il', field_type: 'date',   required: true,  order: 7 },
-      { name: 'resolved_at', label: 'Risolto il',    field_type: 'date',   required: false, order: 8 },
+        uses_enum: 'severity' },
+      { name: 'category',    label: 'Categoria',     field_type: 'enum',   required: false, order: 5,
+        uses_enum: 'category' },
+      { name: 'root_cause',  label: 'Root Cause',    field_type: 'string', required: false, order: 6 },
+      { name: 'created_at',  label: 'Creato il',     field_type: 'date',   required: true,  order: 7 },
+      { name: 'updated_at',  label: 'Aggiornato il', field_type: 'date',   required: true,  order: 8 },
+      { name: 'resolved_at', label: 'Risolto il',    field_type: 'date',   required: false, order: 9 },
     ],
   },
   {
@@ -67,13 +74,13 @@ const ITIL_TYPES: ITILType[] = [
                       'emergency_approval', 'validation', 'deployment', 'post_review',
                       'completed', 'failed', 'rejected'] },
       { name: 'type',           label: 'Tipo',          field_type: 'enum',   required: true,  order: 4,
-        enum_values: ['standard', 'normal', 'emergency'] },
+        uses_enum: 'change_type' },
       { name: 'priority',       label: 'Priorità',      field_type: 'enum',   required: true,  order: 5,
-        enum_values: ['low', 'medium', 'high', 'critical'] },
+        uses_enum: 'priority' },
       { name: 'risk',           label: 'Rischio',       field_type: 'enum',   required: false, order: 6,
-        enum_values: ['low', 'medium', 'high'] },
+        uses_enum: 'risk' },
       { name: 'impact',         label: 'Impatto',       field_type: 'enum',   required: false, order: 7,
-        enum_values: ['low', 'medium', 'high'] },
+        uses_enum: 'impact' },
       { name: 'scheduled_start',label: 'Inizio previsto', field_type: 'date',   required: false, order: 8 },
       { name: 'scheduled_end',  label: 'Fine prevista',  field_type: 'date',   required: false, order: 9 },
       { name: 'created_at',     label: 'Creato il',     field_type: 'date',   required: true,  order: 10 },
@@ -89,8 +96,9 @@ const ITIL_TYPES: ITILType[] = [
         enum_values: ['new', 'under_investigation', 'change_requested', 'change_in_progress',
                       'deferred', 'resolved', 'closed'] },
       { name: 'priority',    label: 'Priorità',      field_type: 'enum',   required: true,  order: 4,
-        enum_values: ['low', 'medium', 'high', 'critical'] },
-      { name: 'category',    label: 'Categoria',     field_type: 'string', required: false, order: 5 },
+        uses_enum: 'priority' },
+      { name: 'category',    label: 'Categoria',     field_type: 'enum',   required: false, order: 5,
+        uses_enum: 'category' },
       { name: 'root_cause',  label: 'Root Cause',    field_type: 'string', required: false, order: 6 },
       { name: 'workaround',  label: 'Workaround',    field_type: 'string', required: false, order: 7 },
       { name: 'created_at',  label: 'Creato il',     field_type: 'date',   required: true,  order: 8 },
@@ -105,8 +113,9 @@ const ITIL_TYPES: ITILType[] = [
       { name: 'status',      label: 'Stato',         field_type: 'enum',   required: true,  order: 3,
         enum_values: ['open', 'in_progress', 'completed', 'cancelled'] },
       { name: 'priority',    label: 'Priorità',      field_type: 'enum',   required: true,  order: 4,
-        enum_values: ['low', 'medium', 'high', 'critical'] },
-      { name: 'category',    label: 'Categoria',     field_type: 'string', required: false, order: 5 },
+        uses_enum: 'priority' },
+      { name: 'category',    label: 'Categoria',     field_type: 'enum',   required: false, order: 5,
+        uses_enum: 'category' },
       { name: 'created_at',  label: 'Creato il',     field_type: 'date',   required: true,  order: 6 },
       { name: 'updated_at',  label: 'Aggiornato il', field_type: 'date',   required: true,  order: 7 },
     ],
@@ -147,6 +156,10 @@ async function seedITILType(
   // Upsert each field
   for (const f of itil.fields) {
     const fieldId = uuidv4()
+
+    // Fields with uses_enum get null enum_values (values come from the linked EnumTypeDefinition)
+    const enumValues = f.uses_enum ? null : (f.enum_values ? JSON.stringify(f.enum_values) : null)
+
     await session.executeWrite(tx =>
       tx.run(
         `MATCH (t:CITypeDefinition {name: $typeName, tenant_id: $tenantId})
@@ -180,12 +193,32 @@ async function seedITILType(
           label:      f.label,
           fieldType:  f.field_type,
           required:   f.required,
-          enumValues: f.enum_values ? JSON.stringify(f.enum_values) : null,
+          enumValues,
           order:      f.order,
           now,
         },
       ),
     )
+
+    // Link to EnumTypeDefinition via USES_ENUM when uses_enum is specified
+    // Enum may live under a different tenant_id (e.g. 'c-one' vs 'system'),
+    // so match by name only and pick any available instance.
+    if (f.uses_enum) {
+      await session.executeWrite(tx =>
+        tx.run(
+          `MATCH (f:CIFieldDefinition {name: $fieldName, tenant_id: $tenantId})
+                 -[:BELONGS_TO]->(t:CITypeDefinition {name: $typeName, tenant_id: $tenantId})
+           MATCH (e:EnumTypeDefinition {name: $enumName})
+           MERGE (f)-[:USES_ENUM]->(e)`,
+          {
+            fieldName: f.name,
+            typeName:  itil.name,
+            tenantId:  TENANT_ID,
+            enumName:  f.uses_enum,
+          },
+        ),
+      )
+    }
   }
 }
 
@@ -202,7 +235,8 @@ async function main() {
   try {
     for (const itil of ITIL_TYPES) {
       await seedITILType(session, itil)
-      console.log(`✓ ${itil.label}: ${itil.fields.length} fields`)
+      const enumLinked = itil.fields.filter(f => f.uses_enum).length
+      console.log(`✓ ${itil.label}: ${itil.fields.length} fields (${enumLinked} enum-linked)`)
     }
 
     console.log('\n── ITIL metamodello creato ─────────────────────────────')

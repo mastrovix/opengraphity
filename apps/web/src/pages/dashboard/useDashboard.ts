@@ -14,8 +14,11 @@ import {
   REMOVE_DASHBOARD_WIDGET,
   REORDER_DASHBOARD_WIDGETS,
   UPDATE_DASHBOARD_WIDGET,
+  DELETE_CUSTOM_WIDGET,
+  REORDER_CUSTOM_WIDGETS,
 } from '@/graphql/mutations'
 import type { PendingWidget } from './DashboardEditMode'
+import type { CustomWidgetData } from './CustomWidgetCard'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,13 +55,17 @@ export interface DashboardWidgetServer {
 export interface DashboardConfig {
   id: string
   name: string
+  description: string | null
+  role: string | null
   isDefault: boolean
   isPersonal: boolean
+  isShared: boolean
   visibility: string
   createdAt: string
   createdBy: { id: string; name: string } | null
   sharedWith: Team[]
   widgets: DashboardWidgetServer[]
+  customWidgets: CustomWidgetData[]
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -90,6 +97,8 @@ export function useDashboard() {
   const [showCreate, setShowCreate]               = useState(false)
   const [showSettings, setShowSettings]           = useState(false)
   const [dropdownOpen, setDropdownOpen]           = useState(false)
+  // Custom widget state
+  const [customWidgets, setCustomWidgets]         = useState<CustomWidgetData[]>([])
 
   const { data: listData, loading: listLoading, refetch: refetchList } =
     useQuery<{ myDashboards: DashboardConfig[] }>(GET_MY_DASHBOARDS)
@@ -123,10 +132,19 @@ export function useDashboard() {
     }
   }, [activeDash?.widgets, editMode])
 
-  const [addWidgetMutation]      = useMutation(ADD_DASHBOARD_WIDGET)
-  const [removeWidgetMutation]   = useMutation(REMOVE_DASHBOARD_WIDGET)
-  const [reorderWidgetsMutation] = useMutation(REORDER_DASHBOARD_WIDGETS)
-  const [updateWidgetMutation]   = useMutation(UPDATE_DASHBOARD_WIDGET)
+  // Sync custom widgets from server
+  useEffect(() => {
+    if (activeDash?.customWidgets) {
+      setCustomWidgets(activeDash.customWidgets)
+    }
+  }, [activeDash?.customWidgets])
+
+  const [addWidgetMutation]           = useMutation(ADD_DASHBOARD_WIDGET)
+  const [removeWidgetMutation]        = useMutation(REMOVE_DASHBOARD_WIDGET)
+  const [reorderWidgetsMutation]      = useMutation(REORDER_DASHBOARD_WIDGETS)
+  const [updateWidgetMutation]        = useMutation(UPDATE_DASHBOARD_WIDGET)
+  const [deleteCustomWidgetMutation]  = useMutation(DELETE_CUSTOM_WIDGET)
+  const [reorderCustomWidgetsMutation]= useMutation(REORDER_CUSTOM_WIDGETS)
 
   function enterEditMode() {
     if (activeDash?.widgets) setPendingWidgets(activeDash.widgets.map(serverWidgetToPending))
@@ -135,7 +153,50 @@ export function useDashboard() {
 
   function cancelEditMode() {
     if (activeDash?.widgets) setPendingWidgets(activeDash.widgets.map(serverWidgetToPending))
+    if (activeDash?.customWidgets) setCustomWidgets(activeDash.customWidgets)
     setEditMode(false)
+  }
+
+  // ── Custom widget handlers ───────────────────────────────────────────────────
+
+  function handleWidgetSaved(saved: CustomWidgetData) {
+    setCustomWidgets((prev) => {
+      const idx = prev.findIndex((w) => w.id === saved.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = saved
+        return next
+      }
+      return [...prev, saved]
+    })
+  }
+
+  async function handleDeleteCustomWidget(widgetId: string) {
+    try {
+      await deleteCustomWidgetMutation({ variables: { id: widgetId } })
+      setCustomWidgets((prev) => prev.filter((w) => w.id !== widgetId))
+      toast.success('Widget rimosso')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Errore')
+    }
+  }
+
+  async function handleReorderCustomWidgets(orderedIds: string[]) {
+    if (!activeDashboardId) return
+    try {
+      const result = await reorderCustomWidgetsMutation({
+        variables: { dashboardId: activeDashboardId, widgetIds: orderedIds },
+      })
+      const updated = (result.data as { reorderCustomWidgets: { id: string; position: number }[] }).reorderCustomWidgets
+      setCustomWidgets((prev) =>
+        prev.map((w) => {
+          const u = updated.find((r) => r.id === w.id)
+          return u ? { ...w, position: u.position } : w
+        }).sort((a, b) => a.position - b.position),
+      )
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Errore nel riordinamento')
+    }
   }
 
   async function handleSave() {
@@ -249,6 +310,7 @@ export function useDashboard() {
     showCreate,
     showSettings,
     dropdownOpen,
+    customWidgets,
     // Data
     dashboards,
     activeDash,
@@ -276,5 +338,8 @@ export function useDashboard() {
     handleAddWidget,
     toggleTemplate,
     handleSelectDashboard,
+    handleWidgetSaved,
+    handleDeleteCustomWidget,
+    handleReorderCustomWidgets,
   }
 }

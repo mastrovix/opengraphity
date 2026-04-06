@@ -77,6 +77,25 @@ async function createITILCIRelationRule(
   const now = new Date().toISOString()
   const session = getSession()
   try {
+    // Duplicate check: one rule per (tenant, itilType, ciType)
+    const existing = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (r:ITILCIRelationRule {
+           tenant_id: $tenantId,
+           itil_type: $itilType,
+           ci_type:   $ciType
+         }) RETURN r.id LIMIT 1`,
+        {
+          tenantId: ctx.tenantId,
+          itilType: args.itilType.toLowerCase(),
+          ciType:   args.ciType.toLowerCase(),
+        },
+      ),
+    )
+    if (existing.records.length > 0) {
+      throw new Error(`Esiste già una relazione con questo tipo di CI.`)
+    }
+
     await session.executeWrite((tx) =>
       tx.run(
         `CREATE (rule:ITILCIRelationRule {

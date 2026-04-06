@@ -7,6 +7,11 @@ type Props = Record<string, unknown>
 
 // ── mapITILField ──────────────────────────────────────────────────────────────
 
+function parseInlineEnumValues(raw: unknown): string[] {
+  if (!raw || typeof raw !== 'string') return []
+  try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : [] } catch { return [] }
+}
+
 export function mapITILField(f: Props, enumRef?: { id: string; name: string; label: string; values: string[] }) {
   return {
     id:               f['id'],
@@ -15,8 +20,8 @@ export function mapITILField(f: Props, enumRef?: { id: string; name: string; lab
     fieldType:        f['field_type'],
     required:         f['required']      ?? false,
     defaultValue:     f['default_value'] ?? null,
-    enumValues:       enumRef?.values ?? [],
-    order:            f['order']          ?? 0,
+    enumValues:       enumRef?.values ?? parseInlineEnumValues(f['enum_values']),
+    order:            Number(f['order']   ?? 0),
     validationScript: f['validation_script'] ?? null,
     visibilityScript: f['visibility_script'] ?? null,
     defaultScript:    f['default_script']    ?? null,
@@ -158,12 +163,23 @@ export function buildITILTypeFieldsResolver() {
           `MATCH (t:CITypeDefinition {id: $typeId})
            WHERE t.scope = 'itil'
            MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
-           RETURN f ORDER BY f.order`,
+           OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
+           RETURN f, enumDef.id AS enumTypeId, enumDef.name AS enumTypeName,
+                  enumDef.label AS enumTypeLabel, enumDef.values AS enumTypeValues
+           ORDER BY f.order`,
           { typeId: args.typeId },
         ),
       )
-      return r.records
-        .map(rec => mapITILField(rec.get('f').properties as Props))
+      return r.records.map(rec => {
+        const enumId = rec.get('enumTypeId') as string | null
+        const enumRef = enumId ? {
+          id:     enumId,
+          name:   rec.get('enumTypeName') as string ?? '',
+          label:  rec.get('enumTypeLabel') as string ?? '',
+          values: rec.get('enumTypeValues') as string[] ?? [],
+        } : undefined
+        return mapITILField(rec.get('f').properties as Props, enumRef)
+      })
     })
 }
 

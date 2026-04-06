@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { GET_SERVICE_REQUESTS } from '@/graphql/queries'
+import { useEnumValues } from '@/hooks/useEnumValues'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ export function CreateServiceRequestPage() {
   const [priority, setPriority]     = useState('medium')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate]       = useState('')
+  const { values: priorityValues, loading: priorityLoading } = useEnumValues('service_request', 'priority')
   const [submitted, setSubmitted]   = useState(false)
 
   const titleError = submitted && !title.trim() ? 'This field is required' : ''
@@ -142,11 +144,13 @@ export function CreateServiceRequestPage() {
               </label>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: PRIORITY_DOT[priority] ?? 'var(--color-slate-light)', pointerEvents: 'none', zIndex: 1 }} />
-                <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+                <select value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
+                  {priorityLoading
+                    ? <option value="">Caricamento…</option>
+                    : priorityValues.map(v => (
+                        <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
+                      ))
+                  }
                 </select>
               </div>
             </div>

@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { useEnumValues } from '@/hooks/useEnumValues'
 import { gql } from '@apollo/client'
 
 const CREATE_PROBLEM = gql`
@@ -53,6 +54,7 @@ export function CreateProblemPage() {
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
+  const { values: priorityValues, loading: priorityLoading } = useEnumValues('problem', 'priority')
 
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
     GET_ITIL_CI_RELATION_RULES,
@@ -154,9 +156,11 @@ export function CreateProblemPage() {
               Priority <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(['critical', 'high', 'medium', 'low'] as const).map(p => {
+              {priorityLoading ? (
+                <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
+              ) : priorityValues.map(p => {
                 const sel = priority === p
-                const c   = PRIORITY_STYLES[p]!
+                const c   = PRIORITY_STYLES[p]
                 return (
                   <button
                     key={p}
@@ -164,9 +168,9 @@ export function CreateProblemPage() {
                     onClick={() => setPriority(p)}
                     style={{
                       padding: '7px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                      border: `1.5px solid ${sel ? c.border : '#e5e7eb'}`,
-                      background: sel ? c.bg : '#f8fafc',
-                      color: sel ? c.color : 'var(--color-slate)',
+                      border: `1.5px solid ${sel ? (c?.border ?? 'var(--color-brand)') : '#e5e7eb'}`,
+                      background: sel ? (c?.bg ?? '#f0f9ff') : '#f8fafc',
+                      color: sel ? (c?.color ?? 'var(--color-brand)') : 'var(--color-slate)',
                       fontWeight: sel ? 600 : 400,
                       transition: 'all 0.15s',
                     }}

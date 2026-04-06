@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
 import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
+import { useEnumValues } from '@/hooks/useEnumValues'
 import { FieldWrapper } from '@/components/FieldWrapper'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
@@ -51,6 +52,7 @@ export function CreateIncidentPage() {
 
   const formValues = { title, severity, description }
   const fieldRules = useFormFieldRules('incident', null, formValues)
+  const { values: severityValues, loading: severityLoading } = useEnumValues('incident', 'severity')
 
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
     GET_ITIL_CI_RELATION_RULES,
@@ -163,9 +165,11 @@ export function CreateIncidentPage() {
               Severity <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(['critical', 'high', 'medium', 'low'] as const).map(s => {
+              {severityLoading ? (
+                <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
+              ) : severityValues.map(s => {
                 const sel = severity === s
-                const c   = SEVERITY_STYLES[s]!
+                const c   = SEVERITY_STYLES[s]
                 return (
                   <button
                     key={s}
@@ -173,9 +177,9 @@ export function CreateIncidentPage() {
                     onClick={() => setSeverity(s)}
                     style={{
                       padding: '7px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                      border: `1.5px solid ${sel ? c.border : '#e5e7eb'}`,
-                      background: sel ? c.bg : '#f8fafc',
-                      color: sel ? c.color : 'var(--color-slate)',
+                      border: `1.5px solid ${sel ? (c?.border ?? 'var(--color-brand)') : '#e5e7eb'}`,
+                      background: sel ? (c?.bg ?? '#f0f9ff') : '#f8fafc',
+                      color: sel ? (c?.color ?? 'var(--color-brand)') : 'var(--color-slate)',
                       fontWeight: sel ? 600 : 400,
                       transition: 'all 0.15s',
                     }}

@@ -33,7 +33,7 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
           enumValues:       fd.enumValues ?? [],
           enumTypeId:       fd.enumId     ?? null,
           enumTypeName:     fd.enumName   ?? null,
-          order:            f['order'] ?? 0,
+          order:            Number(f['order'] ?? 0),
           validationScript: f['validation_script'] ?? null,
           visibilityScript: f['visibility_script'] ?? null,
           defaultScript:    f['default_script']    ?? null,
@@ -51,7 +51,7 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
         targetType:       r['target_type'],
         cardinality:      r['cardinality'],
         direction:        r['direction'],
-        order:            r['order'] ?? 0,
+        order:            Number(r['order'] ?? 0),
       }))
       .sort((a, b) => (a.order as number) - (b.order as number)),
     systemRelations: systemRels
@@ -63,7 +63,7 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
         relationshipType: sr['relationship_type'],
         targetEntity:     sr['target_entity'],
         required:         sr['required'] ?? false,
-        order:            sr['order'] ?? 0,
+        order:            Number(sr['order'] ?? 0),
       })),
   }
 }

@@ -694,6 +694,7 @@ export function ITILTypeDesignerPage() {
                   {activeTab === 'relations' && (() => {
                     const rules    = ciRulesData?.itilCIRelationRules ?? []
                     const ciTypes  = ciTypesData?.ciTypes ?? []
+                    const usedCITypes = new Set(rules.map((r) => r.ciType.toLowerCase()))
                     const RELATION_SUGGESTIONS = ['IMPACTS', 'AFFECTED_BY', 'MODIFIES', 'TARGETS', 'ROOT_CAUSE', 'DEPENDS_ON', 'HOSTED_ON']
 
                     return (
@@ -707,7 +708,9 @@ export function ITILTypeDesignerPage() {
                                 <select style={selectS} value={relForm.ciType}
                                   onChange={(e) => setRelForm((f) => ({ ...f, ciType: e.target.value }))}>
                                   <option value="">{t('itilDesigner.ciRelations.selectCIType')}</option>
-                                  {ciTypes.map((ct) => (
+                                  {ciTypes
+                                    .filter((ct) => !usedCITypes.has(ct.name.toLowerCase()))
+                                    .map((ct) => (
                                     <option key={ct.id} value={ct.name}>{ct.label}</option>
                                   ))}
                                 </select>

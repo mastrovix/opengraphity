@@ -14,6 +14,9 @@ export function reportSDL(): string {
     scheduleEnabled: Boolean!
     scheduleCron: String
     scheduleChannelId: String
+    scheduleRecipients: [String!]!
+    scheduleFormat: String
+    lastScheduledRun: String
     createdAt: String!
     updatedAt: String
   }

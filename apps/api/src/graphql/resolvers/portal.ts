@@ -7,8 +7,19 @@ import { workflowEngine } from '@opengraphity/workflow'
 import { validateStringLength } from '../../lib/validation.js'
 import type { GraphQLContext } from '../../context.js'
 
-const ALLOWED_CATEGORIES = new Set(['hardware', 'software', 'access', 'network', 'other'])
-const ALLOWED_PRIORITIES  = new Set(['low', 'medium', 'high'])
+/** Load allowed values for a system enum from Neo4j (cached per request). */
+async function loadEnumValues(tenantId: string, enumName: string): Promise<Set<string>> {
+  return withSession(async (session) => {
+    const res = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (e:EnumTypeDefinition {name: $name, tenant_id: $tenantId})
+        RETURN e.values AS values
+      `, { name: enumName, tenantId }),
+    )
+    const values = res.records[0]?.get('values') as string[] | undefined
+    return new Set(values ?? [])
+  })
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -212,8 +223,12 @@ async function createTicket(
   validateStringLength(title, 'title', 1, 500)
   validateStringLength(description, 'description', 0, 10000)
 
-  if (!ALLOWED_CATEGORIES.has(category))  throw new Error(`Invalid category: ${category}`)
-  if (!ALLOWED_PRIORITIES.has(priority))  priority = 'medium'
+  const [allowedCategories, allowedPriorities] = await Promise.all([
+    loadEnumValues(ctx.tenantId, 'category'),
+    loadEnumValues(ctx.tenantId, 'priority'),
+  ])
+  if (allowedCategories.size > 0 && !allowedCategories.has(category)) throw new Error(`Invalid category: ${category}`)
+  if (allowedPriorities.size > 0 && !allowedPriorities.has(priority)) priority = 'medium'
 
   const id  = uuidv4()
   const now = new Date().toISOString()

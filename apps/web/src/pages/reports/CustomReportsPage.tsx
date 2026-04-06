@@ -15,6 +15,7 @@ import {
   REMOVE_REPORT_SECTION,
   EXPORT_REPORT_PDF,
   EXPORT_REPORT_EXCEL,
+  UPDATE_REPORT_SCHEDULE,
 } from '@/graphql/mutations'
 import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon, LayoutGrid } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,7 +27,7 @@ import { ReportSectionBuilder, type ReportSectionInput } from '@/components/Repo
 interface ReportNode { id: string; entityType: string; neo4jLabel: string; label: string; isResult: boolean; isRoot: boolean; positionX: number; positionY: number; filters: string | null; selectedFields: string[] }
 interface ReportEdge { id: string; sourceNodeId: string; targetNodeId: string; relationshipType: string; direction: string; label: string }
 interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
-interface ReportTemplate { id: string; name: string; description: string | null; icon: string | null; visibility: string; scheduleEnabled: boolean; scheduleCron: string | null; scheduleChannelId?: string | null; createdAt: string; updatedAt?: string; createdBy: { id: string; name: string } | null; sharedWith: { id: string; name: string }[]; sections: ReportSection[] }
+interface ReportTemplate { id: string; name: string; description: string | null; icon: string | null; visibility: string; scheduleEnabled: boolean; scheduleCron: string | null; scheduleChannelId?: string | null; scheduleRecipients: string[]; scheduleFormat: string | null; lastScheduledRun: string | null; createdAt: string; updatedAt?: string; createdBy: { id: string; name: string } | null; sharedWith: { id: string; name: string }[]; sections: ReportSection[] }
 interface Channel { id: string; name: string; platform: string }
 interface SectionResult { sectionId: string; title: string; chartType: string; data: string; total: number | null; error: string | null }
 
@@ -82,13 +83,16 @@ export function CustomReportsPage() {
   const [newTeamIds, setNewTeamIds] = useState<string[]>([])
 
   // ── Settings form state ────────────────────────────────────────────────────
-  const [settingsName,      setSettingsName]      = useState('')
-  const [settingsDesc,      setSettingsDesc]      = useState('')
-  const [settingsVis,       setSettingsVis]       = useState('private')
-  const [settingsTeamIds,   setSettingsTeamIds]   = useState<string[]>([])
-  const [settingsSched,     setSettingsSched]     = useState(false)
-  const [settingsSchedCron, setSettingsSchedCron] = useState('0 9 * * *')
-  const [settingsChanId,    setSettingsChanId]    = useState('')
+  const [settingsName,        setSettingsName]        = useState('')
+  const [settingsDesc,        setSettingsDesc]        = useState('')
+  const [settingsVis,         setSettingsVis]         = useState('private')
+  const [settingsTeamIds,     setSettingsTeamIds]     = useState<string[]>([])
+  const [settingsSched,       setSettingsSched]       = useState(false)
+  const [settingsSchedCron,   setSettingsSchedCron]   = useState('0 9 * * *')
+  const [settingsChanId,      setSettingsChanId]      = useState('')
+  const [settingsRecipients,  setSettingsRecipients]  = useState<string[]>([])
+  const [recipientInput,      setRecipientInput]      = useState('')
+  const [settingsFormat,      setSettingsFormat]      = useState<'pdf' | 'excel'>('pdf')
 
   // Close menu on outside click
   useEffect(() => {
@@ -141,6 +145,7 @@ export function CustomReportsPage() {
   const [exportExcel, { loading: exportingExcel }] = useMutation<{ exportReportExcel: string }>(EXPORT_REPORT_EXCEL, {
     onError: (e: { message: string }) => toast.error(e.message),
   })
+  const [updateReportSchedule] = useMutation(UPDATE_REPORT_SCHEDULE)
 
   function triggerDownload(url: string) {
     const a = document.createElement('a')
@@ -172,6 +177,9 @@ export function CustomReportsPage() {
     setSettingsSched(t.scheduleEnabled)
     setSettingsSchedCron(t.scheduleCron ?? '0 9 * * *')
     setSettingsChanId(t.scheduleChannelId ?? '')
+    setSettingsRecipients(t.scheduleRecipients ?? [])
+    setSettingsFormat((t.scheduleFormat as 'pdf' | 'excel') ?? 'pdf')
+    setRecipientInput('')
     setMenuOpenId(null)
     setView('settings')
   }
@@ -229,23 +237,36 @@ export function CustomReportsPage() {
     setEditSection(null)
   }
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     if (!selectedId) return
     const effectiveCron = schedulePreset === '__custom__' ? customCron : settingsSchedCron
-    updateTemplate({
-      variables: {
-        id: selectedId,
-        input: {
-          name:        settingsName,
-          description: settingsDesc || null,
-          visibility:  settingsVis,
-          sharedWithTeamIds: settingsVis === 'groups' ? settingsTeamIds : [],
-          scheduleEnabled:   settingsSched,
-          scheduleCron:      settingsSched ? effectiveCron : null,
-          scheduleChannelId: settingsSched && settingsChanId ? settingsChanId : null,
+    try {
+      await updateTemplate({
+        variables: {
+          id: selectedId,
+          input: {
+            name:        settingsName,
+            description: settingsDesc || null,
+            visibility:  settingsVis,
+            sharedWithTeamIds: settingsVis === 'groups' ? settingsTeamIds : [],
+            scheduleEnabled:   settingsSched,
+            scheduleCron:      settingsSched ? effectiveCron : null,
+            scheduleChannelId: settingsSched && settingsChanId ? settingsChanId : null,
+          },
         },
-      },
-    })
+      })
+      await updateReportSchedule({
+        variables: {
+          templateId: selectedId,
+          enabled:    settingsSched,
+          cron:       settingsSched ? effectiveCron : null,
+          recipients: settingsSched ? settingsRecipients : [],
+          format:     settingsFormat,
+        },
+      })
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Errore nel salvataggio')
+    }
   }
 
   // ── Styles ──────────────────────────────────────────────────────────────────
@@ -537,7 +558,7 @@ export function CustomReportsPage() {
                     </div>
                   )}
                   {channels.length > 0 && (
-                    <div>
+                    <div style={{ marginBottom: 10 }}>
                       <label style={labelStyle}>Canale Slack</label>
                       <select value={settingsChanId} onChange={e => setSettingsChanId(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
                         <option value="">Nessun canale</option>
@@ -545,12 +566,67 @@ export function CustomReportsPage() {
                       </select>
                     </div>
                   )}
+
+                  {/* Recipients */}
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={labelStyle}>Destinatari email</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', minHeight: 38 }}>
+                      {settingsRecipients.map((r) => (
+                        <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
+                          {r}
+                          <button onClick={() => setSettingsRecipients(prev => prev.filter(x => x !== r))}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: '#0369a1', fontWeight: 600 }}>×</button>
+                        </span>
+                      ))}
+                      <input
+                        value={recipientInput}
+                        onChange={e => setRecipientInput(e.target.value)}
+                        onKeyDown={e => {
+                          if ((e.key === 'Enter' || e.key === ',') && recipientInput.trim()) {
+                            e.preventDefault()
+                            const email = recipientInput.trim().replace(/,$/, '')
+                            if (email && !settingsRecipients.includes(email)) {
+                              setSettingsRecipients(prev => [...prev, email])
+                            }
+                            setRecipientInput('')
+                          } else if (e.key === 'Backspace' && !recipientInput && settingsRecipients.length > 0) {
+                            setSettingsRecipients(prev => prev.slice(0, -1))
+                          }
+                        }}
+                        placeholder={settingsRecipients.length === 0 ? 'email@esempio.com, Enter' : ''}
+                        style={{ flex: 1, minWidth: 160, border: 'none', outline: 'none', fontSize: 13, background: 'transparent' }}
+                      />
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 3 }}>
+                      Premi Invio o virgola per aggiungere. (Email SMTP non ancora implementato — archiviato per uso futuro.)
+                    </div>
+                  </div>
+
+                  {/* Format */}
+                  <div>
+                    <label style={labelStyle}>Formato report</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {(['pdf', 'excel'] as const).map((fmt) => (
+                        <label key={fmt} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: `1px solid ${settingsFormat === fmt ? '#0284c7' : '#d1d5db'}`, background: settingsFormat === fmt ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: 13, fontWeight: settingsFormat === fmt ? 600 : 400, color: settingsFormat === fmt ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                          <input type="radio" name="schedFormat" value={fmt} checked={settingsFormat === fmt} onChange={() => setSettingsFormat(fmt)} style={{ margin: 0 }} />
+                          {fmt === 'pdf' ? '📄 PDF' : '📊 Excel'}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Last run */}
+                  {selected.lastScheduledRun && (
+                    <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-slate-light)' }}>
+                      Ultima esecuzione: {new Date(selected.lastScheduledRun).toLocaleString('it-IT')}
+                    </div>
+                  )}
                 </>
               )}
             </div>
 
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={handleSaveSettings} disabled={updating} style={btnPrimary}>
+              <button onClick={() => void handleSaveSettings()} disabled={updating} style={btnPrimary}>
                 {updating ? 'Salvataggio...' : 'Salva impostazioni'}
               </button>
               <button onClick={() => setView('detail')} style={btnGhost}>Annulla</button>

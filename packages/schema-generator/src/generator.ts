@@ -85,7 +85,7 @@ function mapField(f: Record<string, unknown>): CIFieldDefinition {
     required:         (f['required'] as boolean) ?? false,
     defaultValue:     (f['default_value'] as string | null) ?? null,
     enumValues:       f['enum_values'] ? JSON.parse(f['enum_values'] as string) as string[] : [],
-    order:            (f['order'] as number) ?? 0,
+    order:            Number(f['order'] ?? 0),
     scope:            f['scope'] as 'base' | 'tenant',
     tenantId:         f['tenant_id'] as string,
     validationScript: (f['validation_script'] as string | null) ?? null,
@@ -104,7 +104,7 @@ function mapRelation(r: Record<string, unknown>): CIRelationDefinition {
     targetType:       r['target_type'] as string,
     cardinality:      r['cardinality'] as 'one' | 'many',
     direction:        r['direction'] as 'outgoing' | 'incoming',
-    order:            (r['order'] as number) ?? 0,
+    order:            Number(r['order'] ?? 0),
   }
 }
 
@@ -116,7 +116,7 @@ function mapSystemRelation(sr: Record<string, unknown>): CISystemRelationDefinit
     relationshipType: sr['relationship_type'] as string,
     targetEntity:     sr['target_entity'] as string,
     required:         (sr['required'] as boolean) ?? false,
-    order:            (sr['order'] as number) ?? 0,
+    order:            Number(sr['order'] ?? 0),
   }
 }
 

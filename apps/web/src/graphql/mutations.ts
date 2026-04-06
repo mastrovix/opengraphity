@@ -720,3 +720,59 @@ export const DELETE_FIELD_REQUIREMENT = gql`
     deleteFieldRequirement(id: $id)
   }
 `
+
+// ── Dashboard: role-based + clone ─────────────────────────────────────────────
+
+export const CLONE_DASHBOARD = gql`
+  mutation CloneDashboard($id: ID!, $newName: String!) {
+    cloneDashboard(id: $id, newName: $newName) {
+      id name description role isDefault isShared visibility
+    }
+  }
+`
+
+// ── Custom Widgets ─────────────────────────────────────────────────────────────
+
+export const CREATE_CUSTOM_WIDGET = gql`
+  mutation CreateCustomWidget($input: CreateCustomWidgetInput!) {
+    createCustomWidget(input: $input) {
+      id title widgetType entityType metric
+      groupByField filterField filterValue timeRange
+      size color position dashboardId
+    }
+  }
+`
+
+export const UPDATE_CUSTOM_WIDGET = gql`
+  mutation UpdateCustomWidget($id: ID!, $input: UpdateCustomWidgetInput!) {
+    updateCustomWidget(id: $id, input: $input) {
+      id title widgetType entityType metric
+      groupByField filterField filterValue timeRange
+      size color position dashboardId
+    }
+  }
+`
+
+export const DELETE_CUSTOM_WIDGET = gql`
+  mutation DeleteCustomWidget($id: ID!) {
+    deleteCustomWidget(id: $id)
+  }
+`
+
+export const REORDER_CUSTOM_WIDGETS = gql`
+  mutation ReorderCustomWidgets($dashboardId: ID!, $widgetIds: [ID!]!) {
+    reorderCustomWidgets(dashboardId: $dashboardId, widgetIds: $widgetIds) {
+      id position
+    }
+  }
+`
+
+// ── Report Schedule ────────────────────────────────────────────────────────────
+
+export const UPDATE_REPORT_SCHEDULE = gql`
+  mutation UpdateReportSchedule($templateId: ID!, $enabled: Boolean!, $cron: String, $recipients: [String!], $format: String) {
+    updateReportSchedule(templateId: $templateId, enabled: $enabled, cron: $cron, recipients: $recipients, format: $format) {
+      id scheduleEnabled scheduleCron scheduleRecipients scheduleFormat lastScheduledRun
+    }
+  }
+`

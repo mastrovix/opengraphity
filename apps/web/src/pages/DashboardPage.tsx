@@ -11,9 +11,12 @@ import {
 } from '@/graphql/mutations'
 import { DashboardWidget } from './dashboard/DashboardWidget'
 import { DashboardEditMode } from './dashboard/DashboardEditMode'
+import { CustomWidgetCard } from './dashboard/CustomWidgetCard'
+import { WidgetConfigPanel } from './dashboard/WidgetConfigPanel'
 import { useDashboard } from './dashboard/useDashboard'
 import type { DashboardConfig, Team } from './dashboard/useDashboard'
 import type { ReportTemplate, ReportSection } from './dashboard/useDashboard'
+import type { CustomWidgetData } from './dashboard/CustomWidgetCard'
 
 // ── CreateDashboardDialog ─────────────────────────────────────────────────────
 
@@ -276,6 +279,10 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
 // ── DashboardPage ─────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
+  // Local modal state — kept here (not in useDashboard) to avoid stale-closure issues
+  const [showWidgetConfig, setShowWidgetConfig] = useState(false)
+  const [editingWidget,    setEditingWidget]    = useState<CustomWidgetData | null>(null)
+
   const {
     activeDashboardId,
     editMode,
@@ -285,6 +292,7 @@ export function DashboardPage() {
     showCreate,
     showSettings,
     dropdownOpen,
+    customWidgets,
     dashboards,
     activeDash,
     templates,
@@ -308,12 +316,24 @@ export function DashboardPage() {
     toggleTemplate,
     handleSelectDashboard,
     setActiveDashboardId,
+    handleWidgetSaved,
+    handleDeleteCustomWidget,
   } = useDashboard()
+
+  function handleAddCustomWidget() {
+    setEditingWidget(null)
+    setShowWidgetConfig(true)
+  }
+
+  function handleEditCustomWidget(widget: CustomWidgetData) {
+    setEditingWidget(widget)
+    setShowWidgetConfig(true)
+  }
 
   // ── Header ──────────────────────────────────────────────────────────────────
 
   const header = (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <PageTitle icon={<LayoutDashboard size={22} color="var(--color-brand)" />}>
           Dashboard
@@ -400,11 +420,13 @@ export function DashboardPage() {
   // ── VIEW MODE ────────────────────────────────────────────────────────────────
 
   if (!editMode) {
-    const viewWidgets = activeDash?.widgets ?? []
+    const viewWidgets      = activeDash?.widgets ?? []
+    const viewCustomWidgets = customWidgets
+    const isEmpty = viewWidgets.length === 0 && viewCustomWidgets.length === 0
     return (
       <PageContainer>
         {header}
-        {viewWidgets.length === 0 ? (
+        {isEmpty ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 14 }}>
             La dashboard è vuota. Clicca <strong>Personalizza</strong> per aggiungere i tuoi report.
           </div>
@@ -412,6 +434,9 @@ export function DashboardPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16, padding: 24 }}>
             {viewWidgets.map((widget) => (
               <DashboardWidget key={widget.id} widget={widget} />
+            ))}
+            {viewCustomWidgets.map((widget) => (
+              <CustomWidgetCard key={widget.id} widget={widget} editMode={false} />
             ))}
           </div>
         )}
@@ -442,26 +467,56 @@ export function DashboardPage() {
             }}
           />
         )}
+        {showWidgetConfig && activeDashboardId && (
+          <WidgetConfigPanel
+            dashboardId={activeDashboardId}
+            widget={editingWidget}
+            onClose={() => setShowWidgetConfig(false)}
+            onSaved={handleWidgetSaved}
+          />
+        )}
       </PageContainer>
     )
   }
 
   // ── EDIT MODE ────────────────────────────────────────────────────────────────
+  // Do NOT wrap in PageContainer — it adds 2.5rem padding that combined with
+  // DashboardEditMode's own padding causes overflow clipping in AppLayout.
 
   return (
-    <PageContainer>
-      {header}
-      <DashboardEditMode
-        pendingWidgets={pendingWidgets}
-        templates={templates}
-        expandedTemplates={expandedTemplates}
-        onDragEnd={handleDragEnd}
-        onRemoveWidget={handleRemoveWidget}
-        onUpdateColSpan={handleUpdateColSpan}
-        onAddWidget={(template, section) => handleAddWidget(template as ReportTemplate, section as ReportSection)}
-        onToggleTemplate={toggleTemplate}
-      />
-    </PageContainer>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Header strip */}
+      <div style={{ flexShrink: 0, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+        {header}
+      </div>
+
+      {/* Edit area — fills remaining height, scrollable */}
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <DashboardEditMode
+          pendingWidgets={pendingWidgets}
+          templates={templates}
+          expandedTemplates={expandedTemplates}
+          customWidgets={customWidgets}
+          onDragEnd={handleDragEnd}
+          onRemoveWidget={handleRemoveWidget}
+          onUpdateColSpan={handleUpdateColSpan}
+          onAddWidget={(template, section) => handleAddWidget(template as ReportTemplate, section as ReportSection)}
+          onToggleTemplate={toggleTemplate}
+          onAddCustomWidget={handleAddCustomWidget}
+          onEditCustomWidget={handleEditCustomWidget}
+          onDeleteCustomWidget={(id) => void handleDeleteCustomWidget(id)}
+        />
+      </div>
+
+      {showWidgetConfig && activeDashboardId && (
+        <WidgetConfigPanel
+          dashboardId={activeDashboardId}
+          widget={editingWidget}
+          onClose={() => setShowWidgetConfig(false)}
+          onSaved={handleWidgetSaved}
+        />
+      )}
+    </div>
   )
 }
 

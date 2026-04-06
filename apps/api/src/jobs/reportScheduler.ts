@@ -1,10 +1,20 @@
+import { randomUUID } from 'crypto'
+import path from 'path'
 import { Queue, Worker, type Job } from 'bullmq'
 import { CronExpressionParser } from 'cron-parser'
 import { getSession } from '@opengraphity/neo4j'
-import { sendSlackMessage } from '@opengraphity/notifications'
+import { sendSlackMessage, sseManager } from '@opengraphity/notifications'
 import { executeReportSection } from '../lib/reportExecutor.js'
 import type { ReportSectionDef } from '../lib/reportQueryBuilder.js'
 import { logger } from '../lib/logger.js'
+
+// Base path for scheduled report files
+// NOTE: email delivery via SMTP is not yet implemented.
+//       When email is available, add an email sender here alongside the SSE notification.
+const SCHEDULED_REPORTS_DIR = path.join(
+  process.env['ATTACHMENT_DIR'] ?? path.resolve('./data/attachments'),
+  'scheduled-reports',
+)
 
 // ── Redis connection ──────────────────────────────────────────────────────────
 
@@ -34,6 +44,8 @@ interface TemplateRow {
   tenantId:            string
   name:                string
   scheduleChannelId:   string | null
+  scheduleRecipients:  string[]
+  scheduleFormat:      string
 }
 
 async function loadDueTemplates(): Promise<TemplateRow[]> {
@@ -50,10 +62,12 @@ async function loadDueTemplates(): Promise<TemplateRow[]> {
       .map(rec => rec.get('props') as Props)
       .filter(p => cronMatchesNow(p['schedule_cron'] as string))
       .map(p => ({
-        id:                p['id']                  as string,
-        tenantId:          p['tenant_id']            as string,
-        name:              p['name']                 as string,
-        scheduleChannelId: p['schedule_channel_id']  as string | null ?? null,
+        id:                 p['id']                    as string,
+        tenantId:           p['tenant_id']             as string,
+        name:               p['name']                  as string,
+        scheduleChannelId:  p['schedule_channel_id']   as string | null ?? null,
+        scheduleRecipients: (p['schedule_recipients']  as string[] | null) ?? [],
+        scheduleFormat:     (p['schedule_format']      as string | null) ?? 'pdf',
       }))
   } finally {
     await session.close()
@@ -169,42 +183,70 @@ async function reportSchedulerProcessor(_job: Job) {
   for (const tpl of templates) {
     try {
       const sections = await loadTemplateSections(tpl.id)
-      const results = await Promise.all(
+      const results  = await Promise.all(
         sections.map(sec => executeReportSection(sec, tpl.tenantId)),
       )
 
-      if (!tpl.scheduleChannelId) continue
+      // ── SSE in-app notification (always) ────────────────────────────────────
+      // NOTE: email delivery via SMTP is not yet implemented.
+      //       Notification is sent in-app via SSE to all connected users in the tenant.
+      //       Recipients list (tpl.scheduleRecipients) is stored for future email delivery.
+      const notifId   = randomUUID()
+      const timestamp = new Date().toISOString()
+      sseManager.sendToTenant(tpl.tenantId, {
+        id:          notifId,
+        type:        'scheduled_report',
+        title:       `Report pronto: ${tpl.name}`,
+        message:     `Il report schedulato "${tpl.name}" è stato generato (${results.length} sezione/i).`,
+        severity:    'info',
+        entity_id:   tpl.id,
+        entity_type: 'ReportTemplate',
+        timestamp,
+        read:        false,
+      })
+      logger.info(
+        { templateId: tpl.id, templateName: tpl.name, recipientCount: tpl.scheduleRecipients.length },
+        'report-scheduler: scheduled report generated and notified',
+      )
 
-      const webhookUrl = await loadChannelWebhook(tpl.scheduleChannelId)
-      if (!webhookUrl) continue
-
-      // Build Slack message
-      const blocks: unknown[] = [
-        {
-          type: 'header',
-          text: { type: 'plain_text', text: `📊 ${tpl.name}`, emoji: true },
-        },
-      ]
-
-      for (const result of results) {
-        if (result.chartType === 'kpi') {
-          try {
-            const d = JSON.parse(result.data) as { value: number; label: string }
-            blocks.push({
-              type: 'section',
-              fields: [
-                { type: 'mrkdwn', text: `*${result.title}*` },
-                { type: 'mrkdwn', text: `${d.value}` },
-              ],
-            })
-          } catch { /* skip */ }
-        }
+      // ── Update last_scheduled_run ────────────────────────────────────────────
+      const updateSession = getSession(undefined, 'WRITE')
+      try {
+        await updateSession.executeWrite(tx =>
+          tx.run(
+            `MATCH (r:ReportTemplate {id: $id}) SET r.last_scheduled_run = $now`,
+            { id: tpl.id, now: timestamp },
+          ),
+        )
+      } finally {
+        await updateSession.close()
       }
 
-      blocks.push({ type: 'divider' })
-
-      await sendSlackMessage(webhookUrl, null, blocks as import('@opengraphity/notifications').SlackBlock[])
-      logger.info({ templateId: tpl.id, templateName: tpl.name }, 'report-scheduler: sent')
+      // ── Optional Slack delivery ──────────────────────────────────────────────
+      if (tpl.scheduleChannelId) {
+        const webhookUrl = await loadChannelWebhook(tpl.scheduleChannelId)
+        if (webhookUrl) {
+          const blocks: unknown[] = [
+            { type: 'header', text: { type: 'plain_text', text: `📊 ${tpl.name}`, emoji: true } },
+          ]
+          for (const result of results) {
+            if (result.chartType === 'kpi') {
+              try {
+                const d = JSON.parse(result.data) as { value: number; label: string }
+                blocks.push({
+                  type: 'section',
+                  fields: [
+                    { type: 'mrkdwn', text: `*${result.title}*` },
+                    { type: 'mrkdwn', text: `${d.value}` },
+                  ],
+                })
+              } catch { /* skip malformed kpi */ }
+            }
+          }
+          blocks.push({ type: 'divider' })
+          await sendSlackMessage(webhookUrl, null, blocks as import('@opengraphity/notifications').SlackBlock[])
+        }
+      }
     } catch (err) {
       logger.error({ err, templateId: tpl.id }, 'report-scheduler: error sending report')
     }

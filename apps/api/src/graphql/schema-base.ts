@@ -84,7 +84,11 @@ export function buildBaseSDL(): string {
 
     # Dashboard
     myDashboards: [DashboardConfig!]!
+    myDashboard: DashboardConfig
     dashboard(id: ID!): DashboardConfig
+    customWidgets(dashboardId: ID!): [CustomWidget!]!
+    widgetData(widgetId: ID!): WidgetDataResult!
+    widgetDataPreview(entityType: String!, metric: String!, groupByField: String, filterField: String, filterValue: String, timeRange: String): WidgetDataResult!
 
     # Logs
     logs(level: String, module: String, search: String, limit: Int, offset: Int, filters: String): LogsResult!
@@ -308,10 +312,16 @@ export function buildBaseSDL(): string {
     createDashboard(input: CreateDashboardInput!): DashboardConfig!
     updateDashboard(id: ID!, input: UpdateDashboardInput!): DashboardConfig!
     deleteDashboard(id: ID!): Boolean!
+    cloneDashboard(id: ID!, newName: String!): DashboardConfig!
     addDashboardWidget(input: AddDashboardWidgetInput!): DashboardConfig!
     removeDashboardWidget(widgetId: ID!): DashboardConfig!
     updateDashboardWidget(widgetId: ID!, input: UpdateDashboardWidgetInput!): DashboardConfig!
     reorderDashboardWidgets(dashboardId: ID!, widgetIds: [ID!]!): DashboardConfig!
+    # Custom Widgets
+    createCustomWidget(input: CreateCustomWidgetInput!): CustomWidget!
+    updateCustomWidget(id: ID!, input: UpdateCustomWidgetInput!): CustomWidget!
+    deleteCustomWidget(id: ID!): Boolean!
+    reorderCustomWidgets(dashboardId: ID!, widgetIds: [ID!]!): [CustomWidget!]!
 
     # Anomaly Detection
     resolveAnomaly(id: ID!, resolutionStatus: ResolutionStatus!, note: String!): Anomaly!
@@ -366,6 +376,9 @@ export function buildBaseSDL(): string {
     # Report Export
     exportReportPDF(templateId: ID!): String!
     exportReportExcel(templateId: ID!): String!
+
+    # Report Schedule
+    updateReportSchedule(templateId: ID!, enabled: Boolean!, cron: String, recipients: [String!], format: String): ReportTemplate!
 
     # Field Rules (admin)
     createFieldVisibilityRule(entityType: String!, triggerField: String!, triggerValue: String!, targetField: String!, action: String!): FieldVisibilityRule!

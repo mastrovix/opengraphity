@@ -9,6 +9,7 @@ import { GET_ALL_CIS, GET_CHANGE_IMPACT, GET_ITIL_CI_RELATION_RULES } from '@/gr
 import { ImpactPanel } from '@/components/ImpactPanel'
 import type { ImpactAnalysis } from '@/components/ImpactPanel'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
+import { useEnumValues } from '@/hooks/useEnumValues'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -146,6 +147,8 @@ export function CreateChangePage() {
 
   const changeFormValues = { title, description, type: changeType, priority }
   const changeFieldRules = useFormFieldRules('change', null, changeFormValues)
+  const { values: typeValues,     loading: typeLoading }     = useEnumValues('change', 'type')
+  const { values: priorityValues, loading: priorityLoading } = useEnumValues('change', 'priority')
 
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
     GET_ITIL_CI_RELATION_RULES,
@@ -248,13 +251,15 @@ export function CreateChangePage() {
               Tipo di Change <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
 
-            {(Object.keys(TYPE_CONFIG) as Array<keyof typeof TYPE_CONFIG>).map(t => {
-              const c   = TYPE_CONFIG[t]
+            {typeLoading ? (
+              <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
+            ) : typeValues.map(t => {
+              const c   = TYPE_CONFIG[t as keyof typeof TYPE_CONFIG] ?? { label: t.charAt(0).toUpperCase() + t.slice(1) + ' Change', desc: '', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd', icon: '🔵' }
               const sel = changeType === t
               return (
                 <div
                   key={t}
-                  onClick={() => setChangeType(t)}
+                  onClick={() => setChangeType(t as keyof typeof TYPE_CONFIG)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '12px 16px', borderRadius: 8, marginBottom: 8,
@@ -319,23 +324,26 @@ export function CreateChangePage() {
             <div style={{ marginBottom: 20 }}>
               <label style={fieldLabel}>Priorità <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {PRIORITY_CONFIG.map(p => {
-                  const sel = priority === p.value
+                {priorityLoading ? (
+                  <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
+                ) : priorityValues.map(v => {
+                  const cfg = PRIORITY_CONFIG.find(p => p.value === v) ?? { value: v, label: v.charAt(0).toUpperCase() + v.slice(1), color: 'var(--color-brand)', bg: '#f0f9ff', border: 'var(--color-brand)' }
+                  const sel = priority === cfg.value
                   return (
                     <button
-                      key={p.value}
+                      key={cfg.value}
                       type="button"
-                      onClick={() => setPriority(p.value)}
+                      onClick={() => setPriority(cfg.value)}
                       style={{
                         padding: '7px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                        border: `1.5px solid ${sel ? p.border : '#e5e7eb'}`,
-                        background: sel ? p.bg : '#f8fafc',
-                        color: sel ? p.color : 'var(--color-slate)',
+                        border: `1.5px solid ${sel ? cfg.border : '#e5e7eb'}`,
+                        background: sel ? cfg.bg : '#f8fafc',
+                        color: sel ? cfg.color : 'var(--color-slate)',
                         fontWeight: sel ? 600 : 400,
                         transition: 'all 0.15s',
                       }}
                     >
-                      {p.label}
+                      {cfg.label}
                     </button>
                   )
                 })}

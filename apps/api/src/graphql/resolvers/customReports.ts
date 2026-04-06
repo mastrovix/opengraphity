@@ -41,11 +41,14 @@ function mapTemplate(p: Props) {
     description:      p['description']       as string | null ?? null,
     icon:             p['icon']              as string | null ?? null,
     visibility:       p['visibility']        as string,
-    scheduleEnabled:  (p['schedule_enabled'] as boolean) ?? false,
-    scheduleCron:     p['schedule_cron']     as string | null ?? null,
-    scheduleChannelId: p['schedule_channel_id'] as string | null ?? null,
-    createdAt:        p['created_at']        as string,
-    updatedAt:        p['updated_at']        as string | null ?? null,
+    scheduleEnabled:    (p['schedule_enabled']    as boolean) ?? false,
+    scheduleCron:        p['schedule_cron']         as string | null ?? null,
+    scheduleChannelId:   p['schedule_channel_id']   as string | null ?? null,
+    scheduleRecipients: (p['schedule_recipients']   as string[] | null) ?? [],
+    scheduleFormat:      p['schedule_format']       as string | null ?? null,
+    lastScheduledRun:    p['last_scheduled_run']    as string | null ?? null,
+    createdAt:           p['created_at']            as string,
+    updatedAt:           p['updated_at']            as string | null ?? null,
   }
 }
 
@@ -453,6 +456,46 @@ const Query = {
 }
 
 // ── Import Mutation from reportMutations.ts ───────────────────────────────────
-import { Mutation } from './reportMutations.js'
+import { Mutation as ReportMutation } from './reportMutations.js'
+import { withSession } from './ci-utils.js'
+
+async function updateReportSchedule(
+  _: unknown,
+  args: {
+    templateId: string
+    enabled:    boolean
+    cron?:       string | null
+    recipients?: string[] | null
+    format?:     string | null
+  },
+  ctx: GraphQLContext,
+) {
+  const now = new Date().toISOString()
+  return withSession(async (session) => {
+    const result = await session.executeWrite((tx) =>
+      tx.run(
+        `MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})
+         SET r.schedule_enabled    = $enabled,
+             r.schedule_cron       = $cron,
+             r.schedule_recipients = $recipients,
+             r.schedule_format     = $format,
+             r.updated_at          = $now
+         RETURN properties(r) AS p`,
+        {
+          id: args.templateId, tenantId: ctx.tenantId,
+          enabled:    args.enabled,
+          cron:       args.cron       ?? null,
+          recipients: args.recipients ?? [],
+          format:     args.format     ?? 'pdf',
+          now,
+        },
+      ),
+    )
+    if (!result.records.length) throw new Error('Template non trovato')
+    return mapTemplate(result.records[0].get('p') as Props)
+  }, true)
+}
+
+const Mutation = { ...ReportMutation, updateReportSchedule }
 
 export const customReportResolvers = { Query, Mutation }

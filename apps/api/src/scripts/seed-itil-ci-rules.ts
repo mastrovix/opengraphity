@@ -31,8 +31,6 @@ const RULES: RuleSpec[] = [
   { itilType: 'change',   ciType: 'server',            relationType: 'MODIFIES',  direction: 'outgoing', description: 'Server modificati dalla change' },
   { itilType: 'change',   ciType: 'application',       relationType: 'MODIFIES',  direction: 'outgoing', description: 'Applicazioni modificate dalla change' },
   { itilType: 'change',   ciType: 'database',          relationType: 'MODIFIES',  direction: 'outgoing', description: 'Database modificati dalla change' },
-  { itilType: 'change',   ciType: 'server',            relationType: 'DEPENDS_ON', direction: 'outgoing', description: 'Server da cui dipende la change' },
-  { itilType: 'change',   ciType: 'application',       relationType: 'DEPENDS_ON', direction: 'outgoing', description: 'Applicazioni da cui dipende la change' },
   // Problem
   { itilType: 'problem',  ciType: 'server',            relationType: 'ROOT_CAUSE', direction: 'outgoing', description: 'Server causa del problem' },
   { itilType: 'problem',  ciType: 'application',       relationType: 'ROOT_CAUSE', direction: 'outgoing', description: 'Applicazioni causa del problem' },
@@ -49,9 +47,9 @@ async function main() {
     for (const rule of RULES) {
       const existing = await session.executeRead((tx) =>
         tx.run(
-          `MATCH (r:ITILCIRelationRule {tenant_id: $tenantId, itil_type: $itilType, ci_type: $ciType, relation_type: $relationType})
+          `MATCH (r:ITILCIRelationRule {tenant_id: $tenantId, itil_type: $itilType, ci_type: $ciType})
            RETURN r.id AS id LIMIT 1`,
-          { tenantId, itilType: rule.itilType, ciType: rule.ciType, relationType: rule.relationType },
+          { tenantId, itilType: rule.itilType, ciType: rule.ciType },
         ),
       )
       if (existing.records.length > 0) {
