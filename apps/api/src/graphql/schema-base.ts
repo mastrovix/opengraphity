@@ -20,6 +20,7 @@ import { commentsSDL } from './schema-comments.js'
 import { knowledgeBaseSDL } from './schema-kb.js'
 import { portalSDL } from './schema-portal.js'
 import { fieldRulesSDL } from './schema-fieldRules.js'
+import { automationSchema } from './schema-automation.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -421,5 +422,6 @@ export function buildBaseSDL(): string {
   ${knowledgeBaseSDL()}
   ${portalSDL()}
   ${fieldRulesSDL()}
+  ${automationSchema}
   `
 }

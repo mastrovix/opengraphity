@@ -56,7 +56,10 @@ async function fieldRequirementRules(
   return withSession(async (session) => {
     const rows = await runQuery<{ p: Props }>(session, `
       MATCH (r:FieldRequirementRule {tenant_id: $tenantId, entity_type: $entityType})
-      WHERE ($workflowStep IS NULL OR r.workflow_step IS NULL OR r.workflow_step = $workflowStep)
+      WHERE CASE
+              WHEN $workflowStep IS NULL THEN r.workflow_step IS NULL
+              ELSE r.workflow_step IS NULL OR r.workflow_step = $workflowStep
+            END
       RETURN properties(r) AS p
       ORDER BY r.field_name
     `, {

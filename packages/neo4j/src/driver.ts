@@ -1,4 +1,43 @@
-import neo4j, { Driver, Session, SessionMode } from 'neo4j-driver'
+import neo4j, { Driver, Session, SessionMode, Integer, isInt } from 'neo4j-driver'
+
+// ── Global BigInt/Integer → Number conversion ────────────────────────────────
+// Neo4j driver v5 returns integers as neo4j.Integer or BigInt.
+// This recursive converter ensures all numeric values become plain JS numbers
+// before reaching any resolver, eliminating "Cannot mix BigInt" errors.
+
+function convertIntegers(value: unknown): unknown {
+  if (value === null || value === undefined) return value
+  if (typeof value === 'bigint') return Number(value)
+  if (isInt(value as Integer)) return (value as Integer).toNumber()
+
+  if (Array.isArray(value)) return value.map(convertIntegers)
+
+  if (value && typeof value === 'object') {
+    // Neo4j Node / Relationship — convert properties in-place
+    const obj = value as Record<string, unknown>
+    if ('properties' in obj && typeof obj['properties'] === 'object' && obj['properties'] !== null) {
+      obj['properties'] = convertIntegers(obj['properties'])
+    }
+    const result: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(obj)) {
+      result[k] = k === 'properties' ? obj['properties'] : convertIntegers(v)
+    }
+    return result
+  }
+
+  return value
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function convertResult(result: any): any {
+  if (!result || !result.records) return result
+  // Patch each record's get() to auto-convert integers
+  for (const record of result.records) {
+    const origGet = record.get.bind(record)
+    record.get = (key: string | number) => convertIntegers(origGet(key))
+  }
+  return result
+}
 
 const NEO4J_URI      = process.env['NEO4J_URI']      ?? 'neo4j://localhost:7687'
 const NEO4J_USER     = process.env['NEO4J_USER']     ?? 'neo4j'
@@ -14,7 +53,8 @@ export function registerSessionTracker(fn: SessionTracker | null): void {
   _tracker = fn
 }
 
-// Wrap a ManagedTransaction (tx inside executeRead/executeWrite) so tx.run() is tracked.
+// Wrap a ManagedTransaction (tx inside executeRead/executeWrite) so tx.run() is tracked
+// and results are auto-converted from BigInt/Integer to Number.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function wrapManagedTransaction(tx: any): any {
   return new Proxy(tx, {
@@ -24,7 +64,8 @@ function wrapManagedTransaction(tx: any): any {
         const t0       = performance.now()
         const queryStr = typeof query === 'string' ? query : ''
         try {
-          return await (target['run'] as (...a: unknown[]) => Promise<unknown>)(query, params)
+          const result = await (target['run'] as (...a: unknown[]) => Promise<unknown>)(query, params)
+          return convertResult(result)
         } finally {
           _tracker?.(performance.now() - t0, queryStr)
         }
@@ -43,7 +84,8 @@ function wrapSession(session: Session): Session {
           const t0       = performance.now()
           const queryStr = typeof query === 'string' ? query : ''
           try {
-            return await (target['run'] as (...a: unknown[]) => Promise<unknown>)(query, params)
+            const result = await (target['run'] as (...a: unknown[]) => Promise<unknown>)(query, params)
+            return convertResult(result)
           } finally {
             _tracker?.(performance.now() - t0, queryStr)
           }

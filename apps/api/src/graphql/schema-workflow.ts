@@ -56,6 +56,7 @@ export function workflowSDL(): string {
     id:          ID!
     name:        String!
     entityType:  String!
+    category:    String
     version:     Int!
     active:      Boolean!
     steps:       [WorkflowStep!]!

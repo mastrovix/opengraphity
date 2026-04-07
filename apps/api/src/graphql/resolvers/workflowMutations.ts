@@ -158,7 +158,7 @@ export async function updateWorkflowTransition(
       id:         wd['id']          as string,
       name:       wd['name']        as string,
       entityType: wd['entity_type'] as string,
-      version:    wd['version']     as number,
+      version:    Number(wd['version'] ?? 1),
       active:     wd['active']      as boolean,
       steps: steps.map((s) => ({
         id:           s.properties['id']             as string,
@@ -177,7 +177,7 @@ export async function updateWorkflowTransition(
         requiresInput: r.get('requiresInput') as boolean,
         inputField:    (r.get('inputField')   ?? null) as string | null,
         condition:     (r.get('condition')    ?? null) as string | null,
-        timerHours:    (r.get('timerHours')   ?? null) as number | null,
+        timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
       })),
     }
   }, true)
@@ -194,12 +194,20 @@ export async function executeWorkflowTransition(
       tx.run(`
         MATCH (wi:WorkflowInstance {id: $instanceId})
         MATCH (entity {id: wi.entity_id, tenant_id: wi.tenant_id})
-        RETURN properties(entity) AS entityData
+        OPTIONAL MATCH (entity)-[:ASSIGNED_TO]->(assignee)
+        OPTIONAL MATCH (entity)-[:ASSIGNED_TO_TEAM]->(team)
+        RETURN properties(entity) AS entityData,
+               assignee.id AS assigned_to,
+               team.id     AS assigned_team
       `, { instanceId }),
     )
     const entityData: Record<string, unknown> =
       entityDataResult.records.length > 0
-        ? (entityDataResult.records[0].get('entityData') as Record<string, unknown>)
+        ? {
+            ...(entityDataResult.records[0].get('entityData') as Record<string, unknown>),
+            assigned_to:   entityDataResult.records[0].get('assigned_to') ?? null,
+            assigned_team: entityDataResult.records[0].get('assigned_team') ?? null,
+          }
         : {}
 
     const actionCtx: ActionContext = {
@@ -349,16 +357,22 @@ export async function executeWorkflowTransition(
       },
     }
 
-    // Validate required fields for the destination step before allowing transition
+    // Validate required fields for the destination step before allowing transition.
+    // Merge entity data with transition notes (notes map to resolution_notes/root_cause).
     if (entityData && Object.keys(entityData).length > 0) {
       const entityTypeRaw = await session.executeRead((tx) =>
         tx.run(`MATCH (wi:WorkflowInstance {id: $instanceId}) RETURN wi.entity_type AS et`, { instanceId }),
       )
       const entityType = entityTypeRaw.records[0]?.get('et') as string | null
       if (entityType) {
+        const mergedValues = { ...entityData }
+        if (notes) {
+          mergedValues['resolution_notes'] = notes
+          mergedValues['root_cause']       = notes
+        }
         await validateRequiredFields(session, {
           entityType,
-          fieldValues: entityData,
+          fieldValues: mergedValues,
           tenantId:    ctx.tenantId,
           toStep,
         })
@@ -553,7 +567,7 @@ export async function saveWorkflowChanges(
       id:         wd['id']          as string,
       name:       wd['name']        as string,
       entityType: wd['entity_type'] as string,
-      version:    wd['version']     as number,
+      version:    Number(wd['version'] ?? 1),
       active:     wd['active']      as boolean,
       steps: steps.map((s) => ({
         id:           s.properties['id']             as string,
@@ -572,7 +586,7 @@ export async function saveWorkflowChanges(
         requiresInput: r.get('requiresInput') as boolean,
         inputField:    (r.get('inputField')   ?? null) as string | null,
         condition:     (r.get('condition')    ?? null) as string | null,
-        timerHours:    (r.get('timerHours')   ?? null) as number | null,
+        timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
       })),
     }
   }, true)

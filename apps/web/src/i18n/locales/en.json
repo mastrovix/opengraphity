@@ -68,7 +68,10 @@
     "auditLog": "Audit Log",
     "approvals": "Approvals",
     "knowledgeBase": "Knowledge Base",
-    "kbAdmin": "KB Admin"
+    "kbAdmin": "KB Admin",
+    "autoTriggers": "Auto Triggers",
+    "businessRules": "Business Rules",
+    "slaPolicies": "SLA Policies"
   },
   "pages": {
     "incidents": {

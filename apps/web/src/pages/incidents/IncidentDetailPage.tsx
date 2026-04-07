@@ -211,7 +211,7 @@ export function IncidentDetailPage() {
       toast.error('Seleziona prima un team dalla card Dettagli')
       return
     }
-    if (tr.toStep === 'in_progress' && !incident?.assignee) {
+    if (tr.toStep === 'in_progress' && !incident?.assignee && incident?.status === 'assigned') {
       toast.error('Seleziona prima un utente dalla card Dettagli')
       return
     }

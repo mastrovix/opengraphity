@@ -1,49 +1,10 @@
-# ── Stage 1: builder ─────────────────────────────────────────────────────────
-# node:20-slim (glibc) required — isolated-vm (workspace dep) fails on Alpine/musl
-FROM node:20-slim AS builder
+# ── Single-stage: copy pre-built dist into nginx ─────────────────────────────
+# The web app is built locally (pnpm --filter @opengraphity/web build)
+# and the dist/ folder is copied directly into the image.
+# This ensures the deployed JS is identical to what was built and tested locally.
+FROM nginx:alpine
 
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-WORKDIR /app
-
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY apps/web/package.json apps/web/
-
-# packages manifests (needed for workspace resolution)
-COPY packages/discovery/package.json        packages/discovery/
-COPY packages/events/package.json           packages/events/
-COPY packages/neo4j/package.json            packages/neo4j/
-COPY packages/notifications/package.json   packages/notifications/
-COPY packages/schema-generator/package.json packages/schema-generator/
-COPY packages/scripting/package.json        packages/scripting/
-COPY packages/sla/package.json              packages/sla/
-COPY packages/types/package.json            packages/types/
-COPY packages/workflow/package.json         packages/workflow/
-
-RUN pnpm install --frozen-lockfile
-
-COPY apps/web/ apps/web/
-
-# ── Build-time vars (baked into the JS bundle at compile time) ────────────────
-# These must be reachable from the BROWSER, not from inside Docker.
-# Changing any of these values busts the cache from this point on only.
-ARG VITE_API_URL=/graphql
-ARG VITE_API_BASE_URL=http://localhost:4000
-ARG VITE_KEYCLOAK_URL=http://localhost:8080
-ARG VITE_KEYCLOAK_CLIENT_ID=opengrafo-web
-
-ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-ENV VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL
-ENV VITE_KEYCLOAK_CLIENT_ID=$VITE_KEYCLOAK_CLIENT_ID
-
-RUN pnpm --filter @opengraphity/web build
-
-# ── Stage 2: nginx ────────────────────────────────────────────────────────────
-FROM nginx:alpine AS runtime
-
-COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+COPY apps/web/dist /usr/share/nginx/html
 
 # Inline nginx config: SPA fallback + reverse-proxy to API
 RUN printf 'server {\n\
@@ -90,6 +51,11 @@ RUN printf 'server {\n\
 \n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\
+        add_header Cache-Control "no-cache, no-store, must-revalidate";\n\
+        add_header Pragma "no-cache";\n\
+        add_header Expires 0;\n\
+        etag off;\n\
+        if_modified_since off;\n\
     }\n\
 }\n' > /etc/nginx/conf.d/default.conf
 

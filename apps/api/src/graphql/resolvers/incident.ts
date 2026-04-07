@@ -116,7 +116,7 @@ async function incident(
 
 async function createIncident(
   _: unknown,
-  args: { input: { title: string; description?: string; severity: string; affectedCIIds?: string[] } },
+  args: { input: { title: string; description?: string; severity: string; category?: string; affectedCIIds?: string[] } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {

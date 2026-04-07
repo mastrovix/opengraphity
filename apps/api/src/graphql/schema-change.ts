@@ -7,9 +7,9 @@ export function changeSDL(): string {
     tenantId:       String!
     title:          String!
     description:    String
-    type:           ChangeType!
-    priority:       ChangePriority!
-    status:         ChangeStatus!
+    type:           String!
+    priority:       String!
+    status:         String!
     scheduledStart: String
     scheduledEnd:   String
     implementedAt:  String
@@ -130,8 +130,8 @@ export function changeSDL(): string {
   input CreateChangeInput {
     title:              String!
     description:        String
-    type:               ChangeType!
-    priority:           ChangePriority!
+    type:               String!
+    priority:           String!
     affectedCIIds:      [ID!]
     relatedIncidentIds: [ID!]
   }

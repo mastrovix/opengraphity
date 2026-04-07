@@ -7,6 +7,8 @@ import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { mapIncident } from '../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { validateStringLength } from '../lib/validation.js'
+import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
+import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -95,7 +97,7 @@ function buildEvent<T>(
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createIncident(
-  input: { title: string; description?: string; severity: string; affectedCIIds?: string[] },
+  input: { title: string; description?: string; severity: string; category?: string; affectedCIIds?: string[] },
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
@@ -112,7 +114,8 @@ export async function createIncident(
         title:        $title,
         description:  $description,
         severity:     $severity,
-        status:       'open',
+        category:     $category,
+        status:       'new',
         created_at:   $now,
         updated_at:   $now
       })
@@ -120,7 +123,7 @@ export async function createIncident(
     `, {
       id, tenantId: ctx.tenantId,
       title: input.title, description: input.description ?? null,
-      severity: input.severity, now,
+      severity: input.severity, category: input.category ?? null, now,
     })
     if (!rows[0]) throw new ValidationError('Failed to create incident')
     return mapIncident(rows[0].props)
@@ -140,13 +143,22 @@ export async function createIncident(
   }
 
   await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident')
+    await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
   }, true)
 
   await publish(buildEvent('incident.created', ctx.tenantId, ctx.userId, {
-    id, title: input.title, severity: input.severity, status: 'open',
+    id, title: input.title, severity: input.severity, status: 'new',
     ciName: '—', assignedTo: '—', affected_ci_ids: input.affectedCIIds ?? [],
   } satisfies IncidentEventPayload, now))
+
+  // Evaluate auto triggers, then business rules
+  const entityData = { id, title: input.title, severity: input.severity, status: 'new', category: input.category ?? null, description: input.description ?? null }
+  void evaluateTriggers(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId)
+    .then(() => evaluateBusinessRules(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId))
+  scheduleTimerTriggers(ctx.tenantId, 'incident', id).catch((err: unknown) => {
+    // eslint-disable-next-line no-console
+    console.error('[incidentService] scheduleTimerTriggers failed:', err instanceof Error ? err.message : err)
+  })
 
   return created
 }

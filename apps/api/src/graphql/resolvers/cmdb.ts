@@ -22,7 +22,7 @@ function mapCI(props: Props, label?: string) {
     location:    (props['location']    ?? null) as string | null,
     vendor:      (props['vendor']      ?? null) as string | null,
     version:     (props['version']     ?? null) as string | null,
-    port:        (props['port']        ?? null) as number | null,
+    port:        props['port'] != null ? Number(props['port']) : null,
     url:         (props['url']         ?? null) as string | null,
     region:      (props['region']      ?? null) as string | null,
     notes:       (props['notes']       ?? null) as string | null,

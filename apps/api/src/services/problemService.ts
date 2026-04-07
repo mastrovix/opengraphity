@@ -5,6 +5,8 @@ import { runQuery } from '@opengraphity/neo4j'
 import type { DomainEvent } from '@opengraphity/types'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
+import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
+import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 
 export interface ProblemEventPayload {
   id: string; title: string; priority: string; status: string; assignedTo: string
@@ -56,7 +58,7 @@ function buildEvent<T>(
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createProblem(
-  input: { title: string; description?: string; priority: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string },
+  input: { title: string; description?: string; priority: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string },
   ctx: ServiceCtx,
 ) {
   const id  = uuidv4()
@@ -111,7 +113,7 @@ export async function createProblem(
   }
 
   await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem')
+    await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
   }, true)
 
   await publish(buildEvent('problem.created', ctx.tenantId, ctx.userId, {
@@ -121,6 +123,11 @@ export async function createProblem(
     status:     'new',
     assignedTo: '—',
   } satisfies ProblemEventPayload))
+
+  const entityData = { id, title: input.title, priority: input.priority, status: 'new', category: input.category ?? null }
+  void evaluateTriggers(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId)
+    .then(() => evaluateBusinessRules(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId))
+  void scheduleTimerTriggers(ctx.tenantId, 'problem', id)
 
   return created
 }

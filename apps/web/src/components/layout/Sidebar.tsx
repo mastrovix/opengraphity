@@ -36,6 +36,9 @@ import {
   Tag,
   CheckSquare,
   BookOpen,
+  Zap,
+  GitBranch,
+  Clock,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -81,10 +84,13 @@ const REPORTING_ITEM_DEFS = [
 ]
 
 const ADMIN_NAV_ITEM_DEFS = [
-  { to: '/logs',                   labelKey: 'sidebar.logs',          icon: ScrollText  },
-  { to: '/admin/audit',            labelKey: 'sidebar.auditLog',      icon: ShieldCheck },
-  { to: '/admin/monitoring',       labelKey: 'sidebar.monitoring',    icon: Activity    },
-  { to: '/admin/knowledge-base',   labelKey: 'sidebar.kbAdmin',       icon: BookOpen    },
+  { to: '/logs',                   labelKey: 'sidebar.logs',           icon: ScrollText  },
+  { to: '/admin/audit',            labelKey: 'sidebar.auditLog',       icon: ShieldCheck },
+  { to: '/admin/monitoring',       labelKey: 'sidebar.monitoring',     icon: Activity    },
+  { to: '/admin/knowledge-base',   labelKey: 'sidebar.kbAdmin',        icon: BookOpen    },
+  { to: '/admin/triggers',         labelKey: 'sidebar.autoTriggers',   icon: Zap         },
+  { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
+  { to: '/admin/sla-policies',     labelKey: 'sidebar.slaPolicies',    icon: Clock       },
 ]
 
 interface SidebarProps {

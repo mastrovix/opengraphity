@@ -188,29 +188,14 @@ export async function loadITILTypes(tenantId: string): Promise<CITypeWithDefinit
  * Only generates enums — no types, queries, or mutations.
  * The ITIL types themselves are defined as-is in schema-base.ts.
  */
-export function generateITILEnumsSDL(itilTypes: CITypeWithDefinitions[]): string {
-  if (itilTypes.length === 0) return ''
-
-  const seen = new Set<string>()
-  const parts: string[] = []
-
-  for (const itilType of itilTypes) {
-    const typePascal = toPascalCase(itilType.name)
-
-    for (const field of itilType.fields) {
-      if (field.fieldType !== 'enum') continue
-      if (!field.enumValues || field.enumValues.length === 0) continue
-
-      const enumName = `${typePascal}${toPascalCase(field.name)}`
-      if (seen.has(enumName)) continue
-      seen.add(enumName)
-
-      const values = field.enumValues.map(v => `  ${v}`).join('\n')
-      parts.push(`enum ${enumName} {\n${values}\n}`)
-    }
-  }
-
-  return parts.join('\n\n')
+/**
+ * Previously generated GraphQL enums from ITIL field definitions.
+ * Now returns empty string — all ITIL fields use String type because
+ * status values come from configurable workflows and must not be
+ * constrained by a fixed enum.
+ */
+export function generateITILEnumsSDL(_itilTypes: CITypeWithDefinitions[]): string {
+  return ''
 }
 
 /**

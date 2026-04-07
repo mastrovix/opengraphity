@@ -4,8 +4,9 @@ node_modules/
 *.md
 .env
 .env.*
-dist/
-*/dist/
+# dist/ excluded except for apps/web/dist (used by web Dockerfile)
+apps/api/dist/
+packages/*/dist/
 .vscode/
 .idea/
 backups/

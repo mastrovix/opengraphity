@@ -36,11 +36,13 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: strin
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
+// v2 — category field + validation feedback
 
 export function CreateIncidentPage() {
   const navigate = useNavigate()
 
   const [title,       setTitle]       = useState('')
+  const [category,    setCategory]    = useState('')
   const [severity,    setSeverity]    = useState('medium')
   const [description, setDescription] = useState('')
   const [selectedTeam,      setSelectedTeam]      = useState<{ id: string; name: string } | null>(null)
@@ -50,9 +52,10 @@ export function CreateIncidentPage() {
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const formValues = { title, severity, description }
+  const formValues = { title, severity, category, description }
   const fieldRules = useFormFieldRules('incident', null, formValues)
   const { values: severityValues, loading: severityLoading } = useEnumValues('incident', 'severity')
+  const { values: categoryValues, loading: categoryLoading } = useEnumValues('incident', 'category')
 
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
     GET_ITIL_CI_RELATION_RULES,
@@ -75,8 +78,6 @@ export function CreateIncidentPage() {
     .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
-  const canSubmit     = title.trim().length > 0
-
   const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
     onError: (err) => toast.error(`Team assignment: ${err.message}`),
   })
@@ -93,27 +94,6 @@ export function CreateIncidentPage() {
     onError: (err) => toast.error(err.message),
   })
 
-  const handleSubmit = () => {
-    if (!canSubmit || loading) return
-    const missing = validateFormFields(fieldRules, formValues)
-    if (missing.length > 0) {
-      const errs: Record<string, string> = {}
-      missing.forEach((f) => { errs[f] = 'Campo obbligatorio' })
-      setFieldErrors(errs)
-      return
-    }
-    setFieldErrors({})
-    void createIncident({
-      variables: {
-        input: {
-          title:         title.trim(),
-          severity,
-          description:   description.trim() || undefined,
-          affectedCIIds: selectedCIs.map(ci => ci.id),
-        },
-      },
-    })
-  }
 
   return (
     <PageContainer style={{ minHeight: '100%', backgroundColor: '#f8fafc', paddingBottom: '64px' }}>
@@ -158,6 +138,28 @@ export function CreateIncidentPage() {
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
             />
           </FieldWrapper>
+
+          {/* CATEGORIA */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>
+              Categoria <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+            </label>
+            {categoryLoading ? (
+              <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
+            ) : (
+              <select
+                value={category}
+                onChange={e => { setCategory(e.target.value); setFieldErrors(p => { const n = { ...p }; delete n['category']; return n }) }}
+                style={{ ...inputBase, borderColor: fieldErrors['category'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
+              >
+                <option value="">-- Seleziona categoria --</option>
+                {categoryValues.map(c => (
+                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                ))}
+              </select>
+            )}
+            {fieldErrors['category'] && <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-trigger-sla-breach)' }}>{fieldErrors['category']}</p>}
+          </div>
 
           {/* SEVERITY */}
           <div style={{ marginBottom: 20 }}>
@@ -347,13 +349,36 @@ export function CreateIncidentPage() {
             </button>
             <button
               type="button"
-              onClick={handleSubmit}
-              disabled={!canSubmit || loading}
+              onClick={() => {
+                if (loading) return
+                const errs: Record<string, string> = {}
+                if (!title.trim()) errs['title'] = 'Campo obbligatorio'
+                if (!category) errs['category'] = 'Seleziona una categoria'
+                const missing = validateFormFields(fieldRules, formValues)
+                missing.forEach((f) => { if (!errs[f]) errs[f] = 'Campo obbligatorio' })
+                if (Object.keys(errs).length > 0) {
+                  setFieldErrors(errs)
+                  return
+                }
+                setFieldErrors({})
+                void createIncident({
+                  variables: {
+                    input: {
+                      title: title.trim(),
+                      severity,
+                      category: category || undefined,
+                      description: description.trim() || undefined,
+                      affectedCIIds: selectedCIs.map(ci => ci.id),
+                    },
+                  },
+                })
+              }}
+              disabled={loading}
               style={{
                 background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8,
                 padding: '10px 24px', fontSize: 14, fontWeight: 600,
-                cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
-                opacity: canSubmit && !loading ? 1 : 0.5,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.5 : 1,
                 transition: 'opacity 150ms',
               }}
             >

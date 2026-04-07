@@ -201,7 +201,8 @@ export const GET_CHANGE_IMPACT = gql`
 export const GET_WORKFLOW_LIST = gql`
   query GetWorkflowList {
     workflowDefinitions {
-      id name entityType active version
+      id name entityType category active version
+      steps { name label type }
     }
   }
 `
@@ -209,7 +210,7 @@ export const GET_WORKFLOW_LIST = gql`
 export const GET_WORKFLOW_DEFINITION_BY_ID = gql`
   query GetWorkflowDefinitionById($id: ID!) {
     workflowDefinitionById(id: $id) {
-      id name entityType version active
+      id name entityType category version active
       steps { id name label type enterActions exitActions }
       transitions {
         id fromStepName toStepName trigger label requiresInput inputField condition timerHours
@@ -221,7 +222,7 @@ export const GET_WORKFLOW_DEFINITION_BY_ID = gql`
 export const GET_WORKFLOW_DEFINITION = gql`
   query GetWorkflowDefinition($entityType: String!) {
     workflowDefinition(entityType: $entityType) {
-      id name entityType version active
+      id name entityType category version active
       steps { id name label type enterActions exitActions }
       transitions {
         id fromStepName toStepName trigger label requiresInput inputField condition
@@ -656,6 +657,35 @@ export const GET_FIELD_REQUIREMENT_RULES = gql`
   query GetFieldRequirementRules($entityType: String!, $workflowStep: String) {
     fieldRequirementRules(entityType: $entityType, workflowStep: $workflowStep) {
       id entityType fieldName required workflowStep
+    }
+  }
+`
+
+// ── Automation ───────────────────────────────────────────────────────────────
+
+export const GET_AUTO_TRIGGERS = gql`
+  query GetAutoTriggers($entityType: String) {
+    autoTriggers(entityType: $entityType) {
+      id name entityType eventType conditions timerDelayMinutes
+      actions enabled executionCount lastExecutedAt
+    }
+  }
+`
+
+export const GET_BUSINESS_RULES = gql`
+  query GetBusinessRules($entityType: String) {
+    businessRules(entityType: $entityType) {
+      id name description entityType eventType conditionLogic
+      conditions actions priority stopOnMatch enabled
+    }
+  }
+`
+
+export const GET_SLA_POLICIES = gql`
+  query GetSLAPolicies($entityType: String) {
+    slaPolicies(entityType: $entityType) {
+      id name entityType priority category teamId teamName
+      timezone responseMinutes resolveMinutes businessHours enabled
     }
   }
 `

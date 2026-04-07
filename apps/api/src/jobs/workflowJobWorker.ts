@@ -1,9 +1,11 @@
 import { Worker, Queue, type Job } from 'bullmq'
 import { getRedisOptions } from '@opengraphity/events'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, runQuery } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import * as incidentService from '../services/incidentService.js'
 import { logger } from '../lib/logger.js'
+import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
+import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
 
@@ -105,6 +107,79 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         clearTimeout(timer)
       }
 
+      break
+    }
+
+    case 'trigger_timer': {
+      const { triggerId, entityType } = job.data as unknown as { triggerId: string; entityType: string; entityId: string; tenantId: string }
+
+      // 1. Load the trigger definition
+      const session = getSession(undefined, 'WRITE')
+      try {
+        const triggerRows = await runQuery<{ props: Record<string, unknown> }>(session, `
+          MATCH (t:AutoTrigger {id: $triggerId, tenant_id: $tenantId, enabled: true})
+          RETURN properties(t) AS props
+        `, { triggerId, tenantId })
+
+        if (triggerRows.length === 0) {
+          logger.info({ triggerId, entityId }, '[trigger_timer] trigger not found or disabled — skipped')
+          break
+        }
+
+        const trigger = triggerRows[0].props
+
+        // 2. Load the current entity (with relationships for assigned_to check)
+        const entityRows = await runQuery<{ props: Record<string, unknown>; assignedTo: string | null; assignedTeam: string | null }>(session, `
+          MATCH (e {id: $entityId, tenant_id: $tenantId})
+          OPTIONAL MATCH (e)-[:ASSIGNED_TO]->(u)
+          OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t)
+          RETURN properties(e) AS props, u.id AS assignedTo, t.id AS assignedTeam
+        `, { entityId, tenantId })
+
+        if (entityRows.length === 0) {
+          logger.info({ entityId }, '[trigger_timer] entity not found — skipped')
+          break
+        }
+
+        const entity: Record<string, unknown> = { ...entityRows[0].props, assigned_to: entityRows[0].assignedTo, assigned_team: entityRows[0].assignedTeam }
+
+        // 3. Evaluate conditions — they might no longer be true
+        const conditions = parseConditions(trigger['conditions'] as string | null)
+
+        // DEBUG: log every condition evaluation
+        logger.info({ entityKeys: Object.keys(entity), assigned_to: entity['assigned_to'], assigned_to_type: typeof entity['assigned_to'], status: entity['status'], status_type: typeof entity['status'] }, '[trigger_timer] DEBUG entity fields')
+        logger.info({ rawConditions: trigger['conditions'], parsedConditions: conditions }, '[trigger_timer] DEBUG conditions')
+        for (const c of conditions) {
+          const actual = entity[c.field]
+          const isNull = actual == null || actual === ''
+          logger.info({ field: c.field, operator: c.operator, expected: c.value ?? '(none)', actual, actualType: typeof actual, actualIsNull: actual === null, actualIsUndefined: actual === undefined, actualIsEmpty: actual === '', isNullResult: isNull }, '[trigger_timer] DEBUG condition eval')
+        }
+
+        if (!evaluateConditions(conditions, entity)) {
+          logger.info({ triggerId, entityId, triggerName: trigger['name'] }, '[trigger_timer] conditions no longer met — skipped')
+          break
+        }
+
+        // 4. Execute actions
+        const actions = parseActions(trigger['actions'] as string | null)
+        const execCtx: ActionExecutionContext = {
+          tenantId, userId: 'system', entityId, entityType,
+          entity, source: 'trigger', sourceName: trigger['name'] as string,
+        }
+        const results = await executeActions(actions, execCtx)
+
+        // 5. Update execution count
+        await runQuery(session, `
+          MATCH (t:AutoTrigger {id: $triggerId, tenant_id: $tenantId})
+          SET t.execution_count = coalesce(t.execution_count, 0) + 1,
+              t.last_executed_at = $now
+        `, { triggerId, tenantId, now: new Date().toISOString() })
+
+        const successCount = results.filter(r => r.success).length
+        logger.info({ triggerId, entityId, triggerName: trigger['name'], actionsRun: successCount }, '[trigger_timer] executed')
+      } finally {
+        await session.close()
+      }
       break
     }
 

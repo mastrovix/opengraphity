@@ -24,24 +24,45 @@ export class WorkflowEngine {
     entityId: string,
     entityType: string,
     definitionId?: string,
+    category?: string | null,
   ): Promise<WorkflowInstance> {
     const instanceId = uuidv4()
     const execId     = uuidv4()
     const now        = new Date().toISOString()
 
     return session.executeWrite(async (tx) => {
-      // Trova la definizione attiva e il suo step di start
-      const defResult = await tx.run(`
-        MATCH (wd:WorkflowDefinition {
-          tenant_id:   $tenantId,
-          entity_type: $entityType,
-          active:      true
-        })
-        WHERE $definitionId IS NULL OR wd.id = $definitionId
-        MATCH (wd)-[:HAS_STEP]->(startStep:WorkflowStep {type: 'start'})
-        RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName
-        LIMIT 1
-      `, { tenantId, entityType, definitionId: definitionId ?? null })
+      // If definitionId is provided, use it directly; otherwise use category-aware selection
+      let defQuery: string
+      let defParams: Record<string, unknown>
+
+      if (definitionId) {
+        defQuery = `
+          MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true})
+          MATCH (wd)-[:HAS_STEP]->(startStep:WorkflowStep {type: 'start'})
+          RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName
+          LIMIT 1
+        `
+        defParams = { definitionId, tenantId }
+      } else {
+        // Category-aware selection: prefer category-specific, fallback to default (category IS NULL)
+        defQuery = `
+          MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+          MATCH (wd)-[:HAS_STEP]->(startStep:WorkflowStep {type: 'start'})
+          WITH wd, startStep,
+            CASE
+              WHEN wd.category IS NOT NULL AND wd.category = $category THEN 0
+              WHEN wd.category IS NULL THEN 1
+              ELSE 2
+            END AS priority
+          WHERE priority < 2
+          RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName
+          ORDER BY priority ASC
+          LIMIT 1
+        `
+        defParams = { tenantId, entityType, category: category ?? null }
+      }
+
+      const defResult = await tx.run(defQuery, defParams)
 
       if (defResult.records.length === 0) {
         throw new Error(`No active workflow definition for "${entityType}" in tenant "${tenantId}"`)

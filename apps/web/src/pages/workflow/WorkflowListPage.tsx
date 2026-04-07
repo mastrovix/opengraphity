@@ -10,6 +10,7 @@ interface WorkflowDef {
   id:         string
   name:       string
   entityType: string
+  category:   string | null
   active:     boolean
   version:    number
 }
@@ -71,8 +72,17 @@ export function WorkflowListPage() {
                   <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
                     {def.name}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
                     {def.entityType}
+                    {def.category ? (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
+                        {def.category}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: '#f0f9ff', color: 'var(--color-brand)', fontWeight: 600 }}>
+                        Default
+                      </span>
+                    )}
                   </div>
                 </div>
 

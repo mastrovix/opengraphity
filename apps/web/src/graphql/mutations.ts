@@ -6,6 +6,7 @@ export const CREATE_INCIDENT = gql`
       id
       title
       severity
+      category
       status
       createdAt
       affectedCIs { id name type }
@@ -775,4 +776,78 @@ export const UPDATE_REPORT_SCHEDULE = gql`
       id scheduleEnabled scheduleCron scheduleRecipients scheduleFormat lastScheduledRun
     }
   }
+`
+
+// ── Auto Triggers ─────────────────────────────────────────────────────────────
+
+export const CREATE_AUTO_TRIGGER = gql`
+  mutation CreateAutoTrigger($input: CreateAutoTriggerInput!) {
+    createAutoTrigger(input: $input) {
+      id name entityType eventType conditions timerDelayMinutes actions enabled executionCount lastExecutedAt
+    }
+  }
+`
+
+export const UPDATE_AUTO_TRIGGER = gql`
+  mutation UpdateAutoTrigger($id: ID!, $input: UpdateAutoTriggerInput!) {
+    updateAutoTrigger(id: $id, input: $input) {
+      id name entityType eventType conditions timerDelayMinutes actions enabled executionCount lastExecutedAt
+    }
+  }
+`
+
+export const DELETE_AUTO_TRIGGER = gql`
+  mutation DeleteAutoTrigger($id: ID!) { deleteAutoTrigger(id: $id) }
+`
+
+// ── Business Rules ────────────────────────────────────────────────────────────
+
+export const CREATE_BUSINESS_RULE = gql`
+  mutation CreateBusinessRule($input: CreateBusinessRuleInput!) {
+    createBusinessRule(input: $input) {
+      id name description entityType eventType conditionLogic conditions actions priority stopOnMatch enabled
+    }
+  }
+`
+
+export const UPDATE_BUSINESS_RULE = gql`
+  mutation UpdateBusinessRule($id: ID!, $input: UpdateBusinessRuleInput!) {
+    updateBusinessRule(id: $id, input: $input) {
+      id name description entityType eventType conditionLogic conditions actions priority stopOnMatch enabled
+    }
+  }
+`
+
+export const DELETE_BUSINESS_RULE = gql`
+  mutation DeleteBusinessRule($id: ID!) { deleteBusinessRule(id: $id) }
+`
+
+export const REORDER_BUSINESS_RULES = gql`
+  mutation ReorderBusinessRules($ruleIds: [String!]!) {
+    reorderBusinessRules(ruleIds: $ruleIds) {
+      id name priority
+    }
+  }
+`
+
+// ── SLA Policies ──────────────────────────────────────────────────────────────
+
+export const CREATE_SLA_POLICY = gql`
+  mutation CreateSLAPolicy($input: CreateSLAPolicyInput!) {
+    createSLAPolicy(input: $input) {
+      id name entityType priority category teamId teamName timezone responseMinutes resolveMinutes businessHours enabled
+    }
+  }
+`
+
+export const UPDATE_SLA_POLICY = gql`
+  mutation UpdateSLAPolicy($id: ID!, $input: UpdateSLAPolicyInput!) {
+    updateSLAPolicy(id: $id, input: $input) {
+      id name entityType priority category teamId teamName timezone responseMinutes resolveMinutes businessHours enabled
+    }
+  }
+`
+
+export const DELETE_SLA_POLICY = gql`
+  mutation DeleteSLAPolicy($id: ID!) { deleteSLAPolicy(id: $id) }
 `

@@ -38,6 +38,7 @@ export function mapIncident(props: Props) {
     title:        props['title']       as string,
     description:  props['description'] as string | undefined,
     severity:     props['severity']    as string,
+    category:     (props['category']   ?? null) as string | null,
     status:       props['status']      as string,
     createdAt:    props['created_at']  as string,
     updatedAt:    props['updated_at']  as string,

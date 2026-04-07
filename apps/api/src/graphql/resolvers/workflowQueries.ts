@@ -123,7 +123,8 @@ export async function workflowDefinition(
       id:         wd['id']          as string,
       name:       wd['name']        as string,
       entityType: wd['entity_type'] as string,
-      version:    wd['version']     as number,
+      category:   (wd['category']   ?? null) as string | null,
+      version:    Number(wd['version'] ?? 1),
       active:     wd['active']      as boolean,
       steps: steps.map((s) => ({
         id:           s.properties['id']            as string,
@@ -132,7 +133,7 @@ export async function workflowDefinition(
         type:         s.properties['type']          as string,
         enterActions:       (s.properties['enter_actions']       ?? null) as string | null,
         exitActions:        (s.properties['exit_actions']        ?? null) as string | null,
-        timerDelayMinutes:  (s.properties['timer_delay_minutes'] ?? null) as number | null,
+        timerDelayMinutes:  s.properties['timer_delay_minutes'] != null ? Number(s.properties['timer_delay_minutes']) : null,
         subWorkflowId:      (s.properties['sub_workflow_id']     ?? null) as string | null,
       })),
       transitions: trResult.records.map((r) => ({
@@ -144,7 +145,7 @@ export async function workflowDefinition(
         requiresInput: r.get('requiresInput') as boolean,
         inputField:    (r.get('inputField')   ?? null) as string | null,
         condition:     (r.get('condition')    ?? null) as string | null,
-        timerHours:    (r.get('timerHours')   ?? null) as number | null,
+        timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
       })),
     }
   })
@@ -185,7 +186,8 @@ export async function workflowDefinitionById(
       id:         wd['id']          as string,
       name:       wd['name']        as string,
       entityType: wd['entity_type'] as string,
-      version:    wd['version']     as number,
+      category:   (wd['category']   ?? null) as string | null,
+      version:    Number(wd['version'] ?? 1),
       active:     wd['active']      as boolean,
       steps: steps.map((s) => ({
         id:           s.properties['id']             as string,
@@ -194,7 +196,7 @@ export async function workflowDefinitionById(
         type:         s.properties['type']           as string,
         enterActions:       (s.properties['enter_actions']       ?? null) as string | null,
         exitActions:        (s.properties['exit_actions']        ?? null) as string | null,
-        timerDelayMinutes:  (s.properties['timer_delay_minutes'] ?? null) as number | null,
+        timerDelayMinutes:  s.properties['timer_delay_minutes'] != null ? Number(s.properties['timer_delay_minutes']) : null,
         subWorkflowId:      (s.properties['sub_workflow_id']     ?? null) as string | null,
       })),
       transitions: trResult.records.map((r) => ({
@@ -206,7 +208,7 @@ export async function workflowDefinitionById(
         requiresInput: r.get('requiresInput') as boolean,
         inputField:    (r.get('inputField')   ?? null) as string | null,
         condition:     (r.get('condition')    ?? null) as string | null,
-        timerHours:    (r.get('timerHours')   ?? null) as number | null,
+        timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
       })),
     }
   })
@@ -250,7 +252,8 @@ export async function workflowDefinitions(
         id:         wd['id']          as string,
         name:       wd['name']        as string,
         entityType: wd['entity_type'] as string,
-        version:    wd['version']     as number,
+        category:   (wd['category']   ?? null) as string | null,
+        version:    Number(wd['version'] ?? 1),
         active:     wd['active']      as boolean,
         steps: steps.map((s) => ({
           id:           s.properties['id']             as string,
@@ -269,7 +272,7 @@ export async function workflowDefinitions(
           requiresInput: r.get('requiresInput') as boolean,
           inputField:    (r.get('inputField')   ?? null) as string | null,
           condition:     (r.get('condition')    ?? null) as string | null,
-          timerHours:    (r.get('timerHours')   ?? null) as number | null,
+          timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
         })),
       })
     }

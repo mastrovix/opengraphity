@@ -1,5 +1,6 @@
 export { WorkflowEngine, workflowEngine } from './engine.js'
-export { seedWorkflowForTenant, INCIDENT_WORKFLOW_BASE } from './seed.js'
+export { selectWorkflowForEntity, type SelectedWorkflow } from './selector.js'
+export { seedWorkflowForTenant, INCIDENT_WORKFLOW_BASE, INCIDENT_SECURITY_WORKFLOW } from './seed.js'
 export { seedChangeWorkflows, STANDARD_CHANGE_WORKFLOW, NORMAL_CHANGE_WORKFLOW, EMERGENCY_CHANGE_WORKFLOW } from './seed-change.js'
 export { seedKBWorkflowForTenant, KB_ARTICLE_WORKFLOW_BASE } from './seed-kb.js'
 export * from './types.js'

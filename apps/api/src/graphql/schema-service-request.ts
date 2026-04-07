@@ -7,8 +7,8 @@ export function serviceRequestSDL(): string {
     tenantId: String!
     title: String!
     description: String
-    status: ServiceRequestStatus!
-    priority: ServiceRequestPriority!
+    status: String!
+    priority: String!
     dueDate: String
     createdAt: String!
     updatedAt: String!
@@ -20,15 +20,15 @@ export function serviceRequestSDL(): string {
   input CreateServiceRequestInput {
     title: String!
     description: String
-    priority: ServiceRequestPriority!
+    priority: String!
     dueDate: String
   }
 
   input UpdateServiceRequestInput {
     title: String
     description: String
-    status: ServiceRequestStatus
-    priority: ServiceRequestPriority
+    status: String
+    priority: String
     dueDate: String
   }
   `

@@ -50,6 +50,9 @@ import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage'
 import { KnowledgeBasePage } from '@/pages/knowledge-base/KnowledgeBasePage'
 import { KBArticlePage } from '@/pages/knowledge-base/KBArticlePage'
 import { KBAdminPage } from '@/pages/admin/KBAdminPage'
+import { AutoTriggersPage } from '@/pages/admin/AutoTriggersPage'
+import { BusinessRulesPage } from '@/pages/admin/BusinessRulesPage'
+import { SLAPoliciesPage } from '@/pages/admin/SLAPoliciesPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
@@ -141,6 +144,9 @@ const router = createBrowserRouter([
       { path: 'admin/audit',              element: <AuditLogPage />,            errorElement: <RouteError /> },
       { path: 'admin/monitoring',         element: <MonitoringPage />,          errorElement: <RouteError /> },
       { path: 'admin/knowledge-base',     element: <KBAdminPage />,             errorElement: <RouteError /> },
+      { path: 'admin/triggers',            element: <AutoTriggersPage />,        errorElement: <RouteError /> },
+      { path: 'admin/business-rules',      element: <BusinessRulesPage />,       errorElement: <RouteError /> },
+      { path: 'admin/sla-policies',        element: <SLAPoliciesPage />,         errorElement: <RouteError /> },
       { path: 'approvals',                element: <ApprovalsPage />,           errorElement: <RouteError /> },
       { path: 'knowledge-base',           element: <KnowledgeBasePage />,       errorElement: <RouteError /> },
       { path: 'knowledge-base/:slug',     element: <KBArticlePage />,           errorElement: <RouteError /> },

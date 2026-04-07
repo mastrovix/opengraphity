@@ -7,8 +7,9 @@ export function incidentSDL(): string {
     tenantId: String!
     title: String!
     description: String
-    severity: IncidentSeverity!
-    status: IncidentStatus!
+    severity: String!
+    category: String
+    status: String!
     createdAt: String!
     updatedAt: String!
     resolvedAt: String
@@ -39,15 +40,16 @@ export function incidentSDL(): string {
   input CreateIncidentInput {
     title: String!
     description: String
-    severity: IncidentSeverity!
+    severity: String!
+    category: String
     affectedCIIds: [ID!]
   }
 
   input UpdateIncidentInput {
     title: String
     description: String
-    severity: IncidentSeverity
-    status: IncidentStatus
+    severity: String
+    status: String
   }
   `
 }
