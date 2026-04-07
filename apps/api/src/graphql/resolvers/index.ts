@@ -33,6 +33,7 @@ import { itilRelationsResolvers } from './itilRelations.js'
 import { customWidgetResolvers } from './customWidget.js'
 import { automationResolvers } from './automation.js'
 import { integrationsResolvers } from './integrations.js'
+import { collaborationResolvers } from './collaboration.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -147,6 +148,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...customWidgetResolvers.Query,
       ...automationResolvers.Query,
       ...integrationsResolvers.Query,
+      ...collaborationResolvers.Query,
       auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
@@ -180,6 +182,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...customWidgetResolvers.Mutation,
       ...automationResolvers.Mutation,
       ...integrationsResolvers.Mutation,
+      ...collaborationResolvers.Mutation,
       ...queueStatsResolvers.Mutation,
     },
     Incident: {

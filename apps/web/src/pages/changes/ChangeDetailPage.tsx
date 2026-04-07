@@ -31,6 +31,9 @@ import { CountBadge } from '@/components/ui/CountBadge'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { Change, Team, User, WorkflowTransition } from './change-types'
 import { Badge, STEP_COLORS, cardStyle, textareaStyle } from './change-types'
+import { WatcherBar } from '@/components/WatcherBar'
+import { InternalChatPanel } from '@/components/InternalChatPanel'
+import { keycloak } from '@/lib/keycloak'
 import { ChangeHeader } from './ChangeHeader'
 import { ChangeDetails } from './ChangeDetails'
 import { ChangeImpact } from './ChangeImpact'
@@ -232,6 +235,10 @@ export function ChangeDetailPage() {
         onTransition={handleTransition}
       />
 
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <WatcherBar entityType="change" entityId={change.id} />
+      </div>
+
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
 
         {/* Left column */}
@@ -323,6 +330,12 @@ export function ChangeDetailPage() {
             comments={change.comments}
             addingComment={addingComment}
             onAddComment={(text) => addComment({ variables: { changeId: change.id, text } })}
+          />
+
+          <InternalChatPanel
+            entityType="change"
+            entityId={change.id}
+            currentUserId={keycloak.subject ?? ''}
           />
         </div>
 

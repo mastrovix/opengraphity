@@ -95,6 +95,7 @@ export function RequestListPage() {
         columns={columns}
         data={items}
         loading={loading}
+        onRowClick={(row) => navigate(`/requests/${row.id}`)}
         emptyComponent={<EmptyState icon={<Inbox size={32} />} title={t('pages.requests.noResults')} description={t('pages.requests.noResultsDesc')} />}
       />
     </PageContainer>

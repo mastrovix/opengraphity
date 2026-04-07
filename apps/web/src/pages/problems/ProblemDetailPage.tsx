@@ -5,7 +5,6 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_INCIDENTS, GET_CHANGES, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
@@ -24,6 +23,11 @@ import {
 import { ProblemHeader } from './ProblemHeader'
 import { ProblemTimeline } from './ProblemTimeline'
 import { ProblemCIList, ProblemIncidentList, ProblemChangeList } from './ProblemLinkedEntities'
+import { WatcherBar } from '@/components/WatcherBar'
+import { InternalChatPanel } from '@/components/InternalChatPanel'
+import { MentionInput } from '@/components/MentionInput'
+import { MentionText } from '@/components/MentionText'
+import { keycloak } from '@/lib/keycloak'
 import { Card, DetailRow, formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -284,6 +288,10 @@ export function ProblemDetailPage() {
         onTransitionClick={handleTransitionClick}
       />
 
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <WatcherBar entityType="problem" entityId={problem.id} />
+      </div>
+
       {/* Body grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
 
@@ -433,7 +441,7 @@ export function ProblemDetailPage() {
                               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? 'Utente sconosciuto'}</span>
                               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                             </div>
-                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{c.text}</p>
+                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
                           </div>
                         </div>
                         {i < problem.comments.length - 1 && <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />}
@@ -444,7 +452,7 @@ export function ProblemDetailPage() {
                 <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px 0' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <Label style={{ fontSize: 12 }}>Scrivi un commento</Label>
-                  <Textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Scrivi un commento..." rows={3} />
+                  <MentionInput value={commentText} onChange={setCommentText} placeholder="Scrivi un commento... Usa @ per menzionare" rows={3} />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                       disabled={!commentText.trim() || addingComment}
@@ -458,6 +466,12 @@ export function ProblemDetailPage() {
               </div>
             )}
           </Card>
+
+          <InternalChatPanel
+            entityType="problem"
+            entityId={problem.id}
+            currentUserId={keycloak.subject ?? ''}
+          />
         </div>
 
         {/* Right column */}

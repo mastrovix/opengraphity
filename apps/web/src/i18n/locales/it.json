@@ -72,7 +72,8 @@
     "autoTriggers": "Trigger Automatici",
     "businessRules": "Business Rules",
     "slaPolicies": "Policy SLA",
-    "integrations": "Integrazioni"
+    "integrations": "Integrazioni",
+    "internalChat": "Chat Interna"
   },
   "pages": {
     "incidents": {

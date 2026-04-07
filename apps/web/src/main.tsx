@@ -17,6 +17,7 @@ import { CreateChangePage } from '@/pages/changes/CreateChangePage'
 import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
 import { RequestListPage } from '@/pages/requests/RequestListPage'
 import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestPage'
+import { ServiceRequestDetailPage } from '@/pages/requests/ServiceRequestDetailPage'
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
 import { CIListPage } from '@/pages/ci/CIListPage'
 import { CIDetailPage } from '@/pages/ci/CIDetailPage'
@@ -107,6 +108,7 @@ const router = createBrowserRouter([
       { path: 'changes/:id',       element: <ChangeDetailPage />,        errorElement: <RouteError /> },
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
       { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
+      { path: 'requests/:id',      element: <ServiceRequestDetailPage />,errorElement: <RouteError /> },
       { path: 'cmdb',                          element: <CMDBPage />,                    errorElement: <RouteError /> },
       // Dynamic CI routes
       { path: 'ci/:typeName',                  element: <CIListPage />,                  errorElement: <RouteError /> },

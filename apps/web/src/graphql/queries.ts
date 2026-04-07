@@ -689,3 +689,42 @@ export const GET_SLA_POLICIES = gql`
     }
   }
 `
+
+export const GET_SERVICE_REQUEST = gql`
+  query GetServiceRequest($id: ID!) {
+    serviceRequest(id: $id) {
+      id tenantId title description status priority dueDate
+      createdAt updatedAt completedAt
+      requestedBy { id name email }
+      assignee { id name email }
+    }
+  }
+`
+
+// ── Collaboration ────────────────────────────────────────────────────────────
+
+export const SEARCH_USERS = gql`
+  query SearchUsers($search: String!, $limit: Int) {
+    searchUsers(search: $search, limit: $limit) { id name email }
+  }
+`
+
+export const GET_WATCHERS = gql`
+  query GetWatchers($entityType: String!, $entityId: ID!) {
+    watchers(entityType: $entityType, entityId: $entityId) { id name email watchedAt }
+  }
+`
+
+export const IS_WATCHING = gql`
+  query IsWatching($entityType: String!, $entityId: ID!) {
+    isWatching(entityType: $entityType, entityId: $entityId)
+  }
+`
+
+export const GET_INTERNAL_MESSAGES = gql`
+  query GetInternalMessages($entityType: String!, $entityId: ID!, $limit: Int) {
+    internalMessages(entityType: $entityType, entityId: $entityId, limit: $limit) {
+      id authorId authorName body mentions createdAt editedAt
+    }
+  }
+`

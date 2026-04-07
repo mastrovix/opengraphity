@@ -22,6 +22,7 @@ import { portalSDL } from './schema-portal.js'
 import { fieldRulesSDL } from './schema-fieldRules.js'
 import { automationSchema } from './schema-automation.js'
 import { integrationsSchema } from './schema-integrations.js'
+import { collaborationSchema } from './schema-collaboration.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -425,5 +426,6 @@ export function buildBaseSDL(): string {
   ${fieldRulesSDL()}
   ${automationSchema}
   ${integrationsSchema}
+  ${collaborationSchema}
   `
 }

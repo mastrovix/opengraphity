@@ -5,6 +5,8 @@ import { sseManager } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
+import { parseMentions } from '../../lib/mentionParser.js'
+import { notifyMentions, notifyWatchers, autoWatch } from './collaboration.js'
 
 interface EntityComment {
   id:          string
@@ -113,8 +115,21 @@ export async function addComment(
     const created = mapComment(res.records[0])
     void audit(ctx, 'comment.added', args.entityType, args.entityId, { commentId: id, isInternal })
 
+    // Auto-watch on comment
+    void autoWatch(ctx.tenantId, ctx.userId, args.entityId)
+
+    // Parse @mentions and notify
+    const mentions = parseMentions(args.body)
+    if (mentions.length > 0) {
+      const entityTitle = args.entityId // will be resolved in notifyMentions
+      void notifyMentions(ctx.tenantId, ctx.userEmail, args.entityType, args.entityId, entityTitle, mentions, 'comment')
+    }
+
+    // Notify watchers
+    void notifyWatchers(ctx.tenantId, args.entityType, args.entityId,
+      `Nuovo commento di ${ctx.userEmail} su ${args.entityType}`, ctx.userId)
+
     if (!isInternal) {
-      // Notify tenant (simplified — in a real system would filter to team members)
       sseManager.sendToTenant(ctx.tenantId, {
         id:          uuidv4(),
         type:        'comment.added',

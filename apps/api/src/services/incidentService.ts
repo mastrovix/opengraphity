@@ -129,6 +129,15 @@ export async function createIncident(
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
   }, true)
 
+  // Auto-watch: creator becomes watcher
+  await withSession(async (session) => {
+    await session.executeWrite(tx => tx.run(`
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      MATCH (i:Incident {id: $entityId, tenant_id: $tenantId})
+      MERGE (u)-[:WATCHES {watched_at: $now}]->(i)
+    `, { userId: ctx.userId, tenantId: ctx.tenantId, entityId: id, now }))
+  }, true)
+
   await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
     id, title: input.title, severity: input.severity, status: 'new',
     ciName: '—', assignedTo: '—', affected_ci_ids: input.affectedCIIds ?? [],

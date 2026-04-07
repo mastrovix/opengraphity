@@ -5,7 +5,6 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/Modal'
 import { CountBadge } from '@/components/ui/CountBadge'
@@ -15,6 +14,11 @@ import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_T
 import { IncidentHeader } from './IncidentHeader'
 import { IncidentTimeline } from './IncidentTimeline'
 import { IncidentCIList } from './IncidentCIList'
+import { WatcherBar } from '@/components/WatcherBar'
+import { InternalChatPanel } from '@/components/InternalChatPanel'
+import { MentionInput } from '@/components/MentionInput'
+import { MentionText } from '@/components/MentionText'
+import { keycloak } from '@/lib/keycloak'
 import { Card, DetailRow, formatDate, timeAgo } from './IncidentCard'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -280,6 +284,11 @@ export function IncidentDetailPage() {
         onTransitionClick={handleTransitionClick}
       />
 
+      {/* Watchers bar */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <WatcherBar entityType="incident" entityId={incident.id} />
+      </div>
+
       {/* Body grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
 
@@ -476,7 +485,7 @@ export function IncidentDetailPage() {
                               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? 'Utente sconosciuto'}</span>
                               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                             </div>
-                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{c.text}</p>
+                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
                           </div>
                         </div>
                         {i < incident.comments.length - 1 && (
@@ -489,7 +498,7 @@ export function IncidentDetailPage() {
                 <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px 0' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <Label style={{ fontSize: 12 }}>Scrivi un commento</Label>
-                  <Textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Scrivi un commento..." rows={3} />
+                  <MentionInput value={commentText} onChange={setCommentText} placeholder="Scrivi un commento... Usa @ per menzionare" rows={3} />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                       disabled={!commentText.trim() || addingComment}
@@ -503,6 +512,13 @@ export function IncidentDetailPage() {
               </div>
             )}
           </Card>
+
+          {/* Internal Chat (agents only) */}
+          <InternalChatPanel
+            entityType="incident"
+            entityId={incident.id}
+            currentUserId={keycloak.subject ?? ''}
+          />
         </div>
 
         {/* Right column */}
