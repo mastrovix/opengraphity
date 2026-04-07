@@ -25,5 +25,18 @@ export function userTeamSDL(): string {
     ownedCIs: [CIBase!]!
     supportedCIs: [CIBase!]!
   }
+
+  input CreateUserInput {
+    email: String!
+    name: String!
+    password: String!
+    role: String!
+    teamIds: [ID!]
+  }
+
+  extend type Mutation {
+    createUser(input: CreateUserInput!): User!
+    updateUserTeams(userId: ID!, teamIds: [ID!]!): User!
+  }
   `
 }

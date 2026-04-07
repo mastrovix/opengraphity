@@ -77,7 +77,7 @@ export function CreateProblemPage() {
     .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
-  const canSubmit     = title.trim().length > 0
+  const canSubmit     = title.trim().length > 0 && description.trim().length > 0 && priority !== ''
 
   const [assignToTeam] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
     onError: (err) => toast.error(`Team assignment: ${err.message}`),
@@ -185,8 +185,7 @@ export function CreateProblemPage() {
           {/* DESCRIZIONE */}
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
-              Descrizione{' '}
-              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
+              Descrizione <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <textarea
               value={description}

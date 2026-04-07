@@ -82,6 +82,8 @@ export function CreateIncidentPage() {
     onError: (err) => toast.error(`Team assignment: ${err.message}`),
   })
 
+  const canSubmit = title.trim() !== '' && description.trim() !== '' && severity !== '' && category !== ''
+
   const [createIncident, { loading }] = useMutation<{ createIncident: { id: string } }>(CREATE_INCIDENT, {
     refetchQueries: [{ query: GET_INCIDENTS }],
     onCompleted: async (data) => {
@@ -196,8 +198,8 @@ export function CreateIncidentPage() {
           {/* DESCRIZIONE */}
           <FieldWrapper
             visible={fieldRules['description']?.visible ?? true}
-            required={fieldRules['description']?.required ?? false}
-            label={`Descrizione${!(fieldRules['description']?.required) ? ' (opzionale)' : ''}`}
+            required={true}
+            label="Descrizione"
             error={fieldErrors['description']}
             style={{ marginBottom: 20 }}
           >
@@ -349,11 +351,13 @@ export function CreateIncidentPage() {
             </button>
             <button
               type="button"
+              disabled={!canSubmit || loading}
               onClick={() => {
-                if (loading) return
+                if (!canSubmit || loading) return
                 const errs: Record<string, string> = {}
                 if (!title.trim()) errs['title'] = 'Campo obbligatorio'
                 if (!category) errs['category'] = 'Seleziona una categoria'
+                if (!description.trim()) errs['description'] = 'Campo obbligatorio'
                 const missing = validateFormFields(fieldRules, formValues)
                 missing.forEach((f) => { if (!errs[f]) errs[f] = 'Campo obbligatorio' })
                 if (Object.keys(errs).length > 0) {
@@ -373,12 +377,11 @@ export function CreateIncidentPage() {
                   },
                 })
               }}
-              disabled={loading}
               style={{
                 background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8,
                 padding: '10px 24px', fontSize: 14, fontWeight: 600,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.5 : 1,
+                cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
+                opacity: canSubmit && !loading ? 1 : 0.5,
                 transition: 'opacity 150ms',
               }}
             >

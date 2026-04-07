@@ -16,6 +16,15 @@ const log = logger.child({ module: 'collaboration' })
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Filters out demo/seed email addresses */
+function isRealEmail(email: string): boolean {
+  if (!email) return false
+  if (email.includes('@demo.')) return false
+  if (email.includes('@opengrafo.com')) return false
+  if (/^usr-\d+@/.test(email)) return false
+  return true
+}
+
 function requireAgent(ctx: GraphQLContext): void {
   const r = ctx.role?.toLowerCase() ?? ''
   if (r !== 'admin' && r !== 'tenant_admin' && r !== 'operator') {
@@ -46,7 +55,7 @@ async function notifyMentions(
       const userRow = await withSession(async (s) =>
         runQueryOne<{ email: string }>(s, `MATCH (u:User {id: $id, tenant_id: $t}) RETURN u.email AS email`, { id: userId, t: tenantId }),
       )
-      if (userRow?.email) {
+      if (userRow?.email && isRealEmail(userRow.email)) {
         const tpl = mentionNotification({ entityType, entityTitle, entityId, mentionerName: authorName, excerpt: excerpt ?? '' }, tenantId)
         void sendEmail({ to: userRow.email, ...tpl })
       }
@@ -85,7 +94,7 @@ async function notifyWatchers(
       const userRow = await withSession(async (s) =>
         runQueryOne<{ email: string }>(s, `MATCH (u:User {id: $id, tenant_id: $t}) RETURN u.email AS email`, { id: userId, t: tenantId }),
       )
-      if (userRow?.email) {
+      if (userRow?.email && isRealEmail(userRow.email)) {
         const tpl = watcherNotification({ entityType, entityTitle: title, entityId, event: eventDescription }, tenantId)
         void sendEmail({ to: userRow.email, ...tpl })
       }

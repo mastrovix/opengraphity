@@ -284,12 +284,18 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     try {
       const { sendEmail } = await import('./email.js')
 
-      // Resolve recipient emails: send to all users of the tenant with admin/operator roles
+      // Only send to admin/operator users with real email addresses
       const session = getSession()
       try {
-        type Row = { email: string }
         const result = await session.executeRead(tx => tx.run(
-          `MATCH (u:User {tenant_id: $tenantId}) WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR'] RETURN u.email AS email`,
+          `MATCH (u:User {tenant_id: $tenantId})
+           WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR']
+             AND u.email IS NOT NULL
+             AND u.email <> ''
+             AND NOT u.email CONTAINS '@demo.'
+             AND NOT u.email CONTAINS '@opengrafo.com'
+             AND NOT u.email =~ 'usr-\\\\d+@.*'
+           RETURN u.email AS email`,
           { tenantId: event.tenant_id },
         ))
         const emails = result.records.map(r => r.get('email') as string).filter(Boolean)
@@ -302,7 +308,11 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
           ${notification.entity_id ? `<a href="${process.env['APP_URL'] ?? 'http://localhost:5173'}/${notification.entity_type ?? 'incidents'}s/${notification.entity_id}" style="color:#0EA5E9;">Vedi dettagli</a>` : ''}
         </div>`
 
-        await sendEmail({ to: emails, subject, html })
+        // Batch emails (Resend limit: 50 per call)
+        for (let i = 0; i < emails.length; i += 50) {
+          const batch = emails.slice(i, i + 50)
+          await sendEmail({ to: batch, subject, html })
+        }
       } finally {
         await session.close()
       }

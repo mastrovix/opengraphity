@@ -185,8 +185,9 @@ export function CreateChangePage() {
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
     .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const titleMissing     = !title.trim()
+  const descMissing      = !description.trim()
   const emergencyMissing = changeType === 'emergency' && !emergencyReason.trim()
-  const step2Valid       = !titleMissing && !emergencyMissing
+  const step2Valid       = !titleMissing && !descMissing && !emergencyMissing
 
   function handleNext() {
     if (step === 1) {
@@ -306,13 +307,12 @@ export function CreateChangePage() {
             {/* DESCRIZIONE */}
             <div style={{ marginBottom: 20 }}>
               <label style={fieldLabel}>
-                Descrizione{' '}
-                <span style={{ fontSize: 10, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#b0b8c5' }}>(opzionale)</span>
+                Descrizione <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
               </label>
               <textarea
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                placeholder="Descrizione opzionale…"
+                placeholder="Descrizione del change…"
                 rows={3}
                 style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
                 onFocus={onFocus}

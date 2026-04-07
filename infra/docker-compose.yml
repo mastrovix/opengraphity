@@ -180,7 +180,7 @@ services:
 
       # Email (Resend)
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-OpenGrafo <noreply@opengrafo.com>}
+      EMAIL_FROM: ${EMAIL_FROM:-OpenGrafo <onboarding@resend.dev>}
 
       # Storage
       ATTACHMENT_DIR: /data/attachments

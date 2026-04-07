@@ -71,6 +71,10 @@ async function sendDigestForTenant(tenantId: string): Promise<void> {
     const users = await runQuery<{ email: string }>(session, `
       MATCH (u:User {tenant_id: $t})
       WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR']
+        AND u.email IS NOT NULL AND u.email <> ''
+        AND NOT u.email CONTAINS '@demo.'
+        AND NOT u.email CONTAINS '@opengrafo.com'
+        AND NOT u.email =~ 'usr-\\\\d+@.*'
       RETURN u.email AS email
     `, { t: tenantId })
 

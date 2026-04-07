@@ -73,7 +73,7 @@ export function TicketNewPage() {
     setFiles(prev => prev.filter((_, i) => i !== idx))
   }
 
-  const canSubmit = category !== '' && title.trim().length > 0 && !loading
+  const canSubmit = category !== '' && title.trim().length > 0 && description.trim().length > 0 && !loading
 
   function handleSubmit() {
     if (!canSubmit) return

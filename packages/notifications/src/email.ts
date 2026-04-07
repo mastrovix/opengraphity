@@ -1,6 +1,6 @@
 import { Resend } from 'resend'
 
-const DEFAULT_FROM = 'OpenGraphity <noreply@opengraphity.io>'
+const DEFAULT_FROM = process.env['EMAIL_FROM'] || 'OpenGrafo <onboarding@resend.dev>'
 const RESEND_API_KEY = process.env['RESEND_API_KEY']
 
 let _resend: Resend | null = null

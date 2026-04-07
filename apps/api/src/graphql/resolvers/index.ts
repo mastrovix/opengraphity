@@ -113,6 +113,122 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
   }
 }
 
+// ── createUser mutation ──────────────────────────────────────────────────────
+
+async function createUser(_: unknown, args: { input: { email: string; name: string; password: string; role: string; teamIds?: string[] } }, ctx: GraphQLContext) {
+  const { email, name, password, role, teamIds } = args.input
+  const tenantId = ctx.tenantId
+  const KEYCLOAK_URL  = process.env['KEYCLOAK_URL'] ?? 'http://localhost:8080'
+  const KEYCLOAK_ADMIN_USER = process.env['KEYCLOAK_ADMIN_USER'] ?? 'admin'
+  const KEYCLOAK_ADMIN_PASS = process.env['KEYCLOAK_ADMIN_PASSWORD'] ?? 'opengrafo_local'
+
+  // 1. Get Keycloak admin token
+  const tokenRes = await fetch(`${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username: KEYCLOAK_ADMIN_USER, password: KEYCLOAK_ADMIN_PASS }),
+  })
+  if (!tokenRes.ok) throw new Error('Keycloak admin auth failed')
+  const { access_token: adminToken } = await tokenRes.json() as { access_token: string }
+
+  // 2. Create user in Keycloak
+  const nameParts = name.split(' ')
+  const firstName = nameParts[0] ?? name
+  const lastName  = nameParts.slice(1).join(' ') || ''
+  const kcRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ username: email, email, emailVerified: true, enabled: true, firstName, lastName }),
+  })
+  if (kcRes.status !== 201 && kcRes.status !== 409) throw new Error(`Keycloak user creation failed: ${kcRes.status}`)
+
+  // Get user ID
+  const usersRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users?email=${encodeURIComponent(email)}&exact=true`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  })
+  const kcUsers = await usersRes.json() as { id: string }[]
+  const kcUserId = kcUsers[0]?.id
+  if (!kcUserId) throw new Error('User not found in Keycloak after creation')
+
+  // Set password
+  await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/reset-password`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ type: 'password', value: password, temporary: false }),
+  })
+
+  // Assign role
+  const rolesRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, { headers: { Authorization: `Bearer ${adminToken}` } })
+  const allRoles = await rolesRes.json() as { id: string; name: string }[]
+  let targetRole = allRoles.find(r => r.name === role)
+  if (!targetRole) {
+    await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ name: role }),
+    })
+    const refreshed = await (await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, { headers: { Authorization: `Bearer ${adminToken}` } })).json() as { id: string; name: string }[]
+    targetRole = refreshed.find(r => r.name === role)
+  }
+  if (targetRole) {
+    await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/role-mappings/realm`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify([{ id: targetRole.id, name: targetRole.name }]),
+    })
+  }
+
+  // 3. Create in Neo4j
+  const { v4: uuidv4 } = await import('uuid')
+  const id  = uuidv4()
+  const now = new Date().toISOString()
+  const session = getSession(undefined, 'WRITE')
+  try {
+    await session.executeWrite(tx => tx.run(`
+      MERGE (u:User {email: $email, tenant_id: $tenantId})
+      ON CREATE SET u.id = $id, u.name = $name, u.role = $role, u.active = true, u.created_at = $now, u.updated_at = $now
+      ON MATCH SET u.name = $name, u.role = $role, u.updated_at = $now
+    `, { email, tenantId, id, name, role, now }))
+
+    // Assign to teams
+    if (teamIds && teamIds.length > 0) {
+      for (const teamId of teamIds) {
+        await session.executeWrite(tx => tx.run(`
+          MATCH (u:User {email: $email, tenant_id: $tenantId})
+          MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+          MERGE (u)-[:MEMBER_OF]->(t)
+        `, { email, tenantId, teamId }))
+      }
+    }
+  } finally { await session.close() }
+
+  return { id, tenantId, email, name, role, teamId: null, createdAt: now }
+}
+
+async function updateUserTeams(_: unknown, args: { userId: string; teamIds: string[] }, ctx: GraphQLContext) {
+  const session = getSession(undefined, 'WRITE')
+  try {
+    // Remove all existing MEMBER_OF relationships
+    await session.executeWrite(tx => tx.run(`
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})-[r:MEMBER_OF]->(:Team)
+      DELETE r
+    `, { userId: args.userId, tenantId: ctx.tenantId }))
+
+    // Create new MEMBER_OF relationships
+    for (const teamId of args.teamIds) {
+      await session.executeWrite(tx => tx.run(`
+        MATCH (u:User {id: $userId, tenant_id: $tenantId})
+        MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+        CREATE (u)-[:MEMBER_OF]->(t)
+      `, { userId: args.userId, tenantId: ctx.tenantId, teamId }))
+    }
+
+    // Return updated user
+    const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      RETURN properties(u) AS props
+    `, { userId: args.userId, tenantId: ctx.tenantId })
+
+    if (!row) throw new Error('User not found')
+    return mapUser(row.props)
+  } finally { await session.close() }
+}
+
 // Builds a resolver map that combines dynamic CI resolvers (from metamodel)
 // with all static non-CI resolvers (incident, change, team, workflow, etc.)
 export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
@@ -184,6 +300,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...integrationsResolvers.Mutation,
       ...collaborationResolvers.Mutation,
       ...queueStatsResolvers.Mutation,
+      createUser,
+      updateUserTeams,
     },
     Incident: {
       ...incidentResolvers.Incident,
