@@ -178,6 +178,10 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
       DISCOVERY_ENCRYPTION_KEY: ${DISCOVERY_ENCRYPTION_KEY:-}
 
+      # Email (Resend)
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-OpenGrafo <noreply@opengrafo.com>}
+
       # Storage
       ATTACHMENT_DIR: /data/attachments
       BACKUP_DIR: /data/backups

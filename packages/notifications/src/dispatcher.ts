@@ -147,6 +147,10 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     if (rule.channels.some((c) => c === 'slack' || c === 'teams')) {
       await this.dispatchToChannels(event, rule.channels)
     }
+
+    if (rule.channels.includes('email')) {
+      await this.dispatchEmail(event, notification)
+    }
   }
 
   private async processWorkflowStep(event: DomainEvent<unknown>): Promise<void> {
@@ -274,6 +278,37 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       tenantId:     event.tenant_id,
     }
     await dispatchIncidentNotification(event.tenant_id, notifType, incident)
+  }
+
+  private async dispatchEmail(event: DomainEvent<unknown>, notification: InAppNotification): Promise<void> {
+    try {
+      const { sendEmail } = await import('./email.js')
+
+      // Resolve recipient emails: send to all users of the tenant with admin/operator roles
+      const session = getSession()
+      try {
+        type Row = { email: string }
+        const result = await session.executeRead(tx => tx.run(
+          `MATCH (u:User {tenant_id: $tenantId}) WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR'] RETURN u.email AS email`,
+          { tenantId: event.tenant_id },
+        ))
+        const emails = result.records.map(r => r.get('email') as string).filter(Boolean)
+        if (emails.length === 0) return
+
+        const subject = `[${event.tenant_id}] ${notification.title}: ${notification.message.slice(0, 80)}`
+        const html = `<div style="font-family:Arial,sans-serif;padding:16px;">
+          <h2 style="color:#0F172A;margin:0 0 8px;">${notification.title}</h2>
+          <p style="color:#64748B;margin:0 0 16px;">${notification.message}</p>
+          ${notification.entity_id ? `<a href="${process.env['APP_URL'] ?? 'http://localhost:5173'}/${notification.entity_type ?? 'incidents'}s/${notification.entity_id}" style="color:#0EA5E9;">Vedi dettagli</a>` : ''}
+        </div>`
+
+        await sendEmail({ to: emails, subject, html })
+      } finally {
+        await session.close()
+      }
+    } catch {
+      // Email delivery failure is non-fatal
+    }
   }
 }
 

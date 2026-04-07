@@ -26,6 +26,7 @@ function requireAgent(ctx: GraphQLContext): void {
 async function notifyMentions(
   tenantId: string, authorName: string, entityType: string, entityId: string,
   entityTitle: string, mentions: string[], source: 'comment' | 'internal_chat',
+  excerpt?: string,
 ): Promise<void> {
   const label = source === 'internal_chat' ? 'nella chat interna di' : 'in'
   for (const userId of mentions) {
@@ -37,6 +38,19 @@ async function notifyMentions(
       entity_id: entityId, entity_type: entityType,
       timestamp: new Date().toISOString(), read: false,
     })
+
+    // Send email notification for mention
+    try {
+      const { sendEmail } = await import('@opengraphity/notifications')
+      const { mentionNotification } = await import('../../lib/emailTemplates.js')
+      const userRow = await withSession(async (s) =>
+        runQueryOne<{ email: string }>(s, `MATCH (u:User {id: $id, tenant_id: $t}) RETURN u.email AS email`, { id: userId, t: tenantId }),
+      )
+      if (userRow?.email) {
+        const tpl = mentionNotification({ entityType, entityTitle, entityId, mentionerName: authorName, excerpt: excerpt ?? '' }, tenantId)
+        void sendEmail({ to: userRow.email, ...tpl })
+      }
+    } catch { /* non-fatal */ }
   }
 }
 
@@ -62,6 +76,20 @@ async function notifyWatchers(
       entity_id: entityId, entity_type: entityType,
       timestamp: new Date().toISOString(), read: false,
     })
+
+    // Send email notification for watcher
+    try {
+      const { sendEmail } = await import('@opengraphity/notifications')
+      const { watcherNotification } = await import('../../lib/emailTemplates.js')
+      const title = await getEntityTitle(tenantId, entityId)
+      const userRow = await withSession(async (s) =>
+        runQueryOne<{ email: string }>(s, `MATCH (u:User {id: $id, tenant_id: $t}) RETURN u.email AS email`, { id: userId, t: tenantId }),
+      )
+      if (userRow?.email) {
+        const tpl = watcherNotification({ entityType, entityTitle: title, entityId, event: eventDescription }, tenantId)
+        void sendEmail({ to: userRow.email, ...tpl })
+      }
+    } catch { /* non-fatal */ }
   }
 }
 
