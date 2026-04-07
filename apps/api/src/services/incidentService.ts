@@ -1,14 +1,13 @@
 import { v4 as uuidv4 } from 'uuid'
-import { publish } from '@opengraphity/events'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery } from '@opengraphity/neo4j'
-import type { DomainEvent } from '@opengraphity/types'
 import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { mapIncident } from '../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { validateStringLength } from '../lib/validation.js'
 import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
+import { publishEvent } from '../lib/publishEvent.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -76,23 +75,7 @@ async function createTransitionComment(
   `, { incidentId, tenantId, text, userId, now }))
 }
 
-function buildEvent<T>(
-  type: string,
-  tenantId: string,
-  userId: string,
-  payload: T,
-  timestamp: string,
-): DomainEvent<T> {
-  return {
-    id:             uuidv4(),
-    type,
-    tenant_id:      tenantId,
-    timestamp,
-    correlation_id: uuidv4(),
-    actor_id:       userId,
-    payload,
-  }
-}
+// buildEvent removed — using shared publishEvent from lib/publishEvent.ts
 
 // ── Public service operations ─────────────────────────────────────────────────
 
@@ -146,10 +129,10 @@ export async function createIncident(
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
   }, true)
 
-  await publish(buildEvent('incident.created', ctx.tenantId, ctx.userId, {
+  await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
     id, title: input.title, severity: input.severity, status: 'new',
     ciName: '—', assignedTo: '—', affected_ci_ids: input.affectedCIIds ?? [],
-  } satisfies IncidentEventPayload, now))
+  } satisfies IncidentEventPayload, now)
 
   // Evaluate auto triggers, then business rules
   const entityData = { id, title: input.title, severity: input.severity, status: 'new', category: input.category ?? null, description: input.description ?? null }
@@ -182,10 +165,10 @@ export async function resolveIncident(
   }, true)
 
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-  await publish(buildEvent('incident.resolved', ctx.tenantId, ctx.userId, {
+  await publishEvent('incident.resolved', ctx.tenantId, ctx.userId, {
     ...(payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'resolved', ciName: '—', assignedTo: '—' }),
     resolved_at: now,
-  } satisfies IncidentEventPayload, now))
+  } satisfies IncidentEventPayload, now)
 
   return resolved
 }
@@ -256,14 +239,14 @@ export async function assignIncidentToTeam(
     ))
     if (!r.records[0]) throw new NotFoundError('Incident', id)
     const assigned = mapIncident(r.records[0].get('props') as Props)
-    await publish(buildEvent('incident.assigned', ctx.tenantId, ctx.userId, {
+    await publishEvent('incident.assigned', ctx.tenantId, ctx.userId, {
       id:         assigned.id,
       title:      assigned.title,
       severity:   assigned.severity,
       status:     assigned.status,
       ciName:     '—',
       assignedTo: teamName,
-    } satisfies IncidentEventPayload, now))
+    } satisfies IncidentEventPayload, now)
     return assigned
   }, true)
 }
@@ -348,10 +331,10 @@ export async function assignIncidentToUser(
     if (!r.records[0]) throw new NotFoundError('Incident', id)
     const assigned = mapIncident(r.records[0].get('props') as Props)
     const assignedPayload = await loadIncidentPayload(session, id, ctx.tenantId)
-    await publish(buildEvent('incident.assigned', ctx.tenantId, ctx.userId,
+    await publishEvent('incident.assigned', ctx.tenantId, ctx.userId,
       assignedPayload ?? { id, title: assigned.title, severity: assigned.severity, status: assigned.status, ciName: '—', assignedTo: '—' },
       now,
-    ))
+    )
     return assigned
   }, true)
 }
@@ -362,10 +345,10 @@ export async function inProgressIncident(
 ) {
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-  await publish(buildEvent('incident.in_progress', ctx.tenantId, ctx.userId,
+  await publishEvent('incident.in_progress', ctx.tenantId, ctx.userId,
     payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'in_progress', ciName: '—', assignedTo: '—' },
     now,
-  ))
+  )
 }
 
 export async function onHoldIncident(
@@ -374,10 +357,10 @@ export async function onHoldIncident(
 ) {
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-  await publish(buildEvent('incident.on_hold', ctx.tenantId, ctx.userId,
+  await publishEvent('incident.on_hold', ctx.tenantId, ctx.userId,
     payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'pending', ciName: '—', assignedTo: '—' },
     now,
-  ))
+  )
 }
 
 export async function closeIncident(
@@ -386,10 +369,10 @@ export async function closeIncident(
 ) {
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-  await publish(buildEvent('incident.closed', ctx.tenantId, ctx.userId,
+  await publishEvent('incident.closed', ctx.tenantId, ctx.userId,
     payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'closed', ciName: '—', assignedTo: '—' },
     now,
-  ))
+  )
 }
 
 export async function escalateIncident(
@@ -398,8 +381,8 @@ export async function escalateIncident(
 ) {
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-  await publish(buildEvent('incident.escalated', ctx.tenantId, ctx.userId,
+  await publishEvent('incident.escalated', ctx.tenantId, ctx.userId,
     payload ?? { id, title: `Incident ${id}`, severity: 'high', status: 'escalated', ciName: '—', assignedTo: '—' },
     now,
-  ))
+  )
 }

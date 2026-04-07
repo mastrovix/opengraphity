@@ -1,12 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
-import { publish } from '@opengraphity/events'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery } from '@opengraphity/neo4j'
-import type { DomainEvent } from '@opengraphity/types'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
+import { publishEvent } from '../lib/publishEvent.js'
 
 export interface ProblemEventPayload {
   id: string; title: string; priority: string; status: string; assignedTo: string
@@ -38,22 +37,7 @@ async function loadProblemPayload(
   })
 }
 
-function buildEvent<T>(
-  type: string,
-  tenantId: string,
-  userId: string,
-  payload: T,
-): DomainEvent<T> {
-  return {
-    id:             uuidv4(),
-    type,
-    tenant_id:      tenantId,
-    timestamp:      new Date().toISOString(),
-    correlation_id: uuidv4(),
-    actor_id:       userId,
-    payload,
-  }
-}
+// buildEvent removed — using shared publishEvent
 
 // ── Public service operations ─────────────────────────────────────────────────
 
@@ -116,13 +100,13 @@ export async function createProblem(
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
   }, true)
 
-  await publish(buildEvent('problem.created', ctx.tenantId, ctx.userId, {
+  await publishEvent('problem.created', ctx.tenantId, ctx.userId, {
     id,
     title:      input.title,
     priority:   input.priority,
     status:     'new',
     assignedTo: '—',
-  } satisfies ProblemEventPayload))
+  } satisfies ProblemEventPayload)
 
   const entityData = { id, title: input.title, priority: input.priority, status: 'new', category: input.category ?? null }
   void evaluateTriggers(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId)
@@ -134,28 +118,28 @@ export async function createProblem(
 
 export async function investigateProblem(id: string, ctx: ServiceCtx) {
   const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publish(buildEvent('problem.under_investigation', ctx.tenantId, ctx.userId,
+  await publishEvent('problem.under_investigation', ctx.tenantId, ctx.userId,
     payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: 'under_investigation', assignedTo: '—' },
-  ))
+  )
 }
 
 export async function deferProblem(id: string, ctx: ServiceCtx) {
   const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publish(buildEvent('problem.deferred', ctx.tenantId, ctx.userId,
+  await publishEvent('problem.deferred', ctx.tenantId, ctx.userId,
     payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: 'deferred', assignedTo: '—' },
-  ))
+  )
 }
 
 export async function resolveProblem(id: string, ctx: ServiceCtx) {
   const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publish(buildEvent('problem.resolved', ctx.tenantId, ctx.userId,
+  await publishEvent('problem.resolved', ctx.tenantId, ctx.userId,
     payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: 'resolved', assignedTo: '—' },
-  ))
+  )
 }
 
 export async function closeProblem(id: string, ctx: ServiceCtx) {
   const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publish(buildEvent('problem.closed', ctx.tenantId, ctx.userId,
+  await publishEvent('problem.closed', ctx.tenantId, ctx.userId,
     payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: 'closed', assignedTo: '—' },
-  ))
+  )
 }

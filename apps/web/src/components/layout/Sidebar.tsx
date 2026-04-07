@@ -39,6 +39,7 @@ import {
   Zap,
   GitBranch,
   Clock,
+  Plug,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -91,6 +92,7 @@ const ADMIN_NAV_ITEM_DEFS = [
   { to: '/admin/triggers',         labelKey: 'sidebar.autoTriggers',   icon: Zap         },
   { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
   { to: '/admin/sla-policies',     labelKey: 'sidebar.slaPolicies',    icon: Clock       },
+  { to: '/admin/integrations',     labelKey: 'sidebar.integrations',   icon: Plug        },
 ]
 
 interface SidebarProps {

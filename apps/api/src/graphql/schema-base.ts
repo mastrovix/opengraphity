@@ -21,6 +21,7 @@ import { knowledgeBaseSDL } from './schema-kb.js'
 import { portalSDL } from './schema-portal.js'
 import { fieldRulesSDL } from './schema-fieldRules.js'
 import { automationSchema } from './schema-automation.js'
+import { integrationsSchema } from './schema-integrations.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -423,5 +424,6 @@ export function buildBaseSDL(): string {
   ${portalSDL()}
   ${fieldRulesSDL()}
   ${automationSchema}
+  ${integrationsSchema}
   `
 }

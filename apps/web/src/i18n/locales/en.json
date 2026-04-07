@@ -71,7 +71,8 @@
     "kbAdmin": "KB Admin",
     "autoTriggers": "Auto Triggers",
     "businessRules": "Business Rules",
-    "slaPolicies": "SLA Policies"
+    "slaPolicies": "SLA Policies",
+    "integrations": "Integrations"
   },
   "pages": {
     "incidents": {

@@ -18,6 +18,8 @@ import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { attachmentRouter } from './rest/attachments.js'
 import { reportsRouter } from './rest/reports.js'
+import { webhookInboundRouter } from './rest/webhooks-inbound.js'
+import { v1Router } from './rest/v1/index.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import { graphqlRateLimiterMiddleware } from './middleware/graphqlRateLimiter.js'
 import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
@@ -180,6 +182,8 @@ app.use(graphqlRateLimiterMiddleware)
 // ── REST routes ───────────────────────────────────────────────────────────────
 
 app.use('/',    healthRouter)
+app.use('/api', webhookInboundRouter)  // Webhook inbound uses own token auth
+app.use('/api/v1', v1Router)           // REST API v1 uses API key auth
 app.use('/api', sseRouter)
 app.use('/api', reportStreamRouter)
 app.use('/api', clientLogRouter)

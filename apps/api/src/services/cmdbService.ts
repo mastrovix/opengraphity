@@ -1,29 +1,10 @@
 import { v4 as uuidv4 } from 'uuid'
-import { publish } from '@opengraphity/events'
-import type { DomainEvent } from '@opengraphity/types'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
+import { publishEvent } from '../lib/publishEvent.js'
 
 type Props = Record<string, unknown>
-
-function buildEvent<T>(
-  type: string,
-  tenantId: string,
-  userId: string,
-  payload: T,
-  timestamp: string,
-): DomainEvent<T> {
-  return {
-    id:             uuidv4(),
-    type,
-    tenant_id:      tenantId,
-    timestamp,
-    correlation_id: uuidv4(),
-    actor_id:       userId,
-    payload,
-  }
-}
 
 export async function createCI(
   input: { name: string; type: string; status: string; environment: string },
@@ -50,11 +31,7 @@ export async function createCI(
     return rows[0].props
   }, true)
 
-  await publish(buildEvent(
-    'ci.created', ctx.tenantId, ctx.userId,
-    { id, type: input.type, tenant_id: ctx.tenantId },
-    now,
-  ))
+  await publishEvent('ci.created', ctx.tenantId, ctx.userId, { id, type: input.type, tenant_id: ctx.tenantId }, now)
   return created
 }
 
@@ -75,9 +52,5 @@ export async function addDependency(
     `, { fromId, toId, type, tenantId: ctx.tenantId, now })
   }, true)
 
-  await publish(buildEvent(
-    'ci.dependency_added', ctx.tenantId, ctx.userId,
-    { from_id: fromId, to_id: toId, type },
-    now,
-  ))
+  await publishEvent('ci.dependency_added', ctx.tenantId, ctx.userId, { from_id: fromId, to_id: toId, type }, now)
 }

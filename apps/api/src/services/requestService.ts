@@ -1,9 +1,8 @@
 import { v4 as uuidv4 } from 'uuid'
-import { publish } from '@opengraphity/events'
-import type { DomainEvent } from '@opengraphity/types'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
+import { publishEvent } from '../lib/publishEvent.js'
 
 type Props = Record<string, unknown>
 
@@ -21,24 +20,6 @@ function mapRequest(props: Props) {
     updatedAt:   props['updated_at']   as string,
     requestedBy: null,
     assignee:    null,
-  }
-}
-
-function buildEvent<T>(
-  type: string,
-  tenantId: string,
-  userId: string,
-  payload: T,
-  timestamp: string,
-): DomainEvent<T> {
-  return {
-    id:             uuidv4(),
-    type,
-    tenant_id:      tenantId,
-    timestamp,
-    correlation_id: uuidv4(),
-    actor_id:       userId,
-    payload,
   }
 }
 
@@ -81,11 +62,7 @@ export async function createRequest(
     return mapRequest(rows[0].props)
   }, true)
 
-  await publish(buildEvent(
-    'request.created', ctx.tenantId, ctx.userId,
-    { id, title: input.title, priority: input.priority },
-    now,
-  ))
+  await publishEvent('request.created', ctx.tenantId, ctx.userId, { id, title: input.title, priority: input.priority }, now)
   return created
 }
 
@@ -104,10 +81,6 @@ export async function completeRequest(id: string, ctx: ServiceCtx) {
     return mapRequest(rows[0].props)
   }, true)
 
-  await publish(buildEvent(
-    'request.completed', ctx.tenantId, ctx.userId,
-    { id, completed_at: now },
-    now,
-  ))
+  await publishEvent('request.completed', ctx.tenantId, ctx.userId, { id, completed_at: now }, now)
   return completed
 }

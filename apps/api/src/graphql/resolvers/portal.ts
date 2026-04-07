@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { withSession } from './ci-utils.js'
 import { ForbiddenError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
-import { publish } from '@opengraphity/events'
+import { publishEvent } from '../../lib/publishEvent.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { validateStringLength } from '../../lib/validation.js'
 import type { GraphQLContext } from '../../context.js'
@@ -262,16 +262,9 @@ async function createTicket(
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident')
   }, true).catch(() => { /* non-fatal if no default workflow */ })
 
-  // Publish domain event
-  await publish({
-    id:             uuidv4(),
-    type:           'portal.ticket.created',
-    tenant_id:      ctx.tenantId,
-    timestamp:      now,
-    correlation_id: uuidv4(),
-    actor_id:       ctx.userId,
-    payload:        { ticketId: id, title, category, priority, userId: ctx.userId },
-  }).catch(() => { /* non-fatal */ })
+  // Publish domain event + outbound webhooks
+  await publishEvent('portal.ticket.created', ctx.tenantId, ctx.userId, { ticketId: id, title, category, priority, userId: ctx.userId }, now)
+    .catch(() => { /* non-fatal */ })
 
   void audit(ctx, 'portal.ticket.created', 'Incident', id)
 
