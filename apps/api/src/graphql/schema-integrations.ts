@@ -135,9 +135,9 @@ export const integrationsSchema = `
   # ── Queries & Mutations ─────────────────────────────────────────────────────
 
   extend type Query {
-    inboundWebhooks: [InboundWebhook!]!
-    outboundWebhooks: [OutboundWebhook!]!
-    apiKeys: [ApiKeyInfo!]!
+    inboundWebhooks(filters: String, sortField: String, sortDirection: String): [InboundWebhook!]!
+    outboundWebhooks(filters: String, sortField: String, sortDirection: String): [OutboundWebhook!]!
+    apiKeys(filters: String, sortField: String, sortDirection: String): [ApiKeyInfo!]!
   }
 
   extend type Mutation {

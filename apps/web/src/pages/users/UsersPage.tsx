@@ -83,18 +83,27 @@ export function UsersPage() {
   ]
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'operator', teamIds: [] as string[] })
+  const [form, setForm] = useState({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] as string[] })
   const [teamSearch, setTeamSearch] = useState('')
 
   const { data, loading, refetch } = useQuery<{ users: UserRow[] }>(GET_USERS, {
+    variables: { sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
   })
+
+  function handleSort(field: string, direction: 'asc' | 'desc') {
+    setSortField(field)
+    setSortDir(direction)
+    setPage(0)
+  }
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string; description: string | null; type: string | null }[] }>(GET_TEAMS)
   const teams = teamsData?.teams ?? []
   const [createUserMut, { loading: creating }] = useMutation(CREATE_USER, {
-    onCompleted: () => { toast.success('Utente creato'); setModalOpen(false); setForm({ name: '', email: '', password: '', role: 'operator', teamIds: [] }); refetch() },
+    onCompleted: () => { toast.success('Utente creato'); setModalOpen(false); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }); refetch() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -116,7 +125,7 @@ export function UsersPage() {
           </p>
         </div>
         <button
-          onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ name: '', email: '', password: '', role: 'operator', teamIds: [] }) }}
+          onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }) }}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
@@ -134,6 +143,9 @@ export function UsersPage() {
         columns={COLUMNS}
         data={pageItems}
         loading={loading}
+        onSort={handleSort}
+        sortField={sortField}
+        sortDir={sortDir}
         emptyComponent={
           <EmptyState
             icon={<User size={32} color="var(--color-slate-light)" />}
@@ -181,10 +193,14 @@ export function UsersPage() {
               <X size={18} style={{ cursor: 'pointer', color: 'var(--color-slate)' }} onClick={() => setModalOpen(false)} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Nome</label><input style={inputS} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Mario Rossi" /></div>
-              <div><label style={labelS}>Email</label><input style={inputS} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
-              <div><label style={labelS}>Password</label><input style={inputS} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 8 caratteri" /></div>
-              <div><label style={labelS}>Ruolo</label>
+              <div><label style={labelS}>Username <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="mario.rossi" /></div>
+              <div><label style={labelS}>Email <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><label style={labelS}>Nome <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="Mario" /></div>
+                <div><label style={labelS}>Cognome <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Rossi" /></div>
+              </div>
+              <div><label style={labelS}>Password <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 8 caratteri" /></div>
+              <div><label style={labelS}>Ruolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
                 <select style={selectS} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
                   <option value="admin">Admin</option>
                   <option value="operator">Operator</option>
@@ -258,10 +274,18 @@ export function UsersPage() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <button style={btnSecondary} onClick={() => setModalOpen(false)}>Annulla</button>
-                <button style={btnPrimary} disabled={creating || !form.name || !form.email || !form.password}
-                  onClick={() => createUserMut({ variables: { input: form } })}>
-                  {creating ? 'Creazione…' : 'Crea utente'}
-                </button>
+                {(() => {
+                  const canCreate = !creating && form.username.trim() && form.email.trim() && form.firstName.trim() && form.lastName.trim() && form.password.trim() && form.role
+                  return (
+                    <button
+                      style={{ ...btnPrimary, opacity: canCreate ? 1 : 0.5, cursor: canCreate ? 'pointer' : 'not-allowed' }}
+                      disabled={!canCreate}
+                      onClick={() => createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
+                    >
+                      {creating ? 'Creazione…' : 'Crea utente'}
+                    </button>
+                  )
+                })()}
               </div>
             </div>
           </div>

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { CheckSquare, Clock, CheckCircle, XCircle, ChevronDown, ChevronRight, ExternalLink, BookOpen, GitPullRequest, AlertCircle } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -21,8 +22,8 @@ const MY_PENDING = gql`
 `
 
 const ALL_APPROVALS = gql`
-  query AllApprovals($status: String, $entityType: String, $page: Int, $pageSize: Int) {
-    approvalRequests(status: $status, entityType: $entityType, page: $page, pageSize: $pageSize) {
+  query AllApprovals($page: Int, $pageSize: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    approvalRequests(page: $page, pageSize: $pageSize, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       items {
         id entityType entityId title description status requestedBy requestedAt
         approvers approvedBy rejectedBy approvalType dueDate resolvedAt resolutionNote
@@ -329,10 +330,20 @@ function ApprovalCard({
 export function ApprovalsPage() {
   const { t } = useTranslation()
   const [tab, setTab] = useState<'mine' | 'all'>('mine')
-  const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(0)
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
 
   const PAGE_SIZE = 20
+  const APPROVAL_FILTER_FIELDS: FieldConfig[] = [
+    { key: 'status', label: 'Stato', type: 'enum', options: [
+      { value: 'pending', label: 'In attesa' }, { value: 'approved', label: 'Approvato' }, { value: 'rejected', label: 'Rifiutato' },
+    ]},
+    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+      { value: 'change', label: 'Change' }, { value: 'kb_article', label: 'KB Article' },
+    ]},
+    { key: 'title', label: 'Titolo', type: 'text' },
+    { key: 'requestedAt', label: 'Data richiesta', type: 'date' },
+  ]
 
   const { data: myData, loading: myLoading, refetch: refetchMine } = useQuery<{ myPendingApprovals: ApprovalRequest[] }>(
     MY_PENDING,
@@ -342,7 +353,7 @@ export function ApprovalsPage() {
   const { data: allData, loading: allLoading, refetch: refetchAll } = useQuery<{ approvalRequests: { items: ApprovalRequest[]; total: number } }>(
     ALL_APPROVALS,
     {
-      variables: { status: statusFilter || undefined, page: page + 1, pageSize: PAGE_SIZE },
+      variables: { page: page + 1, pageSize: PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : undefined },
       fetchPolicy: 'cache-and-network',
       skip: tab !== 'all',
     },
@@ -400,19 +411,7 @@ export function ApprovalsPage() {
       </div>
 
       {tab === 'all' && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(0) }}
-            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 13 }}
-          >
-            <option value="">{t('pages.approvals.allStatuses')}</option>
-            <option value="pending">In attesa</option>
-            <option value="approved">Approvato</option>
-            <option value="rejected">Rifiutato</option>
-            <option value="expired">Scaduto</option>
-          </select>
-        </div>
+        <FilterBuilder fields={APPROVAL_FILTER_FIELDS} onApply={g => { setFilterGroup(g); setPage(0) }} />
       )}
 
       {/* Content */}

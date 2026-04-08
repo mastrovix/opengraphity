@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { logger } from '../../lib/logger.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 
 interface AuditEntry {
   id:         string
@@ -34,10 +35,9 @@ export async function auditLog(
   args: {
     page?: number
     pageSize?: number
-    action?: string
-    entityType?: string
-    fromDate?: string
-    toDate?: string
+    filters?: string
+    sortField?: string
+    sortDirection?: string
   },
   ctx: GraphQLContext,
 ): Promise<{ items: AuditEntry[]; total: number }> {
@@ -52,30 +52,15 @@ export async function auditLog(
   const conditions: string[] = ['a.tenant_id = $tenantId']
   const params: Record<string, unknown> = { tenantId: ctx.tenantId, skip, limit: pageSize }
 
-  if (args.action) {
-    conditions.push('a.action = $action')
-    params['action'] = args.action
-  }
-  if (args.entityType) {
-    conditions.push('a.entity_type = $entityType')
-    params['entityType'] = args.entityType
-  }
-  if (args.fromDate) {
-    // fromDate is "YYYY-MM-DD" — ISO timestamps start with same prefix, >= works
-    conditions.push('a.created_at >= $fromDate')
-    params['fromDate'] = args.fromDate
-  }
-  if (args.toDate) {
-    // toDate is "YYYY-MM-DD" — ISO timestamp "2026-04-03T..." > "2026-04-03",
-    // so append end-of-day suffix to include all entries on that day
-    conditions.push('a.created_at <= $toDate')
-    params['toDate'] = args.toDate + 'T23:59:59.999Z'
-  }
+  // Advanced filters from FilterBuilder
+  const allowed = new Set(['action', 'entityType', 'entity_type', 'userEmail', 'user_email', 'createdAt', 'created_at'])
+  const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'a') : ''
+  if (advWhere) conditions.push(`(${advWhere})`)
 
   const where = conditions.join(' AND ')
 
   logger.debug(
-    { tenantId: ctx.tenantId, page, pageSize, skip, action: args.action, entityType: args.entityType, fromDate: args.fromDate, toDate: args.toDate, where },
+    { tenantId: ctx.tenantId, page, pageSize, skip, where },
     '[auditLog] query params',
   )
 
@@ -94,7 +79,7 @@ export async function auditLog(
                a.details    AS details,
                a.ip_address AS ipAddress,
                a.created_at AS createdAt
-        ORDER BY a.created_at DESC
+        ORDER BY ${(() => { const m: Record<string, string> = { action: 'a.action', entityType: 'a.entity_type', userEmail: 'a.user_email', createdAt: 'a.created_at' }; return m[args.sortField ?? ''] ?? 'a.created_at' })()} ${args.sortDirection === 'asc' ? 'ASC' : 'DESC'}
         SKIP toInteger($skip) LIMIT toInteger($limit)
       `, params),
     )

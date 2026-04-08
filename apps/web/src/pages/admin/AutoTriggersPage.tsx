@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Zap, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_AUTO_TRIGGERS } from '@/graphql/queries'
@@ -54,14 +56,6 @@ const emptyForm = (): FormData => ({
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const thS: React.CSSProperties = {
-  textAlign: 'left', padding: '10px 14px', fontSize: 12, fontWeight: 600,
-  color: 'var(--color-slate)', borderBottom: '2px solid #e5e7eb',
-}
-const tdS: React.CSSProperties = {
-  padding: '10px 14px', fontSize: 13, color: 'var(--color-slate-dark)',
-  borderBottom: '1px solid #f3f4f6',
-}
 const overlay: React.CSSProperties = {
   position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 9000,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -117,7 +111,30 @@ export function AutoTriggersPage() {
   const [deleteId, setDeleteId]     = useState<string | null>(null)
   const [form, setForm]             = useState<FormData>(emptyForm())
 
-  const { data, loading, refetch } = useQuery<{ autoTriggers: AutoTrigger[] }>(GET_AUTO_TRIGGERS)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
+
+  const TRIGGER_FILTER_FIELDS: FieldConfig[] = [
+    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+      { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
+      { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
+    ]},
+    { key: 'eventType', label: 'Tipo evento', type: 'enum', options: [
+      { value: 'on_create', label: 'Creazione' }, { value: 'on_update', label: 'Aggiornamento' },
+      { value: 'on_timer', label: 'Timer' }, { value: 'on_sla_breach', label: 'SLA Breach' },
+      { value: 'on_field_change', label: 'Cambio campo' },
+    ]},
+    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [
+      { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
+    ]},
+    { key: 'name', label: 'Nome', type: 'text' },
+  ]
+
+  const { data, loading, refetch } = useQuery<{ autoTriggers: AutoTrigger[] }>(GET_AUTO_TRIGGERS, {
+    variables: { sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null },
+  })
   const triggers: AutoTrigger[] = data?.autoTriggers ?? []
 
   const [createTrigger] = useMutation(CREATE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger creato'); refetch(); closeModal() } })
@@ -178,6 +195,21 @@ export function AutoTriggersPage() {
   const setActionParam = (i: number, key: string, val: string) =>
     setForm(p => ({ ...p, actions: p.actions.map((a, idx) => idx === i ? { ...a, params: { ...a.params, [key]: val } } : a) }))
 
+  const triggerColumns: ColumnDef<AutoTrigger>[] = [
+    { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
+    { key: 'entityType', label: 'Entità', sortable: true },
+    { key: 'eventType', label: 'Evento', sortable: true, render: (v) => EVENT_LABELS[String(v)] || String(v) },
+    { key: 'enabled', label: 'Abilitato', render: (_v, row) => <Toggle value={row.enabled} onChange={() => handleToggleEnabled(row)} /> },
+    { key: 'executionCount', label: 'Esecuzioni', sortable: true },
+    { key: 'lastExecutedAt', label: 'Ultima esecuzione', sortable: true, render: (v) => v ? new Date(String(v)).toLocaleString('it-IT') : '—' },
+    { key: 'id', label: 'Azioni', render: (_v, row) => (
+      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+        <button style={{ ...btnSecondary, padding: '4px 8px' }} onClick={() => openEdit(row)}><Pencil size={14} /></button>
+        <button style={{ ...btnSecondary, padding: '4px 8px', color: 'var(--color-danger, #ef4444)', borderColor: '#fecaca' }} onClick={() => setDeleteId(row.id)}><Trash2 size={14} /></button>
+      </div>
+    ) },
+  ]
+
   const isModalOpen = creating || !!editing
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -190,6 +222,8 @@ export function AutoTriggersPage() {
 
       {loading && <p style={{ color: 'var(--color-slate)', fontSize: 13 }}>Caricamento...</p>}
 
+      <FilterBuilder fields={TRIGGER_FILTER_FIELDS} onApply={g => setFilterGroup(g)} />
+
       {!loading && triggers.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-slate)' }}>
           <Zap size={40} style={{ marginBottom: 12, opacity: .4 }} />
@@ -199,37 +233,15 @@ export function AutoTriggersPage() {
       )}
 
       {!loading && triggers.length > 0 && (
-        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={thS}>Nome</th>
-                <th style={thS}>Entità</th>
-                <th style={thS}>Evento</th>
-                <th style={thS}>Abilitato</th>
-                <th style={thS}>Esecuzioni</th>
-                <th style={thS}>Ultima esecuzione</th>
-                <th style={{ ...thS, textAlign: 'right' }}>Azioni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {triggers.map((t: AutoTrigger) => (
-                <tr key={t.id} style={{ transition: 'background .15s' }} onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                  <td style={{ ...tdS, fontWeight: 500 }}>{t.name}</td>
-                  <td style={tdS}>{t.entityType}</td>
-                  <td style={tdS}>{EVENT_LABELS[t.eventType] || t.eventType}</td>
-                  <td style={tdS}><Toggle value={t.enabled} onChange={() => handleToggleEnabled(t)} /></td>
-                  <td style={tdS}>{t.executionCount}</td>
-                  <td style={tdS}>{t.lastExecutedAt ? new Date(t.lastExecutedAt).toLocaleString('it-IT') : '—'}</td>
-                  <td style={{ ...tdS, textAlign: 'right' }}>
-                    <button style={{ ...btnSecondary, padding: '4px 8px', marginRight: 4 }} onClick={() => openEdit(t)}><Pencil size={14} /></button>
-                    <button style={{ ...btnSecondary, padding: '4px 8px', color: 'var(--color-danger, #ef4444)', borderColor: '#fecaca' }} onClick={() => setDeleteId(t.id)}><Trash2 size={14} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SortableFilterTable<AutoTrigger>
+          columns={triggerColumns}
+          data={triggers}
+          onSort={handleSort}
+          sortField={sortField}
+          sortDir={sortDir}
+          loading={false}
+          label="Auto Triggers"
+        />
       )}
 
       {/* ── Create / Edit Modal ─────────────────────────────────────────────── */}

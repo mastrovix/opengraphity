@@ -8,8 +8,8 @@ import { ScrollText } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 
 const GET_LOGS = gql`
-  query GetLogs($level: String, $module: String, $search: String, $limit: Int, $offset: Int, $filters: String) {
-    logs(level: $level, module: $module, search: $search, limit: $limit, offset: $offset, filters: $filters) {
+  query GetLogs($limit: Int, $offset: Int, $filters: String) {
+    logs(limit: $limit, offset: $offset, filters: $filters) {
       total
       entries {
         id timestamp level module message data
@@ -27,8 +27,6 @@ const LEVEL_STYLES: Record<string, React.CSSProperties> = {
   fatal:   { backgroundColor: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
 }
 
-const LEVELS  = ['trace', 'debug', 'info', 'warn', 'error', 'fatal']
-const MODULES = ['http', 'graphql', 'auth', 'workflow', 'notification', 'frontend']
 const PAGE_SIZE = 50
 
 interface LogEntry {
@@ -112,17 +110,6 @@ function LogRow({ entry }: { entry: LogEntry }) {
   )
 }
 
-const inputStyle: React.CSSProperties = {
-  height:          32,
-  padding:         '0 10px',
-  borderRadius:    6,
-  border:          '1px solid #e5e7eb',
-  fontSize:        12,
-  color:           'var(--color-slate-dark)',
-  backgroundColor: '#fff',
-  outline:         'none',
-  cursor:          'pointer',
-}
 
 export function LogsPage() {
   const { t } = useTranslation()
@@ -137,22 +124,22 @@ export function LogsPage() {
       { value: 'error', label: 'Error' },
       { value: 'fatal', label: 'Fatal' },
     ]},
-    { key: 'module',    label: t('pages.logs.filterModule'),  type: 'text' },
+    { key: 'module',    label: t('pages.logs.filterModule'),  type: 'enum', options: [
+      { value: 'http',         label: 'HTTP' },
+      { value: 'graphql',      label: 'GraphQL' },
+      { value: 'auth',         label: 'Auth' },
+      { value: 'workflow',     label: 'Workflow' },
+      { value: 'notification', label: 'Notification' },
+      { value: 'frontend',     label: 'Frontend' },
+    ]},
     { key: 'timestamp', label: t('pages.logs.filterDate'),    type: 'date' },
   ]
-  const [level,       setLevel]       = useState('')
-  const [module,      setModule]      = useState('')
-  const [search,      setSearch]      = useState('')
-  const [searchInput, setSearchInput] = useState('')
   const [offset,      setOffset]      = useState(0)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
 
   const { data, loading, refetch } = useQuery<{ logs: { entries: LogEntry[]; total: number } }>(GET_LOGS, {
     variables: {
-      level:   level  || null,
-      module:  module || null,
-      search:  search || null,
       limit:   PAGE_SIZE,
       offset,
       filters: filterGroup ? JSON.stringify(filterGroup) : null,
@@ -200,61 +187,35 @@ export function LogsPage() {
         </p>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={level} onChange={(e) => { setLevel(e.target.value); setOffset(0) }} style={inputStyle}>
-          <option value="">{t('pages.logs.allLevels')}</option>
-          {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-        </select>
-
-        <select value={module} onChange={(e) => { setModule(e.target.value); setOffset(0) }} style={inputStyle}>
-          <option value="">{t('pages.logs.allModules')}</option>
-          {MODULES.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-
-        <form
-          onSubmit={(e) => { e.preventDefault(); setSearch(searchInput); setOffset(0) }}
-          style={{ display: 'flex', gap: 6 }}
-        >
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t('pages.logs.searchPlaceholder')}
-            style={{ ...inputStyle, width: 220, cursor: 'text' }}
+      {/* Advanced Filters + controls */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <FilterBuilder
+            fields={LOGS_FILTER_FIELDS}
+            onApply={(group) => { setFilterGroup(group); setOffset(0) }}
           />
-          <button type="submit" style={{
-            height:          32,
-            padding:         '0 14px',
-            borderRadius:    6,
-            border:          '1px solid #0284c7',
-            backgroundColor: 'var(--color-brand)',
-            color:           '#fff',
-            fontSize:        12,
-            cursor:          'pointer',
-          }}>{t('pages.logs.search')}</button>
-        </form>
-
-        <button
-          onClick={() => void refetch()}
-          style={{ ...inputStyle, cursor: 'pointer' }}
-        >
-          {t('pages.logs.refresh')}
-        </button>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={(e) => setAutoRefresh(e.target.checked)}
-          />
-          {t('pages.logs.autoRefresh')}
-        </label>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 2 }}>
+          <button
+            onClick={() => void refetch()}
+            style={{
+              height: 32, padding: '0 14px', borderRadius: 6,
+              border: '1px solid #e5e7eb', background: '#fff',
+              fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer',
+            }}
+          >
+            {t('pages.logs.refresh')}
+          </button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+            />
+            {t('pages.logs.autoRefresh')}
+          </label>
+        </div>
       </div>
-
-      <FilterBuilder
-        fields={LOGS_FILTER_FIELDS}
-        onApply={(group) => { setFilterGroup(group); setOffset(0) }}
-      />
 
       {/* Table */}
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>

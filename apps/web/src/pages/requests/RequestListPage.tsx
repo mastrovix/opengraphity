@@ -25,6 +25,8 @@ export function RequestListPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   const filterFields = useEntityFields('ServiceRequest')
 
@@ -60,8 +62,10 @@ export function RequestListPage() {
   const filtersJson = filterGroup ? JSON.stringify(filterGroup) : undefined
 
   const { data, loading } = useQuery<{ serviceRequests: ServiceRequest[] }>(GET_SERVICE_REQUESTS, {
-    variables: { filters: filtersJson },
+    variables: { filters: filtersJson, sortField, sortDirection: sortDir },
   })
+
+  function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction) }
 
   const items = data?.serviceRequests ?? []
 
@@ -95,6 +99,9 @@ export function RequestListPage() {
         columns={columns}
         data={items}
         loading={loading}
+        onSort={handleSort}
+        sortField={sortField}
+        sortDir={sortDir}
         onRowClick={(row) => navigate(`/requests/${row.id}`)}
         emptyComponent={<EmptyState icon={<Inbox size={32} />} title={t('pages.requests.noResults')} description={t('pages.requests.noResultsDesc')} />}
       />

@@ -43,8 +43,8 @@ export const GET_INCIDENT = gql`
 `
 
 export const GET_USERS = gql`
-  query GetUsers {
-    users {
+  query GetUsers($sortField: String, $sortDirection: String) {
+    users(sortField: $sortField, sortDirection: $sortDirection) {
       id name email role createdAt
       teams { id name }
     }
@@ -61,8 +61,8 @@ export const GET_USER = gql`
 `
 
 export const GET_TEAMS = gql`
-  query GetTeams($filters: String) {
-    teams(filters: $filters) { id name description type createdAt }
+  query GetTeams($filters: String, $sortField: String, $sortDirection: String) {
+    teams(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name description type createdAt }
   }
 `
 
@@ -120,8 +120,8 @@ export const GET_CHANGES = gql`
 `
 
 export const GET_SERVICE_REQUESTS = gql`
-  query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int, $filters: String) {
-    serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset, filters: $filters) {
+  query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       id
       title
       priority
@@ -494,8 +494,8 @@ export const GET_WIDGET_DATA_PREVIEW = gql`
 `
 
 export const GET_ANOMALIES = gql`
-  query GetAnomalies($status: String, $severity: String, $ruleKey: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
-    anomalies(status: $status, severity: $severity, ruleKey: $ruleKey, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
+  query GetAnomalies($limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    anomalies(limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id ruleKey title severity status
@@ -664,8 +664,8 @@ export const GET_FIELD_REQUIREMENT_RULES = gql`
 // ── Automation ───────────────────────────────────────────────────────────────
 
 export const GET_AUTO_TRIGGERS = gql`
-  query GetAutoTriggers($entityType: String) {
-    autoTriggers(entityType: $entityType) {
+  query GetAutoTriggers($entityType: String, $filters: String, $sortField: String, $sortDirection: String) {
+    autoTriggers(entityType: $entityType, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       id name entityType eventType conditions timerDelayMinutes
       actions enabled executionCount lastExecutedAt
     }
@@ -673,8 +673,8 @@ export const GET_AUTO_TRIGGERS = gql`
 `
 
 export const GET_BUSINESS_RULES = gql`
-  query GetBusinessRules($entityType: String) {
-    businessRules(entityType: $entityType) {
+  query GetBusinessRules($entityType: String, $filters: String, $sortField: String, $sortDirection: String) {
+    businessRules(entityType: $entityType, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       id name description entityType eventType conditionLogic
       conditions actions priority stopOnMatch enabled
     }
@@ -682,8 +682,8 @@ export const GET_BUSINESS_RULES = gql`
 `
 
 export const GET_SLA_POLICIES = gql`
-  query GetSLAPolicies($entityType: String) {
-    slaPolicies(entityType: $entityType) {
+  query GetSLAPolicies($entityType: String, $filters: String, $sortField: String, $sortDirection: String) {
+    slaPolicies(entityType: $entityType, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       id name entityType priority category teamId teamName
       timezone responseMinutes resolveMinutes businessHours enabled
     }

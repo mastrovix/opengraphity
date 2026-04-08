@@ -2,6 +2,8 @@ import { useState, useRef } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { useTranslation } from 'react-i18next'
 import {
   BookOpen, Plus, Pencil, Trash2,
@@ -70,7 +72,6 @@ interface ArticleForm {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CATEGORIES  = ['hardware', 'software', 'network', 'security', 'how-to', 'faq', 'general']
-const STATUS_OPTIONS = ['draft', 'pending_review', 'published', 'archived']
 const EMPTY_FORM: ArticleForm = { title: '', body: '', category: 'how-to', tags: '' }
 const PAGE_SIZE = 20
 
@@ -109,7 +110,6 @@ export function KBAdminPage() {
 
   // List state
   const [page,    setPage]    = useState(0)
-  const [statusF, setStatusF] = useState('')
 
   // Form state
   const [showForm,     setShowForm]     = useState(false)
@@ -122,9 +122,26 @@ export function KBAdminPage() {
   const publishingRef = useRef(false)
 
   // ── Queries ──
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
+  const KB_FILTER_FIELDS: FieldConfig[] = [
+    { key: 'status', label: 'Stato', type: 'enum', options: [
+      { value: 'draft', label: 'Bozza' }, { value: 'pending_review', label: 'In revisione' },
+      { value: 'published', label: 'Pubblicato' }, { value: 'archived', label: 'Archiviato' },
+    ]},
+    { key: 'category', label: 'Categoria', type: 'enum', options: [
+      { value: 'hardware', label: 'Hardware' }, { value: 'software', label: 'Software' },
+      { value: 'network', label: 'Network' }, { value: 'security', label: 'Security' },
+      { value: 'how-to', label: 'How-to' }, { value: 'faq', label: 'FAQ' }, { value: 'general', label: 'General' },
+    ]},
+    { key: 'title', label: 'Titolo', type: 'text' },
+    { key: 'createdAt', label: 'Data creazione', type: 'date' },
+  ]
   const { data, loading, refetch } = useQuery<{ kbArticles: { items: KBArticle[]; total: number } }>(
     GET_ARTICLES,
-    { variables: { page: page + 1, pageSize: PAGE_SIZE, status: statusF || undefined }, fetchPolicy: 'cache-and-network' },
+    { variables: { page: page + 1, pageSize: PAGE_SIZE, sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null }, fetchPolicy: 'cache-and-network' },
   )
 
   // ── Mutations ──
@@ -221,6 +238,30 @@ export function KBAdminPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const isBusy     = creating || updating || transitioning
 
+  const articleColumns: ColumnDef<KBArticle>[] = [
+    { key: 'title', label: 'Titolo', sortable: true, render: (v) => (
+      <div style={{ fontWeight: 500, color: '#1a2332', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
+    ) },
+    { key: 'category', label: 'Categoria', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
+    { key: 'status', label: 'Status', sortable: true, render: (v) => <StatusBadge status={String(v)} /> },
+    { key: 'authorName', label: 'Autore', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
+    { key: 'views', label: 'Views', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
+    { key: 'updatedAt', label: 'Aggiornato', sortable: true, render: (v) => <span style={{ color: '#94a3b8' }}>{new Date(String(v)).toLocaleDateString()}</span> },
+    { key: 'id', label: 'Azioni', render: (_v, row) => (
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <button onClick={() => startEdit(row)} style={{ color: '#38bdf8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
+        {deleteId === row.id ? (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
+            <button onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
+          </div>
+        ) : (
+          <button onClick={() => setDeleteId(row.id)} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
+        )}
+      </div>
+    ) },
+  ]
+
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '8px 10px', borderRadius: 6,
     border: '1px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box',
@@ -248,13 +289,7 @@ export function KBAdminPage() {
         </button>
       </div>
 
-      {/* ── Filters ── */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <select value={statusF} onChange={(e) => { setStatusF(e.target.value); setPage(0) }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 13 }}>
-          <option value="">{t('pages.kbAdmin.allStatuses')}</option>
-          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] ?? s}</option>)}
-        </select>
-      </div>
+      {/* Standalone filters removed — using FilterBuilder below */}
 
       {/* ── Article form ── */}
       {showForm && (
@@ -343,66 +378,19 @@ export function KBAdminPage() {
         </div>
       )}
 
+      <FilterBuilder fields={KB_FILTER_FIELDS} onApply={g => { setFilterGroup(g); setPage(0) }} />
+
       {/* ── Table ── */}
-      {loading ? (
-        <div style={{ fontSize: 13, color: '#94a3b8' }}>{t('common.loading')}</div>
-      ) : articles.length === 0 ? (
-        <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kbAdmin.noArticles')} />
-      ) : (
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                {['Titolo', 'Categoria', 'Status', 'Autore', 'Views', 'Aggiornato', 'Azioni'].map((h) => (
-                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {articles.map((a) => (
-                <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '10px 12px', fontWeight: 500, color: '#1a2332', maxWidth: 240 }}>
-                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
-                  </td>
-                  <td style={{ padding: '10px 12px', color: '#64748b' }}>{a.category}</td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <StatusBadge status={a.status} />
-                  </td>
-                  <td style={{ padding: '10px 12px', color: '#64748b' }}>{a.authorName}</td>
-                  <td style={{ padding: '10px 12px', color: '#64748b' }}>{a.views}</td>
-                  <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{new Date(a.updatedAt).toLocaleDateString()}</td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-
-                      {/* Edit */}
-                      <button
-                        onClick={() => startEdit(a)}
-                        style={{ color: '#38bdf8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
-                        title={t('common.edit')}
-                      >
-                        <Pencil size={14} />
-                      </button>
-
-                      {/* Delete */}
-                      {deleteId === a.id ? (
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => void deleteArticle({ variables: { id: a.id } })} style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
-                          <button onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
-                        </div>
-                      ) : (
-                        <button onClick={() => setDeleteId(a.id)} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}>
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <SortableFilterTable<KBArticle>
+        columns={articleColumns}
+        data={articles}
+        loading={loading}
+        onSort={handleSort}
+        sortField={sortField}
+        sortDir={sortDir}
+        emptyComponent={<EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kbAdmin.noArticles')} />}
+        label="KB Articles"
+      />
 
       {/* ── Pagination ── */}
       {total > PAGE_SIZE && (

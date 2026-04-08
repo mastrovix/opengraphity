@@ -66,12 +66,16 @@ export function TeamsPage() {
   ]
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
 
   const { data, loading } = useQuery<{ teams: Team[] }>(GET_TEAMS, {
-    variables: { filters: filterGroup ? JSON.stringify(filterGroup) : null },
+    variables: { filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
   })
+
+  function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction); setPage(0) }
 
   const teams      = data?.teams ?? []
   const total      = teams.length
@@ -118,6 +122,9 @@ export function TeamsPage() {
         columns={COLUMNS}
         data={pageItems}
         loading={loading}
+        onSort={handleSort}
+        sortField={sortField}
+        sortDir={sortDir}
         emptyComponent={
           <EmptyState
             icon={<UsersRound size={32} color="var(--color-slate-light)" />}

@@ -116,9 +116,9 @@ export const automationSchema = `
   }
 
   extend type Query {
-    autoTriggers(entityType: String): [AutoTrigger!]!
-    businessRules(entityType: String): [BusinessRule!]!
-    slaPolicies(entityType: String): [SLAPolicyNode!]!
+    autoTriggers(entityType: String, filters: String, sortField: String, sortDirection: String): [AutoTrigger!]!
+    businessRules(entityType: String, filters: String, sortField: String, sortDirection: String): [BusinessRule!]!
+    slaPolicies(entityType: String, filters: String, sortField: String, sortDirection: String): [SLAPolicyNode!]!
   }
 
   extend type Mutation {

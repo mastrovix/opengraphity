@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { withSession } from './ci-utils.js'
 import { runQuery } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { logger } from '../../lib/logger.js'
 
 type Props = Record<string, unknown>
@@ -46,9 +47,18 @@ function mapApiKey(p: Props) {
 
 // ── Inbound Webhooks ─────────────────────────────────────────────────────────
 
-async function inboundWebhooks(_: unknown, __: unknown, ctx: GraphQLContext) {
+function sortClause(alias: string, sf: string | undefined, sd: string | undefined, wl: Record<string, string>, def: string): string {
+  const col = wl[sf ?? ''] ?? `${alias}.${def}`
+  return `ORDER BY ${col} ${sd === 'asc' ? 'ASC' : 'DESC'}`
+}
+
+async function inboundWebhooks(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (s) => {
-    const rows = await runQuery<{ props: Props }>(s, `MATCH (w:InboundWebhook {tenant_id: $t}) RETURN properties(w) AS props ORDER BY w.name`, { t: ctx.tenantId })
+    const params: Props = { t: ctx.tenantId }
+    const allowed = new Set(['name', 'entityType', 'enabled', 'entity_type', 'receive_count'])
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'w') : ''
+    const order = sortClause('w', args.sortField, args.sortDirection, { name: 'w.name', entityType: 'w.entity_type', enabled: 'w.enabled', receiveCount: 'w.receive_count', lastReceivedAt: 'w.last_received_at' }, 'name')
+    const rows = await runQuery<{ props: Props }>(s, `MATCH (w:InboundWebhook {tenant_id: $t}) ${advWhere ? `WHERE ${advWhere}` : ''} RETURN properties(w) AS props ${order}`, params)
     return rows.map(r => mapInbound(r.props))
   })
 }
@@ -98,9 +108,13 @@ async function regenerateWebhookToken(_: unknown, args: { id: string }, ctx: Gra
 
 // ── Outbound Webhooks ────────────────────────────────────────────────────────
 
-async function outboundWebhooks(_: unknown, __: unknown, ctx: GraphQLContext) {
+async function outboundWebhooks(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (s) => {
-    const rows = await runQuery<{ props: Props }>(s, `MATCH (w:OutboundWebhook {tenant_id: $t}) RETURN properties(w) AS props ORDER BY w.name`, { t: ctx.tenantId })
+    const params: Props = { t: ctx.tenantId }
+    const allowed = new Set(['name', 'url', 'enabled', 'send_count'])
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'w') : ''
+    const order = sortClause('w', args.sortField, args.sortDirection, { name: 'w.name', url: 'w.url', enabled: 'w.enabled', sendCount: 'w.send_count', lastSentAt: 'w.last_sent_at' }, 'name')
+    const rows = await runQuery<{ props: Props }>(s, `MATCH (w:OutboundWebhook {tenant_id: $t}) ${advWhere ? `WHERE ${advWhere}` : ''} RETURN properties(w) AS props ${order}`, params)
     return rows.map(r => mapOutbound(r.props))
   })
 }
@@ -162,9 +176,13 @@ async function testOutboundWebhook(_: unknown, args: { id: string }, ctx: GraphQ
 
 // ── API Keys ─────────────────────────────────────────────────────────────────
 
-async function apiKeys(_: unknown, __: unknown, ctx: GraphQLContext) {
+async function apiKeys(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (s) => {
-    const rows = await runQuery<{ props: Props }>(s, `MATCH (k:ApiKey {tenant_id: $t}) RETURN properties(k) AS props ORDER BY k.name`, { t: ctx.tenantId })
+    const params: Props = { t: ctx.tenantId }
+    const allowed = new Set(['name', 'enabled', 'request_count'])
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'k') : ''
+    const order = sortClause('k', args.sortField, args.sortDirection, { name: 'k.name', enabled: 'k.enabled', requestCount: 'k.request_count', lastUsedAt: 'k.last_used_at' }, 'name')
+    const rows = await runQuery<{ props: Props }>(s, `MATCH (k:ApiKey {tenant_id: $t}) ${advWhere ? `WHERE ${advWhere}` : ''} RETURN properties(k) AS props ${order}`, params)
     return rows.map(r => mapApiKey(r.props))
   })
 }

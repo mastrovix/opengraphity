@@ -5,6 +5,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
 import { sseManager } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 
@@ -60,7 +61,7 @@ function isApprovalSatisfied(req: ApprovalRequest): boolean {
 
 export async function approvalRequests(
   _: unknown,
-  args: { status?: string; entityType?: string; page?: number; pageSize?: number },
+  args: { page?: number; pageSize?: number; filters?: string; sortField?: string; sortDirection?: string },
   ctx: GraphQLContext,
 ): Promise<{ items: ApprovalRequest[]; total: number }> {
   const page     = Math.max(1, args.page     ?? 1)
@@ -70,10 +71,17 @@ export async function approvalRequests(
   const conditions: string[] = ['a.tenant_id = $tenantId']
   const params: Record<string, unknown> = { tenantId: ctx.tenantId, skip, limit: pageSize }
 
-  if (args.status)     { conditions.push('a.status = $status');           params['status']     = args.status }
-  if (args.entityType) { conditions.push('a.entity_type = $entityType'); params['entityType'] = args.entityType }
+  // Advanced filters
+  const allowed = new Set(['title', 'status', 'entityType', 'entity_type', 'requestedAt', 'requested_at', 'requestedBy', 'requested_by'])
+  const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'a') : ''
+  if (advWhere) conditions.push(`(${advWhere})`)
 
   const where = conditions.join(' AND ')
+
+  // Sort
+  const sortMap: Record<string, string> = { title: 'a.title', status: 'a.status', entityType: 'a.entity_type', requestedAt: 'a.requested_at' }
+  const orderBy = sortMap[args.sortField ?? ''] ?? 'a.requested_at'
+  const orderDir = args.sortDirection === 'asc' ? 'ASC' : 'DESC'
 
   const session = getSession(undefined, 'READ')
   try {
@@ -96,7 +104,7 @@ export async function approvalRequests(
              a.due_date       AS dueDate,
              a.resolved_at    AS resolvedAt,
              a.resolution_note AS resolutionNote
-      ORDER BY a.requested_at DESC
+      ORDER BY ${orderBy} ${orderDir}
       SKIP toInteger($skip) LIMIT toInteger($limit)
     `, params))
 

@@ -62,13 +62,16 @@ const meStub = {
     name:     ctx.userEmail,
     role:     ctx.role,
   }),
-  users: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
+  users: async (_: unknown, args: { sortField?: string; sortDirection?: string }, ctx: GraphQLContext) => {
     const session = getSession()
     try {
+      const sortMap: Record<string, string> = { name: 'u.name', email: 'u.email', role: 'u.role', createdAt: 'u.created_at' }
+      const orderBy = sortMap[args.sortField ?? ''] ?? 'u.name'
+      const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
       type Row = { props: Record<string, unknown>; teamId: string | null }
       const rows = await runQuery<Row>(session, `
         MATCH (u:User {tenant_id: $tenantId})
-        RETURN properties(u) AS props, null AS teamId ORDER BY u.name
+        RETURN properties(u) AS props, null AS teamId ORDER BY ${orderBy} ${orderDir}
       `, { tenantId: ctx.tenantId })
       return rows.map((r) => mapUser(r.props))
     } finally {

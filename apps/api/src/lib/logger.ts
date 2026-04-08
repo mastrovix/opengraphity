@@ -1,5 +1,6 @@
 import pino from 'pino'
-import { getSession } from '@opengraphity/neo4j'
+import { randomUUID } from 'node:crypto'
+import { pushLog } from './logBuffer.js'
 
 const LEVEL_MAP: Record<number, string> = {
   10: 'trace',
@@ -10,43 +11,20 @@ const LEVEL_MAP: Record<number, string> = {
   60: 'fatal',
 }
 
-async function saveLogToNeo4j(log: Record<string, unknown>): Promise<void> {
-  try {
-    const session = getSession(undefined, 'WRITE')
-    try {
-      await session.executeWrite((tx) =>
-        tx.run(
-          `CREATE (l:LogEntry {
-            id:         randomUUID(),
-            tenant_id:  'system',
-            timestamp:  $timestamp,
-            level:      $level,
-            module:     $module,
-            message:    $message,
-            data:       $data,
-            created_at: $timestamp
-          })`,
-          {
-            timestamp: new Date(log['time'] as number).toISOString(),
-            level:     LEVEL_MAP[log['level'] as number] ?? 'info',
-            module:    (log['module'] as string | undefined) ?? 'api',
-            message:   log['msg'] as string,
-            data:      JSON.stringify(
-              Object.fromEntries(
-                Object.entries(log).filter(([k]) =>
-                  !['level', 'time', 'msg', 'module', 'pid', 'hostname', 'service', 'env'].includes(k),
-                ),
-              ),
-            ),
-          },
-        ),
-      )
-    } finally {
-      await session.close()
-    }
-  } catch {
-    // Silently ignore log persistence errors
-  }
+const SKIP_KEYS = new Set(['level', 'time', 'msg', 'module', 'pid', 'hostname', 'service', 'env'])
+
+function bufferLog(raw: Record<string, unknown>): void {
+  const extra = Object.fromEntries(
+    Object.entries(raw).filter(([k]) => !SKIP_KEYS.has(k)),
+  )
+  pushLog({
+    id:        randomUUID(),
+    timestamp: new Date(raw['time'] as number).toISOString(),
+    level:     LEVEL_MAP[raw['level'] as number] ?? 'info',
+    module:    (raw['module'] as string | undefined) ?? 'api',
+    message:   (raw['msg'] as string) ?? '',
+    data:      Object.keys(extra).length > 0 ? JSON.stringify(extra) : null,
+  })
 }
 
 const streams: pino.StreamEntry[] = [
@@ -57,10 +35,10 @@ const streams: pino.StreamEntry[] = [
       : process.stdout,
   },
   {
-    level: 'info' as pino.Level,
+    level: 'trace' as pino.Level,
     stream: {
       write(msg: string) {
-        void saveLogToNeo4j(JSON.parse(msg) as Record<string, unknown>)
+        try { bufferLog(JSON.parse(msg) as Record<string, unknown>) } catch { /* skip malformed */ }
       },
     },
   },

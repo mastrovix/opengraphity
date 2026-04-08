@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { createPortal } from 'react-dom'
 import { PageContainer } from '@/components/PageContainer'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Clock, Shield, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_SLA_POLICIES, GET_TEAMS } from '@/graphql/queries'
@@ -90,7 +92,30 @@ export function SLAPoliciesPage() {
   const [deleteId, setDeleteId]       = useState<string | null>(null)
   const [form, setForm]               = useState<FormState>(EMPTY_FORM)
 
-  const { data, loading } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
+  const SLA_FILTER_FIELDS: FieldConfig[] = [
+    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+      { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
+      { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
+    ]},
+    { key: 'priority', label: 'Priorità', type: 'enum', options: [
+      { value: 'critical', label: 'Critical' }, { value: 'high', label: 'High' },
+      { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' },
+    ]},
+    { key: 'category', label: 'Categoria', type: 'enum', options: [
+      { value: 'hardware', label: 'Hardware' }, { value: 'software', label: 'Software' },
+      { value: 'network', label: 'Network' }, { value: 'access', label: 'Access' },
+      { value: 'security', label: 'Security' }, { value: 'other', label: 'Other' },
+    ]},
+    { key: 'enabled', label: 'Abilitata', type: 'enum', options: [
+      { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
+    ]},
+    { key: 'name', label: 'Nome', type: 'text' },
+  ]
+  const { data, loading } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES, { variables: { sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null } })
   const { data: teamsData }           = useQuery<{ teams: Team[] }>(GET_TEAMS)
   const policies: SLAPolicy[]        = data?.slaPolicies ?? []
   const teams: Team[]                 = teamsData?.teams ?? []
@@ -163,6 +188,32 @@ export function SLAPoliciesPage() {
     } catch (e: unknown) { toast.error((e as Error).message) }
   }
 
+  const policyColumns: ColumnDef<SLAPolicy>[] = [
+    { key: 'name', label: 'Nome', sortable: true, render: (_v, row) => (
+      <div>
+        <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{row.name}</div>
+        <div style={{ fontSize: 11, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row)}</div>
+      </div>
+    ) },
+    { key: 'priority', label: 'Priorita', sortable: true, render: (v) => v ? <span style={badge('#fef3c7', '#92400e')}>{String(v)}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 12 }}>Tutte</span> },
+    { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <span style={badge('#dbeafe', '#1e40af')}>{String(v)}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 12 }}>Tutte</span> },
+    { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 12 }}>{v ? String(v) : 'Tutti'}</span> },
+    { key: 'responseMinutes', label: 'Risposta', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
+    { key: 'resolveMinutes', label: 'Risoluzione', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
+    { key: 'businessHours', label: 'Business Hours', render: (v) => <span style={badge(v ? '#dcfce7' : '#f3f4f6', v ? '#15803d' : 'var(--color-slate)')}>{v ? 'Si' : 'No'}</span> },
+    { key: 'enabled', label: 'Attiva', render: (_v, row) => (
+      <button onClick={() => handleToggle(row)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+        {row.enabled ? <ToggleRight size={22} color="var(--color-brand)" /> : <ToggleLeft size={22} color="#cbd5e1" />}
+      </button>
+    ) },
+    { key: 'id', label: 'Azioni', render: (_v, row) => (
+      <div style={{ display: 'inline-flex', gap: 6 }}>
+        <button onClick={() => openEdit(row)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Modifica"><Pencil size={15} color="var(--color-slate)" /></button>
+        <button onClick={() => setDeleteId(row.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Elimina"><Trash2 size={15} color="#ef4444" /></button>
+      </div>
+    ) },
+  ]
+
   // ── Preview text for modal form ───────────────────────────────────────────
   function formPreview(): string {
     const parts: string[] = [ENTITY_LABELS[form.entityType] ?? form.entityType]
@@ -195,71 +246,22 @@ export function SLAPoliciesPage() {
         </div>
       )}
 
+      <FilterBuilder fields={SLA_FILTER_FIELDS} onApply={g => setFilterGroup(g)} />
+
       {Object.entries(grouped).map(([entityType, items]) => (
         <div key={entityType} style={{ marginBottom: 28 }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 8, textTransform: 'capitalize' }}>
             {ENTITY_LABELS[entityType]}
           </h3>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f9fafb', color: 'var(--color-slate)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600 }}>Nome</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600 }}>Priorita</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600 }}>Categoria</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600 }}>Team</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600 }}>Risposta</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600 }}>Risoluzione</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'center', fontWeight: 600 }}>Business Hours</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'center', fontWeight: 600 }}>Attiva</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 600 }}>Azioni</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(p => (
-                  <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{p.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(p)}</div>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      {p.priority ? <span style={badge('#fef3c7', '#92400e')}>{p.priority}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 12 }}>Tutte</span>}
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      {p.category ? <span style={badge('#dbeafe', '#1e40af')}>{p.category}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 12 }}>Tutte</span>}
-                    </td>
-                    <td style={{ padding: '10px 14px', color: p.teamName ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 12 }}>
-                      {p.teamName ?? 'Tutti'}
-                    </td>
-                    <td style={{ padding: '10px 14px', fontWeight: 500 }}>{fmtMinutes(p.responseMinutes)}</td>
-                    <td style={{ padding: '10px 14px', fontWeight: 500 }}>{fmtMinutes(p.resolveMinutes)}</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <span style={badge(p.businessHours ? '#dcfce7' : '#f3f4f6', p.businessHours ? '#15803d' : 'var(--color-slate)')}>
-                        {p.businessHours ? 'Si' : 'No'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <button onClick={() => handleToggle(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
-                        {p.enabled
-                          ? <ToggleRight size={22} color="var(--color-brand)" />
-                          : <ToggleLeft size={22} color="#cbd5e1" />}
-                      </button>
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 6 }}>
-                        <button onClick={() => openEdit(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Modifica">
-                          <Pencil size={15} color="var(--color-slate)" />
-                        </button>
-                        <button onClick={() => setDeleteId(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Elimina">
-                          <Trash2 size={15} color="#ef4444" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SortableFilterTable<SLAPolicy>
+            onSort={handleSort}
+            sortField={sortField}
+            sortDir={sortDir}
+            columns={policyColumns}
+            data={items}
+            loading={false}
+            label={`SLA Policies — ${ENTITY_LABELS[entityType]}`}
+          />
         </div>
       ))}
 

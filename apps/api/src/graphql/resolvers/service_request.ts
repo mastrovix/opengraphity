@@ -33,7 +33,7 @@ function mapRequest(props: Props) {
 
 async function serviceRequests(
   _: unknown,
-  args: { status?: string; priority?: string; limit?: number; offset?: number; filters?: string },
+  args: { status?: string; priority?: string; limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
   ctx: GraphQLContext,
   info: GraphQLResolveInfo,
 ) {
@@ -48,12 +48,15 @@ async function serviceRequests(
     }
     const allowedFields = getScalarFields(info.schema, 'ServiceRequest')
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r') : ''
+    const sortMap: Record<string, string> = { title: 'r.title', status: 'r.status', priority: 'r.priority', createdAt: 'r.created_at' }
+    const orderBy = sortMap[args.sortField ?? ''] ?? 'r.created_at'
+    const orderDir = args.sortDirection === 'asc' ? 'ASC' : 'DESC'
     const cypher = `
       MATCH (r:ServiceRequest {tenant_id: $tenantId})
       WHERE ($status   IS NULL OR r.status   = $status)
         AND ($priority IS NULL OR r.priority = $priority)
         ${advWhere}
-      WITH r ORDER BY r.created_at DESC
+      WITH r ORDER BY ${orderBy} ${orderDir}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       RETURN properties(r) as props
     `

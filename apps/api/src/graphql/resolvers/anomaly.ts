@@ -50,10 +50,10 @@ export const anomalyResolvers = {
   Query: {
     anomalies: async (
       _: unknown,
-      args: { status?: string; severity?: string; ruleKey?: string; limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
+      args: { limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
       ctx: GraphQLContext,
     ) => {
-      const { status, severity, ruleKey, limit = 50, offset = 0, filters, sortField, sortDirection } = args
+      const { limit = 50, offset = 0, filters, sortField, sortDirection } = args
       const ANOMALY_SORT_WHITELIST: Record<string, string> = {
         title:      'title',
         severity:   'severity',
@@ -67,13 +67,9 @@ export const anomalyResolvers = {
         : 'a.detected_at DESC'
       const session = getSession()
       try {
-        // Build filter clause — same params used for both queries
         const conditions: string[] = ['a.tenant_id = $tenantId']
-        if (status)   conditions.push('a.status   = $status')
-        if (severity) conditions.push('a.severity = $severity')
-        if (ruleKey)  conditions.push('a.rule_key = $ruleKey')
 
-        const params: Record<string, unknown> = { tenantId: ctx.tenantId, status: status ?? null, severity: severity ?? null, ruleKey: ruleKey ?? null, offset, limit }
+        const params: Record<string, unknown> = { tenantId: ctx.tenantId, offset, limit }
         const advWhere = filters ? buildAdvancedWhere(filters, params, ANOMALY_ALLOWED_FIELDS, 'a') : ''
         if (advWhere) conditions.push(`(${advWhere})`)
         const where = 'WHERE ' + conditions.join(' AND ')

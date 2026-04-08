@@ -3,6 +3,7 @@ import { withSession } from './ci-utils.js'
 import { runQuery } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { invalidateTriggerCache } from '../../lib/triggerEngine.js'
+import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { invalidateRulesCache } from '../../lib/rulesEngine.js'
 
 type Props = Record<string, unknown>
@@ -57,17 +58,29 @@ function mapSLAPolicy(p: Props, teamName?: string | null) {
   }
 }
 
+// ── Sort helper ──────────────────────────────────────────────────────────────
+
+function resolveSort(alias: string, sortField: string | undefined, sortDirection: string | undefined, whitelist: Record<string, string>, defaultField: string): string {
+  const col = whitelist[sortField ?? ''] ?? `${alias}.${defaultField}`
+  const dir = sortDirection === 'asc' ? 'ASC' : 'DESC'
+  return `ORDER BY ${col} ${dir}`
+}
+
 // ── Auto Triggers ────────────────────────────────────────────────────────────
 
-async function autoTriggers(_: unknown, args: { entityType?: string }, ctx: GraphQLContext) {
+async function autoTriggers(_: unknown, args: { entityType?: string; filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
+    const params: Props = { tenantId: ctx.tenantId, entityType: args.entityType ?? null }
     const filter = args.entityType ? 'AND t.entity_type = $entityType' : ''
+    const allowed = new Set(['name', 'entityType', 'eventType', 'enabled', 'executionCount', 'entity_type', 'event_type', 'execution_count'])
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 't') : ''
+    const order = resolveSort('t', args.sortField, args.sortDirection, { name: 't.name', entityType: 't.entity_type', eventType: 't.event_type', enabled: 't.enabled', executionCount: 't.execution_count' }, 'name')
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (t:AutoTrigger {tenant_id: $tenantId})
-      WHERE true ${filter}
+      WHERE true ${filter} ${advWhere ? `AND (${advWhere})` : ''}
       RETURN properties(t) AS props
-      ORDER BY t.entity_type, t.name
-    `, { tenantId: ctx.tenantId, entityType: args.entityType ?? null })
+      ${order}
+    `, params)
     return rows.map(r => mapTrigger(r.props))
   })
 }
@@ -134,15 +147,19 @@ async function deleteAutoTrigger(_: unknown, args: { id: string }, ctx: GraphQLC
 
 // ── Business Rules ───────────────────────────────────────────────────────────
 
-async function businessRules(_: unknown, args: { entityType?: string }, ctx: GraphQLContext) {
+async function businessRules(_: unknown, args: { entityType?: string; filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
+    const params: Props = { tenantId: ctx.tenantId, entityType: args.entityType ?? null }
     const filter = args.entityType ? 'AND r.entity_type = $entityType' : ''
+    const allowed = new Set(['name', 'entityType', 'eventType', 'priority', 'enabled', 'conditionLogic', 'entity_type', 'event_type', 'condition_logic'])
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'r') : ''
+    const order = resolveSort('r', args.sortField, args.sortDirection, { name: 'r.name', entityType: 'r.entity_type', priority: 'r.priority', enabled: 'r.enabled' }, 'priority')
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (r:BusinessRule {tenant_id: $tenantId})
-      WHERE true ${filter}
+      WHERE true ${filter} ${advWhere ? `AND (${advWhere})` : ''}
       RETURN properties(r) AS props
-      ORDER BY r.priority ASC, r.name
-    `, { tenantId: ctx.tenantId, entityType: args.entityType ?? null })
+      ${order}
+    `, params)
     return rows.map(r => mapRule(r.props))
   })
 }
@@ -225,16 +242,20 @@ async function reorderBusinessRules(_: unknown, args: { ruleIds: string[] }, ctx
 
 // ── SLA Policies ─────────────────────────────────────────────────────────────
 
-async function slaPolicies(_: unknown, args: { entityType?: string }, ctx: GraphQLContext) {
+async function slaPolicies(_: unknown, args: { entityType?: string; filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
+    const params: Props = { tenantId: ctx.tenantId, entityType: args.entityType ?? null }
     const filter = args.entityType ? 'AND p.entity_type = $entityType' : ''
+    const allowed = new Set(['name', 'entityType', 'priority', 'category', 'enabled', 'entity_type', 'response_minutes', 'resolve_minutes'])
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'p') : ''
+    const order = resolveSort('p', args.sortField, args.sortDirection, { entityType: 'p.entity_type', priority: 'p.priority', category: 'p.category', responseMinutes: 'p.response_minutes', resolveMinutes: 'p.resolve_minutes', name: 'p.name' }, 'entity_type')
     const rows = await runQuery<{ props: Props; teamName: string | null }>(session, `
       MATCH (p:SLAPolicyNode {tenant_id: $tenantId})
-      WHERE true ${filter}
+      WHERE true ${filter} ${advWhere ? `AND (${advWhere})` : ''}
       OPTIONAL MATCH (t:Team {id: p.team_id, tenant_id: $tenantId})
       RETURN properties(p) AS props, t.name AS teamName
-      ORDER BY p.entity_type, p.priority, p.category
-    `, { tenantId: ctx.tenantId, entityType: args.entityType ?? null })
+      ${order}
+    `, params)
     return rows.map(r => mapSLAPolicy(r.props, r.teamName))
   })
 }

@@ -4,6 +4,8 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Plug, Plus, Trash2, X, Copy, Play, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -12,9 +14,9 @@ import {
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
 
-const GET_INBOUND_WEBHOOKS = gql`query { inboundWebhooks { id name entityType fieldMapping defaultValues transformScript enabled lastReceivedAt receiveCount createdAt } }`
-const GET_OUTBOUND_WEBHOOKS = gql`query { outboundWebhooks { id name url method headers events payloadTemplate enabled lastSentAt lastStatusCode sendCount errorCount lastError retryOnFailure } }`
-const GET_API_KEYS = gql`query { apiKeys { id name keyPrefix permissions rateLimit enabled lastUsedAt requestCount createdBy expiresAt createdAt } }`
+const GET_INBOUND_WEBHOOKS = gql`query($filters: String, $sortField: String, $sortDirection: String) { inboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name entityType fieldMapping defaultValues transformScript enabled lastReceivedAt receiveCount createdAt } }`
+const GET_OUTBOUND_WEBHOOKS = gql`query($filters: String, $sortField: String, $sortDirection: String) { outboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name url method headers events payloadTemplate enabled lastSentAt lastStatusCode sendCount errorCount lastError retryOnFailure } }`
+const GET_API_KEYS = gql`query($filters: String, $sortField: String, $sortDirection: String) { apiKeys(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name keyPrefix permissions rateLimit enabled lastUsedAt requestCount createdBy expiresAt createdAt } }`
 
 const CREATE_INBOUND = gql`mutation($input: CreateInboundWebhookInput!) { createInboundWebhook(input: $input) { id token } }`
 const UPDATE_INBOUND = gql`mutation($id: ID!, $input: UpdateInboundWebhookInput!) { updateInboundWebhook(id: $id, input: $input) { id } }`
@@ -41,8 +43,6 @@ const PERMISSIONS = ['incidents:read', 'incidents:write', 'changes:read', 'chang
 
 const tabS: React.CSSProperties = { padding: '8px 18px', border: 'none', borderBottom: '2px solid transparent', background: 'none', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', cursor: 'pointer' }
 const tabActiveS: React.CSSProperties = { ...tabS, color: 'var(--color-brand)', borderBottomColor: 'var(--color-brand)' }
-const thS: React.CSSProperties = { textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', borderBottom: '1px solid #e5e7eb' }
-const tdS: React.CSSProperties = { padding: '8px 12px', fontSize: 13, color: 'var(--color-slate-dark)', borderBottom: '1px solid #f3f4f6' }
 const badgeS: React.CSSProperties = { display: 'inline-block', padding: '2px 8px', borderRadius: 12, fontSize: 11, background: '#f0f4ff', color: 'var(--color-brand)', marginRight: 4 }
 const overlayS: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }
 const modalS: React.CSSProperties = { background: '#fff', borderRadius: 12, padding: 24, width: 520, maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.18)' }
@@ -84,14 +84,35 @@ export function IntegrationsPage() {
   const [tab, setTab] = useState<typeof TABS[number]>('Webhook In')
   const [modal, setModal] = useState<'inbound' | 'outbound' | 'apikey' | 'secret' | null>(null)
   const [secret, setSecret] = useState('')
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
+  const filtersJson = filterGroup ? JSON.stringify(filterGroup) : null
+
+  const INBOUND_FILTERS: FieldConfig[] = [
+    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+      { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' }, { value: 'problem', label: 'Problem' },
+    ]},
+    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [{ value: 'true', label: 'Sì' }, { value: 'false', label: 'No' }] },
+    { key: 'name', label: 'Nome', type: 'text' },
+  ]
+  const OUTBOUND_FILTERS: FieldConfig[] = [
+    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [{ value: 'true', label: 'Sì' }, { value: 'false', label: 'No' }] },
+    { key: 'name', label: 'Nome', type: 'text' },
+  ]
+  const APIKEY_FILTERS: FieldConfig[] = [
+    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [{ value: 'true', label: 'Sì' }, { value: 'false', label: 'No' }] },
+    { key: 'name', label: 'Nome', type: 'text' },
+  ]
 
   // Queries
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const inQ = useQuery<any>(GET_INBOUND_WEBHOOKS)
+  const inQ = useQuery<any>(GET_INBOUND_WEBHOOKS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const outQ = useQuery<any>(GET_OUTBOUND_WEBHOOKS)
+  const outQ = useQuery<any>(GET_OUTBOUND_WEBHOOKS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const keyQ = useQuery<any>(GET_API_KEYS)
+  const keyQ = useQuery<any>(GET_API_KEYS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
 
   // Inbound mutations
   const [createIn] = useMutation(CREATE_INBOUND, { refetchQueries: [{ query: GET_INBOUND_WEBHOOKS }] })
@@ -186,6 +207,73 @@ export function IntegrationsPage() {
 
   // Toggle and ModalPortal are defined outside the component to prevent remount on re-render
 
+  // ── Column definitions ─────────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inboundColumns: ColumnDef<any>[] = [
+    { key: 'name', label: 'Nome', sortable: true },
+    { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <span style={badgeS}>{String(v)}</span> },
+    { key: 'id', label: 'Endpoint URL', render: (v) => (
+      <>
+        <span style={{ fontSize: 12, fontFamily: 'monospace' }}>/api/webhooks/in/{String(v)}</span>
+        <Copy size={12} style={{ marginLeft: 6, cursor: 'pointer', color: 'var(--color-slate)' }} onClick={() => copyText(`/api/webhooks/in/${String(v)}`)} />
+      </>
+    ) },
+    { key: 'enabled', label: 'Attivo', render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleInbound(row.id, row.enabled)} /> },
+    { key: 'receiveCount', label: 'Ricevuti', sortable: true, render: (v) => String(v ?? 0) },
+    { key: 'lastReceivedAt', label: 'Ultimo', sortable: true, render: (v) => fmtDate(v as string | null) },
+    { key: 'createdAt', label: '', render: (_v, row) => (
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button style={btnSecondary} title="Rigenera token" onClick={() => handleRegenToken(row.id)}><RefreshCw size={13} /></button>
+        <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteIn({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+      </div>
+    ) },
+  ]
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const outboundColumns: ColumnDef<any>[] = [
+    { key: 'name', label: 'Nome', sortable: true },
+    { key: 'url', label: 'URL', render: (v) => <span style={{ fontSize: 12, fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
+    { key: 'events', label: 'Events', render: (v) => {
+      const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
+      return <>{events.map(e => <span key={e} style={badgeS}>{e}</span>)}</>
+    } },
+    { key: 'enabled', label: 'Attivo', render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleOutbound(row.id, row.enabled)} /> },
+    { key: 'sendCount', label: 'Invii', sortable: true, render: (v) => String(v ?? 0) },
+    { key: 'lastStatusCode', label: 'Ultimo Status', render: (v) => {
+      if (!v) return '—'
+      const ok = Number(v) >= 200 && Number(v) < 300
+      return <span style={{ ...badgeS, background: ok ? '#dcfce7' : '#fee2e2', color: ok ? '#16a34a' : '#dc2626' }}>{String(v)}</span>
+    } },
+    { key: 'lastError', label: 'Ultimo Errore', render: (v) => <span style={{ fontSize: 11, color: '#ef4444', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
+    { key: 'retryOnFailure', label: '', render: (_v, row) => (
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button style={btnSecondary} title="Test" onClick={() => handleTestOutbound(row.id)}><Play size={13} /></button>
+        <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteOut({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+      </div>
+    ) },
+  ]
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const apiKeyColumns: ColumnDef<any>[] = [
+    { key: 'name', label: 'Nome', sortable: true },
+    { key: 'keyPrefix', label: 'Prefisso', render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{String(v)}...</span> },
+    { key: 'permissions', label: 'Permessi', render: (v) => {
+      const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
+      return <>{perms.map(p => <span key={p} style={badgeS}>{p}</span>)}</>
+    } },
+    { key: 'rateLimit', label: 'Rate Limit', sortable: true, render: (v) => `${String(v)}/min` },
+    { key: 'enabled', label: 'Attivo', render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleKey(row.id, row.enabled)} /> },
+    { key: 'lastUsedAt', label: 'Ultimo uso', sortable: true, render: (v) => fmtDate(v as string | null) },
+    { key: 'requestCount', label: 'Richieste', sortable: true, render: (v) => String(v ?? 0) },
+    { key: 'createdAt', label: '', render: (_v, row) => (
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button style={btnSecondary} title="Rigenera chiave" onClick={() => handleRegenApiKey(row.id)}><RefreshCw size={13} /></button>
+        <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteKey({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+      </div>
+    ) },
+  ]
+
   // SecretModal rendered inline below (no text inputs, so no focus issue)
 
   // ── Checkbox helpers ────────────────────────────────────────────────────────
@@ -206,34 +294,14 @@ export function IntegrationsPage() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <button style={btnPrimary} onClick={() => { resetInForm(); setModal('inbound') }}><Plus size={14} /> Nuovo Webhook In</button>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>
-            <th style={thS}>Nome</th><th style={thS}>Entity Type</th><th style={thS}>Endpoint URL</th>
-            <th style={thS}>Attivo</th><th style={thS}>Ricevuti</th><th style={thS}>Ultimo</th><th style={thS}></th>
-          </tr></thead>
-          <tbody>
-            {inbounds.map((w: any) => (
-              <tr key={w.id}>
-                <td style={tdS}>{w.name}</td>
-                <td style={tdS}><span style={badgeS}>{w.entityType}</span></td>
-                <td style={tdS}>
-                  <span style={{ fontSize: 12, fontFamily: 'monospace' }}>/api/webhooks/in/{w.id}</span>
-                  <Copy size={12} style={{ marginLeft: 6, cursor: 'pointer', color: 'var(--color-slate)' }} onClick={() => copyText(`/api/webhooks/in/${w.id}`)} />
-                </td>
-                <td style={tdS}><Toggle on={w.enabled} onClick={() => handleToggleInbound(w.id, w.enabled)} /></td>
-                <td style={tdS}>{w.receiveCount ?? 0}</td>
-                <td style={tdS}>{fmtDate(w.lastReceivedAt)}</td>
-                <td style={tdS}>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button style={btnSecondary} title="Rigenera token" onClick={() => handleRegenToken(w.id)}><RefreshCw size={13} /></button>
-                    <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteIn({ variables: { id: w.id } }) }}><Trash2 size={13} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!inbounds.length && <tr><td style={{ ...tdS, textAlign: 'center', color: 'var(--color-slate)' }} colSpan={7}>Nessun webhook inbound configurato</td></tr>}
-          </tbody>
-        </table>
+        <FilterBuilder fields={INBOUND_FILTERS} onApply={g => setFilterGroup(g)} />
+        <SortableFilterTable<any> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+          columns={inboundColumns}
+          data={inbounds}
+          loading={inQ.loading}
+          emptyMessage="Nessun webhook inbound configurato"
+          label="Webhook Inbound"
+        />
 
         {modal === 'inbound' && (
           <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>
@@ -261,36 +329,14 @@ export function IntegrationsPage() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <button style={btnPrimary} onClick={() => { resetOutForm(); setModal('outbound') }}><Plus size={14} /> Nuovo Webhook Out</button>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>
-            <th style={thS}>Nome</th><th style={thS}>URL</th><th style={thS}>Events</th>
-            <th style={thS}>Attivo</th><th style={thS}>Invii</th><th style={thS}>Ultimo Status</th><th style={thS}>Ultimo Errore</th><th style={thS}></th>
-          </tr></thead>
-          <tbody>
-            {outbounds.map((w: any) => {
-              const events: string[] = typeof w.events === 'string' ? JSON.parse(w.events) : (w.events ?? [])
-              const ok = w.lastStatusCode && w.lastStatusCode >= 200 && w.lastStatusCode < 300
-              return (
-                <tr key={w.id}>
-                  <td style={tdS}>{w.name}</td>
-                  <td style={{ ...tdS, fontSize: 12, fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.url}</td>
-                  <td style={tdS}>{events.map(e => <span key={e} style={badgeS}>{e}</span>)}</td>
-                  <td style={tdS}><Toggle on={w.enabled} onClick={() => handleToggleOutbound(w.id, w.enabled)} /></td>
-                  <td style={tdS}>{w.sendCount ?? 0}</td>
-                  <td style={tdS}>{w.lastStatusCode ? <span style={{ ...badgeS, background: ok ? '#dcfce7' : '#fee2e2', color: ok ? '#16a34a' : '#dc2626' }}>{w.lastStatusCode}</span> : '—'}</td>
-                  <td style={{ ...tdS, fontSize: 11, color: '#ef4444', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.lastError || '—'}</td>
-                  <td style={tdS}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button style={btnSecondary} title="Test" onClick={() => handleTestOutbound(w.id)}><Play size={13} /></button>
-                      <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteOut({ variables: { id: w.id } }) }}><Trash2 size={13} /></button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-            {!outbounds.length && <tr><td style={{ ...tdS, textAlign: 'center', color: 'var(--color-slate)' }} colSpan={8}>Nessun webhook outbound configurato</td></tr>}
-          </tbody>
-        </table>
+        <FilterBuilder fields={OUTBOUND_FILTERS} onApply={g => setFilterGroup(g)} />
+        <SortableFilterTable<any> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+          columns={outboundColumns}
+          data={outbounds}
+          loading={outQ.loading}
+          emptyMessage="Nessun webhook outbound configurato"
+          label="Webhook Outbound"
+        />
 
         {modal === 'outbound' && (
           <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>
@@ -334,35 +380,14 @@ export function IntegrationsPage() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <button style={btnPrimary} onClick={() => { resetKeyForm(); setModal('apikey') }}><Plus size={14} /> Nuova API Key</button>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>
-            <th style={thS}>Nome</th><th style={thS}>Prefisso</th><th style={thS}>Permessi</th>
-            <th style={thS}>Rate Limit</th><th style={thS}>Attivo</th><th style={thS}>Ultimo uso</th><th style={thS}>Richieste</th><th style={thS}></th>
-          </tr></thead>
-          <tbody>
-            {apiKeys.map((k: any) => {
-              const perms: string[] = typeof k.permissions === 'string' ? JSON.parse(k.permissions) : (k.permissions ?? [])
-              return (
-                <tr key={k.id}>
-                  <td style={tdS}>{k.name}</td>
-                  <td style={{ ...tdS, fontFamily: 'monospace', fontSize: 12 }}>{k.keyPrefix}...</td>
-                  <td style={tdS}>{perms.map(p => <span key={p} style={badgeS}>{p}</span>)}</td>
-                  <td style={tdS}>{k.rateLimit}/min</td>
-                  <td style={tdS}><Toggle on={k.enabled} onClick={() => handleToggleKey(k.id, k.enabled)} /></td>
-                  <td style={tdS}>{fmtDate(k.lastUsedAt)}</td>
-                  <td style={tdS}>{k.requestCount ?? 0}</td>
-                  <td style={tdS}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button style={btnSecondary} title="Rigenera chiave" onClick={() => handleRegenApiKey(k.id)}><RefreshCw size={13} /></button>
-                      <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteKey({ variables: { id: k.id } }) }}><Trash2 size={13} /></button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-            {!apiKeys.length && <tr><td style={{ ...tdS, textAlign: 'center', color: 'var(--color-slate)' }} colSpan={8}>Nessuna API key configurata</td></tr>}
-          </tbody>
-        </table>
+        <FilterBuilder fields={APIKEY_FILTERS} onApply={g => setFilterGroup(g)} />
+        <SortableFilterTable<any> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+          columns={apiKeyColumns}
+          data={apiKeys}
+          loading={keyQ.loading}
+          emptyMessage="Nessuna API key configurata"
+          label="API Keys"
+        />
 
         {modal === 'apikey' && (
           <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>

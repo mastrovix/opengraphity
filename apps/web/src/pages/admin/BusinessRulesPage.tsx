@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { toast } from 'sonner'
 import {
   GitBranch, Plus, Trash2, Pencil, GripVertical, ChevronUp, ChevronDown, X,
@@ -79,7 +81,28 @@ function migrateActions(raw: unknown[]): RuleAction[] {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function BusinessRulesPage() {
-  const { data, loading, refetch } = useQuery<{ businessRules: BusinessRule[] }>(GET_BUSINESS_RULES)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
+  const RULE_FILTER_FIELDS: FieldConfig[] = [
+    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+      { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
+      { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
+    ]},
+    { key: 'eventType', label: 'Tipo evento', type: 'enum', options: [
+      { value: 'on_create', label: 'Creazione' }, { value: 'on_update', label: 'Aggiornamento' },
+      { value: 'on_transition', label: 'Transizione' },
+    ]},
+    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [
+      { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
+    ]},
+    { key: 'conditionLogic', label: 'Logica', type: 'enum', options: [
+      { value: 'and', label: 'AND' }, { value: 'or', label: 'OR' },
+    ]},
+    { key: 'name', label: 'Nome', type: 'text' },
+  ]
+  const { data, loading, refetch } = useQuery<{ businessRules: BusinessRule[] }>(GET_BUSINESS_RULES, { variables: { sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null } })
   const [createRule]  = useMutation(CREATE_BUSINESS_RULE)
   const [updateRule]  = useMutation(UPDATE_BUSINESS_RULE)
   const [deleteRule]  = useMutation(DELETE_BUSINESS_RULE)
@@ -169,6 +192,36 @@ export function BusinessRulesPage() {
     catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)) }
   }
 
+  const ruleColumns: ColumnDef<BusinessRule>[] = [
+    { key: 'description', label: '', width: '60px', render: (_v, row) => {
+      const idx = rules.indexOf(row)
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <GripVertical size={14} style={{ color: '#cbd5e1', cursor: 'grab' }} />
+          <button onClick={() => moveRule(idx, -1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} disabled={idx === 0}><ChevronUp size={14} color={idx === 0 ? '#e5e7eb' : '#64748b'} /></button>
+          <button onClick={() => moveRule(idx, 1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} disabled={idx === rules.length - 1}><ChevronDown size={14} color={idx === rules.length - 1 ? '#e5e7eb' : '#64748b'} /></button>
+        </div>
+      )
+    } },
+    { key: 'priority', label: '#', sortable: true, render: (v) => <span style={{ fontWeight: 600, color: 'var(--color-brand)' }}>{String(v)}</span> },
+    { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
+    { key: 'entityType', label: 'Entità', sortable: true },
+    { key: 'eventType', label: 'Evento', sortable: true, render: (v) => String(v).replace('on_', '') },
+    { key: 'conditionLogic', label: 'Logica', render: (v) => <span style={badgeStyle(v === 'AND' ? '#dbeafe' : '#fef3c7', v === 'AND' ? '#1d4ed8' : '#92400e')}>{String(v)}</span> },
+    { key: 'stopOnMatch', label: 'Stop', render: (v) => v ? <span style={badgeStyle('#fee2e2', '#dc2626')}>STOP</span> : null },
+    { key: 'enabled', label: 'Attiva', render: (_v, row) => (
+      <div onClick={() => handleToggleEnabled(row)} style={{ width: 36, height: 20, borderRadius: 10, background: row.enabled ? 'var(--color-brand)' : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background .2s' }}>
+        <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: row.enabled ? 18 : 2, transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.15)' }} />
+      </div>
+    ) },
+    { key: 'id', label: 'Azioni', render: (_v, row) => (
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={() => openEdit(row)} style={{ ...btnSecondary, padding: '4px 8px' }}><Pencil size={13} /></button>
+        <button onClick={() => handleDelete(row.id)} style={{ ...btnSecondary, padding: '4px 8px', color: '#ef4444', borderColor: '#fecaca' }}><Trash2 size={13} /></button>
+      </div>
+    ) },
+  ]
+
   // ── Condition / Action builders ───────────────────────────────────────────
 
   function updateCondition(i: number, patch: Partial<Condition>) {
@@ -195,6 +248,8 @@ export function BusinessRulesPage() {
         <button style={btnPrimary} onClick={openCreate}><Plus size={14} /> Nuova regola</button>
       </div>
 
+      <FilterBuilder fields={RULE_FILTER_FIELDS} onApply={g => setFilterGroup(g)} />
+
       {loading && <p style={{ color: 'var(--color-slate)', fontSize: 13 }}>Caricamento...</p>}
 
       {!loading && !rules.length && (
@@ -205,45 +260,15 @@ export function BusinessRulesPage() {
       )}
 
       {!loading && rules.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
-              {['', '#', 'Nome', 'Entità', 'Evento', 'Logica', 'Stop', 'Attiva', 'Azioni'].map(h => (
-                <th key={h} style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rules.map((r, idx) => (
-              <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '8px 6px', width: 60 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <GripVertical size={14} style={{ color: '#cbd5e1', cursor: 'grab' }} />
-                    <button onClick={() => moveRule(idx, -1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} disabled={idx === 0}><ChevronUp size={14} color={idx === 0 ? '#e5e7eb' : '#64748b'} /></button>
-                    <button onClick={() => moveRule(idx, 1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} disabled={idx === rules.length - 1}><ChevronDown size={14} color={idx === rules.length - 1 ? '#e5e7eb' : '#64748b'} /></button>
-                  </div>
-                </td>
-                <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--color-brand)' }}>{r.priority}</td>
-                <td style={{ padding: '8px 10px', fontWeight: 500 }}>{r.name}</td>
-                <td style={{ padding: '8px 10px' }}>{r.entityType}</td>
-                <td style={{ padding: '8px 10px' }}>{r.eventType.replace('on_', '')}</td>
-                <td style={{ padding: '8px 10px' }}><span style={badgeStyle(r.conditionLogic === 'AND' ? '#dbeafe' : '#fef3c7', r.conditionLogic === 'AND' ? '#1d4ed8' : '#92400e')}>{r.conditionLogic}</span></td>
-                <td style={{ padding: '8px 10px' }}>{r.stopOnMatch && <span style={badgeStyle('#fee2e2', '#dc2626')}>STOP</span>}</td>
-                <td style={{ padding: '8px 10px' }}>
-                  <div onClick={() => handleToggleEnabled(r)} style={{ width: 36, height: 20, borderRadius: 10, background: r.enabled ? 'var(--color-brand)' : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background .2s' }}>
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: r.enabled ? 18 : 2, transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.15)' }} />
-                  </div>
-                </td>
-                <td style={{ padding: '8px 10px' }}>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => openEdit(r)} style={{ ...btnSecondary, padding: '4px 8px' }}><Pencil size={13} /></button>
-                    <button onClick={() => handleDelete(r.id)} style={{ ...btnSecondary, padding: '4px 8px', color: '#ef4444', borderColor: '#fecaca' }}><Trash2 size={13} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <SortableFilterTable<BusinessRule>
+          columns={ruleColumns}
+          onSort={handleSort}
+          sortField={sortField}
+          sortDir={sortDir}
+          data={rules}
+          loading={false}
+          label="Business Rules"
+        />
       )}
 
       {/* ── Modal ──────────────────────────────────────────────────────────── */}

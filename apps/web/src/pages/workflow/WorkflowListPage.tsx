@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { AlertCircle, GitPullRequest, Route, BookOpen } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/ui/skeleton'
 import { GET_WORKFLOW_LIST } from '@/graphql/queries'
 
@@ -16,6 +18,7 @@ interface WorkflowDef {
 }
 
 export function WorkflowListPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { data, loading } = useQuery<{ workflowDefinitions: WorkflowDef[] }>(GET_WORKFLOW_LIST)
 
@@ -23,9 +26,16 @@ export function WorkflowListPage() {
 
   return (
     <PageContainer>
-      <PageTitle icon={<Route size={22} color="var(--color-brand)" />}>
-        Workflow
-      </PageTitle>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <PageTitle icon={<Route size={22} color="var(--color-brand)" />}>
+            {t('pages.workflow.title', 'Workflow')}
+          </PageTitle>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${defs.length} workflow`}
+          </p>
+        </div>
+      </div>
 
       {loading ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
@@ -34,7 +44,10 @@ export function WorkflowListPage() {
           ))}
         </div>
       ) : defs.length === 0 ? (
-        <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessun workflow trovato.</p>
+        <EmptyState
+          icon={<Route size={32} color="var(--color-slate-light)" />}
+          title={t('pages.workflow.noResults', 'Nessun workflow trovato')}
+        />
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           {defs.map((def) => {

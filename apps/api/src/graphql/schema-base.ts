@@ -43,7 +43,7 @@ export function buildBaseSDL(): string {
     changeImpactAnalysis(ciIds: [ID!]!): ImpactAnalysis!
 
     # Service Requests
-    serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String): [ServiceRequest!]!
+    serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): [ServiceRequest!]!
     serviceRequest(id: ID!): ServiceRequest
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
@@ -58,12 +58,12 @@ export function buildBaseSDL(): string {
     itilTypeFields(typeId: ID!): [CIFieldDef!]!
 
     # Teams
-    teams(filters: String): [Team!]!
+    teams(filters: String, sortField: String, sortDirection: String): [Team!]!
     team(id: ID!): Team
 
     # Users
     me: User
-    users: [User!]!
+    users(sortField: String, sortDirection: String): [User!]!
     user(id: ID!): User
 
     # Notification Channels
@@ -94,10 +94,10 @@ export function buildBaseSDL(): string {
     widgetDataPreview(entityType: String!, metric: String!, groupByField: String, filterField: String, filterValue: String, timeRange: String): WidgetDataResult!
 
     # Logs
-    logs(level: String, module: String, search: String, limit: Int, offset: Int, filters: String): LogsResult!
+    logs(limit: Int, offset: Int, filters: String): LogsResult!
 
     # Anomaly Detection
-    anomalies(status: String, severity: String, ruleKey: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): AnomaliesResult!
+    anomalies(limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): AnomaliesResult!
     anomaly(id: ID!): Anomaly
     anomalyStats: AnomalyStats!
     anomalyScanStatus: AnomalyScanStatus!
@@ -127,10 +127,10 @@ export function buildBaseSDL(): string {
     traceInfo:     TraceInfo!
 
     # Audit Log (admin only)
-    auditLog(page: Int, pageSize: Int, action: String, entityType: String, fromDate: String, toDate: String): AuditEntriesResult!
+    auditLog(page: Int, pageSize: Int, filters: String, sortField: String, sortDirection: String): AuditEntriesResult!
 
     # Approval Workflow
-    approvalRequests(status: String, entityType: String, page: Int, pageSize: Int): ApprovalRequestsResult!
+    approvalRequests(page: Int, pageSize: Int, filters: String, sortField: String, sortDirection: String): ApprovalRequestsResult!
     myPendingApprovals: [ApprovalRequest!]!
 
     # Attachments
