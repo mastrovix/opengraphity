@@ -107,12 +107,16 @@ async function reconcileOne(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const SAFE_LABEL_RE = /^[A-Za-z][A-Za-z0-9_]*$/
+
 function ciTypeToLabel(ciType: string): string {
   // Convert snake_case ci_type to PascalCase Neo4j label
-  return ciType
+  const label = ciType
     .split('_')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join('')
+  if (!SAFE_LABEL_RE.test(label)) throw new Error(`Invalid CI type label: ${ciType}`)
+  return label
 }
 
 async function findExisting(
@@ -342,6 +346,7 @@ async function syncRelations(
     const toId = targetResult.records[0]!.get('id') as string
 
     const relType = rel.relation_type.toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+    if (!SAFE_LABEL_RE.test(relType)) continue
 
     if (rel.direction === 'outgoing') {
       const r = await session.executeWrite(tx => tx.run(

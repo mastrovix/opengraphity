@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
+import { useEnumValues } from '@/hooks/useEnumValues'
 import type { Team, User, ChangeTask } from '../change-types'
 import { Badge, TASK_STATUS_COLORS, STATUS_STEP_COLORS, formatDate, groupByField, cardStyle, inputStyle, textareaStyle } from '../change-types'
 import type { TaskHandlers } from './types'
@@ -80,6 +81,9 @@ export function AssessmentTaskList({
 }: AssessmentTaskListProps) {
   const totalCount     = assessmentTasks.length
   const completedCount = assessmentTasks.filter((t) => ['completed', 'skipped', 'rejected'].includes(t.status)).length
+
+  const { values: RISK_LEVELS } = useEnumValues('change', 'risk')
+  const riskOptions = RISK_LEVELS.length > 0 ? RISK_LEVELS : ['low', 'medium', 'high', 'critical']
 
   function getTaskForm(taskId: string) {
     return taskForms[taskId] ?? { riskLevel: 'low', impactDescription: '', mitigation: '', notes: '' }
@@ -262,7 +266,7 @@ export function AssessmentTaskList({
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Risk Level</div>
                   {isEditable ? (
                     <select value={taskForm.riskLevel} onChange={(e) => setTaskForm(task.id, { riskLevel: e.target.value })} style={inputStyle}>
-                      {['low', 'medium', 'high', 'critical'].map((r) => (
+                      {riskOptions.map((r) => (
                         <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
                       ))}
                     </select>

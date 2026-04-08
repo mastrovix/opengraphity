@@ -238,7 +238,7 @@ export default function ReportsPage() {
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        console.error('[reports] stream error:', err)
+        if (import.meta.env.DEV) console.error('[reports] stream error:', err)
         setLocalMessages((prev) => prev.filter((m) => !m.id.startsWith('tmp-')))
       }
     } finally {

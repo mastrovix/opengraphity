@@ -6,6 +6,11 @@ import { audit } from '../../lib/audit.js'
 
 type Props = Record<string, unknown>
 
+const SAFE_LABEL_RE = /^[A-Za-z][A-Za-z0-9_]*$/
+function validateLabel(label: string): void {
+  if (!SAFE_LABEL_RE.test(label)) throw new Error(`Invalid CI type label: ${label}`)
+}
+
 function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
 }
@@ -15,6 +20,7 @@ export function buildCreateMutation(
   neo4jLabel: string,
   mapCI: (props: Props, ciType: CITypeWithDefinitions) => Record<string, unknown>,
 ) {
+  validateLabel(neo4jLabel)
   return async (_: unknown, args: { input: Record<string, unknown> }, ctx: GraphQLContext) =>
     withSession(async (session) => {
       const { input } = args
@@ -71,6 +77,7 @@ export function buildUpdateMutation(
   neo4jLabel: string,
   mapCI: (props: Props, ciType: CITypeWithDefinitions) => Record<string, unknown>,
 ) {
+  validateLabel(neo4jLabel)
   return async (
     _: unknown,
     args: { id: string; input: Record<string, unknown> },
@@ -104,6 +111,7 @@ export function buildUpdateMutation(
 export function buildDeleteMutation(
   neo4jLabel: string,
 ) {
+  validateLabel(neo4jLabel)
   return async (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
     withSession(async session => {
       await session.executeWrite(tx =>
