@@ -19,7 +19,7 @@ import { AutomationPreview } from '@/components/AutomationPreview'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request'] as const
+import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
 const EVENT_TYPES  = ['on_create', 'on_update', 'on_timer', 'on_sla_breach', 'on_field_change'] as const
 // Operators now handled by ConditionRowEditor component
 const ACTION_TYPES = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority'] as const

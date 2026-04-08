@@ -66,7 +66,7 @@ export async function fetchITILTypeById(id: string) {
         } : undefined
         return mapITILField(d.f!.properties, enumRef)
       })
-      .sort((a, b) => (a.order as number) - (b.order as number))
+      .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
 
     return {
       id:               t['id'],
@@ -135,7 +135,7 @@ export function buildITILTypesResolver() {
             } : undefined
             return mapITILField(d.f!.properties, enumRef)
           })
-          .sort((a, b) => (a.order as number) - (b.order as number))
+          .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
 
         return {
           id:               t['id'],

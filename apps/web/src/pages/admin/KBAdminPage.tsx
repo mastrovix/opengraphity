@@ -56,6 +56,8 @@ const EXECUTE_TRANSITION = gql`
   }
 `
 
+const GET_KB_CATEGORIES = gql`query KBAdminCategories { kbCategories { name } }`
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface KBArticle {
@@ -71,7 +73,7 @@ interface ArticleForm {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CATEGORIES  = ['hardware', 'software', 'network', 'security', 'how-to', 'faq', 'general']
+// KB categories loaded dynamically via kbCategories query inside component
 const EMPTY_FORM: ArticleForm = { title: '', body: '', category: 'how-to', tags: '' }
 const PAGE_SIZE = 20
 
@@ -107,6 +109,8 @@ function StatusBadge({ status }: { status: string }) {
 
 export function KBAdminPage() {
   const { t } = useTranslation()
+  const { data: catData } = useQuery<{ kbCategories: { name: string }[] }>(GET_KB_CATEGORIES, { fetchPolicy: 'cache-first' })
+  const CATEGORIES = (catData?.kbCategories ?? []).map(c => c.name)
 
   // List state
   const [page,    setPage]    = useState(0)

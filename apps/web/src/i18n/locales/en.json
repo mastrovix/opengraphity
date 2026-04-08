@@ -9,15 +9,10 @@
     "loading": "Loading...",
     "noResults": "No results",
     "confirm": "Confirm",
-    "close": "Close",
-    "back": "Back",
     "next": "Next →",
     "prev": "← Prev",
     "apply": "Apply",
     "reset": "Reset",
-    "total": "total",
-    "actions": "Actions",
-    "yes": "Yes",
     "no": "No",
     "of": "of",
     "description": "Description",
@@ -47,11 +42,8 @@
     "reportBuilder": "Report Builder",
     "analysis": "Analysis",
     "anomalies": "Anomalies",
-    "topologyMap": "Topology Map",
     "configuration": "Configuration",
     "ciTypeDesigner": "CI Type Designer",
-    "itilDesigner": "ITIL Designer",
-    "enumDesigner": "Dictionary Designer",
     "workflowDesigner": "Workflow Designer",
     "profile": "Profile",
     "logs": "Logs",
@@ -63,29 +55,15 @@
     "notificationChannels": "Notification Channels",
     "notificationRules": "Notification Rules",
     "cmdbSync": "CMDB Sync",
-    "bullBoard": "Job Queue",
-    "monitoring": "Monitoring",
-    "auditLog": "Audit Log",
-    "approvals": "Approvals",
-    "knowledgeBase": "Knowledge Base",
-    "kbAdmin": "KB Admin",
-    "autoTriggers": "Auto Triggers",
-    "businessRules": "Business Rules",
-    "slaPolicies": "SLA Policies",
-    "integrations": "Integrations",
-    "internalChat": "Internal Chat"
+    "bullBoard": "Job Queue"
   },
   "pages": {
     "incidents": {
       "title": "Incidents",
       "new": "+ New Incident",
-      "count_one": "{{count}} incident",
-      "count_other": "{{count}} incidents",
       "severity": "Severity",
       "status": "Status",
-      "assignedTeam": "Assigned Team",
       "createdAt": "Created",
-      "notFound": "Incident not found",
       "title_col": "Title",
       "noResults": "No incidents found",
       "noResultsDesc": "Open a new incident or adjust the applied filters."
@@ -93,13 +71,9 @@
     "changes": {
       "title": "Changes",
       "new": "+ New Change",
-      "count_one": "{{count}} change",
-      "count_other": "{{count}} changes",
       "type": "Type",
       "priority": "Priority",
-      "status": "Status",
       "scheduledStart": "Scheduled Start",
-      "notFound": "Change not found",
       "title_col": "Title",
       "team": "Team",
       "ci": "CI",
@@ -111,44 +85,16 @@
     "problems": {
       "title": "Problems",
       "new": "+ New Problem",
-      "count_one": "{{count}} problem",
-      "count_other": "{{count}} problems",
       "priority": "Priority",
       "status": "Status",
-      "notFound": "Problem not found",
       "title_col": "Title",
-      "ci": "CI",
-      "team": "Team",
       "createdAt": "Created",
       "noResults": "No problems found",
-      "noResultsDesc": "Create a new problem or adjust the filters.",
-      "allStatuses": "All statuses",
-      "allPriorities": "All priorities",
-      "searchPlaceholder": "Search by title...",
-      "statusNew": "New",
-      "statusUnderInvestigation": "Under Investigation",
-      "statusChangeRequested": "Change Requested",
-      "statusChangeInProgress": "Change in Progress",
-      "statusResolved": "Resolved",
-      "statusDeferred": "Deferred",
-      "statusClosed": "Closed",
-      "statusRejected": "Rejected",
-      "titleLabel": "Title *",
-      "titlePlaceholder": "Problem title...",
-      "descriptionLabel": "Description",
-      "descriptionPlaceholder": "Problem description...",
-      "priorityLabel": "Priority",
-      "workaroundLabel": "Workaround",
-      "workaroundPlaceholder": "Temporary workaround...",
-      "problemCreated": "Problem created",
-      "category": "Category",
-      "assignedUser": "Assigned User"
+      "noResultsDesc": "Create a new problem or adjust the filters."
     },
     "requests": {
       "title": "Requests",
       "new": "+ New Request",
-      "count_one": "{{count}} request",
-      "count_other": "{{count}} requests",
       "title_col": "Title",
       "priority": "Priority",
       "status": "Status",
@@ -157,7 +103,6 @@
       "noResultsDesc": "Create a new service request."
     },
     "cmdb": {
-      "title": "CMDB",
       "count": "{{count}} CI",
       "new": "+ New {{type}}",
       "newFeminine": "+ New {{type}}",
@@ -171,21 +116,12 @@
       "ciCreated": "{{type}} created",
       "noResults": "No configuration items found",
       "noResultsDesc": "The CMDB is empty. Add the first CI to get started.",
-      "noCiOfType": "No {{type}}",
-      "filterName": "Name",
-      "filterStatus": "Status",
-      "filterEnvironment": "Environment",
-      "filterOwnerGroup": "Owner Group",
-      "filterCreatedAt": "Created at"
+      "noCiOfType": "No {{type}}"
     },
     "anomalies": {
       "title": "Anomalies",
-      "count_one": "{{count}} anomaly",
-      "count_other": "{{count}} anomalies",
       "severity": "Severity",
       "type": "Type",
-      "detectedAt": "Detected",
-      "resolve": "Resolve",
       "title_col": "Anomaly",
       "entity": "Entity",
       "status": "Status",
@@ -217,20 +153,11 @@
       "resolutionAcceptedRisk": "Accepted risk — aware, no action needed"
     },
     "topology": {
-      "title": "Topology Map",
-      "nodes": "nodes",
-      "relations": "relations",
-      "depth": "Depth",
-      "allEnv": "All environments",
-      "allStatus": "All statuses",
-      "labels": "Labels",
-      "activeIncidents": "active incidents"
+      "title": "Topology Map"
     },
     "teams": {
       "title": "Teams",
       "new": "+ New Team",
-      "count_one": "{{count}} team",
-      "count_other": "{{count}} teams",
       "name": "Name",
       "description": "Description",
       "type": "Type",
@@ -241,8 +168,6 @@
     "users": {
       "title": "Users",
       "newUser": "+ New User",
-      "count_one": "{{count}} user",
-      "count_other": "{{count}} users",
       "name": "Name",
       "email": "Email",
       "role": "Role",
@@ -252,16 +177,10 @@
     },
     "logs": {
       "title": "Logs",
-      "count_one": "{{count}} log",
-      "count_other": "{{count}} logs",
       "level": "Level",
       "message": "Message",
       "source": "Source",
       "timestamp": "Timestamp",
-      "allLevels": "All levels",
-      "allModules": "All modules",
-      "searchPlaceholder": "Search in message…",
-      "search": "Search",
       "refresh": "Refresh",
       "autoRefresh": "Auto-refresh 10s",
       "filterMessage": "Message",
@@ -269,39 +188,16 @@
       "filterModule": "Module",
       "filterDate": "Date"
     },
-    "dashboard": {
-      "title": "Dashboard"
-    },
-    "reportBuilder": {
-      "title": "Report Builder",
-      "count_one": "{{count}} report",
-      "count_other": "{{count}} reports",
-      "new": "+ New Report",
-      "execute": "Execute",
-      "modify": "Edit",
-      "private": "Private",
-      "public": "Public"
-    },
     "aiAnalysis": {
       "title": "AI Analysis",
       "placeholder": "Ask a question about your data...",
-      "newConversation": "New conversation",
       "noConversation": "No conversations",
       "startQuestion": "Ask the first question to start.",
       "subtitle": "Ask questions about your data in natural language"
     },
     "queueStats": {
       "title": "Job Queue",
-      "autoRefresh": "Auto-refreshes every 10 seconds.",
-      "active": "active",
-      "waiting": "waiting",
-      "delayed": "delayed",
-      "failed": "failed",
-      "completed": "completed",
-      "paused": "paused"
-    },
-    "settings": {
-      "title": "Settings"
+      "autoRefresh": "Auto-refreshes every 10 seconds."
     },
     "profile": {
       "title": "Profile",
@@ -319,19 +215,7 @@
       "colEntityId": "Entity ID",
       "colIp": "IP",
       "empty": "No audit entries found",
-      "allActions": "— All actions —",
-      "allTypes": "— All types —",
-      "removeFilters": "Remove filters",
-      "search": "Search",
       "details": "Details — {{action}}",
-      "page": "Page {{page}} · {{total}} total",
-      "prevPage": "Previous page",
-      "nextPage": "Next page",
-      "filterByAction": "Filter by action",
-      "filterByEntityType": "Filter by entity type",
-      "dateFrom": "From date",
-      "dateTo": "To date",
-      "subtitle": "Record of system operations and changes",
       "entries": "entries"
     },
     "dictionary": {
@@ -362,8 +246,7 @@
       "nameFieldLabel": "Name (snake_case)",
       "namePlaceholder": "e.g. priority",
       "labelPlaceholder": "e.g. Priority",
-      "invalidName": "Name must be snake_case (e.g. \"my_enum\")",
-      "scopeSharedOption": "Shared"
+      "invalidName": "Name must be snake_case (e.g. \"my_enum\")"
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -378,331 +261,197 @@
       "title": "Monitoring",
       "subtitle": "Real-time system health, metrics, and tracing",
       "health": {
-        "title":    "System Health",
-        "neo4j":    "Neo4j",
-        "redis":    "Redis",
+        "title": "System Health",
+        "neo4j": "Neo4j",
+        "redis": "Redis",
         "keycloak": "Keycloak",
-        "uptime":   "Uptime",
-        "ok":       "Operational",
-        "error":    "Error",
-        "latency":  "Latency"
+        "uptime": "Uptime",
+        "ok": "Operational",
+        "error": "Error",
+        "latency": "Latency"
       },
       "requests": {
-        "title":     "Request Metrics",
-        "rpm":       "Requests/min",
-        "avg":       "Avg Response",
-        "p95":       "P95 Response",
+        "title": "Request Metrics",
+        "rpm": "Requests/min",
+        "avg": "Avg Response",
+        "p95": "P95 Response",
         "errorRate": "Error Rate"
       },
       "queues": {
-        "title":     "BullMQ Queues",
-        "waiting":   "Waiting",
-        "active":    "Active",
+        "title": "BullMQ Queues",
+        "waiting": "Waiting",
+        "active": "Active",
         "completed": "Completed",
-        "failed":    "Failed",
-        "delayed":   "Delayed"
+        "failed": "Failed",
+        "delayed": "Delayed"
       },
       "neo4j": {
-        "title":        "Neo4j",
+        "title": "Neo4j",
         "totalQueries": "Total Queries",
-        "avgQuery":     "Avg Query Time",
-        "slowQueries":  "Slow Queries (>500ms)"
+        "avgQuery": "Avg Query Time",
+        "slowQueries": "Slow Queries (>500ms)"
       },
       "tracing": {
-        "title":     "OpenTelemetry Tracing",
-        "enabled":   "Enabled",
-        "disabled":  "Disabled",
+        "title": "OpenTelemetry Tracing",
+        "enabled": "Enabled",
         "noTracing": "Tracing not active. Set OTEL_ENABLED=true and start Jaeger."
       },
       "process": {
-        "title":   "Process",
-        "memory":  "Heap Memory",
-        "rss":     "RSS",
-        "cpu":     "CPU",
-        "pid":     "PID",
+        "title": "Process",
+        "memory": "Heap Memory",
+        "rss": "RSS",
+        "cpu": "CPU",
+        "pid": "PID",
         "version": "Node.js"
       }
     },
     "approvals": {
-      "title":       "Approvals",
-      "subtitle":    "Manage approval requests",
-      "tabMine":     "Pending my approval",
-      "tabAll":      "All",
-      "noPending":   "No pending approvals",
-      "noApprovals": "No requests found",
-      "allStatuses": "All statuses"
+      "title": "Approvals",
+      "subtitle": "Manage approval requests",
+      "tabMine": "Pending my approval",
+      "tabAll": "All",
+      "noPending": "No pending approvals",
+      "noApprovals": "No requests found"
     },
     "kb": {
-      "title":             "Knowledge Base",
-      "subtitle":          "Search articles and solutions",
+      "title": "Knowledge Base",
+      "subtitle": "Search articles and solutions",
       "searchPlaceholder": "Search articles...",
-      "browseCategories":  "Browse by category",
-      "category":          "Category",
-      "noArticles":        "No articles found",
-      "articleNotFound":   "Article not found",
-      "backToList":        "Back to list",
-      "wasHelpful":        "Was this article helpful?",
-      "yes":               "Yes",
-      "no":                "No",
-      "thanks":            "Thank you for your feedback!",
-      "related":           "Related articles",
-      "info":              "Info",
-      "author":            "Author",
-      "published":         "Published",
-      "updated":           "Updated",
-      "views":             "Views"
+      "browseCategories": "Browse by category",
+      "category": "Category",
+      "noArticles": "No articles found",
+      "articleNotFound": "Article not found",
+      "backToList": "Back to list",
+      "wasHelpful": "Was this article helpful?",
+      "yes": "Yes",
+      "no": "No",
+      "thanks": "Thank you for your feedback!",
+      "related": "Related articles",
+      "info": "Info",
+      "author": "Author",
+      "published": "Published",
+      "updated": "Updated",
+      "views": "Views"
     },
     "kbAdmin": {
-      "title":       "Knowledge Base Admin",
-      "new":         "New article",
-      "newArticle":  "New article",
+      "title": "Knowledge Base Admin",
+      "new": "New article",
+      "newArticle": "New article",
       "editArticle": "Edit article",
-      "created":     "Article created",
-      "updated":     "Article updated",
-      "deleted":     "Article deleted",
-      "noArticles":  "No articles",
-      "allStatuses": "All statuses"
+      "created": "Article created",
+      "updated": "Article updated",
+      "deleted": "Article deleted",
+      "noArticles": "No articles"
     }
   },
   "filter": {
     "advancedFilters": "Advanced filters",
-    "activeFilters_one": "{{count}} active filter",
-    "activeFilters_other": "{{count}} active filters",
-    "clearAll": "Clear all",
     "addFilter": "+ Add filter",
     "selectField": "Select field...",
     "andConnector": "AND",
-    "orConnector": "OR",
-    "contains": "contains",
-    "startsWith": "starts with",
-    "endsWith": "ends with",
-    "equals": "equals",
-    "notEquals": "not equals",
-    "isEmpty": "is empty",
-    "isNotEmpty": "is not empty",
-    "after": "after",
-    "before": "before",
-    "between": "between",
-    "today": "today",
-    "last7Days": "last 7 days",
-    "last30Days": "last 30 days",
-    "isOneOf": "is one of",
-    "isNotOneOf": "is not one of"
+    "orConnector": "OR"
   },
   "auth": {
-    "login": "Login",
-    "logout": "Logout",
-    "email": "Email",
-    "password": "Password"
+    "logout": "Logout"
   },
   "anomaly": {
     "rules": {
-      "orphan_ci":             "Orphan CI",
-      "spof":                  "Single Point of Failure",
-      "dependency_cycle":      "Dependency Cycle",
-      "missing_owner":         "CI Without Owner",
+      "orphan_ci": "Orphan CI",
+      "spof": "Single Point of Failure",
+      "dependency_cycle": "Dependency Cycle",
+      "missing_owner": "CI Without Owner",
       "unauthorized_relation": "Unauthorised Relation",
-      "isolated_cluster":      "Isolated Cluster",
-      "risk_concentration":    "Risk Concentration"
-    },
-    "suggestions": {
-      "orphan_ci":             "This CI has no relations. Check if it is still in use — if not, consider deleting it. If it is active, link it to the CIs it depends on.",
-      "spof":                  "This CI is a Single Point of Failure — many services depend on it without redundancy. Consider creating a Change to add a second node or a load balancer.",
-      "dependency_cycle":      "There is a cycle in the dependencies that can cause deadlocks or cascading issues. Review the relations and remove the unnecessary one.",
-      "missing_owner":         "No team is responsible for this CI. Assign an owner team to ensure accountability in the event of an incident.",
-      "unauthorized_relation": "This relation was created without an approved Change. Check whether it is legitimate — if so, create a retroactive Change. If not, remove it.",
-      "isolated_cluster":      "This group of CIs is disconnected from the rest of the infrastructure. Check if it is intentional (e.g. test environment) or if relations are missing.",
-      "risk_concentration":    "Too many critical services are concentrated on this node. Consider redistributing workloads across multiple servers to reduce risk."
+      "isolated_cluster": "Isolated Cluster",
+      "risk_concentration": "Risk Concentration"
     }
   },
   "notifications": {
-    "title":       "Notifications",
+    "title": "Notifications",
     "markAllRead": "Mark all as read",
-    "empty":       "No notifications",
-    "justNow":     "Just now",
-    "minAgo":      "{{count}} min ago",
-    "hoursAgo":    "{{count}}h ago",
-    "daysAgo":     "{{count}}d ago"
+    "empty": "No notifications",
+    "justNow": "Just now",
+    "minAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago"
   },
   "notificationRules": {
-    "title":       "Notification Rules",
+    "title": "Notification Rules",
     "description": "Configure which events generate notifications and through which channels.",
-    "enabled":     "Enabled",
-    "event":       "Event",
+    "enabled": "Enabled",
+    "event": "Event",
     "header": {
       "severity": "Severity",
       "channels": "Channels",
-      "target":   "Recipients"
+      "target": "Recipients"
     },
-    "category": {
-      "incident": "Incident",
-      "change":   "Change",
-      "problem":  "Problem",
-      "sla":      "SLA"
-    },
-    "severity": {
-      "info":    "Info",
-      "success": "Success",
-      "warning": "Warning",
-      "error":   "Error"
-    },
-    "channels": {
-      "inApp": "In-App",
-      "slack": "Slack",
-      "teams": "Teams",
-      "email": "Email"
-    },
-    "target": {
-      "all":         "All",
-      "assignee":    "Assignee",
-      "teamOwner":   "Team Owner",
-      "adminOnly":   "Admin only",
-      "managerOnly": "Manager only"
-    },
-    "addRule":      "New rule",
-    "deleteRule":   "Delete rule",
-    "eventType":    "Event type",
-    "titleKey":     "Notification title",
-    "customEvent":  "Custom event…",
-    "save":         "Save",
-    "cancel":       "Cancel"
+    "addRule": "New rule",
+    "deleteRule": "Delete rule",
+    "eventType": "Event type",
+    "titleKey": "Notification title",
+    "customEvent": "Custom event…",
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "workflow": {
-    "addAction":    "Add action",
+    "addAction": "Add action",
     "removeAction": "Remove",
-    "actionType":   "Action type",
-    "params":       "Parameters",
-    "help": {
-      "schedule_job": "After the specified time, the job will be executed automatically (e.g. auto_close closes the incident).",
-      "create_entity": "Creates a new entity (incident, problem, change) linked to the current one.",
-      "assign_to":     "Assigns the entity to a team or user by ID or template.",
-      "update_field":  "Updates a field on the entity (severity, priority, status, description, category).",
-      "call_webhook":  "Calls an external HTTPS webhook with a JSON payload."
-    },
+    "actionType": "Action type",
     "actions": {
-      "sla_start":     "Start SLA timer",
-      "sla_stop":      "Stop SLA timer",
-      "schedule_job":  "Schedule automatic job",
-      "cancel_job":    "Cancel scheduled job",
-      "notify_rule":   "Notification rule",
-      "create_entity": "Create entity",
-      "assign_to":     "Assign to",
-      "update_field":  "Update field",
-      "call_webhook":  "Call webhook",
-      "sla_response":  "response",
-      "sla_resolve":   "resolution",
-      "auto_close":    "auto-close",
-      "after":         "after"
+      "sla_response": "response",
+      "sla_resolve": "resolution",
+      "after": "after"
     }
-  },
-  "notification": {
-    "incident": {
-      "created":     { "title": "New Incident" },
-      "assigned":    { "title": "Incident Assigned" },
-      "in_progress": { "title": "Incident In Progress" },
-      "on_hold":     { "title": "Incident On Hold" },
-      "escalated":   { "title": "Incident Escalated" },
-      "resolved":    { "title": "Incident Resolved" },
-      "closed":      { "title": "Incident Closed" }
-    },
-    "change": {
-      "approved":      { "title": "Change Approved" },
-      "completed":     { "title": "Change Completed" },
-      "failed":        { "title": "Change Failed" },
-      "rejected":      { "title": "Change Rejected" },
-      "task_assigned": { "title": "Change Task Assigned" }
-    },
-    "sla": {
-      "warning":  { "title": "SLA Warning" },
-      "breached": { "title": "SLA Breached" }
-    },
-    "problem": {
-      "created":       { "title": "New Problem" },
-      "investigating": { "title": "Problem Under Investigation" },
-      "deferred":      { "title": "Problem Deferred" },
-      "resolved":      { "title": "Problem Resolved" },
-      "closed":        { "title": "Problem Closed" }
-    }
-  },
-  "attachments": {
-    "title":       "Attachments",
-    "dropHint":    "Drag files here or click to select",
-    "maxSize":     "Max 10MB per file • PDF, Word, Excel, images, ZIP",
-    "uploading":   "Uploading...",
-    "uploaded":    "File uploaded",
-    "deleted":     "Attachment deleted",
-    "noAttachments": "No attachments",
-    "invalidType": "File type not allowed: {{type}}",
-    "tooLarge":    "File too large (max 10MB)"
-  },
-  "comments": {
-    "title":        "Comments",
-    "noComments":   "No comments yet",
-    "placeholder":  "Write a comment...",
-    "internal":     "Internal",
-    "internalNote": "Internal note",
-    "send":         "Send"
   },
   "itilDesigner": {
-    "title":           "ITIL Type Designer",
-    "subtitle":        "Configure ITIL entity fields",
-    "systemField":     "System field",
-    "customField":     "Custom field",
-    "addField":        "Add field",
-    "addEnumValue":    "Add value",
-    "removeEnumValue": "Remove value",
-    "fieldName":       "Field name",
-    "fieldLabel":      "Label",
-    "fieldType":       "Type",
-    "enumValues":      "Enum values",
-    "required":        "Required",
-    "save":            "Save",
-    "saved":           "Changes saved",
+    "title": "ITIL Type Designer",
+    "subtitle": "Configure ITIL entity fields",
+    "systemField": "System field",
+    "addField": "Add field",
+    "fieldName": "Field name",
+    "fieldLabel": "Label",
+    "fieldType": "Type",
+    "required": "Required",
+    "save": "Save",
+    "saved": "Changes saved",
     "ciRelations": {
-      "tabTitle":          "CI Relations",
-      "addRelation":       "Add relation",
-      "ciType":            "CI Type",
-      "relationType":      "Relation type",
-      "direction":         "Direction",
-      "description":       "Description",
-      "outgoing":          "Outgoing (ITIL → CI)",
-      "incoming":          "Incoming (CI → ITIL)",
-      "empty":             "No CI relations configured. Click \"Add relation\" to add one.",
-      "suggestions":       "Suggested: IMPACTS, AFFECTED_BY, MODIFIES, TARGETS, ROOT_CAUSE, DEPENDS_ON",
-      "confirmDelete":     "Delete this relation rule?",
-      "selectCIType":      "— Select CI type —",
-      "relationTypeHint":  "Neo4j relation label (uppercase)",
-      "cancel":            "Cancel",
-      "add":               "Add"
+      "addRelation": "Add relation",
+      "ciType": "CI Type",
+      "relationType": "Relation type",
+      "direction": "Direction",
+      "description": "Description",
+      "outgoing": "Outgoing (ITIL → CI)",
+      "incoming": "Incoming (CI → ITIL)",
+      "empty": "No CI relations configured. Click \"Add relation\" to add one.",
+      "suggestions": "Suggested: IMPACTS, AFFECTED_BY, MODIFIES, TARGETS, ROOT_CAUSE, DEPENDS_ON",
+      "confirmDelete": "Delete this relation rule?",
+      "selectCIType": "— Select CI type —",
+      "cancel": "Cancel",
+      "add": "Add"
     }
   },
   "fieldRules": {
     "show": "Show",
     "hide": "Hide",
     "visibility": {
-      "title":                  "VISIBILITY RULES",
-      "subtitle":               "Show or hide fields based on other field values",
-      "add":                    "Add rule",
-      "empty":                  "No visibility rules. Click \"Add rule\" to add one.",
-      "triggerField":           "Trigger field",
-      "triggerValue":           "Trigger value",
-      "triggerValuePlaceholder":"Enter value…",
-      "action":                 "Action",
-      "targetField":            "Target field",
-      "ruleDesc":               "When {{triggerField}} = {{triggerValue}} → {{action}} {{targetField}}",
-      "created":                "Visibility rule created",
-      "updated":                "Visibility rule updated",
-      "deleted":                "Visibility rule deleted"
+      "title": "VISIBILITY RULES",
+      "subtitle": "Show or hide fields based on other field values",
+      "add": "Add rule",
+      "empty": "No visibility rules. Click \"Add rule\" to add one.",
+      "triggerField": "Trigger field",
+      "triggerValue": "Trigger value",
+      "triggerValuePlaceholder": "Enter value…",
+      "action": "Action",
+      "targetField": "Target field",
+      "ruleDesc": "When {{triggerField}} = {{triggerValue}} → {{action}} {{targetField}}",
+      "created": "Visibility rule created",
+      "updated": "Visibility rule updated",
+      "deleted": "Visibility rule deleted"
     },
     "requirement": {
-      "title":      "REQUIRED FIELDS",
-      "subtitle":   "Configure which fields are mandatory, optionally per workflow step",
-      "field":      "Field",
-      "allSteps":   "All steps"
-    },
-    "validation": {
-      "required":         "\"{{field}}\" is required",
-      "requiredForStep":  "\"{{field}}\" is required for step \"{{step}}\""
+      "title": "REQUIRED FIELDS",
+      "subtitle": "Configure which fields are mandatory, optionally per workflow step",
+      "field": "Field",
+      "allSteps": "All steps"
     }
   }
 }

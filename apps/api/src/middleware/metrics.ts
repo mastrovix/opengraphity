@@ -414,7 +414,7 @@ export function getRequestMetrics(): RequestMetricsData {
   let p95ResponseMs = 0
   if (histCount > 0) {
     const p95Target = histCount * 0.95
-    const sorted = [...bucketCounts].sort((a, b) => a.le - b.le)
+    const sorted = [...bucketCounts].sort((a, b) => Number(a.le) - Number(b.le))
     for (const b of sorted) {
       if (b.count >= p95Target) {
         p95ResponseMs = b.le * 1000
@@ -470,7 +470,7 @@ export function getGraphQLMetrics(): GraphQLMetricsData {
     count:     s.count,
   }))
 
-  resolverList.sort((a, b) => b.averageMs - a.averageMs)
+  resolverList.sort((a, b) => Number(b.averageMs) - Number(a.averageMs))
 
   const totalOperations = resolverList.reduce((acc, r) => acc + r.count, 0)
 

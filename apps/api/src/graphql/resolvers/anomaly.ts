@@ -3,6 +3,7 @@ import type { GraphQLContext } from '../../context.js'
 import { anomalyScannerQueue } from '../../anomaly/anomalyEngine.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { cache } from '../../lib/cache.js'
+import { logger } from '../../lib/logger.js'
 import { validateStringLength } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 
@@ -205,7 +206,7 @@ export const anomalyResolvers = {
         cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
       } catch (err) {
         // Queue unavailable (Redis down etc.) — log and return false
-        console.error('[anomaly] runAnomalyScanner: failed to enqueue job:', err)
+        logger.error({ err }, 'runAnomalyScanner: failed to enqueue job')
         return false
       }
       void audit(ctx, 'anomaly.scan_triggered', 'AnomalyScanner', ctx.tenantId)

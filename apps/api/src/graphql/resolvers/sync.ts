@@ -424,10 +424,14 @@ export const syncResolvers = {
         const discoveredName   = discovered['name']        as string | undefined
         const discoveredExtId  = discovered['external_id'] as string | undefined
         const discoveredSource = discovered['source']      as string | undefined
+        // Validate ciType against allowed CI labels to prevent label injection
         const ciLabel = conflict.ciType
           .split('_')
           .map((s: string) => s.charAt(0).toUpperCase() + s.slice(1))
           .join('')
+        if (!/^[A-Za-z][A-Za-z0-9]*$/.test(ciLabel)) {
+          throw new Error(`Invalid CI type label: ${conflict.ciType}`)
+        }
 
         if (args.resolution === 'merged') {
           // Update existing CI with discovered properties

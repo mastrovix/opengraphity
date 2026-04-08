@@ -38,7 +38,7 @@ interface BusinessRule {
   priority: number; stopOnMatch: boolean; enabled: boolean
 }
 
-const ENTITY_TYPES  = ['incident', 'problem', 'change', 'service_request'] as const
+import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
 const EVENT_TYPES   = ['on_create', 'on_update', 'on_transition'] as const
 // Operators now handled by ConditionRowEditor component
 const ACTION_TYPES  = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority', 'execute_script', 'call_webhook', 'set_sla'] as const

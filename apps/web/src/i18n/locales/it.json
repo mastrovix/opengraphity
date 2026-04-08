@@ -9,15 +9,10 @@
     "loading": "Caricamento...",
     "noResults": "Nessun risultato",
     "confirm": "Conferma",
-    "close": "Chiudi",
-    "back": "Indietro",
     "next": "Avanti →",
     "prev": "← Prec",
     "apply": "Applica",
     "reset": "Reset",
-    "total": "totale",
-    "actions": "Azioni",
-    "yes": "Sì",
     "no": "No",
     "of": "di",
     "description": "Descrizione",
@@ -47,11 +42,8 @@
     "reportBuilder": "Report Builder",
     "analysis": "Analisi",
     "anomalies": "Anomalie",
-    "topologyMap": "Mappa Topologica",
     "configuration": "Configurazione",
     "ciTypeDesigner": "CI Type Designer",
-    "itilDesigner": "ITIL Designer",
-    "enumDesigner": "Dictionary Designer",
     "workflowDesigner": "Workflow Designer",
     "profile": "Profilo",
     "logs": "Log",
@@ -63,29 +55,15 @@
     "notificationChannels": "Canali Notifica",
     "notificationRules": "Regole Notifiche",
     "cmdbSync": "Sync CMDB",
-    "bullBoard": "Coda Jobs",
-    "monitoring": "Monitoring",
-    "auditLog": "Registro Audit",
-    "approvals": "Approvazioni",
-    "knowledgeBase": "Knowledge Base",
-    "kbAdmin": "KB Admin",
-    "autoTriggers": "Trigger Automatici",
-    "businessRules": "Business Rules",
-    "slaPolicies": "Policy SLA",
-    "integrations": "Integrazioni",
-    "internalChat": "Chat Interna"
+    "bullBoard": "Coda Jobs"
   },
   "pages": {
     "incidents": {
       "title": "Incident",
       "new": "+ Nuovo Incident",
-      "count_one": "{{count}} incident",
-      "count_other": "{{count}} incident",
       "severity": "Severità",
       "status": "Stato",
-      "assignedTeam": "Team Assegnato",
       "createdAt": "Creato il",
-      "notFound": "Incident non trovato",
       "title_col": "Titolo",
       "noResults": "Nessun incident trovato",
       "noResultsDesc": "Apri un nuovo incident o modifica i filtri applicati."
@@ -93,13 +71,9 @@
     "changes": {
       "title": "Change",
       "new": "+ Nuovo Change",
-      "count_one": "{{count}} change",
-      "count_other": "{{count}} change",
       "type": "Tipo",
       "priority": "Priorità",
-      "status": "Stato",
       "scheduledStart": "Inizio Previsto",
-      "notFound": "Change non trovato",
       "title_col": "Titolo",
       "team": "Team",
       "ci": "CI",
@@ -111,44 +85,16 @@
     "problems": {
       "title": "Problem",
       "new": "+ Nuovo Problem",
-      "count_one": "{{count}} problem",
-      "count_other": "{{count}} problem",
       "priority": "Priorità",
       "status": "Stato",
-      "notFound": "Problem non trovato",
       "title_col": "Titolo",
-      "ci": "CI",
-      "team": "Team",
       "createdAt": "Creato il",
       "noResults": "Nessun problema trovato",
-      "noResultsDesc": "Crea un nuovo problem o modifica i filtri.",
-      "allStatuses": "Tutti gli status",
-      "allPriorities": "Tutte le priorità",
-      "searchPlaceholder": "Cerca per titolo...",
-      "statusNew": "Nuovo",
-      "statusUnderInvestigation": "In Analisi",
-      "statusChangeRequested": "Change Richiesta",
-      "statusChangeInProgress": "Change in Progress",
-      "statusResolved": "Risolto",
-      "statusDeferred": "Differito",
-      "statusClosed": "Chiuso",
-      "statusRejected": "Rifiutato",
-      "titleLabel": "Titolo *",
-      "titlePlaceholder": "Titolo del problem...",
-      "descriptionLabel": "Descrizione",
-      "descriptionPlaceholder": "Descrizione del problem...",
-      "priorityLabel": "Priorità",
-      "workaroundLabel": "Workaround",
-      "workaroundPlaceholder": "Workaround temporaneo...",
-      "problemCreated": "Problem creato",
-      "category": "Categoria",
-      "assignedUser": "Utente Assegnato"
+      "noResultsDesc": "Crea un nuovo problem o modifica i filtri."
     },
     "requests": {
       "title": "Richieste",
       "new": "+ Nuova Richiesta",
-      "count_one": "{{count}} richiesta",
-      "count_other": "{{count}} richieste",
       "title_col": "Titolo",
       "priority": "Priorità",
       "status": "Stato",
@@ -157,7 +103,6 @@
       "noResultsDesc": "Crea una nuova service request."
     },
     "cmdb": {
-      "title": "CMDB",
       "count": "{{count}} CI",
       "new": "+ Nuovo {{type}}",
       "newFeminine": "+ Nuova {{type}}",
@@ -171,21 +116,12 @@
       "ciCreated": "{{type}} creato",
       "noResults": "Nessun configuration item trovato",
       "noResultsDesc": "Il CMDB è vuoto. Aggiungi il primo CI per iniziare.",
-      "noCiOfType": "Nessun {{type}}",
-      "filterName": "Nome",
-      "filterStatus": "Stato",
-      "filterEnvironment": "Ambiente",
-      "filterOwnerGroup": "Gruppo Owner",
-      "filterCreatedAt": "Creato il"
+      "noCiOfType": "Nessun {{type}}"
     },
     "anomalies": {
       "title": "Anomalie",
-      "count_one": "{{count}} anomalia",
-      "count_other": "{{count}} anomalie",
       "severity": "Severità",
       "type": "Tipo",
-      "detectedAt": "Rilevato il",
-      "resolve": "Risolvi",
       "title_col": "Anomalia",
       "entity": "Entità",
       "status": "Stato",
@@ -217,20 +153,11 @@
       "resolutionAcceptedRisk": "Rischio accettato — consapevole, non richiede azione"
     },
     "topology": {
-      "title": "Mappa Topologica",
-      "nodes": "nodi",
-      "relations": "relazioni",
-      "depth": "Profondità",
-      "allEnv": "Tutti gli ambienti",
-      "allStatus": "Tutti gli stati",
-      "labels": "Etichette",
-      "activeIncidents": "incident attivi"
+      "title": "Mappa Topologica"
     },
     "teams": {
       "title": "Team",
       "new": "+ Nuovo Team",
-      "count_one": "{{count}} team",
-      "count_other": "{{count}} team",
       "name": "Nome",
       "description": "Descrizione",
       "type": "Tipo",
@@ -241,8 +168,6 @@
     "users": {
       "title": "Utenti",
       "newUser": "+ Nuovo Utente",
-      "count_one": "{{count}} utente",
-      "count_other": "{{count}} utenti",
       "name": "Nome",
       "email": "Email",
       "role": "Ruolo",
@@ -252,16 +177,10 @@
     },
     "logs": {
       "title": "Log",
-      "count_one": "{{count}} log",
-      "count_other": "{{count}} log",
       "level": "Livello",
       "message": "Messaggio",
       "source": "Sorgente",
       "timestamp": "Timestamp",
-      "allLevels": "Tutti i livelli",
-      "allModules": "Tutti i moduli",
-      "searchPlaceholder": "Cerca nel messaggio…",
-      "search": "Cerca",
       "refresh": "Refresh",
       "autoRefresh": "Auto-refresh 10s",
       "filterMessage": "Messaggio",
@@ -269,39 +188,16 @@
       "filterModule": "Modulo",
       "filterDate": "Data"
     },
-    "dashboard": {
-      "title": "Dashboard"
-    },
-    "reportBuilder": {
-      "title": "Report Builder",
-      "count_one": "{{count}} report",
-      "count_other": "{{count}} report",
-      "new": "+ Nuovo Report",
-      "execute": "Esegui",
-      "modify": "Modifica",
-      "private": "Privato",
-      "public": "Pubblico"
-    },
     "aiAnalysis": {
       "title": "AI Analysis",
       "placeholder": "Fai una domanda sui tuoi dati...",
-      "newConversation": "Nuova conversazione",
       "noConversation": "Nessuna conversazione",
       "startQuestion": "Fai la prima domanda per iniziare.",
       "subtitle": "Fai domande sui tuoi dati in linguaggio naturale"
     },
     "queueStats": {
       "title": "Coda Jobs",
-      "autoRefresh": "Si aggiorna automaticamente ogni 10 secondi.",
-      "active": "attivi",
-      "waiting": "in attesa",
-      "delayed": "posticipati",
-      "failed": "falliti",
-      "completed": "completati",
-      "paused": "in pausa"
-    },
-    "settings": {
-      "title": "Impostazioni"
+      "autoRefresh": "Si aggiorna automaticamente ogni 10 secondi."
     },
     "profile": {
       "title": "Profilo",
@@ -319,19 +215,7 @@
       "colEntityId": "ID Entità",
       "colIp": "IP",
       "empty": "Nessuna voce di audit trovata",
-      "allActions": "— Tutte le azioni —",
-      "allTypes": "— Tutti i tipi —",
-      "removeFilters": "Rimuovi filtri",
-      "search": "Cerca",
       "details": "Dettagli — {{action}}",
-      "page": "Pagina {{page}} · {{total}} totali",
-      "prevPage": "Pagina precedente",
-      "nextPage": "Pagina successiva",
-      "filterByAction": "Filtra per azione",
-      "filterByEntityType": "Filtra per tipo entità",
-      "dateFrom": "Data da",
-      "dateTo": "Data a",
-      "subtitle": "Registro delle operazioni e modifiche del sistema",
       "entries": "voci"
     },
     "dictionary": {
@@ -362,8 +246,7 @@
       "nameFieldLabel": "Nome (snake_case)",
       "namePlaceholder": "es. priority",
       "labelPlaceholder": "es. Priority",
-      "invalidName": "Il nome deve essere in snake_case (es. \"my_enum\")",
-      "scopeSharedOption": "Condiviso"
+      "invalidName": "Il nome deve essere in snake_case (es. \"my_enum\")"
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -378,331 +261,197 @@
       "title": "Monitoring",
       "subtitle": "Salute del sistema, metriche e tracciamento in tempo reale",
       "health": {
-        "title":    "Salute del Sistema",
-        "neo4j":    "Neo4j",
-        "redis":    "Redis",
+        "title": "Salute del Sistema",
+        "neo4j": "Neo4j",
+        "redis": "Redis",
         "keycloak": "Keycloak",
-        "uptime":   "Uptime",
-        "ok":       "Operativo",
-        "error":    "Errore",
-        "latency":  "Latenza"
+        "uptime": "Uptime",
+        "ok": "Operativo",
+        "error": "Errore",
+        "latency": "Latenza"
       },
       "requests": {
-        "title":     "Metriche Richieste",
-        "rpm":       "Richieste/min",
-        "avg":       "Risposta Media",
-        "p95":       "Risposta P95",
+        "title": "Metriche Richieste",
+        "rpm": "Richieste/min",
+        "avg": "Risposta Media",
+        "p95": "Risposta P95",
         "errorRate": "Tasso Errori"
       },
       "queues": {
-        "title":     "BullMQ Code",
-        "waiting":   "In attesa",
-        "active":    "Attivi",
+        "title": "BullMQ Code",
+        "waiting": "In attesa",
+        "active": "Attivi",
         "completed": "Completati",
-        "failed":    "Falliti",
-        "delayed":   "Ritardati"
+        "failed": "Falliti",
+        "delayed": "Ritardati"
       },
       "neo4j": {
-        "title":        "Neo4j",
+        "title": "Neo4j",
         "totalQueries": "Query Totali",
-        "avgQuery":     "Tempo Query Medio",
-        "slowQueries":  "Query Lente (>500ms)"
+        "avgQuery": "Tempo Query Medio",
+        "slowQueries": "Query Lente (>500ms)"
       },
       "tracing": {
-        "title":     "OpenTelemetry Tracing",
-        "enabled":   "Abilitato",
-        "disabled":  "Disabilitato",
+        "title": "OpenTelemetry Tracing",
+        "enabled": "Abilitato",
         "noTracing": "Tracing non attivo. Impostare OTEL_ENABLED=true e avviare Jaeger."
       },
       "process": {
-        "title":   "Processo",
-        "memory":  "Heap Memory",
-        "rss":     "RSS",
-        "cpu":     "CPU",
-        "pid":     "PID",
+        "title": "Processo",
+        "memory": "Heap Memory",
+        "rss": "RSS",
+        "cpu": "CPU",
+        "pid": "PID",
         "version": "Node.js"
       }
     },
     "approvals": {
-      "title":       "Approvazioni",
-      "subtitle":    "Gestisci le richieste di approvazione",
-      "tabMine":     "Da approvare",
-      "tabAll":      "Tutte",
-      "noPending":   "Nessuna approvazione in attesa",
-      "noApprovals": "Nessuna richiesta trovata",
-      "allStatuses": "Tutti gli stati"
+      "title": "Approvazioni",
+      "subtitle": "Gestisci le richieste di approvazione",
+      "tabMine": "Da approvare",
+      "tabAll": "Tutte",
+      "noPending": "Nessuna approvazione in attesa",
+      "noApprovals": "Nessuna richiesta trovata"
     },
     "kb": {
-      "title":             "Knowledge Base",
-      "subtitle":          "Cerca articoli e soluzioni",
+      "title": "Knowledge Base",
+      "subtitle": "Cerca articoli e soluzioni",
       "searchPlaceholder": "Cerca articoli...",
-      "browseCategories":  "Sfoglia per categoria",
-      "category":          "Categoria",
-      "noArticles":        "Nessun articolo trovato",
-      "articleNotFound":   "Articolo non trovato",
-      "backToList":        "Torna alla lista",
-      "wasHelpful":        "Questo articolo ti è stato utile?",
-      "yes":               "Sì",
-      "no":                "No",
-      "thanks":            "Grazie per il tuo feedback!",
-      "related":           "Articoli correlati",
-      "info":              "Informazioni",
-      "author":            "Autore",
-      "published":         "Pubblicato",
-      "updated":           "Aggiornato",
-      "views":             "Visualizzazioni"
+      "browseCategories": "Sfoglia per categoria",
+      "category": "Categoria",
+      "noArticles": "Nessun articolo trovato",
+      "articleNotFound": "Articolo non trovato",
+      "backToList": "Torna alla lista",
+      "wasHelpful": "Questo articolo ti è stato utile?",
+      "yes": "Sì",
+      "no": "No",
+      "thanks": "Grazie per il tuo feedback!",
+      "related": "Articoli correlati",
+      "info": "Informazioni",
+      "author": "Autore",
+      "published": "Pubblicato",
+      "updated": "Aggiornato",
+      "views": "Visualizzazioni"
     },
     "kbAdmin": {
-      "title":       "Knowledge Base Admin",
-      "new":         "Nuovo articolo",
-      "newArticle":  "Nuovo articolo",
+      "title": "Knowledge Base Admin",
+      "new": "Nuovo articolo",
+      "newArticle": "Nuovo articolo",
       "editArticle": "Modifica articolo",
-      "created":     "Articolo creato",
-      "updated":     "Articolo aggiornato",
-      "deleted":     "Articolo eliminato",
-      "noArticles":  "Nessun articolo",
-      "allStatuses": "Tutti gli stati"
+      "created": "Articolo creato",
+      "updated": "Articolo aggiornato",
+      "deleted": "Articolo eliminato",
+      "noArticles": "Nessun articolo"
     }
   },
   "filter": {
     "advancedFilters": "Filtri avanzati",
-    "activeFilters_one": "{{count}} filtro attivo",
-    "activeFilters_other": "{{count}} filtri attivi",
-    "clearAll": "Rimuovi tutti",
     "addFilter": "+ Aggiungi filtro",
     "selectField": "Seleziona campo...",
     "andConnector": "E",
-    "orConnector": "O",
-    "contains": "contiene",
-    "startsWith": "inizia con",
-    "endsWith": "finisce con",
-    "equals": "uguale a",
-    "notEquals": "diverso da",
-    "isEmpty": "è vuoto",
-    "isNotEmpty": "non è vuoto",
-    "after": "dopo il",
-    "before": "prima del",
-    "between": "tra",
-    "today": "oggi",
-    "last7Days": "ultimi 7 giorni",
-    "last30Days": "ultimi 30 giorni",
-    "isOneOf": "è uno di",
-    "isNotOneOf": "non è uno di"
+    "orConnector": "O"
   },
   "auth": {
-    "login": "Accedi",
-    "logout": "Esci",
-    "email": "Email",
-    "password": "Password"
+    "logout": "Esci"
   },
   "anomaly": {
     "rules": {
-      "orphan_ci":             "CI Orfano",
-      "spof":                  "Single Point of Failure",
-      "dependency_cycle":      "Ciclo di Dipendenza",
-      "missing_owner":         "CI Senza Owner",
+      "orphan_ci": "CI Orfano",
+      "spof": "Single Point of Failure",
+      "dependency_cycle": "Ciclo di Dipendenza",
+      "missing_owner": "CI Senza Owner",
       "unauthorized_relation": "Relazione Non Autorizzata",
-      "isolated_cluster":      "Cluster Isolato",
-      "risk_concentration":    "Concentrazione di Rischio"
-    },
-    "suggestions": {
-      "orphan_ci":             "Questo CI non ha relazioni. Verifica se è ancora in uso — se no, considera di eliminarlo. Se è attivo, collegalo ai CI da cui dipende.",
-      "spof":                  "Questo CI è un Single Point of Failure — molti servizi dipendono da esso senza ridondanza. Considera di creare un Change per aggiungere un secondo nodo o un load balancer.",
-      "dependency_cycle":      "Esiste un ciclo nelle dipendenze che può causare deadlock o problemi a catena. Rivedi le relazioni e rimuovi quella non necessaria.",
-      "missing_owner":         "Nessun team è responsabile di questo CI. Assegna un team owner per garantire accountability in caso di incident.",
-      "unauthorized_relation": "Questa relazione è stata creata senza un Change approvato. Verifica se è legittima — se sì, crea un Change retroattivo. Se no, rimuovila.",
-      "isolated_cluster":      "Questo gruppo di CI è disconnesso dal resto dell'infrastruttura. Verifica se è intenzionale (es. ambiente test) o se mancano relazioni.",
-      "risk_concentration":    "Troppi servizi critici sono concentrati su questo nodo. Considera di redistribuire i workload su più server per ridurre il rischio."
+      "isolated_cluster": "Cluster Isolato",
+      "risk_concentration": "Concentrazione di Rischio"
     }
   },
   "notifications": {
-    "title":       "Notifiche",
+    "title": "Notifiche",
     "markAllRead": "Segna tutte come lette",
-    "empty":       "Nessuna notifica",
-    "justNow":     "Adesso",
-    "minAgo":      "{{count}} min fa",
-    "hoursAgo":    "{{count}}h fa",
-    "daysAgo":     "{{count}}g fa"
+    "empty": "Nessuna notifica",
+    "justNow": "Adesso",
+    "minAgo": "{{count}} min fa",
+    "hoursAgo": "{{count}}h fa",
+    "daysAgo": "{{count}}g fa"
   },
   "notificationRules": {
-    "title":       "Regole Notifiche",
+    "title": "Regole Notifiche",
     "description": "Configura quali eventi generano notifiche e attraverso quali canali.",
-    "enabled":     "Attiva",
-    "event":       "Evento",
+    "enabled": "Attiva",
+    "event": "Evento",
     "header": {
       "severity": "Severità",
       "channels": "Canali",
-      "target":   "Destinatari"
+      "target": "Destinatari"
     },
-    "category": {
-      "incident": "Incident",
-      "change":   "Change",
-      "problem":  "Problem",
-      "sla":      "SLA"
-    },
-    "severity": {
-      "info":    "Info",
-      "success": "Successo",
-      "warning": "Avviso",
-      "error":   "Errore"
-    },
-    "channels": {
-      "inApp": "In-App",
-      "slack": "Slack",
-      "teams": "Teams",
-      "email": "Email"
-    },
-    "target": {
-      "all":         "Tutti",
-      "assignee":    "Assegnatario",
-      "teamOwner":   "Team Owner",
-      "adminOnly":   "Solo Admin",
-      "managerOnly": "Solo Manager"
-    },
-    "addRule":      "Nuova regola",
-    "deleteRule":   "Elimina regola",
-    "eventType":    "Tipo evento",
-    "titleKey":     "Titolo notifica",
-    "customEvent":  "Evento personalizzato…",
-    "save":         "Salva",
-    "cancel":       "Annulla"
+    "addRule": "Nuova regola",
+    "deleteRule": "Elimina regola",
+    "eventType": "Tipo evento",
+    "titleKey": "Titolo notifica",
+    "customEvent": "Evento personalizzato…",
+    "save": "Salva",
+    "cancel": "Annulla"
   },
   "workflow": {
-    "addAction":    "Aggiungi azione",
+    "addAction": "Aggiungi azione",
     "removeAction": "Rimuovi",
-    "actionType":   "Tipo azione",
-    "params":       "Parametri",
-    "help": {
-      "schedule_job":  "Dopo il tempo indicato, il job verrà eseguito automaticamente (es. auto_close chiude l'incident).",
-      "create_entity": "Crea una nuova entità (incident, problem, change) collegata a quella corrente.",
-      "assign_to":     "Assegna l'entità a un team o utente tramite ID o template.",
-      "update_field":  "Aggiorna un campo dell'entità (severity, priority, status, description, category).",
-      "call_webhook":  "Chiama un webhook HTTPS esterno con un payload JSON."
-    },
+    "actionType": "Tipo azione",
     "actions": {
-      "sla_start":     "Avvia timer SLA",
-      "sla_stop":      "Ferma timer SLA",
-      "schedule_job":  "Pianifica job automatico",
-      "cancel_job":    "Annulla job pianificato",
-      "notify_rule":   "Regola notifica",
-      "create_entity": "Crea entità",
-      "assign_to":     "Assegna a",
-      "update_field":  "Aggiorna campo",
-      "call_webhook":  "Chiama webhook",
-      "sla_response":  "risposta",
-      "sla_resolve":   "risoluzione",
-      "auto_close":    "chiusura automatica",
-      "after":         "dopo"
+      "sla_response": "risposta",
+      "sla_resolve": "risoluzione",
+      "after": "dopo"
     }
-  },
-  "notification": {
-    "incident": {
-      "created":     { "title": "Nuovo Incident" },
-      "assigned":    { "title": "Incident Assegnato" },
-      "in_progress": { "title": "Incident in Lavorazione" },
-      "on_hold":     { "title": "Incident in Attesa" },
-      "escalated":   { "title": "Incident Escalato" },
-      "resolved":    { "title": "Incident Risolto" },
-      "closed":      { "title": "Incident Chiuso" }
-    },
-    "change": {
-      "approved":      { "title": "Change Approvata" },
-      "completed":     { "title": "Change Completata" },
-      "failed":        { "title": "Change Fallita" },
-      "rejected":      { "title": "Change Rifiutata" },
-      "task_assigned": { "title": "Task Change Assegnato" }
-    },
-    "sla": {
-      "warning":  { "title": "SLA in Scadenza" },
-      "breached": { "title": "SLA Violato" }
-    },
-    "problem": {
-      "created":       { "title": "Nuovo Problem" },
-      "investigating": { "title": "Problem in Analisi" },
-      "deferred":      { "title": "Problem Posticipato" },
-      "resolved":      { "title": "Problem Risolto" },
-      "closed":        { "title": "Problem Chiuso" }
-    }
-  },
-  "attachments": {
-    "title":       "Allegati",
-    "dropHint":    "Trascina qui i file o clicca per selezionare",
-    "maxSize":     "Max 10MB per file • PDF, Word, Excel, immagini, ZIP",
-    "uploading":   "Caricamento in corso...",
-    "uploaded":    "File caricato",
-    "deleted":     "Allegato eliminato",
-    "noAttachments": "Nessun allegato",
-    "invalidType": "Tipo file non consentito: {{type}}",
-    "tooLarge":    "File troppo grande (max 10MB)"
-  },
-  "comments": {
-    "title":        "Commenti",
-    "noComments":   "Nessun commento",
-    "placeholder":  "Scrivi un commento...",
-    "internal":     "Interno",
-    "internalNote": "Nota interna",
-    "send":         "Invia"
   },
   "itilDesigner": {
-    "title":           "ITIL Type Designer",
-    "subtitle":        "Configura i campi delle entità ITIL",
-    "systemField":     "Campo di sistema",
-    "customField":     "Campo personalizzato",
-    "addField":        "Aggiungi campo",
-    "addEnumValue":    "Aggiungi valore",
-    "removeEnumValue": "Rimuovi valore",
-    "fieldName":       "Nome campo",
-    "fieldLabel":      "Etichetta",
-    "fieldType":       "Tipo",
-    "enumValues":      "Valori enum",
-    "required":        "Obbligatorio",
-    "save":            "Salva",
-    "saved":           "Modifiche salvate",
+    "title": "ITIL Type Designer",
+    "subtitle": "Configura i campi delle entità ITIL",
+    "systemField": "Campo di sistema",
+    "addField": "Aggiungi campo",
+    "fieldName": "Nome campo",
+    "fieldLabel": "Etichetta",
+    "fieldType": "Tipo",
+    "required": "Obbligatorio",
+    "save": "Salva",
+    "saved": "Modifiche salvate",
     "ciRelations": {
-      "tabTitle":          "Relazioni CI",
-      "addRelation":       "Aggiungi relazione",
-      "ciType":            "Tipo CI",
-      "relationType":      "Tipo relazione",
-      "direction":         "Direzione",
-      "description":       "Descrizione",
-      "outgoing":          "In uscita (ITIL → CI)",
-      "incoming":          "In entrata (CI → ITIL)",
-      "empty":             "Nessuna relazione CI configurata. Clicca \"Aggiungi relazione\" per aggiungerne una.",
-      "suggestions":       "Suggeriti: IMPACTS, AFFECTED_BY, MODIFIES, TARGETS, ROOT_CAUSE, DEPENDS_ON",
-      "confirmDelete":     "Eliminare questa regola di relazione?",
-      "selectCIType":      "— Seleziona tipo CI —",
-      "relationTypeHint":  "Label relazione Neo4j (maiuscolo)",
-      "cancel":            "Annulla",
-      "add":               "Aggiungi"
+      "addRelation": "Aggiungi relazione",
+      "ciType": "Tipo CI",
+      "relationType": "Tipo relazione",
+      "direction": "Direzione",
+      "description": "Descrizione",
+      "outgoing": "In uscita (ITIL → CI)",
+      "incoming": "In entrata (CI → ITIL)",
+      "empty": "Nessuna relazione CI configurata. Clicca \"Aggiungi relazione\" per aggiungerne una.",
+      "suggestions": "Suggeriti: IMPACTS, AFFECTED_BY, MODIFIES, TARGETS, ROOT_CAUSE, DEPENDS_ON",
+      "confirmDelete": "Eliminare questa regola di relazione?",
+      "selectCIType": "— Seleziona tipo CI —",
+      "cancel": "Annulla",
+      "add": "Aggiungi"
     }
   },
   "fieldRules": {
     "show": "Mostra",
     "hide": "Nascondi",
     "visibility": {
-      "title":                  "REGOLE DI VISIBILITÀ",
-      "subtitle":               "Mostra o nascondi campi in base ai valori di altri campi",
-      "add":                    "Aggiungi regola",
-      "empty":                  "Nessuna regola di visibilità. Clicca \"Aggiungi regola\" per crearne una.",
-      "triggerField":           "Campo trigger",
-      "triggerValue":           "Valore trigger",
-      "triggerValuePlaceholder":"Inserisci valore…",
-      "action":                 "Azione",
-      "targetField":            "Campo target",
-      "ruleDesc":               "Quando {{triggerField}} = {{triggerValue}} → {{action}} {{targetField}}",
-      "created":                "Regola di visibilità creata",
-      "updated":                "Regola di visibilità aggiornata",
-      "deleted":                "Regola di visibilità eliminata"
+      "title": "REGOLE DI VISIBILITÀ",
+      "subtitle": "Mostra o nascondi campi in base ai valori di altri campi",
+      "add": "Aggiungi regola",
+      "empty": "Nessuna regola di visibilità. Clicca \"Aggiungi regola\" per crearne una.",
+      "triggerField": "Campo trigger",
+      "triggerValue": "Valore trigger",
+      "triggerValuePlaceholder": "Inserisci valore…",
+      "action": "Azione",
+      "targetField": "Campo target",
+      "ruleDesc": "Quando {{triggerField}} = {{triggerValue}} → {{action}} {{targetField}}",
+      "created": "Regola di visibilità creata",
+      "updated": "Regola di visibilità aggiornata",
+      "deleted": "Regola di visibilità eliminata"
     },
     "requirement": {
-      "title":      "CAMPI OBBLIGATORI",
-      "subtitle":   "Configura quali campi sono obbligatori, opzionalmente per step workflow",
-      "field":      "Campo",
-      "allSteps":   "Tutti gli step"
-    },
-    "validation": {
-      "required":         "Il campo \"{{field}}\" è obbligatorio",
-      "requiredForStep":  "Il campo \"{{field}}\" è obbligatorio per lo step \"{{step}}\""
+      "title": "CAMPI OBBLIGATORI",
+      "subtitle": "Configura quali campi sono obbligatori, opzionalmente per step workflow",
+      "field": "Campo",
+      "allSteps": "Tutti gli step"
     }
   }
 }

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
 import { streamReportAI } from '../services/reportAI.js'
+import { logger } from '../lib/logger.js'
 
 const router: ExpressRouter = Router()
 
@@ -139,7 +140,7 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
       conversationId: convId,
     })
   } catch (err: unknown) {
-    console.error('[report-stream] error:', err)
+    logger.error({ err }, 'report-stream error')
     send('error', { message: err instanceof Error ? err.message : 'Internal error' })
   } finally {
     await session.close()

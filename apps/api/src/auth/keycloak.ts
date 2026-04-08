@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
+import { authLogger as logger } from '../lib/logger.js'
 
 /**
  * Internal Keycloak URL used for server-to-server calls (JWKS fetch).
@@ -93,7 +94,7 @@ export async function verifyKeycloakToken(token: string): Promise<KeycloakTokenP
       },
       (err, decoded) => {
         if (err) {
-          console.error('[KEYCLOAK] verify error:', err.message)
+          logger.error({ err: err.message }, 'verify error')
           reject(err)
         } else {
           resolve(decoded as KeycloakTokenPayload)

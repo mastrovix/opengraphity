@@ -1,4 +1,5 @@
 import { getSession } from '@opengraphity/neo4j'
+import { logger } from '../lib/logger.js'
 
 // ── Schema cache ──────────────────────────────────────────────────────────
 
@@ -291,7 +292,7 @@ REGOLE:
       if (toolResult.length > 8000) toolResult = toolResult.slice(0, 8000) + '\n... (truncated)'
     } catch (err: unknown) {
       toolResult = `Errore query: ${err instanceof Error ? err.message : String(err)}`
-      console.warn('[streamReportAI] Cypher error:', toolResult)
+      logger.warn({ toolResult }, 'streamReportAI Cypher error')
     } finally {
       await querySession.close()
     }
@@ -394,7 +395,7 @@ REGOLE:
       if (toolResult.length > 8000) toolResult = toolResult.slice(0, 8000) + '\n... (truncated)'
     } catch (err: unknown) {
       toolResult = `Errore query: ${err instanceof Error ? err.message : String(err)}`
-      console.warn('[reportAI] Cypher error:', toolResult)
+      logger.warn({ toolResult }, 'reportAI Cypher error')
     } finally {
       await querySession.close()
     }

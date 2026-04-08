@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@apollo/client/react'
+import { useEnumValues } from '@/hooks/useEnumValues'
 import { toast } from 'sonner'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -32,8 +33,7 @@ const COND_OPERATORS: { value: string; label: string; noValue?: boolean }[] = [
   { value: 'is_not_null',label: 'non è vuoto', noValue: true },
 ]
 
-const SEVERITY_VALUES = ['critical', 'high', 'medium', 'low']
-const PRIORITY_VALUES = ['critical', 'high', 'medium', 'low']
+// SEVERITY_VALUES and PRIORITY_VALUES loaded from Neo4j inside component via useEnumValues
 
 const NR_CHANNELS   = ['in_app', 'slack', 'teams', 'email'] as const
 const NR_SEVERITIES = ['info', 'success', 'warning', 'error'] as const
@@ -54,6 +54,8 @@ interface StepPanelProps {
 
 export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
   const { t } = useTranslation()
+  const { values: SEVERITY_VALUES } = useEnumValues('incident', 'severity')
+  const { values: PRIORITY_VALUES } = useEnumValues('incident', 'priority')
   const [activeTab, setActiveTab] = useState<'props' | 'notify'>('props')
   const [label, setLabel]         = useState(step.label)
 

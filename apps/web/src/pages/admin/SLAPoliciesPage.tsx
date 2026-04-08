@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { useEnumValues } from '@/hooks/useEnumValues'
 import { createPortal } from 'react-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -34,9 +35,7 @@ const EMPTY_FORM: FormState = {
   businessHours: true, timezone: 'Europe/Rome',
 }
 
-const ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request'] as const
-const PRIORITIES   = ['critical', 'high', 'medium', 'low'] as const
-const CATEGORIES   = ['hardware', 'software', 'network', 'access', 'other'] as const
+import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
 
 const ENTITY_LABELS: Record<string, string> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
@@ -89,6 +88,8 @@ function applicabilityText(p: SLAPolicy): string {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function SLAPoliciesPage() {
+  const { values: PRIORITIES } = useEnumValues('incident', 'priority')
+  const { values: CATEGORIES } = useEnumValues('incident', 'category')
   const [modalOpen, setModalOpen]     = useState(false)
   const [editingId, setEditingId]     = useState<string | null>(null)
   const [deleteId, setDeleteId]       = useState<string | null>(null)

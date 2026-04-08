@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery } from '@opengraphity/neo4j'
+import { logger } from '../lib/logger.js'
 import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { mapIncident } from '../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
@@ -148,8 +149,7 @@ export async function createIncident(
   void evaluateTriggers(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId)
     .then(() => evaluateBusinessRules(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId))
   scheduleTimerTriggers(ctx.tenantId, 'incident', id).catch((err: unknown) => {
-    // eslint-disable-next-line no-console
-    console.error('[incidentService] scheduleTimerTriggers failed:', err instanceof Error ? err.message : err)
+    logger.error({ err: err instanceof Error ? err.message : err }, 'scheduleTimerTriggers failed')
   })
 
   return created

@@ -40,7 +40,7 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
           isSystem:         f['is_system']         ?? false,
         }
       })
-      .sort((a, b) => (a.order as number) - (b.order as number)),
+      .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)),
     relations: relations
       .filter(r => r && Object.keys(r).length)
       .map(r => ({
@@ -53,7 +53,7 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
         direction:        r['direction'],
         order:            Number(r['order'] ?? 0),
       }))
-      .sort((a, b) => (a.order as number) - (b.order as number)),
+      .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)),
     systemRelations: systemRels
       .filter(sr => sr && Object.keys(sr).length)
       .map(sr => ({
@@ -167,7 +167,7 @@ export function buildCITypesResolver() {
 
         const seen = new Set<string>()
         const fields = [...baseFields, ...typeFields]
-          .sort((a, b) => (a.order as number) - (b.order as number))
+          .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
           .filter(f => { if (seen.has(f.name as string)) return false; seen.add(f.name as string); return true })
 
         return {

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual, randomUUID } from 'crypto'
 import type { Request, Response } from 'express'
 import { getSession } from '@opengraphity/neo4j'
+import { logger } from '../lib/logger.js'
 
 function verifySlackSignature(req: Request): boolean {
   const signingSecret = process.env['SLACK_SIGNING_SECRET'] ?? ''
@@ -107,7 +108,7 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
         ),
       )
       if (!userResult.records.length) {
-        console.warn('No user found for slack_id:', slackUserId)
+        logger.warn({ slackUserId }, 'No user found for slack_id')
         if (responseUrl) {
           await fetch(responseUrl, {
             method: 'POST',
@@ -157,7 +158,7 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
     }
     res.sendStatus(200)
   } catch (err) {
-    console.error('[slack actions] error:', err)
+    logger.error({ err }, 'slack actions error')
     if (!res.headersSent) res.sendStatus(200)
   }
 }
