@@ -19,7 +19,8 @@
     "note": "Nota",
     "resolvedAt": "Risolta il",
     "resolvedBy": "Risolta da",
-    "title": "Titolo"
+    "title": "Titolo",
+    "select": "Seleziona"
   },
   "sidebar": {
     "workspace": "WORKSPACE",
@@ -55,7 +56,21 @@
     "notificationChannels": "Canali Notifica",
     "notificationRules": "Regole Notifiche",
     "cmdbSync": "Sync CMDB",
-    "bullBoard": "Coda Jobs"
+    "bullBoard": "Coda Jobs",
+    "approvals": "Approvazioni",
+    "knowledgeBase": "Knowledge Base",
+    "topologyMap": "Mappa Topologia",
+    "itilDesigner": "ITIL Type Designer",
+    "enumDesigner": "Dizionario Enum",
+    "auditLog": "Audit Log",
+    "monitoring": "Monitoraggio",
+    "kbAdmin": "Knowledge Base Admin",
+    "autoTriggers": "Trigger Automatici",
+    "businessRules": "Business Rules",
+    "slaPolicies": "Policy SLA",
+    "integrations": "Integrazioni",
+    "collapse": "Comprimi sidebar",
+    "expand": "Espandi sidebar"
   },
   "pages": {
     "incidents": {
@@ -66,7 +81,8 @@
       "createdAt": "Creato il",
       "title_col": "Titolo",
       "noResults": "Nessun incident trovato",
-      "noResultsDesc": "Apri un nuovo incident o modifica i filtri applicati."
+      "noResultsDesc": "Apri un nuovo incident o modifica i filtri applicati.",
+      "count": "{{count}} incident"
     },
     "changes": {
       "title": "Change",
@@ -80,7 +96,8 @@
       "createdAt": "Creato il",
       "step": "Step",
       "noResults": "Nessun change trovato",
-      "noResultsDesc": "Crea il primo change o modifica i filtri applicati."
+      "noResultsDesc": "Crea il primo change o modifica i filtri applicati.",
+      "count": "{{count}} change"
     },
     "problems": {
       "title": "Problem",
@@ -90,7 +107,8 @@
       "title_col": "Titolo",
       "createdAt": "Creato il",
       "noResults": "Nessun problema trovato",
-      "noResultsDesc": "Crea un nuovo problem o modifica i filtri."
+      "noResultsDesc": "Crea un nuovo problem o modifica i filtri.",
+      "count": "{{count}} problem"
     },
     "requests": {
       "title": "Richieste",
@@ -100,7 +118,8 @@
       "status": "Stato",
       "createdAt": "Creato il",
       "noResults": "Nessuna richiesta trovata",
-      "noResultsDesc": "Crea una nuova service request."
+      "noResultsDesc": "Crea una nuova service request.",
+      "count": "{{count}} richieste"
     },
     "cmdb": {
       "count": "{{count}} CI",
@@ -150,7 +169,8 @@
       "acceptedRisks": "{{count}} rischi accettati",
       "resolutionResolved": "Risolto — ho fixato il problema",
       "resolutionFalsePositive": "Falso positivo — non è un problema reale",
-      "resolutionAcceptedRisk": "Rischio accettato — consapevole, non richiede azione"
+      "resolutionAcceptedRisk": "Rischio accettato — consapevole, non richiede azione",
+      "count": "{{count}} anomalie"
     },
     "topology": {
       "title": "Mappa Topologica"
@@ -163,7 +183,8 @@
       "type": "Tipo",
       "createdAt": "Creato il",
       "noResults": "Nessun team",
-      "noResultsDesc": "Non ci sono team per questo tenant."
+      "noResultsDesc": "Non ci sono team per questo tenant.",
+      "count": "{{count}} team"
     },
     "users": {
       "title": "Utenti",
@@ -173,7 +194,8 @@
       "role": "Ruolo",
       "createdAt": "Creato il",
       "noResults": "Nessun utente",
-      "noResultsDesc": "Non ci sono utenti per questo tenant."
+      "noResultsDesc": "Non ci sono utenti per questo tenant.",
+      "count": "{{count}} utenti"
     },
     "logs": {
       "title": "Log",
@@ -186,7 +208,8 @@
       "filterMessage": "Messaggio",
       "filterLevel": "Livello",
       "filterModule": "Modulo",
-      "filterDate": "Data"
+      "filterDate": "Data",
+      "count": "{{count}} log"
     },
     "aiAnalysis": {
       "title": "AI Analysis",
@@ -342,6 +365,10 @@
       "updated": "Articolo aggiornato",
       "deleted": "Articolo eliminato",
       "noArticles": "Nessun articolo"
+    },
+    "workflow": {
+      "title": "Workflow",
+      "noResults": "Nessun workflow trovato"
     }
   },
   "filter": {
@@ -390,7 +417,12 @@
     "titleKey": "Titolo notifica",
     "customEvent": "Evento personalizzato…",
     "save": "Salva",
-    "cancel": "Annulla"
+    "cancel": "Annulla",
+    "category": {
+      "custom": "Custom"
+    },
+    "customRule": "Regola personalizzata",
+    "systemRule": "Regola di sistema"
   },
   "workflow": {
     "addAction": "Aggiungi azione",

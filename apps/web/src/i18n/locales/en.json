@@ -19,7 +19,8 @@
     "note": "Note",
     "resolvedAt": "Resolved at",
     "resolvedBy": "Resolved by",
-    "title": "Title"
+    "title": "Title",
+    "select": "Select"
   },
   "sidebar": {
     "workspace": "WORKSPACE",
@@ -55,7 +56,21 @@
     "notificationChannels": "Notification Channels",
     "notificationRules": "Notification Rules",
     "cmdbSync": "CMDB Sync",
-    "bullBoard": "Job Queue"
+    "bullBoard": "Job Queue",
+    "approvals": "Approvals",
+    "knowledgeBase": "Knowledge Base",
+    "topologyMap": "Topology Map",
+    "itilDesigner": "ITIL Type Designer",
+    "enumDesigner": "Enum Designer",
+    "auditLog": "Audit Log",
+    "monitoring": "Monitoring",
+    "kbAdmin": "Knowledge Base Admin",
+    "autoTriggers": "Auto Triggers",
+    "businessRules": "Business Rules",
+    "slaPolicies": "SLA Policies",
+    "integrations": "Integrations",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar"
   },
   "pages": {
     "incidents": {
@@ -66,7 +81,8 @@
       "createdAt": "Created",
       "title_col": "Title",
       "noResults": "No incidents found",
-      "noResultsDesc": "Open a new incident or adjust the applied filters."
+      "noResultsDesc": "Open a new incident or adjust the applied filters.",
+      "count": "{{count}} incidents"
     },
     "changes": {
       "title": "Changes",
@@ -80,7 +96,8 @@
       "createdAt": "Created",
       "step": "Step",
       "noResults": "No changes found",
-      "noResultsDesc": "Create the first change or adjust the applied filters."
+      "noResultsDesc": "Create the first change or adjust the applied filters.",
+      "count": "{{count}} changes"
     },
     "problems": {
       "title": "Problems",
@@ -90,7 +107,8 @@
       "title_col": "Title",
       "createdAt": "Created",
       "noResults": "No problems found",
-      "noResultsDesc": "Create a new problem or adjust the filters."
+      "noResultsDesc": "Create a new problem or adjust the filters.",
+      "count": "{{count}} problems"
     },
     "requests": {
       "title": "Requests",
@@ -100,7 +118,8 @@
       "status": "Status",
       "createdAt": "Created",
       "noResults": "No requests found",
-      "noResultsDesc": "Create a new service request."
+      "noResultsDesc": "Create a new service request.",
+      "count": "{{count}} requests"
     },
     "cmdb": {
       "count": "{{count}} CI",
@@ -150,7 +169,8 @@
       "acceptedRisks": "{{count}} accepted risks",
       "resolutionResolved": "Resolved — I fixed the problem",
       "resolutionFalsePositive": "False positive — not a real problem",
-      "resolutionAcceptedRisk": "Accepted risk — aware, no action needed"
+      "resolutionAcceptedRisk": "Accepted risk — aware, no action needed",
+      "count": "{{count}} anomalies"
     },
     "topology": {
       "title": "Topology Map"
@@ -163,7 +183,8 @@
       "type": "Type",
       "createdAt": "Created",
       "noResults": "No teams",
-      "noResultsDesc": "There are no teams for this tenant."
+      "noResultsDesc": "There are no teams for this tenant.",
+      "count": "{{count}} teams"
     },
     "users": {
       "title": "Users",
@@ -173,7 +194,8 @@
       "role": "Role",
       "createdAt": "Created",
       "noResults": "No users",
-      "noResultsDesc": "There are no users for this tenant."
+      "noResultsDesc": "There are no users for this tenant.",
+      "count": "{{count}} users"
     },
     "logs": {
       "title": "Logs",
@@ -186,7 +208,8 @@
       "filterMessage": "Message",
       "filterLevel": "Level",
       "filterModule": "Module",
-      "filterDate": "Date"
+      "filterDate": "Date",
+      "count": "{{count}} logs"
     },
     "aiAnalysis": {
       "title": "AI Analysis",
@@ -342,6 +365,10 @@
       "updated": "Article updated",
       "deleted": "Article deleted",
       "noArticles": "No articles"
+    },
+    "workflow": {
+      "title": "Workflow",
+      "noResults": "No workflows found"
     }
   },
   "filter": {
@@ -390,7 +417,12 @@
     "titleKey": "Notification title",
     "customEvent": "Custom event…",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "category": {
+      "custom": "Custom"
+    },
+    "customRule": "Custom rule",
+    "systemRule": "System rule"
   },
   "workflow": {
     "addAction": "Add action",
