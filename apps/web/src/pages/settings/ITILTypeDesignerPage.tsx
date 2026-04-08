@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
-import { Settings2, Plus, X, Check, AlertCircle, Bug, GitPullRequest, Inbox } from 'lucide-react'
+import { Settings2, Plus, X, Check, AlertCircle, Search, GitPullRequest, Inbox } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,7 +26,7 @@ import { FormField } from './citype/CIFieldInlineEditor'
 
 const ITIL_TYPE_ICONS: Record<string, LucideIcon> = {
   incident:        AlertCircle,
-  problem:         Bug,
+  problem:         Search,
   change:          GitPullRequest,
   service_request: Inbox,
 }

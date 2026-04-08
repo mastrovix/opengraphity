@@ -7,7 +7,7 @@ import { GET_ANOMALY_STATS } from '@/graphql/queries'
 import {
   LayoutDashboard,
   AlertCircle,
-  Bug,
+  Search,
   GitPullRequest,
   Inbox,
   ListChecks,
@@ -74,7 +74,7 @@ const CONFIG_ITEM_DEFS = [
 
 const ITSM_ITEM_DEFS = [
   { to: '/incidents', labelKey: 'sidebar.incidents', icon: AlertCircle    },
-  { to: '/problems',  labelKey: 'sidebar.problems',  icon: Bug            },
+  { to: '/problems',  labelKey: 'sidebar.problems',  icon: Search         },
   { to: '/changes',   labelKey: 'sidebar.changes',   icon: GitPullRequest },
   { to: '/requests',  labelKey: 'sidebar.requests',  icon: Inbox          },
 ]

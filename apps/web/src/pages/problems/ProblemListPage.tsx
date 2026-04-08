@@ -3,7 +3,7 @@ import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { Bug } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
@@ -79,7 +79,7 @@ export function ProblemListPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Bug size={22} color="var(--color-brand)" />}>
+          <PageTitle icon={<Search size={22} color="var(--color-brand)" />}>
             {t('pages.problems.title')}
           </PageTitle>
           <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
@@ -105,7 +105,7 @@ export function ProblemListPage() {
         columns={columns}
         data={items}
         loading={loading}
-        emptyComponent={<EmptyState icon={<Bug size={32} />} title={t('pages.problems.noResults')} description={t('pages.problems.noResultsDesc')} />}
+        emptyComponent={<EmptyState icon={<Search size={32} />} title={t('pages.problems.noResults')} description={t('pages.problems.noResultsDesc')} />}
         onRowClick={(row) => navigate(`/problems/${row.id}`)}
         onSort={handleSort}
         sortField={sortField}
