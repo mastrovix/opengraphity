@@ -23,8 +23,8 @@ export const labelS: React.CSSProperties = {
 
 export const btnPrimary: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+  padding: '8px 16px', border: 'none', borderRadius: 6, background: '#38bdf8',
+  color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
 }
 
 export const btnSecondary: React.CSSProperties = {

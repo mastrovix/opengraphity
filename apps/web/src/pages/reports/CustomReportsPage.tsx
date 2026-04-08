@@ -19,6 +19,8 @@ import {
 } from '@/graphql/mutations'
 import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon, LayoutGrid } from 'lucide-react'
 import { toast } from 'sonner'
+import { PageTitle } from '@/components/PageTitle'
+import { EmptyState } from '@/components/EmptyState'
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
 import { ReportSectionBuilder, type ReportSectionInput } from '@/components/ReportSectionBuilder'
 
@@ -286,27 +288,32 @@ export function CustomReportsPage() {
       {view === 'list' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px' }}>
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <LayoutGrid size={22} color="var(--color-brand)" />
+              <PageTitle icon={<LayoutGrid size={22} color="var(--color-brand)" />}>
                 {tr('pages.reportBuilder.title')}
-              </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#0f172a' }}>
+              </PageTitle>
+              <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
                 {tr('pages.reportBuilder.count', { count: templates.length })}
               </p>
             </div>
-            <button onClick={() => setShowNewDialog(true)} style={btnPrimary}>{tr('pages.reportBuilder.new')}</button>
+            <button
+              onClick={() => setShowNewDialog(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
+            >
+              {tr('pages.reportBuilder.new')}
+            </button>
           </div>
 
           {/* Empty state */}
           {templates.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--color-slate-light)' }}>
-              <div style={{ fontSize: 48, marginBottom: 12 }}>📊</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>Nessun report ancora</div>
-              <div style={{ fontSize: 14, marginBottom: 20 }}>Crea il tuo primo report personalizzato</div>
-              <button onClick={() => setShowNewDialog(true)} style={btnPrimary}>{tr('pages.reportBuilder.new')}</button>
-            </div>
+            <EmptyState
+              icon={<LayoutGrid size={32} color="var(--color-slate-light)" />}
+              title="Nessun report ancora"
+              description="Crea il tuo primo report personalizzato"
+            />
           )}
 
           {/* Grid */}

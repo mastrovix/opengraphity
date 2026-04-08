@@ -318,10 +318,15 @@ export function QueueStatsPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-        <PageTitle icon={<Activity size={22} color="var(--color-brand)" />}>
-          {t('pages.queueStats.title')}
-        </PageTitle>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <PageTitle icon={<Activity size={22} color="var(--color-brand)" />}>
+            {t('pages.queueStats.title')}
+          </PageTitle>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${queues.length} code`}
+          </p>
+        </div>
         <button
           onClick={() => void refetch()}
           disabled={loading}

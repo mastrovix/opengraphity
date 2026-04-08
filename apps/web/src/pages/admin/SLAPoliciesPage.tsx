@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { createPortal } from 'react-dom'
 import { PageContainer } from '@/components/PageContainer'
+import { PageTitle } from '@/components/PageTitle'
+import { EmptyState } from '@/components/EmptyState'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
-import { Clock, Shield, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Shield, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_SLA_POLICIES, GET_TEAMS } from '@/graphql/queries'
 import { CREATE_SLA_POLICY, UPDATE_SLA_POLICY, DELETE_SLA_POLICY } from '@/graphql/mutations'
@@ -55,8 +57,8 @@ const selectS: React.CSSProperties = {
 const labelS: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4 }
 const btnPrimary: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+  padding: '8px 16px', border: 'none', borderRadius: 6, background: '#38bdf8',
+  color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
 }
 const btnSecondary: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -228,22 +230,22 @@ export function SLAPoliciesPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Shield size={22} color="var(--color-brand)" />
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--color-slate-dark)' }}>SLA Policies</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <PageTitle icon={<Shield size={22} color="var(--color-brand)" />}>SLA Policies</PageTitle>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${policies.length} policy`}
+          </p>
         </div>
         <button style={btnPrimary} onClick={openCreate}><Plus size={15} /> Nuova Policy</button>
       </div>
 
-      {loading && <p style={{ color: 'var(--color-slate)', fontSize: 13 }}>Caricamento...</p>}
-
       {!loading && policies.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--color-slate)' }}>
-          <Clock size={40} strokeWidth={1.5} style={{ marginBottom: 12, opacity: 0.4 }} />
-          <p style={{ fontSize: 15, fontWeight: 500 }}>Nessuna SLA policy configurata</p>
-          <p style={{ fontSize: 13 }}>Crea la prima policy per definire i tempi di risposta e risoluzione.</p>
-        </div>
+        <EmptyState
+          icon={<Shield size={32} color="var(--color-slate-light)" />}
+          title="Nessuna SLA policy configurata"
+          description="Crea la prima policy per definire i tempi di risposta e risoluzione."
+        />
       )}
 
       <FilterBuilder fields={SLA_FILTER_FIELDS} onApply={g => setFilterGroup(g)} />

@@ -289,8 +289,6 @@ export function KBAdminPage() {
         </button>
       </div>
 
-      {/* Standalone filters removed — using FilterBuilder below */}
-
       {/* ── Article form ── */}
       {showForm && (
         <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 20, marginBottom: 20, background: '#f8fafc' }}>

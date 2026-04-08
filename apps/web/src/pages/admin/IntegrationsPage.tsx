@@ -282,10 +282,15 @@ export function IntegrationsPage() {
 
   return (
     <PageContainer>
-      <PageTitle icon={<Plug size={22} color="var(--color-brand)" />}>Integrazioni</PageTitle>
+      <div style={{ marginBottom: 24 }}>
+        <PageTitle icon={<Plug size={22} color="var(--color-brand)" />}>Integrazioni</PageTitle>
+        <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          Webhook, API Keys e connessioni esterne
+        </p>
+      </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e5e7eb', marginTop: 20, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e5e7eb', marginBottom: 20 }}>
         {TABS.map(t => <button key={t} style={tab === t ? tabActiveS : tabS} onClick={() => setTab(t)}>{t}</button>)}
       </div>
 

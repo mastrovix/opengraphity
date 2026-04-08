@@ -4,6 +4,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { EmptyState } from '@/components/EmptyState'
 import { ScrollText } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 
@@ -178,7 +179,7 @@ export function LogsPage() {
   return (
     <PageContainer>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<ScrollText size={22} color="var(--color-brand)" />}>
           {t('pages.logs.title')}
         </PageTitle>
@@ -238,8 +239,11 @@ export function LogsPage() {
             )}
             {!loading && entries.length === 0 && (
               <tr>
-                <td colSpan={4} style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 12 }}>
-                  {t('common.noResults')}
+                <td colSpan={4}>
+                  <EmptyState
+                    icon={<ScrollText size={32} color="var(--color-slate-light)" />}
+                    title={t('common.noResults')}
+                  />
                 </td>
               </tr>
             )}

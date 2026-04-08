@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
+import { EmptyState } from '@/components/EmptyState'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Zap, Plus, Pencil, Trash2, X } from 'lucide-react'
@@ -215,21 +216,23 @@ export function AutoTriggersPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <PageContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <PageTitle icon={<Zap size={22} color="var(--color-brand)" />}>Auto Trigger</PageTitle>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <PageTitle icon={<Zap size={22} color="var(--color-brand)" />}>Auto Trigger</PageTitle>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${triggers.length} trigger`}
+          </p>
+        </div>
         <button style={btnPrimary} onClick={openCreate}><Plus size={15} /> Nuovo Trigger</button>
       </div>
-
-      {loading && <p style={{ color: 'var(--color-slate)', fontSize: 13 }}>Caricamento...</p>}
 
       <FilterBuilder fields={TRIGGER_FILTER_FIELDS} onApply={g => setFilterGroup(g)} />
 
       {!loading && triggers.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-slate)' }}>
-          <Zap size={40} style={{ marginBottom: 12, opacity: .4 }} />
-          <p style={{ fontSize: 14 }}>Nessun trigger configurato</p>
-          <button style={{ ...btnPrimary, marginTop: 12 }} onClick={openCreate}><Plus size={14} /> Crea il primo</button>
-        </div>
+        <EmptyState
+          icon={<Zap size={32} color="var(--color-slate-light)" />}
+          title="Nessun trigger configurato"
+        />
       )}
 
       {!loading && triggers.length > 0 && (

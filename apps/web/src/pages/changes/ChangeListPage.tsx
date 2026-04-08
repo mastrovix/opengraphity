@@ -134,7 +134,7 @@ export function ChangeListPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<GitPullRequest size={22} color="var(--color-brand)" />}>
             {t('pages.changes.title')}

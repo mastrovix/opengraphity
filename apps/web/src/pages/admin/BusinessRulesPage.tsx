@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
+import { EmptyState } from '@/components/EmptyState'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { toast } from 'sonner'
@@ -243,20 +244,23 @@ export function BusinessRulesPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <PageTitle icon={<GitBranch size={22} color="var(--color-brand)" />}>Business Rules</PageTitle>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <PageTitle icon={<GitBranch size={22} color="var(--color-brand)" />}>Business Rules</PageTitle>
+          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            {loading ? '—' : `${rules.length} regole`}
+          </p>
+        </div>
         <button style={btnPrimary} onClick={openCreate}><Plus size={14} /> Nuova regola</button>
       </div>
 
       <FilterBuilder fields={RULE_FILTER_FIELDS} onApply={g => setFilterGroup(g)} />
 
-      {loading && <p style={{ color: 'var(--color-slate)', fontSize: 13 }}>Caricamento...</p>}
-
       {!loading && !rules.length && (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-slate)' }}>
-          <GitBranch size={36} style={{ marginBottom: 8, opacity: 0.4 }} />
-          <p style={{ fontSize: 14 }}>Nessuna regola configurata</p>
-        </div>
+        <EmptyState
+          icon={<GitBranch size={32} color="var(--color-slate-light)" />}
+          title="Nessuna regola configurata"
+        />
       )}
 
       {!loading && rules.length > 0 && (
