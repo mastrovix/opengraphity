@@ -186,7 +186,7 @@ export function ChangeCatalogCreatePage() {
         {t('pages.changeCatalog.preApproved')}
       </div>
 
-      <div style={{ maxWidth: 720 }}>
+      <div>
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '24px 28px' }}>
           <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
             {t('pages.changeCatalog.createTitle')}
