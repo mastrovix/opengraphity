@@ -5,10 +5,11 @@ import type { WorkflowDefinition } from './types.js'
 // ── Standard Change ───────────────────────────────────────────────────────────
 
 export const STANDARD_CHANGE_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
-  name:       'Standard Change',
-  entityType: 'change',
-  version:    1,
-  active:     true,
+  name:          'Standard Change',
+  entityType:    'change',
+  changeSubtype: 'standard',
+  version:       1,
+  active:        true,
   steps: [
     { id: 'step-std-draft',      name: 'draft',      label: 'Bozza',       type: 'start',    enterActions: [], exitActions: [] },
     { id: 'step-std-approved',   name: 'approved',   label: 'Approvato',   type: 'standard', enterActions: [], exitActions: [] },
@@ -31,10 +32,11 @@ export const STANDARD_CHANGE_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId
 // ── Normal Change ─────────────────────────────────────────────────────────────
 
 export const NORMAL_CHANGE_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
-  name:       'Normal Change',
-  entityType: 'change',
-  version:    1,
-  active:     true,
+  name:          'Normal Change',
+  entityType:    'change',
+  changeSubtype: 'normal',
+  version:       1,
+  active:        true,
   steps: [
     { id: 'step-nrm-draft',        name: 'draft',        label: 'Bozza',            type: 'start',    enterActions: [], exitActions: [] },
     { id: 'step-nrm-assessment',   name: 'assessment',   label: 'Assessment',       type: 'standard', enterActions: [], exitActions: [] },
@@ -63,10 +65,11 @@ export const NORMAL_CHANGE_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'>
 // ── Emergency Change ──────────────────────────────────────────────────────────
 
 export const EMERGENCY_CHANGE_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
-  name:       'Emergency Change',
-  entityType: 'change',
-  version:    1,
-  active:     true,
+  name:          'Emergency Change',
+  entityType:    'change',
+  changeSubtype: 'emergency',
+  version:       1,
+  active:        true,
   steps: [
     { id: 'step-emg-draft',              name: 'draft',              label: 'Bozza',                    type: 'start',    enterActions: [], exitActions: [] },
     { id: 'step-emg-emergency_approval', name: 'emergency_approval', label: 'Approvazione Emergency',   type: 'standard', enterActions: [], exitActions: [] },
@@ -105,19 +108,21 @@ async function seedOne(
       await tx.run(`
         MERGE (wd:WorkflowDefinition {tenant_id: $tenantId, name: $name})
         ON CREATE SET
-          wd.id          = $id,
-          wd.entity_type = $entityType,
-          wd.version     = $version,
-          wd.active      = $active,
-          wd.created_at  = $now,
-          wd.updated_at  = $now
+          wd.id             = $id,
+          wd.entity_type    = $entityType,
+          wd.change_subtype = $changeSubtype,
+          wd.version        = $version,
+          wd.active         = $active,
+          wd.created_at     = $now,
+          wd.updated_at     = $now
         ON MATCH SET
-          wd.updated_at  = $now
+          wd.change_subtype = $changeSubtype,
+          wd.updated_at     = $now
         WITH wd
         // Rimuovi step e transizioni esistenti per ricrearli freschi
         OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
         DETACH DELETE s
-      `, { id: defId, tenantId, name: def.name, entityType: def.entityType, version: def.version, active: def.active, now })
+      `, { id: defId, tenantId, name: def.name, entityType: def.entityType, changeSubtype: def.changeSubtype ?? null, version: def.version, active: def.active, now })
 
       // Recupera l'id effettivo (potrebbe essere già esistente)
       const res = await tx.run(

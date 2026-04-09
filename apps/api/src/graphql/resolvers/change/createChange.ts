@@ -1,12 +1,13 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery } from '@opengraphity/neo4j'
-import { workflowEngine } from '@opengraphity/workflow'
+import { workflowEngine, selectWorkflowForEntity } from '@opengraphity/workflow'
 import { withSession } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapChange, type Props } from './mappers.js'
 import { validateStringLength } from '../../../lib/validation.js'
 import { audit } from '../../../lib/audit.js'
+import { logger } from '../../../lib/logger.js'
 
 export async function createChange(
   _: unknown,
@@ -79,16 +80,15 @@ export async function createChange(
 
   // Create workflow instance for the correct definition
   await withSession(async (session) => {
-    // Find the definition matching the change type
-    const defRes = await session.executeRead((tx) => tx.run(`
-      MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: 'change', active: true})
-      WHERE toLower(wd.name) CONTAINS $typePart
-      RETURN wd.id AS defId LIMIT 1
-    `, { tenantId: ctx.tenantId, typePart: input.type.toLowerCase() }))
+    const typePart = input.type.toLowerCase()
 
-    const definitionId = defRes.records.length > 0
-      ? (defRes.records[0].get('defId') as string)
-      : undefined
+    // Use the selector with changeSubtype
+    const selected = await selectWorkflowForEntity(session, ctx.tenantId, 'change', null, typePart)
+    const definitionId = selected?.definitionId
+
+    if (!definitionId) {
+      logger.warn({ type: input.type, tenantId: ctx.tenantId }, 'No workflow found for change type')
+    }
 
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'change', definitionId)
 

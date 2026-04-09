@@ -9,12 +9,19 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { GET_WORKFLOW_LIST } from '@/graphql/queries'
 
 interface WorkflowDef {
-  id:         string
-  name:       string
-  entityType: string
-  category:   string | null
-  active:     boolean
-  version:    number
+  id:             string
+  name:           string
+  entityType:     string
+  category:       string | null
+  active:         boolean
+  version:        number
+  changeSubtype:  string | null
+}
+
+const SUBTYPE_COLORS: Record<string, { bg: string; fg: string }> = {
+  standard:  { bg: '#dcfce7', fg: '#166534' },
+  normal:    { bg: '#dbeafe', fg: '#1e40af' },
+  emergency: { bg: '#fee2e2', fg: '#991b1b' },
 }
 
 const ENTITY_META: Record<string, { label: string; Icon: typeof AlertCircle; color: string }> = {
@@ -124,19 +131,29 @@ export function WorkflowListPage() {
                         ;(e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
                           {def.name}
                         </span>
-                        {def.category ? (
-                          <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
-                            {def.category}
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#166534', fontWeight: 600 }}>
-                            Default
-                          </span>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {def.changeSubtype && (() => {
+                            const sc = SUBTYPE_COLORS[def.changeSubtype] ?? { bg: '#f3f4f6', fg: '#374151' }
+                            return (
+                              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: sc.bg, color: sc.fg, fontWeight: 600 }}>
+                                {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
+                              </span>
+                            )
+                          })()}
+                          {def.category ? (
+                            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
+                              {def.category}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#166534', fontWeight: 600 }}>
+                              Default
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -121,14 +121,15 @@ export interface WorkflowTransitionDef {
 }
 
 export interface WorkflowDefinition {
-  id:          string
-  tenantId:    string
-  name:        string
-  entityType:  string
-  version:     number
-  active:      boolean
-  steps:       WorkflowStepDef[]
-  transitions: WorkflowTransitionDef[]
+  id:              string
+  tenantId:        string
+  name:            string
+  entityType:      string
+  changeSubtype?:  string | null
+  version:         number
+  active:          boolean
+  steps:           WorkflowStepDef[]
+  transitions:     WorkflowTransitionDef[]
 }
 
 export interface WorkflowInstance {

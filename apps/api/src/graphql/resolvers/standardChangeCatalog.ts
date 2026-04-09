@@ -1,6 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { workflowEngine } from '@opengraphity/workflow'
+import { workflowEngine, selectWorkflowForEntity } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { audit } from '../../lib/audit.js'
@@ -50,6 +50,11 @@ function mapEntry(props: Props) {
     rollbackProcedure:          (props['rollback_procedure']          ?? null) as string | null,
     icon:                       (props['icon']                        ?? null) as string | null,
     color:                      (props['color']                       ?? null) as string | null,
+    workflowId:                 (props['workflow_id'] ?? null) as string | null,
+    ciRequired:                 props['ci_required'] === true,
+    maintenanceWindow:          (props['maintenance_window'] ?? null) as string | null,
+    notifyTeam:                 props['notify_team'] === true,
+    requireCompletionConfirm:   props['require_completion_confirm'] === true,
     usageCount:                 Number(props['usage_count'] ?? 0),
     enabled:                    props['enabled'] !== false,
     createdBy:                  (props['created_by']                  ?? null) as string | null,
@@ -296,6 +301,8 @@ async function createStandardChangeCatalogEntry(
     defaultTitleTemplate: string; defaultDescriptionTemplate: string; defaultPriority: string
     ciTypes?: string[]; checklist?: string; estimatedDurationHours?: number
     requiresDowntime?: boolean; rollbackProcedure?: string; icon?: string; color?: string
+    workflowId?: string; ciRequired?: boolean; maintenanceWindow?: string
+    notifyTeam?: boolean; requireCompletionConfirm?: boolean
   },
   ctx: GraphQLContext,
 ) {
@@ -303,6 +310,16 @@ async function createStandardChangeCatalogEntry(
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
   try {
+    // Validate workflowId if provided
+    if (args.workflowId) {
+      const wfCheck = await runQueryOne<{ et: string }>(session, `
+        MATCH (w:WorkflowDefinition {id: $wfId, tenant_id: $tenantId})
+        RETURN w.entity_type AS et
+      `, { wfId: args.workflowId, tenantId: ctx.tenantId })
+      if (!wfCheck) throw new GraphQLError('Workflow not found')
+      if (wfCheck.et !== 'change') throw new GraphQLError('Workflow must be of type change')
+    }
+
     type Row = { props: Props }
     const rows = await runQuery<Row>(session, `
       MATCH (cat:ChangeCatalogCategory {id: $categoryId, tenant_id: $tenantId})
@@ -324,6 +341,11 @@ async function createStandardChangeCatalogEntry(
         rollback_procedure:           $rollbackProcedure,
         icon:                         $icon,
         color:                        $color,
+        workflow_id:                  $workflowId,
+        ci_required:                  $ciRequired,
+        maintenance_window:           $maintenanceWindow,
+        notify_team:                  $notifyTeam,
+        require_completion_confirm:   $requireCompletionConfirm,
         usage_count:                  0,
         enabled:                      true,
         created_by:                   $createdBy,
@@ -345,10 +367,25 @@ async function createStandardChangeCatalogEntry(
       requiresDowntime: args.requiresDowntime ?? false,
       rollbackProcedure: args.rollbackProcedure ?? null,
       icon: args.icon ?? null, color: args.color ?? null,
+      workflowId: args.workflowId ?? null,
+      ciRequired: args.ciRequired ?? false,
+      maintenanceWindow: args.maintenanceWindow ?? null,
+      notifyTeam: args.notifyTeam ?? false,
+      requireCompletionConfirm: args.requireCompletionConfirm ?? false,
       createdBy: ctx.userId, now,
     })
     const row = rows[0]
     if (!row) throw new GraphQLError('Failed to create catalog entry — category not found?')
+
+    // Create USES_WORKFLOW relationship if workflowId provided
+    if (args.workflowId) {
+      await runQuery(session, `
+        MATCH (e:StandardChangeCatalogEntry {id: $id, tenant_id: $tenantId})
+        MATCH (w:WorkflowDefinition {id: $wfId, tenant_id: $tenantId})
+        CREATE (e)-[:USES_WORKFLOW]->(w)
+      `, { id, tenantId: ctx.tenantId, wfId: args.workflowId })
+    }
+
     void audit(ctx, 'catalog_entry.created', 'StandardChangeCatalogEntry', id)
     return mapEntry(row.props)
   } finally {
@@ -365,6 +402,8 @@ async function updateStandardChangeCatalogEntry(
     ciTypes?: string[]; checklist?: string; estimatedDurationHours?: number
     requiresDowntime?: boolean; rollbackProcedure?: string
     icon?: string; color?: string; enabled?: boolean
+    workflowId?: string; ciRequired?: boolean; maintenanceWindow?: string
+    notifyTeam?: boolean; requireCompletionConfirm?: boolean
   },
   ctx: GraphQLContext,
 ) {
@@ -389,6 +428,11 @@ async function updateStandardChangeCatalogEntry(
     if (args.icon != null)                         { sets.push('e.icon = $icon');                                            params['icon'] = args.icon }
     if (args.color != null)                        { sets.push('e.color = $color');                                          params['color'] = args.color }
     if (args.enabled != null)                      { sets.push('e.enabled = $enabled');                                      params['enabled'] = args.enabled }
+    if (args.workflowId !== undefined)             { sets.push('e.workflow_id = $workflowId');                               params['workflowId'] = args.workflowId ?? null }
+    if (args.ciRequired != null)                   { sets.push('e.ci_required = $ciRequired');                               params['ciRequired'] = args.ciRequired }
+    if (args.maintenanceWindow !== undefined)       { sets.push('e.maintenance_window = $maintenanceWindow');                 params['maintenanceWindow'] = args.maintenanceWindow ?? null }
+    if (args.notifyTeam != null)                   { sets.push('e.notify_team = $notifyTeam');                               params['notifyTeam'] = args.notifyTeam }
+    if (args.requireCompletionConfirm != null)     { sets.push('e.require_completion_confirm = $requireCompletionConfirm');  params['requireCompletionConfirm'] = args.requireCompletionConfirm }
 
     type Row = { props: Props }
     const row = await runQueryOne<Row>(session, `
@@ -397,6 +441,23 @@ async function updateStandardChangeCatalogEntry(
       RETURN properties(e) AS props
     `, params)
     if (!row) throw new GraphQLError('Catalog entry not found')
+
+    // Update USES_WORKFLOW relationship if workflowId changed
+    if (args.workflowId !== undefined) {
+      // Remove existing relationship
+      await runQuery(session, `
+        MATCH (e:StandardChangeCatalogEntry {id: $id, tenant_id: $tenantId})-[r:USES_WORKFLOW]->()
+        DELETE r
+      `, { id: args.id, tenantId: ctx.tenantId })
+      // Create new relationship if workflowId is set
+      if (args.workflowId) {
+        await runQuery(session, `
+          MATCH (e:StandardChangeCatalogEntry {id: $id, tenant_id: $tenantId})
+          MATCH (w:WorkflowDefinition {id: $wfId, tenant_id: $tenantId})
+          CREATE (e)-[:USES_WORKFLOW]->(w)
+        `, { id: args.id, tenantId: ctx.tenantId, wfId: args.workflowId })
+      }
+    }
 
     // Update category relationship if categoryId changed
     if (args.categoryId != null) {
@@ -450,23 +511,43 @@ async function createChangeFromCatalog(
     if (!entryRow) throw new GraphQLError('Catalog entry not found or disabled')
     const entry = entryRow.props
 
-    // 2. Resolve CI names for template placeholders
-    let ciNames = ''
+    // 2. Resolve CI details for template placeholders
+    const ciNames: string[] = []
+    const ciTypes: string[] = []
+    const ciEnvs: string[] = []
     if (args.ciIds?.length) {
-      type CIRow = { name: string }
+      type CIRow = { name: string; type: string | null; environment: string | null }
       const ciRows = await runQuery<CIRow>(session, `
         UNWIND $ciIds AS ciId
         MATCH (ci {id: ciId, tenant_id: $tenantId})
-        RETURN ci.name AS name
+        RETURN ci.name AS name, ci.type AS type, ci.environment AS environment
       `, { ciIds: args.ciIds, tenantId: ctx.tenantId })
-      ciNames = ciRows.map((r) => r.name).join(', ')
+      for (const r of ciRows) {
+        ciNames.push(r.name)
+        if (r.type) ciTypes.push(r.type)
+        if (r.environment) ciEnvs.push(r.environment)
+      }
     }
 
-    // 3. Apply title/description from templates
+    // 3. Apply title/description from enhanced templates
+    function resolveTemplate(template: string, vars: Record<string, string>): string {
+      return template.replace(/\{(\w+)\}/g, (_, key: string) => vars[key] ?? `{${key}}`)
+    }
+
+    const mappedEntry = mapEntry(entry)
+    const templateVars: Record<string, string> = {
+      ci_name: ciNames.join(', ') || 'N/A',
+      ci_type: ciTypes.join(', ') || 'N/A',
+      ci_environment: ciEnvs.join(', ') || 'N/A',
+      date: new Date().toLocaleDateString('it-IT'),
+      operator_name: ctx.userId,
+      category: mappedEntry.categoryId ?? '',
+    }
+
     const templateTitle = (entry['default_title_template'] as string) ?? ''
     const templateDesc = (entry['default_description_template'] as string) ?? ''
-    const title = args.title ?? templateTitle.replace(/\{ci_name\}/g, ciNames || 'N/A')
-    const description = args.description ?? templateDesc.replace(/\{ci_name\}/g, ciNames || 'N/A')
+    const title = args.title || resolveTemplate(templateTitle, templateVars)
+    const description = args.description || resolveTemplate(templateDesc, templateVars)
 
     // 4. Create the Change node
     const changeId = uuidv4()
@@ -539,16 +620,23 @@ async function createChangeFromCatalog(
       }
     }
 
-    // 7. Create WorkflowInstance — find standard change workflow definition, auto-approve
-    const defRes = await session.executeRead((tx) => tx.run(`
-      MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: 'change', active: true})
-      WHERE toLower(wd.name) CONTAINS 'standard'
-      RETURN wd.id AS defId LIMIT 1
-    `, { tenantId: ctx.tenantId }))
-
-    const definitionId = defRes.records.length > 0
-      ? (defRes.records[0]!.get('defId') as string)
-      : undefined
+    // 7. Create WorkflowInstance — use entry's workflow or find default standard change workflow
+    let definitionId: string | undefined
+    const entryWorkflowId = (entry['workflow_id'] as string | null) ?? null
+    if (entryWorkflowId) {
+      // Validate the specific workflow exists and is active
+      const wfRow = await runQueryOne<{ id: string }>(session, `
+        MATCH (w:WorkflowDefinition {id: $wfId, tenant_id: $tenantId, active: true})
+        WHERE w.entity_type = 'change'
+        RETURN w.id AS id
+      `, { wfId: entryWorkflowId, tenantId: ctx.tenantId })
+      if (!wfRow) throw new GraphQLError('Configured workflow not found or inactive')
+      definitionId = wfRow.id
+    } else {
+      // Default: find standard change workflow using selector
+      const selected = await selectWorkflowForEntity(session, ctx.tenantId, 'change', null, 'standard')
+      definitionId = selected?.definitionId
+    }
 
     await workflowEngine.createInstance(session, ctx.tenantId, changeId, 'change', definitionId)
 
@@ -629,6 +717,32 @@ async function categoryFieldResolver(
   }
 }
 
+async function workflowFieldResolver(
+  parent: { workflowId: string | null },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  if (!parent.workflowId) return null
+  const session = getSession(undefined, 'READ')
+  try {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (w:WorkflowDefinition {id: $id, tenant_id: $tenantId})
+      RETURN properties(w) AS props
+    `, { id: parent.workflowId, tenantId: ctx.tenantId })
+    if (!row) return null
+    return {
+      id:         row.props['id']          as string,
+      name:       row.props['name']        as string,
+      entityType: row.props['entity_type'] as string,
+      category:   (row.props['category'] ?? null) as string | null,
+      active:     row.props['active'] !== false,
+      version:    Number(row.props['version'] ?? 1),
+    }
+  } finally {
+    await session.close()
+  }
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const standardChangeCatalogResolvers = {
@@ -650,5 +764,6 @@ export const standardChangeCatalogResolvers = {
   },
   StandardChangeCatalogEntry: {
     category: categoryFieldResolver,
+    workflow: workflowFieldResolver,
   },
 }

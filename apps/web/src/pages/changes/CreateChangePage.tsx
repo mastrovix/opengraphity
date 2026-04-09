@@ -5,9 +5,10 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, X, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_ALL_CIS, GET_CHANGE_IMPACT, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_CHANGE_IMPACT, GET_ITIL_CI_RELATION_RULES, GET_WORKFLOW_LIST } from '@/graphql/queries'
 import { ImpactPanel } from '@/components/ImpactPanel'
 import type { ImpactAnalysis } from '@/components/ImpactPanel'
+import { useTranslation } from 'react-i18next'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
 
@@ -133,6 +134,10 @@ function NextBtn({ onClick, label = 'Avanti →', disabled = false }: { onClick:
 
 export function CreateChangePage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
+
+  const { data: wfData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; changeSubtype: string | null; active: boolean; version: number }[] }>(GET_WORKFLOW_LIST)
+  const workflows = wfData?.workflowDefinitions ?? []
 
   const [step,           setStep]          = useState(0)
   const [changeType,     setChangeType]    = useState<keyof typeof TYPE_CONFIG>('normal')
@@ -294,6 +299,17 @@ export function CreateChangePage() {
                 <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 2 }}>Le Standard Change vengono create dal Catalogo →</div>
               </div>
             </div>
+
+            {changeType !== 'standard' && (() => {
+              const matchingWf = workflows.find(w => w.changeSubtype === changeType && w.active)
+              if (!matchingWf) return null
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '8px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 13, color: '#0369a1' }}>
+                  <span style={{ fontWeight: 600 }}>{t('pages.changes.autoWorkflow', 'Workflow')}:</span>
+                  <span>{matchingWf.name} v{matchingWf.version}</span>
+                </div>
+              )
+            })()}
 
             <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 16, paddingTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
               <NextBtn onClick={handleNext} />

@@ -97,6 +97,22 @@ export function WorkflowToolbar({
               v{def.version} · Attivo
             </span>
           )}
+          {def?.changeSubtype && (() => {
+            const subtypeStyles: Record<string, { bg: string; fg: string }> = {
+              standard:  { bg: '#dcfce7', fg: '#166534' },
+              normal:    { bg: '#dbeafe', fg: '#1e40af' },
+              emergency: { bg: '#fee2e2', fg: '#991b1b' },
+            }
+            const s = subtypeStyles[def.changeSubtype] ?? { bg: '#f3f4f6', fg: '#374151' }
+            return (
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 8px',
+                borderRadius: 4, backgroundColor: s.bg, color: s.fg,
+              }}>
+                {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
+              </span>
+            )
+          })()}
         </div>
       </div>
 

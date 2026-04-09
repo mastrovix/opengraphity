@@ -20,7 +20,9 @@ interface CatalogEntry {
   estimatedDurationHours: number | null; requiresDowntime: boolean
   rollbackProcedure: string | null; icon: string | null; color: string | null
   usageCount: number; createdAt: string
+  ciRequired: boolean; maintenanceWindow: string | null
   category: { id: string; name: string; icon: string | null; color: string | null } | null
+  workflow: { id: string; name: string } | null
 }
 
 interface CI { id: string; name: string; type: string; environment: string; status: string }
@@ -186,6 +188,13 @@ export function ChangeCatalogCreatePage() {
         {t('pages.changeCatalog.preApproved')}
       </div>
 
+      {entry.maintenanceWindow && (
+        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 16px', fontSize: 13, color: '#92400e', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+          <Clock size={16} style={{ flexShrink: 0 }} />
+          {t('pages.changeCatalog.maintenanceWindow')}: {entry.maintenanceWindow}
+        </div>
+      )}
+
       <div>
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '24px 28px' }}>
           <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
@@ -263,15 +272,20 @@ export function ChangeCatalogCreatePage() {
           {entry.rollbackProcedure && <RollbackSection rollback={entry.rollbackProcedure} label={t('pages.changeCatalog.rollback')} />}
 
           {/* Actions */}
+          {entry.ciRequired && formCIIds.length === 0 && (
+            <p style={{ fontSize: 12, color: '#dc2626', margin: '8px 0 0' }}>
+              {t('pages.changeCatalog.ciRequiredHint')}
+            </p>
+          )}
           <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
             <button
               onClick={handleCreate}
-              disabled={creating}
+              disabled={!(!creating && (!entry.ciRequired || formCIIds.length > 0))}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px',
                 backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
-                fontSize: 14, fontWeight: 600, cursor: creating ? 'not-allowed' : 'pointer',
-                opacity: creating ? 0.6 : 1, transition: 'background-color 150ms',
+                fontSize: 14, fontWeight: 600, cursor: (!creating && (!entry.ciRequired || formCIIds.length > 0)) ? 'pointer' : 'not-allowed',
+                opacity: (!creating && (!entry.ciRequired || formCIIds.length > 0)) ? 1 : 0.6, transition: 'background-color 150ms',
               }}
               onMouseEnter={e => { if (!creating) (e.currentTarget as HTMLElement).style.backgroundColor = '#15803d' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#16a34a' }}

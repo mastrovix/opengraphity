@@ -120,12 +120,13 @@ export async function workflowDefinition(
     )
 
     return {
-      id:         wd['id']          as string,
-      name:       wd['name']        as string,
-      entityType: wd['entity_type'] as string,
-      category:   (wd['category']   ?? null) as string | null,
-      version:    Number(wd['version'] ?? 1),
-      active:     wd['active']      as boolean,
+      id:            wd['id']              as string,
+      name:          wd['name']            as string,
+      entityType:    wd['entity_type']     as string,
+      category:      (wd['category']       ?? null) as string | null,
+      changeSubtype: (wd['change_subtype'] ?? null) as string | null,
+      version:       Number(wd['version'] ?? 1),
+      active:        wd['active']          as boolean,
       steps: steps.map((s) => ({
         id:           s.properties['id']            as string,
         name:         s.properties['name']          as string,
@@ -183,12 +184,13 @@ export async function workflowDefinitionById(
     )
 
     return {
-      id:         wd['id']          as string,
-      name:       wd['name']        as string,
-      entityType: wd['entity_type'] as string,
-      category:   (wd['category']   ?? null) as string | null,
-      version:    Number(wd['version'] ?? 1),
-      active:     wd['active']      as boolean,
+      id:            wd['id']              as string,
+      name:          wd['name']            as string,
+      entityType:    wd['entity_type']     as string,
+      category:      (wd['category']       ?? null) as string | null,
+      changeSubtype: (wd['change_subtype'] ?? null) as string | null,
+      version:       Number(wd['version'] ?? 1),
+      active:        wd['active']          as boolean,
       steps: steps.map((s) => ({
         id:           s.properties['id']             as string,
         name:         s.properties['name']           as string,
@@ -249,12 +251,13 @@ export async function workflowDefinitions(
       )
 
       results.push({
-        id:         wd['id']          as string,
-        name:       wd['name']        as string,
-        entityType: wd['entity_type'] as string,
-        category:   (wd['category']   ?? null) as string | null,
-        version:    Number(wd['version'] ?? 1),
-        active:     wd['active']      as boolean,
+        id:            wd['id']              as string,
+        name:          wd['name']            as string,
+        entityType:    wd['entity_type']     as string,
+        category:      (wd['category']       ?? null) as string | null,
+        changeSubtype: (wd['change_subtype'] ?? null) as string | null,
+        version:       Number(wd['version'] ?? 1),
+        active:        wd['active']          as boolean,
         steps: steps.map((s) => ({
           id:           s.properties['id']             as string,
           name:         s.properties['name']           as string,

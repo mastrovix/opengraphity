@@ -30,6 +30,12 @@ export function standardChangeCatalogSDL(): string {
     rollbackProcedure: String
     icon: String
     color: String
+    workflowId: String
+    workflow: WorkflowDefinition
+    ciRequired: Boolean!
+    maintenanceWindow: String
+    notifyTeam: Boolean!
+    requireCompletionConfirm: Boolean!
     usageCount: Int!
     enabled: Boolean!
     createdBy: String

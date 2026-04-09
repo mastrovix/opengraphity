@@ -53,14 +53,15 @@ export function workflowSDL(): string {
   }
 
   type WorkflowDefinition {
-    id:          ID!
-    name:        String!
-    entityType:  String!
-    category:    String
-    version:     Int!
-    active:      Boolean!
-    steps:       [WorkflowStep!]!
-    transitions: [WorkflowTransitionDef!]!
+    id:             ID!
+    name:           String!
+    entityType:     String!
+    category:       String
+    changeSubtype:  String
+    version:        Int!
+    active:         Boolean!
+    steps:          [WorkflowStep!]!
+    transitions:    [WorkflowTransitionDef!]!
   }
 
   input UpdateTransitionInput {

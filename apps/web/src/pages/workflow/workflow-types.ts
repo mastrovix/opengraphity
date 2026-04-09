@@ -34,13 +34,14 @@ export interface PendingTransitionChange {
 }
 
 export interface WorkflowDefinition {
-  id:          string
-  name:        string
-  entityType:  string
-  version:     number
-  active:      boolean
-  steps:       WFStep[]
-  transitions: WFTransition[]
+  id:              string
+  name:            string
+  entityType:      string
+  version:         number
+  active:          boolean
+  changeSubtype:   string | null
+  steps:           WFStep[]
+  transitions:     WFTransition[]
 }
 
 export type WorkflowKey = 'incident' | 'standard' | 'normal' | 'emergency'

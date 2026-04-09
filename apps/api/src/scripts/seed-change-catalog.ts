@@ -48,6 +48,11 @@ interface EntrySpec {
   estimatedDurationHours:     number
   requiresDowntime:           boolean
   rollbackProcedure:          string
+  ciRequired:                 boolean
+  maintenanceWindow:          string | null
+  notifyTeam:                 boolean
+  requireCompletionConfirm:   boolean
+  workflowId:                 string | null
 }
 
 const ENTRIES: EntrySpec[] = [
@@ -70,6 +75,11 @@ const ENTRIES: EntrySpec[] = [
     estimatedDurationHours: 2,
     requiresDowntime: false,
     rollbackProcedure: 'Ripristinare il certificato precedente dal backup e riavviare il servizio web.',
+    ciRequired: true,
+    maintenanceWindow: null,
+    notifyTeam: true,
+    requireCompletionConfirm: false,
+    workflowId: null,
   },
   {
     categoryName: 'Sicurezza',
@@ -91,6 +101,11 @@ const ENTRIES: EntrySpec[] = [
     estimatedDurationHours: 4,
     requiresDowntime: true,
     rollbackProcedure: 'Ripristinare lo snapshot pre-patch e riavviare il server dalla configurazione precedente.',
+    ciRequired: true,
+    maintenanceWindow: 'Sabato 02:00-06:00',
+    notifyTeam: true,
+    requireCompletionConfirm: false,
+    workflowId: null,
   },
   {
     categoryName: 'Gestione Accessi',
@@ -110,6 +125,11 @@ const ENTRIES: EntrySpec[] = [
     estimatedDurationHours: 0.5,
     requiresDowntime: false,
     rollbackProcedure: 'Disabilitare o eliminare l\'account AD appena creato.',
+    ciRequired: true,
+    maintenanceWindow: null,
+    notifyTeam: true,
+    requireCompletionConfirm: false,
+    workflowId: null,
   },
   {
     categoryName: 'Applicazioni',
@@ -130,6 +150,11 @@ const ENTRIES: EntrySpec[] = [
     estimatedDurationHours: 1,
     requiresDowntime: false,
     rollbackProcedure: 'Eseguire il rollback alla versione precedente tramite il pipeline CI/CD.',
+    ciRequired: true,
+    maintenanceWindow: null,
+    notifyTeam: true,
+    requireCompletionConfirm: false,
+    workflowId: null,
   },
   {
     categoryName: 'Rete',
@@ -151,6 +176,11 @@ const ENTRIES: EntrySpec[] = [
     estimatedDurationHours: 3,
     requiresDowntime: true,
     rollbackProcedure: 'Ripristinare il firmware precedente dal backup e ricaricare la configurazione salvata.',
+    ciRequired: true,
+    maintenanceWindow: 'Sabato 02:00-06:00',
+    notifyTeam: true,
+    requireCompletionConfirm: false,
+    workflowId: null,
   },
 ]
 
@@ -209,6 +239,11 @@ async function main() {
             e.estimated_duration_hours     = $estimatedDurationHours,
             e.requires_downtime            = $requiresDowntime,
             e.rollback_procedure           = $rollbackProcedure,
+            e.ci_required                  = $ciRequired,
+            e.maintenance_window           = $maintenanceWindow,
+            e.notify_team                  = $notifyTeam,
+            e.require_completion_confirm   = $requireCompletionConfirm,
+            e.workflow_id                  = $workflowId,
             e.icon                         = null,
             e.color                        = null,
             e.usage_count                  = 0,
@@ -228,6 +263,11 @@ async function main() {
             e.estimated_duration_hours     = $estimatedDurationHours,
             e.requires_downtime            = $requiresDowntime,
             e.rollback_procedure           = $rollbackProcedure,
+            e.ci_required                  = $ciRequired,
+            e.maintenance_window           = $maintenanceWindow,
+            e.notify_team                  = $notifyTeam,
+            e.require_completion_confirm   = $requireCompletionConfirm,
+            e.workflow_id                  = $workflowId,
             e.updated_at                   = $now
           MERGE (e)-[:BELONGS_TO_CATEGORY]->(cat)
           RETURN e.created_at = $now AS isNew
@@ -246,6 +286,11 @@ async function main() {
           estimatedDurationHours: entry.estimatedDurationHours,
           requiresDowntime: entry.requiresDowntime,
           rollbackProcedure: entry.rollbackProcedure,
+          ciRequired: entry.ciRequired,
+          maintenanceWindow: entry.maintenanceWindow,
+          notifyTeam: entry.notifyTeam,
+          requireCompletionConfirm: entry.requireCompletionConfirm,
+          workflowId: entry.workflowId,
           now,
         }),
       )

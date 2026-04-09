@@ -20,7 +20,9 @@ interface CatalogEntry {
   riskLevel: string; impact: string; estimatedDurationHours: number | null
   requiresDowntime: boolean; icon: string | null; color: string | null
   usageCount: number; enabled: boolean
+  workflowId: string | null; ciRequired: boolean
   category: { id: string; name: string; icon: string | null; color: string | null } | null
+  workflow: { id: string; name: string; category: string | null } | null
 }
 
 // ── Styles ───────────────────────────────────────────────────────────────────
@@ -179,6 +181,11 @@ function EntryCard({ entry, showCategory, onClick, t }: {
             }}>
               {entry.description}
             </div>
+            {entry.workflow && (
+              <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
+                Workflow: {entry.workflow.name}
+              </div>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
