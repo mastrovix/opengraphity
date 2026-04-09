@@ -21,6 +21,7 @@
     "seed:app-relations": "tsx src/scripts/seed-app-relations.ts",
     "seed:certificates": "tsx src/scripts/seed-certificates.ts",
     "seed:metamodel": "tsx src/scripts/seed-metamodel.ts",
+    "seed:change-catalog": "tsx src/scripts/seed-change-catalog.ts",
     "seed:anomaly-scenarios": "tsx src/scripts/seed-anomaly-scenarios.ts",
     "scan:anomalies": "tsx src/scripts/run-anomaly-scan.ts",
     "onboard-tenant": "tsx src/scripts/onboard-tenant.ts",

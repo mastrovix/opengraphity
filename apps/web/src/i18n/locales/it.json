@@ -69,6 +69,7 @@
     "businessRules": "Business Rules",
     "slaPolicies": "Policy SLA",
     "integrations": "Integrazioni",
+    "changeCatalog": "Catalogo Change",
     "collapse": "Comprimi sidebar",
     "expand": "Espandi sidebar"
   },
@@ -369,6 +370,28 @@
     "workflow": {
       "title": "Workflow",
       "noResults": "Nessun workflow trovato"
+    },
+    "changeCatalog": {
+      "title": "Catalogo Standard Change",
+      "subtitle": "Procedure pre-approvate organizzate per categoria",
+      "search": "Cerca nel catalogo...",
+      "procedures": "procedure",
+      "hours": "ore",
+      "usedTimes": "Usato {{count}} volte",
+      "noResults": "Nessuna procedura trovata",
+      "createTitle": "Crea Standard Change",
+      "preApproved": "Questa è una Standard Change pre-approvata. Non richiede approvazione CAB.",
+      "checklist": "Checklist Deploy",
+      "rollback": "Procedura Rollback",
+      "created": "Standard Change creata dal catalogo"
+    },
+    "changeCatalogAdmin": {
+      "title": "Gestione Catalogo Change",
+      "categories": "Categorie",
+      "entries": "Voci Catalogo",
+      "newCategory": "Nuova categoria",
+      "newEntry": "Nuova voce",
+      "deleteBlocked": "Elimina prima le voci associate a questa categoria"
     }
   },
   "filter": {

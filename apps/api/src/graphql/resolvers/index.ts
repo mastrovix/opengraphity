@@ -34,6 +34,7 @@ import { customWidgetResolvers } from './customWidget.js'
 import { automationResolvers } from './automation.js'
 import { integrationsResolvers } from './integrations.js'
 import { collaborationResolvers } from './collaboration.js'
+import { standardChangeCatalogResolvers } from './standardChangeCatalog.js'
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -268,6 +269,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...automationResolvers.Query,
       ...integrationsResolvers.Query,
       ...collaborationResolvers.Query,
+      ...standardChangeCatalogResolvers.Query,
       auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
@@ -302,6 +304,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...automationResolvers.Mutation,
       ...integrationsResolvers.Mutation,
       ...collaborationResolvers.Mutation,
+      ...standardChangeCatalogResolvers.Mutation,
       ...queueStatsResolvers.Mutation,
       createUser,
       updateUserTeams,
@@ -320,6 +323,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     ReportConversation: reportResolvers.ReportConversation,
     DashboardConfig:    { ...dashboardResolvers.DashboardConfig },
     DashboardWidget:    { ...dashboardResolvers.DashboardWidget },
+    StandardChangeCatalogEntry: { ...standardChangeCatalogResolvers.StandardChangeCatalogEntry },
   }
 
   return mergeResolvers([dynamicCI as IResolvers, staticResolvers as IResolvers])

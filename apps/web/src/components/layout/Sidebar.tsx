@@ -93,6 +93,7 @@ const ADMIN_NAV_ITEM_DEFS = [
   { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
   { to: '/admin/sla-policies',     labelKey: 'sidebar.slaPolicies',    icon: Clock       },
   { to: '/admin/integrations',     labelKey: 'sidebar.integrations',   icon: Plug        },
+  { to: '/admin/change-catalog',  labelKey: 'sidebar.changeCatalog',  icon: BookOpen    },
 ]
 
 interface SidebarProps {

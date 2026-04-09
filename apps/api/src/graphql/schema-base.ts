@@ -23,6 +23,7 @@ import { fieldRulesSDL } from './schema-fieldRules.js'
 import { automationSchema } from './schema-automation.js'
 import { integrationsSchema } from './schema-integrations.js'
 import { collaborationSchema } from './schema-collaboration.js'
+import { standardChangeCatalogSDL } from './schema-standard-change-catalog.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -157,6 +158,12 @@ export function buildBaseSDL(): string {
     # ITIL-CI Relation Rules
     itilCIRelationRules(itilType: String!): [ITILCIRelationRule!]!
     allITILCIRelationRules: [ITILCIRelationRule!]!
+
+    # Standard Change Catalog
+    changeCatalogCategories: [ChangeCatalogCategory!]!
+    changeCatalogCategory(id: ID!): ChangeCatalogCategory
+    standardChangeCatalog(categoryId: String, search: String, filters: String, sortField: String, sortDirection: String): [StandardChangeCatalogEntry!]!
+    standardChangeCatalogEntry(id: ID!): StandardChangeCatalogEntry
 
     # Discovery / Sync
     syncSources: [SyncSource!]!
@@ -394,6 +401,16 @@ export function buildBaseSDL(): string {
     createTicket(title: String!, description: String, priority: String, category: String!): MyTicket!
     addTicketComment(ticketId: ID!, body: String!): EntityComment!
     reopenTicket(ticketId: ID!): MyTicket!
+
+    # Standard Change Catalog
+    createChangeCatalogCategory(name: String!, description: String, icon: String, color: String, order: Int): ChangeCatalogCategory!
+    updateChangeCatalogCategory(id: ID!, name: String, description: String, icon: String, color: String, order: Int, enabled: Boolean): ChangeCatalogCategory!
+    deleteChangeCatalogCategory(id: ID!): Boolean!
+    reorderChangeCatalogCategories(categoryIds: [ID!]!): [ChangeCatalogCategory!]!
+    createStandardChangeCatalogEntry(categoryId: String!, name: String!, description: String!, riskLevel: String!, impact: String!, defaultTitleTemplate: String!, defaultDescriptionTemplate: String!, defaultPriority: String!, ciTypes: [String!], checklist: String, estimatedDurationHours: Float, requiresDowntime: Boolean, rollbackProcedure: String, icon: String, color: String): StandardChangeCatalogEntry!
+    updateStandardChangeCatalogEntry(id: ID!, name: String, description: String, categoryId: String, riskLevel: String, impact: String, defaultTitleTemplate: String, defaultDescriptionTemplate: String, defaultPriority: String, ciTypes: [String!], checklist: String, estimatedDurationHours: Float, requiresDowntime: Boolean, rollbackProcedure: String, icon: String, color: String, enabled: Boolean): StandardChangeCatalogEntry!
+    deleteStandardChangeCatalogEntry(id: ID!): Boolean!
+    createChangeFromCatalog(catalogEntryId: ID!, title: String, description: String, ciIds: [ID!]): Change!
   }
 
   # ── Domain enums ─────────────────────────────────────────────────────────────
@@ -427,5 +444,6 @@ export function buildBaseSDL(): string {
   ${automationSchema}
   ${integrationsSchema}
   ${collaborationSchema}
+  ${standardChangeCatalogSDL()}
   `
 }

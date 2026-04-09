@@ -410,3 +410,26 @@ export const GET_INTERNAL_MESSAGES = gql`
     }
   }
 `
+
+// ── Change Catalog ──────────────────────────────────────────────────────────
+
+export const GET_CHANGE_CATALOG_CATEGORIES = gql`
+  query GetChangeCatalogCategories {
+    changeCatalogCategories { id name description icon color order enabled entryCount }
+  }
+`
+
+export const GET_STANDARD_CHANGE_CATALOG = gql`
+  query GetStandardChangeCatalog($categoryId: String, $search: String, $filters: String, $sortField: String, $sortDirection: String) {
+    standardChangeCatalog(categoryId: $categoryId, search: $search, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
+      id name description categoryId riskLevel impact defaultTitleTemplate defaultDescriptionTemplate defaultPriority ciTypes checklist estimatedDurationHours requiresDowntime rollbackProcedure icon color usageCount enabled createdBy createdAt updatedAt
+      category { id name icon color }
+    }
+  }
+`
+
+export const GET_STANDARD_CHANGE_CATALOG_ENTRY = gql`
+  query GetStandardChangeCatalogEntry($id: ID!) {
+    standardChangeCatalogEntry(id: $id) { id name description categoryId riskLevel impact defaultTitleTemplate defaultDescriptionTemplate defaultPriority ciTypes checklist estimatedDurationHours requiresDowntime rollbackProcedure icon color usageCount enabled createdBy createdAt }
+  }
+`
