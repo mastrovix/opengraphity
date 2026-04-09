@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Info, AlertTriangle, Clock } from 'lucide-react'
+import { ArrowLeft, Info, AlertTriangle, Clock, ChevronDown, ChevronRight } from 'lucide-react'
+import { CIIcon } from '@/lib/ciIcon'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { GET_STANDARD_CHANGE_CATALOG_ENTRY, GET_ALL_CIS } from '@/graphql/queries'
@@ -148,49 +149,36 @@ export function ChangeCatalogCreatePage() {
         <ArrowLeft size={13} /> {t('pages.changeCatalog.backToCatalog', 'Torna al catalogo')}
       </button>
 
-      {/* Header */}
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '24px 28px', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 20, fontWeight: 700, background: entry.color || entry.category?.color || '#e0f2fe',
-            color: (entry.color || entry.category?.color) ? '#fff' : '#0284c7', flexShrink: 0,
-          }}>
-            {(entry.icon || entry.category?.icon || '?').charAt(0).toUpperCase()}
-          </div>
-          <div style={{ flex: 1 }}>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
-              {entry.name}
-            </h1>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
-              {entry.category && (
-                <span style={badge(entry.category.color || '#e0f2fe', entry.category.color ? '#fff' : '#0284c7')}>
-                  {entry.category.name}
-                </span>
-              )}
-              <span style={riskBadge(entry.riskLevel)}>Rischio: {riskLabel(entry.riskLevel)}</span>
-              <span style={riskBadge(entry.impact)}>Impatto: {riskLabel(entry.impact)}</span>
-              {entry.requiresDowntime && (
-                <span style={badge('#fee2e2', '#991b1b')}>
-                  <AlertTriangle size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> Downtime richiesto
-                </span>
-              )}
-              {entry.estimatedDurationHours != null && entry.estimatedDurationHours > 0 && (
-                <span style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Clock size={12} /> ~{entry.estimatedDurationHours} {t('pages.changeCatalog.hours')}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Description */}
-        {entry.description && (
-          <p style={{ fontSize: 14, color: 'var(--color-slate)', margin: '16px 0 0', lineHeight: 1.6 }}>
-            {entry.description}
-          </p>
+      {/* Header — compact */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <CIIcon icon={entry.icon || entry.category?.icon || 'box'} size={22} color={entry.color || entry.category?.color || 'var(--color-brand)'} />
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>{entry.name}</h2>
+        {entry.category && (
+          <span style={badge(entry.category.color || '#e0f2fe', entry.category.color ? '#fff' : '#0284c7')}>
+            {entry.category.name}
+          </span>
+        )}
+        <span style={riskBadge(entry.riskLevel)}>{riskLabel(entry.riskLevel)}</span>
+        <span style={riskBadge(entry.impact)}>Impatto: {riskLabel(entry.impact)}</span>
+        {entry.requiresDowntime && (
+          <span style={badge('#fee2e2', '#991b1b')}>
+            <AlertTriangle size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> Downtime
+          </span>
+        )}
+        {entry.estimatedDurationHours != null && entry.estimatedDurationHours > 0 && (
+          <span style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Clock size={12} /> ~{entry.estimatedDurationHours} {t('pages.changeCatalog.hours')}
+          </span>
         )}
       </div>
+      {entry.description && (
+        <p style={{
+          fontSize: 13, color: 'var(--color-slate-light)', margin: '0 0 16px', lineHeight: 1.5,
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden',
+        }}>
+          {entry.description}
+        </p>
+      )}
 
       {/* Info box */}
       <div style={{ background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#0369a1', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -198,8 +186,7 @@ export function ChangeCatalogCreatePage() {
         {t('pages.changeCatalog.preApproved')}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20, alignItems: 'start' }}>
-        {/* Left: Form */}
+      <div style={{ maxWidth: 720 }}>
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '24px 28px' }}>
           <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
             {t('pages.changeCatalog.createTitle')}
@@ -253,6 +240,28 @@ export function ChangeCatalogCreatePage() {
             </div>
           </div>
 
+          {/* Checklist */}
+          {checklist.length > 0 && (
+            <div style={{ marginTop: 8, marginBottom: 16, padding: '14px 16px', background: '#f9fafb', border: '1px solid #f3f4f6', borderRadius: 8 }}>
+              <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+                {t('pages.changeCatalog.checklist')}
+              </h3>
+              <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: 'var(--color-slate-dark)', lineHeight: 1.8 }}>
+                {checklist.map((item, i) => (
+                  <li key={i}>
+                    <strong>{item.title}</strong>
+                    {item.description && (
+                      <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}> — {item.description}</span>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Rollback — collapsible */}
+          {entry.rollbackProcedure && <RollbackSection rollback={entry.rollbackProcedure} label={t('pages.changeCatalog.rollback')} />}
+
           {/* Actions */}
           <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
             <button
@@ -280,43 +289,34 @@ export function ChangeCatalogCreatePage() {
             </button>
           </div>
         </div>
-
-        {/* Right: Checklist + Rollback */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Checklist */}
-          {checklist.length > 0 && (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px 24px' }}>
-              <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-                {t('pages.changeCatalog.checklist')}
-              </h3>
-              <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: 'var(--color-slate-dark)', lineHeight: 1.9 }}>
-                {checklist.map((item, i) => (
-                  <li key={i}>
-                    <strong>{item.title}</strong>
-                    {item.description && (
-                      <div style={{ color: 'var(--color-slate-light)', fontSize: 12, marginTop: 2 }}>
-                        {item.description}
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-
-          {/* Rollback */}
-          {entry.rollbackProcedure && (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px 24px' }}>
-              <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-                {t('pages.changeCatalog.rollback')}
-              </h3>
-              <div style={{ fontSize: 13, color: 'var(--color-slate)', background: '#f9fafb', border: '1px solid #f3f4f6', borderRadius: 8, padding: '10px 14px', whiteSpace: 'pre-wrap', fontFamily: 'monospace', lineHeight: 1.6 }}>
-                {entry.rollbackProcedure}
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     </PageContainer>
+  )
+}
+
+// ── Rollback collapsible ─────────────────────────────────────────────────────
+
+function RollbackSection({ rollback, label }: { rollback: string; label: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ marginTop: 8, border: '1px solid #f3f4f6', borderRadius: 8, overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 14px', background: '#f9fafb', border: 'none',
+          cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)',
+          textAlign: 'left',
+        }}
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {label}
+      </button>
+      {open && (
+        <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--color-slate)', whiteSpace: 'pre-wrap', fontFamily: 'monospace', lineHeight: 1.6, background: '#fff' }}>
+          {rollback}
+        </div>
+      )}
+    </div>
   )
 }
