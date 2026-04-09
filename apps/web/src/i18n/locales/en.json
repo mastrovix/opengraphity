@@ -383,7 +383,8 @@
       "preApproved": "This is a pre-approved Standard Change. No CAB approval required.",
       "checklist": "Deploy Checklist",
       "rollback": "Rollback Procedure",
-      "created": "Standard Change created from catalog"
+      "created": "Standard Change created from catalog",
+      "backToCatalog": "Back to catalog"
     },
     "changeCatalogAdmin": {
       "title": "Change Catalog Management",

@@ -383,7 +383,8 @@
       "preApproved": "Questa è una Standard Change pre-approvata. Non richiede approvazione CAB.",
       "checklist": "Checklist Deploy",
       "rollback": "Procedura Rollback",
-      "created": "Standard Change creata dal catalogo"
+      "created": "Standard Change creata dal catalogo",
+      "backToCatalog": "Torna al catalogo"
     },
     "changeCatalogAdmin": {
       "title": "Gestione Catalogo Change",

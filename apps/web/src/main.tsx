@@ -56,6 +56,7 @@ import { BusinessRulesPage } from '@/pages/admin/BusinessRulesPage'
 import { SLAPoliciesPage } from '@/pages/admin/SLAPoliciesPage'
 import { IntegrationsPage } from '@/pages/admin/IntegrationsPage'
 import { ChangeCatalogPage } from '@/pages/changes/ChangeCatalogPage'
+import { ChangeCatalogCreatePage } from '@/pages/changes/ChangeCatalogCreatePage'
 import { ChangeCatalogAdminPage } from '@/pages/admin/ChangeCatalogAdminPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
@@ -106,7 +107,8 @@ const router = createBrowserRouter([
       { path: 'problems/new',      element: <CreateProblemPage />,       errorElement: <RouteError /> },
       { path: 'problems/:id',      element: <ProblemDetailPage />,       errorElement: <RouteError /> },
       { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
-      { path: 'changes/catalog',  element: <ChangeCatalogPage />,       errorElement: <RouteError /> },
+      { path: 'changes/catalog',            element: <ChangeCatalogPage />,         errorElement: <RouteError /> },
+      { path: 'changes/catalog/:entryId',  element: <ChangeCatalogCreatePage />,   errorElement: <RouteError /> },
       { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },
       { path: 'changes/:id',       element: <ChangeDetailPage />,        errorElement: <RouteError /> },
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
