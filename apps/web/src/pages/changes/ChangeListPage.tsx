@@ -146,11 +146,11 @@ export function ChangeListPage() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => navigate('/changes/catalog')}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#fff', color: 'var(--color-slate)', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f9fafb' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fff' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#15803d' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#16a34a' }}
           >
-            <BookOpen size={14} /> Catalogo Standard Change
+            <BookOpen size={14} /> {t('pages.changes.catalog', 'Catalogo Standard')}
           </button>
           <button
             onClick={() => navigate('/changes/new')}

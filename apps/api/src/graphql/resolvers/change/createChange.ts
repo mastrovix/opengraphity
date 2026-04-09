@@ -17,6 +17,9 @@ export async function createChange(
   ctx: GraphQLContext,
 ) {
   const { input } = args
+  if (input.type === 'standard') {
+    throw new GraphQLError('Standard Changes can only be created from the catalog', { extensions: { code: 'BAD_USER_INPUT' } })
+  }
   validateStringLength(input.title, 'title', 1, 500)
   validateStringLength(input.description, 'description', 0, 10000)
 

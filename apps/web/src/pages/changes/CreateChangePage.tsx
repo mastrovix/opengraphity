@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useLazyQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, X } from 'lucide-react'
+import { ArrowLeft, X, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_CHANGE } from '@/graphql/mutations'
 import { GET_ALL_CIS, GET_CHANGE_IMPACT, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
@@ -254,7 +254,7 @@ export function CreateChangePage() {
 
             {typeLoading ? (
               <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
-            ) : typeValues.map(t => {
+            ) : typeValues.filter(t => t !== 'standard').map(t => {
               const c   = TYPE_CONFIG[t as keyof typeof TYPE_CONFIG] ?? { label: t.charAt(0).toUpperCase() + t.slice(1) + ' Change', desc: '', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd', icon: '🔵' }
               const sel = changeType === t
               return (
@@ -277,6 +277,23 @@ export function CreateChangePage() {
                 </div>
               )
             })}
+
+            {/* Standard Change → Catalogo */}
+            <div
+              onClick={() => navigate('/changes/catalog')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 16px', borderRadius: 8, marginBottom: 8,
+                border: '1.5px solid #86efac', background: '#f0fdf4',
+                cursor: 'pointer', transition: 'all 0.15s',
+              }}
+            >
+              <BookOpen size={16} color="#16a34a" style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#16a34a' }}>Standard Change</div>
+                <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 2 }}>Le Standard Change vengono create dal Catalogo →</div>
+              </div>
+            </div>
 
             <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 16, paddingTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
               <NextBtn onClick={handleNext} />
