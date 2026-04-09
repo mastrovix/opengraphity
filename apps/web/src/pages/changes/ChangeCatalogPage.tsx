@@ -118,18 +118,20 @@ export function ChangeCatalogPage() {
     variables: { search: search || null },
     fetchPolicy: 'cache-and-network',
   })
-  const { data: cisData } = useQuery<{ allCIs: CI[] }>(GET_ALL_CIS, { skip: !selectedEntry })
+  const { data: cisData } = useQuery<{ allCIs: { items: CI[]; total: number } }>(GET_ALL_CIS, { skip: !selectedEntry, variables: { limit: 500 } })
 
   const [createFromCatalog] = useMutation<{ createChangeFromCatalog: { id: string } }>(CREATE_CHANGE_FROM_CATALOG)
 
   const categories = catData?.changeCatalogCategories?.filter(c => c.enabled).sort((a, b) => a.order - b.order) ?? []
   const entries = entriesData?.standardChangeCatalog?.filter(e => e.enabled) ?? []
-  const allCIs = cisData?.allCIs ?? []
+  const allCIs = cisData?.allCIs?.items ?? []
 
   // Filter CIs by entry ciTypes
   const filteredCIs = useMemo(() => {
-    if (!selectedEntry?.ciTypes || selectedEntry.ciTypes.length === 0) return allCIs
-    return allCIs.filter(ci => selectedEntry.ciTypes!.includes(ci.type))
+    if (!allCIs.length) return []
+    const types = Array.isArray(selectedEntry?.ciTypes) ? selectedEntry.ciTypes : []
+    if (types.length === 0) return allCIs
+    return allCIs.filter(ci => types.includes(ci.type))
   }, [allCIs, selectedEntry])
 
   // Group entries by category
