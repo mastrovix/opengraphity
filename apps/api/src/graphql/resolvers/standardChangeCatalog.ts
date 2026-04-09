@@ -78,7 +78,7 @@ async function changeCatalogCategories(_: unknown, __: unknown, ctx: GraphQLCont
       MATCH (c:ChangeCatalogCategory {tenant_id: $tenantId})
       OPTIONAL MATCH (c)<-[:BELONGS_TO_CATEGORY]-(e:StandardChangeCatalogEntry {tenant_id: $tenantId, enabled: true})
       RETURN properties(c) AS props, count(e) AS cnt
-      ORDER BY c.order ASC, c.name ASC
+      ORDER BY props.order ASC, props.name ASC
     `, { tenantId: ctx.tenantId })
     return rows.map((r) => mapCategory(r.props, toInt(r.cnt)))
   } finally {
@@ -278,7 +278,7 @@ async function reorderChangeCatalogCategories(
       MATCH (c:ChangeCatalogCategory {tenant_id: $tenantId})
       OPTIONAL MATCH (c)<-[:BELONGS_TO_CATEGORY]-(e:StandardChangeCatalogEntry {tenant_id: $tenantId, enabled: true})
       RETURN properties(c) AS props, count(e) AS cnt
-      ORDER BY c.order ASC
+      ORDER BY props.order ASC
     `, { tenantId: ctx.tenantId })
     return rows.map((r) => mapCategory(r.props, toInt(r.cnt)))
   } finally {
