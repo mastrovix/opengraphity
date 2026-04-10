@@ -137,8 +137,8 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
           `MATCH (root {id: $id, tenant_id: $tenantId})
            MATCH path = (root)<-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..5]-(impacted)
            WHERE impacted.tenant_id = $tenantId
-           WITH impacted, min(length(path)) AS distance,
-             [p IN collect(path) WHERE length(p) = min(length(path)) | p][0] AS shortestPath
+           WITH impacted, min(length(path)) AS distance, collect(path) AS paths
+           WITH impacted, distance, [p IN paths WHERE length(p) = distance | p][0] AS shortestPath
            RETURN DISTINCT properties(impacted) AS props, labels(impacted)[0] AS label,
              distance, properties(nodes(shortestPath)[-2]) AS parentProps`,
           { id: args.id, tenantId: ctx.tenantId },
@@ -147,7 +147,8 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
       return r.records.map(rec => {
         const props = rec.get('props') as Props
         const label = rec.get('label') as string
-        const distance = (rec.get('distance') as { toNumber(): number }).toNumber()
+        const rawDist = rec.get('distance')
+        const distance = typeof rawDist === 'number' ? rawDist : typeof (rawDist as { toNumber?: () => number })?.toNumber === 'function' ? (rawDist as { toNumber: () => number }).toNumber() : Number(rawDist)
         const parentProps = rec.get('parentProps') as Props | null
         const t = types.find(t => t.neo4jLabel === label)
         if (!t) return null

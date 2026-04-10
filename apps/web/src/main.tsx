@@ -26,6 +26,7 @@ function CIDetailRedirect({ typeName }: { typeName: string }) {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
 }
+import { WhatIfPage } from '@/pages/analysis/WhatIfPage'
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
 import { TopologyPage } from '@/pages/topology/TopologyPage'
 import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
@@ -56,6 +57,7 @@ import { BusinessRulesPage } from '@/pages/admin/BusinessRulesPage'
 import { SLAPoliciesPage } from '@/pages/admin/SLAPoliciesPage'
 import { IntegrationsPage } from '@/pages/admin/IntegrationsPage'
 import { ChangeCatalogPage } from '@/pages/changes/ChangeCatalogPage'
+import { ChangeCalendarPage } from '@/pages/changes/ChangeCalendarPage'
 import { ChangeCatalogCreatePage } from '@/pages/changes/ChangeCatalogCreatePage'
 import { ChangeCatalogAdminPage } from '@/pages/admin/ChangeCatalogAdminPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -109,6 +111,7 @@ const router = createBrowserRouter([
       { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
       { path: 'changes/catalog',            element: <ChangeCatalogPage />,         errorElement: <RouteError /> },
       { path: 'changes/catalog/:entryId',  element: <ChangeCatalogCreatePage />,   errorElement: <RouteError /> },
+      { path: 'changes/calendar',   element: <ChangeCalendarPage />,      errorElement: <RouteError /> },
       { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },
       { path: 'changes/:id',       element: <ChangeDetailPage />,        errorElement: <RouteError /> },
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
@@ -129,6 +132,7 @@ const router = createBrowserRouter([
       { path: 'servers/:id',                   element: <CIDetailRedirect typeName="server" /> },
       { path: 'certificates',                  element: <Navigate to="/ci/certificate" replace /> },
       { path: 'certificates/:id',              element: <CIDetailRedirect typeName="certificate" /> },
+      { path: 'analysis/what-if',               element: <WhatIfPage />,                  errorElement: <RouteError /> },
       { path: 'anomalies',                     element: <AnomalyPage />,                 errorElement: <RouteError /> },
       { path: 'topology',                      element: <TopologyPage />,                errorElement: <RouteError /> },
       { path: 'workflow',                      element: <WorkflowListPage />,            errorElement: <RouteError /> },

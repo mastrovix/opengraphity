@@ -289,13 +289,14 @@ async function ciDependencies(
 ) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})-[:DEPENDS_ON]->(d:ConfigurationItem)
-      RETURN properties(d) as props
+      MATCH (ci {id: $id, tenant_id: $tenantId})-[r:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE|INSTALLED_ON]->(d)
+      WHERE d.tenant_id = $tenantId
+      RETURN properties(d) as props, type(r) as relation
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
+    const rows = await runQuery<{ props: Props; relation: string }>(session, cypher, {
       id: parent.id, tenantId: ctx.tenantId,
     })
-    return rows.map((r) => mapCI(r.props))
+    return rows.map((r) => ({ ci: mapCI(r.props), relation: r.relation }))
   })
 }
 
@@ -306,13 +307,13 @@ async function ciDependents(
 ) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (d:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci:ConfigurationItem {id: $id})
-      RETURN properties(d) as props
+      MATCH (d {tenant_id: $tenantId})-[r:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE|INSTALLED_ON]->(ci {id: $id, tenant_id: $tenantId})
+      RETURN properties(d) as props, type(r) as relation
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
+    const rows = await runQuery<{ props: Props; relation: string }>(session, cypher, {
       id: parent.id, tenantId: ctx.tenantId,
     })
-    return rows.map((r) => mapCI(r.props))
+    return rows.map((r) => ({ ci: mapCI(r.props), relation: r.relation }))
   })
 }
 
@@ -323,7 +324,8 @@ async function ciDependenciesWithType(
 ) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})-[r]->(d:ConfigurationItem)
+      MATCH (ci {id: $id, tenant_id: $tenantId})-[r:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE|INSTALLED_ON]->(d)
+      WHERE d.tenant_id = $tenantId
       RETURN properties(d) as props, type(r) as relationType
     `
     const rows = await runQuery<{ props: Props; relationType: string }>(session, cypher, {
@@ -340,8 +342,7 @@ async function ciDependentsWithType(
 ) {
   return withSession(async (session) => {
     const cypher = `
-      MATCH (d:ConfigurationItem)-[r]->(ci:ConfigurationItem {id: $id})
-      WHERE ci.tenant_id = $tenantId
+      MATCH (d {tenant_id: $tenantId})-[r:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE|INSTALLED_ON]->(ci {id: $id, tenant_id: $tenantId})
       RETURN properties(d) as props, type(r) as relationType
     `
     const rows = await runQuery<{ props: Props; relationType: string }>(session, cypher, {

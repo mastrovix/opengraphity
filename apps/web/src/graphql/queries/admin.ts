@@ -440,3 +440,46 @@ export const GET_STANDARD_CHANGE_CATALOG_ENTRY = gql`
     }
   }
 `
+
+// ── What-if Planning ───────────────────────────────────────────────────────
+
+export const WHAT_IF_ANALYSIS = gql`
+  query WhatIfAnalysis($ciId: ID!, $action: String!, $depth: Int) {
+    whatIfAnalysis(ciId: $ciId, action: $action, depth: $depth) {
+      targetCI { id name type environment status impactLevel impactPath isRedundant }
+      action
+      impactedCIs { id name type environment status impactLevel impactPath isRedundant }
+      impactedServices { id name type impactLevel impactPath isRedundant }
+      impactedTeams { id name role impactedCICount }
+      totalImpacted riskScore hasRedundancy openIncidents summary
+    }
+  }
+`
+
+// ── Change Calendar ────────────────────────────────────────────────────────
+
+export const CHANGE_CALENDAR_EVENTS = gql`
+  query ChangeCalendarEvents($from: String!, $to: String!) {
+    changeCalendarEvents(from: $from, to: $to) {
+      id title changeType status riskLevel scheduledStart scheduledEnd duration ciNames teamName requiresDowntime color
+    }
+  }
+`
+
+export const CHANGE_CALENDAR_CONFLICTS = gql`
+  query ChangeCalendarConflicts($from: String!, $to: String!) {
+    changeCalendarConflicts(from: $from, to: $to) {
+      changeA { id title changeType scheduledStart scheduledEnd }
+      changeB { id title changeType scheduledStart scheduledEnd }
+      sharedCIs overlapStart overlapEnd
+    }
+  }
+`
+
+export const CHANGE_CALENDAR_SUGGESTED_SLOTS = gql`
+  query ChangeCalendarSuggestedSlots($duration: Int!, $ciIds: [ID!], $from: String!, $to: String!) {
+    changeCalendarSuggestedSlots(duration: $duration, ciIds: $ciIds, from: $from, to: $to) {
+      start end score reason
+    }
+  }
+`

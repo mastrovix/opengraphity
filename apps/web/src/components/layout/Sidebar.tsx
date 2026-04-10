@@ -40,6 +40,8 @@ import {
   GitBranch,
   Clock,
   Plug,
+  FlaskConical,
+  CalendarDays,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -60,8 +62,9 @@ const NAV_ITEM_DEFS = [
 ]
 
 const ANALYSIS_ITEM_DEFS = [
-  { to: '/anomalies', labelKey: 'sidebar.anomalies', icon: ShieldAlert },
-  { to: '/topology',  labelKey: 'sidebar.topologyMap', icon: Share2    },
+  { to: '/anomalies',        labelKey: 'sidebar.anomalies',   icon: ShieldAlert  },
+  { to: '/topology',         labelKey: 'sidebar.topologyMap', icon: Share2       },
+  { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
 ]
 
 const CONFIG_ITEM_DEFS = [
@@ -75,7 +78,8 @@ const CONFIG_ITEM_DEFS = [
 const ITSM_ITEM_DEFS = [
   { to: '/incidents', labelKey: 'sidebar.incidents', icon: AlertCircle    },
   { to: '/problems',  labelKey: 'sidebar.problems',  icon: Search         },
-  { to: '/changes',   labelKey: 'sidebar.changes',   icon: GitPullRequest },
+  { to: '/changes',           labelKey: 'sidebar.changes',        icon: GitPullRequest },
+  { to: '/changes/calendar', labelKey: 'sidebar.changeCalendar', icon: CalendarDays   },
   { to: '/requests',  labelKey: 'sidebar.requests',  icon: Inbox          },
 ]
 

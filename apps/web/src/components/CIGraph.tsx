@@ -134,14 +134,14 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
 
     const links: GraphLink[] = [
       ...dependencies.map((r) => ({
-        source:       r.ci.id,
-        target:       centerCI.id,
+        source:       centerCI.id,
+        target:       r.ci.id,
         relationType: r.relationType,
         role:         'dependency' as const,
       })),
       ...dependents.map((r) => ({
-        source:       centerCI.id,
-        target:       r.ci.id,
+        source:       r.ci.id,
+        target:       centerCI.id,
         relationType: r.relationType,
         role:         'dependent' as const,
       })),

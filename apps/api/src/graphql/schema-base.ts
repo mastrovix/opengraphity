@@ -24,6 +24,7 @@ import { automationSchema } from './schema-automation.js'
 import { integrationsSchema } from './schema-integrations.js'
 import { collaborationSchema } from './schema-collaboration.js'
 import { standardChangeCatalogSDL } from './schema-standard-change-catalog.js'
+import { whatifSDL } from './schema-whatif.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -158,6 +159,15 @@ export function buildBaseSDL(): string {
     # ITIL-CI Relation Rules
     itilCIRelationRules(itilType: String!): [ITILCIRelationRule!]!
     allITILCIRelationRules: [ITILCIRelationRule!]!
+
+    # What-if Planning
+    whatIfAnalysis(ciId: ID!, action: String!, depth: Int): WhatIfResult!
+    whatIfCompare(scenarios: [WhatIfScenarioInput!]!): [WhatIfResult!]!
+
+    # Change Calendar
+    changeCalendarEvents(from: String!, to: String!): [ChangeCalendarEvent!]!
+    changeCalendarConflicts(from: String!, to: String!): [ChangeConflict!]!
+    changeCalendarSuggestedSlots(duration: Int!, ciIds: [ID!], from: String!, to: String!): [SuggestedSlot!]!
 
     # Standard Change Catalog
     changeCatalogCategories: [ChangeCatalogCategory!]!
@@ -445,5 +455,6 @@ export function buildBaseSDL(): string {
   ${integrationsSchema}
   ${collaborationSchema}
   ${standardChangeCatalogSDL()}
+  ${whatifSDL()}
   `
 }

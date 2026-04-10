@@ -1,0 +1,533 @@
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useLazyQuery, useQuery } from '@apollo/client/react'
+import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { FlaskConical, Power, Trash2, TrendingDown, Users, ShieldCheck, GitBranch } from 'lucide-react'
+import * as d3 from 'd3'
+import { PageContainer } from '@/components/PageContainer'
+import { PageTitle } from '@/components/PageTitle'
+import { EmptyState } from '@/components/EmptyState'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { Skeleton } from '@/components/ui/skeleton'
+import { GET_ALL_CIS, WHAT_IF_ANALYSIS } from '@/graphql/queries'
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface WhatIfCI {
+  id: string; name: string; type: string; environment: string | null
+  status: string | null; impactLevel: string; impactPath: string[]; isRedundant: boolean
+}
+interface WhatIfTeam { id: string; name: string; role: string; impactedCICount: number }
+interface WhatIfResult {
+  targetCI: WhatIfCI; action: string; impactedCIs: WhatIfCI[]
+  impactedServices: WhatIfCI[]; impactedTeams: WhatIfTeam[]
+  totalImpacted: number; riskScore: number; hasRedundancy: boolean
+  openIncidents: number; summary: string
+}
+interface CIOption { id: string; name: string; type: string }
+
+type Action = 'shutdown' | 'remove' | 'degrade'
+
+// ── Styles ───────────────────────────────────────────────────────────────────
+
+const ACTIONS: { key: Action; icon: typeof Power; label: string; labelEn: string; bg: string; fg: string }[] = [
+  { key: 'shutdown', icon: Power,        label: 'Spegnimento', labelEn: 'Shutdown',    bg: '#fee2e2', fg: '#991b1b' },
+  { key: 'remove',   icon: Trash2,       label: 'Rimozione',   labelEn: 'Removal',     bg: '#fce7f3', fg: '#9d174d' },
+  { key: 'degrade',  icon: TrendingDown, label: 'Degradazione',labelEn: 'Degradation', bg: '#fef3c7', fg: '#92400e' },
+]
+
+const IMPACT_STYLES: Record<string, { bg: string; fg: string }> = {
+  critical: { bg: '#fee2e2', fg: '#991b1b' },
+  high:     { bg: '#ffedd5', fg: '#9a3412' },
+  medium:   { bg: '#fef3c7', fg: '#92400e' },
+  low:      { bg: '#f3f4f6', fg: '#374151' },
+}
+
+function badge(bg: string, fg: string, text: string) {
+  return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: bg, color: fg }}>{text}</span>
+}
+
+/** Convert PascalCase Neo4j label to snake_case route param: "DatabaseInstance" → "database_instance" */
+function labelToRoute(label: string): string {
+  return label.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+export function WhatIfPage() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+
+  // Input state
+  const [ciSearch, setCiSearch] = useState('')
+  const [selectedCI, setSelectedCI] = useState<CIOption | null>(null)
+  const [action, setAction] = useState<Action>('shutdown')
+  const [depth, setDepth] = useState(5)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [resultTab, setResultTab] = useState<'cis' | 'services' | 'teams'>('cis')
+  const [expandedGraphId, setExpandedGraphId] = useState<string | null>(null)
+
+  // CI search
+  const { data: ciData } = useQuery<{ allCIs: { items: CIOption[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch || null, limit: 20 },
+    skip: ciSearch.length < 1,
+  })
+  const ciOptions = ciData?.allCIs?.items ?? []
+
+  // Analysis
+  const [runAnalysis, { data: resultData, loading }] = useLazyQuery<{ whatIfAnalysis: WhatIfResult }>(WHAT_IF_ANALYSIS, { fetchPolicy: 'network-only' })
+  const result = resultData?.whatIfAnalysis ?? null
+
+  function handleAnalyze() {
+    if (!selectedCI) return
+    void runAnalysis({ variables: { ciId: selectedCI.id, action, depth } })
+  }
+
+  // Filter + pagination for results tables
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [cisPage, setCisPage] = useState(0)
+  const [svcPage, setSvcPage] = useState(0)
+  const [teamPage, setTeamPage] = useState(0)
+  const PAGE_SIZE = 20
+
+  const impactLabel = (k: string) => t(`pages.whatIf.${k}` as const, k)
+
+  const filterFields: FieldConfig[] = useMemo(() => {
+    if (!result) return []
+    const types = [...new Set(result.impactedCIs.map(c => c.type))].map(v => ({ value: v, label: v }))
+    const levels = (['critical', 'high', 'medium', 'low']).map(k => ({ value: k, label: impactLabel(k) }))
+    const envs = [...new Set(result.impactedCIs.map(c => c.environment).filter(Boolean))].map(e => ({ value: e!, label: e! }))
+    return [
+      { key: 'name', label: t('pages.whatIf.colName'), type: 'text' as const },
+      { key: 'type', label: t('pages.whatIf.filterType'), type: 'enum' as const, options: types },
+      { key: 'impactLevel', label: t('pages.whatIf.filterImpact'), type: 'enum' as const, options: levels },
+      { key: 'environment', label: t('pages.whatIf.filterEnv'), type: 'enum' as const, options: envs },
+    ]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, t])
+
+  // Client-side filter/sort for results (data already loaded)
+  const filteredCIs = useMemo(() => {
+    let cis = result?.impactedCIs ?? []
+    if (filterGroup?.rules?.length) {
+      cis = cis.filter(ci => filterGroup.rules.every(r => {
+        const raw = (ci as unknown as Record<string, unknown>)[r.field]
+        const val = String(Array.isArray(raw) ? raw.join(', ') : raw ?? '').toLowerCase()
+        const op = r.operator as string
+        if (op === 'in' || op === 'equals') {
+          const vals = Array.isArray(r.value) ? r.value.map(v => v.toLowerCase()) : [String(r.value ?? '').toLowerCase()]
+          return vals.some(v => val === v)
+        }
+        if (op === 'not_in' || op === 'not_equals') {
+          const vals = Array.isArray(r.value) ? r.value.map(v => v.toLowerCase()) : [String(r.value ?? '').toLowerCase()]
+          return !vals.some(v => val === v)
+        }
+        if (op === 'contains') return val.includes(String(r.value ?? '').toLowerCase())
+        if (op === 'starts_with') return val.startsWith(String(r.value ?? '').toLowerCase())
+        if (op === 'is_empty') return val === ''
+        if (op === 'is_not_empty') return val !== ''
+        return true
+      }))
+    }
+    if (sortField) {
+      const dir = sortDir === 'asc' ? 1 : -1
+      cis = [...cis].sort((a, b) => {
+        const va = String((a as unknown as Record<string, unknown>)[sortField] ?? '')
+        const vb = String((b as unknown as Record<string, unknown>)[sortField] ?? '')
+        return va < vb ? -dir : va > vb ? dir : 0
+      })
+    }
+    return cis
+  }, [result, filterGroup, sortField, sortDir])
+
+  const columns: ColumnDef<WhatIfCI>[] = [
+    { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
+    { key: 'type', label: t('pages.whatIf.colType'), width: '120px', sortable: true, render: (v) => badge('#e0f2fe', '#0369a1', String(v)) },
+    { key: 'environment', label: t('pages.whatIf.colEnv'), width: '110px', sortable: true, render: (v) => v ? badge('#f0fdf4', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
+    { key: 'impactLevel', label: t('pages.whatIf.colImpact'), width: '100px', sortable: true, render: (v) => {
+      const ic = IMPACT_STYLES[String(v)] ?? IMPACT_STYLES['low']
+      return badge(ic.bg, ic.fg, impactLabel(String(v)))
+    }},
+    { key: 'impactPath', label: t('pages.whatIf.colPath'), render: (v) => {
+      const path = v as unknown as string[]
+      return <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{path?.join(' → ') || '—'}</span>
+    }},
+    { key: 'id', label: '', width: '44px', render: (_v, row) => (
+      <button
+        onClick={e => { e.stopPropagation(); setExpandedGraphId(expandedGraphId === row.id ? null : row.id) }}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
+        title="Visualizza percorso"
+      >
+        <GitBranch size={15} color={expandedGraphId === row.id ? 'var(--color-brand)' : '#94a3b8'} />
+      </button>
+    )},
+  ]
+
+  // Risk score color
+  const scoreColor = (s: number) => s < 30 ? '#16a34a' : s < 60 ? '#eab308' : s < 80 ? '#f97316' : '#ef4444'
+
+  return (
+    <PageContainer>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <PageTitle icon={<FlaskConical size={22} color="var(--color-brand)" />}>
+          {t('pages.whatIf.title')}
+        </PageTitle>
+        <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+          {t('pages.whatIf.subtitle')}
+        </p>
+      </div>
+
+      {/* Input bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 16, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        {/* CI search */}
+        <div style={{ position: 'relative', width: 300 }}>
+          <input
+            style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            placeholder={t('pages.whatIf.searchCI')}
+            value={selectedCI ? selectedCI.name : ciSearch}
+            onChange={e => { setCiSearch(e.target.value); setSelectedCI(null); setDropdownOpen(true) }}
+            onFocus={() => { if (ciSearch.length >= 1) setDropdownOpen(true) }}
+            onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+          />
+          {dropdownOpen && ciOptions.length > 0 && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, marginTop: 2, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+              {ciOptions.map(ci => (
+                <div
+                  key={ci.id}
+                  onMouseDown={() => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }}
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f0f9ff' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff' }}
+                >
+                  <span style={{ fontWeight: 500 }}>{ci.name}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{ci.type}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Action pills */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {ACTIONS.map(a => {
+            const sel = action === a.key
+            return (
+              <button
+                key={a.key}
+                onClick={() => setAction(a.key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
+                  borderRadius: 20, border: sel ? `2px solid ${a.fg}` : '2px solid #e5e7eb',
+                  background: sel ? a.bg : '#fff', color: sel ? a.fg : '#64748b',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 100ms',
+                }}
+              >
+                <a.icon size={13} />
+                {a.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Depth */}
+        <select
+          value={depth}
+          onChange={e => setDepth(Number(e.target.value))}
+          style={{ width: 80, padding: '7px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: 'var(--color-slate-dark)', cursor: 'pointer' }}
+        >
+          {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+            <option key={n} value={n}>{t('pages.whatIf.depth')}: {n}</option>
+          ))}
+        </select>
+
+        {/* Analyze button */}
+        <button
+          onClick={handleAnalyze}
+          disabled={!selectedCI || loading}
+          style={{
+            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
+            padding: '8px 20px', borderRadius: 6, border: 'none',
+            background: selectedCI ? '#38bdf8' : '#e5e7eb',
+            color: selectedCI ? '#fff' : '#94a3b8',
+            fontSize: 14, fontWeight: 600, cursor: selectedCI ? 'pointer' : 'not-allowed',
+            transition: 'background 150ms',
+          }}
+          onMouseEnter={e => { if (selectedCI) (e.currentTarget as HTMLElement).style.background = '#0ea5e9' }}
+          onMouseLeave={e => { if (selectedCI) (e.currentTarget as HTMLElement).style.background = '#38bdf8' }}
+        >
+          <FlaskConical size={14} />
+          {loading ? t('common.loading') : t('pages.whatIf.analyze')}
+        </button>
+      </div>
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Skeleton style={{ height: 100, borderRadius: 10 }} />
+          <Skeleton style={{ height: 300, borderRadius: 10 }} />
+        </div>
+      )}
+
+      {/* Empty state — no analysis run yet */}
+      {!loading && !result && (
+        <EmptyState
+          icon={<FlaskConical size={40} color="var(--color-slate-light)" />}
+          title={t('pages.whatIf.subtitle')}
+        />
+      )}
+
+      {/* Results */}
+      {!loading && result && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, animation: 'fadeIn 300ms ease' }}>
+
+          {/* Summary card */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
+            {/* Risk score circle */}
+            <div style={{
+              width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: `4px solid ${scoreColor(result.riskScore)}`,
+              background: `${scoreColor(result.riskScore)}10`,
+            }}>
+              <span style={{ fontSize: 28, fontWeight: 800, color: scoreColor(result.riskScore) }}>
+                {result.riskScore}
+              </span>
+            </div>
+
+            {/* Summary text */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>
+                {t('pages.whatIf.riskScore')}
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--color-slate)', margin: 0, lineHeight: 1.5 }}>
+                {result.summary}
+              </p>
+            </div>
+
+            {/* Mini counters */}
+            <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
+              {[
+                { n: result.totalImpacted, label: t('pages.whatIf.impactedCIs') },
+                { n: result.impactedServices.length, label: t('pages.whatIf.services') },
+                { n: result.impactedTeams.length, label: t('pages.whatIf.teams') },
+                { n: result.openIncidents, label: t('pages.whatIf.incidents') },
+              ].map((s, i) => (
+                <div key={i} style={{ textAlign: 'center', minWidth: 60 }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-slate-dark)' }}>{s.n}</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
+            {(['cis', 'services', 'teams'] as const).map(tab => {
+              const sel = resultTab === tab
+              const count = tab === 'cis' ? result.totalImpacted : tab === 'services' ? result.impactedServices.length : result.impactedTeams.length
+              const label = tab === 'cis' ? t('pages.whatIf.tabCIs') : tab === 'services' ? t('pages.whatIf.tabServices') : t('pages.whatIf.tabTeams')
+              return (
+                <button key={tab} onClick={() => setResultTab(tab)} style={{
+                  padding: '10px 14px', border: 'none', borderBottom: sel ? '2px solid var(--color-brand)' : '2px solid transparent',
+                  marginBottom: -1, background: 'none', fontSize: 13, cursor: 'pointer',
+                  color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400,
+                }}>
+                  {label} ({count})
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Tab: CI Impattati */}
+          {resultTab === 'cis' && (() => {
+            const total = filteredCIs.length
+            const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+            const paged = filteredCIs.slice(cisPage * PAGE_SIZE, (cisPage + 1) * PAGE_SIZE)
+            return (
+              <>
+                <FilterBuilder fields={filterFields} onApply={g => { setFilterGroup(g); setCisPage(0) }} />
+                <SortableFilterTable<WhatIfCI>
+                  columns={columns}
+                  data={paged}
+                  loading={false}
+                  onSort={(f, d) => { setSortField(f); setSortDir(d); setCisPage(0) }}
+                  sortField={sortField}
+                  sortDir={sortDir}
+                  emptyComponent={<EmptyState icon={<ShieldCheck size={32} color="#16a34a" />} title={t('pages.whatIf.noImpacted')} />}
+                  onRowClick={row => navigate(`/ci/${labelToRoute(row.type)}/${row.id}`)}
+                />
+                {expandedGraphId && (() => {
+                  const ci = result.impactedCIs.find(c => c.id === expandedGraphId)
+                  if (!ci || !Array.isArray(ci.impactPath) || ci.impactPath.length < 2) return null
+                  return <MiniPathGraph pathNames={ci.impactPath} targetName={result.targetCI.name} impactedName={ci.name} />
+                })()}
+                {total > PAGE_SIZE && <Pager page={cisPage} totalPages={totalPages} total={total} onPage={setCisPage} t={t} />}
+              </>
+            )
+          })()}
+
+          {/* Tab: Servizi */}
+          {resultTab === 'services' && (() => {
+            const all = result.impactedServices
+            const total = all.length
+            const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+            const paged = all.slice(svcPage * PAGE_SIZE, (svcPage + 1) * PAGE_SIZE)
+            return total === 0
+              ? <EmptyState icon={<ShieldCheck size={32} color="#16a34a" />} title={t('pages.whatIf.noServices')} />
+              : <>
+                  <SortableFilterTable<WhatIfCI>
+                    columns={[
+                      { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
+                      { key: 'environment', label: t('pages.whatIf.colEnv'), width: '110px', sortable: true, render: (v) => v ? badge('#f0fdf4', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
+                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), width: '100px', sortable: true, render: (v) => { const ic = IMPACT_STYLES[String(v)] ?? IMPACT_STYLES['low']; return badge(ic.bg, ic.fg, impactLabel(String(v))) } },
+                      { key: 'impactPath', label: t('pages.whatIf.colPath'), render: (v) => <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
+                    ]}
+                    data={paged}
+                    loading={false}
+                    emptyComponent={<EmptyState icon={<ShieldCheck size={32} color="#16a34a" />} title={t('pages.whatIf.noServices')} />}
+                    onRowClick={row => navigate(`/ci/${labelToRoute(row.type)}/${row.id}`)}
+                  />
+                  {total > PAGE_SIZE && <Pager page={svcPage} totalPages={totalPages} total={total} onPage={setSvcPage} t={t} />}
+                </>
+          })()}
+
+          {/* Tab: Team */}
+          {resultTab === 'teams' && (() => {
+            const all = result.impactedTeams
+            const total = all.length
+            const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+            const paged = all.slice(teamPage * PAGE_SIZE, (teamPage + 1) * PAGE_SIZE)
+            return total === 0
+              ? <EmptyState icon={<Users size={32} color="var(--color-slate-light)" />} title={t('pages.whatIf.noTeams')} />
+              : <>
+                  <SortableFilterTable<WhatIfTeam>
+                    columns={[
+                      { key: 'name', label: t('pages.whatIf.colTeamName'), sortable: true },
+                      { key: 'impactedCICount', label: t('pages.whatIf.colTeamCIs'), width: '120px', sortable: true, render: (v) => <span style={{ fontWeight: 700, color: 'var(--color-brand)' }}>{String(v)}</span> },
+                    ]}
+                    data={paged}
+                    loading={false}
+                    emptyComponent={<EmptyState icon={<Users size={32} color="var(--color-slate-light)" />} title={t('pages.whatIf.noTeams')} />}
+                  />
+                  {total > PAGE_SIZE && <Pager page={teamPage} totalPages={totalPages} total={total} onPage={setTeamPage} t={t} />}
+                </>
+          })()}
+        </div>
+      )}
+
+      {/* Fade-in animation */}
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+    </PageContainer>
+  )
+}
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+
+function Pager({ page, totalPages, total, onPage, t }: {
+  page: number; totalPages: number; total: number
+  onPage: (p: number) => void; t: (k: string) => string
+}) {
+  const PAGE_SIZE = 20
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+      <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total}</span>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={() => onPage(Math.max(0, page - 1))}
+          disabled={page === 0}
+          style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+        >{t('common.prev')}</button>
+        <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>{page + 1} / {totalPages}</span>
+        <button
+          onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
+          disabled={page >= totalPages - 1}
+          style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+        >{t('common.next')}</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Mini Path Graph (D3 force-simulation) ────────────────────────────────────
+
+const NODE_R = 20
+function MiniPathGraph({ pathNames, targetName, impactedName }: {
+  pathNames: string[]; targetName: string; impactedName: string
+}) {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const HEIGHT = 200
+
+  const draw = useCallback(() => {
+    const svg = svgRef.current
+    if (!svg || pathNames.length < 2) return
+    const width = svg.parentElement?.clientWidth ?? 600
+
+    const sel = d3.select(svg)
+    sel.selectAll('*').remove()
+    sel.attr('width', width).attr('height', HEIGHT)
+
+    // Deduplicate path names (keep order)
+    const unique: string[] = []
+    for (const n of pathNames) { if (!unique.includes(n)) unique.push(n) }
+
+    // Static horizontal layout — no simulation needed for a linear chain
+    const gap = width / (unique.length + 1)
+    const cy = HEIGHT / 2
+
+    type N = { id: string; name: string; x: number; y: number }
+    const nodes: N[] = unique.map((name, i) => ({ id: name, name, x: gap * (i + 1), y: cy }))
+
+    // Arrow marker
+    sel.append('defs').append('marker')
+      .attr('id', 'arrowhead-mini').attr('viewBox', '0 -5 10 10')
+      .attr('refX', NODE_R + 10).attr('refY', 0)
+      .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
+      .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#94a3b8')
+
+    // Links between consecutive nodes
+    sel.append('g').selectAll('line')
+      .data(nodes.slice(1))
+      .join('line')
+      .attr('x1', (_, i) => nodes[i]!.x).attr('y1', cy)
+      .attr('x2', d => d.x).attr('y2', cy)
+      .attr('stroke', '#cbd5e1').attr('stroke-width', 2)
+      .attr('marker-end', 'url(#arrowhead-mini)')
+
+    // Nodes
+    const nodeSel = sel.append('g').selectAll('g').data(nodes).join('g')
+      .attr('transform', d => `translate(${d.x},${d.y})`)
+
+    nodeSel.append('circle')
+      .attr('r', NODE_R)
+      .attr('fill', '#fff')
+      .attr('stroke', d => d.name === targetName ? '#ef4444' : d.name === impactedName ? '#f97316' : '#cbd5e1')
+      .attr('stroke-width', d => (d.name === targetName || d.name === impactedName) ? 3 : 2)
+
+    // Step number inside circle
+    nodeSel.append('text')
+      .text((_, i) => `${i + 1}`)
+      .attr('text-anchor', 'middle').attr('dy', 4)
+      .attr('font-size', 11).attr('fill', '#64748b').attr('font-weight', 700)
+      .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
+
+    // Name below circle
+    nodeSel.append('text')
+      .text(d => d.name.length > 14 ? d.name.slice(0, 13) + '…' : d.name)
+      .attr('text-anchor', 'middle').attr('dy', NODE_R + 16)
+      .attr('font-size', 11).attr('fill', '#0f172a').attr('font-weight', 500)
+      .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
+
+  }, [pathNames, targetName, impactedName])
+
+  useEffect(() => { draw() }, [draw])
+
+  return (
+    <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 0', marginTop: 8, marginBottom: 8, overflow: 'hidden' }}>
+      <svg ref={svgRef} style={{ display: 'block', width: '100%', height: HEIGHT }} />
+    </div>
+  )
+}

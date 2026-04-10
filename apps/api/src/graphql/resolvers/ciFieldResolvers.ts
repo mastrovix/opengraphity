@@ -23,13 +23,14 @@ export function mapTeamProps(p: Props): TeamResult {
   }
 }
 
-function mapCIForRelation(props: Props, t: CITypeWithDefinitions): Record<string, unknown> {
-  const base: Record<string, unknown> = {
-    id:   props['id'],
-    name: props['name'],
-    type: t.name,
+function mapCIForRelation(props: Props, typeName: string): Record<string, unknown> {
+  return {
+    id:          props['id'],
+    name:        props['name'],
+    type:        typeName,
+    status:      props['status'] ?? null,
+    environment: props['environment'] ?? null,
   }
-  return base
 }
 
 export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CITypeWithDefinitions[]) {
@@ -62,7 +63,6 @@ export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CIT
       withSession(async session => {
         const outgoing = ciType.relations.filter(r => r.direction === 'outgoing')
         if (!outgoing.length) return []
-        // Collect all relationship types, handle pipe-separated values
         const relTypes = [...new Set(outgoing.flatMap(r => r.relationshipType.split('|')))].join('|')
         const r = await session.executeRead(tx =>
           tx.run(
@@ -79,7 +79,7 @@ export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CIT
           const relation = rec.get('relation') as string
           const targetType = allTypes.find(t => t.neo4jLabel === label)
           if (!targetType) return null
-          return { ci: mapCIForRelation(props, targetType), relation }
+          return { ci: mapCIForRelation(props, targetType.name), relation }
         }).filter(Boolean)
       }),
 
@@ -103,7 +103,7 @@ export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CIT
           const relation = rec.get('relation') as string
           const targetType = allTypes.find(t => t.neo4jLabel === label)
           if (!targetType) return null
-          return { ci: mapCIForRelation(props, targetType), relation }
+          return { ci: mapCIForRelation(props, targetType.name), relation }
         }).filter(Boolean)
       }),
   }
