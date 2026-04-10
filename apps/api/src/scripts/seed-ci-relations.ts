@@ -76,63 +76,44 @@ async function seed() {
   console.log(`  DB→DBInstance: ${dbToDbi}`)
   console.log(`  DBInstance→Server: ${dbiToSrv}`)
 
-  // ── STEP 3: Applications ────────────────────────────────────────────────────
+  // ── STEP 3: App → Database (1:1 — every DB gets exactly 1 app) ──────────────
 
-  console.log('\nStep 3: Applications...')
+  console.log('\nStep 3: App→Database (1:1)...')
+
+  // Round-robin: assign each database to exactly one application
+  for (let i = 0; i < databases.length; i++) {
+    const dbId  = databases[i]
+    const appId = apps[i % apps.length]
+    await session.run(
+      `MATCH (a:Application {id: $appId}), (db:Database {id: $dbId})
+       MERGE (a)-[:DEPENDS_ON]->(db)`,
+      { appId, dbId }
+    )
+    appToDB++
+  }
+
+  console.log(`  App→Database: ${appToDB}`)
+
+  // ── STEP 3b: App → Server (some apps also depend on servers directly) ──────
+
+  console.log('\nStep 3b: App→Server...')
 
   for (let i = 0; i < apps.length; i++) {
-    const appId = apps[i]
-    const r = Math.random()
-
-    if (r < 0.30) {
-      // Chain A only — direct to servers
-      const targets = randomSubset(servers, 1, 3)
+    if (Math.random() < 0.6) {
+      const targets = randomSubset(servers, 1, 2)
       for (const srvId of targets) {
         await session.run(
           `MATCH (a:Application {id: $appId}), (s:Server {id: $srvId})
            MERGE (a)-[:DEPENDS_ON]->(s)`,
-          { appId, srvId }
+          { appId: apps[i], srvId }
         )
         appToSrv++
-      }
-    } else if (r < 0.60) {
-      // Chain B only — via databases
-      const targets = randomSubset(databases, 1, 3)
-      for (const dbId of targets) {
-        await session.run(
-          `MATCH (a:Application {id: $appId}), (db:Database {id: $dbId})
-           MERGE (a)-[:DEPENDS_ON]->(db)`,
-          { appId, dbId }
-        )
-        appToDB++
-      }
-    } else {
-      // Both chains
-      const srvTargets = randomSubset(servers, 1, 2)
-      for (const srvId of srvTargets) {
-        await session.run(
-          `MATCH (a:Application {id: $appId}), (s:Server {id: $srvId})
-           MERGE (a)-[:DEPENDS_ON]->(s)`,
-          { appId, srvId }
-        )
-        appToSrv++
-      }
-      const dbTargets = randomSubset(databases, 1, 2)
-      for (const dbId of dbTargets) {
-        await session.run(
-          `MATCH (a:Application {id: $appId}), (db:Database {id: $dbId})
-           MERGE (a)-[:DEPENDS_ON]->(db)`,
-          { appId, dbId }
-        )
-        appToDB++
       }
     }
-
     if ((i + 1) % 60 === 0) console.log(`  ${i + 1}/${apps.length} apps processed...`)
   }
 
   console.log(`  App→Server (direct): ${appToSrv}`)
-  console.log(`  App→Database: ${appToDB}`)
 
   // ── STEP 4: App → App dependencies ─────────────────────────────────────────
 

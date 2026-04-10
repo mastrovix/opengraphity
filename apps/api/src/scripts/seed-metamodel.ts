@@ -26,6 +26,7 @@ interface RelationDef {
   cardinality:       string
   direction:         string
   order:             number
+  description?:      string
 }
 
 interface SystemRelDef {
@@ -85,8 +86,10 @@ const CI_TYPES: CIType[] = [
         visibility_script: `return true` },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1 },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2 },
+      { name: 'dependencies', label: 'Dipendenze',             relationship_type: 'DEPENDS_ON',      target_type: 'any',         cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questa applicazione dipende (database, server, altre applicazioni)' },
+      { name: 'dependents',   label: 'Dipendenti',             relationship_type: 'DEPENDS_ON',      target_type: 'any',         cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questa applicazione' },
+      { name: 'hostedOn',     label: 'Hosted On',              relationship_type: 'HOSTED_ON',       target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 3, description: 'Server su cui è ospitata questa applicazione' },
+      { name: 'certificates', label: 'Uses Certificate',       relationship_type: 'USES_CERTIFICATE',target_type: 'Certificate', cardinality: 'many', direction: 'outgoing', order: 4, description: 'Certificati SSL/TLS utilizzati da questa applicazione' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -100,8 +103,8 @@ const CI_TYPES: CIType[] = [
       { name: 'instanceType', label: 'Instance Type', field_type: 'enum',   order: 11, enum_values: ['PostgreSQL', 'Oracle', 'SQL Server'] },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1 },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2 },
+      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'Istanze database su cui gira questo database' },
+      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questo database' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -131,8 +134,9 @@ const CI_TYPES: CIType[] = [
         ` },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1 },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2 },
+      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questa istanza dipende' },
+      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'incoming', order: 2, description: 'Database che girano su questa istanza' },
+      { name: 'hostedOn',     label: 'Hosted On',  relationship_type: 'HOSTED_ON',  target_type: 'Server', cardinality: 'many', direction: 'outgoing', order: 3, description: 'Server che ospita questa istanza database' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -160,8 +164,8 @@ const CI_TYPES: CIType[] = [
       { name: 'version',  label: 'Versione', field_type: 'string', order: 14 },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON|HOSTED_ON',             target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1 },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2 },
+      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON|HOSTED_ON',             target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questo server dipende o che ospita' },
+      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questo server, sono ospitati su di esso, o vi hanno installato certificati' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -187,8 +191,8 @@ const CI_TYPES: CIType[] = [
         default_script: `return 'public'` },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'INSTALLED_ON',     target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 1 },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'USES_CERTIFICATE', target_type: 'Application', cardinality: 'many', direction: 'incoming', order: 2 },
+      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'INSTALLED_ON',     target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 1, description: 'Server su cui è installato questo certificato' },
+      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'USES_CERTIFICATE', target_type: 'Application', cardinality: 'many', direction: 'incoming', order: 2, description: 'Applicazioni che utilizzano questo certificato' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -291,6 +295,7 @@ async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: C
            r.cardinality       = $cardinality,
            r.direction         = $direction,
            r.order             = $order,
+           r.description       = $description,
            r.scope             = 'base',
            r.created_at        = $now
          ON MATCH SET
@@ -299,14 +304,16 @@ async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: C
            r.target_type       = $targetType,
            r.cardinality       = $cardinality,
            r.direction         = $direction,
-           r.order             = $order
+           r.order             = $order,
+           r.description       = $description
          WITH t, r
          MERGE (t)-[:HAS_RELATION]->(r)`,
         {
           id: relId, typeName: ci.name, tenantId: TENANT_ID,
           name: r.name, label: r.label, relType: r.relationship_type,
           targetType: r.target_type, cardinality: r.cardinality,
-          direction: r.direction, order: r.order, now,
+          direction: r.direction, order: r.order,
+          description: r.description ?? null, now,
         },
       ),
     )
