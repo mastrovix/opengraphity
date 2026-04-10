@@ -5,7 +5,14 @@ import { logger } from '../../lib/logger.js'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function impactLevel(dist: number): string {
+function impactLevel(dist: number, action: string): string {
+  if (action === 'remove') {
+    // Removal: levels shifted up by one
+    if (dist <= 2) return 'critical'
+    if (dist === 3) return 'high'
+    return 'medium'
+  }
+  // Impact analysis (default)
   if (dist <= 1) return 'critical'
   if (dist === 2) return 'high'
   if (dist === 3) return 'medium'
@@ -73,7 +80,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     type:        r.lbls?.[0] ?? 'Unknown',
     environment: r.env,
     status:      r.status,
-    impactLevel: impactLevel(toNum(r.distance)),
+    impactLevel: impactLevel(toNum(r.distance), action),
     impactPath:  (r.pathNames ?? []).map(String),
     isRedundant: false,
   }))
@@ -115,10 +122,10 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
   let riskScore = Math.min(totalImpacted * 10, 50)
   if (impactedServices.length > 0) riskScore += 20
   if (openIncidents > 0) riskScore += 15
-  if (action === 'shutdown' || action === 'remove') riskScore += 15
+  if (action === 'remove') riskScore += 15
   riskScore = Math.min(riskScore, 100)
 
-  const actionLabel = action === 'shutdown' ? 'Lo spegnimento' : action === 'remove' ? 'La rimozione' : 'La degradazione'
+  const actionLabel = action === 'remove' ? 'La rimozione' : "L'impatto su"
   const summary = `${actionLabel} di ${targetName} impatta ${totalImpacted} CI, ${impactedServices.length} servizi, ${teams.length} team. Rischio: ${riskScore}/100.`
 
   await audit(ctx, 'whatif_analysis', 'CI', ciId, { action, totalImpacted, riskScore }).catch(() => {})

@@ -66,6 +66,8 @@ const BASE_TYPE: CIType = {
     { name: 'notes',       label: 'Note',         field_type: 'string', is_system: true, order: 5 },
     { name: 'createdAt',   label: 'Creato il',    field_type: 'date',   is_system: true, order: 6 },
     { name: 'updatedAt',   label: 'Aggiornato il',field_type: 'date',   is_system: true, order: 7 },
+    { name: 'chain',       label: 'Chain',        field_type: 'enum',   is_system: true, order: 8,
+      enum_values: ['Application', 'Infrastructure'] },
   ],
   relations:  [],
   systemRels: [],
@@ -396,10 +398,26 @@ async function main() {
         { tenantId: TENANT_ID, baseFieldNames },
       ),
     )
-    const removedCount = (removed.records[0]?.get('removed') as { toNumber(): number })?.toNumber() ?? 0
+    const rawRemoved = removed.records[0]?.get('removed')
+    const removedCount = typeof rawRemoved === 'number' ? rawRemoved : typeof (rawRemoved as { toNumber?: () => number })?.toNumber === 'function' ? (rawRemoved as { toNumber: () => number }).toNumber() : Number(rawRemoved ?? 0)
     if (removedCount > 0) {
       console.log(`\n  Removed ${removedCount} stale HAS_FIELD edges (base fields on concrete types)`)
     }
+
+    // 4. Create ci_chain enum + link via USES_ENUM
+    await session.executeWrite(tx =>
+      tx.run(
+        `MERGE (e:EnumTypeDefinition {name: 'ci_chain', tenant_id: $tenantId})
+         ON CREATE SET e.id = randomUUID(), e.label = 'CI Chain', e.values = $values,
+           e.is_system = true, e.scope = 'cmdb', e.created_at = $now, e.updated_at = $now
+         ON MATCH SET e.values = $values, e.updated_at = $now
+         WITH e
+         MATCH (f:CIFieldDefinition {name: 'chain', tenant_id: $tenantId})
+         MERGE (f)-[:USES_ENUM]->(e)`,
+        { tenantId: TENANT_ID, values: JSON.stringify(['Application', 'Infrastructure']), now },
+      ),
+    )
+    console.log('✓ ci_chain enum created + linked via USES_ENUM')
 
     console.log('\n── Metamodello creato ──────────────────────────────')
     console.log(`  __base__ type:      1 (${BASE_TYPE.fields.length} system fields)`)

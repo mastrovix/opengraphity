@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
@@ -24,6 +24,9 @@ interface Props<T> {
   sortField?:      string | null
   sortDir?:        'asc' | 'desc'
   label?:          string  // aria-label per la tabella
+  /** If provided, renders an expanded row below the row whose id matches expandedRowId */
+  expandedRowId?:  string | null
+  renderExpandedRow?: (row: T) => React.ReactNode | null
 }
 
 const thStyle: React.CSSProperties = {
@@ -47,6 +50,8 @@ export function SortableFilterTable<T extends object>({
   sortField: controlledSortField,
   sortDir: controlledSortDir,
   label,
+  expandedRowId,
+  renderExpandedRow,
 }: Props<T>) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = emptyMessage ?? t('common.noResults')
@@ -171,36 +176,47 @@ export function SortableFilterTable<T extends object>({
           ) : (
             sorted.map((row, i) => {
               const rowId = String((row as Record<string, unknown>)['id'] ?? i)
+              const isExpanded = expandedRowId != null && rowId === expandedRowId && renderExpandedRow != null
+              const expandedContent = isExpanded ? renderExpandedRow(row) : null
               return (
-                <tr
-                  key={rowId}
-                  onClick={() => onRowClick?.(row)}
-                  style={{
-                    borderBottom:    '1px solid #f1f3f9',
-                    cursor:          onRowClick ? 'pointer' : 'default',
-                    backgroundColor: colors.white,
-                    transition:      'background-color 0.15s, color 0.15s',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#3d4856'
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = colors.white
-                  }}
-                >
-                  {columns.map((col) => (
-                    <td
-                      key={String(col.key)}
-                      className="sft-td"
-                      style={{ padding: '11px 12px', verticalAlign: 'middle' }}
-                    >
-                      {col.render
-                        ? col.render(getRawVal(row, col.key), row)
-                        : String(getRawVal(row, col.key) ?? '')
-                      }
-                    </td>
-                  ))}
-                </tr>
+                <React.Fragment key={rowId}>
+                  <tr
+                    onClick={() => onRowClick?.(row)}
+                    style={{
+                      borderBottom:    expandedContent ? 'none' : '1px solid #f1f3f9',
+                      cursor:          onRowClick ? 'pointer' : 'default',
+                      backgroundColor: colors.white,
+                      borderLeft:      '8px solid transparent',
+                      transition:      'border-color 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid #38bdf8'
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid transparent'
+                    }}
+                  >
+                    {columns.map((col) => (
+                      <td
+                        key={String(col.key)}
+                        className="sft-td"
+                        style={{ padding: '11px 12px', verticalAlign: 'middle' }}
+                      >
+                        {col.render
+                          ? col.render(getRawVal(row, col.key), row)
+                          : String(getRawVal(row, col.key) ?? '')
+                        }
+                      </td>
+                    ))}
+                  </tr>
+                  {expandedContent && (
+                    <tr style={{ backgroundColor: '#ffffff' }}>
+                      <td colSpan={columns.length} style={{ padding: 0 }}>
+                        {expandedContent}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               )
             })
           )}

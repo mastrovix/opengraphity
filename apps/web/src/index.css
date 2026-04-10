@@ -228,10 +228,10 @@
   color: #0f172a !important;
 }
 
-/* Hover: riga intera diventa scura, testo chiaro */
+/* Hover: nessun cambio colore testo */
 tr:hover .sft-td,
 tr:hover .sft-td * {
-  color: #e2e8f0 !important;
+  color: #0f172a !important;
 }
 
 /* ── Card border — uniform style for all white panels ──── */

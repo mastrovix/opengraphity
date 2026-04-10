@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useLazyQuery, useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { FlaskConical, Power, Trash2, TrendingDown, Users, ShieldCheck, GitBranch } from 'lucide-react'
+import { FlaskConical, Zap, Trash2, Users, ShieldCheck, GitBranch } from 'lucide-react'
 import * as d3 from 'd3'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Skeleton } from '@/components/ui/skeleton'
-import { GET_ALL_CIS, WHAT_IF_ANALYSIS } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,14 +27,13 @@ interface WhatIfResult {
 }
 interface CIOption { id: string; name: string; type: string }
 
-type Action = 'shutdown' | 'remove' | 'degrade'
+type Action = 'impact' | 'remove'
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const ACTIONS: { key: Action; icon: typeof Power; label: string; labelEn: string; bg: string; fg: string }[] = [
-  { key: 'shutdown', icon: Power,        label: 'Spegnimento', labelEn: 'Shutdown',    bg: '#fee2e2', fg: '#991b1b' },
-  { key: 'remove',   icon: Trash2,       label: 'Rimozione',   labelEn: 'Removal',     bg: '#fce7f3', fg: '#9d174d' },
-  { key: 'degrade',  icon: TrendingDown, label: 'Degradazione',labelEn: 'Degradation', bg: '#fef3c7', fg: '#92400e' },
+const ACTIONS: { key: Action; icon: typeof Zap; label: string; labelEn: string; bg: string; fg: string }[] = [
+  { key: 'impact', icon: Zap,    label: 'Analizza impatto',   labelEn: 'Analyze impact',  bg: '#e0f2fe', fg: '#0284c7' },
+  { key: 'remove', icon: Trash2, label: 'Analizza rimozione', labelEn: 'Analyze removal', bg: '#e0f2fe', fg: '#0284c7' },
 ]
 
 const IMPACT_STYLES: Record<string, { bg: string; fg: string }> = {
@@ -62,11 +61,19 @@ export function WhatIfPage() {
   // Input state
   const [ciSearch, setCiSearch] = useState('')
   const [selectedCI, setSelectedCI] = useState<CIOption | null>(null)
-  const [action, setAction] = useState<Action>('shutdown')
+  const [action, setAction] = useState<Action>('impact')
   const [depth, setDepth] = useState(5)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [resultTab, setResultTab] = useState<'cis' | 'services' | 'teams'>('cis')
   const [expandedGraphId, setExpandedGraphId] = useState<string | null>(null)
+
+  // CI type → icon map from metamodel
+  const { data: ciTypesData } = useQuery<{ ciTypes: { name: string; icon: string }[] }>(GET_CI_TYPES, { fetchPolicy: 'cache-first' })
+  const typeIconMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const ct of ciTypesData?.ciTypes ?? []) m.set(ct.name.toLowerCase().replace(/[_\s]/g, ''), ct.icon ?? 'box')
+    return m
+  }, [ciTypesData])
 
   // CI search
   const { data: ciData } = useQuery<{ allCIs: { items: CIOption[] } }>(GET_ALL_CIS, {
@@ -83,6 +90,16 @@ export function WhatIfPage() {
     if (!selectedCI) return
     void runAnalysis({ variables: { ciId: selectedCI.id, action, depth } })
   }
+
+  // name → type map from results
+  const nameTypeMap = useMemo(() => {
+    const m = new Map<string, string>()
+    if (result) {
+      m.set(result.targetCI.name, result.targetCI.type)
+      for (const ci of result.impactedCIs) m.set(ci.name, ci.type)
+    }
+    return m
+  }, [result])
 
   // Filter + pagination for results tables
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -237,7 +254,7 @@ export function WhatIfPage() {
         <select
           value={depth}
           onChange={e => setDepth(Number(e.target.value))}
-          style={{ width: 80, padding: '7px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: 'var(--color-slate-dark)', cursor: 'pointer' }}
+          style={{ width: 'auto', padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: 'var(--color-slate-dark)', cursor: 'pointer' }}
         >
           {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
             <option key={n} value={n}>{t('pages.whatIf.depth')}: {n}</option>
@@ -359,12 +376,16 @@ export function WhatIfPage() {
                   sortDir={sortDir}
                   emptyComponent={<EmptyState icon={<ShieldCheck size={32} color="#16a34a" />} title={t('pages.whatIf.noImpacted')} />}
                   onRowClick={row => navigate(`/ci/${labelToRoute(row.type)}/${row.id}`)}
+                  expandedRowId={expandedGraphId}
+                  renderExpandedRow={row => {
+                    if (!Array.isArray(row.impactPath) || row.impactPath.length < 2) return null
+                    return (
+                      <div style={{ padding: '8px 12px' }}>
+                        <MiniPathGraph pathNames={row.impactPath} targetName={result.targetCI.name} impactedName={row.name} nameTypeMap={nameTypeMap} typeIconMap={typeIconMap} />
+                      </div>
+                    )
+                  }}
                 />
-                {expandedGraphId && (() => {
-                  const ci = result.impactedCIs.find(c => c.id === expandedGraphId)
-                  if (!ci || !Array.isArray(ci.impactPath) || ci.impactPath.length < 2) return null
-                  return <MiniPathGraph pathNames={ci.impactPath} targetName={result.targetCI.name} impactedName={ci.name} />
-                })()}
                 {total > PAGE_SIZE && <Pager page={cisPage} totalPages={totalPages} total={total} onPage={setCisPage} t={t} />}
               </>
             )
@@ -454,12 +475,70 @@ function Pager({ page, totalPages, total, onPage, t }: {
 
 // ── Mini Path Graph (D3 force-simulation) ────────────────────────────────────
 
-const NODE_R = 20
-function MiniPathGraph({ pathNames, targetName, impactedName }: {
+const MINI_R = 16
+const MINI_NODE_COLOR = '#64748b'
+const MINI_EDGE_COLOR = '#0284c7'
+
+
+// Lucide icon SVG path data (subset from TopologyGraph)
+type IconPath = [string, Record<string, string>]
+const MINI_ICONS: Record<string, IconPath[]> = {
+  box: [
+    ['path', { d: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }],
+    ['path', { d: 'm3.3 7 8.7 5 8.7-5' }],
+    ['path', { d: 'M12 22V12' }],
+  ],
+  database: [
+    ['ellipse', { cx: '12', cy: '5', rx: '9', ry: '3' }],
+    ['path', { d: 'M3 5V19A9 3 0 0 0 21 19V5' }],
+    ['path', { d: 'M3 12A9 3 0 0 0 21 12' }],
+  ],
+  server: [
+    ['rect', { width: '20', height: '8', x: '2', y: '2', rx: '2', ry: '2' }],
+    ['rect', { width: '20', height: '8', x: '2', y: '14', rx: '2', ry: '2' }],
+    ['line', { x1: '6', x2: '6.01', y1: '6', y2: '6' }],
+    ['line', { x1: '6', x2: '6.01', y1: '18', y2: '18' }],
+  ],
+  shield: [
+    ['path', { d: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z' }],
+  ],
+  'hard-drive': [
+    ['path', { d: 'M10 16h.01' }],
+    ['path', { d: 'M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z' }],
+    ['path', { d: 'M21.946 12.013H2.054' }],
+    ['path', { d: 'M6 16h.01' }],
+  ],
+}
+
+function appendMiniIcon(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sel: d3.Selection<any, any, any, any>,
+  iconKey: string,
+  color: string,
+  size = 16,
+) {
+  const paths = MINI_ICONS[iconKey] ?? MINI_ICONS['box']!
+  const scale = size / 24
+  const offset = -(size / 2)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g = (sel as any).append('g')
+    .attr('transform', `translate(${offset},${offset}) scale(${scale})`)
+    .attr('pointer-events', 'none')
+  for (const [tag, attrs] of paths) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const el = (g as any).append(tag)
+    for (const [k, v] of Object.entries(attrs)) el.attr(k, v)
+    el.attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2)
+      .attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round')
+  }
+}
+
+function MiniPathGraph({ pathNames, targetName, impactedName, nameTypeMap, typeIconMap }: {
   pathNames: string[]; targetName: string; impactedName: string
+  nameTypeMap: Map<string, string>; typeIconMap: Map<string, string>
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
-  const HEIGHT = 200
+  const HEIGHT = 120
 
   const draw = useCallback(() => {
     const svg = svgRef.current
@@ -470,63 +549,64 @@ function MiniPathGraph({ pathNames, targetName, impactedName }: {
     sel.selectAll('*').remove()
     sel.attr('width', width).attr('height', HEIGHT)
 
-    // Deduplicate path names (keep order)
     const unique: string[] = []
     for (const n of pathNames) { if (!unique.includes(n)) unique.push(n) }
 
-    // Static horizontal layout — no simulation needed for a linear chain
     const gap = width / (unique.length + 1)
-    const cy = HEIGHT / 2
+    const cy = HEIGHT / 2 - 6
 
     type N = { id: string; name: string; x: number; y: number }
     const nodes: N[] = unique.map((name, i) => ({ id: name, name, x: gap * (i + 1), y: cy }))
 
-    // Arrow marker
+    // Arrow marker — refX=10 aligns tip with end of line
     sel.append('defs').append('marker')
-      .attr('id', 'arrowhead-mini').attr('viewBox', '0 -5 10 10')
-      .attr('refX', NODE_R + 10).attr('refY', 0)
-      .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
-      .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#94a3b8')
+      .attr('id', 'arrow-mini-path').attr('viewBox', '0 -5 10 10')
+      .attr('refX', 10).attr('refY', 0)
+      .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
+      .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', MINI_EDGE_COLOR).attr('opacity', 0.7)
 
-    // Links between consecutive nodes
+    // Edges — line ends at circle border (x ± MINI_R)
     sel.append('g').selectAll('line')
       .data(nodes.slice(1))
       .join('line')
-      .attr('x1', (_, i) => nodes[i]!.x).attr('y1', cy)
-      .attr('x2', d => d.x).attr('y2', cy)
-      .attr('stroke', '#cbd5e1').attr('stroke-width', 2)
-      .attr('marker-end', 'url(#arrowhead-mini)')
+      .attr('x1', (_, i) => nodes[i]!.x + MINI_R + 2).attr('y1', cy)
+      .attr('x2', d => d.x - MINI_R - 2).attr('y2', cy)
+      .attr('stroke', MINI_EDGE_COLOR).attr('stroke-width', 1.5).attr('stroke-opacity', 0.5)
+      .attr('marker-end', 'url(#arrow-mini-path)')
 
     // Nodes
     const nodeSel = sel.append('g').selectAll('g').data(nodes).join('g')
       .attr('transform', d => `translate(${d.x},${d.y})`)
 
+    // Circle
     nodeSel.append('circle')
-      .attr('r', NODE_R)
-      .attr('fill', '#fff')
-      .attr('stroke', d => d.name === targetName ? '#ef4444' : d.name === impactedName ? '#f97316' : '#cbd5e1')
-      .attr('stroke-width', d => (d.name === targetName || d.name === impactedName) ? 3 : 2)
+      .attr('r', MINI_R)
+      .attr('fill', d => d.name === targetName ? MINI_EDGE_COLOR : d.name === impactedName ? '#f97316' : '#ffffff')
+      .attr('stroke', d => d.name === targetName ? MINI_EDGE_COLOR : d.name === impactedName ? '#f97316' : MINI_NODE_COLOR)
+      .attr('stroke-width', 2)
 
-    // Step number inside circle
-    nodeSel.append('text')
-      .text((_, i) => `${i + 1}`)
-      .attr('text-anchor', 'middle').attr('dy', 4)
-      .attr('font-size', 11).attr('fill', '#64748b').attr('font-weight', 700)
-      .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
+    // Icon inside circle — resolved from metamodel
+    nodeSel.each(function (d) {
+      const g = d3.select(this) as d3.Selection<SVGGElement, N, null, undefined>
+      const iconColor = (d.name === targetName || d.name === impactedName) ? '#ffffff' : MINI_NODE_COLOR
+      const ciType = nameTypeMap.get(d.name) ?? ''
+      const iconKey = typeIconMap.get(ciType.toLowerCase().replace(/[_\s]/g, '')) ?? 'box'
+      appendMiniIcon(g, iconKey, iconColor, 16)
+    })
 
     // Name below circle
     nodeSel.append('text')
-      .text(d => d.name.length > 14 ? d.name.slice(0, 13) + '…' : d.name)
-      .attr('text-anchor', 'middle').attr('dy', NODE_R + 16)
-      .attr('font-size', 11).attr('fill', '#0f172a').attr('font-weight', 500)
+      .text(d => d.name.length > 16 ? d.name.slice(0, 15) + '…' : d.name)
+      .attr('text-anchor', 'middle').attr('dy', MINI_R + 14)
+      .attr('font-size', 10).attr('fill', '#0f172a').attr('font-weight', 500)
       .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
 
-  }, [pathNames, targetName, impactedName])
+  }, [pathNames, targetName, impactedName, nameTypeMap, typeIconMap])
 
   useEffect(() => { draw() }, [draw])
 
   return (
-    <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 0', marginTop: 8, marginBottom: 8, overflow: 'hidden' }}>
+    <div style={{ background: '#ffffff', borderRadius: 6, overflow: 'hidden', width: '100%' }}>
       <svg ref={svgRef} style={{ display: 'block', width: '100%', height: HEIGHT }} />
     </div>
   )

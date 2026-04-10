@@ -6,7 +6,13 @@ import { toPascalCase } from '@opengraphity/schema-generator'
 
 type Props = Record<string, unknown>
 
-export type CIFieldRow = { f: { properties: Props } | null; enumId: string | null; enumName: string | null; enumValues: string[] | null }
+export type CIFieldRow = { f: { properties: Props } | null; enumId: string | null; enumName: string | null; enumValues: string[] | string | null }
+
+function parseEnumValues(raw: string[] | string | null | undefined): string[] {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : [] } catch { return [] } }
+  return []
+}
 
 // ── mapCITypeNode ─────────────────────────────────────────────────────────────
 
@@ -30,7 +36,7 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
           fieldType:        f['field_type'],
           required:         f['required'] ?? false,
           defaultValue:     f['default_value'] ?? null,
-          enumValues:       fd.enumValues ?? [],
+          enumValues:       parseEnumValues(fd.enumValues ?? fd.f!.properties['enum_values'] as string[] | string | null),
           enumTypeId:       fd.enumId     ?? null,
           enumTypeName:     fd.enumName   ?? null,
           order:            Number(f['order'] ?? 0),
@@ -139,7 +145,7 @@ export function buildCITypesResolver() {
       return r.records.map(rec => {
         const t = rec.get('t').properties as Props
 
-        type FRow = { f: { properties: Props } | null; enumId: string | null; enumName: string | null; enumValues: string[] | null }
+        type FRow = { f: { properties: Props } | null; enumId: string | null; enumName: string | null; enumValues: string[] | string | null }
         const mapF = (fd: FRow) => {
           const f = fd.f!.properties
           return {
@@ -149,7 +155,7 @@ export function buildCITypesResolver() {
             fieldType:        f['field_type'],
             required:         f['required']      ?? false,
             defaultValue:     f['default_value'] ?? null,
-            enumValues:       fd.enumValues      ?? [],
+            enumValues:       parseEnumValues(fd.enumValues ?? f['enum_values'] as string[] | string | null),
             enumTypeId:       fd.enumId          ?? null,
             enumTypeName:     fd.enumName        ?? null,
             order:            f['order']          ?? 0,
