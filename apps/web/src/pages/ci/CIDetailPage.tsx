@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { toPascalCase } from '@/lib/stringUtils'
-import { useQuery } from '@apollo/client/react'
+import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -14,7 +15,10 @@ import { CIIncidentsCard } from '@/components/CIIncidentsCard'
 import { CIChangesCard } from '@/components/CIChangesCard'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
-import { GET_BLAST_RADIUS } from '@/graphql/queries'
+import { GET_BLAST_RADIUS, GET_ALL_CIS } from '@/graphql/queries'
+import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP } from '@/graphql/mutations'
+import { X, Plus } from 'lucide-react'
+import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,9 +52,11 @@ interface CIDetail {
 function RelationList({
   relations,
   navigate,
+  onDelete,
 }: {
   relations: CIRelation[]
   navigate: (path: string) => void
+  onDelete?: (rel: CIRelation) => void
 }) {
   const grouped = relations.reduce<Record<string, CIRelation[]>>((acc, rel) => {
     ;(acc[rel.relation] ??= []).push(rel)
@@ -76,6 +82,15 @@ function RelationList({
                 </div>
               </div>
               {rel.ci.status && <StatusBadge value={rel.ci.status} />}
+              {onDelete && (
+                <button
+                  onClick={e => { e.stopPropagation(); onDelete(rel) }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, marginLeft: 'auto', flexShrink: 0 }}
+                  title="Delete"
+                >
+                  <X size={14} color="#ef4444" />
+                </button>
+              )}
             </div>
           ))}
         </CollapsibleGroup>
@@ -89,9 +104,35 @@ function RelationList({
 export function CIDetailPage() {
   const { typeName, id } = useParams<{ typeName: string; id: string }>()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { getCIType, loading: metamodelLoading } = useMetamodel()
 
   const ciType = typeName ? getCIType(typeName) : undefined
+
+  // ── Relation management state ────────────────────────────────────────────
+  const [showAddRel, setShowAddRel] = useState(false)
+  const [addRelForm, setAddRelForm] = useState<{
+    relationType: string; direction: 'outgoing' | 'incoming'; search: string; targetCI: CIRef | null
+  }>({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null })
+  const [deleteRel, setDeleteRel] = useState<{
+    sourceId: string; targetId: string; relationType: string; name: string
+  } | null>(null)
+
+  const [addRelMutation] = useMutation(ADD_CI_RELATIONSHIP)
+  const [removeRelMutation] = useMutation(REMOVE_CI_RELATIONSHIP)
+
+  const [searchCIs, { data: ciSearchData }] = useLazyQuery<{
+    allCIs: { items: { id: string; name: string; type: string; status: string | null; environment: string | null }[] }
+  }>(GET_ALL_CIS)
+
+  const ciSearchResults = (ciSearchData?.allCIs.items ?? []).filter(c => c.id !== id)
+
+  const handleCISearch = useCallback((term: string) => {
+    setAddRelForm(prev => ({ ...prev, search: term, targetCI: null }))
+    if (term.length >= 2) {
+      searchCIs({ variables: { search: term, limit: 10 } })
+    }
+  }, [searchCIs])
 
   const specificFields = useMemo(
     () => ciType?.fields.filter(f => !BASE_TYPE_FIELDS.has(f.name)).sort((a, b) => a.order - b.order) ?? [],
@@ -117,7 +158,7 @@ export function CIDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeName, specificFields.map(f => f.name).join(',')])
 
-  const { data, loading } = useQuery<Record<string, CIDetail | null>>(
+  const { data, loading, refetch } = useQuery<Record<string, CIDetail | null>>(
     detailQuery ?? gql`query EmptyCIDetail { __typename }`,
     { variables: { id }, skip: !detailQuery || !id },
   )
@@ -128,6 +169,34 @@ export function CIDetailPage() {
 
   const blastRadius = brData?.blastRadius ?? []
   const ci = typeName && data ? data[typeName] : undefined
+
+  // ── Relation handlers ──────────────────────────────────────────────────
+  async function handleAddRelation() {
+    if (!addRelForm.targetCI || !ci) return
+    const sourceId = addRelForm.direction === 'outgoing' ? ci.id : addRelForm.targetCI.id
+    const targetId = addRelForm.direction === 'outgoing' ? addRelForm.targetCI.id : ci.id
+    try {
+      await addRelMutation({ variables: { sourceId, targetId, relationType: addRelForm.relationType } })
+      toast.success(t('pages.ci.relationAdded'))
+      setShowAddRel(false)
+      setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null })
+      refetch()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function handleRemoveRelation() {
+    if (!deleteRel) return
+    try {
+      await removeRelMutation({ variables: { sourceId: deleteRel.sourceId, targetId: deleteRel.targetId, relationType: deleteRel.relationType } })
+      toast.success(t('pages.ci.relationRemoved'))
+      setDeleteRel(null)
+      refetch()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   if (metamodelLoading || loading) {
     return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento…</div>
@@ -231,7 +300,11 @@ export function CIDetailPage() {
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                       Dipendenze
                     </div>
-                    <RelationList relations={ci.dependencies as CIRelation[]} navigate={navigate} />
+                    <RelationList
+                      relations={ci.dependencies as CIRelation[]}
+                      navigate={navigate}
+                      onDelete={rel => setDeleteRel({ sourceId: ci.id, targetId: rel.ci.id, relationType: rel.relation, name: rel.ci.name })}
+                    />
                   </div>
                 )}
 
@@ -244,10 +317,127 @@ export function CIDetailPage() {
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                       Dipendenti
                     </div>
-                    <RelationList relations={ci.dependents as CIRelation[]} navigate={navigate} />
+                    <RelationList
+                      relations={ci.dependents as CIRelation[]}
+                      navigate={navigate}
+                      onDelete={rel => setDeleteRel({ sourceId: rel.ci.id, targetId: ci.id, relationType: rel.relation, name: rel.ci.name })}
+                    />
                   </div>
                 )}
               </>
+            )}
+
+            {/* Delete confirmation */}
+            {deleteRel && (
+              <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: '#991b1b' }}>
+                  {t('pages.ci.removeRelation', { relationType: deleteRel.relationType, name: deleteRel.name })}
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => setDeleteRel(null)}
+                    style={{ padding: '4px 12px', fontSize: 13, borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    onClick={handleRemoveRelation}
+                    style={{ padding: '4px 12px', fontSize: 13, borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}
+                  >
+                    {t('common.delete')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Add relation button */}
+            {!showAddRel && (
+              <button
+                onClick={() => setShowAddRel(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 12, padding: '6px 14px', fontSize: 13, fontWeight: 500, borderRadius: 6, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', cursor: 'pointer' }}
+              >
+                <Plus size={14} /> {t('pages.ci.addRelation')}
+              </button>
+            )}
+
+            {/* Add relation form */}
+            {showAddRel && (
+              <div style={{ padding: 16, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  {/* Relation type */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
+                      {t('pages.ci.relationType')}
+                    </label>
+                    <select
+                      value={addRelForm.relationType}
+                      onChange={e => setAddRelForm(prev => ({ ...prev, relationType: e.target.value }))}
+                      style={{ width: '100%', padding: '6px 8px', fontSize: 13, borderRadius: 6, border: '1px solid #d1d5db', background: '#fff' }}
+                    >
+                      <option value="DEPENDS_ON">DEPENDS_ON</option>
+                      <option value="HOSTED_ON">HOSTED_ON</option>
+                      <option value="USES_CERTIFICATE">USES_CERTIFICATE</option>
+                    </select>
+                  </div>
+                  {/* Direction */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
+                      {t('pages.ci.direction')}
+                    </label>
+                    <select
+                      value={addRelForm.direction}
+                      onChange={e => setAddRelForm(prev => ({ ...prev, direction: e.target.value as 'outgoing' | 'incoming' }))}
+                      style={{ width: '100%', padding: '6px 8px', fontSize: 13, borderRadius: 6, border: '1px solid #d1d5db', background: '#fff' }}
+                    >
+                      <option value="outgoing">{t('pages.ci.dirOutgoing')}</option>
+                      <option value="incoming">{t('pages.ci.dirIncoming')}</option>
+                    </select>
+                  </div>
+                  {/* CI search */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
+                      CI Target
+                    </label>
+                    <input
+                      placeholder={t('pages.ci.searchTarget')}
+                      value={addRelForm.search}
+                      onChange={e => handleCISearch(e.target.value)}
+                      style={{ width: '100%', padding: '6px 8px', fontSize: 13, borderRadius: 6, border: '1px solid #d1d5db', boxSizing: 'border-box' }}
+                    />
+                    {ciSearchResults.length > 0 && !addRelForm.targetCI && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, maxHeight: 180, overflowY: 'auto', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,.08)' }}>
+                        {ciSearchResults.map(c => (
+                          <div
+                            key={c.id}
+                            onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: c, search: c.name }))}
+                            style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
+                            onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+                          >
+                            <span style={{ fontWeight: 500 }}>{c.name}</span>{' '}
+                            <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>({c.type.replace(/_/g, ' ')})</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
+                    style={{ padding: '6px 14px', fontSize: 13, borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    onClick={handleAddRelation}
+                    disabled={!addRelForm.targetCI}
+                    style={{ padding: '6px 14px', fontSize: 13, borderRadius: 6, border: 'none', background: addRelForm.targetCI ? 'var(--color-brand)' : '#d1d5db', color: '#fff', cursor: addRelForm.targetCI ? 'pointer' : 'default' }}
+                  >
+                    {t('pages.ci.addRelation')}
+                  </button>
+                </div>
+              </div>
             )}
           </CollapsibleCard>
 

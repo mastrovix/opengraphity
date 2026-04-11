@@ -77,3 +77,15 @@ export const REMOVE_CI_RELATION = gql`
     }
   }
 `
+
+export const ADD_CI_RELATIONSHIP = gql`
+  mutation AddCIRelationship($sourceId: ID!, $targetId: ID!, $relationType: String!) {
+    addCIRelationship(sourceId: $sourceId, targetId: $targetId, relationType: $relationType)
+  }
+`
+
+export const REMOVE_CI_RELATIONSHIP = gql`
+  mutation RemoveCIRelationship($sourceId: ID!, $targetId: ID!, $relationType: String!) {
+    removeCIRelationship(sourceId: $sourceId, targetId: $targetId, relationType: $relationType)
+  }
+`

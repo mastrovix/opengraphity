@@ -550,6 +550,17 @@
       "monthOct": "Ottobre",
       "monthNov": "Novembre",
       "monthDec": "Dicembre"
+    },
+    "ci": {
+      "addRelation": "Aggiungi relazione",
+      "removeRelation": "Rimuovere la relazione {{relationType}} con {{name}}?",
+      "relationAdded": "Relazione aggiunta",
+      "relationRemoved": "Relazione rimossa",
+      "relationType": "Tipo relazione",
+      "direction": "Direzione",
+      "dirOutgoing": "Questo CI → ...",
+      "dirIncoming": "... → Questo CI",
+      "searchTarget": "Cerca CI..."
     }
   },
   "filter": {

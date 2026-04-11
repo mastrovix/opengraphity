@@ -255,6 +255,8 @@ export function buildBaseSDL(): string {
     createTeam(input: CreateTeamInput!): Team!
     assignCIOwner(ciId: ID!, teamId: ID!): CIBase!
     assignCISupportGroup(ciId: ID!, teamId: ID!): CIBase!
+    addCIRelationship(sourceId: ID!, targetId: ID!, relationType: String!): Boolean!
+    removeCIRelationship(sourceId: ID!, targetId: ID!, relationType: String!): Boolean!
 
     # Workflow
     addWorkflowStep(
