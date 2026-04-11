@@ -17,6 +17,7 @@ type Props = Record<string, unknown>
 function mapProblem(props: Props) {
   return {
     id:            props['id']            as string,
+    number:        (props['number'] ?? '') as string,
     title:         props['title']         as string,
     description:   (props['description']  ?? null) as string | null,
     priority:      (props['priority']     ?? 'medium') as string,

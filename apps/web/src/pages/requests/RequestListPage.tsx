@@ -15,6 +15,7 @@ import { GET_SERVICE_REQUESTS } from '@/graphql/queries'
 
 interface ServiceRequest {
   id:        string
+  number:    string
   title:     string
   priority:  string
   status:    string
@@ -31,6 +32,7 @@ export function RequestListPage() {
   const filterFields = useEntityFields('ServiceRequest')
 
   const columns: ColumnDef<ServiceRequest>[] = [
+    { key: 'number',   label: 'Number',                               width: '120px', sortable: true },
     { key: 'title',    label: t('pages.requests.title_col'), sortable: true },
     {
       key:      'priority',

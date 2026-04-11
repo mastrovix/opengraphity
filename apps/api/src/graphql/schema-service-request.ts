@@ -4,6 +4,7 @@ export function serviceRequestSDL(): string {
 
   type ServiceRequest {
     id: ID!
+    number: String!
     tenantId: String!
     title: String!
     description: String

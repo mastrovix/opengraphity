@@ -40,7 +40,7 @@ export function CollapsibleGroup({
           ▶
         </span>
         <span style={{
-          fontSize: 'var(--font-size-body)',
+          fontSize: 'var(--font-size-label)',
           fontWeight: 600,
           color: 'var(--color-slate)',
           textTransform: 'uppercase',

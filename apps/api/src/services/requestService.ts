@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import { runQuery } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { publishEvent } from '../lib/publishEvent.js'
@@ -9,6 +9,7 @@ type Props = Record<string, unknown>
 function mapRequest(props: Props) {
   return {
     id:          props['id']           as string,
+    number:      (props['number'] ?? '') as string,
     tenantId:    props['tenant_id']    as string,
     title:       props['title']        as string,
     description: props['description']  as string | undefined,
@@ -31,10 +32,19 @@ export async function createRequest(
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
+    const countResult = await runQueryOne<{ cnt: unknown }>(session,
+      'MATCH (sr:ServiceRequest {tenant_id: $tenantId}) RETURN count(sr) AS cnt',
+      { tenantId: ctx.tenantId },
+    )
+    const rawCnt = countResult?.cnt
+    const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as any)?.toNumber === 'function' ? (rawCnt as any).toNumber() : Number(rawCnt ?? 0)
+    const number = 'REQ' + String(count + 1).padStart(8, '0')
+
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (r:ServiceRequest {
         id:          $id,
         tenant_id:   $tenantId,
+        number:      $number,
         title:       $title,
         description: $description,
         status:      'open',
@@ -45,7 +55,7 @@ export async function createRequest(
       })
       RETURN properties(r) as props
     `, {
-      id, tenantId: ctx.tenantId,
+      id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
       priority: input.priority, dueDate: input.dueDate ?? null, now,
     })

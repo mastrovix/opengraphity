@@ -8,6 +8,7 @@ import { GET_CI_INCIDENTS } from '@/graphql/queries'
 
 interface Incident {
   id:        string
+  number:    string
   title:     string
   severity:  string
   status:    string
@@ -15,11 +16,20 @@ interface Incident {
   updatedAt: string
 }
 
-const SEVERITY_DOT: Record<string, string> = {
-  critical: 'var(--color-trigger-sla-breach)',
-  high:     'var(--color-brand)',
-  medium:   'var(--color-warning)',
-  low:      'var(--color-success)',
+const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
+  critical: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
+  high:     { bg: '#fef2f2', color: 'var(--color-brand)' },
+  medium:   { bg: '#fffbeb', color: 'var(--color-warning)' },
+  low:      { bg: '#ecfdf5', color: 'var(--color-success)' },
+}
+
+function SeverityBadge({ severity }: { severity: string }) {
+  const s = SEVERITY_STYLE[severity] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
+  return (
+    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: s.bg, color: s.color, flexShrink: 0, marginTop: 1 }}>
+      {severity}
+    </span>
+  )
 }
 
 const CLOSED_STATUSES = new Set(['resolved', 'closed'])
@@ -42,25 +52,17 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
         key={inc.id}
         onClick={() => navigate(`/incidents/${inc.id}`)}
         style={{
-          display:       'flex',
-          alignItems:    'center',
-          gap:           10,
-          padding:       '6px 0',
-          borderBottom:  '1px solid #f9fafb',
-          cursor:        'pointer',
-          opacity:       faded ? 0.5 : 1,
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+          padding: '6px 0', borderBottom: '1px solid #f9fafb',
+          cursor: 'pointer', opacity: faded ? 0.5 : 1,
         }}
       >
-        <span style={{
-          width:        8,
-          height:       8,
-          borderRadius: '50%',
-          flexShrink:   0,
-          backgroundColor: SEVERITY_DOT[inc.severity] ?? 'var(--color-slate)',
-          display:      'inline-block',
-        }} />
+        <SeverityBadge severity={inc.severity} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {inc.number}
+          </div>
+          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {inc.title}
           </div>
         </div>
@@ -73,7 +75,7 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
     if (items.length === 0) return null
     return (
       <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
+        <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
           {label}
         </div>
         <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>

@@ -239,31 +239,33 @@ export function CIDetailPage() {
         {/* Left column */}
         <div>
           <CollapsibleCard title="Informazioni" defaultOpen={true}>
-            {ci.description && (
-              <DetailField
-                label="Descrizione"
-                value={ci.description}
-              />
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {ci.description && (
+                <DetailField
+                  label="Descrizione"
+                  value={ci.description}
+                />
+              )}
 
-            {ci.description && specificFields.length > 0 && (
-              <div style={{ borderTop: '1px solid #f3f4f6', marginBottom: 16 }} />
-            )}
+              {ci.description && specificFields.length > 0 && (
+                <div style={{ borderTop: '1px solid #f3f4f6' }} />
+              )}
 
-            {specificFields.map(f => (
-              <DetailField
-                key={f.name}
-                label={f.label}
-                value={ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : null}
-              />
-            ))}
+              {specificFields.map(f => (
+                <DetailField
+                  key={f.name}
+                  label={f.label}
+                  value={ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : null}
+                />
+              ))}
 
-            {ci.notes && (
-              <>
-                <div style={{ borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
-                <DetailField label="Note" value={ci.notes as string} />
-              </>
-            )}
+              {ci.notes && (
+                <>
+                  <div style={{ borderTop: '1px solid #f3f4f6' }} />
+                  <DetailField label="Note" value={ci.notes as string} />
+                </>
+              )}
+            </div>
           </CollapsibleCard>
 
           <CollapsibleCard title="Mappa Dipendenze">
@@ -307,7 +309,7 @@ export function CIDetailPage() {
               <>
                 {(ci.dependencies as CIRelation[]).length > 0 && (
                   <div style={{ marginBottom: (ci.dependents as CIRelation[]).length > 0 ? 16 : 0 }}>
-                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                       Dipendenze
                     </div>
                     <RelationList
@@ -324,7 +326,7 @@ export function CIDetailPage() {
 
                 {(ci.dependents as CIRelation[]).length > 0 && (
                   <div>
-                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                       Dipendenti
                     </div>
                     <RelationList

@@ -161,6 +161,7 @@ async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLConte
     )
     return rows.map((r) => ({
       id:          r.props['id']          as string,
+      number:      (r.props['number'] ?? '') as string,
       tenantId:    r.props['tenant_id']   as string,
       title:       r.props['title']       as string,
       description: r.props['description'] as string | undefined,
@@ -191,6 +192,7 @@ async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext
     )
     return rows.map((r) => ({
       id:             r.props['id']              as string,
+      number:         (r.props['number'] ?? '') as string,
       tenantId:       r.props['tenant_id']       as string,
       title:          r.props['title']           as string,
       description:    (r.props['description']    ?? null) as string | null,

@@ -8,6 +8,7 @@ import { GET_CI_CHANGES } from '@/graphql/queries'
 
 interface Change {
   id:             string
+  number:         string
   title:          string
   type:           string
   priority:       string
@@ -27,11 +28,12 @@ function TypeBadge({ type }: { type: string }) {
   return (
     <span style={{
       padding:         '2px 7px',
-      borderRadius:    100,
-      fontSize:        11,
+      borderRadius:    6,
+      fontSize:        'var(--font-size-label)',
       fontWeight:      600,
       backgroundColor: style.bg,
       color:           style.color,
+      marginTop:       1,
       flexShrink:      0,
       textTransform:   'capitalize' as const,
     }}>
@@ -60,18 +62,17 @@ export function CIChangesCard({ ciId }: { ciId: string }) {
         key={ch.id}
         onClick={() => navigate(`/changes/${ch.id}`)}
         style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          8,
-          padding:      '6px 0',
-          borderBottom: '1px solid #f9fafb',
-          cursor:       'pointer',
-          opacity:      faded ? 0.5 : 1,
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          padding: '6px 0', borderBottom: '1px solid #f9fafb',
+          cursor: 'pointer', opacity: faded ? 0.5 : 1,
         }}
       >
         <TypeBadge type={ch.type} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {ch.number}
+          </div>
+          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {ch.title}
           </div>
         </div>
@@ -84,7 +85,7 @@ export function CIChangesCard({ ciId }: { ciId: string }) {
     if (items.length === 0) return null
     return (
       <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
+        <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
           {label}
         </div>
         <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>

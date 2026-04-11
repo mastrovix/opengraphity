@@ -4,6 +4,7 @@ export function incidentSDL(): string {
 
   type Incident {
     id: ID!
+    number: String!
     tenantId: String!
     title: String!
     description: String

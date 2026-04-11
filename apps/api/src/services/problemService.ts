@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
-import { runQuery } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
@@ -49,10 +49,19 @@ export async function createProblem(
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
+    const countResult = await runQueryOne<{ cnt: unknown }>(session,
+      'MATCH (p:Problem {tenant_id: $tenantId}) RETURN count(p) AS cnt',
+      { tenantId: ctx.tenantId },
+    )
+    const rawCnt = countResult?.cnt
+    const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as any)?.toNumber === 'function' ? (rawCnt as any).toNumber() : Number(rawCnt ?? 0)
+    const number = 'PRB' + String(count + 1).padStart(8, '0')
+
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (p:Problem {
         id:          $id,
         tenant_id:   $tenantId,
+        number:      $number,
         title:       $title,
         description: $description,
         priority:    $priority,
@@ -63,7 +72,7 @@ export async function createProblem(
       })
       RETURN properties(p) as props
     `, {
-      id, tenantId: ctx.tenantId,
+      id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
       priority: input.priority, workaround: input.workaround ?? null, now,
     })

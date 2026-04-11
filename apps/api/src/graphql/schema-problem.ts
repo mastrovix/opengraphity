@@ -4,6 +4,7 @@ export function problemSDL(): string {
 
   type Problem {
     id: ID!
+    number: String!
     title: String!
     description: String
     priority: String!

@@ -61,6 +61,7 @@ interface Team { id: string; name: string }
 
 interface Incident {
   id:                   string
+  number:               string
   title:                string
   description:          string | null
   severity:             string

@@ -5,7 +5,7 @@ export const GET_INCIDENTS = gql`
     incidents(status: $status, severity: $severity, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
-        id title severity status createdAt
+        id number title severity status createdAt
       }
     }
   }
@@ -15,6 +15,7 @@ export const GET_INCIDENT = gql`
   query GetIncident($id: ID!) {
     incident(id: $id) {
       id
+      number
       title
       description
       severity
@@ -46,6 +47,7 @@ export const GET_SERVICE_REQUESTS = gql`
   query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
     serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       id
+      number
       title
       priority
       status
@@ -57,7 +59,7 @@ export const GET_SERVICE_REQUESTS = gql`
 export const GET_SERVICE_REQUEST = gql`
   query GetServiceRequest($id: ID!) {
     serviceRequest(id: $id) {
-      id tenantId title description status priority dueDate
+      id number tenantId title description status priority dueDate
       createdAt updatedAt completedAt
       requestedBy { id name email }
       assignee { id name email }

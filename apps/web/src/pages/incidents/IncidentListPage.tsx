@@ -15,6 +15,7 @@ import { useEntityFields } from '@/hooks/useEntityFields'
 
 interface Incident {
   id:        string
+  number:    string
   title:     string
   severity:  string
   status:    string
@@ -27,6 +28,7 @@ export function IncidentListPage() {
   const { t } = useTranslation()
 
   const columns: ColumnDef<Incident>[] = [
+    { key: 'number',   label: 'Number',                                 width: '120px', sortable: true },
     { key: 'title',    label: t('pages.incidents.title_col'),    sortable: true },
     {
       key:     'severity',

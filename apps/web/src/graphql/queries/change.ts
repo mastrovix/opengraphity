@@ -5,7 +5,7 @@ export const GET_CHANGES = gql`
     changes(status: $status, type: $type, priority: $priority, search: $search, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
-        id title type priority status
+        id number title type priority status
         scheduledStart scheduledEnd
         createdAt updatedAt
         assignedTeam { id name }
@@ -20,7 +20,7 @@ export const GET_CHANGES = gql`
 export const GET_CHANGE = gql`
   query GetChange($id: ID!) {
     change(id: $id) {
-      id title description type priority status
+      id number title description type priority status
       scheduledStart scheduledEnd
       implementedAt createdAt updatedAt
       assignedTeam { id name }

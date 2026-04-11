@@ -34,6 +34,7 @@ export function mapUser(props: Props) {
 export function mapIncident(props: Props) {
   return {
     id:           props['id']          as string,
+    number:       (props['number'] ?? '') as string,
     tenantId:     props['tenant_id']   as string,
     title:        props['title']       as string,
     description:  props['description'] as string | undefined,

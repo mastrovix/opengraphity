@@ -36,7 +36,7 @@ export interface ChangeTask {
 }
 
 export interface Change {
-  id: string; title: string; description: string | null; type: string; priority: string
+  id: string; number: string; title: string; description: string | null; type: string; priority: string
   status: string; scheduledStart: string | null; scheduledEnd: string | null
   implementedAt: string | null; createdAt: string; updatedAt: string
   assignedTeam: Team | null; assignee: User | null; createdBy: User | null

@@ -26,7 +26,7 @@ export const GET_BLAST_RADIUS = gql`
 export const GET_CI_CHANGES = gql`
   query GetCIChanges($ciId: ID!) {
     ciChanges(ciId: $ciId) {
-      id title type priority status
+      id number title type priority status
       createdAt scheduledStart
     }
   }
@@ -35,7 +35,7 @@ export const GET_CI_CHANGES = gql`
 export const GET_CI_INCIDENTS = gql`
   query GetCIIncidents($ciId: ID!) {
     ciIncidents(ciId: $ciId) {
-      id title severity status
+      id number title severity status
       createdAt updatedAt
     }
   }

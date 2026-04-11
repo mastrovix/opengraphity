@@ -1,6 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
-import { runQuery } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine, selectWorkflowForEntity } from '@opengraphity/workflow'
 import { withSession } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
@@ -28,10 +28,19 @@ export async function createChange(
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
+    const countResult = await runQueryOne<{ cnt: unknown }>(session,
+      'MATCH (c:Change {tenant_id: $tenantId}) RETURN count(c) AS cnt',
+      { tenantId: ctx.tenantId },
+    )
+    const rawCnt = countResult?.cnt
+    const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as any)?.toNumber === 'function' ? (rawCnt as any).toNumber() : Number(rawCnt ?? 0)
+    const number = 'CHG' + String(count + 1).padStart(8, '0')
+
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (c:Change {
         id:           $id,
         tenant_id:    $tenantId,
+        number:       $number,
         title:        $title,
         description:  $description,
         type:         $type,
@@ -42,7 +51,7 @@ export async function createChange(
       })
       RETURN properties(c) as props
     `, {
-      id, tenantId: ctx.tenantId,
+      id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
       type: input.type, priority: input.priority, now,
     })

@@ -4,6 +4,7 @@ export function changeSDL(): string {
 
   type Change {
     id:             ID!
+    number:         String!
     tenantId:       String!
     title:          String!
     description:    String

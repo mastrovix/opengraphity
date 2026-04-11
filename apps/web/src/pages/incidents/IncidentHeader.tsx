@@ -18,6 +18,7 @@ interface WorkflowInstance {
 
 interface Incident {
   id:                   string
+  number:               string
   title:                string
   severity:             string
   status:               string
@@ -79,18 +80,18 @@ export function IncidentHeader({
         Indietro
       </button>
 
-      {/* Row 2 — title + badges */}
+      {/* Row 2 — number + badges */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>
-          {incident.title}
+          {incident.number}
         </h1>
         <SeverityBadge value={incident.severity} />
         <StatusBadge   value={incident.status} />
       </div>
 
-      {/* Row 3 — ID */}
-      <div style={{ fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--text-muted)' }}>
-        {incident.id}
+      {/* Row 3 — title */}
+      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
+        {incident.title}
       </div>
 
       {/* Workflow action buttons */}

@@ -18,6 +18,7 @@ interface CI { id: string; name: string; type: string }
 
 interface Change {
   id:               string
+  number:           string
   title:            string
   type:             string
   priority:         string
@@ -36,17 +37,8 @@ export function ChangeListPage() {
   const { t } = useTranslation()
 
   const columns: ColumnDef<Change>[] = [
-    {
-      key:      'title',
-      label:    t('pages.changes.title_col'),
-      sortable: true,
-      render: (v, row) => (
-        <div>
-          <div style={{ fontWeight: 600, color: "var(--color-slate-dark)", marginBottom: 2 }}>{String(v)}</div>
-          <div style={{ color: 'var(--color-slate-light)' }}>{row.id.slice(0, 8)}</div>
-        </div>
-      ),
-    },
+    { key: 'number', label: 'Number', width: '120px', sortable: true },
+    { key: 'title',  label: t('pages.changes.title_col'), sortable: true },
     {
       key:      'type',
       label:    t('pages.changes.type'),

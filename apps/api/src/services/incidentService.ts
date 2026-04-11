@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
-import { runQuery } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
 import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { mapIncident } from '../lib/mappers.js'
@@ -91,10 +91,19 @@ export async function createIncident(
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
+    const countResult = await runQueryOne<{ cnt: unknown }>(session,
+      'MATCH (i:Incident {tenant_id: $tenantId}) RETURN count(i) AS cnt',
+      { tenantId: ctx.tenantId },
+    )
+    const rawCnt = countResult?.cnt
+    const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as any)?.toNumber === 'function' ? (rawCnt as any).toNumber() : Number(rawCnt ?? 0)
+    const number = 'INC' + String(count + 1).padStart(8, '0')
+
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (i:Incident {
         id:           $id,
         tenant_id:    $tenantId,
+        number:       $number,
         title:        $title,
         description:  $description,
         severity:     $severity,
@@ -105,7 +114,7 @@ export async function createIncident(
       })
       RETURN properties(i) as props
     `, {
-      id, tenantId: ctx.tenantId,
+      id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
       severity: input.severity, category: input.category ?? null, now,
     })

@@ -13,13 +13,13 @@ export function ChangeHeader({ change, currentStep, instanceId: _instanceId, tra
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{change.title}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{change.number}</h1>
           <Badge value={change.type} map={TYPE_COLORS} />
           <Badge value={change.priority} map={PRIORITY_COLORS} />
           {change.workflowInstance && <Badge value={currentStep} map={STEP_COLORS} />}
         </div>
-        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{change.id}</div>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{change.title}</div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

@@ -15,6 +15,7 @@ import { useEntityFields } from '@/hooks/useEntityFields'
 
 interface Problem {
   id:        string
+  number:    string
   title:     string
   priority:  string
   status:    string
@@ -28,6 +29,7 @@ export function ProblemListPage() {
   const navigate = useNavigate()
 
   const columns: ColumnDef<Problem>[] = [
+    { key: 'number',   label: 'Number',                               width: '120px', sortable: true },
     { key: 'title',    label: t('pages.problems.title_col'), sortable: true },
     {
       key:     'priority',

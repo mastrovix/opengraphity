@@ -5,7 +5,7 @@ export const GET_PROBLEMS = gql`
     problems(limit: $limit, offset: $offset, status: $status, priority: $priority, search: $search, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
-        id title priority status
+        id number title priority status
         createdAt updatedAt
         assignee { id name }
         assignedTeam { id name }
@@ -19,7 +19,7 @@ export const GET_PROBLEMS = gql`
 export const GET_PROBLEM = gql`
   query GetProblem($id: ID!) {
     problem(id: $id) {
-      id title description priority status
+      id number title description priority status
       rootCause workaround affectedUsers
       createdAt updatedAt resolvedAt
       createdBy { id name }

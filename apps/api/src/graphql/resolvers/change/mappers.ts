@@ -8,6 +8,7 @@ export { mapUser, mapTeam }
 export function mapChange(props: Props) {
   return {
     id:             props['id']             as string,
+    number:         (props['number'] ?? '') as string,
     tenantId:       props['tenant_id']      as string,
     title:          props['title']          as string,
     description:    (props['description']   ?? null) as string | null,
