@@ -82,8 +82,8 @@ export function AssessmentTaskList({
   const totalCount     = assessmentTasks.length
   const completedCount = assessmentTasks.filter((t) => ['completed', 'skipped', 'rejected'].includes(t.status)).length
 
-  const { values: RISK_LEVELS } = useEnumValues('change', 'risk')
-  const riskOptions = RISK_LEVELS.length > 0 ? RISK_LEVELS : ['low', 'medium', 'high', 'critical']
+  const { values: RISK_LEVELS, loading: riskLoading } = useEnumValues('change', 'risk')
+  const riskOptions = RISK_LEVELS
 
   function getTaskForm(taskId: string) {
     return taskForms[taskId] ?? { riskLevel: 'low', impactDescription: '', mitigation: '', notes: '' }
@@ -265,10 +265,13 @@ export function AssessmentTaskList({
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Risk Level</div>
                   {isEditable ? (
-                    <select value={taskForm.riskLevel} onChange={(e) => setTaskForm(task.id, { riskLevel: e.target.value })} style={inputStyle}>
-                      {riskOptions.map((r) => (
-                        <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
-                      ))}
+                    <select value={taskForm.riskLevel} onChange={(e) => setTaskForm(task.id, { riskLevel: e.target.value })} style={inputStyle} disabled={riskLoading}>
+                      {riskLoading
+                        ? <option value="">Loading...</option>
+                        : riskOptions.map((r) => (
+                            <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                          ))
+                      }
                     </select>
                   ) : (
                     <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{task.riskLevel ?? '—'}</span>

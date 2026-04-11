@@ -348,6 +348,10 @@ const Query = {
   ) {
     const { fromNeo4jLabel } = args
 
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(fromNeo4jLabel)) {
+      throw new GraphQLError('Invalid Neo4j label')
+    }
+
     // Also allow dynamic CI type labels loaded from the metamodel
     const navigableEntities = await getNavigableEntities(ctx.tenantId)
     const dynamicLabels = new Set(navigableEntities.map(e => e.neo4jLabel))

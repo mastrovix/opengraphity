@@ -39,8 +39,9 @@ const badge = (bg: string, fg: string): React.CSSProperties => ({
 function riskBadge(risk: string): React.CSSProperties {
   return risk === 'low' ? badge('#dcfce7', '#15803d') : risk === 'medium' ? badge('#fef3c7', '#92400e') : badge('#fee2e2', '#991b1b')
 }
-function riskLabel(risk: string): string {
-  return risk === 'low' ? 'Basso' : risk === 'medium' ? 'Medio' : risk === 'high' ? 'Alto' : risk
+function riskLabel(risk: string, t: (key: string) => string): string {
+  const labels: Record<string, string> = { low: t('pages.changeCatalog.riskLow'), medium: t('pages.changeCatalog.riskMedium'), high: t('pages.changeCatalog.riskHigh') }
+  return labels[risk] ?? risk
 }
 
 function ColorIcon({ icon, color }: { icon: string | null; color: string | null }) {
@@ -183,7 +184,7 @@ function EntryCard({ entry, showCategory, onClick, t }: {
             </div>
             {entry.workflow && (
               <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
-                Workflow: {entry.workflow.name}
+                {t('pages.changeCatalogAdmin.workflow')}: {entry.workflow.name}
               </div>
             )}
           </div>
@@ -194,10 +195,10 @@ function EntryCard({ entry, showCategory, onClick, t }: {
               {entry.category.name}
             </span>
           )}
-          <span style={riskBadge(entry.riskLevel)}>{riskLabel(entry.riskLevel)}</span>
+          <span style={riskBadge(entry.riskLevel)}>{riskLabel(entry.riskLevel, t)}</span>
           {entry.requiresDowntime && (
             <span style={badge('#fee2e2', '#991b1b')}>
-              <AlertTriangle size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> Downtime
+              <AlertTriangle size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> {t('pages.changeCatalogAdmin.downtime')}
             </span>
           )}
           {entry.estimatedDurationHours != null && entry.estimatedDurationHours > 0 && (

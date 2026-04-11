@@ -47,11 +47,7 @@ type ViewMode = 'month' | 'week' | 'day'
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const DAYS_IT = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
-const MONTHS_IT = [
-  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
-]
+// Day/month names moved into component for i18n access
 
 function typeColor(changeType: string): string {
   switch (changeType?.toLowerCase()) {
@@ -124,6 +120,21 @@ export function ChangeCalendarPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
+  const DAYS = useMemo(() => [
+    t('pages.changeCalendar.dayMon'), t('pages.changeCalendar.dayTue'),
+    t('pages.changeCalendar.dayWed'), t('pages.changeCalendar.dayThu'),
+    t('pages.changeCalendar.dayFri'), t('pages.changeCalendar.daySat'),
+    t('pages.changeCalendar.daySun'),
+  ], [t])
+  const MONTHS = useMemo(() => [
+    t('pages.changeCalendar.monthJan'), t('pages.changeCalendar.monthFeb'),
+    t('pages.changeCalendar.monthMar'), t('pages.changeCalendar.monthApr'),
+    t('pages.changeCalendar.monthMay'), t('pages.changeCalendar.monthJun'),
+    t('pages.changeCalendar.monthJul'), t('pages.changeCalendar.monthAug'),
+    t('pages.changeCalendar.monthSep'), t('pages.changeCalendar.monthOct'),
+    t('pages.changeCalendar.monthNov'), t('pages.changeCalendar.monthDec'),
+  ], [t])
+
   const [currentDate, setCurrentDate] = useState(new Date())
   const [view, setView] = useState<ViewMode>('month')
   const [showSlotFinder, setShowSlotFinder] = useState(false)
@@ -189,14 +200,14 @@ export function ChangeCalendarPage() {
 
   // Period label
   const periodLabel = useMemo(() => {
-    if (view === 'month') return `${MONTHS_IT[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+    if (view === 'month') return `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`
     if (view === 'week') {
       const s = startOfWeek(currentDate)
       const e = endOfWeek(currentDate)
-      return `${s.getDate()}-${e.getDate()} ${MONTHS_IT[s.getMonth()].slice(0, 3)} ${s.getFullYear()}`
+      return `${s.getDate()}-${e.getDate()} ${MONTHS[s.getMonth()].slice(0, 3)} ${s.getFullYear()}`
     }
-    return `${currentDate.getDate()} ${MONTHS_IT[currentDate.getMonth()]} ${currentDate.getFullYear()}`
-  }, [currentDate, view])
+    return `${currentDate.getDate()} ${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+  }, [currentDate, view, MONTHS])
 
   // Events for a given day
   const eventsForDay = useCallback((day: Date): CalendarEvent[] => {
@@ -342,7 +353,7 @@ export function ChangeCalendarPage() {
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
               {/* Day headers */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
-                {DAYS_IT.map(d => (
+                {DAYS.map(d => (
                   <div key={d} style={{
                     padding: '8px 4px', textAlign: 'center', fontSize: 11, fontWeight: 600,
                     color: '#64748b', background: '#f9fafb', borderBottom: '1px solid #e2e8f0',
@@ -397,7 +408,7 @@ export function ChangeCalendarPage() {
                     color: isToday(d) ? '#0284c7' : '#64748b', background: '#f9fafb',
                     borderBottom: '1px solid #e2e8f0', borderLeft: '1px solid #e2e8f0',
                   }}>
-                    {DAYS_IT[i]} {d.getDate()}
+                    {DAYS[i]} {d.getDate()}
                   </div>
                 ))}
               </div>
@@ -478,7 +489,7 @@ export function ChangeCalendarPage() {
                 padding: '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e2e8f0',
                 fontWeight: 600, fontSize: 14, color: isToday(currentDate) ? '#0284c7' : '#0f172a',
               }}>
-                {DAYS_IT[(currentDate.getDay() + 6) % 7]} {currentDate.getDate()} {MONTHS_IT[currentDate.getMonth()]}
+                {DAYS[(currentDate.getDay() + 6) % 7]} {currentDate.getDate()} {MONTHS[currentDate.getMonth()]}
               </div>
               <div style={{ position: 'relative', maxHeight: 576, overflowY: 'auto' }}>
                 {Array.from({ length: 24 }, (_, h) => {

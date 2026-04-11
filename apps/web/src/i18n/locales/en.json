@@ -101,7 +101,8 @@
       "noResults": "No changes found",
       "noResultsDesc": "Create the first change or adjust the applied filters.",
       "count": "{{count}} changes",
-      "autoWorkflow": "Workflow"
+      "autoWorkflow": "Workflow",
+      "catalog": "Standard Change Catalog"
     },
     "problems": {
       "title": "Problems",
@@ -372,10 +373,7 @@
     },
     "workflow": {
       "title": "Workflow",
-      "noResults": "No workflows found",
-      "subtypeStandard": "Standard",
-      "subtypeNormal": "Normal",
-      "subtypeEmergency": "Emergency"
+      "noResults": "No workflows found"
     },
     "changeCatalog": {
       "title": "Standard Change Catalog",
@@ -391,7 +389,6 @@
       "rollback": "Rollback Procedure",
       "created": "Standard Change created from catalog",
       "backToCatalog": "Back to catalog",
-      "workflow": "Workflow",
       "defaultWorkflow": "Default (Standard Change)",
       "ciRequired": "CI required",
       "ciRequiredHint": "Select at least one CI to create the change",
@@ -404,7 +401,13 @@
       "sectionCI": "Affected CIs",
       "sectionChecklist": "Deploy Checklist",
       "sectionOperational": "Operational Information",
-      "sectionNotifications": "Notifications"
+      "sectionNotifications": "Notifications",
+      "riskLow": "Low",
+      "riskMedium": "Medium",
+      "riskHigh": "High",
+      "entryNotFound": "Catalog entry not found",
+      "ciNameHint": "The {ci_name} tag is replaced with the selected CI name",
+      "filteredBy": "Filtered by"
     },
     "changeCatalogAdmin": {
       "title": "Change Catalog Management",
@@ -457,7 +460,6 @@
       "entryCreated": "Entry created",
       "entryUpdated": "Entry updated",
       "entryDeleted": "Entry deleted",
-      "nameLabel": "Name",
       "namePlaceholder": "e.g. SSL certificate update",
       "maintenanceWindowPlaceholder": "e.g. Saturday 02:00-06:00",
       "workflow": "Workflow",
@@ -478,9 +480,7 @@
     "whatIf": {
       "title": "What-if Planning",
       "subtitle": "Simulate the impact of CMDB graph changes",
-      "selectCI": "Select CI",
       "searchCI": "Search CI by name...",
-      "action": "Action",
       "impact": "Analyze impact",
       "impactDesc": "CI becomes temporarily unavailable",
       "remove": "Analyze removal",
@@ -492,8 +492,6 @@
       "services": "Services",
       "teams": "Teams",
       "incidents": "Open Incidents",
-      "redundancy": "Redundancy detected",
-      "noRedundancy": "No redundancy",
       "tabCIs": "Impacted CIs",
       "tabServices": "Services",
       "tabTeams": "Teams",
@@ -513,7 +511,8 @@
       "low": "Low",
       "noImpacted": "No impacted CIs",
       "noServices": "No impacted services",
-      "noTeams": "No teams involved"
+      "noTeams": "No teams involved",
+      "viewPath": "View path"
     },
     "changeCalendar": {
       "title": "Change Calendar",
@@ -531,7 +530,26 @@
       "searchSlots": "Find available slots",
       "useSlot": "Use this slot",
       "score": "Score",
-      "more": "+ {{count}} more"
+      "more": "+ {{count}} more",
+      "dayMon": "Mon",
+      "dayTue": "Tue",
+      "dayWed": "Wed",
+      "dayThu": "Thu",
+      "dayFri": "Fri",
+      "daySat": "Sat",
+      "daySun": "Sun",
+      "monthJan": "January",
+      "monthFeb": "February",
+      "monthMar": "March",
+      "monthApr": "April",
+      "monthMay": "May",
+      "monthJun": "June",
+      "monthJul": "July",
+      "monthAug": "August",
+      "monthSep": "September",
+      "monthOct": "October",
+      "monthNov": "November",
+      "monthDec": "December"
     }
   },
   "filter": {

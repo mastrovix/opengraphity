@@ -56,10 +56,10 @@ export async function comments(
   try {
     const res = await session.executeRead((tx) => tx.run(`
       MATCH (c:EntityComment {tenant_id: $tenantId, entity_type: $entityType, entity_id: $entityId})
-      ${!includeInternal ? 'WHERE c.is_internal = false' : ''}
+      WHERE ($includeInternal = true OR c.is_internal = false)
       ${RETURN_FIELDS}
       ORDER BY c.created_at ASC
-    `, { tenantId: ctx.tenantId, entityType: args.entityType, entityId: args.entityId }))
+    `, { tenantId: ctx.tenantId, entityType: args.entityType, entityId: args.entityId, includeInternal: includeInternal ?? false }))
     return res.records.map(mapComment)
   } finally {
     await session.close()

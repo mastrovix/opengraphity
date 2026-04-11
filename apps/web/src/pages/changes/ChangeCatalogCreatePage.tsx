@@ -52,9 +52,7 @@ const badge = (bg: string, fg: string): React.CSSProperties => ({
 function riskBadge(risk: string): React.CSSProperties {
   return risk === 'low' ? badge('#dcfce7', '#15803d') : risk === 'medium' ? badge('#fef3c7', '#92400e') : badge('#fee2e2', '#991b1b')
 }
-function riskLabel(risk: string): string {
-  return risk === 'low' ? 'Basso' : risk === 'medium' ? 'Medio' : risk === 'high' ? 'Alto' : risk
-}
+// riskLabel moved inside component for i18n access
 
 function parseChecklist(raw: string | null): ChecklistItem[] {
   if (!raw) return []
@@ -67,6 +65,11 @@ export function ChangeCatalogCreatePage() {
   const { entryId } = useParams<{ entryId: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
+
+  function riskLabel(risk: string): string {
+    const labels: Record<string, string> = { low: t('pages.changeCatalog.riskLow'), medium: t('pages.changeCatalog.riskMedium'), high: t('pages.changeCatalog.riskHigh') }
+    return labels[risk] ?? risk
+  }
 
   const { data, loading } = useQuery<{ standardChangeCatalogEntry: CatalogEntry }>(
     GET_STANDARD_CHANGE_CATALOG_ENTRY,
@@ -138,7 +141,7 @@ export function ChangeCatalogCreatePage() {
   }
 
   if (!entry) {
-    return <PageContainer><p style={{ color: 'var(--color-slate-light)', fontSize: 13 }}>Voce catalogo non trovata</p></PageContainer>
+    return <PageContainer><p style={{ color: 'var(--color-slate-light)', fontSize: 13 }}>{t('pages.changeCatalog.entryNotFound')}</p></PageContainer>
   }
 
   return (
@@ -161,10 +164,10 @@ export function ChangeCatalogCreatePage() {
           </span>
         )}
         <span style={riskBadge(entry.riskLevel)}>{riskLabel(entry.riskLevel)}</span>
-        <span style={riskBadge(entry.impact)}>Impatto: {riskLabel(entry.impact)}</span>
+        <span style={riskBadge(entry.impact)}>{t('pages.changeCatalogAdmin.impact')}: {riskLabel(entry.impact)}</span>
         {entry.requiresDowntime && (
           <span style={badge('#fee2e2', '#991b1b')}>
-            <AlertTriangle size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> Downtime
+            <AlertTriangle size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> {t('pages.changeCatalogAdmin.downtime')}
           </span>
         )}
         {entry.estimatedDurationHours != null && entry.estimatedDurationHours > 0 && (
@@ -206,7 +209,7 @@ export function ChangeCatalogCreatePage() {
             <input style={inputS} value={resolvedTitle} onChange={e => setFormTitle(e.target.value)} />
             {entry.defaultTitleTemplate.includes('{ci_name}') && (
               <p style={{ fontSize: 11, color: 'var(--color-slate-light)', margin: '4px 0 0' }}>
-                Il tag {'{ci_name}'} viene sostituito dal nome del CI selezionato
+                {t('pages.changeCatalog.ciNameHint')}
               </p>
             )}
           </div>
@@ -222,15 +225,15 @@ export function ChangeCatalogCreatePage() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
             <div>
-              <label style={labelS}>Priorità</label>
+              <label style={labelS}>{t('pages.changes.priority')}</label>
               <select style={selectS} value={formPriority} onChange={e => setFormPriority(e.target.value)}>
-                {(priorityValues.length > 0 ? priorityValues : ['low', 'medium', 'high', 'critical']).map(p => (
+                {priorityValues.map(p => (
                   <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label style={labelS}>CI Impattati</label>
+              <label style={labelS}>{t('pages.changeCatalog.sectionCI')}</label>
               <select
                 style={{ ...selectS, minHeight: 80 }}
                 multiple
@@ -243,7 +246,7 @@ export function ChangeCatalogCreatePage() {
               </select>
               {entry.ciTypes && entry.ciTypes.length > 0 && (
                 <p style={{ fontSize: 11, color: 'var(--color-slate-light)', margin: '4px 0 0' }}>
-                  Filtrato per: {entry.ciTypes.join(', ')}
+                  {t('pages.changeCatalog.filteredBy')}: {entry.ciTypes.join(', ')}
                 </p>
               )}
             </div>

@@ -31,9 +31,9 @@ type Action = 'impact' | 'remove'
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const ACTIONS: { key: Action; icon: typeof Zap; label: string; labelEn: string; bg: string; fg: string }[] = [
-  { key: 'impact', icon: Zap,    label: 'Analizza impatto',   labelEn: 'Analyze impact',  bg: '#e0f2fe', fg: '#0284c7' },
-  { key: 'remove', icon: Trash2, label: 'Analizza rimozione', labelEn: 'Analyze removal', bg: '#e0f2fe', fg: '#0284c7' },
+const ACTIONS: { key: Action; icon: typeof Zap; labelKey: string; bg: string; fg: string }[] = [
+  { key: 'impact', icon: Zap,    labelKey: 'pages.whatIf.impact',  bg: '#e0f2fe', fg: '#0284c7' },
+  { key: 'remove', icon: Trash2, labelKey: 'pages.whatIf.remove',  bg: '#e0f2fe', fg: '#0284c7' },
 ]
 
 const IMPACT_STYLES: Record<string, { bg: string; fg: string }> = {
@@ -176,7 +176,7 @@ export function WhatIfPage() {
       <button
         onClick={e => { e.stopPropagation(); setExpandedGraphId(expandedGraphId === row.id ? null : row.id) }}
         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
-        title="Visualizza percorso"
+        title={t('pages.whatIf.viewPath')}
       >
         <GitBranch size={15} color={expandedGraphId === row.id ? 'var(--color-brand)' : '#94a3b8'} />
       </button>
@@ -244,7 +244,7 @@ export function WhatIfPage() {
                 }}
               >
                 <a.icon size={13} />
-                {a.label}
+                {t(a.labelKey)}
               </button>
             )
           })}

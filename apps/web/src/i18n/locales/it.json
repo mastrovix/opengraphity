@@ -101,7 +101,8 @@
       "noResults": "Nessun change trovato",
       "noResultsDesc": "Crea il primo change o modifica i filtri applicati.",
       "count": "{{count}} change",
-      "autoWorkflow": "Workflow"
+      "autoWorkflow": "Workflow",
+      "catalog": "Catalogo Standard Change"
     },
     "problems": {
       "title": "Problem",
@@ -372,10 +373,7 @@
     },
     "workflow": {
       "title": "Workflow",
-      "noResults": "Nessun workflow trovato",
-      "subtypeStandard": "Standard",
-      "subtypeNormal": "Normal",
-      "subtypeEmergency": "Emergency"
+      "noResults": "Nessun workflow trovato"
     },
     "changeCatalog": {
       "title": "Catalogo Standard Change",
@@ -391,7 +389,6 @@
       "rollback": "Procedura Rollback",
       "created": "Standard Change creata dal catalogo",
       "backToCatalog": "Torna al catalogo",
-      "workflow": "Workflow",
       "defaultWorkflow": "Default (Standard Change)",
       "ciRequired": "CI obbligatorio",
       "ciRequiredHint": "Seleziona almeno un CI per creare la change",
@@ -404,7 +401,13 @@
       "sectionCI": "CI Impattati",
       "sectionChecklist": "Checklist Deploy",
       "sectionOperational": "Informazioni Operative",
-      "sectionNotifications": "Notifiche"
+      "sectionNotifications": "Notifiche",
+      "riskLow": "Basso",
+      "riskMedium": "Medio",
+      "riskHigh": "Alto",
+      "entryNotFound": "Voce catalogo non trovata",
+      "ciNameHint": "Il tag {ci_name} viene sostituito dal nome del CI selezionato",
+      "filteredBy": "Filtrato per"
     },
     "changeCatalogAdmin": {
       "title": "Gestione Catalogo Change",
@@ -457,7 +460,6 @@
       "entryCreated": "Voce creata",
       "entryUpdated": "Voce aggiornata",
       "entryDeleted": "Voce eliminata",
-      "nameLabel": "Nome",
       "namePlaceholder": "es. Aggiornamento certificato SSL",
       "maintenanceWindowPlaceholder": "es. Sabato 02:00-06:00",
       "workflow": "Workflow",
@@ -478,9 +480,7 @@
     "whatIf": {
       "title": "What-if Planning",
       "subtitle": "Simula l'impatto di modifiche al grafo CMDB",
-      "selectCI": "Seleziona CI",
       "searchCI": "Cerca CI per nome...",
-      "action": "Azione",
       "impact": "Analizza impatto",
       "impactDesc": "Il CI diventa temporaneamente non disponibile",
       "remove": "Analizza rimozione",
@@ -492,8 +492,6 @@
       "services": "Servizi",
       "teams": "Team",
       "incidents": "Incident Aperti",
-      "redundancy": "Ridondanza rilevata",
-      "noRedundancy": "Nessuna ridondanza",
       "tabCIs": "CI Impattati",
       "tabServices": "Servizi",
       "tabTeams": "Team",
@@ -513,7 +511,8 @@
       "low": "Basso",
       "noImpacted": "Nessun CI impattato",
       "noServices": "Nessun servizio impattato",
-      "noTeams": "Nessun team coinvolto"
+      "noTeams": "Nessun team coinvolto",
+      "viewPath": "Visualizza percorso"
     },
     "changeCalendar": {
       "title": "Calendario Change",
@@ -531,7 +530,26 @@
       "searchSlots": "Cerca slot disponibili",
       "useSlot": "Usa questo slot",
       "score": "Score",
-      "more": "+ {{count}} altre"
+      "more": "+ {{count}} altre",
+      "dayMon": "Lun",
+      "dayTue": "Mar",
+      "dayWed": "Mer",
+      "dayThu": "Gio",
+      "dayFri": "Ven",
+      "daySat": "Sab",
+      "daySun": "Dom",
+      "monthJan": "Gennaio",
+      "monthFeb": "Febbraio",
+      "monthMar": "Marzo",
+      "monthApr": "Aprile",
+      "monthMay": "Maggio",
+      "monthJun": "Giugno",
+      "monthJul": "Luglio",
+      "monthAug": "Agosto",
+      "monthSep": "Settembre",
+      "monthOct": "Ottobre",
+      "monthNov": "Novembre",
+      "monthDec": "Dicembre"
     }
   },
   "filter": {
