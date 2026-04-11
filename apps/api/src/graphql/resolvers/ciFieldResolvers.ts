@@ -30,6 +30,7 @@ function mapCIForRelation(props: Props, typeName: string): Record<string, unknow
     type:        typeName,
     status:      props['status'] ?? null,
     environment: props['environment'] ?? null,
+    chain:       props['chain'] ?? null,
   }
 }
 

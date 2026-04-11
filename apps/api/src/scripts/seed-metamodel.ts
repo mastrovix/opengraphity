@@ -45,6 +45,7 @@ interface CIType {
   color:              string
   neo4j_label:        string
   active?:            boolean
+  chain_families?:    string[]
   fields:             FieldDef[]
   relations:          RelationDef[]
   systemRels:         SystemRelDef[]
@@ -77,6 +78,7 @@ const BASE_TYPE: CIType = {
 const CI_TYPES: CIType[] = [
   {
     name: 'application', label: 'Application', icon: 'box', color: '#4f46e5', neo4j_label: 'Application',
+    chain_families: ['Application'],
     fields: [
       { name: 'url', label: 'URL', field_type: 'string', order: 10,
         validation_script: `
@@ -100,6 +102,7 @@ const CI_TYPES: CIType[] = [
   },
   {
     name: 'database', label: 'Database', icon: 'database', color: '#0891b2', neo4j_label: 'Database',
+    chain_families: ['Application', 'Infrastructure'],
     fields: [
       { name: 'port',         label: 'Porta',         field_type: 'string', order: 10 },
       { name: 'instanceType', label: 'Instance Type', field_type: 'enum',   order: 11, enum_values: ['PostgreSQL', 'Oracle', 'SQL Server'] },
@@ -115,6 +118,7 @@ const CI_TYPES: CIType[] = [
   },
   {
     name: 'database_instance', label: 'Database Instance', icon: 'server', color: '#0e7490', neo4j_label: 'DatabaseInstance',
+    chain_families: ['Application', 'Infrastructure'],
     fields: [
       { name: 'ipAddress',    label: 'IP Address',    field_type: 'string', order: 10 },
       { name: 'port', label: 'Porta', field_type: 'string', order: 11,
@@ -147,6 +151,7 @@ const CI_TYPES: CIType[] = [
   },
   {
     name: 'server', label: 'Server', icon: 'monitor', color: '#059669', neo4j_label: 'Server',
+    chain_families: ['Application', 'Infrastructure'],
     fields: [
       { name: 'ipAddress', label: 'IP Address', field_type: 'string', order: 10, validation_script: `
         if (value) {
@@ -176,6 +181,7 @@ const CI_TYPES: CIType[] = [
   },
   {
     name: 'certificate', label: 'Certificate', icon: 'shield', color: '#d97706', neo4j_label: 'Certificate',
+    chain_families: ['Application', 'Infrastructure'],
     validation_script: `
       if (input.expiresAt && new Date(input.expiresAt) < new Date()) {
         throw 'La data di scadenza deve essere futura'
@@ -219,6 +225,7 @@ async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: C
          t.neo4j_label       = $neo4jLabel,
          t.active            = $active,
          t.validation_script = $validationScript,
+         t.chain_families    = $chainFamilies,
          t.created_at        = $now
        ON MATCH SET
          t.label             = $label,
@@ -226,9 +233,11 @@ async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: C
          t.color             = $color,
          t.neo4j_label       = $neo4jLabel,
          t.active            = $active,
-         t.validation_script = $validationScript`,
+         t.validation_script = $validationScript,
+         t.chain_families    = $chainFamilies`,
       { id: typeId, name: ci.name, label: ci.label, icon: ci.icon, color: ci.color,
         neo4jLabel: ci.neo4j_label, validationScript: ci.validation_script ?? null,
+        chainFamilies: JSON.stringify(ci.chain_families ?? ['Application', 'Infrastructure']),
         active: isActive, tenantId: TENANT_ID, now },
     ),
   )

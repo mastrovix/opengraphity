@@ -22,6 +22,7 @@
     "seed:certificates": "tsx src/scripts/seed-certificates.ts",
     "seed:metamodel": "tsx src/scripts/seed-metamodel.ts",
     "seed:change-catalog": "tsx src/scripts/seed-change-catalog.ts",
+    "seed:ci-chain": "tsx src/scripts/seed-ci-chain.ts",
     "seed:change-calendar": "tsx src/scripts/seed-change-calendar.ts",
     "seed:anomaly-scenarios": "tsx src/scripts/seed-anomaly-scenarios.ts",
     "scan:anomalies": "tsx src/scripts/run-anomaly-scan.ts",

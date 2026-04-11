@@ -7,7 +7,7 @@ export { buildAdvancedWhere }
 // Allowed base field keys (camelCase) — validated before use in Cypher
 export const ALLOWED_BASE_FIELDS = new Set([
   'name', 'status', 'environment', 'description', 'notes',
-  'createdAt', 'updatedAt', 'ownerGroup',
+  'chain', 'createdAt', 'updatedAt', 'ownerGroup',
 ])
 
 export const ALL_CIS_ALLOWED_FIELDS = new Set(['name', 'status', 'environment', 'createdAt'])

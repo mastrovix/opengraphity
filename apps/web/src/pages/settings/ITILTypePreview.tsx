@@ -17,6 +17,7 @@ export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewP
     color:            selectedType.color || '#0284c7',
     active:           selectedType.active,
     validationScript: selectedType.validationScript ?? null,
+    chainFamilies:    ['Application', 'Infrastructure'],
     relations:        [],
     systemRelations:  [],
     fields:           selectedType.fields.map((f) => ({

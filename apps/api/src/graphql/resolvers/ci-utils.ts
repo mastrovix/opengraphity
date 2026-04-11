@@ -32,6 +32,7 @@ export function mapBase(props: Props) {
     status:       props['status']      as string | null ?? null,
     environment:  props['environment'] as string | null ?? null,
     description:  props['description'] as string | null ?? null,
+    chain:        props['chain']      as string | null ?? null,
     createdAt:    neo4jDateToISO(props['created_at']) ?? '',
     updatedAt:    neo4jDateToISO(props['updated_at']),
     notes:        props['notes']       as string | null ?? null,

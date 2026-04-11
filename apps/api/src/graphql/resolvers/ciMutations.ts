@@ -3,6 +3,7 @@ import { cache } from '../../lib/cache.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
+import { calculateChain } from '../../lib/chainCalculator.js'
 
 type Props = Record<string, unknown>
 
@@ -64,6 +65,9 @@ export function buildCreateMutation(
           ),
         )
       }
+
+      // Calculate chain based on chain_families of CI type and upstream dependencies
+      await calculateChain(id, ctx.tenantId).catch(() => {})
 
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)

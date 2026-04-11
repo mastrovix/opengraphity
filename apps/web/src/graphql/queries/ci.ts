@@ -64,7 +64,7 @@ export const GET_CI_TYPES = gql`
   query GetCITypes {
     ciTypes {
       id name label icon color active
-      validationScript
+      validationScript chainFamilies
       fields {
         id name label fieldType
         required enumValues order

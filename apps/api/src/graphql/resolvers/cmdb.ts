@@ -26,6 +26,7 @@ function mapCI(props: Props, label?: string) {
     url:         (props['url']         ?? null) as string | null,
     region:      (props['region']      ?? null) as string | null,
     notes:       (props['notes']       ?? null) as string | null,
+    chain:       (props['chain']      ?? null) as string | null,
     dependencies: [],
     dependents:   [],
   }

@@ -14,6 +14,7 @@ export function cmdbSDL(): string {
     status: String
     environment: String
     description: String
+    chain: String
     createdAt: String!
     updatedAt: String
     notes: String
@@ -34,6 +35,7 @@ export function cmdbSDL(): string {
     color: String
     active: Boolean!
     validationScript: String
+    chainFamilies: [String!]!
     fields: [CIFieldDef!]!
     relations: [CIRelationDef!]!
     systemRelations: [CISystemRelationDef!]!

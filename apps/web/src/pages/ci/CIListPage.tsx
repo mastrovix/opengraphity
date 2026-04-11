@@ -135,6 +135,10 @@ export function CIListPage() {
         { value: 'development', label: 'Development' },
       ]},
       { key: 'ownerGroup',  label: t('pages.cmdb.ownerGroup'),  type: 'text' },
+      { key: 'chain',       label: t('ciTypeDesigner.chain'),    type: 'enum', options: [
+        { value: 'Application',    label: t('ciTypeDesigner.chainApplication')    },
+        { value: 'Infrastructure', label: t('ciTypeDesigner.chainInfrastructure') },
+      ]},
       { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
     ]
     const custom: FieldConfig[] = ciType.fields

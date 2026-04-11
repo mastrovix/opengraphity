@@ -639,6 +639,13 @@
       "add": "Add"
     }
   },
+  "ciTypeDesigner": {
+    "chain": "Chain",
+    "chainFamilies": "Chain Families",
+    "chainApplication": "Application",
+    "chainInfrastructure": "Infrastructure",
+    "chainFamiliesTooltip": "Which service chains this CI type belongs to"
+  },
   "fieldRules": {
     "show": "Show",
     "hide": "Hide",

@@ -53,4 +53,5 @@ export interface CITypeWithDefinitions extends CITypeDefinition {
   fields: CIFieldDefinition[]
   relations: CIRelationDefinition[]
   systemRelations: CISystemRelationDefinition[]
+  chainFamilies?: string[]
 }

@@ -16,6 +16,12 @@ function parseEnumValues(raw: string[] | string | null | undefined): string[] {
 
 // ── mapCITypeNode ─────────────────────────────────────────────────────────────
 
+function parseChainFamilies(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : ['Application', 'Infrastructure'] } catch { return ['Application', 'Infrastructure'] } }
+  return ['Application', 'Infrastructure']
+}
+
 export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[], systemRels: Props[]) {
   return {
     id:               t['id'],
@@ -25,6 +31,7 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
     color:            t['color'],
     active:           t['active'] ?? true,
     validationScript: t['validation_script'] ?? null,
+    chainFamilies:    parseChainFamilies(t['chain_families']),
     fields: fields
       .filter(fd => fd?.f?.properties)
       .map(fd => {
@@ -184,6 +191,7 @@ export function buildCITypesResolver() {
           color: t['color'],
           active: t['active'],
           validationScript: t['validation_script'] ?? null,
+          chainFamilies: parseChainFamilies(t['chain_families']),
           fields,
           relations: (rec.get('relations') as Array<{ properties: Props }>)
             .filter(r => r?.properties)

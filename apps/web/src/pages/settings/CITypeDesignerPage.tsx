@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { Layers, Layout, Plus, Trash2 } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
@@ -40,6 +41,7 @@ interface EnumTypeOption extends EnumTypeRef { name: string }
 type Tab = 'settings' | 'fields' | 'relations' | 'rules' | 'preview'
 
 export function CITypeDesignerPage() {
+  const { t } = useTranslation()
   const { data, loading, refetch } = useQuery<{ ciTypes: CITypeDef[] }>(GET_CI_TYPES)
   const { data: baseData, refetch: refetchBase } = useQuery<{ baseCIType: CITypeDef }>(GET_BASE_CI_TYPE)
   const { data: enumData } = useQuery<{ enumTypes: EnumTypeOption[] }>(GET_ENUM_TYPES, {
@@ -64,7 +66,7 @@ export function CITypeDesignerPage() {
 
   const [showRelModal, setShowRelModal] = useState(false)
 
-  const [settingsForm, setSettingsForm] = useState<{ label: string; icon: string; color: string; validationScript: string } | null>(null)
+  const [settingsForm, setSettingsForm] = useState<{ label: string; icon: string; color: string; validationScript: string; chainFamilies: string[] } | null>(null)
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   const selected = ciTypes.find((t) => t.id === selectedId) ?? null
@@ -75,7 +77,7 @@ export function CITypeDesignerPage() {
     setActiveTab('settings')
     setEditingFieldId(null)
     setAddingField(false)
-    setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '' })
+    setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [] })
   }
 
   const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success('Tipo creato') } })
@@ -237,6 +239,38 @@ export function CITypeDesignerPage() {
                         <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{settingsForm.color}</span>
                       </div>
                     </FormField>
+                    {/* Chain Families */}
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate-dark)', marginBottom: 6 }}>{t('ciTypeDesigner.chainFamilies')}</label>
+                      <div style={{ display: 'flex', gap: 16 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                          <input type="checkbox"
+                            checked={settingsForm.chainFamilies.includes('Application')}
+                            onChange={e => {
+                              const next = e.target.checked
+                                ? [...settingsForm.chainFamilies, 'Application']
+                                : settingsForm.chainFamilies.filter(f => f !== 'Application')
+                              setSettingsForm({ ...settingsForm, chainFamilies: next })
+                            }}
+                          />
+                          {t('ciTypeDesigner.chainApplication')}
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                          <input type="checkbox"
+                            checked={settingsForm.chainFamilies.includes('Infrastructure')}
+                            onChange={e => {
+                              const next = e.target.checked
+                                ? [...settingsForm.chainFamilies, 'Infrastructure']
+                                : settingsForm.chainFamilies.filter(f => f !== 'Infrastructure')
+                              setSettingsForm({ ...settingsForm, chainFamilies: next })
+                            }}
+                          />
+                          {t('ciTypeDesigner.chainInfrastructure')}
+                        </label>
+                      </div>
+                      <p style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 4 }}>{t('ciTypeDesigner.chainFamiliesTooltip')}</p>
+                    </div>
+
                     <FormField label="Validation script (opzionale)">
                       <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
                         Variabili: <code>input</code>. Usa <code>throw 'msg'</code> per errore globale.
@@ -253,6 +287,7 @@ export function CITypeDesignerPage() {
                             await updateType({ variables: { id: selected.id, input: {
                               label: settingsForm.label, icon: settingsForm.icon,
                               color: settingsForm.color, validationScript: settingsForm.validationScript || null,
+                              chainFamilies: settingsForm.chainFamilies,
                             } } })
                           } finally { setSettingsSaving(false) }
                         }}>

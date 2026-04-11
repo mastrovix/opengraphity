@@ -45,6 +45,7 @@ export interface CITypeDef {
   color: string
   active: boolean
   validationScript: string | null
+  chainFamilies: string[]
   fields: CIFieldDef[]
   relations: CIRelationDef[]
   systemRelations: CISystemRelationDef[]

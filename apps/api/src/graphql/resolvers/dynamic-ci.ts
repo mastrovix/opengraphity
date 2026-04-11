@@ -24,6 +24,7 @@ function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unkn
     status:       props['status']       ?? null,
     environment:  props['environment']  ?? null,
     description:  props['description']  ?? null,
+    chain:        props['chain']       ?? null,
     createdAt:    neo4jDateToISO(props['created_at']) ?? '',
     updatedAt:    neo4jDateToISO(props['updated_at']),
     notes:        props['notes']        ?? null,

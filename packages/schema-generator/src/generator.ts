@@ -66,6 +66,7 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
         active:           t['active'] as boolean,
         neo4jLabel:       t['neo4j_label'] as string,
         validationScript: (t['validation_script'] as string | null) ?? null,
+        chainFamilies:    (() => { const raw = t['chain_families']; return Array.isArray(raw) ? raw as string[] : typeof raw === 'string' ? (function() { try { return JSON.parse(raw) as string[] } catch { return ['Application', 'Infrastructure'] } })() : ['Application', 'Infrastructure'] })(),
         fields,
         relations,
         systemRelations,
@@ -208,7 +209,7 @@ export function generateITILEnumsSDL(_itilTypes: CITypeWithDefinitions[]): strin
  */
 // Fields already present in CIBase / hardcoded in inputs — must not be duplicated
 const BASE_TYPE_FIELDS  = new Set(['id', 'name', 'type', 'status', 'environment',
-  'description', 'createdAt', 'updatedAt', 'notes',
+  'description', 'chain', 'createdAt', 'updatedAt', 'notes',
   'ownerGroup', 'supportGroup', 'dependencies', 'dependents'])
 const BASE_INPUT_FIELDS = new Set(['name', 'status', 'environment', 'description',
   'notes', 'ownerGroupId', 'supportGroupId'])
@@ -232,6 +233,7 @@ type ${typeName} implements CIBase {
   status: String
   environment: String
   description: String
+  chain: String
   createdAt: String!
   updatedAt: String
   notes: String
