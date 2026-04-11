@@ -248,7 +248,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <ListChecks size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 13, fontWeight: itsmActive ? 600 : 400, color: itsmActive ? C.brand : C.textDefault }}>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: itsmActive ? 600 : 400, color: itsmActive ? C.brand : C.textDefault }}>
                   {t('sidebar.itilProcesses')}
                 </span>
               </div>
@@ -293,7 +293,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <BarChart2 size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 13, fontWeight: reportingActive ? 600 : 400, color: reportingActive ? C.brand : C.textDefault }}>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: reportingActive ? 600 : 400, color: reportingActive ? C.brand : C.textDefault }}>
                   {t('sidebar.reporting')}
                 </span>
               </div>
@@ -338,7 +338,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Activity size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 13, fontWeight: analysisActive ? 600 : 400, color: analysisActive ? C.brand : C.textDefault }}>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: analysisActive ? 600 : 400, color: analysisActive ? C.brand : C.textDefault }}>
                   {t('sidebar.analysis')}
                 </span>
               </div>
@@ -359,7 +359,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                       <span
                         aria-label={`${anomalyCritical} anomalie critiche`}
                         style={{
-                          fontSize: 10, fontWeight: 700, lineHeight: 1,
+                          fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
                           padding: '2px 5px', borderRadius: 8,
                           background: 'var(--danger)', color: '#fff',
                         }}
@@ -395,7 +395,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Server size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 13, fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? C.brand : C.textDefault }}>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? C.brand : C.textDefault }}>
                   {t('sidebar.cmdb')}
                 </span>
               </div>
@@ -450,7 +450,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Users size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 13, fontWeight: 400, color: C.textDefault }}>{t('sidebar.teamsUsers')}</span>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, color: C.textDefault }}>{t('sidebar.teamsUsers')}</span>
               </div>
               {teamsOpen
                 ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
@@ -497,7 +497,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <SlidersHorizontal size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 13, fontWeight: configActive ? 600 : 400, color: configActive ? C.brand : C.textDefault }}>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: configActive ? 600 : 400, color: configActive ? C.brand : C.textDefault }}>
                   {t('sidebar.configuration')}
                 </span>
               </div>
@@ -524,7 +524,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {isAdmin && (
           <>
             {!collapsed && (
-              <p style={{ color: C.textSection, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
+              <p style={{ color: C.textSection, fontSize: 'var(--font-size-label)', fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
                 {t('sidebar.admin')}
               </p>
             )}
@@ -567,7 +567,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Settings size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                    <span style={{ fontSize: 13, fontWeight: settingsActive ? 600 : 400, color: settingsActive ? C.brand : C.textDefault }}>
+                    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: settingsActive ? 600 : 400, color: settingsActive ? C.brand : C.textDefault }}>
                       {t('sidebar.settings')}
                     </span>
                   </div>

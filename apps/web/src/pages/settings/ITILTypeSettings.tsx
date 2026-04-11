@@ -53,12 +53,12 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
             onChange={(e) => setSettingsForm((p) => p && ({ ...p, color: e.target.value }))}
             style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }}
           />
-          <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{settingsForm.color}</span>
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{settingsForm.color}</span>
         </div>
       </FormField>
 
       <FormField label="Validation script (opzionale)">
-        <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
           Variabili: <code>input</code>. Usa <code>throw 'msg'</code> per errore globale.
         </p>
         <textarea

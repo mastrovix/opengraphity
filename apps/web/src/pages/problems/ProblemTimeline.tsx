@@ -41,13 +41,13 @@ export function ProblemTimeline({ historyDesc, timelineOpen, onToggle }: Problem
   return (
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
       <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline workflow</span>
+        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline workflow</span>
         {timelineOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
       </div>
       {timelineOpen && (
         <div style={{ padding: '16px 20px 20px' }}>
           {historyDesc.length === 0 ? (
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {historyDesc.map((exec, idx) => {
@@ -59,12 +59,12 @@ export function ProblemTimeline({ historyDesc, timelineOpen, onToggle }: Problem
                     )}
                     <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? 'var(--color-brand)' : 'var(--color-slate)', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'flex', gap: 6 }}>
+                      <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
+                      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', display: 'flex', gap: 6 }}>
                         <span>{timeAgo(exec.enteredAt)}</span>
                         {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
                       </div>
-                      {exec.notes && <div style={{ fontSize: 12, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
+                      {exec.notes && <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
                     </div>
                   </div>
                 )

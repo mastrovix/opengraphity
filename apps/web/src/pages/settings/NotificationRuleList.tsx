@@ -31,7 +31,7 @@ const TARGET_OPTIONS: { value: string; labelKey: string }[] = [
 
 const selectStyle: React.CSSProperties = {
   padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 4,
-  fontSize: 12, background: '#fafafa', cursor: 'pointer', width: '100%',
+  fontSize: 'var(--font-size-body)', background: '#fafafa', cursor: 'pointer', width: '100%',
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ export function RuleRow({
             : <span title={t('notificationRules.customRule',   'Regola personalizzata')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color="#94a3b8" /></span>
           }
         </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
+        <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
       </td>
 
       {/* Severity */}
@@ -146,7 +146,7 @@ export function RuleRow({
       <td style={{ padding: '10px 12px' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {CHANNELS_OPTIONS.map(({ value, labelKey }) => (
-            <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, color: '#64748b' }}>
+            <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: '#64748b' }}>
               <input
                 type="checkbox"
                 checked={rule.channels.includes(value)}

@@ -41,7 +41,7 @@ const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
 function RoleBadge({ role }: { role: string }) {
   const s = ROLE_STYLES[role] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
   return (
-    <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {role}
     </span>
   )
@@ -120,13 +120,13 @@ export function UsersPage() {
           <PageTitle icon={<User size={22} color="var(--color-brand)" />}>
             {t('pages.users.title')}
           </PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.users.count', { count: total })}
           </p>
         </div>
         <button
           onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
         >
@@ -157,7 +157,7 @@ export function UsersPage() {
       />
 
       {total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
           <span>
             {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {t('pages.users.count', { count: total })}
           </span>
@@ -165,17 +165,17 @@ export function UsersPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
               {t('common.prev')}
             </button>
-            <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>
+            <span style={{ padding: '4px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
               {page + 1} / {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
               {t('common.next')}
             </button>
@@ -189,7 +189,7 @@ export function UsersPage() {
           <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 8px 30px rgba(0,0,0,.18)' }}
                onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-              <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Nuovo utente</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Nuovo utente</span>
               <X size={18} style={{ cursor: 'pointer', color: 'var(--color-slate)' }} onClick={() => setModalOpen(false)} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -221,7 +221,7 @@ export function UsersPage() {
                         const t = teams.find(x => x.id === tid)
                         if (!t) return null
                         return (
-                          <span key={tid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', fontSize: 12 }}>
+                          <span key={tid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
                             {t.name}{t.type ? ` (${t.type})` : ''}
                             <button type="button" onClick={() => setForm(prev => ({ ...prev, teamIds: prev.teamIds.filter(id => id !== tid) }))}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
@@ -235,7 +235,7 @@ export function UsersPage() {
                 })()}
                 {/* Search input */}
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: 'var(--color-slate-light)' }}>🔍</span>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>🔍</span>
                   <input
                     type="text"
                     value={teamSearch}
@@ -261,9 +261,9 @@ export function UsersPage() {
                           >
                             <Users size={14} color="var(--color-slate-light)" />
                             <div style={{ flex: 1 }}>
-                              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
-                              {t.type && <span style={{ fontSize: 11, color: 'var(--color-slate-light)', marginLeft: 6 }}>({t.type})</span>}
-                              {t.description && <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 1 }}>{t.description}</div>}
+                              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
+                              {t.type && <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 6 }}>({t.type})</span>}
+                              {t.description && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>{t.description}</div>}
                             </div>
                           </div>
                         ))}

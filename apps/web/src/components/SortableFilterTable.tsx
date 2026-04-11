@@ -167,7 +167,7 @@ export function SortableFilterTable<T extends object>({
             <tr>
               <td colSpan={columns.length}>
                 {emptyComponent ?? (
-                  <div style={{ textAlign: 'center', color: colors.slateLight, padding: '40px 20px', fontSize: 12 }}>
+                  <div style={{ textAlign: 'center', color: colors.slateLight, padding: '40px 20px', fontSize: 'var(--font-size-body)' }}>
                     {resolvedEmptyMessage}
                   </div>
                 )}

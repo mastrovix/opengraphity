@@ -81,7 +81,7 @@ export function IncidentHeader({
 
       {/* Row 2 — title + badges */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>
+        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>
           {incident.title}
         </h1>
         <SeverityBadge value={incident.severity} />
@@ -89,7 +89,7 @@ export function IncidentHeader({
       </div>
 
       {/* Row 3 — ID */}
-      <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--text-muted)' }}>
+      <div style={{ fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--text-muted)' }}>
         {incident.id}
       </div>
 

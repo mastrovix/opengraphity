@@ -239,15 +239,15 @@ export function ChangeTasks({
           <>
             <div onClick={() => { setReassignTaskId(null); setShowAllTeams(false) }} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.5)' }} />
             <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 400, zIndex: 1001, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 4px', color: 'var(--color-slate-dark)' }}>Riassegna task</h3>
+              <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, margin: '0 0 4px', color: 'var(--color-slate-dark)' }}>Riassegna task</h3>
               {taskToReassign?.ci && (
-                <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '0 0 16px' }}>CI: <strong>{taskToReassign.ci.name}</strong></p>
+                <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 16px' }}>CI: <strong>{taskToReassign.ci.name}</strong></p>
               )}
               {teamList.length > 0 ? (
                 <select
                   value={reassignTeamId}
                   onChange={(e) => setReassignTeamId(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, marginBottom: 8, outline: 'none' }}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 'var(--font-size-card-title)', marginBottom: 8, outline: 'none' }}
                 >
                   <option value="">Seleziona team…</option>
                   {teamList.map((t) => (
@@ -255,16 +255,16 @@ export function ChangeTasks({
                   ))}
                 </select>
               ) : (
-                <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 8 }}>Nessun team alternativo disponibile per questo CI.</p>
+                <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 8 }}>Nessun team alternativo disponibile per questo CI.</p>
               )}
               {!showAllTeams && (
-                <button onClick={() => setShowAllTeams(true)} style={{ fontSize: 12, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 16 }}>
+                <button onClick={() => setShowAllTeams(true)} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 16 }}>
                   Scegli da tutti i team →
                 </button>
               )}
               {showAllTeams && <div style={{ marginBottom: 16 }} />}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button onClick={() => { setReassignTaskId(null); setShowAllTeams(false) }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 14 }}>Annulla</button>
+                <button onClick={() => { setReassignTaskId(null); setShowAllTeams(false) }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>Annulla</button>
                 <button
                   disabled={!reassignTeamId}
                   onClick={() => {
@@ -274,7 +274,7 @@ export function ChangeTasks({
                     setReassignTeamId('')
                     setShowAllTeams(false)
                   }}
-                  style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: reassignTeamId ? 'pointer' : 'not-allowed', backgroundColor: reassignTeamId ? 'var(--color-brand)' : '#e2e6f0', color: reassignTeamId ? '#fff' : 'var(--color-slate-light)', fontSize: 14, fontWeight: 500 }}
+                  style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: reassignTeamId ? 'pointer' : 'not-allowed', backgroundColor: reassignTeamId ? 'var(--color-brand)' : '#e2e6f0', color: reassignTeamId ? '#fff' : 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
                 >
                   Riassegna
                 </button>
@@ -289,10 +289,10 @@ export function ChangeTasks({
         <>
           <div onClick={() => setRejectTaskDialog(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.5)' }} />
           <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 440, zIndex: 1001, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: 'var(--color-slate-dark)' }}>
+            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, marginBottom: 8, color: 'var(--color-slate-dark)' }}>
               Rigetta task: {rejectTaskDialog.ciName}
             </h3>
-            <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 16 }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16 }}>
               Il CI verrà rimosso dagli affected e il task sarà marcato come saltato. Motivo obbligatorio (min. 10 caratteri).
             </p>
             <textarea
@@ -301,10 +301,10 @@ export function ChangeTasks({
               placeholder="Es: CI non rilevante per questo change..."
               rows={3}
               autoFocus
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setRejectTaskDialog(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 14 }}>Annulla</button>
+              <button onClick={() => setRejectTaskDialog(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>Annulla</button>
               <button
                 disabled={rejectTaskReason.trim().length < 10}
                 onClick={() => {
@@ -312,7 +312,7 @@ export function ChangeTasks({
                   setRejectTaskDialog(null)
                   setRejectTaskReason('')
                 }}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 500, cursor: rejectTaskReason.trim().length >= 10 ? 'pointer' : 'not-allowed', backgroundColor: rejectTaskReason.trim().length >= 10 ? 'var(--color-trigger-sla-breach)' : '#f3f4f6', color: rejectTaskReason.trim().length >= 10 ? '#fff' : 'var(--color-slate-light)' }}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: rejectTaskReason.trim().length >= 10 ? 'pointer' : 'not-allowed', backgroundColor: rejectTaskReason.trim().length >= 10 ? 'var(--color-trigger-sla-breach)' : '#f3f4f6', color: rejectTaskReason.trim().length >= 10 ? '#fff' : 'var(--color-slate-light)' }}
               >
                 Conferma rigetto
               </button>

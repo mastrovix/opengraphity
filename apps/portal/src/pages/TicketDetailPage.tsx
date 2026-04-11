@@ -119,14 +119,14 @@ export function TicketDetailPage() {
       {/* Header */}
       <div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: '#0F172A', flex: 1, minWidth: 0 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A', flex: 1, minWidth: 0 }}>
             {ticket.title}
           </h1>
           <TicketStatusBadge status={ticket.status} size="md" />
         </div>
 
         {/* Info bar */}
-        <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 13, color: '#94A3B8', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 10, color: '#94A3B8', flexWrap: 'wrap' }}>
           <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
           <span>·</span>
           <span>{t('ticket.createdAt')}: {fmtDate(ticket.createdAt)}</span>
@@ -154,7 +154,7 @@ export function TicketDetailPage() {
           flexWrap:        'wrap',
           gap:             12,
         }}>
-          <span style={{ color: '#15803D', fontWeight: 500, fontSize: 14 }}>
+          <span style={{ color: '#15803D', fontWeight: 500, fontSize: 10 }}>
             ✓ {t('ticket.resolved')}
           </span>
           <button
@@ -194,7 +194,7 @@ export function TicketDetailPage() {
       {/* Timeline */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 80 }}>
         {timeline.length === 0 && (
-          <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>
+          <p style={{ color: '#94A3B8', fontSize: 10, textAlign: 'center', padding: '24px 0' }}>
             Nessun messaggio ancora.
           </p>
         )}
@@ -207,7 +207,7 @@ export function TicketDetailPage() {
           }
           const h = item.data
           return (
-            <div key={i} style={{ textAlign: 'center', padding: '6px 0', fontSize: 12, color: '#94A3B8' }}>
+            <div key={i} style={{ textAlign: 'center', padding: '6px 0', fontSize: 10, color: '#94A3B8' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <ChevronRight size={12} />
                 {h.fromStep} → {h.toStep}
@@ -265,7 +265,7 @@ export function TicketDetailPage() {
                   }}
                 >
                   <span>{a.filename}</span>
-                  <span style={{ color: '#94A3B8', fontSize: 12 }}>{formatBytes(a.sizeBytes)}</span>
+                  <span style={{ color: '#94A3B8', fontSize: 10 }}>{formatBytes(a.sizeBytes)}</span>
                 </a>
               ))}
             </div>

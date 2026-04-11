@@ -47,7 +47,7 @@ function groupByField<T>(items: T[], key: keyof T): Record<string, T[]> {
 
 function MicroBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 500 }}>
+    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
       {children}
     </span>
   )
@@ -104,11 +104,11 @@ export function ProblemCIList({
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
       <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
           <CountBadge count={affectedCIs.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onToggleSearch} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
+          <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
             {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
           </button>
           {ciOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
@@ -120,7 +120,7 @@ export function ProblemCIList({
             <div style={{ marginBottom: 12, position: 'relative' }}>
               <input type="text" value={ciSearch} onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={allowedTypes.length > 0 ? `Cerca CI (${allowedTypes.join(', ')}) — min. 2 car…` : 'Cerca CI (min. 2 caratteri)...'}
-                autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
+                autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }} />
               {filteredResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                   {filteredResults.map((ci) => {
@@ -129,12 +129,12 @@ export function ProblemCIList({
                       <div key={ci.id} style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                           <div>
-                            <span style={{ fontWeight: 500, fontSize: 14 }}>{ci.name}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
+                            <span style={{ fontWeight: 500, fontSize: 'var(--font-size-body)' }}>{ci.name}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                             {relTypes.length > 1 && (
-                              <select style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer' }}
+                              <select style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer' }}
                                 value={selectedRelType[ci.id] ?? relTypes[0]}
                                 onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => setSelectedRelType((p) => ({ ...p, [ci.id]: e.target.value }))}>
@@ -142,10 +142,10 @@ export function ProblemCIList({
                               </select>
                             )}
                             {relTypes.length === 1 && (
-                              <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
+                              <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
                             )}
                             <button onClick={() => handleAdd(ci)}
-                              style={{ fontSize: 12, padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>+</button>
+                              style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>+</button>
                           </div>
                         </div>
                       </div>
@@ -156,7 +156,7 @@ export function ProblemCIList({
             </div>
           )}
           {affectedCIs.length === 0 ? (
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
           ) : (
             <div>
               {Object.entries(groupByField(affectedCIs, 'type')).map(([type, cis]) => (
@@ -164,10 +164,10 @@ export function ProblemCIList({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {cis.map((ci) => (
                       <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
-                        <button onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
+                        <button onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
                         <MicroBadge>{ci.status}</MicroBadge>
                         <MicroBadge>{ci.environment}</MicroBadge>
-                        <button onClick={() => onRemoveCI(ci.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
+                        <button onClick={() => onRemoveCI(ci.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
                       </div>
                     ))}
                   </div>
@@ -216,11 +216,11 @@ export function ProblemIncidentList({
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
       <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Incident Correlati</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Incident Correlati</span>
           <CountBadge count={relatedIncidents.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onToggleSearch} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
+          <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
             {showIncidentSearch ? 'Chiudi' : '+ Collega Incident'}
           </button>
           {incidentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
@@ -230,13 +230,13 @@ export function ProblemIncidentList({
         <div style={{ padding: '16px 20px 20px' }}>
           {showIncidentSearch && (
             <div style={{ marginBottom: 12 }}>
-              <input type="text" value={incidentSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Filtra incident per titolo..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
+              <input type="text" value={incidentSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Filtra incident per titolo..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }} />
               {incidentResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                   {incidentResults.filter((i) => !relatedIncidents.find((r) => r.id === i.id) && (incidentSearch.length < 2 || i.title.toLowerCase().includes(incidentSearch.toLowerCase()))).map((inc) => (
-                    <div key={inc.id} onClick={() => onLink(inc.id)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
+                    <div key={inc.id} onClick={() => onLink(inc.id)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
                       <span style={{ fontWeight: 500 }}>{inc.title}</span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{inc.status}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>{inc.status}</span>
                     </div>
                   ))}
                 </div>
@@ -244,7 +244,7 @@ export function ProblemIncidentList({
             </div>
           )}
           {relatedIncidents.length === 0 ? (
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessun incident correlato.</p>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessun incident correlato.</p>
           ) : (
             <div>
               {Object.entries(groupByField(relatedIncidents, 'status')).map(([status, incidents]) => (
@@ -252,7 +252,7 @@ export function ProblemIncidentList({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {incidents.map((inc) => (
                       <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                        <button onClick={() => navigate(`/incidents/${inc.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{inc.title}</button>
+                        <button onClick={() => navigate(`/incidents/${inc.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{inc.title}</button>
                         <MicroBadge>{inc.severity}</MicroBadge>
                         <button onClick={() => onUnlink(inc.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 'auto' }} title="Scollega"><X size={14} /></button>
                       </div>
@@ -301,11 +301,11 @@ export function ProblemChangeList({
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
       <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: changesOpen ? '1px solid #e5e7eb' : 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Change Correlate</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Change Correlate</span>
           <CountBadge count={relatedChanges.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onToggleSearch} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
+          <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
             {showChangeSearch ? 'Chiudi' : '+ Collega Change'}
           </button>
           {changesOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
@@ -315,13 +315,13 @@ export function ProblemChangeList({
         <div style={{ padding: '16px 20px 20px' }}>
           {showChangeSearch && (
             <div style={{ marginBottom: 12 }}>
-              <input type="text" value={changeSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Cerca change (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }} />
+              <input type="text" value={changeSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Cerca change (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }} />
               {changeResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                   {changeResults.filter((c) => !relatedChanges.find((r) => r.id === c.id)).map((ch) => (
-                    <div key={ch.id} onClick={() => onLink(ch.id)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 14, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
+                    <div key={ch.id} onClick={() => onLink(ch.id)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
                       <span style={{ fontWeight: 500 }}>{ch.title}</span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{ch.type} · {ch.status}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>{ch.type} · {ch.status}</span>
                     </div>
                   ))}
                 </div>
@@ -329,7 +329,7 @@ export function ProblemChangeList({
             </div>
           )}
           {relatedChanges.length === 0 ? (
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna change correlata.</p>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessuna change correlata.</p>
           ) : (
             <div>
               {Object.entries(groupByField(relatedChanges, 'type')).map(([type, changes]) => (
@@ -337,7 +337,7 @@ export function ProblemChangeList({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {changes.map((ch) => (
                       <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                        <button onClick={() => navigate(`/changes/${ch.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ch.title}</button>
+                        <button onClick={() => navigate(`/changes/${ch.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ch.title}</button>
                         <MicroBadge>{ch.status}</MicroBadge>
                       </div>
                     ))}

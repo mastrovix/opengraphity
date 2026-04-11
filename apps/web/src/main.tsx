@@ -81,13 +81,13 @@ function RouteError() {
       background:     '#f8f9fc',
     }}>
       <div style={{ fontSize: 48 }}>⚠️</div>
-      <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
+      <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
         {error?.status === 404 ? 'Page not found' : 'Unexpected error'}
       </h1>
       <p style={{ color: 'var(--color-slate-light)', margin: 0 }}>
         {error?.statusText ?? 'Something went wrong'}
       </p>
-      <a href="/dashboard" style={{ color: 'var(--color-brand)', textDecoration: 'none', fontSize: 14 }}>
+      <a href="/dashboard" style={{ color: 'var(--color-brand)', textDecoration: 'none', fontSize: 'var(--font-size-body)' }}>
         Back to Dashboard
       </a>
     </div>

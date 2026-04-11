@@ -98,7 +98,7 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         rows={rows}
-        style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db', resize: 'vertical', fontFamily: 'inherit', fontSize: 14, boxSizing: 'border-box' }}
+        style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db', resize: 'vertical', fontFamily: 'inherit', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
       />
       {mentionState.active && users.length > 0 && (
         <div style={{
@@ -111,7 +111,7 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
               key={u.id}
               onMouseDown={(e) => { e.preventDefault(); insertMention(u) }}
               style={{
-                padding: '6px 10px', cursor: 'pointer', fontSize: 13,
+                padding: '6px 10px', cursor: 'pointer', fontSize: 'var(--font-size-body)',
                 background: i === selectedIdx ? '#f0f9ff' : 'transparent',
               }}
             >

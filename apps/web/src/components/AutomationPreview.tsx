@@ -140,9 +140,9 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
     <div style={{ marginTop: 20, padding: '12px 16px', background: '#f0f9ff', borderRadius: 8, border: '1px solid #bae6fd' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <Eye size={14} color="#0369a1" />
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>Anteprima</span>
+        <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>Anteprima</span>
       </div>
-      <p style={{ margin: 0, fontSize: 13, color: '#0c4a6e', lineHeight: 1.6 }}>
+      <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: '#0c4a6e', lineHeight: 1.6 }}>
         {parts.join(', ')}
       </p>
     </div>

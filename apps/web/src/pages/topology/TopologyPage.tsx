@@ -145,7 +145,7 @@ export function TopologyPage() {
         background:      '#fff',
         flexShrink:      0,
       }}>
-        <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+        <h1 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
           Topology Map
         </h1>
 
@@ -173,7 +173,7 @@ export function TopologyPage() {
           {/* Hop depth selector — visible only when a CI is selected */}
           {focusNodeId && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 12, color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>Profondità</span>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>Profondità</span>
               <select
                 value={maxHops ?? 'all'}
                 onChange={(e) => setMaxHops(e.target.value === 'all' ? null : Number(e.target.value))}
@@ -206,7 +206,7 @@ export function TopologyPage() {
           </select>
 
           {/* Labels toggle */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={showLabels}
@@ -217,7 +217,7 @@ export function TopologyPage() {
           </label>
 
           {/* Incident only toggle */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={filters.onlyIncident}
@@ -245,14 +245,14 @@ export function TopologyPage() {
             }}>
               <Share2 size={48} color="#94a3b8" strokeWidth={1.5} />
               <div style={{
-                fontSize: 24, fontWeight: 600,
+                fontSize: 'var(--font-size-page-title)', fontWeight: 600,
                 color: 'var(--color-slate-dark)',
                 fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
               }}>
                 Topology Map
               </div>
               <div style={{
-                fontSize: 15, color: '#94a3b8',
+                fontSize: 'var(--font-size-card-title)', color: '#94a3b8',
                 fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
                 textAlign: 'center',
               }}>
@@ -267,7 +267,7 @@ export function TopologyPage() {
             <div style={{
               position: 'absolute', inset: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--danger)', fontSize: 14,
+              color: 'var(--danger)', fontSize: 'var(--font-size-card-title)',
               fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
             }}>
               Errore nel caricamento: {error.message}
@@ -293,7 +293,7 @@ export function TopologyPage() {
             <div style={{
               position:   'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
               background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6,
-              padding:    '5px 14px', fontSize: 12, color: '#854d0e',
+              padding:    '5px 14px', fontSize: 'var(--font-size-body)', color: '#854d0e',
               fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
               whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}>
@@ -306,7 +306,7 @@ export function TopologyPage() {
             position:    'absolute', bottom: 16, right: selectedNode ? 316 : 16,
             background:  'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)',
             border:      '1px solid #e2e8f0', borderRadius: 6,
-            padding:     '5px 12px', fontSize: 12,
+            padding:     '5px 12px', fontSize: 'var(--font-size-body)',
             color:       'var(--color-slate)',
             fontFamily:  "'Plus Jakarta Sans', system-ui, sans-serif",
             transition:  'right 200ms ease',
@@ -335,16 +335,16 @@ export function TopologyPage() {
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+                <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
                   {selectedNode.name}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 2 }}>
+                <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>
                   {selectedNode.type.replace(/_/g, ' ')}
                 </div>
               </div>
               <button
                 onClick={() => setSelectedNode(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 16, padding: 0 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 'var(--font-size-section-title)', padding: 0 }}
               >
                 ✕
               </button>
@@ -358,13 +358,13 @@ export function TopologyPage() {
 
               {selectedNode.environment && (
                 <DetailField label="Environment">
-                  <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{selectedNode.environment}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{selectedNode.environment}</span>
                 </DetailField>
               )}
 
               {selectedNode.ownerGroup && (
                 <DetailField label="Owner Group">
-                  <span style={{ fontSize: 14, color: 'var(--color-slate-dark)' }}>{selectedNode.ownerGroup}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{selectedNode.ownerGroup}</span>
                 </DetailField>
               )}
 
@@ -374,14 +374,14 @@ export function TopologyPage() {
                   <button
                     onClick={() => navigate(`/incidents?ci=${selectedNode.id}`)}
                     style={{
-                      fontSize: 14, fontWeight: 600, color: '#dc2626',
+                      fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#dc2626',
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
                     }}
                   >
                     {selectedNode.incidentCount}
                   </button>
                 ) : (
-                  <span style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>0</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>0</span>
                 )}
               </DetailField>
 
@@ -391,14 +391,14 @@ export function TopologyPage() {
                   <button
                     onClick={() => navigate(`/changes?ci=${selectedNode.id}`)}
                     style={{
-                      fontSize: 14, fontWeight: 600, color: '#f97316',
+                      fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#f97316',
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
                     }}
                   >
                     {selectedNode.changeCount}
                   </button>
                 ) : (
-                  <span style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>0</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>0</span>
                 )}
               </DetailField>
             </div>
@@ -435,7 +435,7 @@ export function TopologyPage() {
 function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 2 }}>{label}</div>
       {children}
     </div>
   )
@@ -498,14 +498,14 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
           placeholder="Cerca CI…"
           style={{
             border: 'none', outline: 'none', background: 'transparent',
-            fontSize: 12, width: '100%', color: 'inherit',
+            fontSize: 'var(--font-size-body)', width: '100%', color: 'inherit',
             fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
           }}
         />
         {value && (
           <button
             onClick={(e) => { e.stopPropagation(); handleSelect(null) }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '0 2px', fontSize: 12, lineHeight: 1 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '0 2px', fontSize: 'var(--font-size-body)', lineHeight: 1 }}
           >
             ✕
           </button>
@@ -522,7 +522,7 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
           <div
             onClick={() => handleSelect(null)}
             style={{
-              padding: '7px 10px', fontSize: 12, cursor: 'pointer',
+              padding: '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
               color: 'var(--color-slate-light)',
               borderBottom: '1px solid #f1f5f9',
             }}
@@ -532,7 +532,7 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
             — Tutti —
           </div>
           {filtered.length === 0 && (
-            <div style={{ padding: '7px 10px', fontSize: 12, color: 'var(--color-slate-light)' }}>
+            <div style={{ padding: '7px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
               Nessun risultato
             </div>
           )}
@@ -541,7 +541,7 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
               key={o.id}
               onClick={() => handleSelect(o.id)}
               style={{
-                padding:    '7px 10px', fontSize: 12, cursor: 'pointer',
+                padding:    '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                 background: o.id === value ? 'rgba(2,132,199,0.08)' : 'transparent',
                 color:      o.id === value ? 'var(--color-brand)' : 'var(--color-slate-dark)',
                 fontWeight: o.id === value ? 600 : 400,
@@ -552,7 +552,7 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
             >
               <span>{o.name}</span>
               {o.incidentCount > 0 && (
-                <span style={{ fontSize: 10, color: '#dc2626', fontWeight: 600 }}>
+                <span style={{ fontSize: 'var(--font-size-label)', color: '#dc2626', fontWeight: 600 }}>
                   {o.incidentCount} INC
                 </span>
               )}
@@ -573,7 +573,7 @@ function StatusBadge({ status }: { status: string }) {
   const s = map[status] ?? { bg: '#f1f5f9', color: '#64748b' }
   return (
     <span style={{
-      fontSize: 12, fontWeight: 600,
+      fontSize: 'var(--font-size-body)', fontWeight: 600,
       background: s.bg, color: s.color,
       padding: '2px 8px', borderRadius: 10,
     }}>

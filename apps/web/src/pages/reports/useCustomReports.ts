@@ -50,10 +50,10 @@ const GET_TEAMS_SLIM    = gql`query GetTeamsSlim { teams { id name } }`
 
 // ── Styles (shared) ────────────────────────────────────────────────────────────
 
-export const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }
-export const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600 as const, color: 'var(--color-slate)', textTransform: 'uppercase' as const, marginBottom: 4, display: 'block' as const }
-export const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600 }
-export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)' }
+export const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }
+export const labelStyle: React.CSSProperties = { fontSize: 'var(--font-size-body)', fontWeight: 600 as const, color: 'var(--color-slate)', textTransform: 'uppercase' as const, marginBottom: 4, display: 'block' as const }
+export const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }
+export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 

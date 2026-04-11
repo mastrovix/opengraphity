@@ -107,7 +107,7 @@ export function WidgetFilterConfig({
               key={value}
               onClick={() => onTimeRangeChange(value)}
               style={{
-                padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500,
+                padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500,
                 border: timeRange === value ? `1.5px solid ${color}` : '1.5px solid #e5e7eb',
                 background: timeRange === value ? `${color}14` : '#fff',
                 color: timeRange === value ? color : 'var(--color-slate)',
@@ -134,8 +134,8 @@ export function WidgetFilterConfig({
                 color: size === value ? color : 'var(--color-slate)',
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 600 }}>{label}</div>
-              <div style={{ fontSize: 10, color: 'var(--color-slate-light)', marginTop: 1 }}>{sub}</div>
+              <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600 }}>{label}</div>
+              <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 1 }}>{sub}</div>
             </button>
           ))}
         </div>
@@ -203,7 +203,7 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
             key={v}
             onClick={() => onChange(value === v ? '' : v)}
             style={{
-              flex: 1, padding: '7px 0', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, textAlign: 'center',
+              flex: 1, padding: '7px 0', borderRadius: 7, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, textAlign: 'center',
               border: value === v ? `1.5px solid ${color}` : '1.5px solid #e5e7eb',
               background: value === v ? `${color}14` : '#fff',
               color: value === v ? color : 'var(--color-slate)',
@@ -233,20 +233,20 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 11, fontWeight: 700,
+  display: 'block', fontSize: 'var(--font-size-table)', fontWeight: 700,
   color: 'var(--color-slate)', marginBottom: 5,
   letterSpacing: 0.3, textTransform: 'uppercase',
 }
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid #e2e8f0', fontSize: 13,
+  border: '1.5px solid #e2e8f0', fontSize: 'var(--font-size-body)',
   boxSizing: 'border-box', color: 'var(--color-slate-dark)',
   outline: 'none',
 }
 
 const selectStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid #e2e8f0', fontSize: 13,
+  border: '1.5px solid #e2e8f0', fontSize: 'var(--font-size-body)',
   background: '#fff', color: 'var(--color-slate-dark)',
 }

@@ -61,7 +61,7 @@ export function CreateTypeDialog({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)}
             style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
-          <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{form.color}</span>
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{form.color}</span>
         </div>
       </FormField>
     </Modal>

@@ -55,7 +55,7 @@ export function KBListPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 600, color: '#0F172A', marginBottom: 20 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A', marginBottom: 20 }}>
         {t('kb.title')}
       </h1>
 
@@ -67,7 +67,7 @@ export function KBListPage() {
       {/* No search: category grid */}
       {!search && categories.length > 0 && (
         <div style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>
             {t('kb.categories')}
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
@@ -91,8 +91,8 @@ export function KBListPage() {
                 onMouseLeave={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.backgroundColor = '#F8FAFC' }}
               >
                 <span style={{ fontSize: 28 }}>{CATEGORY_ICONS[cat.name.toLowerCase()] ?? '📄'}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', textTransform: 'capitalize' }}>{cat.name}</span>
-                <span style={{ fontSize: 12, color: '#94A3B8' }}>{cat.count} {t('kb.articles')}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: '#0F172A', textTransform: 'capitalize' }}>{cat.name}</span>
+                <span style={{ fontSize: 10, color: '#94A3B8' }}>{cat.count} {t('kb.articles')}</span>
               </button>
             ))}
           </div>
@@ -107,7 +107,7 @@ export function KBListPage() {
           <p style={{ color: '#94A3B8', marginBottom: 16 }}>{t('kb.noResults')}</p>
           <Link
             to="/tickets/new"
-            style={{ color: '#0EA5E9', fontWeight: 500, fontSize: 14 }}
+            style={{ color: '#0EA5E9', fontWeight: 500, fontSize: 10 }}
           >
             + Apri un ticket
           </Link>
@@ -115,10 +115,10 @@ export function KBListPage() {
       ) : (
         <div>
           {search && (
-            <div style={{ marginBottom: 16, fontSize: 13, color: '#64748B' }}>
+            <div style={{ marginBottom: 16, fontSize: 10, color: '#64748B' }}>
               {articles.length} risultati per "<strong>{search}</strong>"
               {' '}
-              <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#0EA5E9', cursor: 'pointer', fontSize: 13 }}>
+              <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#0EA5E9', cursor: 'pointer', fontSize: 10 }}>
                 Cancella
               </button>
             </div>
@@ -142,13 +142,13 @@ export function KBListPage() {
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: '#0EA5E9', marginBottom: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: '#0EA5E9', marginBottom: 6 }}>
                       {article.title}
                     </div>
-                    <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.6 }}>
+                    <div style={{ fontSize: 10, color: '#64748B', lineHeight: 1.6 }}>
                       {excerpt(article.body)}
                     </div>
-                    <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 12, color: '#94A3B8' }}>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 10, color: '#94A3B8' }}>
                       <span style={{
                         backgroundColor: '#F0F9FF',
                         color:           '#0EA5E9',

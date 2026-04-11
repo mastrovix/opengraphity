@@ -84,7 +84,7 @@ export function CIFieldInlineEditor({
           <input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </div>
         <div style={{ paddingTop: 20 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: isSystem ? 'default' : 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: isSystem ? 'default' : 'pointer' }}>
             <input type="checkbox" checked={form.required} disabled={isSystem} onChange={(e) => set('required', e.target.checked)} />
             Obbligatorio
           </label>
@@ -108,7 +108,7 @@ export function CIFieldInlineEditor({
           {selectedEnum && (
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {selectedEnum.values.map((v) => (
-                <span key={v} style={{ padding: '2px 8px', background: '#f0f4ff', borderRadius: 12, fontSize: 11, color: 'var(--color-brand)' }}>
+                <span key={v} style={{ padding: '2px 8px', background: '#f0f4ff', borderRadius: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }}>
                   {v}
                 </span>
               ))}
@@ -125,14 +125,14 @@ export function CIFieldInlineEditor({
 
       {/* scripts (collapsible) */}
       <details style={{ marginBottom: 12 }}>
-        <summary style={{ fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none', marginBottom: 8 }}>
+        <summary style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none', marginBottom: 8 }}>
           Script avanzati (validazione, visibilità, default)
         </summary>
         <div style={{ paddingTop: 8 }}>
           <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
             {(['validation', 'visibility', 'default'] as const).map((tab) => (
               <button key={tab} onClick={() => setScriptTab(tab)}
-                style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 12, cursor: 'pointer',
+                style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                   background: scriptTab === tab ? 'var(--color-brand-light)' : '#f1f5f9',
                   color: scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
                   fontWeight: scriptTab === tab ? 600 : 400 }}>
@@ -142,7 +142,7 @@ export function CIFieldInlineEditor({
           </div>
           {scriptTab === 'validation' && (
             <div>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
                 Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'msg'</code> per errore.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
@@ -152,7 +152,7 @@ export function CIFieldInlineEditor({
           )}
           {scriptTab === 'visibility' && (
             <div>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
                 Variabili: <code>input</code>. Ritorna <code>true/false</code>.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
@@ -162,7 +162,7 @@ export function CIFieldInlineEditor({
           )}
           {scriptTab === 'default' && (
             <div>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
                 Variabili: <code>input</code>. Ritorna il valore di default.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}

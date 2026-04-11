@@ -89,26 +89,26 @@ function SortableItem({
     >
       <div style={{ border: '2px dashed #0284c7', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
         <div style={{ padding: '8px 12px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span {...listeners} style={{ cursor: 'grab', fontSize: 14, color: 'var(--color-slate-light)', userSelect: 'none' }} title="Trascina">⠿</span>
+          <span {...listeners} style={{ cursor: 'grab', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', userSelect: 'none' }} title="Trascina">⠿</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {widget.reportSection?.title ?? 'Widget'}
-              {widget.isNew && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--color-brand)' }}>nuovo</span>}
+              {widget.isNew && <span style={{ marginLeft: 6, fontSize: 'var(--font-size-label)', color: 'var(--color-brand)' }}>nuovo</span>}
             </div>
             {widget.reportTemplate?.name && (
-              <div style={{ fontSize: 11, color: 'var(--color-slate-light)' }}>{widget.reportTemplate.name}</div>
+              <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{widget.reportTemplate.name}</div>
             )}
           </div>
           <select
             value={widget.colSpan}
             onChange={(e) => onUpdateColSpan(widget.tempId, Number(e.target.value))}
-            style={{ fontSize: 11, padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)' }}
+            style={{ fontSize: 'var(--font-size-table)', padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)' }}
           >
             {[2, 3, 4, 6, 12].map((s) => <option key={s} value={s}>{s} col</option>)}
           </select>
           <button
             onClick={() => onRemove(widget.tempId)}
-            style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid #fca5a5', background: '#fef2f2', color: 'var(--color-danger)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+            style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid #fca5a5', background: '#fef2f2', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
           >×</button>
         </div>
         <div style={{ position: 'relative' }}>
@@ -146,7 +146,7 @@ export function DashboardEditMode({
       {/* ── Main grid ─────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {!hasAny ? (
-          <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 14, border: '2px dashed #e5e7eb', borderRadius: 12, background: '#fafafa' }}>
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', border: '2px dashed #e5e7eb', borderRadius: 12, background: '#fafafa' }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>📊</div>
             <div style={{ fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>Dashboard vuota</div>
             Usa il pannello a destra per aggiungere widget personalizzati o report.
@@ -192,7 +192,7 @@ export function DashboardEditMode({
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-brand)' }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-slate-dark)' }}>Widget personalizzati</span>
+            <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Widget personalizzati</span>
           </div>
 
           <div style={{ padding: 14 }}>
@@ -200,7 +200,7 @@ export function DashboardEditMode({
               onClick={onAddCustomWidget}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                padding: '10px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                padding: '10px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
                 border: '2px dashed var(--color-brand)',
                 background: '#f0f9ff', color: 'var(--color-brand)',
               }}
@@ -210,14 +210,14 @@ export function DashboardEditMode({
             </button>
 
             {/* Description */}
-            <p style={{ margin: '10px 0 0', fontSize: 11, color: 'var(--color-slate-light)', lineHeight: 1.6 }}>
+            <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.6 }}>
               Counter, grafico, tabella o gauge con dati in tempo reale — senza il report builder.
             </p>
 
             {/* Existing custom widgets */}
             {customWidgets.length > 0 && (
               <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }}>
+                <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }}>
                   Creati ({customWidgets.length})
                 </div>
                 {customWidgets.map((w) => {
@@ -225,7 +225,7 @@ export function DashboardEditMode({
                   return (
                     <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid #f3f4f6', background: '#fafafa' }}>
                       <Icon size={12} color={w.color} />
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.title}</span>
+                      <span style={{ flex: 1, fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.title}</span>
                       <button
                         onClick={() => onEditCustomWidget(w)}
                         title="Modifica"
@@ -248,33 +248,33 @@ export function DashboardEditMode({
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981' }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-slate-dark)' }}>Aggiungi da report</span>
+            <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Aggiungi da report</span>
           </div>
 
           <div style={{ maxHeight: 380, overflowY: 'auto' }}>
             {templates.length === 0 ? (
-              <div style={{ padding: '14px', fontSize: 12, color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun report disponibile.</div>
+              <div style={{ padding: '14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun report disponibile.</div>
             ) : (
               templates.map((template) => (
                 <div key={template.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <button
                     onClick={() => onToggleTemplate(template.id)}
-                    style={{ width: '100%', padding: '9px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'left' }}
+                    style={{ width: '100%', padding: '9px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'left' }}
                   >
                     <span>{template.name}</span>
-                    <span style={{ color: 'var(--color-slate-light)', fontSize: 10 }}>{expandedTemplates.has(template.id) ? '▲' : '▼'}</span>
+                    <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)' }}>{expandedTemplates.has(template.id) ? '▲' : '▼'}</span>
                   </button>
                   {expandedTemplates.has(template.id) && (
                     <div style={{ background: '#f9fafb', paddingBottom: 4 }}>
                       {(template.sections ?? []).length === 0 && (
-                        <div style={{ padding: '6px 14px', fontSize: 12, color: 'var(--color-slate-light)' }}>Nessuna sezione</div>
+                        <div style={{ padding: '6px 14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessuna sezione</div>
                       )}
                       {(template.sections ?? []).map((section) => (
                         <div key={section.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 14px', gap: 8 }}>
-                          <span style={{ fontSize: 12, color: '#4b5563', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.title}</span>
+                          <span style={{ fontSize: 'var(--font-size-body)', color: '#4b5563', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.title}</span>
                           <button
                             onClick={() => onAddWidget(template, section)}
-                            style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #0284c7', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #0284c7', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-table)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                           >+ Add</button>
                         </div>
                       ))}

@@ -82,7 +82,7 @@ export function WorkflowToolbar({
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
+          <h1 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
             {WORKFLOW_LABELS[selectedWorkflow]}
           </h1>
           {def && (
@@ -106,7 +106,7 @@ export function WorkflowToolbar({
             const s = subtypeStyles[def.changeSubtype] ?? { bg: '#f3f4f6', fg: '#374151' }
             return (
               <span style={{
-                fontSize: 11, fontWeight: 600, padding: '2px 8px',
+                fontSize: 'var(--font-size-table)', fontWeight: 600, padding: '2px 8px',
                 borderRadius: 4, backgroundColor: s.bg, color: s.fg,
               }}>
                 {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
@@ -120,7 +120,7 @@ export function WorkflowToolbar({
         {def && (
           <button
             onClick={() => setShowAddStep(true)}
-            style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 13, color: 'var(--color-slate)' }}
+            style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}
           >
             + Step
           </button>
@@ -163,29 +163,29 @@ export function WorkflowToolbar({
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}
           onClick={e => { if (e.target === e.currentTarget) setShowAddStep(false) }}>
           <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 380, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: '#0f172a' }}>Aggiungi Step</div>
+            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#0f172a' }}>Aggiungi Step</div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>TIPO</div>
+              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>TIPO</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SPECIAL_STEP_TYPES.map(s => (
-                  <button key={s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : '#e2e6f0'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : '#fff', color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 13 }}>
+                  <button key={s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : '#e2e6f0'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : '#fff', color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
                     {s.label}
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>LABEL</div>
-              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder="es. Attesa Timer" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>LABEL</div>
+              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder="es. Attesa Timer" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
             </div>
             {stepType === 'timer_wait' && (
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>RITARDO (minuti)</div>
-                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder="es. 60" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+                <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>RITARDO (minuti)</div>
+                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder="es. 60" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 13, color: 'var(--color-slate)' }}>Annulla</button>
+              <button onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Annulla</button>
               <button
                 disabled={!stepLabel.trim() || addingStep}
                 onClick={() => {
@@ -196,7 +196,7 @@ export function WorkflowToolbar({
                     timerDelayMinutes: stepType === 'timer_wait' && timerMins ? Number(timerMins) : undefined,
                   } })
                 }}
-                style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: accentColor, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+                style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: accentColor, color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600 }}
               >
                 Aggiungi
               </button>

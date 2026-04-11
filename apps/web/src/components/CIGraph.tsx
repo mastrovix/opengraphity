@@ -371,16 +371,16 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           onChange={e => setShowBlastRadius(e.target.checked)}
           style={{ cursor: 'pointer' }}
         />
-        <label htmlFor="showBlast" style={{ fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none' }}>
+        <label htmlFor="showBlast" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none' }}>
           Mostra blast radius
         </label>
         {showBlastRadius && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
-            <label style={{ fontSize: 12, color: 'var(--color-slate)' }}>Profondità max</label>
+            <label style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Profondità max</label>
             <select
               value={maxDepth}
               onChange={e => setMaxDepth(Number(e.target.value))}
-              style={{ fontSize: 12, padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', cursor: 'pointer' }}
+              style={{ fontSize: 'var(--font-size-body)', padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', cursor: 'pointer' }}
             >
               {[1, 2, 3, 4, 5].map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -389,7 +389,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
-          <label style={{ fontSize: 12, color: 'var(--color-slate)' }}>Distanza</label>
+          <label style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Distanza</label>
           <input
             type="range"
             min={0.5}
@@ -435,7 +435,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           { color: 'var(--color-trigger-automatic)', label: 'Dipendenti (dipendono da questo CI)' },
           { color: 'var(--color-trigger-timer)', label: 'Blast radius (impatto indiretto)' },
         ].map(({ color, label }) => (
-          <div key={color} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-slate)' }}>
+          <div key={color} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0, display: 'inline-block' }} />
             {label}
           </div>

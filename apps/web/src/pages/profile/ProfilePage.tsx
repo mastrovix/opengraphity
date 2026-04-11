@@ -16,11 +16,11 @@ export function ProfilePage() {
 
       <div className="card-border" style={{ padding: '20px 24px', maxWidth: 480 }}>
         <div style={{ marginBottom: 4 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
             {t('pages.profile.language')}
           </span>
         </div>
-        <p style={{ fontSize: 13, color: 'var(--color-slate)', marginTop: 2, marginBottom: 12 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', marginTop: 2, marginBottom: 12 }}>
           {t('pages.profile.languageDescription')}
         </p>
         <select
@@ -30,7 +30,7 @@ export function ProfilePage() {
             padding: '8px 12px',
             borderRadius: 6,
             border: '1px solid #e5e7eb',
-            fontSize: 14,
+            fontSize: 'var(--font-size-card-title)',
             color: 'var(--color-slate-dark)',
             background: '#fff',
             cursor: 'pointer',

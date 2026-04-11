@@ -45,14 +45,14 @@ export function CITypeList({
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e5e7eb' }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Tipi CI</span>
-        <button onClick={onNew} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 12 }}>
+        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Tipi CI</span>
+        <button onClick={onNew} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>
           <Plus size={12} /> Nuovo
         </button>
       </div>
 
       {loading && (
-        <div style={{ padding: 20, color: '#94a3b8', fontSize: 13 }}>Caricamento…</div>
+        <div style={{ padding: 20, color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>Caricamento…</div>
       )}
 
       <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
@@ -60,18 +60,18 @@ export function CITypeList({
         <button onClick={onSelectBase} style={baseEntryStyle(selectedBase)}>
           <Layout size={15} color={selectedBase ? 'var(--color-brand)' : '#64748b'} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
               Campi Base
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>Condivisi da tutti i tipi</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>Condivisi da tutti i tipi</div>
           </div>
-          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 600, background: '#cffafe', color: 'var(--color-brand)', flexShrink: 0 }}>
+          <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 600, background: '#cffafe', color: 'var(--color-brand)', flexShrink: 0 }}>
             Sistema
           </span>
         </button>
 
         {/* Separator */}
-        <div style={{ padding: '5px 16px 4px', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
           Tipi CI
         </div>
 
@@ -81,16 +81,16 @@ export function CITypeList({
             <button key={t.id} onClick={() => onSelectType(t)} style={typeEntryStyle(isSelected)}>
               <CIIcon icon={t.icon} size={15} color={isSelected ? 'var(--color-brand)' : (t.color ?? 'var(--color-brand)')} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {t.label}
                 </div>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>{t.name}</div>
+                <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>{t.name}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: t.active ? '#dcfce7' : '#f3f4f6', color: t.active ? '#16a34a' : '#94a3b8' }}>
+                <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: t.active ? '#dcfce7' : '#f3f4f6', color: t.active ? '#16a34a' : '#94a3b8' }}>
                   {t.active ? 'active' : 'inactive'}
                 </span>
-                <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                <span style={{ fontSize: 'var(--font-size-label)', color: '#94a3b8' }}>
                   {t.fields.length} campi
                 </span>
               </div>
@@ -102,7 +102,7 @@ export function CITypeList({
       {!loading && ciTypes.length === 0 && (
         <div style={{ padding: '16px 16px 20px', textAlign: 'center' }}>
           <Layers size={24} color="#94a3b8" style={{ marginBottom: 8 }} />
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>Nessun tipo CI</div>
+          <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>Nessun tipo CI</div>
         </div>
       )}
     </div>

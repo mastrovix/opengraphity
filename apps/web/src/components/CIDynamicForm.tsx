@@ -77,7 +77,7 @@ function FieldRenderer({
             onChange={e => onChange(e.target.checked)}
             style={{ width: 16, height: 16, cursor: 'pointer' }}
           />
-          <label htmlFor={field.name} style={{ fontSize: 14, color: 'var(--color-slate)', cursor: 'pointer' }}>
+          <label htmlFor={field.name} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
             {field.label}
           </label>
         </div>
@@ -272,7 +272,7 @@ export function CIDynamicForm({
             />
 
             {error && (
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-trigger-sla-breach)' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
                 {error}
               </p>
             )}

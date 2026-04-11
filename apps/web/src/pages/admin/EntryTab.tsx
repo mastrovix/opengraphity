@@ -27,7 +27,7 @@ export function EntryTab() {
       return <span style={badgeS(row.category.color || '#e0f2fe', row.category.color ? '#fff' : '#0284c7')}>{row.category.name}</span>
     }},
     { key: 'workflowId', label: t('pages.changeCatalogAdmin.colWorkflow'), width: '140px', render: (_v, row) => (
-      <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{row.workflow?.name ?? t('pages.changeCatalogAdmin.default')}</span>
+      <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{row.workflow?.name ?? t('pages.changeCatalogAdmin.default')}</span>
     )},
     { key: 'riskLevel', label: t('pages.changeCatalogAdmin.colRisk'), width: '100px', sortable: true, render: (v) => {
       const risk = String(v)
@@ -80,8 +80,8 @@ export function EntryTab() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
              onClick={e => { if (e.target === e.currentTarget) setDeleteId(null) }}>
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 400, boxShadow: '0 24px 80px rgba(0,0,0,0.22)', padding: '24px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalogAdmin.confirmDelete')}</h3>
-            <p style={{ fontSize: 13, color: 'var(--color-slate)', margin: '0 0 20px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalogAdmin.confirmDelete')}</h3>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 20px' }}>
               {t('pages.changeCatalogAdmin.confirmDeleteEntry')}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

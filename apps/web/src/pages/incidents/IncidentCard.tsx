@@ -43,10 +43,10 @@ export function Card({ children, style }: { children: React.ReactNode; style?: R
 export function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </span>
-      <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{children}</div>
+      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-primary)' }}>{children}</div>
     </div>
   )
 }

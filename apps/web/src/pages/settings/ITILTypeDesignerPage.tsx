@@ -28,13 +28,13 @@ export function ITILTypeDesignerPage() {
         <PageTitle icon={<Settings2 size={22} color="var(--color-brand)" />}>
           {t('itilDesigner.title')}
         </PageTitle>
-        <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
           {t('itilDesigner.subtitle')}
         </p>
       </div>
 
       {loading && (
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 13, padding: 16 }}>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', padding: 16 }}>
           {t('common.loading')}
         </div>
       )}
@@ -43,7 +43,7 @@ export function ITILTypeDesignerPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
           {/* Left: Type list */}
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '5px 16px 4px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#94a3b8', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
+            <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#94a3b8', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
               ITIL Types
             </div>
             <div>
@@ -56,10 +56,10 @@ export function ITILTypeDesignerPage() {
                     {itilType.icon
                       ? <CIIcon icon={itilType.icon} size={15} color={isSelected ? 'var(--color-brand)' : '#64748b'} />
                       : <FallbackIcon size={15} color={isSelected ? 'var(--color-brand)' : '#64748b'} style={{ flexShrink: 0 }} />}
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--font-size-body)', fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {itilType.label}
                     </span>
-                    <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{itilType.fields.length} campi</span>
+                    <span style={{ fontSize: 'var(--font-size-label)', color: '#94a3b8', flexShrink: 0 }}>{itilType.fields.length} campi</span>
                   </button>
                 )
               })}
@@ -76,17 +76,17 @@ export function ITILTypeDesignerPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {selectedType.icon ? <CIIcon icon={selectedType.icon} size={20} color={selectedType.color ?? 'var(--color-brand)'} /> : <FallbackIcon size={20} color="var(--color-brand)" style={{ flexShrink: 0 }} />}
                     <div>
-                      <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selectedType.label}</div>
-                      <div style={{ fontSize: 12, color: '#94a3b8' }}>{selectedType.name}</div>
+                      <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selectedType.label}</div>
+                      <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>{selectedType.name}</div>
                     </div>
-                    <button style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 100, fontSize: 12, cursor: 'default', background: '#dcfce7', color: '#16a34a', fontWeight: 500 }}>● active</button>
+                    <button style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'default', background: '#dcfce7', color: '#16a34a', fontWeight: 500 }}>● active</button>
                   </div>
                 </div>
                 {/* Tabs */}
                 <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', padding: '0 20px' }}>
                   {(['settings', 'fields', 'relations', 'rules', 'preview'] as Tab[]).map((tab) => (
                     <button key={tab} onClick={() => h.handleTabChange(tab)}
-                      style={{ padding: '10px 14px', border: 'none', borderBottom: h.activeTab === tab ? '2px solid var(--color-brand)' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 13, cursor: 'pointer', color: h.activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: h.activeTab === tab ? 600 : 400 }}>
+                      style={{ padding: '10px 14px', border: 'none', borderBottom: h.activeTab === tab ? '2px solid var(--color-brand)' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: h.activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: h.activeTab === tab ? 600 : 400 }}>
                       {tab === 'settings' ? 'Impostazioni' : tab === 'fields' ? 'Campi' : tab === 'relations' ? 'Relazioni CI' : tab === 'rules' ? 'Regole' : 'Preview'}
                     </button>
                   ))}

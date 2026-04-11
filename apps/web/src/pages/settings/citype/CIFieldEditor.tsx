@@ -15,7 +15,7 @@ export { btnPrimary, btnSecondary } from '../shared/designerStyles'
 export const btnDanger: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   padding: '4px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: '#ef4444', fontSize: 12, cursor: 'pointer',
+  color: '#ef4444', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <input type="checkbox" id="req" checked={form.required} onChange={(e) => set('required', e.target.checked)} style={{ cursor: 'pointer' }} />
-        <label htmlFor="req" style={{ fontSize: 13, cursor: 'pointer' }}>Obbligatorio</label>
+        <label htmlFor="req" style={{ fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>Obbligatorio</label>
       </div>
 
       {form.fieldType === 'enum' && (
@@ -137,7 +137,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
           {selectedEnum && (
             <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {selectedEnum.values.map((v) => (
-                <span key={v} style={{ padding: '2px 8px', background: '#f0f4ff', borderRadius: 12, fontSize: 11, color: 'var(--color-brand)' }}>
+                <span key={v} style={{ padding: '2px 8px', background: '#f0f4ff', borderRadius: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }}>
                   {v}
                 </span>
               ))}
@@ -155,7 +155,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
         <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
           {(['validation', 'visibility', 'default'] as const).map((tab) => (
             <button key={tab} onClick={() => setScriptTab(tab)}
-              style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 12, cursor: 'pointer',
+              style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                 background: scriptTab === tab ? 'var(--color-brand-light)' : '#f9fafb',
                 color: scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
                 fontWeight: scriptTab === tab ? 600 : 400 }}>
@@ -166,7 +166,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
 
         {scriptTab === 'validation' && (
           <div>
-            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
               Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'messaggio'</code> per errore.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.validationScript}
@@ -176,7 +176,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
         )}
         {scriptTab === 'visibility' && (
           <div>
-            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
               Variabili: <code>input</code>. Ritorna <code>true/false</code>.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.visibilityScript}
@@ -186,7 +186,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
         )}
         {scriptTab === 'default' && (
           <div>
-            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
               Variabili: <code>input</code>. Ritorna il valore di default.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.defaultScript}

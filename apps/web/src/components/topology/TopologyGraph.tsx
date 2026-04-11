@@ -568,7 +568,7 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
       position: 'absolute', bottom: 16, left: 16,
       background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)',
       border: '1px solid #e2e8f0', borderRadius: 8,
-      padding: '10px 14px', fontSize: 11,
+      padding: '10px 14px', fontSize: 'var(--font-size-table)',
       fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
       boxShadow: '0 2px 8px rgba(0,0,0,0.08)', minWidth: 190,
     }}>
@@ -576,7 +576,7 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
 
       {presentNodeTypes.length > 0 && (
         <div style={{ marginBottom: 6 }}>
-          <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>NODI</div>
+          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4 }}>NODI</div>
           {presentNodeTypes.map((type) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               <LegendIconSvg iconKey={nodeIconKey(type)} color={NODE_COLOR} />
@@ -588,7 +588,7 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
 
       {presentEdgeTypes.length > 0 && (
         <div style={{ marginBottom: 6 }}>
-          <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>RELAZIONI</div>
+          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4 }}>RELAZIONI</div>
           {presentEdgeTypes.map((type) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               <svg width={20} height={8}>
@@ -601,7 +601,7 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
       )}
 
       <div>
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 10, fontWeight: 600, marginBottom: 4 }}>SEGNALI</div>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4 }}>SEGNALI</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
           <svg width={16} height={16}><circle cx={8} cy={8} r={5} fill="none" stroke="#dc2626" strokeWidth={2} /></svg>
           <span style={{ color: 'var(--color-slate)' }}>Incident attivo</span>

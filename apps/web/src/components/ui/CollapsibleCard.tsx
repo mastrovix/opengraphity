@@ -6,10 +6,11 @@ interface CollapsibleCardProps {
   title: string
   count?: number
   defaultOpen?: boolean
+  headerRight?: ReactNode
   children: ReactNode
 }
 
-export function CollapsibleCard({ title, count, defaultOpen = false, children }: CollapsibleCardProps) {
+export function CollapsibleCard({ title, count, defaultOpen = false, headerRight, children }: CollapsibleCardProps) {
   const [open, setOpen] = useState(defaultOpen)
 
   return (
@@ -25,13 +26,16 @@ export function CollapsibleCard({ title, count, defaultOpen = false, children }:
           borderBottom: open ? '1px solid #e5e7eb' : 'none',
         }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', display: 'flex', alignItems: 'center' }}>
+        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', display: 'flex', alignItems: 'center' }}>
           {title}
           {count !== undefined && <CountBadge count={count} />}
         </span>
-        {open
-          ? <ChevronDown size={16} color="var(--color-slate-light)" />
-          : <ChevronRight size={16} color="var(--color-slate-light)" />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {headerRight}
+          {open
+            ? <ChevronDown size={16} color="var(--color-slate-light)" />
+            : <ChevronRight size={16} color="var(--color-slate-light)" />}
+        </div>
       </div>
       {open && <div style={{ padding: '16px 20px' }}>{children}</div>}
     </div>

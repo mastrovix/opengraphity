@@ -74,16 +74,16 @@ function LogRow({ entry }: { entry: LogEntry }) {
         onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.backgroundColor = '#f5f7ff' }}
         onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.backgroundColor = '#fff' }}
       >
-        <td style={{ padding: '11px 12px', fontSize: 12, color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
+        <td style={{ padding: '11px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
           {new Date(entry.timestamp).toLocaleString('it-IT', { hour12: false })}
         </td>
         <td style={{ padding: '11px 12px' }}>
           <LevelBadge level={entry.level} />
         </td>
-        <td style={{ padding: '11px 12px', fontSize: 12, color: 'var(--color-slate-light)' }}>
+        <td style={{ padding: '11px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
           {entry.module ?? '—'}
         </td>
-        <td style={{ padding: '11px 12px', fontSize: 12, color: 'var(--color-slate-dark)' }}>
+        <td style={{ padding: '11px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
           {entry.message}
         </td>
       </tr>
@@ -183,7 +183,7 @@ export function LogsPage() {
         <PageTitle icon={<ScrollText size={22} color="var(--color-brand)" />}>
           {t('pages.logs.title')}
         </PageTitle>
-        <p style={{ color: '#0f172a', fontSize: 13, margin: '4px 0 0' }}>
+        <p style={{ color: '#0f172a', fontSize: 'var(--font-size-body)', margin: '4px 0 0' }}>
           {loading ? '—' : total > 0 ? t('pages.logs.count', { count: total }) : t('common.noResults')}
         </p>
       </div>
@@ -202,12 +202,12 @@ export function LogsPage() {
             style={{
               height: 32, padding: '0 14px', borderRadius: 6,
               border: '1px solid #e5e7eb', background: '#fff',
-              fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer',
+              fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer',
             }}
           >
             {t('pages.logs.refresh')}
           </button>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <input
               type="checkbox"
               checked={autoRefresh}
@@ -232,7 +232,7 @@ export function LogsPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={4} style={{ padding: 32, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 13 }}>
+                <td colSpan={4} style={{ padding: 32, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
                   {t('common.loading')}
                 </td>
               </tr>
@@ -254,7 +254,7 @@ export function LogsPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 12, color: 'var(--color-slate)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
           <span style={{ marginRight: 8 }}>
             {currentPage} {t('common.of')} {totalPages}
           </span>
@@ -266,7 +266,7 @@ export function LogsPage() {
               border: '1px solid #e5e7eb', background: '#fff',
               cursor: offset === 0 ? 'not-allowed' : 'pointer',
               opacity: offset === 0 ? 0.4 : 1,
-              fontSize: 12, color: 'var(--color-slate)',
+              fontSize: 'var(--font-size-body)', color: 'var(--color-slate)',
             }}
           >
             {t('common.prev')}
@@ -279,7 +279,7 @@ export function LogsPage() {
               border: '1px solid #e5e7eb', background: '#fff',
               cursor: offset + PAGE_SIZE >= total ? 'not-allowed' : 'pointer',
               opacity: offset + PAGE_SIZE >= total ? 0.4 : 1,
-              fontSize: 12, color: 'var(--color-slate)',
+              fontSize: 'var(--font-size-body)', color: 'var(--color-slate)',
             }}
           >
             {t('common.next')}

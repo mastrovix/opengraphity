@@ -93,7 +93,7 @@ export function NewRuleDialog({
 
   const inputStyle: React.CSSProperties = {
     padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 6,
-    fontSize: 13, color: '#0f172a', background: '#fafafa', width: '100%', boxSizing: 'border-box',
+    fontSize: 'var(--font-size-body)', color: '#0f172a', background: '#fafafa', width: '100%', boxSizing: 'border-box',
   }
 
   const labelStyle: React.CSSProperties = {
@@ -101,7 +101,7 @@ export function NewRuleDialog({
   }
 
   const labelTextStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: fontWeight.semibold, color: '#94a3b8',
+    fontSize: 'var(--font-size-table)', fontWeight: fontWeight.semibold, color: '#94a3b8',
     textTransform: 'uppercase', letterSpacing: '0.06em',
   }
 
@@ -120,7 +120,7 @@ export function NewRuleDialog({
       }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 16, fontWeight: fontWeight.bold, color: '#0f172a' }}>
+          <span style={{ fontSize: 'var(--font-size-section-title)', fontWeight: fontWeight.bold, color: '#0f172a' }}>
             {t('notificationRules.addRule')}
           </span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}>
@@ -179,7 +179,7 @@ export function NewRuleDialog({
           <span style={labelTextStyle}>{t('notificationRules.header.channels')}</span>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {CHANNELS_OPTIONS.map(({ value, labelKey }) => (
-              <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#64748b' }}>
+              <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: '#64748b' }}>
                 <input
                   type="checkbox"
                   checked={channels.includes(value)}
@@ -248,7 +248,7 @@ export function NewRuleDialog({
             onClick={onClose}
             style={{
               padding: '8px 18px', borderRadius: 6, border: '1px solid #e2e8f0',
-              fontSize: 13, cursor: 'pointer', background: '#fafafa', color: '#64748b',
+              fontSize: 'var(--font-size-body)', cursor: 'pointer', background: '#fafafa', color: '#64748b',
             }}
           >
             {t('notificationRules.cancel')}
@@ -265,7 +265,7 @@ export function NewRuleDialog({
             })}
             disabled={!canSave || saving}
             style={{
-              padding: '8px 18px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: fontWeight.semibold,
+              padding: '8px 18px', borderRadius: 6, border: 'none', fontSize: 'var(--font-size-body)', fontWeight: fontWeight.semibold,
               cursor: canSave && !saving ? 'pointer' : 'not-allowed',
               background: canSave && !saving ? colors.brand : '#e2e8f0',
               color: canSave && !saving ? '#fff' : '#94a3b8',

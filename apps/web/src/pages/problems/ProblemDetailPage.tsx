@@ -28,7 +28,8 @@ import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
-import { Card, DetailRow, formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
+import { DetailField } from '@/components/ui/DetailField'
+import { Card, formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -265,9 +266,9 @@ export function ProblemDetailPage() {
 
   if (!problem) {
     return (
-      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 14 }}>
+      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>
         Problem non trovato.{' '}
-        <button onClick={() => navigate('/problems')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}>
+        <button onClick={() => navigate('/problems')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
           Torna alla lista
         </button>
       </div>
@@ -301,15 +302,15 @@ export function ProblemDetailPage() {
           {/* Descrizione */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
               {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {descOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ padding: 16 }}>
                 {problem.description ? (
-                  <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{problem.description}</p>
+                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{problem.description}</p>
                 ) : (
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
+                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
                 )}
               </div>
             )}
@@ -318,11 +319,11 @@ export function ProblemDetailPage() {
           {/* Root Cause */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setRootCauseOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: rootCauseOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Root Cause</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Root Cause</span>
               {rootCauseOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {rootCauseOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ padding: 16 }}>
                 <textarea
                   value={editRootCause ?? (problem.rootCause ?? '')}
                   onChange={(e) => setEditRootCause(e.target.value)}
@@ -335,7 +336,7 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="Descrivi la causa radice del problema..."
                   rows={4}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
                 />
               </div>
             )}
@@ -344,11 +345,11 @@ export function ProblemDetailPage() {
           {/* Workaround */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setWorkaroundOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: workaroundOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Workaround</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Workaround</span>
               {workaroundOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {workaroundOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ padding: 16 }}>
                 <textarea
                   value={editWorkaround ?? (problem.workaround ?? '')}
                   onChange={(e) => setEditWorkaround(e.target.value)}
@@ -361,7 +362,7 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="Descrivi il workaround temporaneo..."
                   rows={3}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
                 />
               </div>
             )}
@@ -419,29 +420,29 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Commenti</span>
+                <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Commenti</span>
                 <CountBadge count={problem.comments.length} />
               </div>
               {commentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {commentsOpen && (
-              <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ padding: 16 }}>
                 {problem.comments.length === 0 ? (
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Nessun commento ancora.</p>
+                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Nessun commento ancora.</p>
                 ) : (
                   <div style={{ marginBottom: 16 }}>
                     {problem.comments.slice().reverse().map((c, i) => (
                       <div key={c.id}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'var(--color-brand-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'var(--color-brand-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-body)', fontWeight: 700, flexShrink: 0 }}>
                             {c.author ? c.author.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
                           </div>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
-                              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? 'Utente sconosciuto'}</span>
-                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
+                              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? 'Utente sconosciuto'}</span>
+                              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                             </div>
-                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
+                            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
                           </div>
                         </div>
                         {i < problem.comments.length - 1 && <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />}
@@ -451,13 +452,13 @@ export function ProblemDetailPage() {
                 )}
                 <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px 0' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <Label style={{ fontSize: 12 }}>Scrivi un commento</Label>
+                  <Label style={{ fontSize: 'var(--font-size-body)' }}>Scrivi un commento</Label>
                   <MentionInput value={commentText} onChange={setCommentText} placeholder="Scrivi un commento... Usa @ per menzionare" rows={3} />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                       disabled={!commentText.trim() || addingComment}
                       onClick={() => void addComment({ variables: { problemId: problem.id, text: commentText.trim() } })}
-                      style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
+                      style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
                     >
                       {addingComment ? 'Invio…' : 'Invia commento'}
                     </button>
@@ -479,66 +480,66 @@ export function ProblemDetailPage() {
 
           {/* Dettagli */}
           <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dettagli</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <DetailRow label="Priorità">
+            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dettagli</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <DetailField label="Priorità" value={
                 <span style={{ fontWeight: 600, color: PRIORITY_COLOR[problem.priority] ?? 'var(--color-slate)' }}>{problem.priority}</span>
-              </DetailRow>
-              <DetailRow label="Step workflow">
-                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? 'var(--color-slate)', fontSize: 12, fontWeight: 500 }}>
+              } />
+              <DetailField label="Step workflow" value={
+                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? 'var(--color-slate)', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                   {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
                 </span>
-              </DetailRow>
+              } />
 
               {/* Team assignment */}
-              <DetailRow label="Team assegnato">
-                {problem.assignedTeam && !showReassign ? (
+              <DetailField label="Team assegnato" value={
+                problem.assignedTeam && !showReassign ? (
                   <div>
                     <div style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</div>
-                    <button onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 12, color: 'var(--accent)', cursor: 'pointer' }}>Riassegna</button>
+                    <button onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>Riassegna</button>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, backgroundColor: 'var(--surface)', outline: 'none' }}>
+                    <select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', backgroundColor: 'var(--surface)', outline: 'none' }}>
                       <option value="">Seleziona team…</option>
                       {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {showReassign && (
-                        <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>Annulla</button>
+                        <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>Annulla</button>
                       )}
-                      <button disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
+                      <button disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
                         {assigningTeam ? 'Assegnazione…' : 'Assegna'}
                       </button>
                     </div>
                   </div>
-                )}
-              </DetailRow>
+                )
+              } />
 
               {/* User assignment */}
-              <DetailRow label="Assegnato a">
-                {problem.assignee ? (
+              <DetailField label="Assegnato a" value={
+                problem.assignee ? (
                   <div>
                     <div style={{ fontWeight: 500 }}>{problem.assignee.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, backgroundColor: 'var(--surface)', outline: 'none' }}>
+                    <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', backgroundColor: 'var(--surface)', outline: 'none' }}>
                       <option value="">Seleziona utente…</option>
                       {(problem.assignedTeam ? users.filter((u) => u.teams?.some((t) => t.id === problem.assignedTeam!.id)) : users).map((u) => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
                     </select>
-                    <button disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
+                    <button disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
                       {assigningUser ? 'Assegnazione…' : 'Assegna'}
                     </button>
                   </div>
-                )}
-              </DetailRow>
+                )
+              } />
 
               {/* Affected users */}
-              <DetailRow label="Utenti impattati">
+              <DetailField label="Utenti impattati" value={
                 <input
                   type="number"
                   value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
@@ -553,18 +554,16 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="0"
                   min={0}
-                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }}
+                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }}
                 />
-              </DetailRow>
+              } />
 
               {problem.createdBy && (
-                <DetailRow label="Creato da">
-                  <span style={{ fontWeight: 500 }}>{problem.createdBy.name}</span>
-                </DetailRow>
+                <DetailField label="Creato da" value={<span style={{ fontWeight: 500 }}>{problem.createdBy.name}</span>} />
               )}
-              <DetailRow label="Creato il">{formatDate(problem.createdAt)}</DetailRow>
-              {problem.updatedAt && <DetailRow label="Aggiornato">{timeAgo(problem.updatedAt)}</DetailRow>}
-              {problem.resolvedAt && <DetailRow label="Risolto il">{formatDate(problem.resolvedAt)}</DetailRow>}
+              <DetailField label="Creato il" value={formatDate(problem.createdAt)} />
+              {problem.updatedAt && <DetailField label="Aggiornato" value={timeAgo(problem.updatedAt)} />}
+              {problem.resolvedAt && <DetailField label="Risolto il" value={formatDate(problem.resolvedAt)} />}
             </div>
           </Card>
 
@@ -575,10 +574,10 @@ export function ProblemDetailPage() {
       {isTransitionDialogOpen && pendingTransition && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 480, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 12px 0' }}>
+            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 12px 0' }}>
               {`Transizione → ${pendingTransition.toStep.replace(/_/g, ' ')}`}
             </h2>
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
               Aggiungi una nota per questa transizione (minimo 10 caratteri).
             </p>
             <textarea
@@ -587,10 +586,10 @@ export function ProblemDetailPage() {
               placeholder="Note sulla transizione..."
               rows={4}
               autoFocus
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, lineHeight: 1.6, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.6, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
             />
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-              <button onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>
+              <button onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}>
                 Annulla
               </button>
               <button
@@ -598,7 +597,7 @@ export function ProblemDetailPage() {
                   if (transitionNotes.trim().length < 10) { toast.error('Note troppo brevi (minimo 10 caratteri)'); return }
                   void execTransition({ variables: { problemId: problem.id, toStep: pendingTransition.toStep, notes: transitionNotes.trim() } })
                 }}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
               >
                 {transitioning ? 'Esecuzione...' : 'Conferma'}
               </button>

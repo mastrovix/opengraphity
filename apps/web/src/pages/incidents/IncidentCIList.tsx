@@ -109,13 +109,13 @@ export function IncidentCIList({
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
           <CountBadge count={affectedCIs.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={onToggleSearch}
-            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}
+            style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}
           >
             {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
           </button>
@@ -137,7 +137,7 @@ export function IncidentCIList({
                     : 'Cerca CI per nome (min. 2 caratteri)...'
                 }
                 autoFocus
-                style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }}
               />
               {filteredResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
@@ -147,13 +147,13 @@ export function IncidentCIList({
                       <div key={ci.id} style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                           <div>
-                            <span style={{ fontWeight: 500, fontSize: 14 }}>{ci.name}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
+                            <span style={{ fontWeight: 500, fontSize: 'var(--font-size-body)' }}>{ci.name}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                             {relTypes.length > 1 && (
                               <select
-                                style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer' }}
+                                style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer' }}
                                 value={selectedRelType[ci.id] ?? relTypes[0]}
                                 onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => setSelectedRelType((p) => ({ ...p, [ci.id]: e.target.value }))}
@@ -162,11 +162,11 @@ export function IncidentCIList({
                               </select>
                             )}
                             {relTypes.length === 1 && (
-                              <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
+                              <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
                             )}
                             <button
                               onClick={() => handleAddCI(ci)}
-                              style={{ fontSize: 12, padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 500 }}
+                              style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 500 }}
                             >+</button>
                           </div>
                         </div>
@@ -179,7 +179,7 @@ export function IncidentCIList({
           )}
 
           {affectedCIs.length === 0 ? (
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
           ) : (
             <div>
               {Object.entries(groupByType(affectedCIs)).map(([type, cis]) => (
@@ -189,7 +189,7 @@ export function IncidentCIList({
                       <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
                         <button
                           onClick={() => navigate(ciPath(ci))}
-                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}
                         >
                           {ci.name}
                         </button>
@@ -201,7 +201,7 @@ export function IncidentCIList({
                         <MicroBadge>{ci.environment}</MicroBadge>
                         <button
                           onClick={() => onRemoveCI(ci.id)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}
                           title="Rimuovi CI"
                         ><X size={14} /></button>
                       </div>

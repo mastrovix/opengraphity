@@ -86,10 +86,10 @@ export default function ProfilePage() {
       </div>
 
       <div style={card}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>
+        <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>
           Integrazione Slack
         </h2>
-        <p style={{ fontSize: 14, color: 'var(--color-slate-light)', margin: '0 0 20px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 20px', lineHeight: 1.5 }}>
           Collega il tuo account Slack per poter eseguire azioni sugli incident
           direttamente da Slack.
         </p>
@@ -106,7 +106,7 @@ export default function ProfilePage() {
               borderRadius: 6,
               marginBottom: 12,
             }}>
-              <span style={{ fontSize: 14, color: '#15803d', fontWeight: 500 }}>
+              <span style={{ fontSize: 'var(--font-size-body)', color: '#15803d', fontWeight: 500 }}>
                 ✓ Account collegato: <code style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{slackId}</code>
               </span>
             </div>
@@ -127,11 +127,11 @@ export default function ProfilePage() {
               onChange={(e) => { setInput(e.target.value); setSaved(false) }}
               placeholder="U0123456789"
             />
-            <p style={{ fontSize: 12, color: 'var(--color-slate-light)', margin: '5px 0 16px' }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '5px 0 16px' }}>
               Trovalo in Slack → click sul tuo avatar → Profilo → ⋮ → Copia ID membro
             </p>
             {saved && (
-              <p style={{ fontSize: 12, color: '#15803d', margin: '0 0 10px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: '#15803d', margin: '0 0 10px' }}>
                 ✓ Salvato
               </p>
             )}

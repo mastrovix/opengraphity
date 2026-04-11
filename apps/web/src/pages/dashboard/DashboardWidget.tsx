@@ -23,11 +23,11 @@ export function DashboardWidget({ widget }: DashboardWidgetProps) {
     <div key={widget.id} style={{ gridColumn: `span ${widget.colSpan}` }}>
       <div className="card-border" style={{ overflow: 'hidden' }}>
         <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)' }}>
+          <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)' }}>
             {widget.reportSection?.title ?? 'Widget'}
           </div>
           {widget.reportTemplate?.name && (
-            <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 1 }}>{widget.reportTemplate.name}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 1 }}>{widget.reportTemplate.name}</div>
           )}
         </div>
         <ReportChartRenderer

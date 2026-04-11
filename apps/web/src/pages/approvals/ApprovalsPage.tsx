@@ -87,7 +87,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string; label: string }
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_COLORS[status] ?? STATUS_COLORS['pending']
   return (
-    <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: s.bg, color: s.color }}>
+    <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', fontWeight: 600, background: s.bg, color: s.color }}>
       {s.label}
     </span>
   )
@@ -101,7 +101,7 @@ function EntityLink({ entityType, entityId }: { entityType: string; entityId: st
         to={`/changes/${entityId}`}
         target="_blank"
         rel="noopener noreferrer"
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--color-brand)', textDecoration: 'none' }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', textDecoration: 'none' }}
       >
         <GitPullRequest size={11} /> Vai al change <ExternalLink size={10} />
       </Link>
@@ -113,7 +113,7 @@ function EntityLink({ entityType, entityId }: { entityType: string; entityId: st
         to={`/incidents/${entityId}`}
         target="_blank"
         rel="noopener noreferrer"
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--color-brand)', textDecoration: 'none' }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', textDecoration: 'none' }}
       >
         <AlertCircle size={11} /> Vai all'incident <ExternalLink size={10} />
       </Link>
@@ -169,10 +169,10 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
           overflow:     'hidden',
         }}>
           {loading && (
-            <div style={{ padding: '20px 16px', fontSize: 13, color: '#94a3b8' }}>Caricamento...</div>
+            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>Caricamento...</div>
           )}
           {error && (
-            <div style={{ padding: '12px 16px', fontSize: 13, color: '#ef4444' }}>
+            <div style={{ padding: '12px 16px', fontSize: 'var(--font-size-body)', color: '#ef4444' }}>
               Errore nel caricamento dell'articolo.
             </div>
           )}
@@ -182,8 +182,8 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1a2332' }}>{article.title}</h4>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 11, color: '#94a3b8' }}>
+                    <h4 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>{article.title}</h4>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>
                       <span>{article.category}</span>
                       <span>·</span>
                       <span>di {article.authorName}</span>
@@ -194,7 +194,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
                   {(article.tags ?? []).length > 0 && (
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {(article.tags ?? []).map((tag) => (
-                        <span key={tag} style={{ padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: '#64748b', fontSize: 11 }}>
+                        <span key={tag} style={{ padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: '#64748b', fontSize: 'var(--font-size-table)' }}>
                           {tag}
                         </span>
                       ))}
@@ -205,7 +205,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
 
               {/* Body */}
               <div style={{ padding: '16px', maxHeight: 400, overflowY: 'auto' }}>
-                <div className="kb-preview-body" style={{ fontSize: 13, lineHeight: 1.7, color: '#334155' }}>
+                <div className="kb-preview-body" style={{ fontSize: 'var(--font-size-body)', lineHeight: 1.7, color: '#334155' }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {article.body}
                   </ReactMarkdown>
@@ -239,10 +239,10 @@ function ApprovalCard({
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <StatusBadge status={req.status} />
-            <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>
+            <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>
               {req.entityType}
             </span>
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>
               {req.approvalType === 'any' ? '1 approvatore sufficiente' :
                req.approvalType === 'all' ? 'tutti gli approvatori richiesti' :
                'maggioranza richiesta'}
@@ -250,20 +250,20 @@ function ApprovalCard({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{req.title}</h3>
+            <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>{req.title}</h3>
             <EntityLink entityType={req.entityType} entityId={req.entityId} />
           </div>
 
           {req.description && (
-            <p style={{ margin: '0 0 8px', fontSize: 13, color: '#475569' }}>{req.description}</p>
+            <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-body)', color: '#475569' }}>{req.description}</p>
           )}
-          <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#94a3b8' }}>
+          <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>
             <span><Clock size={11} style={{ verticalAlign: 'middle' }} /> {new Date(req.requestedAt).toLocaleString()}</span>
             <span>{req.approvedBy.length}/{req.approvers.length} approvazioni</span>
             {req.dueDate && <span>Scadenza: {new Date(req.dueDate).toLocaleDateString()}</span>}
           </div>
           {req.resolutionNote && (
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569', fontStyle: 'italic' }}>
+            <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-body)', color: '#475569', fontStyle: 'italic' }}>
               Nota: {req.resolutionNote}
             </p>
           )}
@@ -278,13 +278,13 @@ function ApprovalCard({
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <button
               onClick={() => setNoteOpen(noteOpen === 'approve' ? null : 'approve')}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               <CheckCircle size={14} /> Approva
             </button>
             <button
               onClick={() => setNoteOpen(noteOpen === 'reject' ? null : 'reject')}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               <XCircle size={14} /> Rifiuta
             </button>
@@ -299,7 +299,7 @@ function ApprovalCard({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
-            style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 'var(--font-size-body)', resize: 'vertical', boxSizing: 'border-box' }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button
@@ -310,13 +310,13 @@ function ApprovalCard({
                   onReject(req.id, note); setNoteOpen(null); setNote('')
                 }
               }}
-              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: noteOpen === 'approve' ? '#22c55e' : '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: noteOpen === 'approve' ? '#22c55e' : '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               Conferma {noteOpen === 'approve' ? 'Approvazione' : 'Rifiuto'}
             </button>
             <button
               onClick={() => { setNoteOpen(null); setNote('') }}
-              style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 13 }}
+              style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
               Annulla
             </button>
@@ -377,7 +377,7 @@ export function ApprovalsPage() {
   const totalPages = Math.max(1, Math.ceil(allTotal / PAGE_SIZE))
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500,
+    padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500,
     background: active ? 'var(--color-brand)' : 'transparent',
     color: active ? '#fff' : 'var(--color-slate)',
   })
@@ -389,7 +389,7 @@ export function ApprovalsPage() {
           <PageTitle icon={<CheckSquare size={22} color="var(--color-brand)" />}>
             {t('pages.approvals.title')}
           </PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {t('pages.approvals.subtitle')}
           </p>
         </div>
@@ -400,7 +400,7 @@ export function ApprovalsPage() {
         <button style={tabStyle(tab === 'mine')} onClick={() => setTab('mine')}>
           {t('pages.approvals.tabMine')}
           {myItems.length > 0 && (
-            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: '#ef4444', color: '#fff', fontSize: 11 }}>
+            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: '#ef4444', color: '#fff', fontSize: 'var(--font-size-table)' }}>
               {myItems.length}
             </span>
           )}
@@ -417,7 +417,7 @@ export function ApprovalsPage() {
       {/* Content */}
       {tab === 'mine' ? (
         myLoading ? (
-          <div style={{ color: '#94a3b8', fontSize: 13 }}>{t('common.loading')}</div>
+          <div style={{ color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
         ) : myItems.length === 0 ? (
           <EmptyState
             icon={<CheckSquare size={32} color="var(--color-slate-light)" />}
@@ -431,7 +431,7 @@ export function ApprovalsPage() {
       ) : (
         <>
           {allLoading ? (
-            <div style={{ color: '#94a3b8', fontSize: 13 }}>{t('common.loading')}</div>
+            <div style={{ color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
           ) : allItems.length === 0 ? (
             <EmptyState
               icon={<CheckSquare size={32} color="var(--color-slate-light)" />}
@@ -443,12 +443,12 @@ export function ApprovalsPage() {
             ))
           )}
           {allTotal > PAGE_SIZE && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
               <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, allTotal)} {t('common.of')} {allTotal}</span>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>{t('common.prev')}</button>
+                <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>{t('common.prev')}</button>
                 <span style={{ padding: '4px 8px' }}>{page + 1} / {totalPages}</span>
-                <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>{t('common.next')}</button>
+                <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>{t('common.next')}</button>
               </div>
             </div>
           )}

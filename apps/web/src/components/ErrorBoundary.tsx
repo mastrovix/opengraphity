@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return this.props.fallback ?? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-trigger-sla-breach)' }}>
           <h2>Qualcosa è andato storto</h2>
-          <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>
+          <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
             {this.state.error?.message}
           </p>
           <button

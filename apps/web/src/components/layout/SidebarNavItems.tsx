@@ -102,7 +102,7 @@ export function NavItem({ to, label, icon: Icon, collapsed, isActive, badge = 0 
       {!collapsed && badge > 0 && (
         <span
           aria-label={`${badge} notifiche`}
-          style={{ fontSize: 10, fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: 8, background: 'var(--danger)', color: '#fff' }}
+          style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: 8, background: 'var(--danger)', color: '#fff' }}
         >
           {badge}
         </span>

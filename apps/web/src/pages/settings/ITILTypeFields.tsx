@@ -71,7 +71,7 @@ function FieldEditor({
           <input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </div>
         <div style={{ paddingTop: 20 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: isSystem ? 'default' : 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: isSystem ? 'default' : 'pointer' }}>
             <input
               type="checkbox"
               checked={form.required}
@@ -102,14 +102,14 @@ function FieldEditor({
 
       {/* scripts (collapsible) */}
       <details style={{ marginBottom: 12 }}>
-        <summary style={{ fontSize: 12, color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none', marginBottom: 8 }}>
+        <summary style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none', marginBottom: 8 }}>
           Script avanzati (validazione, visibilità, default)
         </summary>
         <div style={{ paddingTop: 8 }}>
           <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
             {(['validation', 'visibility', 'default'] as const).map((tab) => (
               <button key={tab} onClick={() => setScriptTab(tab)}
-                style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 12, cursor: 'pointer',
+                style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                   background: scriptTab === tab ? 'var(--color-brand-light)' : '#f1f5f9',
                   color:      scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
                   fontWeight: scriptTab === tab ? 600 : 400 }}>
@@ -119,7 +119,7 @@ function FieldEditor({
           </div>
           {scriptTab === 'validation' && (
             <div>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
                 Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'msg'</code> per errore.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
@@ -129,7 +129,7 @@ function FieldEditor({
           )}
           {scriptTab === 'visibility' && (
             <div>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
                 Variabili: <code>input</code>. Ritorna <code>true/false</code>.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
@@ -139,7 +139,7 @@ function FieldEditor({
           )}
           {scriptTab === 'default' && (
             <div>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
                 Variabili: <code>input</code>. Ritorna il valore di default.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
@@ -201,7 +201,7 @@ export function ITILTypeFields({
       {/* System fields */}
       {systemFields.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 8 }}>
             CAMPI DI SISTEMA ({systemFields.length}) — non modificabili
           </div>
           {systemFields.map((f) => (
@@ -231,7 +231,7 @@ export function ITILTypeFields({
       {/* Custom fields */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em' }}>
+          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em' }}>
             CAMPI PERSONALIZZATI ({customFields.length})
           </div>
           <button
@@ -264,7 +264,7 @@ export function ITILTypeFields({
           )
         ))}
         {customFields.length === 0 && !addingField && (
-          <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 13, border: '1px dashed #e5e7eb', borderRadius: 8 }}>
+          <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
             Nessun campo personalizzato. Clicca "+ Aggiungi campo" per aggiungerne uno.
           </div>
         )}

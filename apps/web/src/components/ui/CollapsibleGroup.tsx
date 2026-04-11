@@ -31,7 +31,7 @@ export function CollapsibleGroup({
         }}
       >
         <span style={{
-          fontSize: 10,
+          fontSize: 'var(--font-size-label)',
           color: 'var(--color-slate)',
           transition: 'transform 0.15s',
           display: 'inline-block',
@@ -40,7 +40,7 @@ export function CollapsibleGroup({
           ▶
         </span>
         <span style={{
-          fontSize: 12,
+          fontSize: 'var(--font-size-body)',
           fontWeight: 600,
           color: 'var(--color-slate)',
           textTransform: 'uppercase',
@@ -48,7 +48,7 @@ export function CollapsibleGroup({
         }}>
           {title}
           {count !== undefined && (
-            <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--color-slate)', fontWeight: 400 }}>
+            <span style={{ marginLeft: 6, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', fontWeight: 400 }}>
               ({count})
             </span>
           )}

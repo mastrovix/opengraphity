@@ -57,7 +57,7 @@ export function PortalHeader({ userName }: Props) {
         {/* Logo */}
         <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <img src="/opengrafo-logo.svg" alt="OpenGrafo" style={{ height: 28 }} />
-          <span style={{ fontSize: 15, fontWeight: 600, color: '#0F172A' }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: '#0F172A' }}>
             {t('portal.title')}
           </span>
         </a>
@@ -119,7 +119,7 @@ export function PortalHeader({ userName }: Props) {
               }}>
                 {initials(userName)}
               </div>
-              <span style={{ fontSize: 13, color: '#0F172A', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 10, color: '#0F172A', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {userName}
               </span>
               <ChevronDown size={14} style={{ color: '#94A3B8' }} />
@@ -143,7 +143,7 @@ export function PortalHeader({ userName }: Props) {
               >
                 <button
                   onClick={() => { setMenuOpen(false); navigate('/profile') }}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#0F172A' }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#0F172A' }}
                 >
                   <User size={14} style={{ color: '#64748B' }} />
                   {t('common.profile')}
@@ -151,7 +151,7 @@ export function PortalHeader({ userName }: Props) {
                 <div style={{ height: 1, background: '#E2E8F0' }} />
                 <button
                   onClick={logout}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#EF4444' }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#EF4444' }}
                 >
                   <LogOut size={14} />
                   {t('common.logout')}

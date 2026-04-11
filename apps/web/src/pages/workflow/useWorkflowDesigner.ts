@@ -108,7 +108,7 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
         animated:            false,
         style:               { stroke: edgeColor, strokeWidth: 2 },
         markerEnd:           { type: MarkerType.ArrowClosed, width: 16, height: 16, color: edgeColor },
-        labelStyle:          { fontSize: 12, fontWeight: 500, fill: 'var(--color-slate)' },
+        labelStyle:          { fontSize: 'var(--font-size-body)', fontWeight: 500, fill: 'var(--color-slate)' },
         labelBgStyle:        { fill: '#ffffff', fillOpacity: 1, stroke: edgeColor, strokeWidth: 1 },
         labelBgPadding:      [6, 4] as [number, number],
         labelBgBorderRadius: 4,

@@ -55,7 +55,7 @@ const EMPTY_ACTION: RuleAction   = { type: 'set_field', params: {} }
 
 const badgeStyle = (bg: string, fg: string): React.CSSProperties => ({
   display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-  fontSize: 11, fontWeight: 600, background: bg, color: fg,
+  fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg,
 })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -247,7 +247,7 @@ export function BusinessRulesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<GitBranch size={22} color="var(--color-brand)" />}>Business Rules</PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${rules.length} regole`}
           </p>
         </div>
@@ -280,7 +280,7 @@ export function BusinessRulesPage() {
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.35)' }} onClick={() => { setModalOpen(false); resetForm() }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: 680, maxHeight: '88vh', overflowY: 'auto', padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,.18)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>{editId ? 'Modifica regola' : 'Nuova regola'}</h2>
+              <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}>{editId ? 'Modifica regola' : 'Nuova regola'}</h2>
               <button onClick={() => { setModalOpen(false); resetForm() }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
             </div>
 
@@ -320,7 +320,7 @@ export function BusinessRulesPage() {
               <div style={{ display: 'flex', gap: 0 }}>
                 {(['AND', 'OR'] as const).map(v => (
                   <button key={v} onClick={() => setConditionLogic(v)} style={{
-                    padding: '6px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    padding: '6px 18px', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
                     border: '1px solid #e5e7eb', background: conditionLogic === v ? 'var(--color-brand)' : '#fff',
                     color: conditionLogic === v ? '#fff' : 'var(--color-slate)',
                     borderRadius: v === 'AND' ? '6px 0 0 6px' : '0 6px 6px 0',
@@ -341,7 +341,7 @@ export function BusinessRulesPage() {
                   onRemove={() => removeCondition(i)}
                 />
               ))}
-              <button onClick={addCondition} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px', marginTop: 4 }}><Plus size={12} /> Aggiungi condizione</button>
+              <button onClick={addCondition} style={{ ...btnSecondary, fontSize: 'var(--font-size-body)', padding: '4px 10px', marginTop: 4 }}><Plus size={12} /> Aggiungi condizione</button>
             </div>
 
             {/* Actions builder */}
@@ -361,15 +361,15 @@ export function BusinessRulesPage() {
                   <button onClick={() => removeAction(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, flexShrink: 0 }}><Trash2 size={14} color="#ef4444" /></button>
                 </div>
               ))}
-              <button onClick={addAction} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px', marginTop: 4 }}><Plus size={12} /> Aggiungi azione</button>
+              <button onClick={addAction} style={{ ...btnSecondary, fontSize: 'var(--font-size-body)', padding: '4px 10px', marginTop: 4 }}><Plus size={12} /> Aggiungi azione</button>
             </div>
 
             {/* Toggles */}
             <div style={{ display: 'flex', gap: 24, marginBottom: 20 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={stopOnMatch} onChange={e => setStopOnMatch(e.target.checked)} /> Stop on match
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} /> Attiva
               </label>
             </div>

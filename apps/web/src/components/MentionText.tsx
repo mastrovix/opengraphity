@@ -12,7 +12,7 @@ const badgeStyle: React.CSSProperties = {
   padding: '1px 4px',
   borderRadius: 4,
   fontWeight: 600,
-  fontSize: 12,
+  fontSize: 'var(--font-size-body)',
 }
 
 export function MentionText({ text }: Props) {

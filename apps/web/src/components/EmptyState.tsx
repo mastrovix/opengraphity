@@ -13,9 +13,9 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
       <div style={{ color: 'var(--color-slate-light)', marginBottom: 12, display: 'flex', justifyContent: 'center', width: 48, height: 48, margin: '0 auto 12px' }}>
         {icon}
       </div>
-      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate)' }}>{title}</div>
+      <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)' }}>{title}</div>
       {description && (
-        <div style={{ fontSize: 14, color: 'var(--color-slate-light)', marginTop: 4, maxWidth: 320, margin: '4px auto 0' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, maxWidth: 320, margin: '4px auto 0' }}>
           {description}
         </div>
       )}

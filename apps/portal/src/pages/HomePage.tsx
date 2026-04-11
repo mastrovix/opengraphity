@@ -54,7 +54,7 @@ export function HomePage() {
               minWidth:        64,
             }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: '#0EA5E9' }}>{value}</div>
-              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{label}</div>
+              <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>{label}</div>
             </div>
           ))}
         </div>
@@ -91,8 +91,8 @@ export function HomePage() {
         >
           <PlusCircle size={32} style={{ color: '#0EA5E9' }} />
           <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: '#0F172A' }}>{t('home.newTicket')}</div>
-            <div style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>{t('home.newTicketDesc')}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#0F172A' }}>{t('home.newTicket')}</div>
+            <div style={{ fontSize: 10, color: '#64748B', marginTop: 4 }}>{t('home.newTicketDesc')}</div>
           </div>
         </button>
 
@@ -115,8 +115,8 @@ export function HomePage() {
         >
           <Search size={32} style={{ color: '#64748B' }} />
           <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: '#0F172A' }}>{t('home.searchKB')}</div>
-            <div style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>{t('home.searchKBDesc')}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#0F172A' }}>{t('home.searchKB')}</div>
+            <div style={{ fontSize: 10, color: '#64748B', marginTop: 4 }}>{t('home.searchKBDesc')}</div>
           </div>
         </button>
       </div>
@@ -124,8 +124,8 @@ export function HomePage() {
       {/* Recent tickets */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0F172A' }}>{t('home.recentTickets')}</h2>
-          <Link to="/tickets" style={{ fontSize: 13, color: '#0EA5E9' }}>Tutti →</Link>
+          <h2 style={{ fontSize: 10, fontWeight: 600, color: '#0F172A' }}>{t('home.recentTickets')}</h2>
+          <Link to="/tickets" style={{ fontSize: 10, color: '#0EA5E9' }}>Tutti →</Link>
         </div>
 
         {tickets.length === 0 ? (
@@ -156,10 +156,10 @@ export function HomePage() {
                 onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#FAFAFA' }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 10, fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {ticket.title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+                  <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
                     {fmtDate(ticket.updatedAt)}
                   </div>
                 </div>

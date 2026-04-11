@@ -43,7 +43,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
         }}
         style={{
           display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6,
-          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
           border: `1.5px solid ${watching ? 'var(--color-brand)' : '#e5e7eb'}`,
           background: watching ? '#e0f2fe' : '#fff',
           color: watching ? 'var(--color-brand)' : 'var(--color-slate)',
@@ -58,7 +58,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
         onClick={() => setShowList(!showList)}
         style={{
           display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 6,
-          fontSize: 11, fontWeight: 600, cursor: 'pointer',
+          fontSize: 'var(--font-size-table)', fontWeight: 600, cursor: 'pointer',
           border: '1px solid #e5e7eb', background: '#f9fafb', color: 'var(--color-slate)',
         }}
       >
@@ -73,12 +73,12 @@ export function WatcherBar({ entityType, entityId }: Props) {
           boxShadow: '0 4px 12px rgba(0,0,0,0.1)', minWidth: 220, zIndex: 50,
           padding: 8,
         }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 6, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 6, textTransform: 'uppercase' }}>
             Osservatori ({watchersList.length})
           </div>
           {watchersList.map(w => (
-            <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', fontSize: 12 }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--color-brand)' }}>
+            <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', fontSize: 'var(--font-size-body)' }}>
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-brand)' }}>
                 {(w.name || w.email).charAt(0).toUpperCase()}
               </div>
               <span style={{ flex: 1, color: 'var(--color-slate-dark)' }}>{w.name || w.email}</span>
@@ -89,7 +89,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
           ))}
           <button
             onClick={() => setShowAdd(!showAdd)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '4px 0', fontSize: 11, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '4px 0', fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
           >
             <Plus size={12} /> Aggiungi osservatore
           </button>
@@ -99,7 +99,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
                 <div
                   key={u.id}
                   onClick={() => { add({ variables: { entityType, entityId, userId: u.id } }); setShowAdd(false) }}
-                  style={{ padding: '4px 6px', cursor: 'pointer', fontSize: 12, borderRadius: 4 }}
+                  style={{ padding: '4px 6px', cursor: 'pointer', fontSize: 'var(--font-size-body)', borderRadius: 4 }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f0f9ff' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                 >

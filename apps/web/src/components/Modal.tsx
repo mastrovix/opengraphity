@@ -48,7 +48,7 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: M
           justifyContent: 'space-between',
           flexShrink:     0,
         }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
           <button
             onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4 }}

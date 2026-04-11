@@ -1,6 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
+import { DetailCard } from '@/components/ui/DetailCard'
+import { DetailField } from '@/components/ui/DetailField'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
@@ -42,8 +44,8 @@ export function ServiceRequestDetailPage() {
   if (loading) return <PageContainer><Skeleton style={{ height: 300 }} /></PageContainer>
   if (!sr) return (
     <PageContainer>
-      <p style={{ color: 'var(--color-slate)', fontSize: 14 }}>Service request non trovata.</p>
-      <button onClick={() => navigate('/requests')} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}>Torna alla lista</button>
+      <p style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Service request non trovata.</p>
+      <button onClick={() => navigate('/requests')} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>Torna alla lista</button>
     </PageContainer>
   )
 
@@ -54,7 +56,7 @@ export function ServiceRequestDetailPage() {
       {/* Back */}
       <button
         onClick={() => navigate('/requests')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
       >
         ← Service Requests
       </button>
@@ -62,11 +64,11 @@ export function ServiceRequestDetailPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
+          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: stColor.bg, color: stColor.fg }}>{sr.status}</span>
-            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: `1.5px solid ${PRIORITY_COLOR[sr.priority] ?? '#9ca3af'}`, color: PRIORITY_COLOR[sr.priority] ?? '#9ca3af' }}>{sr.priority}</span>
-            <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
+            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-table)', fontWeight: 600, background: stColor.bg, color: stColor.fg }}>{sr.status}</span>
+            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-table)', fontWeight: 600, border: `1.5px solid ${PRIORITY_COLOR[sr.priority] ?? '#9ca3af'}`, color: PRIORITY_COLOR[sr.priority] ?? '#9ca3af' }}>{sr.priority}</span>
+            <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
           </div>
         </div>
         <WatcherBar entityType="service_request" entityId={sr.id} />
@@ -76,9 +78,10 @@ export function ServiceRequestDetailPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24 }}>
         <div>
           {/* Description */}
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, marginBottom: 16 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 8px' }}>Descrizione</h3>
-            <p style={{ fontSize: 14, color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || 'Nessuna descrizione.'}</p>
+          <div style={{ marginBottom: 16 }}>
+            <DetailCard title="Descrizione">
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || 'Nessuna descrizione.'}</p>
+            </DetailCard>
           </div>
 
           {/* Internal Chat */}
@@ -86,16 +89,13 @@ export function ServiceRequestDetailPage() {
         </div>
 
         {/* Sidebar */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 12px' }}>Dettagli</h3>
-          <div style={{ fontSize: 13, color: 'var(--color-slate)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div><span style={{ fontWeight: 600, width: 100, display: 'inline-block' }}>Richiedente:</span> {sr.requestedBy?.name ?? '—'}</div>
-            <div><span style={{ fontWeight: 600, width: 100, display: 'inline-block' }}>Assegnatario:</span> {sr.assignee?.name ?? '—'}</div>
-            <div><span style={{ fontWeight: 600, width: 100, display: 'inline-block' }}>Scadenza:</span> {sr.dueDate ? new Date(sr.dueDate).toLocaleDateString('it-IT') : '—'}</div>
-            <div><span style={{ fontWeight: 600, width: 100, display: 'inline-block' }}>Creato il:</span> {new Date(sr.createdAt).toLocaleDateString('it-IT')}</div>
-            {sr.completedAt && <div><span style={{ fontWeight: 600, width: 100, display: 'inline-block' }}>Completato:</span> {new Date(sr.completedAt).toLocaleDateString('it-IT')}</div>}
-          </div>
-        </div>
+        <DetailCard title="Dettagli">
+          <DetailField label="Richiedente" value={sr.requestedBy?.name ?? null} />
+          <DetailField label="Assegnatario" value={sr.assignee?.name ?? null} />
+          <DetailField label="Scadenza" value={sr.dueDate ? new Date(sr.dueDate).toLocaleDateString('it-IT') : null} />
+          <DetailField label="Creato il" value={new Date(sr.createdAt).toLocaleDateString('it-IT')} />
+          {sr.completedAt && <DetailField label="Completato" value={new Date(sr.completedAt).toLocaleDateString('it-IT')} />}
+        </DetailCard>
       </div>
     </PageContainer>
   )

@@ -44,13 +44,13 @@ export function DesignerFieldRow({
           <div style={{ width: 12 }} />
         )}
         <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-slate-dark)' }}>
+          <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>
             {field.label}
-            <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6, fontWeight: 400 }}>
+            <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', marginLeft: 6, fontWeight: 400 }}>
               {field.name}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
+          <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', marginTop: 1 }}>
             {field.fieldType}
             {field.required && (
               <span style={{ marginLeft: 6, color: '#ef4444' }}>required</span>

@@ -36,14 +36,14 @@ const STEPS = ['Tipo', 'Dettagli', 'Riepilogo'] as const
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const fieldLabel: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)',
+  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-light)',
   textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
 }
 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '10px 14px',
   border: '1.5px solid #e5e7eb', borderRadius: 8,
-  fontSize: 14, color: 'var(--color-slate-dark)', outline: 'none',
+  fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
   backgroundColor: '#fff', boxSizing: 'border-box',
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
 }
@@ -71,11 +71,11 @@ function ProgressBar({ current }: { current: number }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 backgroundColor: done || active ? 'var(--color-brand)' : '#e5e7eb',
                 color: done || active ? '#fff' : 'var(--color-slate-light)',
-                fontSize: 12, fontWeight: 700, flexShrink: 0,
+                fontSize: 'var(--font-size-body)', fontWeight: 700, flexShrink: 0,
               }}>
                 {done ? '✓' : i + 1}
               </div>
-              <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: active ? 'var(--color-brand)' : done ? 'var(--color-brand)' : 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: active ? 600 : 400, color: active ? 'var(--color-brand)' : done ? 'var(--color-brand)' : 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
                 {name}
               </span>
             </div>
@@ -95,8 +95,8 @@ function SummaryRow({ label, value }: { label: string; value: React.ReactNode })
   if (!value) return null
   return (
     <div style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: 150, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 14, color: 'var(--color-slate)' }}>{value}</span>
+      <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: 150, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{value}</span>
     </div>
   )
 }
@@ -108,7 +108,7 @@ function BackBtn({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)', padding: 0 }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', padding: 0 }}
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
     >
@@ -123,7 +123,7 @@ function NextBtn({ onClick, label = 'Avanti →', disabled = false }: { onClick:
       type="button"
       onClick={onClick}
       disabled={disabled}
-      style={{ padding: '10px 24px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.7 : 1 }}
+      style={{ padding: '10px 24px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.7 : 1 }}
     >
       {label}
     </button>
@@ -234,17 +234,17 @@ export function CreateChangePage() {
         {/* Header */}
         <button
           onClick={() => navigate('/changes')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
         >
           ← Changes
         </button>
 
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
           Nuovo Change
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-slate)', margin: '0 0 24px' }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
           Compila i dettagli del change da aprire
         </p>
 
@@ -258,7 +258,7 @@ export function CreateChangePage() {
             </label>
 
             {typeLoading ? (
-              <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
             ) : typeValues.filter(t => t !== 'standard').map(t => {
               const c   = TYPE_CONFIG[t as keyof typeof TYPE_CONFIG] ?? { label: t.charAt(0).toUpperCase() + t.slice(1) + ' Change', desc: '', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd', icon: '🔵' }
               const sel = changeType === t
@@ -276,8 +276,8 @@ export function CreateChangePage() {
                 >
                   <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: sel ? c.color : '#d1d5db' }} />
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: sel ? c.color : 'var(--color-slate)' }}>{c.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 2 }}>{c.desc}</div>
+                    <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: sel ? c.color : 'var(--color-slate)' }}>{c.label}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{c.desc}</div>
                   </div>
                 </div>
               )
@@ -295,8 +295,8 @@ export function CreateChangePage() {
             >
               <BookOpen size={16} color="#16a34a" style={{ flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#16a34a' }}>Standard Change</div>
-                <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 2 }}>Le Standard Change vengono create dal Catalogo →</div>
+                <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#16a34a' }}>Standard Change</div>
+                <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>Le Standard Change vengono create dal Catalogo →</div>
               </div>
             </div>
 
@@ -304,7 +304,7 @@ export function CreateChangePage() {
               const matchingWf = workflows.find(w => w.changeSubtype === changeType && w.active)
               if (!matchingWf) return null
               return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '8px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 13, color: '#0369a1' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '8px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 'var(--font-size-body)', color: '#0369a1' }}>
                   <span style={{ fontWeight: 600 }}>{t('pages.changes.autoWorkflow', 'Workflow')}:</span>
                   <span>{matchingWf.name} v{matchingWf.version}</span>
                 </div>
@@ -334,7 +334,7 @@ export function CreateChangePage() {
                 onFocus={onFocus}
                 onBlur={e => { (e.currentTarget as HTMLElement).style.borderColor = submitted && titleMissing ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
               />
-              {submitted && titleMissing && <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-trigger-sla-breach)' }}>Campo obbligatorio</p>}
+              {submitted && titleMissing && <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>Campo obbligatorio</p>}
             </div>
 
             {/* DESCRIZIONE */}
@@ -358,7 +358,7 @@ export function CreateChangePage() {
               <label style={fieldLabel}>Priorità <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {priorityLoading ? (
-                  <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
                 ) : priorityValues.map(v => {
                   const cfg = PRIORITY_CONFIG.find(p => p.value === v) ?? { value: v, label: v.charAt(0).toUpperCase() + v.slice(1), color: 'var(--color-brand)', bg: '#f0f9ff', border: 'var(--color-brand)' }
                   const sel = priority === cfg.value
@@ -368,7 +368,7 @@ export function CreateChangePage() {
                       type="button"
                       onClick={() => setPriority(cfg.value)}
                       style={{
-                        padding: '7px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                        padding: '7px 16px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                         border: `1.5px solid ${sel ? cfg.border : '#e5e7eb'}`,
                         background: sel ? cfg.bg : '#f8fafc',
                         color: sel ? cfg.color : 'var(--color-slate)',
@@ -387,13 +387,13 @@ export function CreateChangePage() {
             <div style={{ marginBottom: 20 }}>
               <label style={fieldLabel}>
                 CI Impattati{' '}
-                <span style={{ fontSize: 10, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#b0b8c5' }}>(opzionale)</span>
+                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#b0b8c5' }}>(opzionale)</span>
               </label>
 
               {selectedCIs.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                   {selectedCIs.map(ci => (
-                    <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: '1px solid #c7d2fe', color: 'var(--color-brand-hover)', fontSize: 12 }}>
+                    <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: '1px solid #c7d2fe', color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)' }}>
                       {ci.name}
                       <button type="button" onClick={() => setSelectedCIs(s => s.filter(x => x.id !== ci.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand-hover)', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
                         <X size={12} />
@@ -404,7 +404,7 @@ export function CreateChangePage() {
               )}
 
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: 'var(--color-slate-light)' }}>🔍</span>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>🔍</span>
                 <input
                   value={ciSearch}
                   onChange={e => setCiSearch(e.target.value)}
@@ -419,12 +419,12 @@ export function CreateChangePage() {
                       <div
                         key={ci.id}
                         onClick={() => { setSelectedCIs(s => [...s, ci]); setCiSearch('') }}
-                        style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6', fontSize: 14 }}
+                        style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                       >
                         <span style={{ fontWeight: 500, flex: 1 }}>{ci.name}</span>
-                        <span style={{ fontSize: 12, padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: 'var(--color-slate)' }}>{ci.type}{ci.environment ? ` · ${ci.environment}` : ''}</span>
+                        <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: 'var(--color-slate)' }}>{ci.type}{ci.environment ? ` · ${ci.environment}` : ''}</span>
                       </div>
                     ))}
                   </div>
@@ -451,7 +451,7 @@ export function CreateChangePage() {
                   onFocus={onFocus}
                   onBlur={e => { (e.currentTarget as HTMLElement).style.borderColor = submitted && emergencyMissing ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
                 />
-                {submitted && emergencyMissing && <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-trigger-sla-breach)' }}>Campo obbligatorio per Emergency Change</p>}
+                {submitted && emergencyMissing && <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>Campo obbligatorio per Emergency Change</p>}
               </div>
             )}
 
@@ -466,19 +466,19 @@ export function CreateChangePage() {
         {step === 2 && (
           <div>
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-              <h2 style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>
+              <h2 style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>
                 Riepilogo
               </h2>
 
               <SummaryRow label="Tipo" value={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 10px', borderRadius: 100, backgroundColor: typeConf.bg, color: typeConf.color, fontSize: 12, fontWeight: 600 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 10px', borderRadius: 100, backgroundColor: typeConf.bg, color: typeConf.color, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>
                   {typeConf.icon} {typeConf.label}
                 </span>
               } />
               <SummaryRow label="Titolo" value={title} />
               <SummaryRow label="Descrizione" value={description || '—'} />
               <SummaryRow label="Priorità" value={
-                <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: prioConf.bg, color: prioConf.color, fontSize: 12, fontWeight: 600 }}>
+                <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: prioConf.bg, color: prioConf.color, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>
                   {prioConf.label}
                 </span>
               } />
@@ -486,7 +486,7 @@ export function CreateChangePage() {
                 selectedCIs.length === 0 ? '—' : (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {selectedCIs.map(ci => (
-                      <span key={ci.id} style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', fontSize: 12, fontWeight: 500 }}>
+                      <span key={ci.id} style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                         {ci.name}
                       </span>
                     ))}
@@ -504,7 +504,7 @@ export function CreateChangePage() {
             </div>
 
             <div style={{ textAlign: 'center', marginTop: 16 }}>
-              <button type="button" onClick={() => navigate('/changes')} style={{ background: 'none', border: 'none', fontSize: 14, color: 'var(--color-slate)', cursor: 'pointer' }}>
+              <button type="button" onClick={() => navigate('/changes')} style={{ background: 'none', border: 'none', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
                 Annulla
               </button>
             </div>

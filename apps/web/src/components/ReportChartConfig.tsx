@@ -57,12 +57,12 @@ interface Props {
 }
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase',
+  fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase',
   letterSpacing: '0.05em', marginBottom: 6, display: 'block',
 }
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 12px', borderRadius: 6,
-  border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box',
+  border: '1px solid #d1d5db', fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
 }
 const selectStyle: React.CSSProperties = { ...inputStyle, background: '#fff' }
 
@@ -88,10 +88,10 @@ export function ReportChartConfig({
 
   return (
     <div>
-      <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
         Come vuoi vedere i dati?
       </h3>
-      <p style={{ margin: '0 0 24px', fontSize: 14, color: 'var(--color-slate)' }}>
+      <p style={{ margin: '0 0 24px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
         Configura la visualizzazione della sezione.
       </p>
 
@@ -111,8 +111,8 @@ export function ReportChartConfig({
                 }}>
                   {ct.icon}
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 600 }}>{ct.label}</div>
-                    <div style={{ fontSize: 12, color: chartType === ct.value ? '#22d3ee' : 'var(--color-slate-light)', marginTop: 2 }}>{ct.desc}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600 }}>{ct.label}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: chartType === ct.value ? '#22d3ee' : 'var(--color-slate-light)', marginTop: 2 }}>{ct.desc}</div>
                   </div>
                 </div>
               ))}
@@ -141,7 +141,7 @@ export function ReportChartConfig({
                 </select>
               </div>
               {isTimeSeries && step3DateFields.length === 0 && (
-                <div style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 12, marginTop: 8 }}>
+                <div style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)', marginTop: 8 }}>
                   ⚠ Il grafico a linea richiede un campo data. Nessun campo data disponibile per questa entità. Scegli un altro tipo di grafico.
                 </div>
               )}
@@ -193,10 +193,10 @@ export function ReportChartConfig({
               <label style={labelStyle}>Colonne da mostrare (per nodo risultato)</label>
               {resultNodes.map(([nid, nd]) => (
                 <div key={nid} style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>{nd.label}</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>{nd.label}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
                     {nd.fields.map(f => (
-                      <label key={f.name} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, cursor: 'pointer' }}>
+                      <label key={f.name} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                         <input
                           type="checkbox"
                           checked={nd.selectedFields.includes(f.name)}

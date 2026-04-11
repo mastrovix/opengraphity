@@ -69,7 +69,7 @@ const chipRow: React.CSSProperties = {
   display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6,
 }
 const addBtn: React.CSSProperties = {
-  ...btnSecondary, fontSize: 12, padding: '4px 10px', marginTop: 4,
+  ...btnSecondary, fontSize: 'var(--font-size-body)', padding: '4px 10px', marginTop: 4,
 }
 const removeBtn: React.CSSProperties = {
   background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger, #ef4444)', padding: 2,
@@ -219,7 +219,7 @@ export function AutoTriggersPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<Zap size={22} color="var(--color-brand)" />}>Auto Trigger</PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${triggers.length} trigger`}
           </p>
         </div>
@@ -252,7 +252,7 @@ export function AutoTriggersPage() {
         <div style={overlay} onClick={closeModal}>
           <div style={modal} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 18, color: 'var(--color-slate-dark)' }}>{editing ? 'Modifica Trigger' : 'Nuovo Trigger'}</h3>
+              <h3 style={{ margin: 0, fontSize: 'var(--font-size-section-title)', color: 'var(--color-slate-dark)' }}>{editing ? 'Modifica Trigger' : 'Nuovo Trigger'}</h3>
               <button style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={closeModal}><X size={20} color="var(--color-slate)" /></button>
             </div>
 
@@ -286,7 +286,7 @@ export function AutoTriggersPage() {
 
             {/* Conditions */}
             <div style={{ marginTop: 20 }}>
-              <label style={{ ...labelS, fontSize: 13, fontWeight: 600 }}>Condizioni</label>
+              <label style={{ ...labelS, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>Condizioni</label>
               {form.conditions.map((c, i) => (
                 <ConditionRowEditor
                   key={i}
@@ -301,7 +301,7 @@ export function AutoTriggersPage() {
 
             {/* Actions */}
             <div style={{ marginTop: 20 }}>
-              <label style={{ ...labelS, fontSize: 13, fontWeight: 600 }}>Azioni</label>
+              <label style={{ ...labelS, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>Azioni</label>
               {form.actions.map((a, i) => (
                 <div key={i} style={{ ...chipRow, flexWrap: 'wrap' }}>
                   <select style={{ ...selectS, width: 180 }} value={a.type} onChange={e => setAction(i, { type: e.target.value, params: {} })}>
@@ -349,8 +349,8 @@ export function AutoTriggersPage() {
         <div style={overlay} onClick={() => setDeleteId(null)}>
           <div style={{ ...modal, width: 420, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
             <Trash2 size={32} color="var(--color-danger, #ef4444)" style={{ marginBottom: 12 }} />
-            <h3 style={{ margin: '0 0 8px', fontSize: 16, color: 'var(--color-slate-dark)' }}>Eliminare questo trigger?</h3>
-            <p style={{ fontSize: 13, color: 'var(--color-slate)', marginBottom: 20 }}>Questa azione non puo essere annullata.</p>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--font-size-section-title)', color: 'var(--color-slate-dark)' }}>Eliminare questo trigger?</h3>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', marginBottom: 20 }}>Questa azione non puo essere annullata.</p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 10 }}>
               <button style={btnSecondary} onClick={() => setDeleteId(null)}>Annulla</button>
               <button style={{ ...btnPrimary, background: 'var(--color-danger, #ef4444)' }} onClick={() => deleteTrigger({ variables: { id: deleteId } })}>Elimina</button>

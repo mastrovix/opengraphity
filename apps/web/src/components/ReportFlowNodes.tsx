@@ -40,7 +40,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
       background: d.isResult || d.isRoot ? '#fff' : '#faf5ff',
       border: d.isRoot ? '2px solid #0284c7' : d.isResult ? '1.5px solid #0284c7' : '1.5px dashed #c4b5fd',
       borderRadius: 10,
-      fontSize: 12,
+      fontSize: 'var(--font-size-body)',
       fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
       overflow: 'hidden',
     }}>
@@ -54,9 +54,9 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
       <Handle type="target" position={Position.Right}  id="right-target"  style={{ opacity: 0, width: 8, height: 8, top: '40%' }} />
 
       <div className="node-drag-handle" style={{ padding: '8px 10px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 4, cursor: 'grab' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-dark)', flex: 1, whiteSpace: 'nowrap' }}>{d.label}</span>
+        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', flex: 1, whiteSpace: 'nowrap' }}>{d.label}</span>
         {d.isRoot && (
-          <span style={{ fontSize: 9, background: '#ede9fe', color: '#7c3aed', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
+          <span style={{ fontSize: 'var(--font-size-label)', background: '#ede9fe', color: '#7c3aed', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
             Radice
           </span>
         )}
@@ -73,7 +73,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
             className="nodrag nopan"
             onMouseDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); d.onDelete() }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 2 }}
           >×</button>
         )}
       </div>
@@ -88,7 +88,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
                   onMouseDown={e => e.stopPropagation()}
                   value={f.field}
                   onChange={e => d.onFilterChange(i, 'field', e.target.value)}
-                  style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, flex: 1 }}
+                  style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, flex: 1 }}
                 >
                   <option value="">-- campo --</option>
                   {(d.fields as NavigableField[]).filter(fld => fld.fieldType === 'enum' || fld.fieldType === 'date').map(fld => (
@@ -101,7 +101,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
                     onMouseDown={e => e.stopPropagation()}
                     value={f.value}
                     onChange={e => d.onFilterChange(i, 'value', e.target.value)}
-                    style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, flex: 1 }}
+                    style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, flex: 1 }}
                   >
                     <option value="">-- valore --</option>
                     {((d.fields as NavigableField[]).find(fld => fld.name === f.field)?.enumValues ?? []).map(v => (
@@ -115,7 +115,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
                     value={f.value}
                     onChange={e => d.onFilterChange(i, 'value', e.target.value)}
                     placeholder="valore"
-                    style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, width: 60 }}
+                    style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: '1px solid #e5e7eb', borderRadius: 4, width: 60 }}
                   />
                 )}
                 <button
@@ -134,7 +134,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
           className="nodrag nopan"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onAddFilter}
-          style={{ fontSize: 10, color: 'var(--color-slate)', background: 'none', border: '1px dashed #d1d5db', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', width: '100%', marginBottom: 4 }}
+          style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', background: 'none', border: '1px dashed #d1d5db', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', width: '100%', marginBottom: 4 }}
         >
           + filtro
         </button>
@@ -142,7 +142,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
           className="nodrag nopan"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onConnect}
-          style={{ fontSize: 10, color: 'var(--color-brand)', background: 'none', border: '1px solid #c4b5fd', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', width: '100%' }}
+          style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', background: 'none', border: '1px solid #c4b5fd', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', width: '100%' }}
         >
           + Connetti a...
         </button>
@@ -179,7 +179,7 @@ export function ReportEdgeComponent({
             border: '1px solid #c4b5fd',
             borderRadius: 20,
             padding: '2px 10px',
-            fontSize: 10,
+            fontSize: 'var(--font-size-label)',
             fontWeight: 700,
             color: '#7c3aed',
             letterSpacing: '0.04em',

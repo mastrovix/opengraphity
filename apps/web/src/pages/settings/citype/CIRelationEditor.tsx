@@ -7,7 +7,7 @@ import type { CITypeDef, CIRelationDef } from '@/contexts/MetamodelContext'
 
 const inputS: React.CSSProperties = {
   width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 14, color: 'var(--color-slate-dark)', outline: 'none',
+  borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
   backgroundColor: '#fff', boxSizing: 'border-box',
 }
 
@@ -19,22 +19,22 @@ const selectS: React.CSSProperties = {
 }
 
 const labelS: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
+  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
 }
 
 const btnPrimary: React.CSSProperties = {
   padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+  color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer',
 }
 
 const btnSecondary: React.CSSProperties = {
   padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: 'var(--color-slate)', fontSize: 14, cursor: 'pointer',
+  color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer',
 }
 
 const btnDanger: React.CSSProperties = {
   padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: 'var(--color-trigger-sla-breach)', fontSize: 12, cursor: 'pointer',
+  color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -129,26 +129,26 @@ interface RelationTableProps {
 
 export function CIRelationTable({ relations, onRemove }: RelationTableProps) {
   if (relations.length === 0) {
-    return <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Nessuna relazione CI configurata.</p>
+    return <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Nessuna relazione CI configurata.</p>
   }
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
         <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
           {['name', 'label', 'tipo Neo4j', 'target', 'card.', 'dir.', ''].map(h => (
-            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         {[...relations].sort((a: CIRelationDef, b: CIRelationDef) => a.order - b.order).map(r => (
           <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-            <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12 }}>{r.name}</td>
+            <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)' }}>{r.name}</td>
             <td style={{ padding: '8px' }}>{r.label}</td>
-            <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12 }}>{r.relationshipType}</td>
-            <td style={{ padding: '8px', fontSize: 12 }}>{r.targetType}</td>
-            <td style={{ padding: '8px', fontSize: 12 }}>{r.cardinality}</td>
-            <td style={{ padding: '8px', fontSize: 12 }}>{r.direction}</td>
+            <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)' }}>{r.relationshipType}</td>
+            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.targetType}</td>
+            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.cardinality}</td>
+            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.direction}</td>
             <td style={{ padding: '8px' }}>
               <button style={{ ...btnDanger, padding: '3px 10px' }}
                 aria-label={`Elimina relazione ${r.name}`}

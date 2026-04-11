@@ -24,14 +24,14 @@ interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
 
 const fieldLabel: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)',
+  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-light)',
   textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
 }
 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '10px 14px',
   border: '1.5px solid #e5e7eb', borderRadius: 8,
-  fontSize: 14, color: 'var(--color-slate-dark)', outline: 'none',
+  fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
   backgroundColor: '#fff', boxSizing: 'border-box',
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
 }
@@ -116,17 +116,17 @@ export function CreateProblemPage() {
         {/* Header */}
         <button
           onClick={() => navigate('/problems')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
         >
           ← Problems
         </button>
 
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
           Nuovo Problem
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-slate)', margin: '0 0 24px' }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
           Compila i dettagli del problem da aprire
         </p>
 
@@ -157,7 +157,7 @@ export function CreateProblemPage() {
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {priorityLoading ? (
-                <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento…</span>
+                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
               ) : priorityValues.map(p => {
                 const sel = priority === p
                 const c   = PRIORITY_STYLES[p]
@@ -167,7 +167,7 @@ export function CreateProblemPage() {
                     type="button"
                     onClick={() => setPriority(p)}
                     style={{
-                      padding: '7px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                      padding: '7px 16px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                       border: `1.5px solid ${sel ? (c?.border ?? 'var(--color-brand)') : '#e5e7eb'}`,
                       background: sel ? (c?.bg ?? '#f0f9ff') : '#f8fafc',
                       color: sel ? (c?.color ?? 'var(--color-brand)') : 'var(--color-slate)',
@@ -202,11 +202,11 @@ export function CreateProblemPage() {
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
               CI Impattati{' '}
-              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
             </label>
 
             <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
                 🔍
               </span>
               <input
@@ -229,8 +229,8 @@ export function CreateProblemPage() {
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
-                      <span style={{ fontSize: 12, padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: 'var(--color-slate)' }}>
+                      <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
+                      <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: 'var(--color-slate)' }}>
                         {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
                       </span>
                     </div>
@@ -242,7 +242,7 @@ export function CreateProblemPage() {
             {selectedCIs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                 {selectedCIs.map(ci => (
-                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: '1px solid #c7d2fe', color: 'var(--color-brand-hover)', fontSize: 12 }}>
+                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: '1px solid #c7d2fe', color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)' }}>
                     {ci.name}
                     <button
                       type="button"
@@ -261,12 +261,12 @@ export function CreateProblemPage() {
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
               Team{' '}
-              <span style={{ fontSize: 12, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
             </label>
 
             {selectedTeam && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', fontSize: 12 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
                   {selectedTeam.name}
                   <button
                     type="button"
@@ -281,7 +281,7 @@ export function CreateProblemPage() {
 
             {!selectedTeam && (
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
                   🔍
                 </span>
                 <input
@@ -307,7 +307,7 @@ export function CreateProblemPage() {
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                       >
                         <Users size={14} color="var(--color-slate-light)" />
-                        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
+                        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
                       </div>
                     ))}
                   </div>
@@ -321,7 +321,7 @@ export function CreateProblemPage() {
             <button
               type="button"
               onClick={() => navigate('/problems')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)', padding: 0 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', padding: 0 }}
             >
               Annulla
             </button>
@@ -331,7 +331,7 @@ export function CreateProblemPage() {
               disabled={!canSubmit || loading}
               style={{
                 background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8,
-                padding: '10px 24px', fontSize: 14, fontWeight: 600,
+                padding: '10px 24px', fontSize: 'var(--font-size-card-title)', fontWeight: 600,
                 cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
                 opacity: canSubmit && !loading ? 1 : 0.5,
                 transition: 'opacity 150ms',

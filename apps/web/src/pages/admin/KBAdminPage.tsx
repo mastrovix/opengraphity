@@ -96,7 +96,7 @@ const STATUS_LABEL: Record<string, string> = {
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_STYLE[status]
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 10, fontSize: 11, fontWeight: 600, ...(s ?? {}) }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, ...(s ?? {}) }}>
       {status === 'published'      ? <CheckCircle size={10} /> :
        status === 'archived'       ? <Archive     size={10} /> :
        status === 'pending_review' ? <Clock       size={10} /> : null}
@@ -256,8 +256,8 @@ export function KBAdminPage() {
         <button onClick={() => startEdit(row)} style={{ color: '#38bdf8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
         {deleteId === row.id ? (
           <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
-            <button onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
+            <button onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
+            <button onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
           </div>
         ) : (
           <button onClick={() => setDeleteId(row.id)} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
@@ -268,7 +268,7 @@ export function KBAdminPage() {
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '8px 10px', borderRadius: 6,
-    border: '1px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box',
+    border: '1px solid #e2e8f0', fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
   }
 
   return (
@@ -279,13 +279,13 @@ export function KBAdminPage() {
           <PageTitle icon={<BookOpen size={22} color="var(--color-brand)" />}>
             {t('pages.kbAdmin.title')}
           </PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : total === 1 ? '1 articolo' : `${total} articoli`}
           </p>
         </div>
         <button
           onClick={() => { closeForm(); setShowForm(true) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
         >
@@ -298,7 +298,7 @@ export function KBAdminPage() {
         <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 20, marginBottom: 20, background: '#f8fafc' }}>
           {/* Form header: title + status badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1a2332' }}>
+            <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>
               {editId ? t('pages.kbAdmin.editArticle') : t('pages.kbAdmin.newArticle')}
             </h3>
             {editArticle && <StatusBadge status={editArticle.status} />}
@@ -307,23 +307,23 @@ export function KBAdminPage() {
           {/* Fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
+              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
               <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder="Titolo articolo" />
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Categoria *</label>
+              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Categoria *</label>
               <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
                 {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Tag (separati da virgola)</label>
+              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Tag (separati da virgola)</label>
               <input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} style={inputStyle} placeholder="vpn, windows, accesso" />
             </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Contenuto *</label>
+            <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Contenuto *</label>
             <RichTextEditor
               key={editId ?? 'new'}
               value={form.body}
@@ -331,7 +331,7 @@ export function KBAdminPage() {
               placeholder="Scrivi il contenuto dell'articolo..."
               minHeight="320px"
             />
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{form.body.length} / 50000 caratteri</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', marginTop: 4 }}>{form.body.length} / 50000 caratteri</div>
           </div>
 
           {/* ── Action buttons ── */}
@@ -340,7 +340,7 @@ export function KBAdminPage() {
             <button
               onClick={handleSave}
               disabled={isBusy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: '#38bdf8', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: '#38bdf8', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
               onMouseEnter={(e) => { if (!isBusy) (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
             >
@@ -352,7 +352,7 @@ export function KBAdminPage() {
               <button
                 onClick={handlePublish}
                 disabled={isBusy}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: '#38bdf8', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: '#38bdf8', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
                 onMouseEnter={(e) => { if (!isBusy) (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
               >
@@ -365,7 +365,7 @@ export function KBAdminPage() {
 
             <button
               onClick={closeForm}
-              style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-slate)', cursor: 'pointer', fontSize: 14, fontWeight: 500 }}
+              style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
             >
               {t('common.cancel')}
             </button>
@@ -373,7 +373,7 @@ export function KBAdminPage() {
 
           {/* Info note — only when editing an existing draft */}
           {editId && editArticle?.status === 'draft' && (
-            <p style={{ margin: '10px 0 0', fontSize: 11, color: '#94a3b8' }}>
+            <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>
               "Salva" aggiorna il contenuto senza cambiare stato. "Invia per revisione" salva e avvia il processo di approvazione.
             </p>
           )}
@@ -396,7 +396,7 @@ export function KBAdminPage() {
 
       {/* ── Pagination ── */}
       {total > PAGE_SIZE && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: '#94a3b8' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>
           <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total}</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#fff', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>{t('common.prev')}</button>

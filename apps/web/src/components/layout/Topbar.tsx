@@ -66,11 +66,11 @@ function Breadcrumb() {
   const parts = pathname.split('/').filter(Boolean)
 
   if (parts.length === 0) {
-    return <span style={{ color: C.textDefault, fontWeight: 600, fontSize: 14 }}>Dashboard</span>
+    return <span style={{ color: C.textDefault, fontWeight: 600, fontSize: 12 }}>Dashboard</span>
   }
 
   return (
-    <nav style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+    <nav style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
       {parts.map((part, i) => {
         const isLast = i === parts.length - 1
         const path   = '/' + parts.slice(0, i + 1).join('/')
@@ -228,7 +228,7 @@ export function Topbar() {
             >
               {initials}
             </div>
-            <span style={{ fontSize: 14, color: C.textDefault, fontWeight: 500 }}>
+            <span style={{ fontSize: 12, color: C.textDefault, fontWeight: 500 }}>
               {display}
             </span>
           </DropdownMenuTrigger>
@@ -245,12 +245,12 @@ export function Topbar() {
               zIndex: 50,
             }}
           >
-            <DropdownMenuItem style={{ fontSize: 14, padding: '10px 16px' }}>{t('sidebar.profile')}</DropdownMenuItem>
-            <DropdownMenuItem style={{ fontSize: 14, padding: '10px 16px' }}>{t('sidebar.settings')}</DropdownMenuItem>
+            <DropdownMenuItem style={{ fontSize: 12, padding: '10px 16px' }}>{t('sidebar.profile')}</DropdownMenuItem>
+            <DropdownMenuItem style={{ fontSize: 12, padding: '10px 16px' }}>{t('sidebar.settings')}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={logout}
-              style={{ fontSize: 14, padding: '10px 16px', color: '#ef4444' }}
+              style={{ fontSize: 12, padding: '10px 16px', color: '#ef4444' }}
             >
               {t('auth.logout')}
             </DropdownMenuItem>

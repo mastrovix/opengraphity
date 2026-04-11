@@ -26,7 +26,7 @@ export function StatusBadge({ status }: { status: string }) {
   }
   const c = cfg[status] ?? { color: '#6b7280', icon: null }
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: c.color, fontSize: 12, fontWeight: 500 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: c.color, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
       {c.icon}{status}
     </span>
   )
@@ -45,10 +45,10 @@ export function StatsBar({ stats }: { stats: SyncStats }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
       {cards.map(c => (
         <div key={c.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6b7280', fontSize: 12, marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6b7280', fontSize: 'var(--font-size-body)', marginBottom: 4 }}>
             {c.icon}{c.label}
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{c.value}</div>
+          <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: '#111827' }}>{c.value}</div>
         </div>
       ))}
     </div>
@@ -59,18 +59,18 @@ export function StatsBar({ stats }: { stats: SyncStats }) {
 
 export const inputStyle: React.CSSProperties = {
   display: 'block', width: '100%', border: '1px solid #d1d5db',
-  borderRadius: 6, padding: '6px 10px', fontSize: 13, boxSizing: 'border-box',
+  borderRadius: 6, padding: '6px 10px', fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
   marginBottom: 8, outline: 'none',
 }
 
 export const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 4,
+  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: '#374151', marginBottom: 4,
 }
 
 export function btnStyle(bg: string, color: string): React.CSSProperties {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 4,
     background: bg, color, border: `1px solid ${color === '#fff' ? bg : '#e5e7eb'}`,
-    borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 500,
+    borderRadius: 6, padding: '6px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', fontWeight: 500,
   }
 }

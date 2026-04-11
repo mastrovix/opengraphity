@@ -44,7 +44,7 @@ const IMPACT_STYLES: Record<string, { bg: string; fg: string }> = {
 }
 
 function badge(bg: string, fg: string, text: string) {
-  return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: bg, color: fg }}>{text}</span>
+  return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg }}>{text}</span>
 }
 
 /** Convert PascalCase Neo4j label to snake_case route param: "DatabaseInstance" → "database_instance" */
@@ -170,7 +170,7 @@ export function WhatIfPage() {
     }},
     { key: 'impactPath', label: t('pages.whatIf.colPath'), render: (v) => {
       const path = v as unknown as string[]
-      return <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{path?.join(' → ') || '—'}</span>
+      return <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{path?.join(' → ') || '—'}</span>
     }},
     { key: 'id', label: '', width: '44px', render: (_v, row) => (
       <button
@@ -193,7 +193,7 @@ export function WhatIfPage() {
         <PageTitle icon={<FlaskConical size={22} color="var(--color-brand)" />}>
           {t('pages.whatIf.title')}
         </PageTitle>
-        <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
           {t('pages.whatIf.subtitle')}
         </p>
       </div>
@@ -203,7 +203,7 @@ export function WhatIfPage() {
         {/* CI search */}
         <div style={{ position: 'relative', width: 300 }}>
           <input
-            style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', outline: 'none', boxSizing: 'border-box' }}
             placeholder={t('pages.whatIf.searchCI')}
             value={selectedCI ? selectedCI.name : ciSearch}
             onChange={e => { setCiSearch(e.target.value); setSelectedCI(null); setDropdownOpen(true) }}
@@ -216,12 +216,12 @@ export function WhatIfPage() {
                 <div
                   key={ci.id}
                   onMouseDown={() => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }}
-                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f0f9ff' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff' }}
                 >
                   <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{ci.type}</span>
+                  <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>{ci.type}</span>
                 </div>
               ))}
             </div>
@@ -240,7 +240,7 @@ export function WhatIfPage() {
                   display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
                   borderRadius: 20, border: sel ? `2px solid ${a.fg}` : '2px solid #e5e7eb',
                   background: sel ? a.bg : '#fff', color: sel ? a.fg : '#64748b',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 100ms',
+                  fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer', transition: 'all 100ms',
                 }}
               >
                 <a.icon size={13} />
@@ -254,7 +254,7 @@ export function WhatIfPage() {
         <select
           value={depth}
           onChange={e => setDepth(Number(e.target.value))}
-          style={{ width: 'auto', padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: 'var(--color-slate-dark)', cursor: 'pointer' }}
+          style={{ width: 'auto', padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}
         >
           {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
             <option key={n} value={n}>{t('pages.whatIf.depth')}: {n}</option>
@@ -270,7 +270,7 @@ export function WhatIfPage() {
             padding: '8px 20px', borderRadius: 6, border: 'none',
             background: selectedCI ? '#38bdf8' : '#e5e7eb',
             color: selectedCI ? '#fff' : '#94a3b8',
-            fontSize: 14, fontWeight: 600, cursor: selectedCI ? 'pointer' : 'not-allowed',
+            fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: selectedCI ? 'pointer' : 'not-allowed',
             transition: 'background 150ms',
           }}
           onMouseEnter={e => { if (selectedCI) (e.currentTarget as HTMLElement).style.background = '#0ea5e9' }}
@@ -317,10 +317,10 @@ export function WhatIfPage() {
 
             {/* Summary text */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>
+              <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>
                 {t('pages.whatIf.riskScore')}
               </div>
-              <p style={{ fontSize: 13, color: 'var(--color-slate)', margin: 0, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0, lineHeight: 1.5 }}>
                 {result.summary}
               </p>
             </div>
@@ -334,8 +334,8 @@ export function WhatIfPage() {
                 { n: result.openIncidents, label: t('pages.whatIf.incidents') },
               ].map((s, i) => (
                 <div key={i} style={{ textAlign: 'center', minWidth: 60 }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-slate-dark)' }}>{s.n}</div>
-                  <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</div>
+                  <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 800, color: 'var(--color-slate-dark)' }}>{s.n}</div>
+                  <div style={{ fontSize: 'var(--font-size-label)', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</div>
                 </div>
               ))}
             </div>
@@ -350,7 +350,7 @@ export function WhatIfPage() {
               return (
                 <button key={tab} onClick={() => setResultTab(tab)} style={{
                   padding: '10px 14px', border: 'none', borderBottom: sel ? '2px solid var(--color-brand)' : '2px solid transparent',
-                  marginBottom: -1, background: 'none', fontSize: 13, cursor: 'pointer',
+                  marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                   color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400,
                 }}>
                   {label} ({count})
@@ -405,7 +405,7 @@ export function WhatIfPage() {
                       { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
                       { key: 'environment', label: t('pages.whatIf.colEnv'), width: '110px', sortable: true, render: (v) => v ? badge('#f0fdf4', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
                       { key: 'impactLevel', label: t('pages.whatIf.colImpact'), width: '100px', sortable: true, render: (v) => { const ic = IMPACT_STYLES[String(v)] ?? IMPACT_STYLES['low']; return badge(ic.bg, ic.fg, impactLabel(String(v))) } },
-                      { key: 'impactPath', label: t('pages.whatIf.colPath'), render: (v) => <span style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
+                      { key: 'impactPath', label: t('pages.whatIf.colPath'), render: (v) => <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
                     ]}
                     data={paged}
                     loading={false}
@@ -454,19 +454,19 @@ function Pager({ page, totalPages, total, onPage, t }: {
 }) {
   const PAGE_SIZE = 20
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
       <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total}</span>
       <div style={{ display: 'flex', gap: 8 }}>
         <button
           onClick={() => onPage(Math.max(0, page - 1))}
           disabled={page === 0}
-          style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+          style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
         >{t('common.prev')}</button>
-        <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>{page + 1} / {totalPages}</span>
+        <span style={{ padding: '4px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{page + 1} / {totalPages}</span>
         <button
           onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
           disabled={page >= totalPages - 1}
-          style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+          style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
         >{t('common.next')}</button>
       </div>
     </div>

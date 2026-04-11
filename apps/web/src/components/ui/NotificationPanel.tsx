@@ -105,7 +105,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
 
       {/* Timestamp + unread dot */}
       <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', whiteSpace: 'nowrap' }}>
           {timeAgo(notif.timestamp, t)}
         </span>
         {!notif.read && (
@@ -171,7 +171,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         borderBottom:   '1px solid #f1f5f9',
         flexShrink:     0,
       }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#0f172a' }}>
           {t('notifications.title')}
         </span>
         {notifications.length > 0 && (
@@ -209,7 +209,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
             color:          '#94a3b8',
           }}>
             <Bell size={24} color="#cbd5e1" />
-            <span style={{ fontSize: 13 }}>{t('notifications.empty')}</span>
+            <span style={{ fontSize: 'var(--font-size-body)' }}>{t('notifications.empty')}</span>
           </div>
         ) : (
           notifications.map(notif => (

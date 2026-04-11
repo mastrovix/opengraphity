@@ -83,9 +83,9 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #fed7aa' }}>
         <Lock size={15} color="#92400e" />
-        <span style={{ fontWeight: 700, fontSize: 14, color: '#92400e' }}>Chat interna</span>
+        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)', color: '#92400e' }}>Chat interna</span>
         <span style={{
-          marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: '#92400e',
+          marginLeft: 'auto', fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#92400e',
           background: '#fde68a', padding: '2px 8px', borderRadius: 9999,
         }}>
           Solo agenti
@@ -95,7 +95,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
       {/* Messages */}
       <div ref={listRef} style={{ maxHeight: 400, overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {messages.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: 20 }}>
+          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 'var(--font-size-body)', padding: 20 }}>
             Nessun messaggio
           </div>
         )}
@@ -109,19 +109,19 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
                   width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
                   background: own ? '#0369a1' : '#6b7280', color: '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 700,
+                  fontSize: 'var(--font-size-table)', fontWeight: 700,
                 }}>
                   {initials(msg.authorName)}
                 </div>
                 {/* Bubble */}
                 <div style={{
                   background: own ? '#e0f2fe' : '#f8fafc', borderRadius: 8,
-                  padding: '6px 10px', fontSize: 13,
+                  padding: '6px 10px', fontSize: 'var(--font-size-body)',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
-                    <span style={{ fontWeight: 700, fontSize: 12 }}>{msg.authorName}</span>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{relativeTime(msg.createdAt)}</span>
-                    {msg.editedAt && <span style={{ fontSize: 10, color: '#9ca3af', fontStyle: 'italic' }}>(modificato)</span>}
+                    <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)' }}>{msg.authorName}</span>
+                    <span style={{ fontSize: 'var(--font-size-table)', color: '#9ca3af' }}>{relativeTime(msg.createdAt)}</span>
+                    {msg.editedAt && <span style={{ fontSize: 'var(--font-size-label)', color: '#9ca3af', fontStyle: 'italic' }}>(modificato)</span>}
                   </div>
                   <MentionText text={msg.body} />
                 </div>

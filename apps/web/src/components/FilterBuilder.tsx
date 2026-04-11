@@ -131,7 +131,7 @@ function ValueInput({
           onChange={(e) => onChange({ value: e.target.value })}
           style={INP}
         />
-        <span style={{ fontSize: 11, color: 'var(--color-slate-light)' }}>e</span>
+        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>e</span>
         <input
           type="date"
           value={rule.value2 ?? ''}
@@ -340,7 +340,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
           {t('filter.advancedFilters')}
           {activeCount > 0 && (
             <span style={{
-              fontSize: 10, fontWeight: 700, lineHeight: 1,
+              fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
               padding: '1px 5px', borderRadius: 8,
               background: 'var(--color-brand)', color: '#fff',
             }}>

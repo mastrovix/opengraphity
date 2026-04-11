@@ -69,7 +69,7 @@ export function WorkflowListPage() {
           <PageTitle icon={<Route size={22} color="var(--color-brand)" />}>
             {t('pages.workflow.title', 'Workflow')}
           </PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${defs.length} workflow`}
           </p>
         </div>
@@ -101,8 +101,8 @@ export function WorkflowListPage() {
                 {/* Column header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: '2px solid #e5e7eb' }}>
                   <meta.Icon size={18} color={meta.color} />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{meta.label}</span>
-                  <span style={{ fontSize: 11, color: 'var(--color-slate-light)', marginLeft: 'auto' }}>{items.length}</span>
+                  <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{meta.label}</span>
+                  <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 'auto' }}>{items.length}</span>
                 </div>
 
                 {/* Cards */}
@@ -132,24 +132,24 @@ export function WorkflowListPage() {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+                        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
                           {def.name}
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {def.changeSubtype && (() => {
                             const sc = SUBTYPE_COLORS[def.changeSubtype] ?? { bg: '#f3f4f6', fg: '#374151' }
                             return (
-                              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: sc.bg, color: sc.fg, fontWeight: 600 }}>
+                              <span style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 4, background: sc.bg, color: sc.fg, fontWeight: 600 }}>
                                 {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
                               </span>
                             )
                           })()}
                           {def.category ? (
-                            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
+                            <span style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
                               {def.category}
                             </span>
                           ) : (
-                            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#166534', fontWeight: 600 }}>
+                            <span style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#166534', fontWeight: 600 }}>
                               Default
                             </span>
                           )}
@@ -168,7 +168,7 @@ export function WorkflowListPage() {
                         }}>
                           {def.active ? 'Attivo' : 'Inattivo'}
                         </span>
-                        <span style={{ fontSize: 11, color: 'var(--color-slate-light)' }}>v{def.version}</span>
+                        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>v{def.version}</span>
                       </div>
                     </div>
                   ))}

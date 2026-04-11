@@ -118,10 +118,10 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
     <div style={{ marginTop: 28 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             {t('fieldRules.visibility.title')}
           </div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{t('fieldRules.visibility.subtitle')}</div>
+          <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', marginTop: 2 }}>{t('fieldRules.visibility.subtitle')}</div>
         </div>
         <button style={btnPrimary} onClick={() => { setAdding(true); setForm(emptyVisForm(fields)) }} disabled={adding}>
           <Plus size={13} /> {t('fieldRules.visibility.add')}
@@ -143,7 +143,7 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
 
       {/* List */}
       {rules.length === 0 && !adding && (
-        <div style={{ padding: '20px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12, border: '1px dashed #e5e7eb', borderRadius: 8 }}>
+        <div style={{ padding: '20px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
           {t('fieldRules.visibility.empty')}
         </div>
       )}
@@ -160,7 +160,7 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
             onCancel={() => setEditingId(null)}
           />
         ) : (
-          <div key={rule.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 6, background: '#f8fafc', border: '1px solid #e5e7eb', marginBottom: 6, fontSize: 13 }}>
+          <div key={rule.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 6, background: '#f8fafc', border: '1px solid #e5e7eb', marginBottom: 6, fontSize: 'var(--font-size-body)' }}>
             <span style={{ color: 'var(--color-slate-dark)' }}>
               {t('fieldRules.visibility.ruleDesc', { triggerField: rule.triggerField, triggerValue: rule.triggerValue, action: rule.action === 'show' ? t('fieldRules.show') : t('fieldRules.hide'), targetField: rule.targetField })}
             </span>
@@ -260,13 +260,13 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
 
   return (
     <div style={{ marginTop: 24 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+      <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
         {t('fieldRules.requirement.title')}
       </div>
-      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>{t('fieldRules.requirement.subtitle')}</div>
+      <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', marginBottom: 10 }}>{t('fieldRules.requirement.subtitle')}</div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', fontSize: 'var(--font-size-body)', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
               <th style={{ textAlign: 'left', padding: '6px 8px', color: '#64748b', fontWeight: 600, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>
@@ -284,7 +284,7 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
               <tr key={field.name} style={{ borderBottom: '1px solid #f3f4f6' }}>
                 <td style={{ padding: '7px 8px', color: 'var(--color-slate-dark)', fontWeight: 500 }}>
                   {field.label || field.name}
-                  <span style={{ marginLeft: 5, color: '#94a3b8', fontSize: 11 }}>{field.name}</span>
+                  <span style={{ marginLeft: 5, color: '#94a3b8', fontSize: 'var(--font-size-table)' }}>{field.name}</span>
                 </td>
                 {stepOptions.map((step) => {
                   const key      = `${field.name}|${step}`

@@ -79,7 +79,7 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
   }
 
   const toggleBase: React.CSSProperties = {
-    padding: '4px 14px', fontSize: 12, border: 'none', cursor: 'pointer', fontWeight: 500,
+    padding: '4px 14px', fontSize: 'var(--font-size-body)', border: 'none', cursor: 'pointer', fontWeight: 500,
   }
 
   return (
@@ -98,7 +98,7 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
 
       {mode === 'inline' ? (
         <textarea
-          style={{ ...inputStyle, height: 140, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
+          style={{ ...inputStyle, height: 140, resize: 'vertical', fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}
           value={value}
           onChange={e => onChange(e.target.value)}
           required={required}
@@ -110,11 +110,11 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
           {fileName ? (
             <div style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, background: '#f9fafb' }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{fileName}</div>
-                {fileSize != null && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{formatBytes(fileSize)}</div>}
+                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: '#111827' }}>{fileName}</div>
+                {fileSize != null && <div style={{ fontSize: 'var(--font-size-table)', color: '#6b7280', marginTop: 2 }}>{formatBytes(fileSize)}</div>}
               </div>
               <button type="button" onClick={handleRemove}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, fontWeight: 500, border: '1px solid #fca5a5', borderRadius: 6, background: '#fff', color: '#dc2626', cursor: 'pointer' }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', fontWeight: 500, border: '1px solid #fca5a5', borderRadius: 6, background: '#fff', color: '#dc2626', cursor: 'pointer' }}>
                 <X size={12} /> {t('pages.sync.fileRemove')}
               </button>
             </div>
@@ -127,10 +127,10 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
               style={{ border: '2px dashed #d1d5db', borderRadius: 8, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: '#f9fafb', marginBottom: 8, transition: 'border-color 0.15s' }}
             >
               <Upload size={20} style={{ color: '#9ca3af', margin: '0 auto 8px', display: 'block' }} />
-              <div style={{ fontSize: 13, color: '#374151' }}>
+              <div style={{ fontSize: 'var(--font-size-body)', color: '#374151' }}>
                 {t('pages.sync.dropHint')} <span style={{ color: '#2563eb', textDecoration: 'underline' }}>{t('pages.sync.browse')}</span>
               </div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{accept}</div>
+              <div style={{ fontSize: 'var(--font-size-table)', color: '#9ca3af', marginTop: 4 }}>{accept}</div>
             </div>
           )}
           {/* Invisible required sentinel so browser validation fires when no file selected */}
@@ -223,7 +223,7 @@ export function SyncSourcesTab({
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <button
           onClick={() => setShowCreate(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
           <Plus size={14} />Add Source
         </button>
@@ -232,7 +232,7 @@ export function SyncSourcesTab({
       {/* Sources list */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
         {sources.length === 0 && (
-          <div style={{ padding: 32, textAlign: 'center', color: '#6b7280', fontSize: 14 }}>
+          <div style={{ padding: 32, textAlign: 'center', color: '#6b7280', fontSize: 'var(--font-size-body)' }}>
             No sync sources configured. Add one to start importing CIs.
           </div>
         )}
@@ -240,15 +240,15 @@ export function SyncSourcesTab({
           <div key={s.id} style={{ padding: '14px 16px', borderBottom: i < sources.length - 1 ? '1px solid #f3f4f6' : 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>{s.name}</span>
-                <span style={{ fontSize: 11, color: '#6b7280', background: '#f3f4f6', borderRadius: 4, padding: '2px 6px' }}>{s.connectorType}</span>
-                <span style={{ fontSize: 11, color: s.enabled ? '#16a34a' : '#6b7280' }}>{s.enabled ? 'enabled' : 'disabled'}</span>
+                <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: '#111827' }}>{s.name}</span>
+                <span style={{ fontSize: 'var(--font-size-table)', color: '#6b7280', background: '#f3f4f6', borderRadius: 4, padding: '2px 6px' }}>{s.connectorType}</span>
+                <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? '#16a34a' : '#6b7280' }}>{s.enabled ? 'enabled' : 'disabled'}</span>
               </div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280', marginTop: 2 }}>
                 Last sync: {formatDate(s.lastSyncAt)}
                 {s.lastSyncStatus && <> · <StatusBadge status={s.lastSyncStatus} /></>}
                 {s.lastSyncDurationMs != null && <> · {formatMs(s.lastSyncDurationMs)}</>}
-                {s.scheduleCron && <> · cron: <code style={{ fontSize: 11 }}>{s.scheduleCron}</code></>}
+                {s.scheduleCron && <> · cron: <code style={{ fontSize: 'var(--font-size-table)' }}>{s.scheduleCron}</code></>}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -266,7 +266,7 @@ export function SyncSourcesTab({
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: '#fff', borderRadius: 10, padding: 24, width: 400 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Schedule — {schedSource.name}</h3>
+              <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700 }}>Schedule — {schedSource.name}</h3>
               <button onClick={() => setSchedSource(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={18} /></button>
             </div>
             <label style={labelStyle}>Cron preset</label>
@@ -291,7 +291,7 @@ export function SyncSourcesTab({
       {showCreate && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: '#fff', borderRadius: 10, padding: 24, width: 520, maxHeight: '80vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>Add Sync Source</h3>
+            <h3 style={{ margin: '0 0 16px', fontSize: 'var(--font-size-card-title)', fontWeight: 700 }}>Add Sync Source</h3>
             <form onSubmit={handleCreate}>
               <label style={labelStyle}>Name</label>
               <input style={inputStyle} value={form['name'] ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
@@ -306,7 +306,7 @@ export function SyncSourcesTab({
                 <>
                   {selectedConnector.credentialFields.length > 0 && (
                     <>
-                      <div style={{ fontWeight: 600, fontSize: 13, margin: '16px 0 8px', color: '#374151' }}>Credentials</div>
+                      <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', margin: '16px 0 8px', color: '#374151' }}>Credentials</div>
                       {selectedConnector.credentialFields.map(f => (
                         <div key={f.name}>
                           <label style={labelStyle}>{f.label}{f.required && <span style={{ color: '#dc2626' }}>*</span>}</label>
@@ -318,14 +318,14 @@ export function SyncSourcesTab({
                             onChange={e => setCredForm(c => ({ ...c, [f.name]: e.target.value }))}
                             required={f.required}
                           />
-                          {f.helpText && <p style={{ fontSize: 11, color: '#6b7280', margin: '2px 0 6px' }}>{f.helpText}</p>}
+                          {f.helpText && <p style={{ fontSize: 'var(--font-size-table)', color: '#6b7280', margin: '2px 0 6px' }}>{f.helpText}</p>}
                         </div>
                       ))}
                     </>
                   )}
                   {selectedConnector.configFields.length > 0 && (
                     <>
-                      <div style={{ fontWeight: 600, fontSize: 13, margin: '16px 0 8px', color: '#374151' }}>Configuration</div>
+                      <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', margin: '16px 0 8px', color: '#374151' }}>Configuration</div>
                       {selectedConnector.configFields.map(f => (
                         <div key={f.name}>
                           <label style={labelStyle}>{f.label}{f.required && <span style={{ color: '#dc2626' }}>*</span>}</label>
@@ -348,7 +348,7 @@ export function SyncSourcesTab({
                               required={f.required}
                             />
                           )}
-                          {f.helpText && <p style={{ fontSize: 11, color: '#6b7280', margin: '2px 0 6px' }}>{f.helpText}</p>}
+                          {f.helpText && <p style={{ fontSize: 'var(--font-size-table)', color: '#6b7280', margin: '2px 0 6px' }}>{f.helpText}</p>}
                         </div>
                       ))}
                     </>

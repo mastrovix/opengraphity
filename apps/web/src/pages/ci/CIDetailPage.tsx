@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -7,6 +8,7 @@ import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { StatusBadge } from '@/components/StatusBadge'
+import { DetailCard } from '@/components/ui/DetailCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { CollapsibleCard } from '@/components/ui/CollapsibleCard'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
@@ -74,10 +76,10 @@ function RelationList({
               onClick={() => navigate(ciPath(rel.ci))}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {rel.ci.name}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>
+                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>
                   {rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}
                 </div>
               </div>
@@ -199,18 +201,18 @@ export function CIDetailPage() {
   }
 
   if (metamodelLoading || loading) {
-    return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento…</div>
+    return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento…</div>
   }
   if (!ciType) {
-    return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 14 }}>Tipo CI "{typeName}" non trovato.</div>
+    return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>Tipo CI "{typeName}" non trovato.</div>
   }
   if (!ci) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 12 }}>
-        <p style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>CI non trovato.</p>
+        <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>CI non trovato.</p>
         <button
           onClick={() => navigate(`/ci/${typeName}`)}
-          style={{ color: 'var(--color-brand)', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer' }}
+          style={{ color: 'var(--color-brand)', background: 'none', border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
         >
           ← Torna a {ciType.label}
         </button>
@@ -222,14 +224,14 @@ export function CIDetailPage() {
     <PageContainer>
       <button
         onClick={() => navigate(`/ci/${typeName}`)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-slate-light)', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 12 }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-slate-light)', background: 'none', border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer', padding: 0, marginBottom: 12 }}
       >
         ← {ciType.label}
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
         <CIIcon icon={ciType.icon} size={24} color={ciType.color} />
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{ci.name}</h1>
+        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{ci.name}</h1>
         {ci.status && <StatusBadge value={ci.status} />}
       </div>
 
@@ -290,14 +292,22 @@ export function CIDetailPage() {
           <CollapsibleCard
             title={`Relazioni (${(ci.dependencies as CIRelation[]).length + (ci.dependents as CIRelation[]).length})`}
             defaultOpen={false}
+            headerRight={
+              <button
+                onClick={e => { e.stopPropagation(); setShowAddRel(true) }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', fontWeight: 500, borderRadius: 6, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', cursor: 'pointer' }}
+              >
+                <Plus size={12} /> {t('pages.ci.addRelation')}
+              </button>
+            }
           >
             {(ci.dependencies as CIRelation[]).length === 0 && (ci.dependents as CIRelation[]).length === 0 ? (
-              <p style={{ fontSize: 14, color: 'var(--color-slate-light)', margin: 0 }}>Nessuna relazione.</p>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>Nessuna relazione.</p>
             ) : (
               <>
                 {(ci.dependencies as CIRelation[]).length > 0 && (
                   <div style={{ marginBottom: (ci.dependents as CIRelation[]).length > 0 ? 16 : 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                       Dipendenze
                     </div>
                     <RelationList
@@ -314,7 +324,7 @@ export function CIDetailPage() {
 
                 {(ci.dependents as CIRelation[]).length > 0 && (
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                       Dipendenti
                     </div>
                     <RelationList
@@ -330,19 +340,19 @@ export function CIDetailPage() {
             {/* Delete confirmation */}
             {deleteRel && (
               <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, color: '#991b1b' }}>
+                <span style={{ fontSize: 'var(--font-size-body)', color: '#991b1b' }}>
                   {t('pages.ci.removeRelation', { relationType: deleteRel.relationType, name: deleteRel.name })}
                 </span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     onClick={() => setDeleteRel(null)}
-                    style={{ padding: '4px 12px', fontSize: 13, borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
+                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
                   >
                     {t('common.cancel')}
                   </button>
                   <button
                     onClick={handleRemoveRelation}
-                    style={{ padding: '4px 12px', fontSize: 13, borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}
+                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}
                   >
                     {t('common.delete')}
                   </button>
@@ -350,94 +360,113 @@ export function CIDetailPage() {
               </div>
             )}
 
-            {/* Add relation button */}
-            {!showAddRel && (
-              <button
-                onClick={() => setShowAddRel(true)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 12, padding: '6px 14px', fontSize: 13, fontWeight: 500, borderRadius: 6, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', cursor: 'pointer' }}
+            {/* Add relation modal */}
+            {showAddRel && ci && createPortal(
+              <div
+                style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
+                onClick={e => { if (e.target === e.currentTarget) { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) } }}
               >
-                <Plus size={14} /> {t('pages.ci.addRelation')}
-              </button>
-            )}
+                <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, boxShadow: '0 24px 80px rgba(0,0,0,0.22)' }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #f3f4f6' }}>
+                    <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+                      {t('pages.ci.addRelation')} — {ci.name}
+                    </h2>
+                    <button onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex' }}>
+                      <X size={20} color="var(--color-slate)" />
+                    </button>
+                  </div>
 
-            {/* Add relation form */}
-            {showAddRel && (
-              <div style={{ padding: 16, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
-                  {/* Relation type */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
-                      {t('pages.ci.relationType')}
-                    </label>
-                    <select
-                      value={addRelForm.relationType}
-                      onChange={e => setAddRelForm(prev => ({ ...prev, relationType: e.target.value }))}
-                      style={{ width: '100%', padding: '6px 8px', fontSize: 13, borderRadius: 6, border: '1px solid #d1d5db', background: '#fff' }}
-                    >
-                      <option value="DEPENDS_ON">DEPENDS_ON</option>
-                      <option value="HOSTED_ON">HOSTED_ON</option>
-                      <option value="USES_CERTIFICATE">USES_CERTIFICATE</option>
-                    </select>
-                  </div>
-                  {/* Direction */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
-                      {t('pages.ci.direction')}
-                    </label>
-                    <select
-                      value={addRelForm.direction}
-                      onChange={e => setAddRelForm(prev => ({ ...prev, direction: e.target.value as 'outgoing' | 'incoming' }))}
-                      style={{ width: '100%', padding: '6px 8px', fontSize: 13, borderRadius: 6, border: '1px solid #d1d5db', background: '#fff' }}
-                    >
-                      <option value="outgoing">{t('pages.ci.dirOutgoing')}</option>
-                      <option value="incoming">{t('pages.ci.dirIncoming')}</option>
-                    </select>
-                  </div>
-                  {/* CI search */}
-                  <div style={{ position: 'relative' }}>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
-                      CI Target
-                    </label>
-                    <input
-                      placeholder={t('pages.ci.searchTarget')}
-                      value={addRelForm.search}
-                      onChange={e => handleCISearch(e.target.value)}
-                      style={{ width: '100%', padding: '6px 8px', fontSize: 13, borderRadius: 6, border: '1px solid #d1d5db', boxSizing: 'border-box' }}
-                    />
-                    {ciSearchResults.length > 0 && !addRelForm.targetCI && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, maxHeight: 180, overflowY: 'auto', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,.08)' }}>
-                        {ciSearchResults.map(c => (
-                          <div
-                            key={c.id}
-                            onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: c, search: c.name }))}
-                            style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
-                            onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
-                            onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
-                          >
-                            <span style={{ fontWeight: 500 }}>{c.name}</span>{' '}
-                            <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>({c.type.replace(/_/g, ' ')})</span>
-                          </div>
+                  {/* Body */}
+                  <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {/* Relation type */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
+                        {t('pages.ci.relationType')}
+                      </label>
+                      <select
+                        value={addRelForm.relationType}
+                        onChange={e => setAddRelForm(prev => ({ ...prev, relationType: e.target.value, targetCI: null, search: '' }))}
+                        style={{ width: '100%', padding: '8px 10px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', boxSizing: 'border-box' }}
+                      >
+                        <option value="DEPENDS_ON">DEPENDS_ON</option>
+                        <option value="HOSTED_ON">HOSTED_ON</option>
+                        <option value="USES_CERTIFICATE">USES_CERTIFICATE</option>
+                      </select>
+                    </div>
+
+                    {/* Direction */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>
+                        {t('pages.ci.direction')}
+                      </label>
+                      <div style={{ display: 'flex', gap: 12 }}>
+                        {(['outgoing', 'incoming'] as const).map(dir => (
+                          <label key={dir} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: addRelForm.direction === dir ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                            <input type="radio" name="rel-dir" checked={addRelForm.direction === dir} onChange={() => setAddRelForm(prev => ({ ...prev, direction: dir }))} />
+                            {dir === 'outgoing' ? t('pages.ci.dirOutgoing') : t('pages.ci.dirIncoming')}
+                          </label>
                         ))}
                       </div>
-                    )}
+                    </div>
+
+                    {/* CI search */}
+                    <div style={{ position: 'relative' }}>
+                      <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
+                        CI Target
+                      </label>
+                      <input
+                        placeholder={t('pages.ci.searchTarget')}
+                        value={addRelForm.search}
+                        onChange={e => handleCISearch(e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #d1d5db', boxSizing: 'border-box' }}
+                      />
+                      {addRelForm.targetCI && (
+                        <div style={{ marginTop: 6, padding: '6px 10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span><strong>{addRelForm.targetCI.name}</strong> <span style={{ color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>({addRelForm.targetCI.type})</span></span>
+                          <button onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: null, search: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><X size={14} color="#94a3b8" /></button>
+                        </div>
+                      )}
+                      {ciSearchResults.length > 0 && !addRelForm.targetCI && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, maxHeight: 180, overflowY: 'auto', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,.08)', marginTop: 2 }}>
+                          {ciSearchResults.map(c => (
+                            <div
+                              key={c.id}
+                              onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: c, search: c.name }))}
+                              style={{ padding: '8px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
+                              onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+                            >
+                              <span style={{ fontWeight: 500 }}>{c.name}</span>{' '}
+                              <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({c.type.replace(/_/g, ' ')})</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 24px', borderTop: '1px solid #f3f4f6' }}>
+                    <button
+                      onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
+                      style={{ padding: '8px 16px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      onClick={handleAddRelation}
+                      disabled={!addRelForm.targetCI}
+                      style={{ padding: '8px 16px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: addRelForm.targetCI ? '#38bdf8' : '#d1d5db', color: '#fff', cursor: addRelForm.targetCI ? 'pointer' : 'default', fontWeight: 500, transition: 'background 150ms' }}
+                      onMouseEnter={e => { if (addRelForm.targetCI) (e.currentTarget as HTMLElement).style.background = '#0ea5e9' }}
+                      onMouseLeave={e => { if (addRelForm.targetCI) (e.currentTarget as HTMLElement).style.background = '#38bdf8' }}
+                    >
+                      {t('pages.ci.addRelation')}
+                    </button>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
-                    style={{ padding: '6px 14px', fontSize: 13, borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
-                  >
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    onClick={handleAddRelation}
-                    disabled={!addRelForm.targetCI}
-                    style={{ padding: '6px 14px', fontSize: 13, borderRadius: 6, border: 'none', background: addRelForm.targetCI ? 'var(--color-brand)' : '#d1d5db', color: '#fff', cursor: addRelForm.targetCI ? 'pointer' : 'default' }}
-                  >
-                    {t('pages.ci.addRelation')}
-                  </button>
-                </div>
-              </div>
+              </div>,
+              document.body,
             )}
           </CollapsibleCard>
 
@@ -447,35 +476,28 @@ export function CIDetailPage() {
 
         {/* Right column */}
         <div>
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px' }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 16px' }}>
-              Dettagli
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <DetailField label="ID" value={ci.id} mono />
-              <DetailField label="Tipo" value={ciType.label} />
-              <DetailField label="Environment" value={ci.environment ?? null} />
-              {ci.ownerGroup && (
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Owner Group</div>
-                  <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', fontSize: 12, fontWeight: 500, color: 'var(--color-brand)' }}>
-                    {(ci.ownerGroup as Team).name}
-                  </span>
-                </div>
-              )}
-              {ci.supportGroup && (
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Support Group</div>
-                  <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 12, fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
-                    {(ci.supportGroup as Team).name}
-                  </span>
-                </div>
-              )}
-              <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
-              <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
-              {ci.notes && <DetailField label="Note" value={ci.notes as string} />}
-            </div>
-          </div>
+          <DetailCard title="Dettagli">
+            <DetailField label="ID" value={ci.id} mono />
+            <DetailField label="Tipo" value={ciType.label} />
+            <DetailField label="Environment" value={ci.environment ?? null} />
+            {ci.ownerGroup && (
+              <DetailField label="Owner Group" value={
+                <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-brand)' }}>
+                  {(ci.ownerGroup as Team).name}
+                </span>
+              } />
+            )}
+            {ci.supportGroup && (
+              <DetailField label="Support Group" value={
+                <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
+                  {(ci.supportGroup as Team).name}
+                </span>
+              } />
+            )}
+            <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
+            <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
+            {ci.notes && <DetailField label="Note" value={ci.notes as string} />}
+          </DetailCard>
         </div>
       </div>
     </PageContainer>

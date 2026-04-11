@@ -196,8 +196,8 @@ export function ChangeDetailPage() {
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []
 
-  if (loading) return <div style={{ color: 'var(--color-slate-light)', fontSize: 14, padding: 40 }}>Caricamento…</div>
-  if (!data?.change) return <div style={{ color: 'var(--color-slate-light)', fontSize: 14, padding: 40 }}>Change non trovato.</div>
+  if (loading) return <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', padding: 40 }}>Caricamento…</div>
+  if (!data?.change) return <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', padding: 40 }}>Change non trovato.</div>
 
   const change     = data.change
   const deploySteps     = (change.changeTasks ?? []).filter((t) => t.taskType === 'deploy')
@@ -222,7 +222,7 @@ export function ChangeDetailPage() {
     <PageContainer>
       <button
         onClick={() => navigate('/changes')}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 14, padding: 0, marginBottom: 16 }}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', padding: 0, marginBottom: 16 }}
       >
         ← Torna ai Changes
       </button>
@@ -265,16 +265,16 @@ export function ChangeDetailPage() {
             <div style={{ ...cardStyle, padding: 0 }}>
               <div onClick={() => setIncidentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Incident Correlati</span>
+                  <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Incident Correlati</span>
                   <CountBadge count={change.relatedIncidents.length} />
                 </div>
                 {incidentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
               </div>
               {incidentsOpen && (
-                <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {change.relatedIncidents.map((inc) => (
                     <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', backgroundColor: '#f8f9fc', borderRadius: 7 }}>
-                      <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{inc.title}</span>
+                      <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{inc.title}</span>
                       <Badge value={inc.severity} map={{ critical: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' }, high: { bg: '#fff7ed', color: 'var(--color-brand)' }, medium: { bg: '#fefce8', color: '#ca8a04' }, low: { bg: '#f0fdf4', color: '#16a34a' } }} />
                       <Badge value={inc.status} map={STEP_COLORS} />
                     </div>
@@ -350,10 +350,10 @@ export function ChangeDetailPage() {
         <>
           <div onClick={() => setRemoveCIDialog(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.5)' }} />
           <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 440, zIndex: 1001, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: 'var(--color-slate-dark)' }}>
+            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, marginBottom: 8, color: 'var(--color-slate-dark)' }}>
               Rimuovi CI: {removeCIDialog.ciName}
             </h3>
-            <p style={{ fontSize: 14, color: 'var(--color-slate-light)', marginBottom: 16 }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16 }}>
               Specifica il motivo della rimozione (min. 10 caratteri).
               {change.workflowInstance?.currentStep === 'assessment' &&
                 ' Il task di assessment associato verrà marcato come saltato.'}
@@ -364,12 +364,12 @@ export function ChangeDetailPage() {
               placeholder="Es: CI non coinvolto in questo change..."
               rows={3}
               autoFocus
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 14, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e6f0', fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button
                 onClick={() => setRemoveCIDialog(null)}
-                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 14 }}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
               >
                 Annulla
               </button>
@@ -381,7 +381,7 @@ export function ChangeDetailPage() {
                   setRemoveCIReason('')
                 }}
                 style={{
-                  padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 500,
+                  padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 'var(--font-size-card-title)', fontWeight: 500,
                   cursor: removeCIReason.trim().length >= 10 ? 'pointer' : 'not-allowed',
                   backgroundColor: removeCIReason.trim().length >= 10 ? 'var(--color-trigger-sla-breach)' : '#f3f4f6',
                   color: removeCIReason.trim().length >= 10 ? '#fff' : 'var(--color-slate-light)',
@@ -399,8 +399,8 @@ export function ChangeDetailPage() {
         <>
           <div onClick={() => setIsTransitionOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000 }} />
           <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 420, zIndex: 1001, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{pendingTransition.label}</h2>
-            <p style={{ fontSize: 14, color: 'var(--color-slate-light)', margin: '0 0 16px' }}>Inserisci le informazioni richieste.</p>
+            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{pendingTransition.label}</h2>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 16px' }}>Inserisci le informazioni richieste.</p>
             <textarea
               value={transitionNotes}
               onChange={(e) => setTransitionNotes(e.target.value)}
@@ -414,11 +414,11 @@ export function ChangeDetailPage() {
                   execTransition({ variables: { instanceId, toStep: pendingTransition.toStep, notes: transitionNotes || null } })
                 }}
                 disabled={transitioning || !transitionNotes.trim()}
-                style={{ flex: 1, padding: '9px 0', backgroundColor: transitioning || !transitionNotes.trim() ? '#e2e6f0' : 'var(--color-brand)', color: transitioning || !transitionNotes.trim() ? 'var(--color-slate-light)' : '#fff', border: 'none', borderRadius: 7, fontSize: 14, fontWeight: 600, cursor: transitioning || !transitionNotes.trim() ? 'not-allowed' : 'pointer' }}
+                style={{ flex: 1, padding: '9px 0', backgroundColor: transitioning || !transitionNotes.trim() ? '#e2e6f0' : 'var(--color-brand)', color: transitioning || !transitionNotes.trim() ? 'var(--color-slate-light)' : '#fff', border: 'none', borderRadius: 7, fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: transitioning || !transitionNotes.trim() ? 'not-allowed' : 'pointer' }}
               >
                 {transitioning ? 'Esecuzione…' : 'Conferma'}
               </button>
-              <button onClick={() => setIsTransitionOpen(false)} style={{ padding: '9px 20px', backgroundColor: '#fff', color: 'var(--color-slate)', border: '1px solid #e2e6f0', borderRadius: 7, fontSize: 14, cursor: 'pointer' }}>
+              <button onClick={() => setIsTransitionOpen(false)} style={{ padding: '9px 20px', backgroundColor: '#fff', color: 'var(--color-slate)', border: '1px solid #e2e6f0', borderRadius: 7, fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
                 Annulla
               </button>
             </div>

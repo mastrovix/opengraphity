@@ -36,7 +36,7 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
     if (!items.length) return null
     return (
       <div style={{ marginBottom: 24 }} key={groupLabel}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
           {groupLabel}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 12 }}>
@@ -55,7 +55,7 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
                 }}
               >
                 {getEntityIcon(e.entityType, 28)}
-                <span style={{ fontSize: 14, fontWeight: 600, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   {e.label}
                 </span>
               </div>
@@ -68,10 +68,10 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
 
   return (
     <div>
-      <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
         Cosa vuoi analizzare?
       </h3>
-      <p style={{ margin: '0 0 24px', fontSize: 14, color: 'var(--color-slate)' }}>
+      <p style={{ margin: '0 0 24px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
         Scegli il tipo di dato su cui costruire la sezione del report.
       </p>
       {renderGroup('ITSM', itsmEntities)}

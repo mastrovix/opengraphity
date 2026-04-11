@@ -63,10 +63,10 @@ const WIZARD_STEPS: { n: 1 | 2 | 3 | 4; label: string }[] = [
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 12px', borderRadius: 6,
-  border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box',
+  border: '1px solid #d1d5db', fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
 }
 const labelStyle: React.CSSProperties = {
-  fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase',
+  fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase',
   letterSpacing: '0.05em', marginBottom: 6, display: 'block',
 }
 
@@ -315,7 +315,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               style={{
                 width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 14, fontWeight: 700,
+                fontSize: 'var(--font-size-card-title)', fontWeight: 700,
                 background: wizardStep > s.n ? '#10b981' : wizardStep === s.n ? 'var(--color-brand)' : '#e5e7eb',
                 color:      wizardStep >= s.n ? '#fff' : 'var(--color-slate-light)',
                 cursor:     wizardStep > s.n ? 'pointer' : 'default',
@@ -324,7 +324,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               {wizardStep > s.n ? <Check size={16} /> : s.n}
             </div>
             <span style={{
-              fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
+              fontSize: 'var(--font-size-body)', fontWeight: 500, whiteSpace: 'nowrap',
               color: wizardStep === s.n ? 'var(--color-brand)' : wizardStep > s.n ? '#10b981' : 'var(--color-slate-light)',
             }}>
               {s.label}
@@ -347,13 +347,13 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   ) => (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
       {onBack ? (
-        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)' }}>
+        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
           <ChevronLeft size={18} /> Indietro
         </button>
       ) : <div />}
       <div style={{ display: 'flex', gap: 10 }}>
         {isLastStep && (
-          <button onClick={onCancel} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--color-slate)' }}>
+          <button onClick={onCancel} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
             Annulla
           </button>
         )}
@@ -362,7 +362,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           borderRadius: 8, border: 'none',
           background: nextDisabled ? '#c7d2fe' : 'var(--color-brand)',
           color: '#fff', cursor: nextDisabled ? 'not-allowed' : 'pointer',
-          fontSize: 14, fontWeight: 600,
+          fontSize: 'var(--font-size-card-title)', fontWeight: 600,
         }}>
           {isLastStep ? <Check size={16} /> : null}
           {nextLabel}
@@ -377,8 +377,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const renderStep2 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '0 32px 12px' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>Grafo e filtri</h3>
-        <p style={{ margin: 0, fontSize: 14, color: 'var(--color-slate)' }}>Visualizza e configura le entità collegate.</p>
+        <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Grafo e filtri</h3>
+        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Visualizza e configura le entità collegate.</p>
       </div>
 
       <div style={{ flex: 1, border: '0', overflow: 'hidden', position: 'relative' }}>
@@ -406,15 +406,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         {connectingNodeId && (
           <div style={{ position: 'absolute', top: 0, right: 0, width: 260, height: '100%', background: '#fff', borderLeft: '1px solid #e5e7eb', overflowY: 'auto', padding: 16, zIndex: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate)' }}>Connetti a...</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)' }}>Connetti a...</span>
               <button onClick={() => setConnectingNodeId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
                 <X size={16} />
               </button>
             </div>
             {reachableLoading ? (
-              <p style={{ color: 'var(--color-slate-light)', fontSize: 12, textAlign: 'center' }}>Caricamento...</p>
+              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>Caricamento...</p>
             ) : (reachableData?.reachableEntities ?? []).length === 0 ? (
-              <p style={{ color: 'var(--color-slate-light)', fontSize: 12, textAlign: 'center' }}>Nessuna connessione trovata</p>
+              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>Nessuna connessione trovata</p>
             ) : (
               (reachableData?.reachableEntities ?? []).map((re, i) => (
                 <div key={`${re.neo4jLabel}:${re.relationshipType}:${re.direction}:${i}`}
@@ -424,10 +424,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                   onMouseLeave={e => { e.currentTarget.style.background = '#fafafe' }}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{re.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{re.direction === 'outgoing' ? '→' : '←'} {re.relationshipType}</div>
+                    <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{re.label}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{re.direction === 'outgoing' ? '→' : '←'} {re.relationshipType}</div>
                   </div>
-                  <div style={{ fontSize: 12, color: '#c4b5fd' }}>{re.count}</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', color: '#c4b5fd' }}>{re.count}</div>
                 </div>
               ))
             )}
@@ -436,11 +436,11 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       </div>
 
       {orphan ? (
-        <div style={{ fontSize: 12, color: 'var(--color-trigger-sla-breach)', padding: '8px 32px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', padding: '8px 32px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
           ⚠ Ci sono nodi non collegati. Collega o elimina i nodi isolati prima di continuare.
         </div>
       ) : (
-        <p style={{ fontSize: 12, color: 'var(--color-slate)', padding: '6px 32px 0', flexShrink: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', padding: '6px 32px 0', flexShrink: 0 }}>
           Clicca <strong>+ Connetti a...</strong> su un nodo per aggiungere entità collegate.
           Usa <Star size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> per marcare le entità da includere nel risultato.
         </p>
@@ -461,8 +461,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
     return (
       <div>
-        <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>Dai un nome alla sezione</h3>
-        <p style={{ margin: '0 0 24px', fontSize: 14, color: 'var(--color-slate)' }}>Scegli un titolo descrittivo per questa sezione del report.</p>
+        <h3 style={{ margin: '0 0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Dai un nome alla sezione</h3>
+        <p style={{ margin: '0 0 24px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Scegli un titolo descrittivo per questa sezione del report.</p>
 
         <div style={{ display: 'flex', gap: 24 }}>
           <div style={{ flex: '0 0 300px' }}>
@@ -470,33 +470,33 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               <label style={labelStyle}>Titolo sezione</label>
               <input value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} placeholder="Titolo..." />
               {suggestedTitle && title !== suggestedTitle && (
-                <button onClick={() => setTitle(suggestedTitle)} style={{ marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 12, padding: 0 }}>
+                <button onClick={() => setTitle(suggestedTitle)} style={{ marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', padding: 0 }}>
                   Usa: "{suggestedTitle}"
                 </button>
               )}
             </div>
 
             <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Riepilogo</div>
+              <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Riepilogo</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rootEntry && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <span style={{ fontSize: 12, color: 'var(--color-slate)', flexShrink: 0 }}>Analisi</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{rootEntry.label}</span>
+                    <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>Analisi</span>
+                    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{rootEntry.label}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ fontSize: 12, color: 'var(--color-slate)', flexShrink: 0 }}>Nodi</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{nodes.length}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>Nodi</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{nodes.length}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ fontSize: 12, color: 'var(--color-slate)', flexShrink: 0 }}>Visualizzazione</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{chartDef?.label ?? chartType}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>Visualizzazione</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{chartDef?.label ?? chartType}</span>
                 </div>
                 {needsLimit && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <span style={{ fontSize: 12, color: 'var(--color-slate)', flexShrink: 0 }}>Top</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{limit}</span>
+                    <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>Top</span>
+                    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{limit}</span>
                   </div>
                 )}
               </div>

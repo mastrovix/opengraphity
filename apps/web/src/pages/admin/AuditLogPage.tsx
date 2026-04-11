@@ -105,7 +105,7 @@ export function AuditLogPage() {
     { key: 'entityType', label: t('pages.audit.colEntityType'), sortable: false },
     {
       key: 'entityId', label: t('pages.audit.colEntityId'), sortable: false,
-      render: (v) => <code style={{ fontSize: 11 }}>{String(v).slice(0, 8)}…</code>,
+      render: (v) => <code style={{ fontSize: 'var(--font-size-table)' }}>{String(v).slice(0, 8)}…</code>,
     },
     {
       key: 'ipAddress', label: t('pages.audit.colIp'), sortable: false,
@@ -121,7 +121,7 @@ export function AuditLogPage() {
           <PageTitle icon={<ShieldCheck size={22} color="var(--color-brand)" />}>
             {t('pages.audit.title')}
           </PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} ${t('pages.audit.entries')}`}
           </p>
         </div>
@@ -132,7 +132,7 @@ export function AuditLogPage() {
 
       {/* Error */}
       {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 13, marginBottom: 16 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 'var(--font-size-body)', marginBottom: 16 }}>
           {(error as { graphQLErrors?: Array<{ message: string }> }).graphQLErrors?.[0]?.message ?? error.message}
         </div>
       )}
@@ -162,8 +162,8 @@ export function AuditLogPage() {
         try { parsed = JSON.parse(entry.details) } catch { parsed = entry.details }
         return (
           <div style={{ marginTop: 12, padding: 16, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <strong style={{ fontSize: 13 }}>{t('pages.audit.details', { action: entry.action })}</strong>
-            <pre style={{ marginTop: 8, fontSize: 12, overflowX: 'auto', margin: '8px 0 0 0' }}>
+            <strong style={{ fontSize: 'var(--font-size-body)' }}>{t('pages.audit.details', { action: entry.action })}</strong>
+            <pre style={{ marginTop: 8, fontSize: 'var(--font-size-body)', overflowX: 'auto', margin: '8px 0 0 0' }}>
               {JSON.stringify(parsed, null, 2)}
             </pre>
           </div>
@@ -172,7 +172,7 @@ export function AuditLogPage() {
 
       {/* Pagination */}
       {total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
           <span>
             {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {t('pages.audit.entries')}
           </span>
@@ -180,17 +180,17 @@ export function AuditLogPage() {
             <button
               onClick={() => handlePageChange(Math.max(0, page - 1))}
               disabled={page === 0}
-              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
               {t('common.prev')}
             </button>
-            <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>
+            <span style={{ padding: '4px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
               {page + 1} / {totalPages}
             </span>
             <button
               onClick={() => handlePageChange(Math.min(totalPages - 1, page + 1))}
               disabled={page >= totalPages - 1}
-              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
               {t('common.next')}
             </button>

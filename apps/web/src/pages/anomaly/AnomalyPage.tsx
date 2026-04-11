@@ -101,7 +101,7 @@ export function AnomalyStatusBadge({ value }: { value: string }) {
   }
   const s = map[value] ?? { color: colors.slate, weight: 400 }
   return (
-    <span style={{ fontSize: 12, fontWeight: s.weight, color: s.color }}>
+    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: s.weight, color: s.color }}>
       {labelMap[value] ?? value}
     </span>
   )
@@ -120,10 +120,10 @@ function StatCard({ label, value, accent }: { label: string; value: number; acce
       minWidth: 110,
       flex: 1,
     }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+      <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
         {label}
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color: accent ?? colors.slateDark }}>
+      <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: accent ?? colors.slateDark }}>
         {value}
       </div>
     </div>
@@ -142,10 +142,10 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
           <Radar size={44} color={colors.slateLight} />
         </div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
+        <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
           {t('pages.anomalies.noScanYet')}
         </div>
-        <div style={{ fontSize: 13, color: colors.slateLight, maxWidth: 340, margin: '0 auto' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, maxWidth: 340, margin: '0 auto' }}>
           {t('pages.anomalies.noScanYetDesc')}
         </div>
       </div>
@@ -158,10 +158,10 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
         <ShieldCheck size={44} color={colors.success} />
       </div>
-      <div style={{ fontSize: 15, fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
+      <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
         {t('pages.anomalies.noAnomalies')}
       </div>
-      <div style={{ fontSize: 13, color: colors.slateLight, maxWidth: 360, margin: '0 auto' }}>
+      <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, maxWidth: 360, margin: '0 auto' }}>
         {t('pages.anomalies.noAnomaliesDesc', { date: lastScan })}
       </div>
     </div>
@@ -182,7 +182,7 @@ export function AnomalyPage() {
       render: (v, row) => (
         <div>
           <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{String(v)}</div>
-          <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
+          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
             {row.description.length > 64
               ? row.description.slice(0, 61) + '…'
               : row.description}
@@ -211,7 +211,7 @@ export function AnomalyPage() {
       render: (v, row) => (
         <div>
           <div style={{ color: 'var(--color-slate-dark)' }}>{String(v)}</div>
-          <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
+          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
             {CI_TYPE_KEYS[row.entitySubtype] ? t(CI_TYPE_KEYS[row.entitySubtype]) : (row.entitySubtype ?? row.entityType)}
           </div>
         </div>
@@ -223,7 +223,7 @@ export function AnomalyPage() {
       width:    '160px',
       sortable: true,
       render:   (v) => (
-        <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}>
+        <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
           {new Date(String(v)).toLocaleString()}
         </span>
       ),
@@ -326,7 +326,7 @@ export function AnomalyPage() {
           <PageTitle icon={<ShieldAlert size={22} color="var(--color-brand)" />}>
             {t('pages.anomalies.title')}
           </PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.anomalies.count', { count: total })}
           </p>
         </div>
@@ -338,7 +338,7 @@ export function AnomalyPage() {
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '7px 16px', borderRadius: 6,
             border: `1px solid ${colors.border}`, background: 'var(--surface)',
-            fontSize: 13, fontWeight: 600, cursor: scannerLoading ? 'not-allowed' : 'pointer',
+            fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: scannerLoading ? 'not-allowed' : 'pointer',
             color: colors.slate,
           }}
         >
@@ -358,7 +358,7 @@ export function AnomalyPage() {
             <StatCard label="Low"                            value={stats.low}      accent={colors.severity.low.text}          />
           </div>
           {(stats.falsePositive > 0 || stats.acceptedRisk > 0) && (
-            <div style={{ fontSize: 12, color: colors.slateLight, paddingLeft: 2 }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, paddingLeft: 2 }}>
               {[
                 stats.falsePositive > 0 ? t('pages.anomalies.falsePositives', { count: stats.falsePositive }) : null,
                 stats.acceptedRisk  > 0 ? t('pages.anomalies.acceptedRisks',  { count: stats.acceptedRisk })  : null,
@@ -393,7 +393,7 @@ export function AnomalyPage() {
 
       {/* Pagination */}
       {total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 12, color: 'var(--color-slate-light)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
           <span>
             {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {t('pages.anomalies.count', { count: total })}
           </span>
@@ -401,17 +401,17 @@ export function AnomalyPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
             >
               {t('common.prev')}
             </button>
-            <span style={{ padding: '4px 8px', fontSize: 12, color: 'var(--color-slate)' }}>
+            <span style={{ padding: '4px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
               {page + 1} / {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
             >
               {t('common.next')}
             </button>

@@ -41,12 +41,12 @@ const HTTP_METHODS = ['POST', 'PUT', 'PATCH'] as const
 const OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'change.approved', 'change.completed', 'problem.created', 'sla.breached'] as const
 const PERMISSIONS = ['incidents:read', 'incidents:write', 'changes:read', 'changes:write', 'problems:read', 'problems:write', 'ci:read', 'ci:write', 'kb:read'] as const
 
-const tabS: React.CSSProperties = { padding: '8px 18px', border: 'none', borderBottom: '2px solid transparent', background: 'none', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', cursor: 'pointer' }
+const tabS: React.CSSProperties = { padding: '8px 18px', border: 'none', borderBottom: '2px solid transparent', background: 'none', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', cursor: 'pointer' }
 const tabActiveS: React.CSSProperties = { ...tabS, color: 'var(--color-brand)', borderBottomColor: 'var(--color-brand)' }
-const badgeS: React.CSSProperties = { display: 'inline-block', padding: '2px 8px', borderRadius: 12, fontSize: 11, background: '#f0f4ff', color: 'var(--color-brand)', marginRight: 4 }
+const badgeS: React.CSSProperties = { display: 'inline-block', padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', background: '#f0f4ff', color: 'var(--color-brand)', marginRight: 4 }
 const overlayS: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }
 const modalS: React.CSSProperties = { background: '#fff', borderRadius: 12, padding: 24, width: 520, maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.18)' }
-const textareaS: React.CSSProperties = { ...inputS, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 12, resize: 'vertical' as const, minHeight: 70 }
+const textareaS: React.CSSProperties = { ...inputS, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)', resize: 'vertical' as const, minHeight: 70 }
 const toggleS = (on: boolean): React.CSSProperties => ({ width: 36, height: 20, borderRadius: 10, background: on ? 'var(--color-brand)' : '#d1d5db', position: 'relative', cursor: 'pointer', border: 'none', transition: 'background .2s' })
 const toggleDot = (on: boolean): React.CSSProperties => ({ position: 'absolute', top: 2, left: on ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' })
 
@@ -68,7 +68,7 @@ function ModalPortal({ modalType, children, onClose }: { modalType: string; chil
     <div style={overlayS} onClick={onClose}>
       <div style={modalS} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
             {MODAL_TITLES[modalType] ?? ''}
           </span>
           <X size={18} style={{ cursor: 'pointer', color: 'var(--color-slate)' }} onClick={onClose} />
@@ -215,7 +215,7 @@ export function IntegrationsPage() {
     { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <span style={badgeS}>{String(v)}</span> },
     { key: 'id', label: 'Endpoint URL', render: (v) => (
       <>
-        <span style={{ fontSize: 12, fontFamily: 'monospace' }}>/api/webhooks/in/{String(v)}</span>
+        <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace' }}>/api/webhooks/in/{String(v)}</span>
         <Copy size={12} style={{ marginLeft: 6, cursor: 'pointer', color: 'var(--color-slate)' }} onClick={() => copyText(`/api/webhooks/in/${String(v)}`)} />
       </>
     ) },
@@ -233,7 +233,7 @@ export function IntegrationsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const outboundColumns: ColumnDef<any>[] = [
     { key: 'name', label: 'Nome', sortable: true },
-    { key: 'url', label: 'URL', render: (v) => <span style={{ fontSize: 12, fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
+    { key: 'url', label: 'URL', render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
     { key: 'events', label: 'Events', render: (v) => {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{events.map(e => <span key={e} style={badgeS}>{e}</span>)}</>
@@ -245,7 +245,7 @@ export function IntegrationsPage() {
       const ok = Number(v) >= 200 && Number(v) < 300
       return <span style={{ ...badgeS, background: ok ? '#dcfce7' : '#fee2e2', color: ok ? '#16a34a' : '#dc2626' }}>{String(v)}</span>
     } },
-    { key: 'lastError', label: 'Ultimo Errore', render: (v) => <span style={{ fontSize: 11, color: '#ef4444', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
+    { key: 'lastError', label: 'Ultimo Errore', render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: '#ef4444', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button style={btnSecondary} title="Test" onClick={() => handleTestOutbound(row.id)}><Play size={13} /></button>
@@ -257,7 +257,7 @@ export function IntegrationsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const apiKeyColumns: ColumnDef<any>[] = [
     { key: 'name', label: 'Nome', sortable: true },
-    { key: 'keyPrefix', label: 'Prefisso', render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{String(v)}...</span> },
+    { key: 'keyPrefix', label: 'Prefisso', render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
     { key: 'permissions', label: 'Permessi', render: (v) => {
       const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{perms.map(p => <span key={p} style={badgeS}>{p}</span>)}</>
@@ -284,7 +284,7 @@ export function IntegrationsPage() {
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<Plug size={22} color="var(--color-brand)" />}>Integrazioni</PageTitle>
-        <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
           Webhook, API Keys e connessioni esterne
         </p>
       </div>
@@ -358,7 +358,7 @@ export function IntegrationsPage() {
                 <label style={labelS}>Events</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {OUTBOUND_EVENTS.map(ev => (
-                    <label key={ev} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+                    <label key={ev} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={outForm.events.includes(ev)} onChange={() => setOutForm({ ...outForm, events: toggleList(outForm.events, ev) })} />
                       {ev}
                     </label>
@@ -367,7 +367,7 @@ export function IntegrationsPage() {
               </div>
               <div><label style={labelS}>Payload Template</label><textarea style={textareaS} value={outForm.payloadTemplate} onChange={e => setOutForm({ ...outForm, payloadTemplate: e.target.value })} /></div>
               <div><label style={labelS}>Secret</label><input style={inputS} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={outForm.retryOnFailure} onChange={e => setOutForm({ ...outForm, retryOnFailure: e.target.checked })} />
                 Riprova in caso di errore
               </label>
@@ -402,7 +402,7 @@ export function IntegrationsPage() {
                 <label style={labelS}>Permessi</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                   {PERMISSIONS.map(p => (
-                    <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+                    <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={keyForm.permissions.includes(p)} onChange={() => setKeyForm({ ...keyForm, permissions: toggleList(keyForm.permissions, p) })} />
                       {p}
                     </label>
@@ -423,11 +423,11 @@ export function IntegrationsPage() {
       {/* Secret reveal modal */}
       {modal === 'secret' && (
         <ModalPortal modalType="secret" onClose={() => { setModal(null); setSecret('') }}>
-          <div style={{ background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 12, color: '#92400e' }}>
+          <div style={{ background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: '#92400e' }}>
             Questo token non sarà più visibile. Copialo ora!
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <code style={{ flex: 1, padding: '8px 12px', background: '#f9fafb', borderRadius: 6, fontSize: 12, wordBreak: 'break-all', border: '1px solid #e5e7eb' }}>{secret}</code>
+            <code style={{ flex: 1, padding: '8px 12px', background: '#f9fafb', borderRadius: 6, fontSize: 'var(--font-size-body)', wordBreak: 'break-all', border: '1px solid #e5e7eb' }}>{secret}</code>
             <button style={btnSecondary} onClick={() => copyText(secret)}><Copy size={14} /> Copia</button>
           </div>
         </ModalPortal>

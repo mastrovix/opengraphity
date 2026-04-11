@@ -18,7 +18,7 @@ interface WidgetPreviewProps {
 export function WidgetPreview({ widgetType, color, title, previewData, previewLoading, timeRange }: WidgetPreviewProps) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', background: '#f8fafc', minWidth: 0 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-slate-light)', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 14 }}>
+      <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: 'var(--color-slate-light)', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 14 }}>
         Anteprima live
       </div>
 
@@ -27,11 +27,11 @@ export function WidgetPreview({ widgetType, color, title, previewData, previewLo
         {/* Card header */}
         <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', flex: 1 }}>
+          <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', flex: 1 }}>
             {title || 'Titolo widget'}
           </span>
           {timeRange && timeRange !== 'all' && (
-            <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate-light)' }}>
+            <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate-light)' }}>
               {TIME_RANGES.find(t => t.value === timeRange)?.label}
             </span>
           )}
@@ -49,7 +49,7 @@ export function WidgetPreview({ widgetType, color, title, previewData, previewLo
 
       {/* Stats */}
       {previewData && !previewLoading && (
-        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--color-slate-light)', display: 'flex', gap: 16 }}>
+        <div style={{ marginTop: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', display: 'flex', gap: 16 }}>
           {previewData.value != null && <span>Totale: <strong>{Math.round(previewData.value).toLocaleString('it-IT')}</strong></span>}
           {previewData.series.length > 0 && <span>Categorie: <strong>{previewData.series.length}</strong></span>}
         </div>
@@ -57,7 +57,7 @@ export function WidgetPreview({ widgetType, color, title, previewData, previewLo
 
       {/* Spacer + hint */}
       <div style={{ flex: 1 }} />
-      <div style={{ marginTop: 16, padding: 12, background: '#f0f9ff', borderRadius: 8, fontSize: 11, color: '#0369a1', lineHeight: 1.5 }}>
+      <div style={{ marginTop: 16, padding: 12, background: '#f0f9ff', borderRadius: 8, fontSize: 'var(--font-size-table)', color: '#0369a1', lineHeight: 1.5 }}>
         {'\uD83D\uDCA1'} La preview si aggiorna automaticamente mentre configuri il widget (con debounce 600ms).
       </div>
     </div>
@@ -85,7 +85,7 @@ function InlinePreview({
 
   if (!data) {
     return (
-      <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-slate-light)', fontSize: 13 }}>
+      <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
         Configura le opzioni sopra per vedere l&apos;anteprima
       </div>
     )
@@ -97,7 +97,7 @@ function InlinePreview({
         <div style={{ fontSize: 52, fontWeight: 700, color, lineHeight: 1 }}>
           {data.value != null ? Math.round(data.value).toLocaleString('it-IT') : '\u2014'}
         </div>
-        <div style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 8 }}>{title}</div>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 8 }}>{title}</div>
       </div>
     )
   }
@@ -105,7 +105,7 @@ function InlinePreview({
   if (widgetType === 'table') {
     return (
       <div style={{ maxHeight: 200, overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
             <tr style={{ background: '#f8fafc' }}>
               <th style={{ padding: '5px 10px', textAlign: 'left', color: 'var(--color-slate-light)', fontWeight: 600 }}>Label</th>
@@ -147,7 +147,7 @@ function EChartsPreview({ widgetType, color, data }: { widgetType: string; color
     })
   }, [])
 
-  if (!ReactECharts) return <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--color-slate-light)' }}>Caricamento grafico…</div>
+  if (!ReactECharts) return <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento grafico…</div>
 
   const palette = ['#0EA5E9','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#84cc16']
 
@@ -155,24 +155,24 @@ function EChartsPreview({ widgetType, color, data }: { widgetType: string; color
 
   if (widgetType === 'chart_bar') {
     option = {
-      tooltip: { trigger: 'axis', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 11 } },
+      tooltip: { trigger: 'axis', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-table)' } },
       grid: { top: 8, right: 8, bottom: 20, left: 36, containLabel: true },
-      xAxis: { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 10, color: '#64748b' } },
-      yAxis: { type: 'value', axisLabel: { fontSize: 10, color: '#64748b' } },
+      xAxis: { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
+      yAxis: { type: 'value', axisLabel: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
       series: [{ type: 'bar', data: data.series.map(s => s.value), itemStyle: { color, borderRadius: [3,3,0,0] } }],
     }
   } else if (widgetType === 'chart_line') {
     option = {
-      tooltip: { trigger: 'axis', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 11 } },
+      tooltip: { trigger: 'axis', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-table)' } },
       grid: { top: 8, right: 8, bottom: 20, left: 36, containLabel: true },
-      xAxis: { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 10, color: '#64748b' } },
-      yAxis: { type: 'value', axisLabel: { fontSize: 10, color: '#64748b' } },
+      xAxis: { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
+      yAxis: { type: 'value', axisLabel: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
       series: [{ type: 'line', data: data.series.map(s => s.value), smooth: true, lineStyle: { color }, itemStyle: { color }, areaStyle: { color: `${color}22` } }],
     }
   } else if (widgetType === 'chart_pie' || widgetType === 'chart_donut') {
     option = {
-      tooltip: { trigger: 'item', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 11 }, formatter: '{b}: {c} ({d}%)' },
-      legend: { orient: 'horizontal', bottom: 0, textStyle: { fontSize: 10, color: '#64748b' } },
+      tooltip: { trigger: 'item', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-table)' }, formatter: '{b}: {c} ({d}%)' },
+      legend: { orient: 'horizontal', bottom: 0, textStyle: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
       series: [{
         type: 'pie', radius: widgetType === 'chart_donut' ? ['38%','65%'] : '60%', center: ['50%','42%'],
         data: data.series.map((s, i) => ({ name: s.label, value: s.value, itemStyle: { color: palette[i % palette.length] } })),
@@ -186,7 +186,7 @@ function EChartsPreview({ widgetType, color, data }: { widgetType: string; color
         type: 'gauge', startAngle: 200, endAngle: -20, min: 0, max: 100, splitNumber: 5,
         axisLine: { lineStyle: { width: 16, color: [[val/100, color],[1,'#e5e7eb']] } },
         pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-        detail: { fontSize: 20, fontWeight: 600, color: 'var(--color-slate-dark)', formatter: `${Math.round(val)}%`, offsetCenter: [0,'20%'] },
+        detail: { fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', formatter: `${Math.round(val)}%`, offsetCenter: [0,'20%'] },
         data: [{ value: val }],
       }],
     }

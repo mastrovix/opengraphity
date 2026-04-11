@@ -183,7 +183,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
 
   const cancelBtnStyle: React.CSSProperties = {
     flex: 1, padding: '6px 0', backgroundColor: '#f1f5f9', border: '1px solid #e2e6f0',
-    borderRadius: 6, fontSize: 12, cursor: 'pointer', color: 'var(--color-slate)',
+    borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate)',
   }
 
   // ── Shared param fields renderer ─────────────────────────────────────────────
@@ -192,7 +192,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
     params: Record<string, string>,
     setParams: (updater: (p: Record<string, string>) => Record<string, string>) => void,
   ) => {
-    const labelStyle: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
+    const labelStyle: React.CSSProperties = { fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
     const field = (key: string, lbl: string, placeholder = '', inputType = 'text') => (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={labelStyle}>{lbl}</span>
@@ -315,7 +315,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
     setConditions: (c: ConditionRow[]) => void,
     setLogic:      (l: 'AND' | 'OR') => void,
   ) => {
-    const lbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
+    const lbl: React.CSSProperties = { fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
 
     const updateRow = (i: number, patch: Partial<ConditionRow>) =>
       setConditions(conditions.map((c, idx) => idx === i ? { ...c, ...patch } : c))
@@ -338,7 +338,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
               {i > 0 && conditions.length >= 2 && (
                 <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
                   {(['AND', 'OR'] as const).map((opt) => (
-                    <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer', color: logic === opt ? ACCENT_COLOR : 'var(--color-slate-light)', fontWeight: logic === opt ? 700 : 400 }}>
+                    <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-table)', cursor: 'pointer', color: logic === opt ? ACCENT_COLOR : 'var(--color-slate-light)', fontWeight: logic === opt ? 700 : 400 }}>
                       <input type="radio" name={`logic-${i}`} value={opt} checked={logic === opt} onChange={() => setLogic(opt)} style={{ accentColor: ACCENT_COLOR }} />
                       {opt}
                     </label>
@@ -350,7 +350,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
                 <select
                   value={cond.field}
                   onChange={(e) => updateRow(i, { field: e.target.value, value: '' })}
-                  style={{ ...inputStyle, flex: 1, fontSize: 11, padding: '5px 6px' }}
+                  style={{ ...inputStyle, flex: 1, fontSize: 'var(--font-size-table)', padding: '5px 6px' }}
                 >
                   {COND_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
@@ -362,7 +362,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
               <select
                 value={cond.operator}
                 onChange={(e) => updateRow(i, { operator: e.target.value })}
-                style={{ ...inputStyle, fontSize: 11, padding: '5px 6px' }}
+                style={{ ...inputStyle, fontSize: 'var(--font-size-table)', padding: '5px 6px' }}
               >
                 {COND_OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -372,7 +372,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
                   <select
                     value={cond.value}
                     onChange={(e) => updateRow(i, { value: e.target.value })}
-                    style={{ ...inputStyle, fontSize: 11, padding: '5px 6px' }}
+                    style={{ ...inputStyle, fontSize: 'var(--font-size-table)', padding: '5px 6px' }}
                   >
                     <option value="">— seleziona —</option>
                     {enumOptions.map((v) => <option key={v} value={v}>{v}</option>)}
@@ -382,7 +382,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
                     value={cond.value}
                     onChange={(e) => updateRow(i, { value: e.target.value })}
                     placeholder="valore..."
-                    style={{ ...inputStyle, fontSize: 11, padding: '5px 6px' }}
+                    style={{ ...inputStyle, fontSize: 'var(--font-size-table)', padding: '5px 6px' }}
                   />
                 )
               )}
@@ -392,7 +392,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
 
         <button
           onClick={addRow}
-          style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed #94a3b8', borderRadius: 5, fontSize: 11, color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
+          style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed #94a3b8', borderRadius: 5, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
         >
           + Aggiungi condizione
         </button>
@@ -451,11 +451,11 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
 
             {isEditing && editingAction && (
               <div style={{ border: '1px solid #06b6d4', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: '#ecfeff' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#0891b2' }}>
+                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#0891b2' }}>
                   {actionLabel(t, a.type, a.params)}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     {t('workflow.actionType')}
                   </span>
                   <select
@@ -515,7 +515,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
       {addingFor === forKey ? (
         <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: '#f8fafc' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               {t('workflow.actionType')}
             </span>
             <select value={newActionType} onChange={(e) => { setNewActionType(e.target.value); setNewActionParams({}) }} style={inputStyle}>
@@ -548,7 +548,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
       ) : (
         <button
           onClick={() => { setEditingAction(null); setAddingFor(forKey); setNewActionType('sla_start'); setNewActionParams({}); setNewActionConditions([]); setNewActionLogic('AND') }}
-          style={{ padding: '5px 10px', backgroundColor: 'transparent', border: `1px dashed ${ACCENT_COLOR}`, borderRadius: 6, fontSize: 12, color: ACCENT_COLOR, cursor: 'pointer', textAlign: 'left' }}
+          style={{ padding: '5px 10px', backgroundColor: 'transparent', border: `1px dashed ${ACCENT_COLOR}`, borderRadius: 6, fontSize: 'var(--font-size-body)', color: ACCENT_COLOR, cursor: 'pointer', textAlign: 'left' }}
         >
           + {t('workflow.addAction')}
         </button>
@@ -573,11 +573,11 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
           </PanelField>
 
           <PanelField label="Name">
-            <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.name}</code>
+            <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{step.name}</code>
           </PanelField>
 
           <PanelField label="Type">
-            <code style={{ fontSize: 12, color: 'var(--color-slate)' }}>{step.type}</code>
+            <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{step.type}</code>
           </PanelField>
 
           <PanelField label="Enter Actions">
@@ -616,7 +616,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
                   transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                 }} />
               </div>
-              <span style={{ fontSize: 13, color: 'var(--color-slate)' }}>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                 {notifyEnabled ? 'Attiva' : 'Disattiva'}
               </span>
             </label>
@@ -642,7 +642,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
               <PanelField label="Canali">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {NR_CHANNELS.map((ch) => (
-                    <label key={ch} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13 }}>
+                    <label key={ch} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
                       <input
                         type="checkbox"
                         checked={notifyChannels.includes(ch)}

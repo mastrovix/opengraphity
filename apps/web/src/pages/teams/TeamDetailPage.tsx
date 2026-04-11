@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { ChevronDown, ChevronRight, Users } from 'lucide-react'
+import { DetailCard } from '@/components/ui/DetailCard'
+import { DetailField } from '@/components/ui/DetailField'
 import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
@@ -36,14 +38,14 @@ interface Team {
 }
 
 function TypeBadge({ type }: { type: string | null }) {
-  if (!type) return <span style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>—</span>
+  if (!type) return <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
     owner:   { bg: '#eff6ff', color: '#2563eb' },
     support: { bg: '#f0fdf4', color: '#16a34a' },
   }
   const s = styles[type] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
   return (
-    <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {type}
     </span>
   )
@@ -56,8 +58,8 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
     <div style={{
       background:   '#fff',
       border:       '1px solid #e5e7eb',
-      borderRadius: 8,
-      padding:      20,
+      borderRadius: 10,
+      padding:      '16px 20px',
       ...style,
     }}>
       {children}
@@ -83,7 +85,7 @@ function CollapsibleCard({
         onClick={() => setOpen((p) => !p)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: open ? 16 : 0 }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
+        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
         {open ? <ChevronDown size={14} color="var(--color-slate-light)" /> : <ChevronRight size={14} color="var(--color-slate-light)" />}
       </div>
       {open && children}
@@ -98,11 +100,11 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
     return <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title={emptyMsg} />
   }
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
           {['Nome', 'Tipo', 'Environment', 'Status'].map((h) => (
-            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
           ))}
         </tr>
       </thead>
@@ -141,48 +143,47 @@ export function TeamDetailPage() {
   const team = data?.team
 
   if (loading && !team) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento...</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento...</div>
   }
 
   if (!team) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 14 }}>Team non trovato.</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Team non trovato.</div>
   }
 
   return (
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/teams')}>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/teams')}>
           ← Teams
         </div>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
-        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 4 }}>
+        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>
           Creato il {new Date(team.createdAt).toLocaleDateString('it-IT')}
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
         {/* Left column */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Description */}
-          <Card>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 8 }}>Descrizione</div>
-            <div style={{ fontSize: 14, color: team.description ? 'var(--color-slate)' : 'var(--color-slate-light)' }}>
+          <DetailCard title="Descrizione">
+            <div style={{ fontSize: 'var(--font-size-body)', color: team.description ? 'var(--color-slate-dark)' : '#c4c9d4' }}>
               {team.description ?? 'Nessuna descrizione'}
             </div>
-          </Card>
+          </DetailCard>
 
           {/* Members */}
           <CollapsibleCard title={`Membri (${team.members.length})`} defaultOpen>
             {team.members.length === 0 ? (
               <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title="Nessun membro" />
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                     {['Nome', 'Email', 'Ruolo'].map((h) => (
-                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -211,24 +212,12 @@ export function TeamDetailPage() {
         </div>
 
         {/* Right column */}
-        <div style={{ width: 340, flexShrink: 0 }}>
-          <Card>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 16 }}>Dettagli</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--color-slate)', wordBreak: 'break-all' }}>{team.id}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Tipo</div>
-                <TypeBadge type={team.type} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Creato il</div>
-                <div style={{ fontSize: 14, color: 'var(--color-slate)' }}>{new Date(team.createdAt).toLocaleString('it-IT')}</div>
-              </div>
-            </div>
-          </Card>
+        <div>
+          <DetailCard title="Dettagli">
+            <DetailField label="ID" value={team.id} mono />
+            <DetailField label="Tipo" value={<TypeBadge type={team.type} />} />
+            <DetailField label="Creato il" value={new Date(team.createdAt).toLocaleString('it-IT')} />
+          </DetailCard>
         </div>
       </div>
     </PageContainer>

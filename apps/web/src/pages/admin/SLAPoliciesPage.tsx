@@ -45,7 +45,7 @@ const ENTITY_LABELS: Record<string, string> = {
 
 const inputS: React.CSSProperties = {
   width: '100%', padding: '7px 10px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 13, color: 'var(--color-slate-dark)',
+  borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
   outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box',
 }
 const selectS: React.CSSProperties = {
@@ -53,19 +53,19 @@ const selectS: React.CSSProperties = {
   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
   backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer',
 }
-const labelS: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4 }
+const labelS: React.CSSProperties = { display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4 }
 const btnPrimary: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
   padding: '8px 16px', border: 'none', borderRadius: 6, background: '#38bdf8',
-  color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
+  color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
 }
 const btnSecondary: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
   padding: '7px 14px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: 'var(--color-slate)', fontSize: 13, cursor: 'pointer',
+  color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 const badge = (bg: string, fg: string): React.CSSProperties => ({
-  display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: bg, color: fg,
+  display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg,
 })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -195,12 +195,12 @@ export function SLAPoliciesPage() {
     { key: 'name', label: 'Nome', sortable: true, render: (_v, row) => (
       <div>
         <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{row.name}</div>
-        <div style={{ fontSize: 11, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row)}</div>
+        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row)}</div>
       </div>
     ) },
-    { key: 'priority', label: 'Priorita', sortable: true, render: (v) => v ? <span style={badge('#fef3c7', '#92400e')}>{String(v)}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 12 }}>Tutte</span> },
-    { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <span style={badge('#dbeafe', '#1e40af')}>{String(v)}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 12 }}>Tutte</span> },
-    { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 12 }}>{v ? String(v) : 'Tutti'}</span> },
+    { key: 'priority', label: 'Priorita', sortable: true, render: (v) => v ? <span style={badge('#fef3c7', '#92400e')}>{String(v)}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
+    { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <span style={badge('#dbeafe', '#1e40af')}>{String(v)}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
+    { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{v ? String(v) : 'Tutti'}</span> },
     { key: 'responseMinutes', label: 'Risposta', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
     { key: 'resolveMinutes', label: 'Risoluzione', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
     { key: 'businessHours', label: 'Business Hours', render: (v) => <span style={badge(v ? '#dcfce7' : '#f3f4f6', v ? '#15803d' : 'var(--color-slate)')}>{v ? 'Si' : 'No'}</span> },
@@ -234,7 +234,7 @@ export function SLAPoliciesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<Shield size={22} color="var(--color-brand)" />}>SLA Policies</PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${policies.length} policy`}
           </p>
         </div>
@@ -253,7 +253,7 @@ export function SLAPoliciesPage() {
 
       {Object.entries(grouped).map(([entityType, items]) => (
         <div key={entityType} style={{ marginBottom: 28 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 8, textTransform: 'capitalize' }}>
+          <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 8, textTransform: 'capitalize' }}>
             {ENTITY_LABELS[entityType]}
           </h3>
           <SortableFilterTable<SLAPolicy>
@@ -274,7 +274,7 @@ export function SLAPoliciesPage() {
              onClick={e => { if (e.target === e.currentTarget) setModalOpen(false) }}>
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.22)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #f3f4f6' }}>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
                 {editingId ? 'Modifica Policy' : 'Nuova SLA Policy'}
               </h2>
               <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex' }}>
@@ -343,12 +343,12 @@ export function SLAPoliciesPage() {
                       ? <ToggleRight size={26} color="var(--color-brand)" />
                       : <ToggleLeft size={26} color="#cbd5e1" />}
                   </button>
-                  <span style={{ fontSize: 13, color: 'var(--color-slate-dark)' }}>Solo orario lavorativo</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>Solo orario lavorativo</span>
                 </div>
               </div>
 
               {/* Preview */}
-              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0369a1' }}>
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 'var(--font-size-body)', color: '#0369a1' }}>
                 <strong>Anteprima:</strong> {formPreview()} — risposta entro {fmtMinutes(form.responseMinutes)}, risoluzione entro {fmtMinutes(form.resolveMinutes)}
                 {form.businessHours ? ' (orario lavorativo)' : ' (24/7)'}
               </div>
@@ -368,8 +368,8 @@ export function SLAPoliciesPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
              onClick={e => { if (e.target === e.currentTarget) setDeleteId(null) }}>
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 400, boxShadow: '0 24px 80px rgba(0,0,0,0.22)', padding: '24px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700, color: 'var(--color-slate-dark)' }}>Conferma eliminazione</h3>
-            <p style={{ fontSize: 13, color: 'var(--color-slate)', margin: '0 0 20px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Conferma eliminazione</h3>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 20px' }}>
               Sei sicuro di voler eliminare questa SLA policy? L'azione non e reversibile.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

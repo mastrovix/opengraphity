@@ -71,7 +71,7 @@ export function CIChangesCard({ ciId }: { ciId: string }) {
       >
         <TypeBadge type={ch.type} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {ch.title}
           </div>
         </div>
@@ -84,7 +84,7 @@ export function CIChangesCard({ ciId }: { ciId: string }) {
     if (items.length === 0) return null
     return (
       <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
           {label}
         </div>
         <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
@@ -100,7 +100,7 @@ export function CIChangesCard({ ciId }: { ciId: string }) {
         onClick={() => setOpen(p => !p)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? '1px solid #e5e7eb' : 'none' }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', display: 'flex', alignItems: 'center' }}>
+        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', display: 'flex', alignItems: 'center' }}>
           Change <CountBadge count={changes.length} />
         </span>
         {open ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
@@ -108,7 +108,7 @@ export function CIChangesCard({ ciId }: { ciId: string }) {
       {open && (
         <div style={{ padding: '0 20px 16px' }}>
           {changes.length === 0
-            ? <p style={{ fontSize: 14, color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Nessun change su questo CI.</p>
+            ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Nessun change su questo CI.</p>
             : (
               <>
                 {renderGroup('In corso',    active)}

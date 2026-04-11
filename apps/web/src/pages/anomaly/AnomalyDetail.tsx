@@ -28,10 +28,10 @@ interface Anomaly {
 export function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+      <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
         {label}
       </div>
-      <div style={{ fontSize: 13, color: colors.slateDark, lineHeight: 1.6 }}>{value}</div>
+      <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.6 }}>{value}</div>
     </div>
   )
 }
@@ -67,10 +67,10 @@ export function DetailPanel({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 16 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
             {RULE_LABEL_KEYS[anomaly.ruleKey] ? t(RULE_LABEL_KEYS[anomaly.ruleKey]) : anomaly.ruleKey}
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: colors.slateDark, lineHeight: 1.4 }}>
+          <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, lineHeight: 1.4 }}>
             {anomaly.title}
           </div>
         </div>
@@ -113,7 +113,7 @@ export function DetailPanel({
           style={{
             width: '100%', padding: '9px 14px', borderRadius: 6, border: 'none',
             background: 'var(--color-brand)', color: '#fff',
-            fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
           }}
         >
           {t('pages.anomalies.resolveAnomaly')}
@@ -122,7 +122,7 @@ export function DetailPanel({
 
       {isOpen && showForm && (
         <>
-          <div style={{ fontSize: 13, fontWeight: 600, color: colors.slateDark, marginBottom: 12 }}>
+          <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 12 }}>
             {t('pages.anomalies.resolution')}
           </div>
           <ResolutionForm

@@ -33,7 +33,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
       <PanelHeader title="Modifica Transizione" onClose={onClose} />
 
       <PanelField label="From → To">
-        <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>
+        <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
           <code>{transition.fromStepName}</code> → <code>{transition.toStepName}</code>
         </span>
       </PanelField>
@@ -58,7 +58,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
             checked={requiresInput}
             onChange={(e) => { setRequiresInput(e.target.checked); if (!e.target.checked) setInputField('') }}
           />
-          <span style={{ fontSize: 14 }}>{requiresInput ? 'Sì' : 'No'}</span>
+          <span style={{ fontSize: 'var(--font-size-body)' }}>{requiresInput ? 'Sì' : 'No'}</span>
         </label>
       </PanelField>
 

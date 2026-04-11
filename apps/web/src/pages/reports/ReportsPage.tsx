@@ -300,10 +300,10 @@ export default function ReportsPage() {
         borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column',
       }}>
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-slate-dark)' }}>Report</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Report</span>
           <button
             onClick={handleNewConversation}
-            style={{ fontSize: 18, fontWeight: 400, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
+            style={{ fontSize: 'var(--font-size-section-title)', fontWeight: 400, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
             title="Nuova conversazione"
           >+</button>
         </div>
@@ -326,10 +326,10 @@ export default function ReportsPage() {
                 onMouseLeave={(e) => { if (activeId !== c.id) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, color: 'var(--color-slate-dark)', fontWeight: activeId === c.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+                  <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', fontWeight: activeId === c.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
                     {c.title.length > 40 ? c.title.slice(0, 40) + '…' : c.title}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 1 }}>{relativeTime(c.updatedAt)}</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 1 }}>{relativeTime(c.updatedAt)}</div>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); void handleDelete(c.id) }}
@@ -350,11 +350,11 @@ export default function ReportsPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16 }}>
             <BarChart2 size={48} color="#d1d5db" strokeWidth={1.5} />
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+              <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <BrainCircuit size={22} color="var(--color-brand)" />
                 {t('pages.aiAnalysis.title')}
               </div>
-              <div style={{ fontSize: 14, color: 'var(--color-slate-light)' }}>{t('pages.aiAnalysis.subtitle')}</div>
+              <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('pages.aiAnalysis.subtitle')}</div>
             </div>
           </div>
         ) : (
@@ -375,7 +375,7 @@ export default function ReportsPage() {
                   border: msg.role === 'user' ? 'none' : '1px solid #e5e7eb',
                   borderRadius: 12,
                   padding: '10px 14px',
-                  fontSize: 14,
+                  fontSize: 'var(--font-size-card-title)',
                   lineHeight: 1.6,
                 }}>
                   {msg.role === 'user' ? (
@@ -387,35 +387,35 @@ export default function ReportsPage() {
                         components={{
                           table: ({ children }) => (
                             <div style={{ overflowX: 'auto', margin: '12px 0' }}>
-                              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 14 }}>{children}</table>
+                              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 'var(--font-size-body)' }}>{children}</table>
                             </div>
                           ),
                           thead: ({ children }) => <thead style={{ background: '#f8fafc' }}>{children}</thead>,
                           tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
                           th: ({ children }) => (
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
                           ),
                           td: ({ children }) => (
-                            <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 14, verticalAlign: 'top' }}>{children}</td>
+                            <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 'var(--font-size-card-title)', verticalAlign: 'top' }}>{children}</td>
                           ),
                           p: ({ children }) => (
-                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: 'var(--color-slate)', fontSize: 14 }}>{children}</p>
+                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{children}</p>
                           ),
                           strong: ({ children }) => (
                             <strong style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{children}</strong>
                           ),
                           h2: ({ children }) => (
-                            <h2 style={{ fontSize: 15, fontWeight: 600, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
+                            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
                           ),
                           h3: ({ children }) => (
-                            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate)', margin: '12px 0 6px 0' }}>{children}</h3>
+                            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', margin: '12px 0 6px 0' }}>{children}</h3>
                           ),
                           ul: ({ children }) => (
-                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: 'var(--color-slate)', fontSize: 14 }}>{children}</ul>
+                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{children}</ul>
                           ),
                           li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
                           code: ({ children }) => (
-                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
+                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
                           ),
                         }}
                       >
@@ -436,11 +436,11 @@ export default function ReportsPage() {
                   border: '1px solid #e5e7eb',
                   borderRadius: 12,
                   padding: '10px 14px',
-                  fontSize: 14,
+                  fontSize: 'var(--font-size-card-title)',
                   lineHeight: 1.6,
                 }}>
                   {toolStatus && !streamingText && (
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ animation: 'pulse 1.5s infinite' }}>⚙</span>
                       {toolStatus}
                     </div>
@@ -452,35 +452,35 @@ export default function ReportsPage() {
                         components={{
                           table: ({ children }) => (
                             <div style={{ overflowX: 'auto', margin: '12px 0' }}>
-                              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 14 }}>{children}</table>
+                              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 'var(--font-size-body)' }}>{children}</table>
                             </div>
                           ),
                           thead: ({ children }) => <thead style={{ background: '#f8fafc' }}>{children}</thead>,
                           tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
                           th: ({ children }) => (
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
                           ),
                           td: ({ children }) => (
-                            <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 14, verticalAlign: 'top' }}>{children}</td>
+                            <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 'var(--font-size-card-title)', verticalAlign: 'top' }}>{children}</td>
                           ),
                           p: ({ children }) => (
-                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: 'var(--color-slate)', fontSize: 14 }}>{children}</p>
+                            <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{children}</p>
                           ),
                           strong: ({ children }) => (
                             <strong style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{children}</strong>
                           ),
                           h2: ({ children }) => (
-                            <h2 style={{ fontSize: 15, fontWeight: 600, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
+                            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
                           ),
                           h3: ({ children }) => (
-                            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate)', margin: '12px 0 6px 0' }}>{children}</h3>
+                            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', margin: '12px 0 6px 0' }}>{children}</h3>
                           ),
                           ul: ({ children }) => (
-                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: 'var(--color-slate)', fontSize: 14 }}>{children}</ul>
+                            <ul style={{ margin: '4px 0 8px 0', paddingLeft: 20, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{children}</ul>
                           ),
                           li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
                           code: ({ children }) => (
-                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
+                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
                           ),
                         }}
                       >
@@ -518,7 +518,7 @@ export default function ReportsPage() {
               placeholder={t('pages.aiAnalysis.placeholder')}
               rows={1}
               style={{
-                flex: 1, fontSize: 14, padding: '10px 14px',
+                flex: 1, fontSize: 'var(--font-size-body)', padding: '10px 14px',
                 border: '1px solid #d1d5db', borderRadius: 8,
                 resize: 'none', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.5,
                 maxHeight: 96, overflowY: 'auto', outline: 'none',
@@ -533,7 +533,7 @@ export default function ReportsPage() {
               onClick={() => void handleSend(input)}
               disabled={loading || !input.trim()}
               style={{
-                fontSize: 14, fontWeight: 600, padding: '10px 18px',
+                fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '10px 18px',
                 background: loading || !input.trim() ? '#e5e7eb' : 'var(--color-brand)',
                 color: loading || !input.trim() ? 'var(--color-slate-light)' : '#fff',
                 border: 'none', borderRadius: 8, cursor: loading || !input.trim() ? 'default' : 'pointer',
@@ -543,7 +543,7 @@ export default function ReportsPage() {
               {loading ? '…' : 'Invia'}
             </button>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginTop: 6 }}>Enter per inviare · Shift+Enter per andare a capo</div>
+          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 6 }}>Enter per inviare · Shift+Enter per andare a capo</div>
         </div>
       </div>
 
@@ -568,7 +568,7 @@ export default function ReportsPage() {
 }
 
 const exportBtnStyle: React.CSSProperties = {
-  fontSize: 12, color: 'var(--color-slate-light)', background: '#f9fafb',
+  fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', background: '#f9fafb',
   border: '1px solid #e5e7eb', borderRadius: 5,
   padding: '4px 10px', cursor: 'pointer',
 }

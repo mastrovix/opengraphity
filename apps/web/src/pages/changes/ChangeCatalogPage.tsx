@@ -29,11 +29,11 @@ interface CatalogEntry {
 
 const inputS: React.CSSProperties = {
   width: '100%', padding: '7px 10px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 13, color: 'var(--color-slate-dark)',
+  borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
   outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box',
 }
 const badge = (bg: string, fg: string): React.CSSProperties => ({
-  display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: bg, color: fg,
+  display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg,
 })
 
 function riskBadge(risk: string): React.CSSProperties {
@@ -48,7 +48,7 @@ function ColorIcon({ icon, color }: { icon: string | null; color: string | null 
   return (
     <div style={{
       width: 32, height: 32, borderRadius: 8, display: 'flex',
-      alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700,
+      alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-card-title)', fontWeight: 700,
       background: color || '#e0f2fe', color: color ? '#fff' : '#0284c7', flexShrink: 0,
     }}>
       {icon ? icon.charAt(0).toUpperCase() : '?'}
@@ -90,7 +90,7 @@ export function ChangeCatalogPage() {
           <PageTitle icon={<BookOpen size={22} color="var(--color-brand)" />}>
             {t('pages.changeCatalog.title')}
           </PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {t('pages.changeCatalog.subtitle')}
           </p>
         </div>
@@ -107,7 +107,7 @@ export function ChangeCatalogPage() {
       </div>
 
       {loading && !entries.length && (
-        <p style={{ color: 'var(--color-slate-light)', fontSize: 13 }}>{t('common.loading')}</p>
+        <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</p>
       )}
 
       {!loading && entries.length === 0 && (
@@ -132,10 +132,10 @@ export function ChangeCatalogPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <ColorIcon icon={category.icon} color={category.color} />
             <div>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+              <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
                 {category.name}
               </h3>
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-slate-light)' }}>
+              <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
                 {category.description && <span>{category.description} &middot; </span>}
                 {catEntries.length} {t('pages.changeCatalog.procedures')}
               </p>
@@ -173,17 +173,17 @@ function EntryCard({ entry, showCategory, onClick, t }: {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
           <ColorIcon icon={entry.icon} color={entry.color} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--color-slate-dark)', marginBottom: 2 }}>
+            <div style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)', marginBottom: 2 }}>
               {entry.name}
             </div>
             <div style={{
-              fontSize: 12, color: 'var(--color-slate-light)', lineHeight: 1.4,
+              fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', lineHeight: 1.4,
               display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
             }}>
               {entry.description}
             </div>
             {entry.workflow && (
-              <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
                 {t('pages.changeCatalogAdmin.workflow')}: {entry.workflow.name}
               </div>
             )}
@@ -202,11 +202,11 @@ function EntryCard({ entry, showCategory, onClick, t }: {
             </span>
           )}
           {entry.estimatedDurationHours != null && entry.estimatedDurationHours > 0 && (
-            <span style={{ fontSize: 11, color: 'var(--color-slate-light)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               <Clock size={10} /> ~{entry.estimatedDurationHours} {t('pages.changeCatalog.hours')}
             </span>
           )}
-          <span style={{ fontSize: 11, color: 'var(--color-slate-light)', marginLeft: 'auto' }}>
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 'auto' }}>
             {t('pages.changeCatalog.usedTimes', { count: entry.usageCount })}
           </span>
         </div>

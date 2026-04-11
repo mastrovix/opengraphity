@@ -75,14 +75,14 @@
 
   /* Typography */
   --font-family:              'Plus Jakarta Sans', system-ui, sans-serif;
-  --font-size-page-title:     24px;
-  --font-size-section-title:  18px;
-  --font-size-card-title:     15px;
-  --font-size-body:           14px;
-  --font-size-sidebar:        13px;
-  --font-size-table:          12px;
-  --font-size-label:          12px;
-  --font-size-small:          11px;
+  --font-size-page-title:     20px;
+  --font-size-section-title:  15px;
+  --font-size-card-title:     13px;
+  --font-size-body:           12px;
+  --font-size-sidebar:        12px;
+  --font-size-table:          11px;
+  --font-size-label:          10px;
+  --font-size-small:          10px;
 
   /* ── shadcn variable overrides ─────────────────────── */
   --background-shadcn: var(--background);
@@ -206,7 +206,7 @@
     background-color: var(--background);
     color: var(--text-primary);
     font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-    font-size: 14px;
+    font-size: var(--font-size-body);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
@@ -216,7 +216,7 @@
   }
   input, textarea, select {
     font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-    font-size: 14px;
+    font-size: var(--font-size-body);
   }
 }
 
@@ -248,48 +248,48 @@ tr:hover .sft-td * {
 }
 
 /* ── Typography system ─────────────────────────────────── */
-/* Page title  h1 → 24px / 600 / #0f172a */
+/* Page title  h1 → 20px / 600 / #0f172a */
 .ty-page-title {
-  font-size: 24px;
+  font-size: var(--font-size-page-title);
   font-weight: 600;
   color: #0f172a;
   letter-spacing: -0.01em;
   margin: 0;
 }
-/* Section title  h2 → 18px / 600 / #0f172a */
+/* Section title  h2 → 15px / 600 / #0f172a */
 .ty-section-title {
-  font-size: 18px;
+  font-size: var(--font-size-section-title);
   font-weight: 600;
   color: #0f172a;
 }
-/* Card title  h3 → 15px / 600 / #0f172a */
+/* Card title  h3 → 13px / 600 / #0f172a */
 .ty-card-title {
-  font-size: 15px;
+  font-size: var(--font-size-card-title);
   font-weight: 600;
   color: #0f172a;
 }
-/* Body text → 14px / 400 / #0f172a */
+/* Body text → 12px / 400 / #0f172a */
 .ty-body {
-  font-size: 14px;
+  font-size: var(--font-size-body);
   font-weight: 400;
   color: #0f172a;
 }
-/* Label (column headers, field labels) → 12px / 500 / uppercase / #64748b */
+/* Label (column headers, field labels) → 10px / 500 / uppercase / #64748b */
 .ty-label {
-  font-size: 12px;
+  font-size: var(--font-size-label);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #64748b;
 }
-/* Caption / metadata (dates, IDs, counts) → 12px / 400 / #94a3b8 */
+/* Caption / metadata (dates, IDs, counts) → 10px / 400 / #94a3b8 */
 .ty-caption {
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 400;
   color: #94a3b8;
 }
-/* Badge / pill text → 12px / 500 */
+/* Badge / pill text → 10px / 500 */
 .ty-badge {
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 500;
 }

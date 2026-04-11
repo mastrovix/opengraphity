@@ -26,7 +26,7 @@ export function ReportPreview({ loading, data, title, placeholder }: Props) {
       justifyContent: loading || !data ? 'center' : 'flex-start',
     }}>
       {loading ? (
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento anteprima...</div>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento anteprima...</div>
       ) : data ? (
         <ReportChartRenderer
           chartType={data.chartType}
@@ -35,7 +35,7 @@ export function ReportPreview({ loading, data, title, placeholder }: Props) {
           error={data.error}
         />
       ) : (
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 14, textAlign: 'center' }}>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>
           {placeholder ?? "Configura il grafico per vedere l'anteprima"}
         </div>
       )}

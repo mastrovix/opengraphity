@@ -32,7 +32,7 @@ interface ChecklistItem { order: number; title: string; description?: string }
 
 const inputS: React.CSSProperties = {
   width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb',
-  borderRadius: 8, fontSize: 13, color: 'var(--color-slate-dark)',
+  borderRadius: 8, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
   outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box',
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
 }
@@ -42,11 +42,11 @@ const selectS: React.CSSProperties = {
   backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer',
 }
 const labelS: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)',
+  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-light)',
   textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
 }
 const badge = (bg: string, fg: string): React.CSSProperties => ({
-  display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: bg, color: fg,
+  display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg,
 })
 
 function riskBadge(risk: string): React.CSSProperties {
@@ -137,11 +137,11 @@ export function ChangeCatalogCreatePage() {
   }
 
   if (loading) {
-    return <PageContainer><p style={{ color: 'var(--color-slate-light)', fontSize: 13 }}>{t('common.loading')}</p></PageContainer>
+    return <PageContainer><p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</p></PageContainer>
   }
 
   if (!entry) {
-    return <PageContainer><p style={{ color: 'var(--color-slate-light)', fontSize: 13 }}>{t('pages.changeCatalog.entryNotFound')}</p></PageContainer>
+    return <PageContainer><p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('pages.changeCatalog.entryNotFound')}</p></PageContainer>
   }
 
   return (
@@ -149,7 +149,7 @@ export function ChangeCatalogCreatePage() {
       {/* Back link */}
       <button
         onClick={() => navigate('/changes/catalog')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', fontSize: 12, padding: 0, marginBottom: 16 }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', padding: 0, marginBottom: 16 }}
       >
         <ArrowLeft size={13} /> {t('pages.changeCatalog.backToCatalog', 'Torna al catalogo')}
       </button>
@@ -157,7 +157,7 @@ export function ChangeCatalogCreatePage() {
       {/* Header — compact */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <CIIcon icon={entry.icon || entry.category?.icon || 'box'} size={22} color={entry.color || entry.category?.color || 'var(--color-brand)'} />
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>{entry.name}</h2>
+        <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{entry.name}</h2>
         {entry.category && (
           <span style={badge(entry.category.color || '#e0f2fe', entry.category.color ? '#fff' : '#0284c7')}>
             {entry.category.name}
@@ -171,14 +171,14 @@ export function ChangeCatalogCreatePage() {
           </span>
         )}
         {entry.estimatedDurationHours != null && entry.estimatedDurationHours > 0 && (
-          <span style={{ fontSize: 12, color: 'var(--color-slate-light)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Clock size={12} /> ~{entry.estimatedDurationHours} {t('pages.changeCatalog.hours')}
           </span>
         )}
       </div>
       {entry.description && (
         <p style={{
-          fontSize: 13, color: 'var(--color-slate-light)', margin: '0 0 16px', lineHeight: 1.5,
+          fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 16px', lineHeight: 1.5,
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden',
         }}>
           {entry.description}
@@ -186,13 +186,13 @@ export function ChangeCatalogCreatePage() {
       )}
 
       {/* Info box */}
-      <div style={{ background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#0369a1', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+      <div style={{ background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 16px', fontSize: 'var(--font-size-body)', color: '#0369a1', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
         <Info size={18} style={{ flexShrink: 0 }} />
         {t('pages.changeCatalog.preApproved')}
       </div>
 
       {entry.maintenanceWindow && (
-        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 16px', fontSize: 13, color: '#92400e', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 16px', fontSize: 'var(--font-size-body)', color: '#92400e', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <Clock size={16} style={{ flexShrink: 0 }} />
           {t('pages.changeCatalog.maintenanceWindow')}: {entry.maintenanceWindow}
         </div>
@@ -200,7 +200,7 @@ export function ChangeCatalogCreatePage() {
 
       <div>
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '24px 28px' }}>
-          <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+          <h2 style={{ margin: '0 0 20px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
             {t('pages.changeCatalog.createTitle')}
           </h2>
 
@@ -208,7 +208,7 @@ export function ChangeCatalogCreatePage() {
             <label style={labelS}>{t('common.title')} *</label>
             <input style={inputS} value={resolvedTitle} onChange={e => setFormTitle(e.target.value)} />
             {entry.defaultTitleTemplate.includes('{ci_name}') && (
-              <p style={{ fontSize: 11, color: 'var(--color-slate-light)', margin: '4px 0 0' }}>
+              <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '4px 0 0' }}>
                 {t('pages.changeCatalog.ciNameHint')}
               </p>
             )}
@@ -245,7 +245,7 @@ export function ChangeCatalogCreatePage() {
                 ))}
               </select>
               {entry.ciTypes && entry.ciTypes.length > 0 && (
-                <p style={{ fontSize: 11, color: 'var(--color-slate-light)', margin: '4px 0 0' }}>
+                <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '4px 0 0' }}>
                   {t('pages.changeCatalog.filteredBy')}: {entry.ciTypes.join(', ')}
                 </p>
               )}
@@ -255,15 +255,15 @@ export function ChangeCatalogCreatePage() {
           {/* Checklist */}
           {checklist.length > 0 && (
             <div style={{ marginTop: 8, marginBottom: 16, padding: '14px 16px', background: '#f9fafb', border: '1px solid #f3f4f6', borderRadius: 8 }}>
-              <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+              <h3 style={{ margin: '0 0 10px', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
                 {t('pages.changeCatalog.checklist')}
               </h3>
-              <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: 'var(--color-slate-dark)', lineHeight: 1.8 }}>
+              <ol style={{ margin: 0, paddingLeft: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', lineHeight: 1.8 }}>
                 {checklist.map((item, i) => (
                   <li key={i}>
                     <strong>{item.title}</strong>
                     {item.description && (
-                      <span style={{ color: 'var(--color-slate-light)', fontSize: 12 }}> — {item.description}</span>
+                      <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}> — {item.description}</span>
                     )}
                   </li>
                 ))}
@@ -276,7 +276,7 @@ export function ChangeCatalogCreatePage() {
 
           {/* Actions */}
           {entry.ciRequired && formCIIds.length === 0 && (
-            <p style={{ fontSize: 12, color: '#dc2626', margin: '8px 0 0' }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: '#dc2626', margin: '8px 0 0' }}>
               {t('pages.changeCatalog.ciRequiredHint')}
             </p>
           )}
@@ -287,7 +287,7 @@ export function ChangeCatalogCreatePage() {
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px',
                 backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
-                fontSize: 14, fontWeight: 600, cursor: (!creating && (!entry.ciRequired || formCIIds.length > 0)) ? 'pointer' : 'not-allowed',
+                fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: (!creating && (!entry.ciRequired || formCIIds.length > 0)) ? 'pointer' : 'not-allowed',
                 opacity: (!creating && (!entry.ciRequired || formCIIds.length > 0)) ? 1 : 0.6, transition: 'background-color 150ms',
               }}
               onMouseEnter={e => { if (!creating) (e.currentTarget as HTMLElement).style.backgroundColor = '#15803d' }}
@@ -299,7 +299,7 @@ export function ChangeCatalogCreatePage() {
               onClick={() => navigate('/changes/catalog')}
               style={{
                 padding: '10px 16px', border: '1px solid #e5e7eb', borderRadius: 8,
-                background: '#fff', color: 'var(--color-slate)', fontSize: 14, cursor: 'pointer',
+                background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer',
               }}
             >
               {t('common.cancel')}
@@ -322,7 +322,7 @@ function RollbackSection({ rollback, label }: { rollback: string; label: string 
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 14px', background: '#f9fafb', border: 'none',
-          cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)',
+          cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)',
           textAlign: 'left',
         }}
       >
@@ -330,7 +330,7 @@ function RollbackSection({ rollback, label }: { rollback: string; label: string 
         {label}
       </button>
       {open && (
-        <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--color-slate)', whiteSpace: 'pre-wrap', fontFamily: 'monospace', lineHeight: 1.6, background: '#fff' }}>
+        <div style={{ padding: '10px 14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', whiteSpace: 'pre-wrap', fontFamily: 'monospace', lineHeight: 1.6, background: '#fff' }}>
           {rollback}
         </div>
       )}

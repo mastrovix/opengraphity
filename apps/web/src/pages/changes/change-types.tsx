@@ -96,7 +96,7 @@ export const cardStyle: React.CSSProperties = {
 }
 export const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', border: '1px solid #e2e6f0', borderRadius: 6,
-  fontSize: 14, color: 'var(--color-slate-dark)', outline: 'none', backgroundColor: '#fafafa', boxSizing: 'border-box' as const,
+  fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none', backgroundColor: '#fafafa', boxSizing: 'border-box' as const,
 }
 export const textareaStyle: React.CSSProperties = {
   ...inputStyle, resize: 'vertical' as const, minHeight: 72,
@@ -106,7 +106,7 @@ export const textareaStyle: React.CSSProperties = {
 export function Badge({ value, map }: { value: string; map: Record<string, { bg: string; color: string }> }) {
   const c = map[value] ?? { bg: '#f3f4f6', color: 'var(--color-slate)' }
   return (
-    <span style={{ ...c, padding: '2px 8px', borderRadius: 100, fontSize: 12, fontWeight: 600, textTransform: 'uppercase' as const }}>
+    <span style={{ ...c, padding: '2px 8px', borderRadius: 100, fontSize: 'var(--font-size-body)', fontWeight: 600, textTransform: 'uppercase' as const }}>
       {value.replace(/_/g, ' ')}
     </span>
   )

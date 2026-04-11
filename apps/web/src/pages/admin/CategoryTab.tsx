@@ -27,7 +27,7 @@ export function CategoryTab() {
     { key: 'name', label: t('pages.changeCatalogAdmin.colName'), sortable: true, render: (v, row) => (
       <div>
         <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</div>
-        {row.description && <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 2 }}>{row.description}</div>}
+        {row.description && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>{row.description}</div>}
       </div>
     )},
     { key: 'entryCount', label: t('pages.changeCatalogAdmin.colEntries'), width: '80px', render: v => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
@@ -68,7 +68,7 @@ export function CategoryTab() {
              onClick={e => { if (e.target === e.currentTarget) setModalOpen(false) }}>
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.22)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #f3f4f6' }}>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
                 {editingId ? t('pages.changeCatalogAdmin.editCategory') : t('pages.changeCatalogAdmin.newCategory')}
               </h2>
               <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex' }}>
@@ -102,7 +102,7 @@ export function CategoryTab() {
                   <button onClick={() => setForm({ ...form, enabled: !form.enabled })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
                     {form.enabled ? <ToggleRight size={26} color="var(--color-brand)" /> : <ToggleLeft size={26} color="#cbd5e1" />}
                   </button>
-                  <span style={{ fontSize: 13, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalogAdmin.enabled')}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalogAdmin.enabled')}</span>
                 </div>
               )}
             </div>
@@ -120,8 +120,8 @@ export function CategoryTab() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
              onClick={e => { if (e.target === e.currentTarget) setDeleteId(null) }}>
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 400, boxShadow: '0 24px 80px rgba(0,0,0,0.22)', padding: '24px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalogAdmin.confirmDelete')}</h3>
-            <p style={{ fontSize: 13, color: 'var(--color-slate)', margin: '0 0 20px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalogAdmin.confirmDelete')}</h3>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 20px' }}>
               {t('pages.changeCatalogAdmin.confirmDeleteCategory')}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

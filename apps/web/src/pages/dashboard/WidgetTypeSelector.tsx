@@ -41,7 +41,7 @@ export function WidgetTypeSelector({ widgetType, color, onSelect }: WidgetTypeSe
               }}
             >
               {Icon && <Icon size={20} />}
-              <span style={{ fontSize: 11, fontWeight: 600 }}>{label}</span>
+              <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 600 }}>{label}</span>
             </button>
           )
         })}
@@ -53,7 +53,7 @@ export function WidgetTypeSelector({ widgetType, color, onSelect }: WidgetTypeSe
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 11, fontWeight: 700,
+  display: 'block', fontSize: 'var(--font-size-table)', fontWeight: 700,
   color: 'var(--color-slate)', marginBottom: 5,
   letterSpacing: 0.3, textTransform: 'uppercase',
 }

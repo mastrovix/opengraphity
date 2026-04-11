@@ -26,7 +26,7 @@ export function EntryForm({ hook }: EntryFormProps) {
         <button onClick={() => setFormView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 6 }}>
           <ArrowLeft size={20} color="var(--color-slate)" />
         </button>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+        <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
           {editingId ? t('pages.changeCatalogAdmin.editEntry') : t('pages.changeCatalogAdmin.newEntry')}
         </h2>
       </div>
@@ -34,7 +34,7 @@ export function EntryForm({ hook }: EntryFormProps) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* -- Section: Informazioni Base -- */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 0, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 0, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {t('pages.changeCatalog.sectionBase')}
         </div>
 
@@ -97,20 +97,20 @@ export function EntryForm({ hook }: EntryFormProps) {
         </div>
 
         {/* -- Section: Template Change -- */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {t('pages.changeCatalog.sectionTemplate')}
         </div>
 
         <div>
           <label style={labelS}>{t('pages.changeCatalogAdmin.titleTemplate')} *</label>
           <input ref={titleInputRef} style={inputS} value={form.defaultTitleTemplate} onChange={e => setForm({ ...form, defaultTitleTemplate: e.target.value })} placeholder={t('pages.changeCatalogAdmin.titleTemplatePlaceholder')} />
-          <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
             <span>{t('pages.changeCatalog.templateVars')}:</span>
             {['{ci_name}', '{date}', '{category}', '{ci_type}', '{ci_environment}', '{operator_name}'].map(v => (
               <button
                 key={v}
                 type="button"
-                style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '1px 6px', fontSize: 11, cursor: 'pointer', color: '#475569', fontFamily: 'monospace' }}
+                style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '1px 6px', fontSize: 'var(--font-size-table)', cursor: 'pointer', color: '#475569', fontFamily: 'monospace' }}
                 onClick={() => {
                   const el = titleInputRef.current
                   if (el) {
@@ -144,7 +144,7 @@ export function EntryForm({ hook }: EntryFormProps) {
         </div>
 
         {/* -- Section: CI Impattati -- */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {t('pages.changeCatalog.sectionCI')}
         </div>
 
@@ -168,24 +168,24 @@ export function EntryForm({ hook }: EntryFormProps) {
               ? <ToggleRight size={26} color="var(--color-brand)" />
               : <ToggleLeft size={26} color="#cbd5e1" />}
           </button>
-          <span style={{ fontSize: 13, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalog.ciRequired')}</span>
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalog.ciRequired')}</span>
         </div>
 
         {/* -- Section: Checklist Deploy -- */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {t('pages.changeCatalog.sectionChecklist')}
         </div>
 
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <label style={{ ...labelS, margin: 0 }}>{t('pages.changeCatalogAdmin.checklistLabel')}</label>
-            <button style={{ ...btnSecondary, padding: '4px 10px', fontSize: 12 }} onClick={addChecklistItem}>
+            <button style={{ ...btnSecondary, padding: '4px 10px', fontSize: 'var(--font-size-body)' }} onClick={addChecklistItem}>
               <Plus size={12} /> {t('pages.changeCatalogAdmin.addStep')}
             </button>
           </div>
           {form.checklist.map((item, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
-              <span style={{ fontSize: 12, color: 'var(--color-slate-light)', width: 20, flexShrink: 0, textAlign: 'center' }}>{i + 1}</span>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', width: 20, flexShrink: 0, textAlign: 'center' }}>{i + 1}</span>
               <input style={{ ...inputS, flex: 1 }} placeholder={t('pages.changeCatalogAdmin.stepTitle')} value={item.title} onChange={e => updateChecklistItem(i, 'title', e.target.value)} />
               <input style={{ ...inputS, flex: 1 }} placeholder={t('pages.changeCatalogAdmin.stepDesc')} value={item.description} onChange={e => updateChecklistItem(i, 'description', e.target.value)} />
               <button onClick={() => removeChecklistItem(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, flexShrink: 0 }}>
@@ -196,7 +196,7 @@ export function EntryForm({ hook }: EntryFormProps) {
         </div>
 
         {/* -- Section: Informazioni Operative -- */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {t('pages.changeCatalog.sectionOperational')}
         </div>
 
@@ -211,7 +211,7 @@ export function EntryForm({ hook }: EntryFormProps) {
                 ? <ToggleRight size={26} color="var(--color-brand)" />
                 : <ToggleLeft size={26} color="#cbd5e1" />}
             </button>
-            <span style={{ fontSize: 13, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalogAdmin.downtime')}</span>
+            <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalogAdmin.downtime')}</span>
           </div>
         </div>
 
@@ -228,7 +228,7 @@ export function EntryForm({ hook }: EntryFormProps) {
         </div>
 
         {/* -- Section: Notifiche -- */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #f3f4f6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {t('pages.changeCatalog.sectionNotifications')}
         </div>
 
@@ -238,7 +238,7 @@ export function EntryForm({ hook }: EntryFormProps) {
               ? <ToggleRight size={26} color="var(--color-brand)" />
               : <ToggleLeft size={26} color="#cbd5e1" />}
           </button>
-          <span style={{ fontSize: 13, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalog.notifyTeam')}</span>
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalog.notifyTeam')}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setForm({ ...form, requireCompletionConfirm: !form.requireCompletionConfirm })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
@@ -246,7 +246,7 @@ export function EntryForm({ hook }: EntryFormProps) {
               ? <ToggleRight size={26} color="var(--color-brand)" />
               : <ToggleLeft size={26} color="#cbd5e1" />}
           </button>
-          <span style={{ fontSize: 13, color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalog.requireConfirm')}</span>
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{t('pages.changeCatalog.requireConfirm')}</span>
         </div>
 
       </div>

@@ -67,19 +67,19 @@ export function KBArticlePage() {
 
   const related = (relData?.kbArticles?.items ?? []).filter((a) => a.id !== article?.id).slice(0, 4)
 
-  if (loading) return <div style={{ fontSize: 13, color: '#94a3b8', padding: 32 }}>{t('common.loading')}</div>
+  if (loading) return <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', padding: 32 }}>{t('common.loading')}</div>
   if (error || !article) return <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.articleNotFound')} />
 
   return (
     <PageContainer style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 32 }}>
       {/* Main content */}
       <div>
-        <Link to="/knowledge-base" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#64748b', textDecoration: 'none', fontSize: 13, marginBottom: 20 }}>
+        <Link to="/knowledge-base" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#64748b', textDecoration: 'none', fontSize: 'var(--font-size-body)', marginBottom: 20 }}>
           <ArrowLeft size={14} /> {t('pages.kb.backToList')}
         </Link>
 
         <div style={{ marginBottom: 12 }}>
-          <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 12, background: (CATEGORY_COLORS[article.category] ?? '#94a3b8') + '20', color: CATEGORY_COLORS[article.category] ?? '#94a3b8', fontWeight: 600 }}>
+          <span style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px', borderRadius: 12, background: (CATEGORY_COLORS[article.category] ?? '#94a3b8') + '20', color: CATEGORY_COLORS[article.category] ?? '#94a3b8', fontWeight: 600 }}>
             {article.category}
           </span>
         </div>
@@ -88,7 +88,7 @@ export function KBArticlePage() {
           {article.title}
         </h1>
 
-        <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#94a3b8', marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: '#94a3b8', marginBottom: 24, flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <User size={11} /> {article.authorName}
           </span>
@@ -102,7 +102,7 @@ export function KBArticlePage() {
 
         {/* Markdown body */}
         <div style={{
-          fontSize: 14, lineHeight: 1.7, color: '#334155',
+          fontSize: 'var(--font-size-body)', lineHeight: 1.7, color: '#334155',
           borderTop: '1px solid #e2e8f0', paddingTop: 24,
         }}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -115,7 +115,7 @@ export function KBArticlePage() {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 24, paddingTop: 16, borderTop: '1px solid #e2e8f0' }}>
             <Tag size={13} color="#94a3b8" />
             {article.tags.map((tag) => (
-              <span key={tag} style={{ padding: '2px 8px', borderRadius: 8, background: '#f1f5f9', color: '#64748b', fontSize: 12 }}>
+              <span key={tag} style={{ padding: '2px 8px', borderRadius: 8, background: '#f1f5f9', color: '#64748b', fontSize: 'var(--font-size-body)' }}>
                 {tag}
               </span>
             ))}
@@ -124,19 +124,19 @@ export function KBArticlePage() {
 
         {/* Helpful feedback */}
         <div style={{ marginTop: 32, padding: 20, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', textAlign: 'center' }}>
-          <p style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#1a2332' }}>
+          <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>
             {t('pages.kb.wasHelpful')}
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
             <button
               onClick={() => void rateArticle({ variables: { id: article.id, helpful: true } }).then(() => toast.success(t('pages.kb.thanks')))}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 13 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
               <ThumbsUp size={14} color="#22c55e" /> {t('pages.kb.yes')} ({article.helpfulCount})
             </button>
             <button
               onClick={() => void rateArticle({ variables: { id: article.id, helpful: false } }).then(() => toast.success(t('pages.kb.thanks')))}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 13 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
               <ThumbsDown size={14} color="#ef4444" /> {t('pages.kb.no')} ({article.notHelpfulCount})
             </button>
@@ -148,7 +148,7 @@ export function KBArticlePage() {
       <div>
         {related.length > 0 && (
           <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 16 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
+            <h3 style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
               {t('pages.kb.related')}
             </h3>
             {related.map((a) => (
@@ -157,8 +157,8 @@ export function KBArticlePage() {
                 to={`/knowledge-base/${a.slug}`}
                 style={{ display: 'block', textDecoration: 'none', padding: '8px 0', borderBottom: '1px solid #e2e8f0' }}
               >
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#1a2332', marginBottom: 2 }}>{a.title}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: '#1a2332', marginBottom: 2 }}>{a.title}</div>
+                <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Eye size={10} /> {a.views}
                 </div>
               </Link>
@@ -167,10 +167,10 @@ export function KBArticlePage() {
         )}
 
         <div style={{ marginTop: 16, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
+          <h3 style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
             {t('pages.kb.info')}
           </h3>
-          <div style={{ fontSize: 12, color: '#64748b', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 'var(--font-size-body)', color: '#64748b', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div><strong>{t('pages.kb.author')}:</strong> {article.authorName}</div>
             <div><strong>{t('pages.kb.published')}:</strong> {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : '—'}</div>
             <div><strong>{t('pages.kb.updated')}:</strong> {new Date(article.updatedAt).toLocaleDateString()}</div>

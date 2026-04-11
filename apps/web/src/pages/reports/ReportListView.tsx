@@ -69,13 +69,13 @@ export function ReportListView(props: ReportListViewProps) {
             <PageTitle icon={<LayoutGrid size={22} color="var(--color-brand)" />}>
               {tr('pages.reportBuilder.title')}
             </PageTitle>
-            <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
               {tr('pages.reportBuilder.count', { count: templates.length })}
             </p>
           </div>
           <button
             onClick={() => setShowNewDialog(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
           >
@@ -107,12 +107,12 @@ export function ReportListView(props: ReportListViewProps) {
                 <div style={{ padding: '14px 14px 10px', flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                     <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getReportIcon(t)}</span>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-slate-dark)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                    <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
                     {/* Menu */}
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       <button
                         onClick={e => { e.stopPropagation(); setMenuOpenId(isMenuOpen ? null : t.id) }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 5px', fontSize: 14, color: 'var(--color-slate-light)', lineHeight: 1, borderRadius: 4 }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 5px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', lineHeight: 1, borderRadius: 4 }}
                       >&#x22EE;</button>
                       {isMenuOpen && (
                         <div style={{
@@ -128,7 +128,7 @@ export function ReportListView(props: ReportListViewProps) {
                             <button key={item.label} onClick={item.action} style={{
                               display: 'block', width: '100%', textAlign: 'left',
                               padding: '10px 14px', border: 'none', background: 'none',
-                              cursor: 'pointer', fontSize: 14,
+                              cursor: 'pointer', fontSize: 'var(--font-size-card-title)',
                               color: item.danger ? 'var(--color-trigger-sla-breach)' : 'var(--color-slate)',
                             }}
                               onMouseEnter={e => (e.currentTarget.style.background = item.danger ? '#fef2f2' : '#f9fafb')}
@@ -142,11 +142,11 @@ export function ReportListView(props: ReportListViewProps) {
 
                   {/* Subtitle row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 3, background: vc.bg, color: vc.fg }}>
+                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 3, background: vc.bg, color: vc.fg }}>
                       {VIS_LABELS[t.visibility] ?? t.visibility}
                     </span>
                     {t.createdBy && (
-                      <span style={{ fontSize: 10, color: 'var(--color-slate-light)' }}>· {t.createdBy.name}</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>· {t.createdBy.name}</span>
                     )}
                   </div>
                 </div>
@@ -155,11 +155,11 @@ export function ReportListView(props: ReportListViewProps) {
                 <div style={{ padding: '8px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 6 }}>
                   <button
                     onClick={() => handleExecuteAndGoToDetail(t)}
-                    style={{ ...btnGhost, flex: 1, fontSize: 12, padding: '4px 10px' }}
+                    style={{ ...btnGhost, flex: 1, fontSize: 'var(--font-size-body)', padding: '4px 10px' }}
                   >&#x25B6; {tr('pages.reportBuilder.execute')}</button>
                   <button
                     onClick={() => goToDetail(t)}
-                    style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '4px 10px' }}
+                    style={{ ...btnPrimary, flex: 1, fontSize: 'var(--font-size-body)', padding: '4px 10px' }}
                   >&#x270F; {tr('pages.reportBuilder.modify')}</button>
                 </div>
               </div>
@@ -172,7 +172,7 @@ export function ReportListView(props: ReportListViewProps) {
       {showNewDialog && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-            <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 20, color: 'var(--color-slate-dark)' }}>Nuovo report</div>
+            <div style={{ fontWeight: 600, fontSize: 'var(--font-size-section-title)', marginBottom: 20, color: 'var(--color-slate-dark)' }}>Nuovo report</div>
 
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Nome *</label>
@@ -195,7 +195,7 @@ export function ReportListView(props: ReportListViewProps) {
                 <label style={labelStyle}>Team</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {teams.map((team: { id: string; name: string }) => (
-                    <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
+                    <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={newTeamIds.includes(team.id)}
                         onChange={e => setNewTeamIds(prev => e.target.checked ? [...prev, team.id] : prev.filter((x: string) => x !== team.id))} />
                       {team.name}

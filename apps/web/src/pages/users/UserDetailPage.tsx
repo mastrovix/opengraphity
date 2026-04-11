@@ -5,6 +5,8 @@ import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 // EmptyState no longer used — inline message instead
+import { DetailCard } from '@/components/ui/DetailCard'
+import { DetailField } from '@/components/ui/DetailField'
 import { Users, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
@@ -41,7 +43,7 @@ const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
 function RoleBadge({ role }: { role: string }) {
   const s = ROLE_STYLES[role] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
   return (
-    <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {role}
     </span>
   )
@@ -55,7 +57,7 @@ function RoleBadge({ role }: { role: string }) {
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 20, ...style }}>
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16, ...style }}>
       {children}
     </div>
   )
@@ -69,7 +71,7 @@ function CollapsibleCard({ title, defaultOpen = true, children }: { title: strin
         onClick={() => setOpen((p) => !p)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: open ? 16 : 0 }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
+        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
         {open ? <ChevronDown size={14} color="var(--color-slate-light)" /> : <ChevronRight size={14} color="var(--color-slate-light)" />}
       </div>
       {open && children}
@@ -102,34 +104,34 @@ export function UserDetailPage() {
   const availableTeams = allTeams.filter(t => !userTeamIds.includes(t.id))
 
   if (loading && !user) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 14 }}>Caricamento...</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento...</div>
   }
 
   if (!user) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 14 }}>Utente non trovato.</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Utente non trovato.</div>
   }
 
   return (
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 12, color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/users')}>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/users')}>
           ← Users
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
+          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
           <RoleBadge role={user.role} />
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
         {/* Left column */}
-        <div style={{ flex: 1 }}>
+        <div>
           <CollapsibleCard title={`Team (${user.teams.length})`} defaultOpen>
             {/* Current teams */}
             {user.teams.length === 0 ? (
-              <p style={{ fontSize: 13, color: 'var(--color-slate-light)', margin: '0 0 12px' }}>Nessun team assegnato</p>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>Nessun team assegnato</p>
             ) : (
               <div style={{ marginBottom: 12 }}>
                 {user.teams.map((t, i) => (
@@ -139,9 +141,9 @@ export function UserDetailPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-slate-dark)', cursor: 'pointer' }} onClick={() => navigate(`/teams/${t.id}`)}>{t.name}</span>
+                        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', cursor: 'pointer' }} onClick={() => navigate(`/teams/${t.id}`)}>{t.name}</span>
                         {t.type && (
-                          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600,
+                          <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, fontWeight: 600,
                             background: t.type === 'support' ? '#f0fdf4' : t.type === 'owner' ? '#eff6ff' : '#f8fafc',
                             color: t.type === 'support' ? '#16a34a' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)',
                           }}>{t.type}</span>
@@ -166,18 +168,18 @@ export function UserDetailPage() {
             {!showAddTeam ? (
               <button
                 onClick={() => setShowAddTeam(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
               >
                 <Plus size={14} /> Aggiungi a un team
               </button>
             ) : (
               <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 8 }}>
-                <div style={{ padding: '6px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 11, fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '6px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Team disponibili</span>
-                  <button onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--color-slate-light)' }}>Chiudi</button>
+                  <button onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>Chiudi</button>
                 </div>
                 {availableTeams.length === 0 ? (
-                  <div style={{ padding: '12px', fontSize: 12, color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun altro team disponibile</div>
+                  <div style={{ padding: '12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun altro team disponibile</div>
                 ) : availableTeams.map((t, i) => (
                   <div
                     key={t.id}
@@ -189,16 +191,16 @@ export function UserDetailPage() {
                     <Plus size={14} color="var(--color-brand)" />
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
+                        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
                         {t.type && (
-                          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600,
+                          <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, fontWeight: 600,
                             background: t.type === 'support' ? '#f0fdf4' : t.type === 'owner' ? '#eff6ff' : '#f8fafc',
                             color: t.type === 'support' ? '#16a34a' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)',
                           }}>{t.type}</span>
                         )}
                       </div>
                       {t.description && (
-                        <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 1 }}>{t.description}</div>
+                        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>{t.description}</div>
                       )}
                     </div>
                   </div>
@@ -209,30 +211,13 @@ export function UserDetailPage() {
         </div>
 
         {/* Right column */}
-        <div style={{ width: 340, flexShrink: 0 }}>
-          <Card>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 16 }}>Dettagli</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>ID</div>
-                <div style={{ fontSize: 12, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--color-slate)', wordBreak: 'break-all' }}>{user.id}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Email</div>
-                <div style={{ fontSize: 14, color: 'var(--color-slate)' }}>{user.email}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Ruolo</div>
-                <RoleBadge role={user.role} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Creato il</div>
-                <div style={{ fontSize: 14, color: 'var(--color-slate)' }}>
-                  {user.createdAt ? new Date(user.createdAt).toLocaleString('it-IT') : '—'}
-                </div>
-              </div>
-            </div>
-          </Card>
+        <div>
+          <DetailCard title="Dettagli">
+            <DetailField label="ID" value={user.id} mono />
+            <DetailField label="Email" value={user.email} />
+            <DetailField label="Ruolo" value={<RoleBadge role={user.role} />} />
+            <DetailField label="Creato il" value={user.createdAt ? new Date(user.createdAt).toLocaleString('it-IT') : null} />
+          </DetailCard>
         </div>
       </div>
     </PageContainer>

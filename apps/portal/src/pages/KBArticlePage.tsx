@@ -55,7 +55,7 @@ export function KBArticlePage() {
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
       {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#94A3B8', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#94A3B8', marginBottom: 20 }}>
         <Link to="/kb" style={{ color: '#0EA5E9' }}>{t('kb.breadcrumb')}</Link>
         <span>›</span>
         <span style={{ textTransform: 'capitalize' }}>{article.category}</span>
@@ -69,14 +69,14 @@ export function KBArticlePage() {
       <h1 style={{ fontSize: 26, fontWeight: 700, color: '#0F172A', marginBottom: 12, lineHeight: 1.3 }}>
         {article.title}
       </h1>
-      <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#94A3B8', marginBottom: 32, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 16, fontSize: 10, color: '#94A3B8', marginBottom: 32, flexWrap: 'wrap' }}>
         <span>{t('kb.by')} <strong style={{ color: '#64748B' }}>{article.authorName}</strong></span>
         {article.publishedAt && <span>{t('kb.published')}: {fmtDate(article.publishedAt)}</span>}
         <span>{article.views} {t('kb.views')}</span>
       </div>
 
       {/* Article body */}
-      <div className="md-body" style={{ fontSize: 15, lineHeight: 1.8, color: '#0F172A', marginBottom: 40 }}>
+      <div className="md-body" style={{ fontSize: 10, lineHeight: 1.8, color: '#0F172A', marginBottom: 40 }}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {article.body}
         </ReactMarkdown>
@@ -90,11 +90,11 @@ export function KBArticlePage() {
         textAlign:       'center',
         marginBottom:    32,
       }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#0F172A', marginBottom: 14 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, color: '#0F172A', marginBottom: 14 }}>
           {t('kb.helpful')}
         </div>
         {voted !== null ? (
-          <p style={{ fontSize: 14, color: '#64748B' }}>Grazie per il tuo feedback!</p>
+          <p style={{ fontSize: 10, color: '#64748B' }}>Grazie per il tuo feedback!</p>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
             <button
@@ -142,7 +142,7 @@ export function KBArticlePage() {
       {/* Related articles */}
       {related.length > 0 && (
         <div style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0F172A', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 10, fontWeight: 600, color: '#0F172A', marginBottom: 14 }}>
             {t('kb.related')}
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -181,7 +181,7 @@ export function KBArticlePage() {
         flexWrap:        'wrap',
         gap:             12,
       }}>
-        <span style={{ fontSize: 14, color: '#92400E', fontWeight: 500 }}>
+        <span style={{ fontSize: 10, color: '#92400E', fontWeight: 500 }}>
           {t('kb.notSolved')}
         </span>
         <Link

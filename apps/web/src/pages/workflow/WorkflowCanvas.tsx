@@ -184,11 +184,11 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         : step.name.replace(/_/g, ' ')}
       </div>
 
-      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-slate-dark)', lineHeight: 1.3, marginBottom: 4 }}>
+      <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)', lineHeight: 1.3, marginBottom: 4 }}>
         {step.label}
       </div>
 
-      <div style={{ fontSize: 10, color: 'var(--color-slate-light)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+      <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
         {step.name}
       </div>
 
@@ -310,11 +310,11 @@ export function WorkflowCanvas({
   return (
     <div style={{ flex: 1, position: 'relative', overflow: 'hidden', width: '100%', height: 'calc(100vh - 120px)' }}>
       {loading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
           Caricamento workflow…
         </div>
       ) : !def ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
           Nessun workflow trovato per questo tenant.
         </div>
       ) : (
@@ -372,7 +372,7 @@ export function WorkflowCanvas({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: colors.brand }} />
-            <span style={{ fontSize: 12, color: colors.slate }}>Nodo / Step</span>
+            <span style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>Nodo / Step</span>
           </div>
           {[
             { color: colors.trigger.manual,    label: 'Manuale' },
@@ -382,7 +382,7 @@ export function WorkflowCanvas({
           ].map(({ color, label }) => (
             <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 20, height: 2, backgroundColor: color, borderRadius: 1 }} />
-              <span style={{ fontSize: 12, color: 'var(--color-slate)' }}>{label}</span>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{label}</span>
             </div>
           ))}
         </div>

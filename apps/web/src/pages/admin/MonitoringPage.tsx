@@ -107,7 +107,7 @@ export function MonitoringPage() {
   const rpmChartOption = {
     grid:    { top: 8, right: 8, bottom: 8, left: 36, containLabel: true },
     xAxis:   { type: 'category', show: false, data: rpmChartData.map((_, i) => i) },
-    yAxis:   { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
+    yAxis:   { type: 'value', minInterval: 1, axisLabel: { fontSize: 'var(--font-size-label)' } },
     tooltip: { trigger: 'axis', formatter: (p: { value: number }[]) => `${p[0]?.value ?? 0} req/min` },
     series:  [{
       type:      'line',
@@ -131,7 +131,7 @@ export function MonitoringPage() {
       <PageTitle icon={<Activity size={22} color="var(--color-brand)" />}>
         {t('pages.monitoring.title')}
       </PageTitle>
-      <p style={{ fontSize: 13, color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 24 }}>
+      <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 24 }}>
         {t('pages.monitoring.subtitle')}
       </p>
 
@@ -143,8 +143,8 @@ export function MonitoringPage() {
           <div style={{ ...statCard, display: 'flex', alignItems: 'center', gap: 10 }}>
             <StatusDot status={health?.status ?? 'unknown'} />
             <div>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.health.uptime')}</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+              <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.health.uptime')}</div>
+              <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
                 {health ? formatUptime(health.uptime) : '—'}
               </div>
             </div>
@@ -156,17 +156,17 @@ export function MonitoringPage() {
               <div key={key} style={{ ...statCard, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <StatusDot status={check?.status ?? 'unknown'} />
                 <div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>{label}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: check?.status === 'ok' ? '#16a34a' : '#ef4444' }}>
+                  <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{label}</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: check?.status === 'ok' ? '#16a34a' : '#ef4444' }}>
                     {check?.status === 'ok' ? t('pages.monitoring.health.ok') : t('pages.monitoring.health.error')}
                   </div>
                   {check?.latencyMs !== null && check?.latencyMs !== undefined && (
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--font-size-table)', color: '#9ca3af', marginTop: 2 }}>
                       {t('pages.monitoring.health.latency')}: {check.latencyMs}ms
                     </div>
                   )}
                   {check?.error && (
-                    <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--font-size-table)', color: '#ef4444', marginTop: 2 }}>
                       {check.error}
                     </div>
                   )}
@@ -182,26 +182,26 @@ export function MonitoringPage() {
         <p style={sectionTitle}>{t('pages.monitoring.requests.title')}</p>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.requests.rpm')}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-brand)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.rpm')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-brand)' }}>
               {metrics?.requests.requestsPerMinute.toFixed(0) ?? '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.requests.avg')}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.avg')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.requests.averageResponseMs.toFixed(0)}ms` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.requests.p95')}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.p95')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.requests.p95ResponseMs.toFixed(0)}ms` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.requests.errorRate')}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: metrics && metrics.requests.errorRate > 0.05 ? '#ef4444' : 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.errorRate')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: metrics && metrics.requests.errorRate > 0.05 ? '#ef4444' : 'var(--color-slate-dark)' }}>
               {metrics ? `${(metrics.requests.errorRate * 100).toFixed(1)}%` : '—'}
             </div>
           </div>
@@ -219,7 +219,7 @@ export function MonitoringPage() {
       <div style={card}>
         <p style={sectionTitle}>{t('pages.monitoring.queues.title')}</p>
         {metrics?.queues && metrics.queues.length > 0 ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                 <th style={{ textAlign: 'left', padding: '6px 12px 6px 0', color: '#6b7280', fontWeight: 600 }}>Queue</th>
@@ -244,7 +244,7 @@ export function MonitoringPage() {
             </tbody>
           </table>
         ) : (
-          <div style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: 24 }}>
+          <div style={{ fontSize: 'var(--font-size-body)', color: '#9ca3af', textAlign: 'center', padding: 24 }}>
             {t('common.noResults')}
           </div>
         )}
@@ -255,14 +255,14 @@ export function MonitoringPage() {
         <p style={sectionTitle}>{t('pages.monitoring.neo4j.title')}</p>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.neo4j.totalQueries')}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.neo4j.totalQueries')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics?.neo4j.totalQueries ?? '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.neo4j.avgQuery')}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.neo4j.avgQuery')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.neo4j.averageQueryMs.toFixed(1)}ms` : '—'}
             </div>
           </div>
@@ -270,10 +270,10 @@ export function MonitoringPage() {
 
         {metrics?.neo4j.slowQueries && metrics.neo4j.slowQueries.length > 0 && (
           <>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>
+            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>
               {t('pages.monitoring.neo4j.slowQueries')}
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
               <tbody>
                 {metrics.neo4j.slowQueries.map((sq, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
@@ -302,16 +302,16 @@ export function MonitoringPage() {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a' }} />
-                <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 600 }}>
+                <span style={{ fontSize: 'var(--font-size-body)', color: '#16a34a', fontWeight: 600 }}>
                   {t('pages.monitoring.tracing.enabled')}
                 </span>
                 {trace.endpoint && (
-                  <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 8 }}>{trace.endpoint}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: '#9ca3af', marginLeft: 8 }}>{trace.endpoint}</span>
                 )}
               </div>
 
               {trace.recentTraces.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                       <th style={{ textAlign: 'left', padding: '6px 0', color: '#6b7280', fontWeight: 600 }}>Operation</th>
@@ -326,7 +326,7 @@ export function MonitoringPage() {
                         <td style={{ padding: '6px 0', fontFamily: 'monospace' }}>
                           {tr.operationName}
                           {tr.spanCount > 1 && (
-                            <span style={{ color: '#9ca3af', marginLeft: 8, fontSize: 11 }}>
+                            <span style={{ color: '#9ca3af', marginLeft: 8, fontSize: 'var(--font-size-table)' }}>
                               — {tr.spanCount} spans
                             </span>
                           )}
@@ -345,11 +345,11 @@ export function MonitoringPage() {
                   </tbody>
                 </table>
               ) : (
-                <div style={{ fontSize: 13, color: '#9ca3af' }}>No recent traces</div>
+                <div style={{ fontSize: 'var(--font-size-body)', color: '#9ca3af' }}>No recent traces</div>
               )}
             </>
           ) : (
-            <div style={{ fontSize: 13, color: '#9ca3af', padding: '12px 0' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#9ca3af', padding: '12px 0' }}>
               {t('pages.monitoring.tracing.noTracing')}
             </div>
           )
@@ -361,38 +361,38 @@ export function MonitoringPage() {
         <p style={sectionTitle}>{t('pages.monitoring.process.title')}</p>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.process.memory')}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.memory')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.system.memoryUsageMb.toFixed(0)} MB` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.process.rss')}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.rss')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.system.memoryRssMb.toFixed(0)} MB` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.process.cpu')}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.cpu')}</div>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.system.cpuUsagePercent.toFixed(1)}%` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.process.version')}</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.version')}</div>
+            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
               {metrics?.system.nodeVersion ?? '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.process.pid')}</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.pid')}</div>
+            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
               {metrics?.system.pid ?? '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>{t('pages.monitoring.health.uptime')}</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.health.uptime')}</div>
+            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
               {metrics ? formatUptime(metrics.system.uptimeSeconds) : '—'}
             </div>
           </div>

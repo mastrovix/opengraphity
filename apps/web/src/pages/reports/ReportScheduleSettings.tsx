@@ -53,8 +53,8 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px' }}>
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
-          <button onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 12 }}>&larr; Indietro</button>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Impostazioni &mdash; {selected.name}</h2>
+          <button onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
+          <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Impostazioni &mdash; {selected.name}</h2>
         </div>
 
         <div style={{ marginBottom: 14 }}>
@@ -81,7 +81,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
             <label style={labelStyle}>Condividi con team</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {teams.map((team: { id: string; name: string }) => (
-                <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
+                <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={settingsTeamIds.includes(team.id)}
                     onChange={e => setSettingsTeamIds(prev => e.target.checked ? [...prev, team.id] : prev.filter((x: string) => x !== team.id))} />
                   {team.name}
@@ -94,7 +94,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
         <div style={{ marginBottom: 20, padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: settingsSched ? 14 : 0 }}>
             <input type="checkbox" checked={settingsSched} onChange={e => setSettingsSched(e.target.checked)} />
-            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-slate-dark)' }}>Abilita schedulazione</span>
+            <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>Abilita schedulazione</span>
           </label>
           {settingsSched && (
             <>
@@ -128,7 +128,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                 <label style={labelStyle}>Destinatari email</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', minHeight: 38 }}>
                   {settingsRecipients.map((r) => (
-                    <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
+                    <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                       {r}
                       <button onClick={() => setSettingsRecipients(prev => prev.filter(x => x !== r))}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: '#0369a1', fontWeight: 600 }}>&times;</button>
@@ -150,10 +150,10 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                       }
                     }}
                     placeholder={settingsRecipients.length === 0 ? 'email@esempio.com, Enter' : ''}
-                    style={{ flex: 1, minWidth: 160, border: 'none', outline: 'none', fontSize: 13, background: 'transparent' }}
+                    style={{ flex: 1, minWidth: 160, border: 'none', outline: 'none', fontSize: 'var(--font-size-body)', background: 'transparent' }}
                   />
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--color-slate-light)', marginTop: 3 }}>
+                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 3 }}>
                   Premi Invio o virgola per aggiungere. (Email SMTP non ancora implementato &mdash; archiviato per uso futuro.)
                 </div>
               </div>
@@ -163,7 +163,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                 <label style={labelStyle}>Formato report</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['pdf', 'excel'] as const).map((fmt) => (
-                    <label key={fmt} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: `1px solid ${settingsFormat === fmt ? '#0284c7' : '#d1d5db'}`, background: settingsFormat === fmt ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: 13, fontWeight: settingsFormat === fmt ? 600 : 400, color: settingsFormat === fmt ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                    <label key={fmt} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: `1px solid ${settingsFormat === fmt ? '#0284c7' : '#d1d5db'}`, background: settingsFormat === fmt ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: settingsFormat === fmt ? 600 : 400, color: settingsFormat === fmt ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                       <input type="radio" name="schedFormat" value={fmt} checked={settingsFormat === fmt} onChange={() => setSettingsFormat(fmt)} style={{ margin: 0 }} />
                       {fmt === 'pdf' ? '\uD83D\uDCC4 PDF' : '\uD83D\uDCCA Excel'}
                     </label>
@@ -173,7 +173,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
 
               {/* Last run */}
               {selected.lastScheduledRun && (
-                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-slate-light)' }}>
+                <div style={{ marginTop: 10, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
                   Ultima esecuzione: {new Date(selected.lastScheduledRun).toLocaleString('it-IT')}
                 </div>
               )}

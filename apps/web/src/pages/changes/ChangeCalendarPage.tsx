@@ -103,7 +103,7 @@ function pad(n: number): string {
 
 const btnStyle: React.CSSProperties = {
   padding: '6px 14px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff',
-  cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#0f172a', transition: 'all 0.15s',
+  cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500, color: '#0f172a', transition: 'all 0.15s',
 }
 
 const activeBtnStyle: React.CSSProperties = {
@@ -280,7 +280,7 @@ export function ChangeCalendarPage() {
     <div
       key={ev.id}
       style={{
-        padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 500,
+        padding: '2px 6px', borderRadius: 4, fontSize: 'var(--font-size-label)', fontWeight: 500,
         borderLeft: `3px solid ${typeColor(ev.changeType)}`,
         background: `${typeColor(ev.changeType)}10`,
         color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -298,7 +298,7 @@ export function ChangeCalendarPage() {
       <PageTitle icon={<CalendarDays size={22} color={colors.brand} />}>
         {t('pages.changeCalendar.title')}
       </PageTitle>
-      <p style={{ color: colors.slate, margin: '4px 0 20px', fontSize: 14 }}>
+      <p style={{ color: colors.slate, margin: '4px 0 20px', fontSize: 'var(--font-size-body)' }}>
         {t('pages.changeCalendar.subtitle')}
       </p>
 
@@ -327,13 +327,13 @@ export function ChangeCalendarPage() {
           <button onClick={goNext} style={{ ...btnStyle, padding: '6px 8px' }}><ChevronRight size={16} /></button>
         </div>
 
-        <span style={{ fontWeight: 600, fontSize: 16, color: '#0f172a' }}>{periodLabel}</span>
+        <span style={{ fontWeight: 600, fontSize: 'var(--font-size-section-title)', color: '#0f172a' }}>{periodLabel}</span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {conflicts.length > 0 && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '4px 10px', borderRadius: 9999, fontSize: 12, fontWeight: 600,
+              padding: '4px 10px', borderRadius: 9999, fontSize: 'var(--font-size-body)', fontWeight: 600,
               background: '#fef2f2', color: '#ef4444',
             }}>
               <AlertTriangle size={14} /> {conflicts.length} {t('pages.changeCalendar.conflicts')}
@@ -355,7 +355,7 @@ export function ChangeCalendarPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
                 {DAYS.map(d => (
                   <div key={d} style={{
-                    padding: '8px 4px', textAlign: 'center', fontSize: 11, fontWeight: 600,
+                    padding: '8px 4px', textAlign: 'center', fontSize: 'var(--font-size-table)', fontWeight: 600,
                     color: '#64748b', background: '#f9fafb', borderBottom: '1px solid #e2e8f0',
                   }}>
                     {d}
@@ -378,14 +378,14 @@ export function ChangeCalendarPage() {
                       onClick={() => { setCurrentDate(cell.date); setView('day') }}
                     >
                       <div style={{
-                        fontSize: 12, fontWeight: isToday(cell.date) ? 700 : 400,
+                        fontSize: 'var(--font-size-body)', fontWeight: isToday(cell.date) ? 700 : 400,
                         color: isToday(cell.date) ? '#0284c7' : '#0f172a', marginBottom: 4,
                       }}>
                         {cell.date.getDate()}
                       </div>
                       {dayEvents.slice(0, maxPills).map(renderEventPill)}
                       {dayEvents.length > maxPills && (
-                        <div style={{ fontSize: 10, color: '#0284c7', fontWeight: 500, paddingLeft: 6 }}>
+                        <div style={{ fontSize: 'var(--font-size-label)', color: '#0284c7', fontWeight: 500, paddingLeft: 6 }}>
                           {t('pages.changeCalendar.more', { count: dayEvents.length - maxPills })}
                         </div>
                       )}
@@ -404,7 +404,7 @@ export function ChangeCalendarPage() {
                 <div style={{ borderBottom: '1px solid #e2e8f0', background: '#f9fafb' }} />
                 {weekDays.map((d, i) => (
                   <div key={i} style={{
-                    padding: '8px 4px', textAlign: 'center', fontSize: 11, fontWeight: 600,
+                    padding: '8px 4px', textAlign: 'center', fontSize: 'var(--font-size-table)', fontWeight: 600,
                     color: isToday(d) ? '#0284c7' : '#64748b', background: '#f9fafb',
                     borderBottom: '1px solid #e2e8f0', borderLeft: '1px solid #e2e8f0',
                   }}>
@@ -417,7 +417,7 @@ export function ChangeCalendarPage() {
                 {Array.from({ length: 24 }, (_, h) => (
                   <div key={h} style={{ display: 'grid', gridTemplateColumns: '60px repeat(7, 1fr)', height: 48 }}>
                     <div style={{
-                      fontSize: 10, color: '#94a3b8', padding: '2px 8px', textAlign: 'right',
+                      fontSize: 'var(--font-size-label)', color: '#94a3b8', padding: '2px 8px', textAlign: 'right',
                       borderBottom: '1px solid #f1f5f9',
                     }}>
                       {pad(h)}:00
@@ -449,7 +449,7 @@ export function ChangeCalendarPage() {
                                   color: '#fff',
                                   borderRadius: 4,
                                   padding: '2px 4px',
-                                  fontSize: 10,
+                                  fontSize: 'var(--font-size-label)',
                                   fontWeight: 500,
                                   overflow: 'hidden',
                                   cursor: 'pointer',
@@ -487,7 +487,7 @@ export function ChangeCalendarPage() {
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
               <div style={{
                 padding: '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e2e8f0',
-                fontWeight: 600, fontSize: 14, color: isToday(currentDate) ? '#0284c7' : '#0f172a',
+                fontWeight: 600, fontSize: 'var(--font-size-body)', color: isToday(currentDate) ? '#0284c7' : '#0f172a',
               }}>
                 {DAYS[(currentDate.getDay() + 6) % 7]} {currentDate.getDate()} {MONTHS[currentDate.getMonth()]}
               </div>
@@ -499,7 +499,7 @@ export function ChangeCalendarPage() {
                   })
                   return (
                     <div key={h} style={{ display: 'grid', gridTemplateColumns: '60px 1fr', height: 48 }}>
-                      <div style={{ fontSize: 10, color: '#94a3b8', padding: '2px 8px', textAlign: 'right', borderBottom: '1px solid #f1f5f9' }}>
+                      <div style={{ fontSize: 'var(--font-size-label)', color: '#94a3b8', padding: '2px 8px', textAlign: 'right', borderBottom: '1px solid #f1f5f9' }}>
                         {pad(h)}:00
                       </div>
                       <div style={{ position: 'relative', borderLeft: '1px solid #e2e8f0', borderBottom: '1px solid #f1f5f9' }}>
@@ -519,11 +519,11 @@ export function ChangeCalendarPage() {
                                 zIndex: 2,
                               }}
                             >
-                              <div style={{ fontWeight: 600, fontSize: 13 }}>{ev.title}</div>
-                              <div style={{ fontSize: 11, opacity: 0.9, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)' }}>{ev.title}</div>
+                              <div style={{ fontSize: 'var(--font-size-table)', opacity: 0.9, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                 <span style={{
                                   padding: '1px 6px', borderRadius: 4,
-                                  background: 'rgba(255,255,255,0.2)', fontSize: 10,
+                                  background: 'rgba(255,255,255,0.2)', fontSize: 'var(--font-size-label)',
                                 }}>
                                   {ev.changeType}
                                 </span>
@@ -555,7 +555,7 @@ export function ChangeCalendarPage() {
           {/* ── No events message ─────────────────────────────── */}
           {events.length === 0 && (
             <div style={{
-              textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 14, marginTop: 16,
+              textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 'var(--font-size-card-title)', marginTop: 16,
             }}>
               {t('pages.changeCalendar.noEvents')}
             </div>
@@ -569,7 +569,7 @@ export function ChangeCalendarPage() {
             borderRadius: 12, padding: 20, alignSelf: 'flex-start',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>{t('pages.changeCalendar.findSlot')}</span>
+              <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: '#0f172a' }}>{t('pages.changeCalendar.findSlot')}</span>
               <button onClick={() => setShowSlotFinder(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
                 <X size={18} />
               </button>
@@ -577,7 +577,7 @@ export function ChangeCalendarPage() {
 
             {/* Duration */}
             <label style={{ display: 'block', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+              <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
                 {t('pages.changeCalendar.slotDuration')}
               </div>
               <input
@@ -588,14 +588,14 @@ export function ChangeCalendarPage() {
                 onChange={e => setSlotDuration(Number(e.target.value))}
                 style={{
                   width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0',
-                  borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box',
+                  borderRadius: 8, fontSize: 'var(--font-size-card-title)', outline: 'none', boxSizing: 'border-box',
                 }}
               />
             </label>
 
             {/* CI picker */}
             <label style={{ display: 'block', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+              <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
                 {t('pages.changeCalendar.slotCIs')}
               </div>
               <div style={{ position: 'relative' }}>
@@ -605,7 +605,7 @@ export function ChangeCalendarPage() {
                   onChange={e => setSlotCISearch(e.target.value)}
                   style={{
                     width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0',
-                    borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box',
+                    borderRadius: 8, fontSize: 'var(--font-size-body)', outline: 'none', boxSizing: 'border-box',
                   }}
                 />
                 {slotCISearch.length >= 2 && slotCIData?.allCIs?.items && (
@@ -617,7 +617,7 @@ export function ChangeCalendarPage() {
                     {slotCIData.allCIs.items.map(ci => (
                       <div
                         key={ci.id}
-                        style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12 }}
+                        style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
                         onClick={() => {
                           if (!slotCIIds.includes(ci.id)) setSlotCIIds(prev => [...prev, ci.id])
                           setSlotCISearch('')
@@ -637,7 +637,7 @@ export function ChangeCalendarPage() {
                     <span
                       key={id}
                       style={{
-                        padding: '2px 8px', borderRadius: 9999, fontSize: 11, background: '#f1f5f9',
+                        padding: '2px 8px', borderRadius: 9999, fontSize: 'var(--font-size-table)', background: '#f1f5f9',
                         color: '#64748b', cursor: 'pointer',
                       }}
                       onClick={() => setSlotCIIds(prev => prev.filter(x => x !== id))}
@@ -650,7 +650,7 @@ export function ChangeCalendarPage() {
             </label>
 
             {/* Date range */}
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
               {t('pages.changeCalendar.slotRange')}
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -660,7 +660,7 @@ export function ChangeCalendarPage() {
                 onChange={e => setSlotFrom(e.target.value)}
                 style={{
                   flex: 1, padding: '6px 8px', border: '1px solid #e2e8f0',
-                  borderRadius: 6, fontSize: 12, outline: 'none',
+                  borderRadius: 6, fontSize: 'var(--font-size-body)', outline: 'none',
                 }}
               />
               <input
@@ -669,7 +669,7 @@ export function ChangeCalendarPage() {
                 onChange={e => setSlotTo(e.target.value)}
                 style={{
                   flex: 1, padding: '6px 8px', border: '1px solid #e2e8f0',
-                  borderRadius: 6, fontSize: 12, outline: 'none',
+                  borderRadius: 6, fontSize: 'var(--font-size-body)', outline: 'none',
                 }}
               />
             </div>
@@ -680,7 +680,7 @@ export function ChangeCalendarPage() {
               style={{
                 width: '100%', padding: '10px 0', borderRadius: 8, border: 'none',
                 background: slotFrom && slotTo ? '#0284c7' : '#94a3b8',
-                color: '#fff', fontWeight: 600, fontSize: 13, cursor: slotFrom && slotTo ? 'pointer' : 'not-allowed',
+                color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: slotFrom && slotTo ? 'pointer' : 'not-allowed',
                 marginBottom: 16,
               }}
             >
@@ -698,24 +698,24 @@ export function ChangeCalendarPage() {
                       padding: 10, borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc',
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600, fontSize: 12, color: '#0f172a' }}>
+                        <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: '#0f172a' }}>
                           {start.toLocaleDateString()} {pad(start.getHours())}:{pad(start.getMinutes())} - {pad(end.getHours())}:{pad(end.getMinutes())}
                         </span>
                         <span style={{
-                          padding: '2px 8px', borderRadius: 9999, fontSize: 10, fontWeight: 700,
+                          padding: '2px 8px', borderRadius: 9999, fontSize: 'var(--font-size-label)', fontWeight: 700,
                           background: scoreColor(slot.score) + '15', color: scoreColor(slot.score),
                         }}>
                           {t('pages.changeCalendar.score')}: {slot.score}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>{slot.reason}</div>
+                      <div style={{ fontSize: 'var(--font-size-table)', color: '#64748b', marginBottom: 6 }}>{slot.reason}</div>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(`${start.toISOString()} - ${end.toISOString()}`)
                         }}
                         style={{
                           padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0',
-                          background: '#fff', fontSize: 11, fontWeight: 500, cursor: 'pointer', color: '#0284c7',
+                          background: '#fff', fontSize: 'var(--font-size-table)', fontWeight: 500, cursor: 'pointer', color: '#0284c7',
                         }}
                       >
                         {t('pages.changeCalendar.useSlot')}

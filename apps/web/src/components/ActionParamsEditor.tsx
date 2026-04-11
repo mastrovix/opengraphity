@@ -26,7 +26,7 @@ interface FieldMeta {
 }
 
 const textareaS: React.CSSProperties = { ...inputS, minHeight: 60, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }
-const monoS: React.CSSProperties     = { ...inputS, minHeight: 80, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }
+const monoS: React.CSSProperties     = { ...inputS, minHeight: 80, resize: 'vertical', fontFamily: 'monospace', fontSize: 'var(--font-size-body)', lineHeight: 1.5 }
 
 const ITIL_ENTITIES = new Set(['incident', 'problem', 'change', 'service_request'])
 const FIELD_TYPE_LABELS: Record<string, string> = {

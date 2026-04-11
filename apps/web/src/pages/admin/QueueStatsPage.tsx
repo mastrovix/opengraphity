@@ -63,33 +63,33 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
   try { prettyData = JSON.stringify(JSON.parse(job.data), null, 2) } catch { /* keep raw */ }
 
   return (
-    <div style={{ padding: '12px 16px', background: '#f8fafc', borderTop: '1px solid #e5e7eb', fontSize: 13 }}>
+    <div style={{ padding: '12px 16px', background: '#f8fafc', borderTop: '1px solid #e5e7eb', fontSize: 'var(--font-size-body)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Job ID</div>
-          <code style={{ fontSize: 12, color: '#1a2332', wordBreak: 'break-all' }}>{job.id}</code>
+          <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Job ID</div>
+          <code style={{ fontSize: 'var(--font-size-body)', color: '#1a2332', wordBreak: 'break-all' }}>{job.id}</code>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Name</div>
+          <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Name</div>
           <span style={{ color: '#1a2332' }}>{job.name}</span>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Attempts</div>
+          <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Attempts</div>
           <span style={{ color: '#1a2332' }}>{job.attemptsMade} / {job.maxAttempts}</span>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Created</div>
+          <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Created</div>
           <span style={{ color: '#1a2332' }}>{formatTs(job.timestamp)}</span>
         </div>
         {job.processedOn && (
           <div>
-            <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Processed</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Processed</div>
             <span style={{ color: '#1a2332' }}>{formatTs(job.processedOn)}</span>
           </div>
         )}
         {job.finishedOn && (
           <div>
-            <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Finished</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Finished</div>
             <span style={{ color: '#1a2332' }}>{formatTs(job.finishedOn)}</span>
           </div>
         )}
@@ -99,23 +99,23 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
         <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.06)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.2)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
             <AlertCircle size={13} color="#ef4444" />
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Error</span>
+            <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Error</span>
           </div>
-          <code style={{ fontSize: 12, color: '#ef4444', wordBreak: 'break-all' }}>{job.failedReason}</code>
+          <code style={{ fontSize: 'var(--font-size-body)', color: '#ef4444', wordBreak: 'break-all' }}>{job.failedReason}</code>
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button
           onClick={() => setShowPayload((p) => !p)}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
         >
           {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Payload
         </button>
         {job.stacktrace.length > 0 && (
           <button
             onClick={() => setShowStack((p) => !p)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
           >
             {showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Stack trace ({job.stacktrace.length})
           </button>
@@ -124,25 +124,25 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
           <button
             onClick={onRetry}
             disabled={retrying}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, borderRadius: 5, border: 'none', background: '#38bdf8', color: '#fff', cursor: retrying ? 'not-allowed' : 'pointer', opacity: retrying ? 0.6 : 1, fontWeight: 500 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: 'none', background: '#38bdf8', color: '#fff', cursor: retrying ? 'not-allowed' : 'pointer', opacity: retrying ? 0.6 : 1, fontWeight: 500 }}
           >
             <RotateCcw size={12} /> {retrying ? 'Retrying…' : 'Retry'}
           </button>
         )}
         {job.returnValue && (
-          <span style={{ fontSize: 11, color: '#22c55e', padding: '3px 8px', background: 'rgba(34,197,94,0.08)', borderRadius: 4 }}>
+          <span style={{ fontSize: 'var(--font-size-table)', color: '#22c55e', padding: '3px 8px', background: 'rgba(34,197,94,0.08)', borderRadius: 4 }}>
             Return: {job.returnValue.length > 60 ? job.returnValue.slice(0, 60) + '…' : job.returnValue}
           </span>
         )}
       </div>
 
       {showPayload && (
-        <pre style={{ marginTop: 10, padding: '10px 12px', background: '#1a2332', color: '#e2e8f0', borderRadius: 6, fontSize: 11, lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        <pre style={{ marginTop: 10, padding: '10px 12px', background: '#1a2332', color: '#e2e8f0', borderRadius: 6, fontSize: 'var(--font-size-table)', lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
           {prettyData}
         </pre>
       )}
       {showStack && job.stacktrace.length > 0 && (
-        <pre style={{ marginTop: 10, padding: '10px 12px', background: '#1a2332', color: '#fca5a5', borderRadius: 6, fontSize: 11, lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        <pre style={{ marginTop: 10, padding: '10px 12px', background: '#1a2332', color: '#fca5a5', borderRadius: 6, fontSize: 'var(--font-size-table)', lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
           {job.stacktrace.join('\n')}
         </pre>
       )}
@@ -198,7 +198,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </div>
         <div style={{ minWidth: 180 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
             {queue.name}
           </span>
         </div>
@@ -211,7 +211,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 key={key}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
-                  padding: '3px 10px', borderRadius: 20, background: s.bg, fontSize: 12,
+                  padding: '3px 10px', borderRadius: 20, background: s.bg, fontSize: 'var(--font-size-body)',
                   fontWeight: val > 0 ? 600 : 400,
                   color: val > 0 ? s.color : '#94a3b8',
                 }}
@@ -229,13 +229,13 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
         <div style={{ borderTop: '1px solid #e5e7eb' }}>
           {/* Status filter tabs */}
           <div style={{ display: 'flex', gap: 4, padding: '10px 16px', background: '#f8fafc', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: '#94a3b8', marginRight: 4 }}>Show:</span>
+            <span style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', marginRight: 4 }}>Show:</span>
             {JOB_STATUSES.map((s) => (
               <button
                 key={s}
                 onClick={(e) => { e.stopPropagation(); handleStatusChange(s) }}
                 style={{
-                  padding: '3px 10px', borderRadius: 5, border: 'none', fontSize: 12, cursor: 'pointer',
+                  padding: '3px 10px', borderRadius: 5, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                   fontWeight: 500,
                   background: jobStatus === s ? (COUNTER_STYLE[s]?.color ?? '#38bdf8') : '#e2e8f0',
                   color: jobStatus === s ? '#fff' : '#475569',
@@ -246,18 +246,18 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
             ))}
             <button
               onClick={(e) => { e.stopPropagation(); void loadJobs({ variables: { queueName: queue.name, status: jobStatus, limit: 50 } }) }}
-              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: 12, borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
+              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
             >
               <RefreshCw size={11} /> Refresh
             </button>
           </div>
 
           {jobsLoading && (
-            <div style={{ padding: '20px 16px', fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>Loading jobs…</div>
+            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: '#94a3b8', textAlign: 'center' }}>Loading jobs…</div>
           )}
 
           {!jobsLoading && jobs.length === 0 && (
-            <div style={{ padding: '24px 16px', fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ padding: '24px 16px', fontSize: 'var(--font-size-body)', color: '#94a3b8', textAlign: 'center' }}>
               No {jobStatus} jobs in this queue
             </div>
           )}
@@ -272,14 +272,14 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 <div style={{ color: '#94a3b8', flexShrink: 0 }}>
                   {expandedJob === job.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 </div>
-                <code style={{ fontSize: 12, color: '#64748b', minWidth: 120 }}>{job.id}</code>
-                <span style={{ fontSize: 13, fontWeight: 500, color: '#1a2332', flex: 1 }}>{job.name}</span>
+                <code style={{ fontSize: 'var(--font-size-body)', color: '#64748b', minWidth: 120 }}>{job.id}</code>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: '#1a2332', flex: 1 }}>{job.name}</span>
                 {job.failedReason && (
-                  <span style={{ fontSize: 12, color: '#ef4444', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: '#ef4444', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {job.failedReason}
                   </span>
                 )}
-                <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', whiteSpace: 'nowrap' }}>
                   {new Date(job.timestamp).toLocaleString()}
                 </span>
               </div>
@@ -323,7 +323,7 @@ export function QueueStatsPage() {
           <PageTitle icon={<Activity size={22} color="var(--color-brand)" />}>
             {t('pages.queueStats.title')}
           </PageTitle>
-          <p style={{ fontSize: 13, color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${queues.length} code`}
           </p>
         </div>
@@ -333,7 +333,7 @@ export function QueueStatsPage() {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border)',
-            background: 'white', color: 'var(--color-slate-dark)', fontSize: 13,
+            background: 'white', color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)',
             cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
           }}
         >
@@ -343,7 +343,7 @@ export function QueueStatsPage() {
       </div>
 
       {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 13, marginBottom: 20 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 'var(--font-size-body)', marginBottom: 20 }}>
           {error.message}
         </div>
       )}
@@ -353,13 +353,13 @@ export function QueueStatsPage() {
           <QueueRow key={q.name} queue={q} onQueueRefetch={() => void refetch()} />
         ))}
         {!loading && queues.length === 0 && !error && (
-          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, padding: 40 }}>
+          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 'var(--font-size-card-title)', padding: 40 }}>
             {t('common.noResults')}
           </div>
         )}
       </div>
 
-      <p style={{ marginTop: 20, fontSize: 12, color: '#94a3b8' }}>
+      <p style={{ marginTop: 20, fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>
         {t('pages.queueStats.autoRefresh')}
       </p>
     </PageContainer>

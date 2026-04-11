@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { DetailField } from '@/components/ui/DetailField'
 import type { Change } from './change-types'
 import { Badge, TYPE_COLORS, PRIORITY_COLORS, STEP_COLORS, cardStyle } from './change-types'
 
@@ -23,7 +24,7 @@ export function ChangeDetails({ change, currentStep, sidebarOnly = false }: Prop
           onClick={() => setTimelineOpen((p) => !p)}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}
         >
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline Workflow</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline Workflow</span>
           {timelineOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
         {timelineOpen && (
@@ -37,9 +38,9 @@ export function ChangeDetails({ change, currentStep, sidebarOnly = false }: Prop
                   )}
                   <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? 'var(--color-brand)' : 'var(--color-slate)', flexShrink: 0, marginTop: 2, border: '2px solid #fff', boxShadow: isCurrent ? '0 0 0 3px rgba(2,132,199,0.2)' : '0 0 0 1px rgba(100,116,139,0.3)' }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-slate-light)' }}>{new Date(exec.enteredAt).toLocaleString('it-IT')}</div>
-                    {exec.notes && <div style={{ fontSize: 12, color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
+                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{new Date(exec.enteredAt).toLocaleString('it-IT')}</div>
+                    {exec.notes && <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
                   </div>
                 </div>
               )
@@ -58,15 +59,15 @@ export function ChangeDetails({ change, currentStep, sidebarOnly = false }: Prop
           onClick={() => setDescOpen((p) => !p)}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}
         >
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
           {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
         {descOpen && (
           <div style={{ padding: '16px 20px 20px' }}>
             {change.description ? (
-              <p style={{ fontSize: 14, color: 'var(--color-slate-dark)', margin: 0, lineHeight: 1.6 }}>{change.description}</p>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: 0, lineHeight: 1.6 }}>{change.description}</p>
             ) : (
-              <p style={{ fontSize: 14, color: 'var(--color-slate-light)', margin: 0 }}>Nessuna descrizione.</p>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>Nessuna descrizione.</p>
             )}
           </div>
         )}
@@ -78,28 +79,21 @@ export function ChangeDetails({ change, currentStep, sidebarOnly = false }: Prop
           onClick={() => setDetailsOpen((p) => !p)}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: detailsOpen ? '1px solid #e5e7eb' : 'none' }}
         >
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-slate-dark)' }}>Dettagli</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Dettagli</span>
           {detailsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
         {detailsOpen && (
           <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[
-              { label: 'Tipo',          value: <Badge value={change.type}     map={TYPE_COLORS} /> },
-              { label: 'Priorità',      value: <Badge value={change.priority} map={PRIORITY_COLORS} /> },
-              { label: 'Step',          value: change.workflowInstance ? <Badge value={currentStep} map={STEP_COLORS} /> : '—' },
-              { label: 'Team',          value: change.assignedTeam?.name ?? '—' },
-              { label: 'Assegnato a',   value: change.assignee?.name ?? '—' },
-              { label: 'Creato da',     value: change.createdBy?.name ?? '—' },
-              { label: 'Scheduled Start', value: change.scheduledStart ? new Date(change.scheduledStart).toLocaleDateString('it-IT') : '—' },
-              { label: 'Scheduled End',   value: change.scheduledEnd   ? new Date(change.scheduledEnd).toLocaleDateString('it-IT')   : '—' },
-              { label: 'Creato il',     value: new Date(change.createdAt).toLocaleString('it-IT') },
-              { label: 'Aggiornato',    value: new Date(change.updatedAt).toLocaleString('it-IT') },
-            ].map(({ label, value }) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--color-slate-light)', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
-                <span style={{ fontSize: 14, color: 'var(--color-slate-dark)', textAlign: 'right' }}>{value}</span>
-              </div>
-            ))}
+            <DetailField label="Tipo" value={<Badge value={change.type} map={TYPE_COLORS} />} />
+            <DetailField label="Priorità" value={<Badge value={change.priority} map={PRIORITY_COLORS} />} />
+            <DetailField label="Step" value={change.workflowInstance ? <Badge value={currentStep} map={STEP_COLORS} /> : null} />
+            <DetailField label="Team" value={change.assignedTeam?.name ?? null} />
+            <DetailField label="Assegnato a" value={change.assignee?.name ?? null} />
+            <DetailField label="Creato da" value={change.createdBy?.name ?? null} />
+            <DetailField label="Scheduled Start" value={change.scheduledStart ? new Date(change.scheduledStart).toLocaleDateString('it-IT') : null} />
+            <DetailField label="Scheduled End" value={change.scheduledEnd ? new Date(change.scheduledEnd).toLocaleDateString('it-IT') : null} />
+            <DetailField label="Creato il" value={new Date(change.createdAt).toLocaleString('it-IT')} />
+            <DetailField label="Aggiornato" value={new Date(change.updatedAt).toLocaleString('it-IT')} />
           </div>
         )}
       </div>

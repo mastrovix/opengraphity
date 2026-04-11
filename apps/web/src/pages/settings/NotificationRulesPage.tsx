@@ -61,7 +61,7 @@ const CATEGORIES: { key: string; events: string[] }[] = [
 ]
 
 const TH: React.CSSProperties = {
-  padding: '8px 12px', textAlign: 'left', fontSize: 11,
+  padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-table)',
   fontWeight: fontWeight.semibold, color: '#94a3b8',
   textTransform: 'uppercase', letterSpacing: '0.06em',
 }
@@ -140,7 +140,7 @@ export default function NotificationRulesPage() {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff',
-            border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 500,
+            border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500,
             cursor: 'pointer', transition: 'background-color 150ms',
           }}
         >

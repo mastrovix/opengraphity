@@ -64,7 +64,7 @@ export function TicketListPage() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: '#0F172A' }}>{t('nav.tickets')}</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A' }}>{t('nav.tickets')}</h1>
         <Link
           to="/tickets/new"
           style={{
@@ -116,7 +116,7 @@ export function TicketListPage() {
           <p style={{ marginBottom: 16 }}>{t(`ticket.empty.${filter}`)}</p>
           <Link
             to="/tickets/new"
-            style={{ color: '#0EA5E9', fontWeight: 500, fontSize: 14 }}
+            style={{ color: '#0EA5E9', fontWeight: 500, fontSize: 10 }}
           >
             + {t('ticket.new')}
           </Link>
@@ -152,10 +152,10 @@ export function TicketListPage() {
 
               {/* Main info */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
                   {ticket.title}
                 </div>
-                <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#94A3B8', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#94A3B8', flexWrap: 'wrap' }}>
                   <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
                   <span>Aperto {fmtDate(ticket.createdAt)}</span>
                   <span>Aggiornato {fmtDate(ticket.updatedAt)}</span>
@@ -200,7 +200,7 @@ export function TicketListPage() {
           >
             {t('ticket.prev')}
           </button>
-          <span style={{ padding: '8px 0', fontSize: 13, color: '#94A3B8' }}>
+          <span style={{ padding: '8px 0', fontSize: 10, color: '#94A3B8' }}>
             {page} / {totalPages}
           </span>
           <button

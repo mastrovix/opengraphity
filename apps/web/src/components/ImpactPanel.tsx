@@ -46,23 +46,23 @@ interface ImpactPanelProps {
 
 const SECTION_HEADER: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 600,
+  width: '100%', padding: '10px 0', fontSize: 'var(--font-size-body)', fontWeight: 600,
   color: colors.slate, background: 'none', border: 'none', cursor: 'pointer',
   borderBottom: `1px solid ${colors.border}`,
 }
 
 const ROW: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 8,
-  padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13,
+  padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)',
 }
 
 const EMPTY_MSG: CSSProperties = {
-  fontSize: 13, color: colors.slateLight, padding: '10px 0', fontStyle: 'italic',
+  fontSize: 'var(--font-size-body)', color: colors.slateLight, padding: '10px 0', fontStyle: 'italic',
 }
 
 const BADGE_BASE: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', padding: '2px 8px',
-  borderRadius: 4, fontSize: 13, fontWeight: 600,
+  borderRadius: 4, fontSize: 'var(--font-size-body)', fontWeight: 600,
   textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
 }
 
@@ -119,24 +119,24 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
           {analysis.riskLevel.toUpperCase()} · {analysis.riskScore}
         </span>
         {hasMetrics ? metrics.map((m) => (
-          <span key={m.label} style={{ fontSize: 13, color: colors.slate }}>
-            <strong style={{ fontSize: 13, fontWeight: 600, color: colors.brand }}>{m.count}</strong>{' '}{m.label}
+          <span key={m.label} style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>
+            <strong style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.brand }}>{m.count}</strong>{' '}{m.label}
           </span>
         )) : (
-          <span style={{ fontSize: 13, color: colors.slateLight, fontStyle: 'italic' }}>Nessun fattore di rischio rilevato</span>
+          <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, fontStyle: 'italic' }}>Nessun fattore di rischio rilevato</span>
         )}
       </div>
 
       {/* Score breakdown */}
       {breakdown.scoreDetails !== 'Nessun fattore di rischio rilevato' && (
-        <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '6px 20px', fontSize: 13, color: 'var(--color-slate-light)' }}>
+        <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '6px 20px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
           {breakdown.scoreDetails}
         </div>
       )}
 
       {/* Warning banner */}
       {(analysis.riskLevel === 'high' || analysis.riskLevel === 'critical') && (
-        <div style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a', padding: '8px 20px', fontSize: 13, color: '#92400e', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <div style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a', padding: '8px 20px', fontSize: 'var(--font-size-body)', color: '#92400e', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <AlertTriangle size={14} style={{ color: 'var(--color-trigger-timer)', flexShrink: 0, marginTop: 1 }} />
           <span>Questo change impatta CI critici. Valuta attentamente la finestra di manutenzione.</span>
         </div>
@@ -182,9 +182,9 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                         >
                           {items.map((ci) => (
                             <div key={ci.id} style={ROW}>
-                              <span style={{ flex: 1, fontSize: 13, color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ci.name}</span>
+                              <span style={{ flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ci.name}</span>
                               <EnvBadge environment={ci.environment} />
-                              <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: DIST_BG[Number(dist)] ?? 'var(--color-slate-bg)', color: DIST_COLOR[Number(dist)] ?? 'var(--color-slate)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: DIST_BG[Number(dist)] ?? 'var(--color-slate-bg)', color: DIST_COLOR[Number(dist)] ?? 'var(--color-slate)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                 {dist} hop
                               </span>
                             </div>
@@ -209,7 +209,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
           {showIncidents && (
             <div style={{ paddingBottom: 8, paddingLeft: 20 }}>
               {totalInc === 0 ? (
-                <div style={{ padding: '12px 0', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--color-slate-light)' }}>
+                <div style={{ padding: '12px 0', display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
                   <CheckCircle size={13} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
                   Nessun incident sui CI affected
                 </div>
@@ -221,10 +221,10 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                         <div key={inc.id} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-brand)', flexShrink: 0 }} />
                           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <a href={`/incidents/${inc.id}`} style={{ fontSize: 13, color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{inc.title}</a>
-                            <span style={{ color: 'var(--color-slate-light)', fontSize: 13 }}>{' · '}{inc.ciName}</span>
+                            <a href={`/incidents/${inc.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{inc.title}</a>
+                            <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{' · '}{inc.ciName}</span>
                           </div>
-                          <span style={{ fontSize: 13, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{inc.severity}</span>
+                          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{inc.severity}</span>
                         </div>
                       ))}
                     </CollapsibleGroup>
@@ -236,10 +236,10 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                           <div key={inc.id} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 10 }}>
                             <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-success)', flexShrink: 0 }} />
                             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              <a href={`/incidents/${inc.id}`} style={{ fontSize: 13, color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{inc.title}</a>
-                              <span style={{ color: 'var(--color-slate-light)', fontSize: 13 }}>{' · '}{inc.ciName}</span>
+                              <a href={`/incidents/${inc.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{inc.title}</a>
+                              <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{' · '}{inc.ciName}</span>
                             </div>
-                            <span style={{ fontSize: 13, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{inc.severity}</span>
+                            <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{inc.severity}</span>
                           </div>
                         ))}
                       </div>
@@ -274,10 +274,10 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                   <div key={ch.id} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_DOT[ch.status] ?? 'var(--color-brand)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <a href={`/changes/${ch.id}`} style={{ fontSize: 13, color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{ch.title}</a>
-                      <span style={{ color: 'var(--color-slate-light)', fontSize: 13 }}>{' · '}{ch.ciName} · {formatDate(ch.createdAt)}</span>
+                      <a href={`/changes/${ch.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{ch.title}</a>
+                      <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{' · '}{ch.ciName} · {formatDate(ch.createdAt)}</span>
                     </div>
-                    <span style={{ fontSize: 13, color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>{ch.status}</span>
+                    <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>{ch.status}</span>
                   </div>
                 )
                 return (
@@ -294,7 +294,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                           {completati.length > 3 && (
                             <button
                               onClick={() => setShowAllChanges((p) => !p)}
-                              style={{ fontSize: 13, color: 'var(--color-slate-light)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4 }}
+                              style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4 }}
                             >
                               <ChevronRight size={11} />
                               {showAllChanges ? 'Mostra meno' : `Altri ${completati.length - 3}`}
