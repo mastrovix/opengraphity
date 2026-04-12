@@ -121,7 +121,7 @@ export function transitionBtnColor(toStep: string): { bg: string; color: string;
   if (['failed', 'rejected'].includes(toStep)) return { bg: 'var(--color-trigger-sla-breach)', color: '#fff', hover: '#b91c1c' }
   if (toStep === 'assessment') return { bg: '#2563eb', color: '#fff', hover: '#1d4ed8' }
   if (toStep === 'planning') return { bg: 'var(--color-brand-hover)', color: '#fff', hover: '#075985' }
-  if (toStep === 'deployment') return { bg: '#7c3aed', color: '#fff', hover: '#6d28d9' }
+  if (toStep === 'deployment') return { bg: 'var(--color-brand)', color: '#fff', hover: 'var(--color-brand-hover)' }
   return { bg: 'var(--color-brand)', color: '#fff', hover: 'var(--color-brand-hover)' }
 }
 

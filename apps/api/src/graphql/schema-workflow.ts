@@ -88,5 +88,12 @@ export function workflowSDL(): string {
     positionX: Float!
     positionY: Float!
   }
+
+  input StepChangeInput {
+    stepName:     String!
+    label:        String!
+    enterActions: String
+    exitActions:  String
+  }
   `
 }

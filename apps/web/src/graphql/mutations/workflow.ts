@@ -13,11 +13,13 @@ export const SAVE_WORKFLOW_CHANGES = gql`
     $definitionId: ID!
     $transitions: [TransitionChangeInput!]!
     $positions: [StepPositionInput!]!
+    $steps: [StepChangeInput!]
   ) {
     saveWorkflowChanges(
       definitionId: $definitionId
       transitions: $transitions
       positions: $positions
+      steps: $steps
     ) {
       id name version
     }

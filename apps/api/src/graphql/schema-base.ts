@@ -299,6 +299,7 @@ export function buildBaseSDL(): string {
       definitionId: ID!
       transitions:  [TransitionChangeInput!]!
       positions:    [StepPositionInput!]!
+      steps:        [StepChangeInput!]
     ): WorkflowDefinition!
 
     executeWorkflowTransition(

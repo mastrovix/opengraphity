@@ -80,7 +80,7 @@ export async function executeChangeTransition(
         WHERE s.task_type = 'deploy'
         RETURN count(s) AS total
       `, { changeId, tenantId }))
-      const totalSteps = (stepsResult.records[0]?.get('total') as { low: number } | null)?.low ?? 0
+      const totalSteps = Number(stepsResult.records[0]?.get('total') ?? 0)
       if (totalSteps === 0) {
         return { success: false, error: 'Definisci almeno 1 deploy step prima di inviare al CAB', instance: null }
       }
@@ -93,7 +93,7 @@ export async function executeChangeTransition(
         WHERE s.task_type = 'deploy' AND NOT s.status IN ['completed', 'skipped']
         RETURN count(s) AS pending
       `, { changeId }))
-      const pending = (pendingRes.records[0]?.get('pending') as { low: number })?.low ?? 0
+      const pending = Number(pendingRes.records[0]?.get('pending') ?? 0)
       if (pending > 0) {
         return { success: false, error: `Ci sono ${pending} deploy step non completati o saltati`, instance: null }
       }

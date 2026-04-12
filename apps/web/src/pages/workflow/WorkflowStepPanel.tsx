@@ -1,11 +1,8 @@
 import { useState } from 'react'
-import { useMutation } from '@apollo/client/react'
 import { useEnumValues } from '@/hooks/useEnumValues'
-import { toast } from 'sonner'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { colors } from '@/lib/tokens'
-import { UPDATE_WORKFLOW_STEP } from '@/graphql/mutations'
 import type { WFStep, NotifyRuleAction, ConditionRow, AnyAction } from './workflow-types'
 import {
   panelStyle,
@@ -50,9 +47,10 @@ interface StepPanelProps {
   definitionId: string
   onClose:      () => void
   onSaved:      (updated: Partial<WFStep>) => void
+  onSaveLocally?: (change: { stepName: string; label: string; enterActions: string | null; exitActions: string | null }) => void
 }
 
-export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: StepPanelProps) {
+export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved, onSaveLocally }: StepPanelProps) {
   const { t } = useTranslation()
   const { values: SEVERITY_VALUES } = useEnumValues('incident', 'severity')
   const { values: PRIORITY_VALUES } = useEnumValues('incident', 'priority')
@@ -92,17 +90,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
   const [notifyChannels, setNotifyChannels] = useState<string[]>(existingNR?.params.channels ?? ['in_app'])
   const [notifyTarget,   setNotifyTarget]   = useState(existingNR?.params.target     ?? 'all')
 
-  const [save, { loading }] = useMutation<{ updateWorkflowStep: WFStep }>(UPDATE_WORKFLOW_STEP, {
-    onCompleted: (data) => {
-      toast.success('Step aggiornato')
-      onSaved({
-        label,
-        enterActions: data.updateWorkflowStep?.enterActions ?? null,
-        exitActions:  data.updateWorkflowStep?.exitActions  ?? null,
-      })
-    },
-    onError: (e) => toast.error(e.message),
-  })
+  const loading = false
 
   const buildEnterActions = (): string | null => {
     const actions: AnyAction[] = [...editableEnterActions]
@@ -134,15 +122,10 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved }: Step
   const saveDisabled = loading || (propsUnchanged && notifyUnchanged)
 
   const handleSave = () => {
-    save({
-      variables: {
-        definitionId,
-        stepName:     step.name,
-        label,
-        enterActions: buildEnterActions(),
-        exitActions:  buildExitActions(),
-      },
-    })
+    const enterActions = buildEnterActions()
+    const exitActions  = buildExitActions()
+    onSaveLocally?.({ stepName: step.name, label, enterActions, exitActions })
+    onSaved({ label, enterActions, exitActions })
   }
 
   const handleConfirmAdd = (forKey: 'enter' | 'exit') => {

@@ -95,11 +95,11 @@ export function DeployStepList({
             Object.entries(groupByField(deploySteps, (s) => s.assignedTeam?.name ?? 'Non assegnato')).map(([status, steps]) => (
               <CollapsibleGroup key={status} title={status.replace(/_/g, ' ')} count={steps.length}>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
                         {['Titolo', 'Team', 'Assegnato a', 'Inizio', 'Fine'].map((h) => (
-                          <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
+                          <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -114,7 +114,7 @@ export function DeployStepList({
                         >
                           <td style={{ padding: '8px 12px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{step.title}</td>
                           <td style={{ padding: '8px 12px' }}>
-                            {step.assignedTeam?.name ?? <span style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>Non assegnato</span>}
+                            {step.assignedTeam?.name ?? <span style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-table)' }}>Non assegnato</span>}
                           </td>
                           <td style={{ padding: '8px 12px' }}>
                             {step.assignee ? (
@@ -122,12 +122,12 @@ export function DeployStepList({
                                 <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-label)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   {step.assignee.name.charAt(0).toUpperCase()}
                                 </div>
-                                <span style={{ fontSize: 'var(--font-size-body)' }}>{step.assignee.name}</span>
+                                <span style={{ fontSize: 'var(--font-size-table)' }}>{step.assignee.name}</span>
                               </div>
-                            ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>—</span>}
+                            ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>—</span>}
                           </td>
-                          <td style={{ padding: '8px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{formatDate(step.scheduledStart ?? '')}</td>
-                          <td style={{ padding: '8px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{formatDate(step.scheduledEnd ?? '')}</td>
+                          <td style={{ padding: '8px 12px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{formatDate(step.scheduledStart ?? '')}</td>
+                          <td style={{ padding: '8px 12px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{formatDate(step.scheduledEnd ?? '')}</td>
                         </tr>
                       ))}
                     </tbody>

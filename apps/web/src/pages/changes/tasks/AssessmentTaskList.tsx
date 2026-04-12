@@ -117,11 +117,11 @@ export function AssessmentTaskList({
           {Object.entries(groupByField(assessmentTasks, (t) => t.assignedTeam?.name ?? 'Non assegnato')).map(([ciType, tasks]) => (
             <CollapsibleGroup key={ciType} title={ciType.replace(/_/g, ' ')} count={tasks.length}>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid #e2e6f0' }}>
                       {['CI', 'Team', 'Assegnato a', 'Risk', 'Status'].map((h) => (
-                        <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
+                        <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -136,7 +136,7 @@ export function AssessmentTaskList({
                       >
                         <td style={{ padding: '8px 12px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{task.ci?.name ?? '—'}</td>
                         <td style={{ padding: '8px 12px' }}>
-                          {task.assignedTeam?.name ?? <span style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>Non assegnato</span>}
+                          {task.assignedTeam?.name ?? <span style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-table)' }}>Non assegnato</span>}
                         </td>
                         <td style={{ padding: '8px 12px' }}>
                           {task.assignee ? (
@@ -144,18 +144,18 @@ export function AssessmentTaskList({
                               <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-label)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                 {task.assignee.name.charAt(0).toUpperCase()}
                               </div>
-                              <span style={{ fontSize: 'var(--font-size-body)' }}>{task.assignee.name}</span>
+                              <span style={{ fontSize: 'var(--font-size-table)' }}>{task.assignee.name}</span>
                             </div>
-                          ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>—</span>}
+                          ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>—</span>}
                         </td>
                         <td style={{ padding: '8px 12px' }}>
                           {task.riskLevel ? (
                             <span style={{
-                              fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+                              fontSize: 'var(--font-size-table)', fontWeight: 600, padding: '2px 8px', borderRadius: 4,
                               backgroundColor: task.riskLevel === 'critical' ? 'rgba(239,68,68,0.1)' : task.riskLevel === 'high' ? 'rgba(2,132,199,0.1)' : task.riskLevel === 'medium' ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)',
                               color: task.riskLevel === 'critical' ? 'var(--color-trigger-sla-breach)' : task.riskLevel === 'high' ? 'var(--color-brand)' : task.riskLevel === 'medium' ? '#ca8a04' : '#16a34a',
                             }}>{task.riskLevel.toUpperCase()}</span>
-                          ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>—</span>}
+                          ) : <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>—</span>}
                         </td>
                         <td style={{ padding: '8px 12px' }}><Badge value={task.status} map={TASK_STATUS_COLORS} /></td>
                       </tr>

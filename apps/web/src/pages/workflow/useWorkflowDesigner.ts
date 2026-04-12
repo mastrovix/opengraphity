@@ -43,8 +43,9 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
-  const [hasChanges,     setHasChanges]     = useState(false)
-  const [pendingChanges, setPendingChanges] = useState<PendingTransitionChange[]>([])
+  const [hasChanges,         setHasChanges]         = useState(false)
+  const [pendingChanges,     setPendingChanges]     = useState<PendingTransitionChange[]>([])
+  const [pendingStepChanges, setPendingStepChanges] = useState<{ stepName: string; label: string; enterActions: string | null; exitActions: string | null }[]>([])
 
   const selectedWorkflow = defToWorkflowKey(def)
 
@@ -153,6 +154,19 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     setHasChanges(true)
   }, [])
 
+  const handleSaveStepLocally = useCallback((change: { stepName: string; label: string; enterActions: string | null; exitActions: string | null }) => {
+    setPendingStepChanges((prev) => {
+      const idx = prev.findIndex((c) => c.stepName === change.stepName)
+      if (idx >= 0) {
+        const updated = [...prev]
+        updated[idx] = change
+        return updated
+      }
+      return [...prev, change]
+    })
+    setHasChanges(true)
+  }, [])
+
   // ── Selected data ─────────────────────────────────────────────────────────────
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null
@@ -168,7 +182,6 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
           : n,
       ),
     )
-    setHasChanges(false)
   }
 
   function onEdgeSaved(updated: Partial<WFTransition>) {
@@ -221,8 +234,11 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     handleEdgeClick,
     handlePaneClick,
     handleSaveLocally,
+    handleSaveStepLocally,
     handleReconnect,
     onStepSaved,
     onEdgeSaved,
+    pendingStepChanges,
+    setPendingStepChanges,
   }
 }

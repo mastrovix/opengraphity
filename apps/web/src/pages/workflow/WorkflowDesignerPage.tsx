@@ -32,12 +32,15 @@ export function WorkflowDesignerPage() {
     setSelectedEdgeId,
     hasChanges,
     pendingChanges,
+    pendingStepChanges,
     setHasChanges,
     setPendingChanges,
+    setPendingStepChanges,
     handleNodeClick,
     handleEdgeClick,
     handlePaneClick,
     handleSaveLocally,
+    handleSaveStepLocally,
     handleReconnect,
     onStepSaved,
     onEdgeSaved,
@@ -59,10 +62,12 @@ export function WorkflowDesignerPage() {
         definitionId: def.id,
         transitions:  pendingChanges,
         positions,
+        steps:        pendingStepChanges,
       },
     })
     const newVersion = result.data?.saveWorkflowChanges?.version ?? (def.version + 1)
     setPendingChanges([])
+    setPendingStepChanges([])
     setHasChanges(false)
     toast.success(`Workflow salvato — v${newVersion}`)
     refetch()
@@ -74,7 +79,7 @@ export function WorkflowDesignerPage() {
         def={def}
         selectedWorkflow={selectedWorkflow}
         hasChanges={hasChanges}
-        pendingCount={pendingChanges.length}
+        pendingCount={pendingChanges.length + pendingStepChanges.length}
         onSave={handleSave}
         onRefetch={refetch}
       />
@@ -99,7 +104,8 @@ export function WorkflowDesignerPage() {
                 step={selectedStep}
                 definitionId={def.id}
                 onClose={() => setSelectedNodeId(null)}
-                onSaved={(u) => { onStepSaved(u); setHasChanges(true) }}
+                onSaved={(u) => onStepSaved(u)}
+                onSaveLocally={handleSaveStepLocally}
               />
             )}
             {selectedTr && def && (

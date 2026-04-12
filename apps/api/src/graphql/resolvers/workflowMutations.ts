@@ -487,7 +487,7 @@ export async function executeWorkflowTransition(
 
 export async function saveWorkflowChanges(
   _: unknown,
-  { definitionId, transitions, positions }: {
+  { definitionId, transitions, positions, steps }: {
     definitionId: string
     transitions: Array<{
       transitionId:  string
@@ -499,6 +499,12 @@ export async function saveWorkflowChanges(
       timerHours?:   number | null
     }>
     positions: Array<{ stepId: string; positionX: number; positionY: number }>
+    steps?: Array<{
+      stepName:     string
+      label:        string
+      enterActions: string | null
+      exitActions:  string | null
+    }> | null
   },
   ctx: GraphQLContext,
 ) {
@@ -517,6 +523,18 @@ export async function saveWorkflowChanges(
               t.condition      = tr.condition,
               t.timer_hours    = tr.timerHours
         `, { transitions }),
+      )
+    }
+    // Update step properties (label, enterActions, exitActions)
+    if (steps && steps.length > 0) {
+      await session.executeWrite((tx) =>
+        tx.run(`
+          UNWIND $steps AS st
+          MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: st.stepName})
+          SET s.label         = st.label,
+              s.enter_actions = st.enterActions,
+              s.exit_actions  = st.exitActions
+        `, { definitionId, tenantId: ctx.tenantId, steps }),
       )
     }
     // Update step positions
