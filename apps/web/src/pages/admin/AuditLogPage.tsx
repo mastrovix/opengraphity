@@ -8,6 +8,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { EmptyState } from '@/components/EmptyState'
+import { Pagination } from '@/components/ui/Pagination'
 
 const GET_AUDIT_LOG = gql`
   query GetAuditLog(
@@ -171,32 +172,7 @@ export function AuditLogPage() {
       })()}
 
       {/* Pagination */}
-      {total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-          <span>
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total} {t('pages.audit.entries')}
-          </span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => handlePageChange(Math.max(0, page - 1))}
-              disabled={page === 0}
-              style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
-            >
-              {t('common.prev')}
-            </button>
-            <span style={{ padding: '4px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-              {page + 1} / {totalPages}
-            </span>
-            <button
-              onClick={() => handlePageChange(Math.min(totalPages - 1, page + 1))}
-              disabled={page >= totalPages - 1}
-              style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
-            >
-              {t('common.next')}
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => handlePageChange(page - 1)} onNext={() => handlePageChange(page + 1)} />
     </PageContainer>
   )
 }

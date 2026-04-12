@@ -13,6 +13,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { RichTextEditor } from '@/components/RichTextEditor'
+import { Pagination } from '@/components/ui/Pagination'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -395,16 +396,7 @@ export function KBAdminPage() {
       />
 
       {/* ── Pagination ── */}
-      {total > PAGE_SIZE && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>
-          <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total}</span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#fff', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>{t('common.prev')}</button>
-            <span style={{ padding: '4px 8px' }}>{page + 1} / {totalPages}</span>
-            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#fff', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>{t('common.next')}</button>
-          </div>
-        </div>
-      )}
+      <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
     </PageContainer>
   )
 }

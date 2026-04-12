@@ -8,6 +8,7 @@ import { CheckSquare, Clock, CheckCircle, XCircle, ChevronDown, ChevronRight, Ex
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { Pagination } from '@/components/ui/Pagination'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -442,16 +443,7 @@ export function ApprovalsPage() {
               <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} showActions={false} />
             ))
           )}
-          {allTotal > PAGE_SIZE && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-              <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, allTotal)} {t('common.of')} {allTotal}</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? '#f9fafb' : '#fff', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>{t('common.prev')}</button>
-                <span style={{ padding: '4px 8px' }}>{page + 1} / {totalPages}</span>
-                <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? '#f9fafb' : '#fff', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>{t('common.next')}</button>
-              </div>
-            </div>
-          )}
+          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
         </>
       )}
     </PageContainer>

@@ -7,6 +7,7 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { ScrollText } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { Pagination } from '@/components/ui/Pagination'
 
 const GET_LOGS = gql`
   query GetLogs($limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
@@ -223,39 +224,7 @@ export function LogsPage() {
       />
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-          <span style={{ marginRight: 8 }}>
-            {currentPage} {t('common.of')} {totalPages}
-          </span>
-          <button
-            disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-            style={{
-              padding: '4px 10px', borderRadius: 4,
-              border: '1px solid #e5e7eb', background: '#fff',
-              cursor: offset === 0 ? 'not-allowed' : 'pointer',
-              opacity: offset === 0 ? 0.4 : 1,
-              fontSize: 'var(--font-size-body)', color: 'var(--color-slate)',
-            }}
-          >
-            {t('common.prev')}
-          </button>
-          <button
-            disabled={offset + PAGE_SIZE >= total}
-            onClick={() => setOffset(offset + PAGE_SIZE)}
-            style={{
-              padding: '4px 10px', borderRadius: 4,
-              border: '1px solid #e5e7eb', background: '#fff',
-              cursor: offset + PAGE_SIZE >= total ? 'not-allowed' : 'pointer',
-              opacity: offset + PAGE_SIZE >= total ? 0.4 : 1,
-              fontSize: 'var(--font-size-body)', color: 'var(--color-slate)',
-            }}
-          >
-            {t('common.next')}
-          </button>
-        </div>
-      )}
+      <Pagination currentPage={currentPage} totalPages={totalPages} onPrev={() => setOffset(o => o - PAGE_SIZE)} onNext={() => setOffset(o => o + PAGE_SIZE)} />
     </PageContainer>
   )
 }
