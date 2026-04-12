@@ -13,6 +13,19 @@ import {
   ChevronRight,
   CheckCircle,
 } from 'lucide-react'
+import { StatusBadge } from '@/components/StatusBadge'
+
+const SEV_STYLE: Record<string, { bg: string; color: string }> = {
+  critical: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
+  high:     { bg: '#fef2f2', color: 'var(--color-brand)' },
+  medium:   { bg: '#fffbeb', color: 'var(--color-warning)' },
+  low:      { bg: '#ecfdf5', color: 'var(--color-success)' },
+}
+const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
+  standard:  { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
+  normal:    { bg: '#f0fdf4', color: '#16a34a' },
+  emergency: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,11 +33,11 @@ export interface ImpactCI {
   id: string; name: string; type: string; environment: string; distance: number
 }
 export interface ImpactIncident {
-  id: string; title: string; severity: string; status: string
+  id: string; number: string; title: string; severity: string; status: string
   ciName: string; ciId: string; createdAt: string; isOpen: boolean
 }
 export interface ImpactChange {
-  id: string; title: string; type: string; status: string
+  id: string; number: string; title: string; type: string; status: string
   ciName: string; ciId: string; createdAt: string
 }
 export interface ImpactBreakdown {
@@ -73,17 +86,6 @@ const RISK_PALETTE: Record<string, { bg: string; border: string; color: string }
   medium:   { bg: colors.severity.medium.bg,   border: colors.severity.medium.border,   color: colors.severity.medium.text   },
   high:     { bg: colors.severity.high.bg,     border: colors.severity.high.border,     color: colors.severity.high.text     },
   critical: { bg: colors.severity.critical.bg, border: colors.severity.critical.border, color: colors.severity.critical.text },
-}
-
-const STATUS_DOT: Record<string, string> = {
-  completed: colors.success, failed: colors.danger, rejected: colors.brand,
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -217,31 +219,37 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                 <>
                   {openOnes.length > 0 && (
                     <CollapsibleGroup title="In corso" count={openOnes.length}>
-                      {openOnes.map((inc) => (
-                        <div key={inc.id} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-brand)', flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <a href={`/incidents/${inc.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{inc.title}</a>
-                            <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{' · '}{inc.ciName}</span>
-                          </div>
-                          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{inc.severity}</span>
-                        </div>
-                      ))}
+                      {openOnes.map((inc) => {
+                        const sv = SEV_STYLE[inc.severity] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
+                        return (
+                          <a key={inc.id} href={`/incidents/${inc.id}`} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', gap: 8, textDecoration: 'none' }}>
+                            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: sv.bg, color: sv.color, flexShrink: 0, marginTop: 1 }}>{inc.severity}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inc.number}</div>
+                              <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inc.title}</div>
+                              <div style={{ marginTop: 2 }}><StatusBadge value={inc.status} /></div>
+                            </div>
+                          </a>
+                        )
+                      })}
                     </CollapsibleGroup>
                   )}
                   {recentClosed.length > 0 && (
                     <CollapsibleGroup title="Risolti" count={recentClosed.length}>
                       <div style={{ opacity: 0.45 }}>
-                        {recentClosed.map((inc) => (
-                          <div key={inc.id} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-success)', flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              <a href={`/incidents/${inc.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{inc.title}</a>
-                              <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{' · '}{inc.ciName}</span>
-                            </div>
-                            <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{inc.severity}</span>
-                          </div>
-                        ))}
+                        {recentClosed.map((inc) => {
+                          const sv = SEV_STYLE[inc.severity] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
+                          return (
+                            <a key={inc.id} href={`/incidents/${inc.id}`} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', gap: 8, textDecoration: 'none' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: sv.bg, color: sv.color, flexShrink: 0, marginTop: 1 }}>{inc.severity}</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inc.number}</div>
+                                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inc.title}</div>
+                                <div style={{ marginTop: 2 }}><StatusBadge value={inc.status} /></div>
+                              </div>
+                            </a>
+                          )
+                        })}
                       </div>
                     </CollapsibleGroup>
                   )}
@@ -270,16 +278,19 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                 const inCorso    = analysis.recentChanges.filter((c) => !DONE.includes(c.status))
                 const completati = analysis.recentChanges.filter((c) =>  DONE.includes(c.status))
                 const visibleCompletati = showAllChanges ? completati : completati.slice(0, 3)
-                const changeRow = (ch: ImpactChange) => (
-                  <div key={ch.id} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_DOT[ch.status] ?? 'var(--color-brand)', flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <a href={`/changes/${ch.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', textDecoration: 'none', fontWeight: 500 }}>{ch.title}</a>
-                      <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{' · '}{ch.ciName} · {formatDate(ch.createdAt)}</span>
-                    </div>
-                    <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>{ch.status}</span>
-                  </div>
-                )
+                const changeRow = (ch: ImpactChange) => {
+                  const tc = TYPE_COLOR[ch.type] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
+                  return (
+                    <a key={ch.id} href={`/changes/${ch.id}`} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', gap: 8, textDecoration: 'none' }}>
+                      <span style={{ padding: '2px 7px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: tc.bg, color: tc.color, flexShrink: 0, marginTop: 1 }}>{ch.type}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ch.number}</div>
+                        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ch.title}</div>
+                        <div style={{ marginTop: 2 }}><StatusBadge value={ch.status} /></div>
+                      </div>
+                    </a>
+                  )
+                }
                 return (
                   <>
                     {inCorso.length > 0 && (

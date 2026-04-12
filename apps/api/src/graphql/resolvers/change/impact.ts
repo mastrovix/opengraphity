@@ -38,7 +38,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     MATCH (i:Incident {tenant_id: $tenantId})
           -[:AFFECTED_BY]->(ci {id: ciId})
     WHERE NOT i.status IN ['resolved', 'closed']
-    RETURN DISTINCT i.id AS id, i.title AS title,
+    RETURN DISTINCT i.id AS id, i.number AS number, i.title AS title,
            i.severity AS severity, i.status AS status,
            ci.name AS ciName, ci.id AS ciId,
            i.created_at AS createdAt, true AS isOpen
@@ -53,7 +53,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
           -[:AFFECTED_BY]->(ci {id: ciId})
     WHERE i.created_at >= $since
     AND i.status IN ['resolved', 'closed']
-    RETURN DISTINCT i.id AS id, i.title AS title,
+    RETURN DISTINCT i.id AS id, i.number AS number, i.title AS title,
            i.severity AS severity, i.status AS status,
            ci.name AS ciName, ci.id AS ciId,
            i.created_at AS createdAt, false AS isOpen
@@ -65,6 +65,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     ...recentIncResult.records,
   ].map((r) => ({
     id:        r.get('id') as string,
+    number:    (r.get('number') ?? '') as string,
     title:     r.get('title') as string,
     severity:  (r.get('severity') ?? 'medium') as string,
     status:    r.get('status') as string,
@@ -83,7 +84,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci {id: ciId})
     WHERE c.created_at >= $since
     AND c.status <> 'draft'
-    RETURN c.id AS id, c.title AS title,
+    RETURN c.id AS id, c.number AS number, c.title AS title,
            c.type AS type, c.status AS status,
            ci.name AS ciName, ci.id AS ciId,
            c.created_at AS createdAt
@@ -93,6 +94,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
 
   const recentChanges = changeResult.records.map((r) => ({
     id:        r.get('id') as string,
+    number:    (r.get('number') ?? '') as string,
     title:     r.get('title') as string,
     type:      r.get('type') as string,
     status:    r.get('status') as string,

@@ -75,8 +75,8 @@ export function CIChangesCard({ ciId }: { ciId: string }) {
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {ch.title}
           </div>
+          <div style={{ marginTop: 2 }}><StatusBadge value={ch.status} /></div>
         </div>
-        <StatusBadge value={ch.status} />
       </div>
     )
   }

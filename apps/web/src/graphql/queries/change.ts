@@ -52,8 +52,8 @@ export const GET_CHANGE = gql`
         riskScore riskLevel
         breakdown { productionCIs blastRadiusCIs openIncidents failedChanges ongoingChanges scoreDetails }
         blastRadius { id name type environment distance }
-        openIncidents { id title severity status ciName ciId createdAt isOpen }
-        recentChanges { id title type status ciName ciId createdAt }
+        openIncidents { id number title severity status ciName ciId createdAt isOpen }
+        recentChanges { id number title type status ciName ciId createdAt }
       }
     }
   }
@@ -65,8 +65,8 @@ export const GET_CHANGE_IMPACT = gql`
       riskScore riskLevel
       breakdown { productionCIs blastRadiusCIs openIncidents failedChanges ongoingChanges scoreDetails }
       blastRadius { id name type environment distance }
-      openIncidents { id title severity status ciName ciId createdAt isOpen }
-      recentChanges { id title type status ciName ciId createdAt }
+      openIncidents { id number title severity status ciName ciId createdAt isOpen }
+      recentChanges { id number title type status ciName ciId createdAt }
     }
   }
 `

@@ -48,6 +48,7 @@ export function changeSDL(): string {
 
   type ImpactIncident {
     id:        String!
+    number:    String!
     title:     String!
     severity:  String!
     status:    String!
@@ -59,6 +60,7 @@ export function changeSDL(): string {
 
   type ImpactChange {
     id:        String!
+    number:    String!
     title:     String!
     type:      String!
     status:    String!

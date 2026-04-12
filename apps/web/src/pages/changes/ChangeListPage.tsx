@@ -3,7 +3,7 @@ import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { GitPullRequest, BookOpen } from 'lucide-react'
+import { GitPullRequest } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { GET_CHANGES } from '@/graphql/queries'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -136,14 +136,6 @@ export function ChangeListPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => navigate('/changes/catalog')}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#15803d' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#16a34a' }}
-          >
-            <BookOpen size={14} /> {t('pages.changes.catalog', 'Catalogo Standard')}
-          </button>
           <button
             onClick={() => navigate('/changes/new')}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
