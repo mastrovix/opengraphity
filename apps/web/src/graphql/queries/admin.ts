@@ -14,7 +14,7 @@ export const GET_USERS = gql`
 export const GET_USER = gql`
   query GetUser($id: ID!) {
     user(id: $id) {
-      id name email role createdAt
+      id tenantId name code firstName lastName email role slackId createdAt
       teams { id name type }
     }
   }
@@ -29,7 +29,8 @@ export const GET_TEAMS = gql`
 export const GET_TEAM = gql`
   query GetTeam($id: ID!) {
     team(id: $id) {
-      id name description type createdAt
+      id tenantId name description type createdAt
+      manager { id name email }
       members { id name email role }
       ownedCIs { id name type environment status }
       supportedCIs { id name type environment status }

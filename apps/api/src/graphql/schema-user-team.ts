@@ -7,8 +7,10 @@ export function userTeamSDL(): string {
     tenantId: String!
     email: String!
     name: String!
+    code: String!
+    firstName: String
+    lastName: String
     role: String!
-    teamId: String
     slackId: String
     createdAt: String
     teams: [Team!]!
@@ -21,6 +23,7 @@ export function userTeamSDL(): string {
     description: String
     type: String
     createdAt: String!
+    manager: User
     members: [User!]!
     ownedCIs: [CIBase!]!
     supportedCIs: [CIBase!]!
@@ -37,6 +40,8 @@ export function userTeamSDL(): string {
   extend type Mutation {
     createUser(input: CreateUserInput!): User!
     updateUserTeams(userId: ID!, teamIds: [ID!]!): User!
+    setTeamManager(teamId: ID!, userId: ID!): Team!
+    removeTeamManager(teamId: ID!): Team!
   }
   `
 }

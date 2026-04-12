@@ -9,7 +9,7 @@ import { gql } from '@apollo/client'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DetailField } from '@/components/ui/DetailField'
-import { CollapsibleCard } from '@/components/ui/CollapsibleCard'
+import { SectionCard } from '@/components/ui/SectionCard'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { CIGraph } from '@/components/CIGraph'
 import { CIIncidentsCard } from '@/components/CIIncidentsCard'
@@ -236,7 +236,7 @@ export function CIDetailPage() {
 
       <div>
         <div>
-          <CollapsibleCard title="Informazioni" defaultOpen={true}>
+          <SectionCard title="Informazioni" defaultOpen={true}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <DetailField label="ID" value={ci.id} mono />
               <DetailField label="Tipo" value={ciType.label} />
@@ -277,9 +277,9 @@ export function CIDetailPage() {
                 <DetailField label="Note" value={ci.notes as string} />
               </>
             )}
-          </CollapsibleCard>
+          </SectionCard>
 
-          <CollapsibleCard title="Mappa Dipendenze">
+          <SectionCard title="Mappa Dipendenze">
             <CIGraph
               centerCI={{
                 id: ci.id, name: ci.name, type: ci.type,
@@ -300,9 +300,9 @@ export function CIDetailPage() {
                 distance: b.distance, parentId: b.parentId,
               }))}
             />
-          </CollapsibleCard>
+          </SectionCard>
 
-          <CollapsibleCard
+          <SectionCard
             title={`Relazioni (${(ci.dependencies as CIRelation[]).length + (ci.dependents as CIRelation[]).length})`}
             defaultOpen={false}
             headerRight={
@@ -481,7 +481,7 @@ export function CIDetailPage() {
               </div>,
               document.body,
             )}
-          </CollapsibleCard>
+          </SectionCard>
 
           <CIIncidentsCard ciId={ci.id} />
           <CIChangesCard ciId={ci.id} />

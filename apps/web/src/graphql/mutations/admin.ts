@@ -14,6 +14,20 @@ export const CREATE_SERVICE_REQUEST = gql`
   }
 `
 
+// ── Teams ───────────────────────────────────────────────────────────────────
+
+export const SET_TEAM_MANAGER = gql`
+  mutation SetTeamManager($teamId: ID!, $userId: ID!) {
+    setTeamManager(teamId: $teamId, userId: $userId) { id }
+  }
+`
+
+export const REMOVE_TEAM_MANAGER = gql`
+  mutation RemoveTeamManager($teamId: ID!) {
+    removeTeamManager(teamId: $teamId) { id }
+  }
+`
+
 // ── Reports ──────────────────────────────────────────────────────────────────
 
 export const CREATE_REPORT_TEMPLATE = gql`

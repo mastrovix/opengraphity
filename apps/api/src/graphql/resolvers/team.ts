@@ -190,12 +190,57 @@ async function teamSupportedCIs(parent: { id: string }, _: unknown, ctx: GraphQL
   })
 }
 
+async function teamManager(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (t:Team {id: $id, tenant_id: $tenantId})-[:MANAGED_BY]->(u:User)
+      RETURN properties(u) AS props
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return row ? row.props : null
+  })
+}
+
+async function setTeamManager(_: unknown, args: { teamId: string; userId: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    await session.executeWrite(tx => tx.run(`
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})-[r:MANAGED_BY]->()
+      DELETE r
+    `, { teamId: args.teamId, tenantId: ctx.tenantId }))
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      CREATE (t)-[:MANAGED_BY]->(u)
+      RETURN properties(t) AS props
+    `, { teamId: args.teamId, userId: args.userId, tenantId: ctx.tenantId })
+    if (!row) throw new Error('Team or User not found')
+    void audit(ctx, 'team.manager_set', 'Team', args.teamId)
+    return mapTeam(row.props)
+  }, true)
+}
+
+async function removeTeamManager(_: unknown, args: { teamId: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    await session.executeWrite(tx => tx.run(`
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})-[r:MANAGED_BY]->()
+      DELETE r
+    `, { teamId: args.teamId, tenantId: ctx.tenantId }))
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      RETURN properties(t) AS props
+    `, { teamId: args.teamId, tenantId: ctx.tenantId })
+    if (!row) throw new Error('Team not found')
+    void audit(ctx, 'team.manager_removed', 'Team', args.teamId)
+    return mapTeam(row.props)
+  }, true)
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const teamResolvers = {
   Query:    { teams, team },
-  Mutation: { createTeam, assignCIOwner, assignCISupportGroup },
+  Mutation: { createTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager },
   Team: {
+    manager:      teamManager,
     members:      teamMembers,
     ownedCIs:     teamOwnedCIs,
     supportedCIs: teamSupportedCIs,

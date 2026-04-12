@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
-import { DetailCard } from '@/components/ui/DetailCard'
+import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
@@ -79,9 +79,9 @@ export function ServiceRequestDetailPage() {
         <div>
           {/* Description */}
           <div style={{ marginBottom: 16 }}>
-            <DetailCard title="Descrizione">
+            <SectionCard collapsible={false} defaultOpen title="Descrizione">
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || 'Nessuna descrizione.'}</p>
-            </DetailCard>
+            </SectionCard>
           </div>
 
           {/* Internal Chat */}
@@ -89,13 +89,13 @@ export function ServiceRequestDetailPage() {
         </div>
 
         {/* Sidebar */}
-        <DetailCard title="Dettagli">
+        <SectionCard collapsible={false} defaultOpen title="Dettagli">
           <DetailField label="Richiedente" value={sr.requestedBy?.name ?? null} />
           <DetailField label="Assegnatario" value={sr.assignee?.name ?? null} />
           <DetailField label="Scadenza" value={sr.dueDate ? new Date(sr.dueDate).toLocaleDateString('it-IT') : null} />
           <DetailField label="Creato il" value={new Date(sr.createdAt).toLocaleDateString('it-IT')} />
           {sr.completedAt && <DetailField label="Completato" value={new Date(sr.completedAt).toLocaleDateString('it-IT')} />}
-        </DetailCard>
+        </SectionCard>
       </div>
     </PageContainer>
   )

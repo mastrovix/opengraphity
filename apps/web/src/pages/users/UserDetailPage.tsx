@@ -3,11 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
-import { ChevronDown, ChevronRight } from 'lucide-react'
-// EmptyState no longer used — inline message instead
-import { DetailCard } from '@/components/ui/DetailCard'
 import { DetailField } from '@/components/ui/DetailField'
-import { Users, Plus, X } from 'lucide-react'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { Users, User, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
 
@@ -23,11 +21,16 @@ interface TeamRef {
   type: string | null
 }
 
-interface User {
+interface UserData {
   id:        string
+  tenantId:  string
   name:      string
+  code:      string
+  firstName: string | null
+  lastName:  string | null
   email:     string
   role:      string
+  slackId:   string | null
   createdAt: string | null
   teams:     TeamRef[]
 }
@@ -53,32 +56,6 @@ function RoleBadge({ role }: { role: string }) {
 
 // TeamTypeBadge removed — teams now shown as removable chips
 
-// ── Card components ───────────────────────────────────────────────────────────
-
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16, ...style }}>
-      {children}
-    </div>
-  )
-}
-
-function CollapsibleCard({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <Card>
-      <div
-        onClick={() => setOpen((p) => !p)}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: open ? 16 : 0 }}
-      >
-        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
-        {open ? <ChevronDown size={14} color="var(--color-slate-light)" /> : <ChevronRight size={14} color="var(--color-slate-light)" />}
-      </div>
-      {open && children}
-    </Card>
-  )
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function UserDetailPage() {
@@ -86,7 +63,7 @@ export function UserDetailPage() {
   const navigate = useNavigate()
   const [showAddTeam, setShowAddTeam] = useState(false)
 
-  const { data, loading, refetch } = useQuery<{ user: User | null }>(GET_USER, {
+  const { data, loading, refetch } = useQuery<{ user: UserData | null }>(GET_USER, {
     variables:   { id },
     fetchPolicy: 'cache-and-network',
     skip:        !id,
@@ -118,17 +95,30 @@ export function UserDetailPage() {
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/users')}>
           ← Users
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <User size={22} color="var(--color-brand)" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
           <RoleBadge role={user.role} />
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
-        {/* Left column */}
-        <div>
-          <CollapsibleCard title={`Team (${user.teams.length})`} defaultOpen>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <SectionCard title="Informazioni" defaultOpen>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <DetailField label="ID" value={user.id} mono />
+            <DetailField label="Code" value={user.code} />
+            <DetailField label="Nome" value={user.firstName} />
+            <DetailField label="Cognome" value={user.lastName} />
+            <DetailField label="Email" value={user.email} />
+            <DetailField label="Ruolo" value={<RoleBadge role={user.role} />} />
+            <DetailField label="Tenant ID" value={user.tenantId} mono />
+            <DetailField label="Slack ID" value={user.slackId} mono />
+            <DetailField label="Creato il" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString('it-IT') : null} />
+          </div>
+        </SectionCard>
+
+        <SectionCard title={`Team (${user.teams.length})`} defaultOpen>
             {/* Current teams */}
             {user.teams.length === 0 ? (
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>Nessun team assegnato</p>
@@ -207,18 +197,7 @@ export function UserDetailPage() {
                 ))}
               </div>
             )}
-          </CollapsibleCard>
-        </div>
-
-        {/* Right column */}
-        <div>
-          <DetailCard title="Dettagli">
-            <DetailField label="ID" value={user.id} mono />
-            <DetailField label="Email" value={user.email} />
-            <DetailField label="Ruolo" value={<RoleBadge role={user.role} />} />
-            <DetailField label="Creato il" value={user.createdAt ? new Date(user.createdAt).toLocaleString('it-IT') : null} />
-          </DetailCard>
-        </div>
+          </SectionCard>
       </div>
     </PageContainer>
   )

@@ -52,8 +52,11 @@ function mapUser(props: Record<string, unknown>) {
     tenantId:  props['tenant_id']  as string,
     email:     props['email']      as string,
     name:      props['name']       as string,
+    code:      props['name']       as string,
+    firstName: (props['first_name'] as string) ?? null,
+    lastName:  (props['last_name']  as string) ?? null,
     role:      props['role']       as string,
-    teamId:    null,
+    slackId:   (props['slack_id']  as string) ?? null,
     createdAt: neo4jDateToISO(props['created_at']),
   }
 }
