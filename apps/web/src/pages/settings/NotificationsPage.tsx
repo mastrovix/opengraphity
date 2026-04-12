@@ -5,6 +5,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { Modal } from '@/components/Modal'
 import { Bell } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { lookupStyle } from '@/lib/tokens'
 
 const GET_NOTIFICATION_CHANNELS = gql`
   query GetNotificationChannels {
@@ -171,7 +172,7 @@ export default function NotificationsPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {channels.map((ch) => {
-            const pb = PLATFORM_BADGE[ch.platform] ?? { bg: '#f3f4f6', color: 'var(--color-slate)' }
+            const pb = lookupStyle(PLATFORM_BADGE, ch.platform, 'PLATFORM_BADGE')
             const tr = testResult[ch.id]
             return (
               <div key={ch.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>

@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react'
 import ReactECharts from 'echarts-for-react'
 import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity } from 'lucide-react'
 import { GET_WIDGET_DATA } from '@/graphql/queries'
+import { lookupOrError } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -122,7 +123,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
     fetchPolicy: 'cache-and-network',
   })
 
-  const colSpan = SIZE_COLSPAN[widget.size] ?? 6
+  const colSpan = lookupOrError(SIZE_COLSPAN, widget.size, 'SIZE_COLSPAN', 6)
   const wData   = data?.widgetData
 
   const cardStyle: React.CSSProperties = {
@@ -154,7 +155,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
       </span>
       {widget.timeRange && widget.timeRange !== 'all' && (
         <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate-light)' }}>
-          {TIME_LABEL[widget.timeRange] ?? widget.timeRange}
+          {lookupOrError(TIME_LABEL, widget.timeRange, 'TIME_LABEL', widget.timeRange)}
         </span>
       )}
       {editMode && (

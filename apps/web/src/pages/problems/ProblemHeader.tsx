@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
+import { lookupOrError } from '@/lib/tokens'
 
 interface WorkflowTransition {
   toStep:        string
@@ -36,6 +37,7 @@ function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProp
   if (toStep === 'resolved') return { ...base, backgroundColor: 'var(--color-trigger-automatic)', color: '#fff', borderColor: 'var(--color-trigger-automatic)' }
   if (toStep === 'rejected') return { ...base, backgroundColor: 'var(--color-trigger-sla-breach)', color: '#fff', borderColor: 'var(--color-trigger-sla-breach)' }
   if (toStep === 'closed')   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
+  console.error(`[transitionButtonStyle] valore sconosciuto: "${toStep}"`)
   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
 }
 
@@ -62,10 +64,10 @@ export function ProblemHeader({
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>
-        <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : '#f3f4f6', color: PRIORITY_COLOR[problem.priority] ?? 'var(--color-slate)', fontSize: 'var(--font-size-body)', fontWeight: 600, border: `1px solid ${PRIORITY_COLOR[problem.priority] ?? '#e5e7eb'}` }}>
+        <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : '#f3f4f6', color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 600, border: `1px solid ${lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', '#e5e7eb')}` }}>
           {problem.priority}
         </span>
-        <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? 'var(--color-slate)', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+        <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', '#f3f4f6'), color: lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
           {problem.status.replace(/_/g, ' ')}
         </span>
       </div>

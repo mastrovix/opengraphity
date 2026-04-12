@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon } from 'lucide-react'
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
 import { ReportSectionBuilder, type ReportSectionInput } from '@/components/ReportSectionBuilder'
+import { lookupOrError } from '@/lib/tokens'
 import {
   type ReportTemplate, type ReportSection, type SectionResult, type View,
   btnPrimary, btnGhost,
@@ -17,7 +18,7 @@ const CHART_ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?
 
 function getReportIcon(template: ReportTemplate) {
   const chartType = template.sections?.[0]?.chartType ?? 'bar'
-  const Icon = CHART_ICON_MAP[chartType] ?? BarChart2
+  const Icon = lookupOrError(CHART_ICON_MAP, chartType, 'CHART_ICON_MAP', BarChart2)
   return <Icon size={20} color="var(--color-brand)" />
 }
 

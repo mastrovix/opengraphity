@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from '@/components/ui/CountBadge'
+import { lookupStyle } from '@/lib/tokens'
 import { StatusBadge } from '@/components/StatusBadge'
 import { GET_CI_INCIDENTS } from '@/graphql/queries'
 
@@ -24,7 +25,7 @@ const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const s = SEVERITY_STYLE[severity] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
+  const s = lookupStyle(SEVERITY_STYLE, severity, 'SEVERITY_STYLE')
   return (
     <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: s.bg, color: s.color, flexShrink: 0, marginTop: 1 }}>
       {severity}

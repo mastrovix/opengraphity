@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { GET_SERVICE_REQUESTS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
+import { lookupOrError } from '@/lib/tokens'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -143,7 +144,7 @@ export function CreateServiceRequestPage() {
                 Priority <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: PRIORITY_DOT[priority] ?? 'var(--color-slate-light)', pointerEvents: 'none', zIndex: 1 }} />
+                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: lookupOrError(PRIORITY_DOT, priority, 'PRIORITY_DOT', 'var(--color-slate-light)'), pointerEvents: 'none', zIndex: 1 }} />
                 <select value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
                   {priorityLoading
                     ? <option value="">Caricamento…</option>

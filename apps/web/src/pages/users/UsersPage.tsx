@@ -14,6 +14,7 @@ import { GET_USERS, GET_TEAMS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { inputS, selectS, labelS, btnPrimary, btnSecondary } from '@/pages/settings/shared/designerStyles'
+import { lookupStyle } from '@/lib/tokens'
 
 // ── TeamSearchInput — stable component outside render to avoid focus loss ────
 
@@ -40,7 +41,7 @@ const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
 }
 
 function RoleBadge({ role }: { role: string }) {
-  const s = ROLE_STYLES[role] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
+  const s = lookupStyle(ROLE_STYLES, role, 'ROLE_STYLES')
   return (
     <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {role}

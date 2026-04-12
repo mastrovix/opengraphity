@@ -30,6 +30,7 @@ import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
 import { DetailField } from '@/components/ui/DetailField'
 import { Card, formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
+import { lookupOrError } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -483,10 +484,10 @@ export function ProblemDetailPage() {
             <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dettagli</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <DetailField label="Priorità" value={
-                <span style={{ fontWeight: 600, color: PRIORITY_COLOR[problem.priority] ?? 'var(--color-slate)' }}>{problem.priority}</span>
+                <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
               } />
               <DetailField label="Step workflow" value={
-                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG[problem.status] ?? '#f3f4f6', color: STATUS_FG[problem.status] ?? 'var(--color-slate)', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', '#f3f4f6'), color: lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                   {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
                 </span>
               } />

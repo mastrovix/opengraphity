@@ -7,6 +7,7 @@ import { DetailField } from '@/components/ui/DetailField'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Users, User, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { lookupStyle } from '@/lib/tokens'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
 
 const UPDATE_USER_TEAMS = gql`
@@ -44,7 +45,7 @@ const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
 }
 
 function RoleBadge({ role }: { role: string }) {
-  const s = ROLE_STYLES[role] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
+  const s = lookupStyle(ROLE_STYLES, role, 'ROLE_STYLES')
   return (
     <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {role}

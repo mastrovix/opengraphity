@@ -13,7 +13,7 @@ import {
 } from '@xyflow/react'
 import type { NodeProps, EdgeProps, Node, Edge, OnNodesChange, OnEdgesChange } from '@xyflow/react'
 import { Pencil, Settings2 } from 'lucide-react'
-import { colors } from '@/lib/tokens'
+import { colors, lookupOrError } from '@/lib/tokens'
 import type { StepNodeData, EdgeNodeData, WorkflowDefinition } from './workflow-types'
 
 // ── Per-workflow positions ─────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ const ACCENT_COLOR = colors.brand
 const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: NodeProps) {
   const { step, accentColor } = data as StepNodeData
   const [hovered, setHovered] = useState(false)
-  const bg = STEP_BG[step.type] ?? '#FFFFFF'
+  const bg = lookupOrError(STEP_BG, step.type, 'STEP_BG', '#ef4444')
 
   return (
     <div
@@ -346,7 +346,7 @@ export function WorkflowCanvas({
             position="bottom-right"
             nodeColor={(n) => {
               const step = (n.data as StepNodeData | undefined)?.step
-              return STEP_BG[step?.type ?? 'standard'] ?? '#fff'
+              return lookupOrError(STEP_BG, step?.type ?? 'standard', 'STEP_BG', '#ef4444')
             }}
             style={{ border: '1px solid #e2e6f0', borderRadius: 8 }}
           />

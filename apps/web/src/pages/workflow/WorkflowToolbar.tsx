@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
-import { colors } from '@/lib/tokens'
+import { colors, lookupOrError } from '@/lib/tokens'
 import type { WorkflowDefinition, WorkflowKey } from './workflow-types'
 import { ADD_WORKFLOW_STEP } from '@/graphql/mutations'
 
@@ -103,7 +103,7 @@ export function WorkflowToolbar({
               normal:    { bg: '#dbeafe', fg: '#1e40af' },
               emergency: { bg: '#fee2e2', fg: '#991b1b' },
             }
-            const s = subtypeStyles[def.changeSubtype] ?? { bg: '#f3f4f6', fg: '#374151' }
+            const s = lookupOrError(subtypeStyles, def.changeSubtype, 'subtypeStyles', { bg: '#ef4444', fg: '#fff' })
             return (
               <span style={{
                 fontSize: 'var(--font-size-table)', fontWeight: 600, padding: '2px 8px',

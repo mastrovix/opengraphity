@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon, LayoutGrid } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
+import { lookupOrError } from '@/lib/tokens'
 import {
   type ReportTemplate,
   VIS_LABELS, VIS_COLORS,
@@ -18,7 +19,7 @@ const CHART_ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?
 
 function getReportIcon(template: ReportTemplate) {
   const chartType = template.sections?.[0]?.chartType ?? 'bar'
-  const Icon = CHART_ICON_MAP[chartType] ?? BarChart2
+  const Icon = lookupOrError(CHART_ICON_MAP, chartType, 'CHART_ICON_MAP', BarChart2)
   return <Icon size={20} color="var(--color-brand)" />
 }
 
@@ -95,7 +96,7 @@ export function ReportListView(props: ReportListViewProps) {
         {/* Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }} ref={menuRef}>
           {templates.map((t: ReportTemplate) => {
-            const vc = VIS_COLORS[t.visibility] ?? VIS_COLORS.private
+            const vc = lookupOrError(VIS_COLORS, t.visibility, 'VIS_COLORS', VIS_COLORS.private)
             const isMenuOpen = menuOpenId === t.id
             return (
               <div key={t.id} style={{
@@ -143,7 +144,7 @@ export function ReportListView(props: ReportListViewProps) {
                   {/* Subtitle row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 3, background: vc.bg, color: vc.fg }}>
-                      {VIS_LABELS[t.visibility] ?? t.visibility}
+                      {lookupOrError(VIS_LABELS, t.visibility, 'VIS_LABELS', t.visibility)}
                     </span>
                     {t.createdBy && (
                       <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>· {t.createdBy.name}</span>

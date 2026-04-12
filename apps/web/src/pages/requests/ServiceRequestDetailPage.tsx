@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { keycloak } from '@/lib/keycloak'
+import { lookupOrError } from '@/lib/tokens'
 import { GET_SERVICE_REQUEST } from '@/graphql/queries'
 
 interface ServiceRequest {
@@ -49,7 +50,7 @@ export function ServiceRequestDetailPage() {
     </PageContainer>
   )
 
-  const stColor = STATUS_COLOR[sr.status] ?? { bg: '#f3f4f6', fg: '#6b7280' }
+  const stColor = lookupOrError(STATUS_COLOR, sr.status, 'STATUS_COLOR', { bg: '#f3f4f6', fg: '#6b7280' })
 
   return (
     <PageContainer>
@@ -67,7 +68,7 @@ export function ServiceRequestDetailPage() {
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-table)', fontWeight: 600, background: stColor.bg, color: stColor.fg }}>{sr.status}</span>
-            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-table)', fontWeight: 600, border: `1.5px solid ${PRIORITY_COLOR[sr.priority] ?? '#9ca3af'}`, color: PRIORITY_COLOR[sr.priority] ?? '#9ca3af' }}>{sr.priority}</span>
+            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-table)', fontWeight: 600, border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', '#9ca3af')}`, color: lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', '#9ca3af') }}>{sr.priority}</span>
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
           </div>
         </div>

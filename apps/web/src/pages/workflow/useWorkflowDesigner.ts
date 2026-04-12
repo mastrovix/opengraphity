@@ -23,7 +23,7 @@ import {
   CHANGE_BACK,
   TRIGGER_COLOR,
 } from './WorkflowCanvas'
-import { colors } from '@/lib/tokens'
+import { colors, lookupOrError } from '@/lib/tokens'
 
 const ACCENT_COLOR = colors.brand
 
@@ -78,7 +78,7 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     }))
 
     const newEdges: Edge[] = def.transitions.map((tr) => {
-      const edgeColor  = TRIGGER_COLOR[tr.trigger] ?? 'var(--color-slate)'
+      const edgeColor  = lookupOrError(TRIGGER_COLOR, tr.trigger, 'TRIGGER_COLOR', '#ef4444')
       const baseKey    = `${tr.fromStepName}→${tr.toStepName}`
       const triggerKey = `${tr.fromStepName}→${tr.toStepName}→${tr.trigger}`
       const isBack     = backTransitions.has(baseKey)

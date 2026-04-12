@@ -16,6 +16,7 @@ import { Hash, BarChart2, TrendingUp, PieChart, Table, Gauge, Plus, Pencil, Tras
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
 import type { CustomWidgetData } from './CustomWidgetCard'
 import { CustomWidgetCard } from './CustomWidgetCard'
+import { lookupOrError } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -221,7 +222,7 @@ export function DashboardEditMode({
                   Creati ({customWidgets.length})
                 </div>
                 {customWidgets.map((w) => {
-                  const Icon = TYPE_ICONS[w.widgetType] ?? BarChart2
+                  const Icon = lookupOrError(TYPE_ICONS, w.widgetType, 'TYPE_ICONS', BarChart2)
                   return (
                     <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid #f3f4f6', background: '#fafafa' }}>
                       <Icon size={12} color={w.color} />

@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm'
 import { BookOpen, Eye, ThumbsUp, ThumbsDown, Tag, ArrowLeft, User, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
+import { lookupOrError } from '@/lib/tokens'
 
 const GET_ARTICLE = gql`
   query KBArticleBySlug($slug: String!) {
@@ -79,7 +80,7 @@ export function KBArticlePage() {
         </Link>
 
         <div style={{ marginBottom: 12 }}>
-          <span style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px', borderRadius: 12, background: (CATEGORY_COLORS[article.category] ?? '#94a3b8') + '20', color: CATEGORY_COLORS[article.category] ?? '#94a3b8', fontWeight: 600 }}>
+          <span style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px', borderRadius: 12, background: lookupOrError(CATEGORY_COLORS, article.category, 'CATEGORY_COLORS', '#ef4444') + '20', color: lookupOrError(CATEGORY_COLORS, article.category, 'CATEGORY_COLORS', '#ef4444'), fontWeight: 600 }}>
             {article.category}
           </span>
         </div>

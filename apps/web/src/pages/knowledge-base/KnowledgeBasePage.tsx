@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { BookOpen, Search, Eye, ThumbsUp, Tag } from 'lucide-react'
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
+import { lookupOrError } from '@/lib/tokens'
 
 const GET_CATEGORIES = gql`
   query KBCategories { kbCategories { name count } }
@@ -120,10 +121,10 @@ export function KnowledgeBasePage() {
                   background: '#fff', cursor: 'pointer', textAlign: 'center',
                   transition: 'all 150ms',
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = CATEGORY_COLORS[cat.name] ?? '#38bdf8' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = lookupOrError(CATEGORY_COLORS, cat.name, 'CATEGORY_COLORS', '#ef4444') }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0' }}
               >
-                <div style={{ fontSize: 'var(--font-size-page-title)', marginBottom: 6 }}>{CATEGORY_ICONS[cat.name] ?? '📄'}</div>
+                <div style={{ fontSize: 'var(--font-size-page-title)', marginBottom: 6 }}>{lookupOrError(CATEGORY_ICONS, cat.name, 'CATEGORY_ICONS', '📄')}</div>
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#1a2332', marginBottom: 2 }}>{cat.name}</div>
                 <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>{cat.count} articoli</div>
               </button>
@@ -136,8 +137,8 @@ export function KnowledgeBasePage() {
       {category && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <span style={{ fontSize: 'var(--font-size-body)', color: '#64748b' }}>{t('pages.kb.category')}:</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: CATEGORY_COLORS[category] ?? '#38bdf8', color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-            {CATEGORY_ICONS[category] ?? '📄'} {category}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', '#ef4444'), color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+            {lookupOrError(CATEGORY_ICONS, category, 'CATEGORY_ICONS', '📄')} {category}
             <button onClick={() => { setCategory(''); setPage(0) }} style={{ marginLeft: 4, background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
           </span>
         </div>
@@ -171,8 +172,8 @@ export function KnowledgeBasePage() {
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 8px', borderRadius: 10, background: (CATEGORY_COLORS[a.category] ?? '#94a3b8') + '20', color: CATEGORY_COLORS[a.category] ?? '#94a3b8', fontWeight: 600 }}>
-                          {CATEGORY_ICONS[a.category] ?? '📄'} {a.category}
+                        <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 8px', borderRadius: 10, background: lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', '#ef4444') + '20', color: lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', '#ef4444'), fontWeight: 600 }}>
+                          {lookupOrError(CATEGORY_ICONS, a.category, 'CATEGORY_ICONS', '📄')} {a.category}
                         </span>
                         {a.tags.slice(0, 3).map((tag) => (
                           <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: '#64748b' }}>

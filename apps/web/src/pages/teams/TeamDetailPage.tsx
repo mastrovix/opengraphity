@@ -12,6 +12,7 @@ import { GET_TEAM } from '@/graphql/queries'
 import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER } from '@/graphql/mutations'
 import { ciPath } from '@/lib/ciPath'
 import { toast } from 'sonner'
+import { lookupStyle } from '@/lib/tokens'
 
 interface Member {
   id:    string
@@ -53,7 +54,7 @@ function TypeBadge({ type }: { type: string | null }) {
     owner:   { bg: '#eff6ff', color: '#2563eb' },
     support: { bg: '#f0fdf4', color: '#16a34a' },
   }
-  const s = styles[type] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
+  const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
   return (
     <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {type}

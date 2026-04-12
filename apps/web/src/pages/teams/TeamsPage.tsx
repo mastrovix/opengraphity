@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { GET_TEAMS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
+import { lookupStyle } from '@/lib/tokens'
 
 interface Team {
   id:          string
@@ -25,7 +26,7 @@ function TypeBadge({ type }: { type: string | null }) {
     owner:   { bg: '#eff6ff', color: '#2563eb' },
     support: { bg: '#f0fdf4', color: '#16a34a' },
   }
-  const s = styles[type] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
+  const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
   return (
     <span style={{ fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
       {type}

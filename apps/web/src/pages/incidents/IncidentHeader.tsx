@@ -40,6 +40,7 @@ function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProp
   if (toStep === 'resolved')  return { ...base, backgroundColor: 'var(--color-trigger-automatic)', color: '#fff', borderColor: 'var(--color-trigger-automatic)' }
   if (toStep === 'escalated') return { ...base, backgroundColor: 'var(--color-trigger-sla-breach)', color: '#fff', borderColor: 'var(--color-trigger-sla-breach)' }
   if (toStep === 'closed')    return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
+  console.error(`[transitionButtonStyle] valore sconosciuto: "${toStep}"`)
   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
 }
 

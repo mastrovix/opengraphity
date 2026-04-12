@@ -78,3 +78,21 @@ export const fontWeight = {
 export const spacing = {
   blastRadiusIndent: 24,  // px — CI rows indentation in Impact Analysis blast radius
 } as const
+
+// ── LOOKUP HELPER ───────────────────────────────────────────────────────────
+
+const ERROR_STYLE = { bg: '#ef4444', color: '#fff' }
+
+export function lookupOrError<T>(map: Record<string, T>, key: string, mapName: string, errorFallback: T): T {
+  const val = map[key]
+  if (val === undefined) {
+    console.error(`[${mapName}] valore sconosciuto: "${key}"`)
+    return errorFallback
+  }
+  return val
+}
+
+/** Shortcut for style maps that return { bg, color } */
+export function lookupStyle(map: Record<string, { bg: string; color: string }>, key: string, mapName: string): { bg: string; color: string } {
+  return lookupOrError(map, key, mapName, ERROR_STYLE)
+}

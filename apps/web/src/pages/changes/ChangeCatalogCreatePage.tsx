@@ -9,6 +9,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { GET_STANDARD_CHANGE_CATALOG_ENTRY, GET_ALL_CIS } from '@/graphql/queries'
 import { CREATE_CHANGE_FROM_CATALOG } from '@/graphql/mutations'
 import { useEnumValues } from '@/hooks/useEnumValues'
+import { lookupOrError } from '@/lib/tokens'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ export function ChangeCatalogCreatePage() {
 
   function riskLabel(risk: string): string {
     const labels: Record<string, string> = { low: t('pages.changeCatalog.riskLow'), medium: t('pages.changeCatalog.riskMedium'), high: t('pages.changeCatalog.riskHigh') }
-    return labels[risk] ?? risk
+    return lookupOrError(labels, risk, 'riskLabel', risk)
   }
 
   const { data, loading } = useQuery<{ standardChangeCatalogEntry: CatalogEntry }>(

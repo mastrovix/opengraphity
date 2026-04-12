@@ -10,6 +10,7 @@ import { ITILTypeFields } from './ITILTypeFields'
 import { ITILTypeCIRelations } from './ITILTypeCIRelations'
 import { ITILTypeRules } from './ITILTypeRules'
 import { ITILTypePreview } from './ITILTypePreview'
+import { lookupOrError } from '@/lib/tokens'
 
 const ITIL_TYPE_ICONS: Record<string, LucideIcon> = {
   incident:        AlertCircle,
@@ -49,7 +50,7 @@ export function ITILTypeDesignerPage() {
             <div>
               {itilTypes.map((itilType) => {
                 const isSelected = itilType.id === selectedTypeId
-                const FallbackIcon = ITIL_TYPE_ICONS[itilType.name] ?? Settings2
+                const FallbackIcon = lookupOrError(ITIL_TYPE_ICONS, itilType.name, 'ITIL_TYPE_ICONS', Settings2)
                 return (
                   <button key={itilType.id} onClick={() => h.handleSelectType(itilType)}
                     style={{ width: '100%', textAlign: 'left', padding: '10px 16px', background: isSelected ? '#f0f9ff' : 'transparent', borderLeft: `3px solid ${isSelected ? 'var(--color-brand)' : 'transparent'}`, borderTop: 'none', borderRight: 'none', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -68,7 +69,7 @@ export function ITILTypeDesignerPage() {
 
           {/* Right: Type editor */}
           {selectedType && settingsForm && (() => {
-            const FallbackIcon = ITIL_TYPE_ICONS[selectedType.name] ?? Settings2
+            const FallbackIcon = lookupOrError(ITIL_TYPE_ICONS, selectedType.name, 'ITIL_TYPE_ICONS', Settings2)
             return (
               <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
                 {/* Card header */}

@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { toast } from 'sonner'
+import { lookupOrError } from '@/lib/tokens'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -86,7 +87,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string; label: string }
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_COLORS[status] ?? STATUS_COLORS['pending']
+  const s = lookupOrError(STATUS_COLORS, status, 'STATUS_COLORS', STATUS_COLORS['pending'])
   return (
     <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', fontWeight: 600, background: s.bg, color: s.color }}>
       {s.label}

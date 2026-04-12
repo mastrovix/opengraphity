@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as d3 from 'd3'
 import { ciPath } from '@/lib/ciPath'
+import { lookupOrError } from '@/lib/tokens'
 
 interface CINode {
   id:          string
@@ -269,7 +270,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .attr('dominant-baseline', 'central')
       .attr('font-size',       (d) => d.role === 'center' ? 20 : 16)
       .attr('y',               0)
-      .text((d) => TYPE_ICON[d.type] ?? '📄')
+      .text((d) => lookupOrError(TYPE_ICON, d.type, 'TYPE_ICON', '❌'))
 
     // Name label (row 1)
     nodeEl.append('text')

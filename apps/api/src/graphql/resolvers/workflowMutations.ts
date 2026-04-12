@@ -568,7 +568,7 @@ export async function saveWorkflowChanges(
       tx.run(`MATCH (wd:WorkflowDefinition {id: $definitionId})-[:HAS_STEP]->(s:WorkflowStep) RETURN collect(s) AS steps`,
         { definitionId }),
     )
-    const steps = stepsResult.records[0]?.get('steps') as Array<{ properties: Record<string, unknown> }> ?? []
+    const savedSteps = stepsResult.records[0]?.get('steps') as Array<{ properties: Record<string, unknown> }> ?? []
 
     const trResult = await session.executeRead((tx) =>
       tx.run(`
@@ -589,7 +589,7 @@ export async function saveWorkflowChanges(
       changeSubtype: (wd['change_subtype'] ?? null) as string | null,
       version:       Number(wd['version'] ?? 1),
       active:        wd['active']          as boolean,
-      steps: steps.map((s) => ({
+      steps: savedSteps.map((s) => ({
         id:           s.properties['id']             as string,
         name:         s.properties['name']           as string,
         label:        s.properties['label']          as string,

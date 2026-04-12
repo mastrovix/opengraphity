@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from '@/components/ui/CountBadge'
+import { lookupStyle } from '@/lib/tokens'
 import { StatusBadge } from '@/components/StatusBadge'
 import { GET_CI_CHANGES } from '@/graphql/queries'
 
@@ -24,7 +25,7 @@ const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
 }
 
 function TypeBadge({ type }: { type: string }) {
-  const style = TYPE_COLOR[type] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
+  const style = lookupStyle(TYPE_COLOR, type, 'TYPE_COLOR')
   return (
     <span style={{
       padding:         '2px 7px',

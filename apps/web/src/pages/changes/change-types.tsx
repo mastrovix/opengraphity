@@ -1,4 +1,5 @@
 import type { ImpactAnalysis } from '@/components/ImpactPanel'
+import { lookupStyle } from '@/lib/tokens'
 
 export interface Team { id: string; name: string }
 export interface User { id: string; name: string; email?: string; teamId?: string | null; teams?: { id: string; name: string }[] }
@@ -104,7 +105,7 @@ export const textareaStyle: React.CSSProperties = {
 }
 
 export function Badge({ value, map }: { value: string; map: Record<string, { bg: string; color: string }> }) {
-  const c = map[value] ?? { bg: '#f3f4f6', color: 'var(--color-slate)' }
+  const c = lookupStyle(map, value, 'Badge')
   return (
     <span style={{ ...c, padding: '2px 8px', borderRadius: 100, fontSize: 'var(--font-size-body)', fontWeight: 600, textTransform: 'uppercase' as const }}>
       {value.replace(/_/g, ' ')}
@@ -122,6 +123,7 @@ export function transitionBtnColor(toStep: string): { bg: string; color: string;
   if (toStep === 'assessment') return { bg: '#2563eb', color: '#fff', hover: '#1d4ed8' }
   if (toStep === 'planning') return { bg: 'var(--color-brand-hover)', color: '#fff', hover: '#075985' }
   if (toStep === 'deployment') return { bg: 'var(--color-brand)', color: '#fff', hover: 'var(--color-brand-hover)' }
+  console.error(`[transitionBtnColor] valore sconosciuto: "${toStep}"`)
   return { bg: 'var(--color-brand)', color: '#fff', hover: 'var(--color-brand-hover)' }
 }
 

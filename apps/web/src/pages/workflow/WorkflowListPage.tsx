@@ -7,6 +7,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/ui/skeleton'
 import { GET_WORKFLOW_LIST } from '@/graphql/queries'
+import { lookupOrError } from '@/lib/tokens'
 
 interface WorkflowDef {
   id:             string
@@ -93,7 +94,7 @@ export function WorkflowListPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(columnKeys.length, 4)}, 1fr)`, gap: 24 }}>
           {columnKeys.map((entityType) => {
-            const meta = ENTITY_META[entityType] ?? { label: entityType, Icon: Route, color: 'var(--color-brand)' }
+            const meta = lookupOrError(ENTITY_META, entityType, 'ENTITY_META', { label: entityType, Icon: Route, color: '#ef4444' })
             const items = grouped.get(entityType)!
 
             return (
@@ -137,7 +138,7 @@ export function WorkflowListPage() {
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {def.changeSubtype && (() => {
-                            const sc = SUBTYPE_COLORS[def.changeSubtype] ?? { bg: '#f3f4f6', fg: '#374151' }
+                            const sc = lookupOrError(SUBTYPE_COLORS, def.changeSubtype, 'SUBTYPE_COLORS', { bg: '#ef4444', fg: '#fff' })
                             return (
                               <span style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 4, background: sc.bg, color: sc.fg, fontWeight: 600 }}>
                                 {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}

@@ -11,6 +11,7 @@ import type { ImpactAnalysis } from '@/components/ImpactPanel'
 import { useTranslation } from 'react-i18next'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
+import { lookupOrError } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -260,7 +261,7 @@ export function CreateChangePage() {
             {typeLoading ? (
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
             ) : typeValues.filter(t => t !== 'standard').map(t => {
-              const c   = TYPE_CONFIG[t as keyof typeof TYPE_CONFIG] ?? { label: t.charAt(0).toUpperCase() + t.slice(1) + ' Change', desc: '', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd', icon: '🔵' }
+              const c   = lookupOrError(TYPE_CONFIG as unknown as Record<string, { label: string; desc: string; color: string; bg: string; border: string; icon: string }>, t, 'TYPE_CONFIG', { label: t.charAt(0).toUpperCase() + t.slice(1) + ' Change', desc: '', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd', icon: '🔵' })
               const sel = changeType === t
               return (
                 <div

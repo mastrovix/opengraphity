@@ -36,6 +36,7 @@ const EMPTY_FORM: FormState = {
 }
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
+import { lookupOrError } from '@/lib/tokens'
 
 const ENTITY_LABELS: Record<string, string> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
@@ -78,7 +79,7 @@ function fmtMinutes(m: number): string {
 }
 
 function applicabilityText(p: SLAPolicy): string {
-  const parts: string[] = [`${ENTITY_LABELS[p.entityType] ?? p.entityType}`]
+  const parts: string[] = [`${lookupOrError(ENTITY_LABELS, p.entityType, 'ENTITY_LABELS', p.entityType)}`]
   if (p.priority) parts.push(`priorita ${p.priority}`)
   if (p.category) parts.push(`categoria ${p.category}`)
   if (p.teamName) parts.push(`team ${p.teamName}`)
@@ -219,7 +220,7 @@ export function SLAPoliciesPage() {
 
   // ── Preview text for modal form ───────────────────────────────────────────
   function formPreview(): string {
-    const parts: string[] = [ENTITY_LABELS[form.entityType] ?? form.entityType]
+    const parts: string[] = [lookupOrError(ENTITY_LABELS, form.entityType, 'ENTITY_LABELS', form.entityType)]
     if (form.priority) parts.push(`priorita ${form.priority}`)
     if (form.category) parts.push(`categoria ${form.category}`)
     const team = teams.find(t => t.id === form.teamId)

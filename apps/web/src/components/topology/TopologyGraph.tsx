@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo } from 'react'
 import * as d3 from 'd3'
+import { lookupOrError } from '@/lib/tokens'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -122,7 +123,7 @@ function normalize(s: string): string {
 
 const r   = NODE_RADIUS
 const ec  = () => EDGE_COLOR
-const ed  = (t: string) => EDGE_DIST[t] ?? 110
+const ed  = (t: string) => lookupOrError(EDGE_DIST, t, 'EDGE_DIST', 110)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const nid = (x: any)   => typeof x === 'object' ? (x as { id: string }).id : String(x)
 
@@ -135,7 +136,7 @@ function appendLucideIcon(
   color: string,
   size = 18,
 ): void {
-  const nodes = ICON_NODES[iconKey] ?? ICON_NODES['box']!
+  const nodes = lookupOrError(ICON_NODES, iconKey, 'ICON_NODES', ICON_NODES['box']!)
   const scale  = size / 24
   const offset = -(size / 2)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -527,7 +528,7 @@ interface LegendProps {
 
 // Bare icon SVG for legend — just the lucide paths, no circle wrapper
 function LegendIconSvg({ iconKey, color }: { iconKey: string; color: string }) {
-  const nodes = ICON_NODES[iconKey] ?? ICON_NODES['box']!
+  const nodes = lookupOrError(ICON_NODES, iconKey, 'ICON_NODES', ICON_NODES['box']!)
   // 16×16 container, icon scaled from 24→14 and centered (offset = (16-14)/2 = 1)
   const size   = 14
   const scale  = size / 24

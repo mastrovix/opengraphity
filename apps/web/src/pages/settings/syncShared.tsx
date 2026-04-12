@@ -1,5 +1,6 @@
 import { RefreshCw, CheckCircle, XCircle, Clock, AlertTriangle, Database, Cloud } from 'lucide-react'
 import type { SyncStats } from './useSyncPage'
+import { lookupOrError } from '@/lib/tokens'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ export function StatusBadge({ status }: { status: string }) {
     open:      { color: '#ca8a04', icon: <AlertTriangle size={12} /> },
     resolved:  { color: '#16a34a', icon: <CheckCircle size={12} /> },
   }
-  const c = cfg[status] ?? { color: '#6b7280', icon: null }
+  const c = lookupOrError(cfg, status, 'StatusBadge:cfg', { color: '#6b7280', icon: null as React.ReactNode })
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: c.color, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
       {c.icon}{status}

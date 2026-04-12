@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
-import { colors, fontWeight } from '@/lib/tokens'
+import { colors, fontWeight, lookupOrError } from '@/lib/tokens'
 import { SEVERITY_COLOR } from './NotificationRuleList'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ export function NewRuleDialog({
         {/* Severity */}
         <label style={labelStyle}>
           <span style={labelTextStyle}>{t('notificationRules.header.severity')}</span>
-          <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ ...inputStyle, color: SEVERITY_COLOR[severity] ?? '#64748b', fontWeight: fontWeight.medium }}>
+          <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ ...inputStyle, color: lookupOrError(SEVERITY_COLOR, severity, 'SEVERITY_COLOR', '#64748b'), fontWeight: fontWeight.medium }}>
             {SEVERITY_OPTIONS.map((s) => (
               <option key={s} value={s} style={{ color: SEVERITY_COLOR[s] }}>{t(`notificationRules.severity.${s}`)}</option>
             ))}

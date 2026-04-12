@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
-import { colors } from '@/lib/tokens'
+import { colors, lookupOrError, lookupStyle } from '@/lib/tokens'
 import { EnvBadge } from '@/components/Badges'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
@@ -96,7 +96,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
   const [showChanges,     setShowChanges]     = useState(false)
   const [showAllChanges,  setShowAllChanges]  = useState(false)
 
-  const palette     = RISK_PALETTE[analysis.riskLevel] ?? RISK_PALETTE['low']!
+  const palette     = lookupOrError(RISK_PALETTE, analysis.riskLevel, 'RISK_PALETTE', RISK_PALETTE['low']!)
   const { breakdown } = analysis
 
   const openOnes     = analysis.openIncidents.filter((i) => i.isOpen)
@@ -164,8 +164,8 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                   Nessun CI nel blast radius
                 </div>
               ) : (() => {
-                const DIST_BG:    Record<number, string> = { 1: '#fef2f2', 2: '#fff7ed', 3: '#fefce8', 4: 'var(--color-slate-bg)' }
-                const DIST_COLOR: Record<number, string> = { 1: 'var(--color-trigger-sla-breach)', 2: 'var(--color-brand)', 3: '#ca8a04', 4: 'var(--color-slate)' }
+                const DIST_BG:    Record<string, string> = { '1': '#fef2f2', '2': '#fff7ed', '3': '#fefce8', '4': 'var(--color-slate-bg)' }
+                const DIST_COLOR: Record<string, string> = { '1': 'var(--color-trigger-sla-breach)', '2': 'var(--color-brand)', '3': '#ca8a04', '4': 'var(--color-slate)' }
                 const byDistance = analysis.blastRadius.reduce((acc, ci) => {
                   const d = ci.distance ?? 1
                   if (!acc[d]) acc[d] = []
@@ -186,7 +186,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                             <div key={ci.id} style={ROW}>
                               <span style={{ flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ci.name}</span>
                               <EnvBadge environment={ci.environment} />
-                              <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: DIST_BG[Number(dist)] ?? 'var(--color-slate-bg)', color: DIST_COLOR[Number(dist)] ?? 'var(--color-slate)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: lookupOrError(DIST_BG, dist, 'DIST_BG', 'var(--color-slate-bg)'), color: lookupOrError(DIST_COLOR, dist, 'DIST_COLOR', 'var(--color-slate)'), whiteSpace: 'nowrap', flexShrink: 0 }}>
                                 {dist} hop
                               </span>
                             </div>
@@ -220,7 +220,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                   {openOnes.length > 0 && (
                     <CollapsibleGroup title="In corso" count={openOnes.length}>
                       {openOnes.map((inc) => {
-                        const sv = SEV_STYLE[inc.severity] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
+                        const sv = lookupStyle(SEV_STYLE, inc.severity, 'SEV_STYLE')
                         return (
                           <a key={inc.id} href={`/incidents/${inc.id}`} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', gap: 8, textDecoration: 'none' }}>
                             <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: sv.bg, color: sv.color, flexShrink: 0, marginTop: 1 }}>{inc.severity}</span>
@@ -238,7 +238,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                     <CollapsibleGroup title="Risolti" count={recentClosed.length}>
                       <div style={{ opacity: 0.45 }}>
                         {recentClosed.map((inc) => {
-                          const sv = SEV_STYLE[inc.severity] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
+                          const sv = lookupStyle(SEV_STYLE, inc.severity, 'SEV_STYLE')
                           return (
                             <a key={inc.id} href={`/incidents/${inc.id}`} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', gap: 8, textDecoration: 'none' }}>
                               <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: sv.bg, color: sv.color, flexShrink: 0, marginTop: 1 }}>{inc.severity}</span>
@@ -279,7 +279,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                 const completati = analysis.recentChanges.filter((c) =>  DONE.includes(c.status))
                 const visibleCompletati = showAllChanges ? completati : completati.slice(0, 3)
                 const changeRow = (ch: ImpactChange) => {
-                  const tc = TYPE_COLOR[ch.type] ?? { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' }
+                  const tc = lookupStyle(TYPE_COLOR, ch.type, 'TYPE_COLOR')
                   return (
                     <a key={ch.id} href={`/changes/${ch.id}`} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', gap: 8, textDecoration: 'none' }}>
                       <span style={{ padding: '2px 7px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: tc.bg, color: tc.color, flexShrink: 0, marginTop: 1 }}>{ch.type}</span>
