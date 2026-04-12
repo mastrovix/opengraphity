@@ -162,13 +162,13 @@ export function WhatIfPage() {
 
   const columns: ColumnDef<WhatIfCI>[] = [
     { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
-    { key: 'type', label: t('pages.whatIf.colType'), width: '120px', sortable: true, render: (v) => badge('#e0f2fe', '#0369a1', String(v)) },
-    { key: 'environment', label: t('pages.whatIf.colEnv'), width: '110px', sortable: true, render: (v) => v ? badge('#f0fdf4', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
-    { key: 'impactLevel', label: t('pages.whatIf.colImpact'), width: '100px', sortable: true, render: (v) => {
+    { key: 'type', label: t('pages.whatIf.colType'), sortable: true, width: '120px', render: (v) => badge('#e0f2fe', '#0369a1', String(v)) },
+    { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('#f0fdf4', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
+    { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => {
       const ic = IMPACT_STYLES[String(v)] ?? IMPACT_STYLES['low']
       return badge(ic.bg, ic.fg, impactLabel(String(v)))
     }},
-    { key: 'impactPath', label: t('pages.whatIf.colPath'), render: (v) => {
+    { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => {
       const path = v as unknown as string[]
       return <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{path?.join(' → ') || '—'}</span>
     }},
@@ -190,7 +190,7 @@ export function WhatIfPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<FlaskConical size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<FlaskConical size={22} color="#38bdf8" />}>
           {t('pages.whatIf.title')}
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
@@ -403,9 +403,9 @@ export function WhatIfPage() {
                   <SortableFilterTable<WhatIfCI>
                     columns={[
                       { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
-                      { key: 'environment', label: t('pages.whatIf.colEnv'), width: '110px', sortable: true, render: (v) => v ? badge('#f0fdf4', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
-                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), width: '100px', sortable: true, render: (v) => { const ic = IMPACT_STYLES[String(v)] ?? IMPACT_STYLES['low']; return badge(ic.bg, ic.fg, impactLabel(String(v))) } },
-                      { key: 'impactPath', label: t('pages.whatIf.colPath'), render: (v) => <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
+                      { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('#f0fdf4', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
+                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => { const ic = IMPACT_STYLES[String(v)] ?? IMPACT_STYLES['low']; return badge(ic.bg, ic.fg, impactLabel(String(v))) } },
+                      { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
                     ]}
                     data={paged}
                     loading={false}
@@ -428,7 +428,7 @@ export function WhatIfPage() {
                   <SortableFilterTable<WhatIfTeam>
                     columns={[
                       { key: 'name', label: t('pages.whatIf.colTeamName'), sortable: true },
-                      { key: 'impactedCICount', label: t('pages.whatIf.colTeamCIs'), width: '120px', sortable: true, render: (v) => <span style={{ fontWeight: 700, color: 'var(--color-brand)' }}>{String(v)}</span> },
+                      { key: 'impactedCICount', label: t('pages.whatIf.colTeamCIs'), sortable: true, width: '120px', render: (v) => <span style={{ fontWeight: 700, color: 'var(--color-brand)' }}>{String(v)}</span> },
                     ]}
                     data={paged}
                     loading={false}

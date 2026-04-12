@@ -96,7 +96,7 @@ export function buildBaseSDL(): string {
     widgetDataPreview(entityType: String!, metric: String!, groupByField: String, filterField: String, filterValue: String, timeRange: String): WidgetDataResult!
 
     # Logs
-    logs(limit: Int, offset: Int, filters: String): LogsResult!
+    logs(limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): LogsResult!
 
     # Anomaly Detection
     anomalies(limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): AnomaliesResult!
@@ -250,6 +250,9 @@ export function buildBaseSDL(): string {
     createServiceRequest(input: CreateServiceRequestInput!): ServiceRequest!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
     completeServiceRequest(id: ID!): ServiceRequest!
+
+    # CMDB
+    updateCIFields(id: ID!, input: UpdateCIFieldsInput!): CIBase!
 
     # Teams
     createTeam(input: CreateTeamInput!): Team!

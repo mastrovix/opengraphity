@@ -4,7 +4,6 @@ export const UPDATE_CI = gql`
   mutation UpdateCI($id: ID!, $input: UpdateCIFieldsInput!) {
     updateCIFields(id: $id, input: $input) {
       id name status environment
-      ipAddress location vendor version port url region expiryDate notes
     }
   }
 `

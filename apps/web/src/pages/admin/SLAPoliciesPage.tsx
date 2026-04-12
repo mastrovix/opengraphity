@@ -203,13 +203,13 @@ export function SLAPoliciesPage() {
     { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{v ? String(v) : 'Tutti'}</span> },
     { key: 'responseMinutes', label: 'Risposta', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
     { key: 'resolveMinutes', label: 'Risoluzione', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
-    { key: 'businessHours', label: 'Business Hours', render: (v) => <span style={badge(v ? '#dcfce7' : '#f3f4f6', v ? '#15803d' : 'var(--color-slate)')}>{v ? 'Si' : 'No'}</span> },
-    { key: 'enabled', label: 'Attiva', render: (_v, row) => (
+    { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <span style={badge(v ? '#dcfce7' : '#f3f4f6', v ? '#15803d' : 'var(--color-slate)')}>{v ? 'Si' : 'No'}</span> },
+    { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
       <button onClick={() => handleToggle(row)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
-        {row.enabled ? <ToggleRight size={22} color="var(--color-brand)" /> : <ToggleLeft size={22} color="#cbd5e1" />}
+        {row.enabled ? <ToggleRight size={22} color="#38bdf8" /> : <ToggleLeft size={22} color="#cbd5e1" />}
       </button>
     ) },
-    { key: 'id', label: 'Azioni', render: (_v, row) => (
+    { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'inline-flex', gap: 6 }}>
         <button onClick={() => openEdit(row)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Modifica"><Pencil size={15} color="var(--color-slate)" /></button>
         <button onClick={() => setDeleteId(row.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Elimina"><Trash2 size={15} color="#ef4444" /></button>
@@ -233,7 +233,7 @@ export function SLAPoliciesPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Shield size={22} color="var(--color-brand)" />}>SLA Policies</PageTitle>
+          <PageTitle icon={<Shield size={22} color="#38bdf8" />}>SLA Policies</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${policies.length} policy`}
           </p>

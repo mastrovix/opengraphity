@@ -25,7 +25,7 @@ export function ITILTypeDesignerPage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Settings2 size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<Settings2 size={22} color="#38bdf8" />}>
           {t('itilDesigner.title')}
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>

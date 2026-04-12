@@ -17,8 +17,8 @@ import { CIChangesCard } from '@/components/CIChangesCard'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
 import { GET_BLAST_RADIUS, GET_ALL_CIS } from '@/graphql/queries'
-import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP } from '@/graphql/mutations'
-import { X, Plus } from 'lucide-react'
+import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI } from '@/graphql/mutations'
+import { X, Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -100,6 +100,42 @@ function RelationList({
   )
 }
 
+// ── EditField ─────────────────────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box', padding: '6px 10px',
+  fontSize: 'var(--font-size-body)', borderRadius: 6,
+  border: '1px solid #d1d5db', background: '#fff',
+  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+  outline: 'none',
+}
+
+function EditField({ label, value, onChange, enumValues, multiline }: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  enumValues?: string[]
+  multiline?: boolean
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+        {label}
+      </div>
+      {enumValues && enumValues.length > 0 ? (
+        <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
+          <option value="">—</option>
+          {enumValues.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+      ) : multiline ? (
+        <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} />
+      ) : (
+        <input type="text" value={value} onChange={e => onChange(e.target.value)} style={inputStyle} />
+      )}
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function CIDetailPage() {
@@ -109,6 +145,10 @@ export function CIDetailPage() {
   const { getCIType, loading: metamodelLoading } = useMetamodel()
 
   const ciType = typeName ? getCIType(typeName) : undefined
+
+  // ── Edit mode state ──────────────────────────────────────────────────────
+  const [editMode, setEditMode] = useState(false)
+  const [editDraft, setEditDraft] = useState<Record<string, string>>({})
 
   // ── Relation management state ────────────────────────────────────────────
   const [showAddRel, setShowAddRel] = useState(false)
@@ -121,6 +161,7 @@ export function CIDetailPage() {
 
   const [addRelMutation] = useMutation(ADD_CI_RELATIONSHIP)
   const [removeRelMutation] = useMutation(REMOVE_CI_RELATIONSHIP)
+  const [updateCIFields] = useMutation(UPDATE_CI)
 
   const [searchCIs, { data: ciSearchData }] = useLazyQuery<{
     allCIs: { items: { id: string; name: string; type: string; status: string | null; environment: string | null }[] }
@@ -170,6 +211,60 @@ export function CIDetailPage() {
 
   const blastRadius = brData?.blastRadius ?? []
   const ci = typeName && data ? data[typeName] : undefined
+
+  // ── Edit mode handlers ─────────────────────────────────────────────────
+  function startEdit() {
+    if (!ci) return
+    const draft: Record<string, string> = {}
+    draft['name'] = ci.name ?? ''
+    draft['status'] = ci.status ?? ''
+    draft['environment'] = ci.environment ?? ''
+    draft['description'] = ci.description ?? ''
+    draft['notes'] = (ci.notes as string) ?? ''
+    for (const f of specificFields) {
+      draft[f.name] = ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : ''
+    }
+    setEditDraft(draft)
+    setEditMode(true)
+  }
+
+  async function handleSaveAll() {
+    if (!ci) return
+    const baseFieldNames = new Set(['name', 'status', 'environment', 'description', 'notes'])
+    const baseInput: Record<string, string> = {}
+    const customInput: Record<string, string> = {}
+
+    for (const [key, val] of Object.entries(editDraft)) {
+      const original = ci[key]
+      const originalStr = original !== null && original !== undefined ? String(original) : ''
+      if (val !== originalStr) {
+        if (baseFieldNames.has(key)) {
+          baseInput[key] = val
+        } else {
+          customInput[key] = val
+        }
+      }
+    }
+
+    if (Object.keys(baseInput).length === 0 && Object.keys(customInput).length === 0) {
+      setEditMode(false)
+      return
+    }
+
+    const input: Record<string, string> = { ...baseInput }
+    if (Object.keys(customInput).length > 0) {
+      input.customFields = JSON.stringify(customInput)
+    }
+
+    try {
+      await updateCIFields({ variables: { id: ci.id, input } })
+      toast.success('Modifiche salvate')
+      setEditMode(false)
+      refetch()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   // ── Relation handlers ──────────────────────────────────────────────────
   async function handleAddRelation() {
@@ -229,52 +324,107 @@ export function CIDetailPage() {
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <CIIcon icon={ciType.icon} size={24} color={ciType.color} />
+        <CIIcon icon={ciType.icon} size={24} color="#38bdf8" />
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{ci.name}</h1>
         {ci.status && <StatusBadge value={ci.status} />}
       </div>
 
       <div>
         <div>
-          <SectionCard title="Informazioni" defaultOpen={true}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <DetailField label="ID" value={ci.id} mono />
-              <DetailField label="Tipo" value={ciType.label} />
-              <DetailField label="Environment" value={ci.environment ?? null} />
-              <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
-              <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
-              {ci.ownerGroup && (
-                <DetailField label="Owner Group" value={
-                  <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-brand)' }}>
-                    {(ci.ownerGroup as Team).name}
-                  </span>
-                } />
-              )}
-              {ci.supportGroup && (
-                <DetailField label="Support Group" value={
-                  <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
-                    {(ci.supportGroup as Team).name}
-                  </span>
-                } />
-              )}
-              {specificFields.map(f => (
-                <DetailField
-                  key={f.name}
-                  label={f.label}
-                  value={ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : null}
-                />
-              ))}
-            </div>
-            {ci.description && (
+          <SectionCard
+            title="Informazioni"
+            defaultOpen={true}
+            headerRight={
+              !editMode ? (
+                <button
+                  onClick={e => { e.stopPropagation(); startEdit() }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', fontWeight: 500, borderRadius: 6, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', cursor: 'pointer' }}
+                >
+                  <Pencil size={12} /> Modifica
+                </button>
+              ) : undefined
+            }
+          >
+            {editMode ? (
               <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {/* Read-only fields */}
+                  <DetailField label="ID" value={ci.id} mono />
+                  <DetailField label="Tipo" value={ciType.label} />
+                  <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
+                  <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
+
+                  {/* Editable base fields */}
+                  <EditField label="Nome" value={editDraft['name'] ?? ''} onChange={v => setEditDraft(d => ({ ...d, name: v }))} />
+                  <EditField label="Status" value={editDraft['status'] ?? ''}
+                    enumValues={ciType.fields.find(f => f.name === 'status')?.enumValues}
+                    onChange={v => setEditDraft(d => ({ ...d, status: v }))} />
+                  <EditField label="Environment" value={editDraft['environment'] ?? ''}
+                    enumValues={ciType.fields.find(f => f.name === 'environment')?.enumValues}
+                    onChange={v => setEditDraft(d => ({ ...d, environment: v }))} />
+
+                  {/* Editable specific fields */}
+                  {specificFields.map(f => (
+                    <EditField
+                      key={f.name}
+                      label={f.label}
+                      value={editDraft[f.name] ?? ''}
+                      enumValues={f.enumValues.length > 0 ? f.enumValues : undefined}
+                      onChange={v => setEditDraft(d => ({ ...d, [f.name]: v }))}
+                    />
+                  ))}
+                </div>
+
+                {/* Editable description & notes */}
                 <div style={{ borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
-                <DetailField label="Descrizione" value={ci.description} />
+                <EditField label="Descrizione" value={editDraft['description'] ?? ''} multiline onChange={v => setEditDraft(d => ({ ...d, description: v }))} />
+                <div style={{ marginTop: 12 }} />
+                <EditField label="Note" value={editDraft['notes'] ?? ''} multiline onChange={v => setEditDraft(d => ({ ...d, notes: v }))} />
+
+                {/* Save / Cancel */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  <button onClick={handleSaveAll} style={{ padding: '6px 18px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                    Salva
+                  </button>
+                  <button onClick={() => setEditMode(false)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: 'var(--color-slate)', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                    Annulla
+                  </button>
+                </div>
               </>
-            )}
-            {ci.notes && (
+            ) : (
               <>
-                <div style={{ borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
-                <DetailField label="Note" value={ci.notes as string} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <DetailField label="ID" value={ci.id} mono />
+                  <DetailField label="Nome" value={ci.name} />
+                  <DetailField label="Tipo" value={ciType.label} />
+                  <DetailField label="Status" value={ci.status ? <StatusBadge value={ci.status} /> : null} />
+                  <DetailField label="Environment" value={ci.environment ?? null} />
+                  <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
+                  <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
+                  {ci.ownerGroup && (
+                    <DetailField label="Owner Group" value={
+                      <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-brand)' }}>
+                        {(ci.ownerGroup as Team).name}
+                      </span>
+                    } />
+                  )}
+                  {ci.supportGroup && (
+                    <DetailField label="Support Group" value={
+                      <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
+                        {(ci.supportGroup as Team).name}
+                      </span>
+                    } />
+                  )}
+                  {specificFields.map(f => (
+                    <DetailField
+                      key={f.name}
+                      label={f.label}
+                      value={ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : null}
+                    />
+                  ))}
+                </div>
+                <DetailField label="Descrizione" value={ci.description} />
+                <DetailField label="Note" value={ci.notes as string ?? null} />
               </>
             )}
           </SectionCard>

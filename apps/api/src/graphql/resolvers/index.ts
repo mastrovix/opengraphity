@@ -38,6 +38,8 @@ import { standardChangeCatalogResolvers } from './standardChangeCatalog.js'
 import { whatifResolvers } from './whatif.js'
 import { changeCalendarResolvers } from './changeCalendar.js'
 import { ciRelationshipResolvers } from './ciRelationships.js'
+import { cmdbResolvers } from './cmdb.js'
+const { updateCIFields: updateCIFieldsMutation } = cmdbResolvers.Mutation
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
@@ -290,6 +292,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...problemResolvers.Mutation,
       ...changeResolvers.Mutation,
       ...serviceRequestResolvers.Mutation,
+      updateCIFields: updateCIFieldsMutation,
       ...teamResolvers.Mutation,
       ...workflowResolvers.Mutation,
       ...notificationChannelResolvers.Mutation,

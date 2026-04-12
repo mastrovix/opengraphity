@@ -96,7 +96,7 @@ export function UserDetailPage() {
           ← Users
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <User size={22} color="var(--color-brand)" />
+          <User size={22} color="#38bdf8" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
           <RoleBadge role={user.role} />
         </div>

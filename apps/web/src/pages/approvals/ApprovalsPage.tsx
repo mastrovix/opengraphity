@@ -386,7 +386,7 @@ export function ApprovalsPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<CheckSquare size={22} color="var(--color-brand)" />}>
+          <PageTitle icon={<CheckSquare size={22} color="#38bdf8" />}>
             {t('pages.approvals.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>

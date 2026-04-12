@@ -115,7 +115,7 @@ export function CITypeDesignerPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Layers size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<Layers size={22} color="#38bdf8" />}>
           CI Type Designer
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>

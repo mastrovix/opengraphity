@@ -2,9 +2,11 @@ import type { GraphQLContext } from '../../context.js'
 import { getLogs, type LogEntry } from '../../lib/logBuffer.js'
 
 type LogsArgs = {
-  limit?:   number
-  offset?:  number
-  filters?: string
+  limit?:         number
+  offset?:        number
+  filters?:       string
+  sortField?:     string
+  sortDirection?: string
 }
 
 interface FilterRule {
@@ -36,7 +38,7 @@ function matchesFilter(entry: LogEntry, rule: FilterRule): boolean {
 
 async function logs(
   _: unknown,
-  { limit = 50, offset = 0, filters }: LogsArgs,
+  { limit = 50, offset = 0, filters, sortField, sortDirection }: LogsArgs,
   ctx: GraphQLContext,
 ) {
   if (ctx.role !== 'admin') {
@@ -55,6 +57,16 @@ async function logs(
         )
       }
     } catch { /* ignore malformed filters */ }
+  }
+
+  // Sort
+  if (sortField) {
+    const dir = sortDirection === 'desc' ? -1 : 1
+    entries = [...entries].sort((a, b) => {
+      const av = (a as unknown as Record<string, string | null>)[sortField] ?? ''
+      const bv = (b as unknown as Record<string, string | null>)[sortField] ?? ''
+      return av < bv ? -dir : av > bv ? dir : 0
+    })
   }
 
   const total = entries.length

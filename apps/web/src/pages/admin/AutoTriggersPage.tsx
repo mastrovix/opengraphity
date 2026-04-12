@@ -200,10 +200,10 @@ export function AutoTriggersPage() {
     { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
     { key: 'entityType', label: 'Entità', sortable: true },
     { key: 'eventType', label: 'Evento', sortable: true, render: (v) => EVENT_LABELS[String(v)] || String(v) },
-    { key: 'enabled', label: 'Abilitato', render: (_v, row) => <Toggle value={row.enabled} onChange={() => handleToggleEnabled(row)} /> },
+    { key: 'enabled', label: 'Abilitato', sortable: true, render: (_v, row) => <Toggle value={row.enabled} onChange={() => handleToggleEnabled(row)} /> },
     { key: 'executionCount', label: 'Esecuzioni', sortable: true },
     { key: 'lastExecutedAt', label: 'Ultima esecuzione', sortable: true, render: (v) => v ? new Date(String(v)).toLocaleString('it-IT') : '—' },
-    { key: 'id', label: 'Azioni', render: (_v, row) => (
+    { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
         <button style={{ ...btnSecondary, padding: '4px 8px' }} onClick={() => openEdit(row)}><Pencil size={14} /></button>
         <button style={{ ...btnSecondary, padding: '4px 8px', color: 'var(--color-danger, #ef4444)', borderColor: '#fecaca' }} onClick={() => setDeleteId(row.id)}><Trash2 size={14} /></button>
@@ -218,7 +218,7 @@ export function AutoTriggersPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Zap size={22} color="var(--color-brand)" />}>Auto Trigger</PageTitle>
+          <PageTitle icon={<Zap size={22} color="#38bdf8" />}>Auto Trigger</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${triggers.length} trigger`}
           </p>

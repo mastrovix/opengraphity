@@ -351,7 +351,7 @@ export default function ReportsPage() {
             <BarChart2 size={48} color="#d1d5db" strokeWidth={1.5} />
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <BrainCircuit size={22} color="var(--color-brand)" />
+                <BrainCircuit size={22} color="#38bdf8" />
                 {t('pages.aiAnalysis.title')}
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('pages.aiAnalysis.subtitle')}</div>

@@ -13,7 +13,7 @@ export function SyncPage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Activity size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<Activity size={22} color="#38bdf8" />}>
           CMDB Sync
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', margin: '4px 0 0' }}>

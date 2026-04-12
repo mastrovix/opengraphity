@@ -66,7 +66,7 @@ export function ReportListView(props: ReportListViewProps) {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
-            <PageTitle icon={<LayoutGrid size={22} color="var(--color-brand)" />}>
+            <PageTitle icon={<LayoutGrid size={22} color="#38bdf8" />}>
               {tr('pages.reportBuilder.title')}
             </PageTitle>
             <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>

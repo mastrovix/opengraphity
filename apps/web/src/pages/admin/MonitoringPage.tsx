@@ -128,7 +128,7 @@ export function MonitoringPage() {
   return (
     <PageContainer>
       {/* Header */}
-      <PageTitle icon={<Activity size={22} color="var(--color-brand)" />}>
+      <PageTitle icon={<Activity size={22} color="#38bdf8" />}>
         {t('pages.monitoring.title')}
       </PageTitle>
       <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 24 }}>

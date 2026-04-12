@@ -214,14 +214,18 @@ async function updateConfigurationItem(
   }, true)
 }
 
+// camelCase → snake_case helper
+function toSnake(s: string): string {
+  return s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
+}
+
 async function updateCIFields(
   _: unknown,
   args: {
     id: string
     input: {
       name?: string; status?: string; environment?: string
-      ipAddress?: string; location?: string; vendor?: string; version?: string
-      port?: number; url?: string; region?: string; expiryDate?: string; notes?: string
+      description?: string; notes?: string; customFields?: string
     }
   },
   ctx: GraphQLContext,
@@ -229,43 +233,34 @@ async function updateCIFields(
   const { id, input } = args
   const now = new Date().toISOString()
 
+  // Build dynamic SET clauses from base fields + customFields JSON
+  const setEntries: Record<string, unknown> = { updated_at: now }
+  const baseFields = ['name', 'status', 'environment', 'description', 'notes'] as const
+  for (const f of baseFields) {
+    if (input[f] !== undefined && input[f] !== null) setEntries[f] = input[f]
+  }
+  if (input.customFields) {
+    const custom = JSON.parse(input.customFields) as Record<string, unknown>
+    for (const [key, val] of Object.entries(custom)) {
+      setEntries[toSnake(key)] = val
+    }
+  }
+
+  // Build Cypher SET pairs: ci.field = $p_field
+  const setPairs = Object.keys(setEntries).map(k => `ci.${k} = $p_${k}`).join(', ')
+  const params: Record<string, unknown> = { id, tenantId: ctx.tenantId }
+  for (const [k, v] of Object.entries(setEntries)) {
+    params[`p_${k}`] = v
+  }
+
   return withSession(async (session) => {
     const cypher = `
-      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})
-      SET ci += {
-        name:        coalesce($name,       ci.name),
-        status:      coalesce($status,     ci.status),
-        environment: coalesce($environment, ci.environment),
-        ip_address:  coalesce($ipAddress,  ci.ip_address),
-        location:    coalesce($location,   ci.location),
-        vendor:      coalesce($vendor,     ci.vendor),
-        version:     coalesce($version,    ci.version),
-        port:        coalesce($port,       ci.port),
-        url:         coalesce($url,        ci.url),
-        region:      coalesce($region,     ci.region),
-        expiry_date: coalesce($expiryDate, ci.expiry_date),
-        notes:       coalesce($notes,      ci.notes),
-        updated_at:  $now
-      }
+      MATCH (ci {id: $id, tenant_id: $tenantId})
+      WHERE ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate
+      SET ${setPairs}
       RETURN properties(ci) as props
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id,
-      tenantId:    ctx.tenantId,
-      name:        input.name        ?? null,
-      status:      input.status      ?? null,
-      environment: input.environment ?? null,
-      ipAddress:   input.ipAddress   ?? null,
-      location:    input.location    ?? null,
-      vendor:      input.vendor      ?? null,
-      version:     input.version     ?? null,
-      port:        input.port        ?? null,
-      url:         input.url         ?? null,
-      region:      input.region      ?? null,
-      expiryDate:  input.expiryDate  ?? null,
-      notes:       input.notes       ?? null,
-      now,
-    })
+    const rows = await runQuery<{ props: Props }>(session, cypher, params)
     const row = rows[0]
     if (!row) throw new Error('ConfigurationItem not found')
     return mapCI(row.props)

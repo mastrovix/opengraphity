@@ -189,7 +189,7 @@ export function CIListPage() {
     <PageContainer>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<CIIcon icon={ciType.icon} size={22} color="var(--color-brand)" />}>
+          <PageTitle icon={<CIIcon icon={ciType.icon} size={22} color="#38bdf8" />}>
             {ciTypeLabel}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>

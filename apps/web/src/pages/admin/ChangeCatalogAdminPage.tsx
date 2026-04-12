@@ -14,7 +14,7 @@ export function ChangeCatalogAdminPage() {
   return (
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <PageTitle icon={<BookOpen size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<BookOpen size={22} color="#38bdf8" />}>
           {t('pages.changeCatalogAdmin.title')}
         </PageTitle>
       </div>

@@ -213,13 +213,13 @@ export function IntegrationsPage() {
   const inboundColumns: ColumnDef<any>[] = [
     { key: 'name', label: 'Nome', sortable: true },
     { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <span style={badgeS}>{String(v)}</span> },
-    { key: 'id', label: 'Endpoint URL', render: (v) => (
+    { key: 'id', label: 'Endpoint URL', sortable: true, render: (v) => (
       <>
         <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace' }}>/api/webhooks/in/{String(v)}</span>
         <Copy size={12} style={{ marginLeft: 6, cursor: 'pointer', color: 'var(--color-slate)' }} onClick={() => copyText(`/api/webhooks/in/${String(v)}`)} />
       </>
     ) },
-    { key: 'enabled', label: 'Attivo', render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleInbound(row.id, row.enabled)} /> },
+    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleInbound(row.id, row.enabled)} /> },
     { key: 'receiveCount', label: 'Ricevuti', sortable: true, render: (v) => String(v ?? 0) },
     { key: 'lastReceivedAt', label: 'Ultimo', sortable: true, render: (v) => fmtDate(v as string | null) },
     { key: 'createdAt', label: '', render: (_v, row) => (
@@ -233,19 +233,19 @@ export function IntegrationsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const outboundColumns: ColumnDef<any>[] = [
     { key: 'name', label: 'Nome', sortable: true },
-    { key: 'url', label: 'URL', render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
-    { key: 'events', label: 'Events', render: (v) => {
+    { key: 'url', label: 'URL', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
+    { key: 'events', label: 'Events', sortable: true, render: (v) => {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{events.map(e => <span key={e} style={badgeS}>{e}</span>)}</>
     } },
-    { key: 'enabled', label: 'Attivo', render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleOutbound(row.id, row.enabled)} /> },
+    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleOutbound(row.id, row.enabled)} /> },
     { key: 'sendCount', label: 'Invii', sortable: true, render: (v) => String(v ?? 0) },
-    { key: 'lastStatusCode', label: 'Ultimo Status', render: (v) => {
+    { key: 'lastStatusCode', label: 'Ultimo Status', sortable: true, render: (v) => {
       if (!v) return '—'
       const ok = Number(v) >= 200 && Number(v) < 300
       return <span style={{ ...badgeS, background: ok ? '#dcfce7' : '#fee2e2', color: ok ? '#16a34a' : '#dc2626' }}>{String(v)}</span>
     } },
-    { key: 'lastError', label: 'Ultimo Errore', render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: '#ef4444', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
+    { key: 'lastError', label: 'Ultimo Errore', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: '#ef4444', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button style={btnSecondary} title="Test" onClick={() => handleTestOutbound(row.id)}><Play size={13} /></button>
@@ -257,13 +257,13 @@ export function IntegrationsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const apiKeyColumns: ColumnDef<any>[] = [
     { key: 'name', label: 'Nome', sortable: true },
-    { key: 'keyPrefix', label: 'Prefisso', render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
-    { key: 'permissions', label: 'Permessi', render: (v) => {
+    { key: 'keyPrefix', label: 'Prefisso', sortable: true, render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
+    { key: 'permissions', label: 'Permessi', sortable: true, render: (v) => {
       const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{perms.map(p => <span key={p} style={badgeS}>{p}</span>)}</>
     } },
     { key: 'rateLimit', label: 'Rate Limit', sortable: true, render: (v) => `${String(v)}/min` },
-    { key: 'enabled', label: 'Attivo', render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleKey(row.id, row.enabled)} /> },
+    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleKey(row.id, row.enabled)} /> },
     { key: 'lastUsedAt', label: 'Ultimo uso', sortable: true, render: (v) => fmtDate(v as string | null) },
     { key: 'requestCount', label: 'Richieste', sortable: true, render: (v) => String(v ?? 0) },
     { key: 'createdAt', label: '', render: (_v, row) => (
@@ -283,7 +283,7 @@ export function IntegrationsPage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Plug size={22} color="var(--color-brand)" />}>Integrazioni</PageTitle>
+        <PageTitle icon={<Plug size={22} color="#38bdf8" />}>Integrazioni</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
           Webhook, API Keys e connessioni esterne
         </p>

@@ -37,7 +37,7 @@ export function ChangeListPage() {
   const { t } = useTranslation()
 
   const columns: ColumnDef<Change>[] = [
-    { key: 'number', label: 'Number', width: '120px', sortable: true },
+    { key: 'number', label: 'Number', sortable: true, width: '120px' },
     { key: 'title',  label: t('pages.changes.title_col'), sortable: true },
     {
       key:      'type',
@@ -128,7 +128,7 @@ export function ChangeListPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<GitPullRequest size={22} color="var(--color-brand)" />}>
+          <PageTitle icon={<GitPullRequest size={22} color="#38bdf8" />}>
             {t('pages.changes.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>

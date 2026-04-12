@@ -110,6 +110,15 @@ export function cmdbSDL(): string {
     description:  String
   }
 
+  input UpdateCIFieldsInput {
+    name: String
+    status: String
+    environment: String
+    description: String
+    notes: String
+    customFields: String
+  }
+
   input CreateTeamInput {
     name: String!
     description: String

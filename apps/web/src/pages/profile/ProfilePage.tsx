@@ -9,7 +9,7 @@ export function ProfilePage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<UserCircle size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<UserCircle size={22} color="#38bdf8" />}>
           {t('pages.profile.title')}
         </PageTitle>
       </div>

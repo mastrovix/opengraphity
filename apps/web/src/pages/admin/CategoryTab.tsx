@@ -18,7 +18,7 @@ export function CategoryTab() {
   } = useCategoriesTab()
 
   const columns: ColumnDef<CatalogCategory>[] = [
-    { key: 'icon', label: t('pages.changeCatalogAdmin.icon'), width: '60px', render: (v) => {
+    { key: 'icon', label: t('pages.changeCatalogAdmin.icon'), sortable: true, width: '60px', render: (v) => {
       const found = ICON_OPTIONS.find(io => io.value === v)
       return found
         ? <found.Icon size={18} />
@@ -30,13 +30,13 @@ export function CategoryTab() {
         {row.description && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>{row.description}</div>}
       </div>
     )},
-    { key: 'entryCount', label: t('pages.changeCatalogAdmin.colEntries'), width: '80px', render: v => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
-    { key: 'enabled', label: t('pages.changeCatalogAdmin.colStatus'), width: '80px', render: (_v, row) => (
+    { key: 'entryCount', label: t('pages.changeCatalogAdmin.colEntries'), sortable: true, width: '80px', render: v => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
+    { key: 'enabled', label: t('pages.changeCatalogAdmin.colStatus'), sortable: true, width: '80px', render: (_v, row) => (
       <button onClick={e => { e.stopPropagation(); handleToggle(row) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
-        {row.enabled ? <ToggleRight size={22} color="var(--color-brand)" /> : <ToggleLeft size={22} color="#cbd5e1" />}
+        {row.enabled ? <ToggleRight size={22} color="#38bdf8" /> : <ToggleLeft size={22} color="#cbd5e1" />}
       </button>
     )},
-    { key: 'id', label: t('pages.changeCatalogAdmin.colActions'), width: '100px', render: (_v, row) => (
+    { key: 'id', label: t('pages.changeCatalogAdmin.colActions'), sortable: true, width: '100px', render: (_v, row) => (
       <div style={{ display: 'inline-flex', gap: 6 }}>
         <button onClick={e => { e.stopPropagation(); openEdit(row) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title={t('pages.changeCatalogAdmin.editCategory')}><Pencil size={15} color="var(--color-slate)" /></button>
         <button onClick={e => { e.stopPropagation(); setDeleteId(row.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title={t('pages.changeCatalogAdmin.delete')}><Trash2 size={15} color="#ef4444" /></button>

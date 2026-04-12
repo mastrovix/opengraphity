@@ -388,7 +388,7 @@ export function EnumDesignerPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Tag size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<Tag size={22} color="#38bdf8" />}>
           {t('pages.dictionary.title')}
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>

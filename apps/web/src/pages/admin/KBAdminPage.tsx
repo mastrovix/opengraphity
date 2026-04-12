@@ -251,7 +251,7 @@ export function KBAdminPage() {
     { key: 'authorName', label: 'Autore', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
     { key: 'views', label: 'Views', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
     { key: 'updatedAt', label: 'Aggiornato', sortable: true, render: (v) => <span style={{ color: '#94a3b8' }}>{new Date(String(v)).toLocaleDateString()}</span> },
-    { key: 'id', label: 'Azioni', render: (_v, row) => (
+    { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <button onClick={() => startEdit(row)} style={{ color: '#38bdf8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
         {deleteId === row.id ? (
@@ -276,7 +276,7 @@ export function KBAdminPage() {
       {/* ── Header ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<BookOpen size={22} color="var(--color-brand)" />}>
+          <PageTitle icon={<BookOpen size={22} color="#38bdf8" />}>
             {t('pages.kbAdmin.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>

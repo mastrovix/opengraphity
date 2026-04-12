@@ -138,7 +138,7 @@ export function TeamDetailPage() {
           ← Teams
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <UsersRound size={22} color="var(--color-brand)" />
+          <UsersRound size={22} color="#38bdf8" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
         </div>
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>

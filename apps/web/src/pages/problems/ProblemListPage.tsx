@@ -81,7 +81,7 @@ export function ProblemListPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Search size={22} color="var(--color-brand)" />}>
+          <PageTitle icon={<Search size={22} color="#38bdf8" />}>
             {t('pages.problems.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>

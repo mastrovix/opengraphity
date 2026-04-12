@@ -208,14 +208,14 @@ export function BusinessRulesPage() {
     { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
     { key: 'entityType', label: 'Entità', sortable: true },
     { key: 'eventType', label: 'Evento', sortable: true, render: (v) => String(v).replace('on_', '') },
-    { key: 'conditionLogic', label: 'Logica', render: (v) => <span style={badgeStyle(v === 'AND' ? '#dbeafe' : '#fef3c7', v === 'AND' ? '#1d4ed8' : '#92400e')}>{String(v)}</span> },
-    { key: 'stopOnMatch', label: 'Stop', render: (v) => v ? <span style={badgeStyle('#fee2e2', '#dc2626')}>STOP</span> : null },
-    { key: 'enabled', label: 'Attiva', render: (_v, row) => (
+    { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <span style={badgeStyle(v === 'AND' ? '#dbeafe' : '#fef3c7', v === 'AND' ? '#1d4ed8' : '#92400e')}>{String(v)}</span> },
+    { key: 'stopOnMatch', label: 'Stop', sortable: true, render: (v) => v ? <span style={badgeStyle('#fee2e2', '#dc2626')}>STOP</span> : null },
+    { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
       <div onClick={() => handleToggleEnabled(row)} style={{ width: 36, height: 20, borderRadius: 10, background: row.enabled ? 'var(--color-brand)' : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background .2s' }}>
         <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: row.enabled ? 18 : 2, transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.15)' }} />
       </div>
     ) },
-    { key: 'id', label: 'Azioni', render: (_v, row) => (
+    { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={() => openEdit(row)} style={{ ...btnSecondary, padding: '4px 8px' }}><Pencil size={13} /></button>
         <button onClick={() => handleDelete(row.id)} style={{ ...btnSecondary, padding: '4px 8px', color: '#ef4444', borderColor: '#fecaca' }}><Trash2 size={13} /></button>
@@ -246,7 +246,7 @@ export function BusinessRulesPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<GitBranch size={22} color="var(--color-brand)" />}>Business Rules</PageTitle>
+          <PageTitle icon={<GitBranch size={22} color="#38bdf8" />}>Business Rules</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${rules.length} regole`}
           </p>

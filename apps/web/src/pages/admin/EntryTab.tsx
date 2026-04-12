@@ -22,28 +22,28 @@ export function EntryTab() {
 
   const columns: ColumnDef<CatalogEntry>[] = [
     { key: 'name', label: t('pages.changeCatalogAdmin.colName'), sortable: true, render: (v) => <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</span> },
-    { key: 'categoryId', label: t('pages.changeCatalogAdmin.colCategory'), width: '140px', render: (_v, row) => {
+    { key: 'categoryId', label: t('pages.changeCatalogAdmin.colCategory'), sortable: true, width: '140px', render: (_v, row) => {
       if (!row.category) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
       return <span style={badgeS(row.category.color || '#e0f2fe', row.category.color ? '#fff' : '#0284c7')}>{row.category.name}</span>
     }},
-    { key: 'workflowId', label: t('pages.changeCatalogAdmin.colWorkflow'), width: '140px', render: (_v, row) => (
+    { key: 'workflowId', label: t('pages.changeCatalogAdmin.colWorkflow'), sortable: true, width: '140px', render: (_v, row) => (
       <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{row.workflow?.name ?? t('pages.changeCatalogAdmin.default')}</span>
     )},
-    { key: 'riskLevel', label: t('pages.changeCatalogAdmin.colRisk'), width: '100px', sortable: true, render: (v) => {
+    { key: 'riskLevel', label: t('pages.changeCatalogAdmin.colRisk'), sortable: true, width: '100px', render: (v) => {
       const risk = String(v)
       const bgMap: Record<string, string> = { low: '#dcfce7', medium: '#fef3c7', high: '#fee2e2' }
       const fgMap: Record<string, string> = { low: '#15803d', medium: '#92400e', high: '#991b1b' }
       const lMap: Record<string, string> = { low: t('pages.changeCatalogAdmin.low'), medium: t('pages.changeCatalogAdmin.medium'), high: t('pages.changeCatalogAdmin.high') }
       return <span style={badgeS(bgMap[risk] || '#f3f4f6', fgMap[risk] || '#6b7280')}>{lMap[risk] || risk}</span>
     }},
-    { key: 'estimatedDurationHours', label: t('pages.changeCatalogAdmin.colDuration'), width: '90px', render: (v) => v ? <span>{String(v)}h</span> : <span style={{ color: 'var(--color-slate-light)' }}>—</span> },
-    { key: 'usageCount', label: t('pages.changeCatalogAdmin.colUsage'), width: '80px', sortable: true, render: (v) => <span>{String(v)}</span> },
-    { key: 'enabled', label: t('pages.changeCatalogAdmin.colStatus'), width: '80px', render: (_v, row) => (
+    { key: 'estimatedDurationHours', label: t('pages.changeCatalogAdmin.colDuration'), sortable: true, width: '90px', render: (v) => v ? <span>{String(v)}h</span> : <span style={{ color: 'var(--color-slate-light)' }}>—</span> },
+    { key: 'usageCount', label: t('pages.changeCatalogAdmin.colUsage'), sortable: true, width: '80px', render: (v) => <span>{String(v)}</span> },
+    { key: 'enabled', label: t('pages.changeCatalogAdmin.colStatus'), sortable: true, width: '80px', render: (_v, row) => (
       <button onClick={e => { e.stopPropagation(); handleToggle(row) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
-        {row.enabled ? <ToggleRight size={22} color="var(--color-brand)" /> : <ToggleLeft size={22} color="#cbd5e1" />}
+        {row.enabled ? <ToggleRight size={22} color="#38bdf8" /> : <ToggleLeft size={22} color="#cbd5e1" />}
       </button>
     )},
-    { key: 'id', label: t('pages.changeCatalogAdmin.colActions'), width: '100px', render: (_v, row) => (
+    { key: 'id', label: t('pages.changeCatalogAdmin.colActions'), sortable: true, width: '100px', render: (_v, row) => (
       <div style={{ display: 'inline-flex', gap: 6 }}>
         <button onClick={e => { e.stopPropagation(); openEdit(row) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title={t('pages.changeCatalogAdmin.editEntry')}><Pencil size={15} color="var(--color-slate)" /></button>
         <button onClick={e => { e.stopPropagation(); setDeleteId(row.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title={t('pages.changeCatalogAdmin.delete')}><Trash2 size={15} color="#ef4444" /></button>

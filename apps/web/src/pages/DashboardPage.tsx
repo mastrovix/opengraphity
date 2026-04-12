@@ -335,7 +335,7 @@ export function DashboardPage() {
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <PageTitle icon={<LayoutDashboard size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<LayoutDashboard size={22} color="#38bdf8" />}>
           Dashboard
         </PageTitle>
 

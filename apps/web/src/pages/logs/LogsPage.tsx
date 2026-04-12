@@ -4,13 +4,13 @@ import { PageContainer } from '@/components/PageContainer'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
-import { EmptyState } from '@/components/EmptyState'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { ScrollText } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 
 const GET_LOGS = gql`
-  query GetLogs($limit: Int, $offset: Int, $filters: String) {
-    logs(limit: $limit, offset: $offset, filters: $filters) {
+  query GetLogs($limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    logs(limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       entries {
         id timestamp level module message data
@@ -57,59 +57,39 @@ function LevelBadge({ level }: { level: string }) {
   )
 }
 
-function LogRow({ entry }: { entry: LogEntry }) {
-  const [expanded, setExpanded] = useState(false)
-  const hasData = entry.data && entry.data !== '{}'
-
-  return (
-    <>
-      <tr
-        onClick={() => hasData && setExpanded((e) => !e)}
-        style={{
-          cursor:          hasData ? 'pointer' : 'default',
-          borderBottom:    '1px solid #f1f3f9',
-          backgroundColor: expanded ? '#f5f7ff' : '#fff',
-          transition:      'background 100ms',
-        }}
-        onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.backgroundColor = '#f5f7ff' }}
-        onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.backgroundColor = '#fff' }}
-      >
-        <td style={{ padding: '11px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
-          {new Date(entry.timestamp).toLocaleString('it-IT', { hour12: false })}
-        </td>
-        <td style={{ padding: '11px 12px' }}>
-          <LevelBadge level={entry.level} />
-        </td>
-        <td style={{ padding: '11px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-          {entry.module ?? '—'}
-        </td>
-        <td style={{ padding: '11px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-          {entry.message}
-        </td>
-      </tr>
-      {expanded && hasData && (
-        <tr style={{ backgroundColor: '#f8fafc' }}>
-          <td colSpan={4} style={{ padding: '0 12px 12px 12px' }}>
-            <pre style={{
-              margin:          0,
-              padding:         12,
-              backgroundColor: '#f1f5f9',
-              color:           'var(--color-slate-dark)',
-              borderRadius:    6,
-              fontSize:        11,
-              overflowX:       'auto',
-              whiteSpace:      'pre-wrap',
-              wordBreak:       'break-all',
-              border:          '1px solid #e2e8f0',
-            }}>
-              {JSON.stringify(JSON.parse(entry.data!), null, 2)}
-            </pre>
-          </td>
-        </tr>
-      )}
-    </>
-  )
-}
+const LOG_COLUMNS: ColumnDef<LogEntry>[] = [
+  {
+    key: 'timestamp',
+    label: 'Timestamp',
+    width: '160px',
+    sortable: true,
+    render: (_val, row) => (
+      <span style={{ color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
+        {new Date(row.timestamp).toLocaleString('it-IT', { hour12: false })}
+      </span>
+    ),
+  },
+  {
+    key: 'level',
+    label: 'Level',
+    width: '90px',
+    sortable: true,
+    render: (_val, row) => <LevelBadge level={row.level} />,
+  },
+  {
+    key: 'module',
+    label: 'Module',
+    width: '120px',
+    sortable: true,
+    render: (_val, row) => <span style={{ color: 'var(--color-slate-light)' }}>{row.module ?? '—'}</span>,
+  },
+  {
+    key: 'message',
+    label: 'Message',
+    sortable: true,
+    render: (_val, row) => <span style={{ color: 'var(--color-slate-dark)' }}>{row.message}</span>,
+  },
+]
 
 
 export function LogsPage() {
@@ -138,12 +118,17 @@ export function LogsPage() {
   const [offset,      setOffset]      = useState(0)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [expandedId,  setExpandedId]  = useState<string | null>(null)
+  const [sortField,   setSortField]   = useState<string | null>(null)
+  const [sortDir,     setSortDir]     = useState<'asc' | 'desc'>('desc')
 
   const { data, loading, refetch } = useQuery<{ logs: { entries: LogEntry[]; total: number } }>(GET_LOGS, {
     variables: {
       limit:   PAGE_SIZE,
       offset,
-      filters: filterGroup ? JSON.stringify(filterGroup) : null,
+      filters:       filterGroup ? JSON.stringify(filterGroup) : null,
+      sortField:     sortField ?? 'timestamp',
+      sortDirection: sortDir,
     },
     fetchPolicy: 'network-only',
   })
@@ -163,24 +148,11 @@ export function LogsPage() {
   const totalPages  = Math.ceil(total / PAGE_SIZE)
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1
 
-  const thStyle: React.CSSProperties = {
-    background:    '#f9fafb',
-    borderBottom:  '2px solid #e5e7eb',
-    padding:       '8px 12px 6px',
-    textAlign:     'left',
-    whiteSpace:    'nowrap',
-    fontSize:      11,
-    fontWeight:    500,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.5px',
-    color:         'var(--color-slate-light)',
-  }
-
   return (
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<ScrollText size={22} color="var(--color-brand)" />}>
+        <PageTitle icon={<ScrollText size={22} color="#38bdf8" />}>
           {t('pages.logs.title')}
         </PageTitle>
         <p style={{ color: '#0f172a', fontSize: 'var(--font-size-body)', margin: '4px 0 0' }}>
@@ -219,38 +191,36 @@ export function LogsPage() {
       </div>
 
       {/* Table */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={{ ...thStyle, width: 160 }}>{t('pages.logs.timestamp')}</th>
-              <th style={{ ...thStyle, width: 90  }}>{t('pages.logs.level')}</th>
-              <th style={{ ...thStyle, width: 120 }}>{t('pages.logs.source')}</th>
-              <th style={thStyle}>{t('pages.logs.message')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={4} style={{ padding: 32, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
-                  {t('common.loading')}
-                </td>
-              </tr>
-            )}
-            {!loading && entries.length === 0 && (
-              <tr>
-                <td colSpan={4}>
-                  <EmptyState
-                    icon={<ScrollText size={32} color="var(--color-slate-light)" />}
-                    title={t('common.noResults')}
-                  />
-                </td>
-              </tr>
-            )}
-            {entries.map((entry) => <LogRow key={entry.id} entry={entry} />)}
-          </tbody>
-        </table>
-      </div>
+      <SortableFilterTable<LogEntry>
+        columns={LOG_COLUMNS}
+        data={entries}
+        loading={loading}
+        sortField={sortField}
+        sortDir={sortDir}
+        onSort={(field, dir) => { setSortField(field); setSortDir(dir); setOffset(0) }}
+        expandedRowId={expandedId}
+        onRowClick={(entry) => {
+          if (entry.data && entry.data !== '{}') {
+            setExpandedId(prev => prev === entry.id ? null : entry.id)
+          }
+        }}
+        renderExpandedRow={(entry) => (
+          <pre style={{
+            margin:          0,
+            padding:         12,
+            backgroundColor: '#f1f5f9',
+            color:           'var(--color-slate-dark)',
+            borderRadius:    6,
+            fontSize:        11,
+            overflowX:       'auto',
+            whiteSpace:      'pre-wrap',
+            wordBreak:       'break-all',
+            border:          '1px solid #e2e8f0',
+          }}>
+            {JSON.stringify(JSON.parse(entry.data!), null, 2)}
+          </pre>
+        )}
+      />
 
       {/* Pagination */}
       {totalPages > 1 && (
