@@ -8,7 +8,6 @@ import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { StatusBadge } from '@/components/StatusBadge'
-import { DetailCard } from '@/components/ui/DetailCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { CollapsibleCard } from '@/components/ui/CollapsibleCard'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
@@ -235,22 +234,29 @@ export function CIDetailPage() {
         {ci.status && <StatusBadge value={ci.status} />}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
-        {/* Left column */}
+      <div>
         <div>
           <CollapsibleCard title="Informazioni" defaultOpen={true}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {ci.description && (
-                <DetailField
-                  label="Descrizione"
-                  value={ci.description}
-                />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <DetailField label="ID" value={ci.id} mono />
+              <DetailField label="Tipo" value={ciType.label} />
+              <DetailField label="Environment" value={ci.environment ?? null} />
+              <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
+              <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
+              {ci.ownerGroup && (
+                <DetailField label="Owner Group" value={
+                  <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-brand)' }}>
+                    {(ci.ownerGroup as Team).name}
+                  </span>
+                } />
               )}
-
-              {ci.description && specificFields.length > 0 && (
-                <div style={{ borderTop: '1px solid #f3f4f6' }} />
+              {ci.supportGroup && (
+                <DetailField label="Support Group" value={
+                  <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
+                    {(ci.supportGroup as Team).name}
+                  </span>
+                } />
               )}
-
               {specificFields.map(f => (
                 <DetailField
                   key={f.name}
@@ -258,14 +264,19 @@ export function CIDetailPage() {
                   value={ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : null}
                 />
               ))}
-
-              {ci.notes && (
-                <>
-                  <div style={{ borderTop: '1px solid #f3f4f6' }} />
-                  <DetailField label="Note" value={ci.notes as string} />
-                </>
-              )}
             </div>
+            {ci.description && (
+              <>
+                <div style={{ borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
+                <DetailField label="Descrizione" value={ci.description} />
+              </>
+            )}
+            {ci.notes && (
+              <>
+                <div style={{ borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
+                <DetailField label="Note" value={ci.notes as string} />
+              </>
+            )}
           </CollapsibleCard>
 
           <CollapsibleCard title="Mappa Dipendenze">
@@ -476,31 +487,6 @@ export function CIDetailPage() {
           <CIChangesCard ciId={ci.id} />
         </div>
 
-        {/* Right column */}
-        <div>
-          <DetailCard title="Dettagli">
-            <DetailField label="ID" value={ci.id} mono />
-            <DetailField label="Tipo" value={ciType.label} />
-            <DetailField label="Environment" value={ci.environment ?? null} />
-            {ci.ownerGroup && (
-              <DetailField label="Owner Group" value={
-                <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-brand)' }}>
-                  {(ci.ownerGroup as Team).name}
-                </span>
-              } />
-            )}
-            {ci.supportGroup && (
-              <DetailField label="Support Group" value={
-                <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
-                  {(ci.supportGroup as Team).name}
-                </span>
-              } />
-            )}
-            <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
-            <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
-            {ci.notes && <DetailField label="Note" value={ci.notes as string} />}
-          </DetailCard>
-        </div>
       </div>
     </PageContainer>
   )
