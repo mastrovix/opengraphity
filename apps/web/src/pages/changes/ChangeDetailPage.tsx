@@ -1,3 +1,11 @@
+// TODO(split): this file is >900 lines and should be split into
+//   - components/PhaseChipBar.tsx       (stepper dots)
+//   - components/ChangeInfoCard.tsx     (info card: description, owner, requester, dates, badges)
+//   - components/CITasksTable.tsx       (expandable CI rows + task list)
+//   - components/AssessmentModal.tsx    (responses modal)
+//   - components/PlanModal.tsx          (deploy-plan modal)
+//   - components/AuditTimeline.tsx      (audit filters + timeline)
+// ChangeDetailPage stays as orchestrator (queries + composition).
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'

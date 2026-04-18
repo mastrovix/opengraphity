@@ -1,3 +1,11 @@
+// TODO(split): this file is >670 lines and should be split into
+//   - components/AssessmentTaskForm.tsx
+//   - components/PlanTaskForm.tsx
+//   - components/ValidationTaskForm.tsx
+//   - components/DeploymentTaskForm.tsx
+//   - components/ReviewTaskForm.tsx
+//   - components/ChangeOverviewSidebar.tsx
+// TaskViewPage stays as orchestrator (loads data, picks form by task.kind).
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'

@@ -1,3 +1,12 @@
+// TODO(split): this file is >1000 lines and should be split into
+//   - assessmentMutations.ts (submitAssessmentResponse, completeAssessmentTask, assign*)
+//   - planMutations.ts       (saveDeployPlan, completeDeployPlanTask)
+//   - executionMutations.ts  (completeValidationTest, completeDeployment, completeReview)
+//   - reopenMutations.ts     (reopen*)
+//   - changeMutations.ts     (createChange, addCIToChange, removeCIFromChange, executeChangeTransition, sendTaskReminder)
+// with shared helpers (writeAudit, getCIName, assert*, computeAggregateRisk, ...) extracted
+// into apps/api/src/graphql/resolvers/change/helpers.ts and imported here.
+// Blocked on: many helpers are tightly coupled and need careful export/test before splitting.
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
