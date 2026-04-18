@@ -49,11 +49,13 @@ router.post('/', requirePermission('changes:write'), async (req: Request, res: R
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
   try {
+    const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
+    const initialStatus = await getInitialStepName(session, req.apiKey!.tenantId, 'change')
     const rows = await runQuery<{ props: Record<string, unknown> }>(session, `
       CREATE (c:Change {id: $id, tenant_id: $tenantId, title: $title, description: $description,
-        type: $type, priority: $priority, status: 'draft', created_at: $now, updated_at: $now})
+        type: $type, priority: $priority, status: $status, created_at: $now, updated_at: $now})
       RETURN properties(c) AS props
-    `, { id, tenantId: req.apiKey!.tenantId, title, description: description ?? null, type: type ?? 'normal', priority: priority ?? 'medium', now })
+    `, { id, tenantId: req.apiKey!.tenantId, title, description: description ?? null, type: type ?? 'normal', priority: priority ?? 'medium', now, status: initialStatus })
     res.status(201).json({ data: mapChange(rows[0]!.props) })
   } catch (err) { if (!res.headersSent) res.status(500).json({ error: { code: "INTERNAL_ERROR", message: err instanceof Error ? err.message : "Error" } }) } finally { await session.close() }
 })

@@ -9,6 +9,7 @@ import { validateStringLength } from '../lib/validation.js'
 import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
+import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -99,6 +100,7 @@ export async function createIncident(
     const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as any)?.toNumber === 'function' ? (rawCnt as any).toNumber() : Number(rawCnt ?? 0)
     const number = 'INC' + String(count + 1).padStart(8, '0')
 
+    const initialStatus = await getInitialStepName(session, ctx.tenantId, 'incident')
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (i:Incident {
         id:           $id,
@@ -108,7 +110,7 @@ export async function createIncident(
         description:  $description,
         severity:     $severity,
         category:     $category,
-        status:       'new',
+        status:       $status,
         created_at:   $now,
         updated_at:   $now
       })
@@ -116,7 +118,8 @@ export async function createIncident(
     `, {
       id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
-      severity: input.severity, category: input.category ?? null, now,
+      severity: input.severity, category: input.category ?? null,
+      status: initialStatus, now,
     })
     if (!rows[0]) throw new ValidationError('Failed to create incident')
     return mapIncident(rows[0].props)
@@ -149,12 +152,12 @@ export async function createIncident(
   }, true)
 
   await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
-    id, title: input.title, severity: input.severity, status: 'new',
+    id, title: input.title, severity: input.severity, status: created.status,
     ciName: '—', assignedTo: '—', affected_ci_ids: input.affectedCIIds ?? [],
   } satisfies IncidentEventPayload, now)
 
   // Evaluate auto triggers, then business rules
-  const entityData = { id, title: input.title, severity: input.severity, status: 'new', category: input.category ?? null, description: input.description ?? null }
+  const entityData = { id, title: input.title, severity: input.severity, status: created.status, category: input.category ?? null, description: input.description ?? null }
   void evaluateTriggers(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId)
     .then(() => evaluateBusinessRules(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId))
   scheduleTimerTriggers(ctx.tenantId, 'incident', id).catch((err: unknown) => {
@@ -172,10 +175,35 @@ export async function resolveIncident(
   const now = new Date().toISOString()
 
   const resolved = await withSession(async (session) => {
+    // Transition workflow to the step marked as category='resolved' (or,
+    // if none, the first terminal step). The engine syncs entity.status
+    // and records the step history; we only handle fields the engine
+    // doesn't know about (resolved_at, root_cause).
+    const instanceRow = await runQueryOne<{ instanceId: string }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      RETURN wi.id AS instanceId
+    `, { id, tenantId: ctx.tenantId })
+    if (!instanceRow) throw new NotFoundError('Incident', id)
+
+    const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
+    const resolvedStep =
+      steps.find((s) => s.category === 'resolved') ??
+      steps.find((s) => s.isTerminal)
+    if (!resolvedStep) throw new ValidationError('No resolved/terminal step in incident workflow')
+
+    await workflowEngine.transition(
+      session,
+      { instanceId: instanceRow.instanceId, toStepName: resolvedStep.name,
+        triggeredBy: ctx.userId, triggerType: 'manual', notes: notes ?? undefined },
+      { userId: ctx.userId, notes, entityData: {} },
+    )
+
+    // Fields the engine doesn't touch.
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      SET i.status = 'resolved', i.resolved_at = $now,
-          i.root_cause = coalesce($rootCause, i.root_cause), i.updated_at = $now
+      SET i.resolved_at = $now,
+          i.root_cause  = coalesce($rootCause, i.root_cause),
+          i.updated_at  = $now
       RETURN properties(i) as props
     `, { id, tenantId: ctx.tenantId, now, rootCause: notes ?? null })
     if (!rows[0]) throw new NotFoundError('Incident', id)
@@ -184,7 +212,7 @@ export async function resolveIncident(
 
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.resolved', ctx.tenantId, ctx.userId, {
-    ...(payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'resolved', ciName: '—', assignedTo: '—' }),
+    ...(payload ?? { id, title: `Incident ${id}`, severity: 'low', status: '', ciName: '—', assignedTo: '—' }),
     resolved_at: now,
   } satisfies IncidentEventPayload, now)
 
@@ -224,21 +252,31 @@ export async function assignIncidentToTeam(
     if (wiResult.records.length > 0) {
       const instanceId  = wiResult.records[0]!.get('instanceId')  as string
       const currentStep = wiResult.records[0]!.get('currentStep') as string
+      const initialStep = await getInitialStepName(session, ctx.tenantId, 'incident')
 
-      if (currentStep === 'new') {
-        await workflowEngine.transition(
-          session,
-          { instanceId, toStepName: 'assigned', triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes },
-          { userId: ctx.userId, entityData: {} },
-        )
+      if (currentStep === initialStep) {
+        // Assigning a team from the initial step auto-advances the workflow.
+        // Take the first manual transition available — the workflow defines
+        // the post-assignment step, not this service.
+        const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
+        const next = transitions[0]
+        if (next) {
+          await workflowEngine.transition(
+            session,
+            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes },
+            { userId: ctx.userId, entityData: {} },
+          )
+        }
       } else {
+        // Reassignment while already past the initial step: just log a
+        // history entry against the current step, no transition.
         await session.executeWrite((tx) => tx.run(`
           MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
           CREATE (wi)-[:STEP_HISTORY]->(:WorkflowStepExecution {
             id:           randomUUID(),
             tenant_id:    $tenantId,
             instance_id:  wi.id,
-            step_name:    'assigned',
+            step_name:    wi.current_step,
             entered_at:   $now,
             exited_at:    $now,
             duration_ms:  toInteger(0),
@@ -315,11 +353,17 @@ export async function assignIncidentToUser(
     if (wiResult.records.length > 0) {
       const instanceId  = wiResult.records[0]!.get('instanceId')  as string
       const currentStep = wiResult.records[0]!.get('currentStep') as string
+      const initialStep = await getInitialStepName(session, ctx.tenantId, 'incident')
 
-      if (currentStep === 'assigned') {
+      // Auto-advance while still near the start of the workflow: take the
+      // first manual transition. The workflow decides what "after assignment"
+      // means — the service no longer names specific steps.
+      const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
+      const next = transitions[0]
+      if (currentStep !== initialStep && next) {
         await workflowEngine.transition(
           session,
-          { instanceId, toStepName: 'in_progress', triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato a ${userName}` },
+          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato a ${userName}` },
           { userId: ctx.userId, entityData: {} },
         )
       } else {
@@ -364,7 +408,21 @@ export async function inProgressIncident(
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.in_progress', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'in_progress', ciName: '—', assignedTo: '—' },
+    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: '', ciName: '—', assignedTo: '—' },
+    now,
+  )
+}
+
+/** Emit a generic transition event. Event type is `incident.<stepName>`. */
+export async function publishIncidentTransition(
+  id: string,
+  stepName: string,
+  ctx: ServiceCtx,
+) {
+  const now = new Date().toISOString()
+  const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
+  await publishEvent(`incident.${stepName}`, ctx.tenantId, ctx.userId,
+    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: stepName, ciName: '—', assignedTo: '—' },
     now,
   )
 }
@@ -388,7 +446,7 @@ export async function closeIncident(
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.closed', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'closed', ciName: '—', assignedTo: '—' },
+    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: '', ciName: '—', assignedTo: '—' },
     now,
   )
 }
@@ -398,9 +456,26 @@ export async function escalateIncident(
   ctx: ServiceCtx,
 ) {
   const now = new Date().toISOString()
+  await withSession(async (session) => {
+    const instanceRow = await runQueryOne<{ instanceId: string }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      RETURN wi.id AS instanceId
+    `, { id, tenantId: ctx.tenantId })
+    if (!instanceRow) return
+    const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
+    const target = steps.find((s) => s.category === 'escalated')
+    if (!target) return
+    await workflowEngine.transition(
+      session,
+      { instanceId: instanceRow.instanceId, toStepName: target.name,
+        triggeredBy: ctx.userId, triggerType: 'manual' },
+      { userId: ctx.userId, entityData: {} },
+    )
+  }, true)
+
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.escalated', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Incident ${id}`, severity: 'high', status: 'escalated', ciName: '—', assignedTo: '—' },
+    payload ?? { id, title: `Incident ${id}`, severity: 'high', status: '', ciName: '—', assignedTo: '—' },
     now,
   )
 }

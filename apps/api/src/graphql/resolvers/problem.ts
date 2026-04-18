@@ -399,13 +399,12 @@ async function executeProblemTransition(
     )
 
     if (result.success) {
+      // Emit a generic transition event named after the target step and audit
+      // the transition. Consumers that care about specific steps subscribe to
+      // "problem.<stepName>" — no step-name branching needed here.
       const svcCtx = { tenantId: ctx.tenantId, userId: ctx.userId }
-      if      (args.toStep === 'under_investigation') { await problemService.investigateProblem(args.problemId, svcCtx); void audit(ctx, 'problem.under_investigation', 'Problem', args.problemId) }
-      else if (args.toStep === 'deferred')            { await problemService.deferProblem(args.problemId, svcCtx);      void audit(ctx, 'problem.deferred',            'Problem', args.problemId) }
-      else if (args.toStep === 'resolved')            { await problemService.resolveProblem(args.problemId, svcCtx);    void audit(ctx, 'problem.resolved',            'Problem', args.problemId) }
-      else if (args.toStep === 'closed')              { await problemService.closeProblem(args.problemId, svcCtx);      void audit(ctx, 'problem.closed',              'Problem', args.problemId) }
-      else if (args.toStep === 'change_requested')    {                                                                  void audit(ctx, 'problem.change_requested',     'Problem', args.problemId) }
-      else if (args.toStep === 'rejected')            {                                                                  void audit(ctx, 'problem.rejected',            'Problem', args.problemId) }
+      await problemService.publishProblemTransition(args.problemId, args.toStep, svcCtx)
+      void audit(ctx, `problem.${args.toStep}`, 'Problem', args.problemId)
     }
 
     const row = await runQueryOne<{ props: Props }>(session, `

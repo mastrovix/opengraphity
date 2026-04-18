@@ -1,517 +1,365 @@
-import { useState, useEffect } from 'react'
-import { useMutation, useQuery, useLazyQuery } from '@apollo/client/react'
-import { PageContainer } from '@/components/PageContainer'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, X, BookOpen } from 'lucide-react'
+import { useMutation, useQuery } from '@apollo/client/react'
+import { X } from 'lucide-react'
 import { toast } from 'sonner'
+import { PageContainer } from '@/components/PageContainer'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_ALL_CIS, GET_CHANGE_IMPACT, GET_ITIL_CI_RELATION_RULES, GET_WORKFLOW_LIST } from '@/graphql/queries'
-import { ImpactPanel } from '@/components/ImpactPanel'
-import type { ImpactAnalysis } from '@/components/ImpactPanel'
-import { useTranslation } from 'react-i18next'
-import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
-import { useEnumValues } from '@/hooks/useEnumValues'
-import { lookupOrError } from '@/lib/tokens'
+import { GET_CHANGES, GET_ALL_CIS, GET_USERS } from '@/graphql/queries'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface CI { id: string; name: string; type: string; environment: string; status: string }
-
-// ── Config ────────────────────────────────────────────────────────────────────
-
-const TYPE_CONFIG = {
-  standard:  { label: 'Standard Change',  desc: 'Pre-approvato, basso rischio',        color: '#16a34a', bg: '#f0fdf4', border: '#86efac', icon: '✅' },
-  normal:    { label: 'Normal Change',     desc: 'Assessment CI e approvazione CAB',     color: '#2563eb', bg: '#eff6ff', border: '#93c5fd', icon: '🔵' },
-  emergency: { label: 'Emergency Change',  desc: 'Fast-track, solo admin/operator',      color: 'var(--color-trigger-sla-breach)', bg: '#fef2f2', border: '#fca5a5', icon: '🔴' },
-} as const
-
-const PRIORITY_CONFIG = [
-  { value: 'critical', label: 'Critical', color: 'var(--color-trigger-sla-breach)', bg: '#fef2f2', border: 'var(--color-danger)' },
-  { value: 'high',     label: 'High',     color: 'var(--color-brand)', bg: '#fff7ed', border: 'var(--color-brand)' },
-  { value: 'medium',   label: 'Medium',   color: '#b45309', bg: '#fefce8', border: 'var(--color-warning)' },
-  { value: 'low',      label: 'Low',      color: '#15803d', bg: '#f0fdf4', border: 'var(--color-success)' },
-]
-
-const STEPS = ['Tipo', 'Dettagli', 'Riepilogo'] as const
-
-// ── Shared styles ─────────────────────────────────────────────────────────────
+interface CIRef { id: string; name: string; type: string; environment?: string }
+interface UserRef { id: string; name: string; email: string }
 
 const fieldLabel: React.CSSProperties = {
-  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-light)',
-  textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
+  display:       'block',
+  fontSize:      'var(--font-size-body)',
+  fontWeight:    600,
+  color:         'var(--color-slate-light)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  marginBottom:  6,
 }
 
 const inputBase: React.CSSProperties = {
-  width: '100%', padding: '10px 14px',
-  border: '1.5px solid #e5e7eb', borderRadius: 8,
-  fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
-  backgroundColor: '#fff', boxSizing: 'border-box',
-  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
+  width:           '100%',
+  padding:         '10px 14px',
+  border:          '1.5px solid #e5e7eb',
+  borderRadius:    8,
+  fontSize:        'var(--font-size-body)',
+  color:           'var(--color-slate-dark)',
+  outline:         'none',
+  backgroundColor: '#fff',
+  boxSizing:       'border-box',
+  fontFamily:      "'Plus Jakarta Sans', system-ui, sans-serif",
+  transition:      'border-color 150ms',
 }
-
-function onFocus(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'
-}
-function onBlur(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'
-}
-
-// ── Progress bar ──────────────────────────────────────────────────────────────
-
-function ProgressBar({ current }: { current: number }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 28 }}>
-      {STEPS.map((name, i) => {
-        const done   = i < current
-        const active = i === current
-        return (
-          <div key={name} style={{ display: 'flex', alignItems: 'center', flex: i < STEPS.length - 1 ? 1 : undefined }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <div style={{
-                width: 24, height: 24, borderRadius: '50%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                backgroundColor: done || active ? 'var(--color-brand)' : '#e5e7eb',
-                color: done || active ? '#fff' : 'var(--color-slate-light)',
-                fontSize: 'var(--font-size-body)', fontWeight: 700, flexShrink: 0,
-              }}>
-                {done ? '✓' : i + 1}
-              </div>
-              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: active ? 600 : 400, color: active ? 'var(--color-brand)' : done ? 'var(--color-brand)' : 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
-                {name}
-              </span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div style={{ flex: 1, height: 1, backgroundColor: done ? 'var(--color-brand)' : '#e5e7eb', margin: '0 8px', marginBottom: 18 }} />
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ── Summary row ───────────────────────────────────────────────────────────────
-
-function SummaryRow({ label, value }: { label: string; value: React.ReactNode }) {
-  if (!value) return null
-  return (
-    <div style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
-      <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: 150, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{value}</span>
-    </div>
-  )
-}
-
-// ── Nav buttons ───────────────────────────────────────────────────────────────
-
-function BackBtn({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', padding: 0 }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
-    >
-      <ArrowLeft size={13} /> Indietro
-    </button>
-  )
-}
-
-function NextBtn({ onClick, label = 'Avanti →', disabled = false }: { onClick: () => void; label?: string; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={{ padding: '10px 24px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.7 : 1 }}
-    >
-      {label}
-    </button>
-  )
-}
-
-// ── Main Component ────────────────────────────────────────────────────────────
 
 export function CreateChangePage() {
   const navigate = useNavigate()
-  const { t } = useTranslation()
 
-  const { data: wfData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; changeSubtype: string | null; active: boolean; version: number }[] }>(GET_WORKFLOW_LIST)
-  const workflows = wfData?.workflowDefinitions ?? []
+  const [title, setTitle]             = useState('')
+  const [description, setDescription] = useState('')
+  const [ownerId, setOwnerId]         = useState<string>('')
+  const [ciSearch, setCiSearch]       = useState('')
+  const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
+  const [backendError, setBackendError] = useState<string | null>(null)
 
-  const [step,           setStep]          = useState(0)
-  const [changeType,     setChangeType]    = useState<keyof typeof TYPE_CONFIG>('normal')
-  const [title,          setTitle]         = useState('')
-  const [description,    setDescription]   = useState('')
-  const [priority,       setPriority]      = useState('medium')
-  const [ciSearch,       setCiSearch]      = useState('')
-  const [selectedCIs,    setSelectedCIs]   = useState<CI[]>([])
-  const [emergencyReason, setEmergencyReason] = useState('')
-  const [submitted,      setSubmitted]     = useState(false)
-  const [_fieldErrors,   setFieldErrors]   = useState<Record<string, string>>({})
+  const { data: usersData } = useQuery<{ users: UserRef[] }>(GET_USERS, {
+    variables: { sortField: 'name', sortDirection: 'asc' },
+  })
+  const users = usersData?.users ?? []
 
-  const changeFormValues = { title, description, type: changeType, priority }
-  const changeFieldRules = useFormFieldRules('change', null, changeFormValues)
-  const { values: typeValues,     loading: typeLoading }     = useEnumValues('change', 'type')
-  const { values: priorityValues, loading: priorityLoading } = useEnumValues('change', 'priority')
-
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'change' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
-
-  const { data: cisData } = useQuery<{ allCIs: { items: CI[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch || null, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+  const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch, limit: 20 },
+    skip: ciSearch.length < 2,
     fetchPolicy: 'network-only',
   })
+  const ciResults = (ciData?.allCIs?.items ?? [])
+    .filter(ci => !selectedCIs.find(s => s.id === ci.id))
 
-  const [getImpact, { data: impactData }] = useLazyQuery<{ changeImpactAnalysis: ImpactAnalysis }>(GET_CHANGE_IMPACT)
-
-  useEffect(() => {
-    if (selectedCIs.length >= 1) {
-      void getImpact({ variables: { ciIds: selectedCIs.map(c => c.id) } })
-    }
-  }, [selectedCIs, getImpact])
-
-  const [createChange, { loading }] = useMutation<{ createChange: { id: string } }>(CREATE_CHANGE, {
+  const [createChange, { loading }] = useMutation<{ createChange: { id: string; code: string } }>(CREATE_CHANGE, {
+    refetchQueries: [{ query: GET_CHANGES, variables: { phase: null, limit: 50, offset: 0 } }],
     onCompleted: (data) => {
-      toast.success('Change creato')
-      navigate(`/changes/${data.createChange.id}`)
+      toast.success(`Change ${data.createChange.code} creato`)
+      navigate(`/changes/${data.createChange.id}`, { state: { refresh: true } })
     },
-    onError: (e) => toast.error(e.message),
+    onError: (err) => {
+      console.error('[createChange] error', err)
+      setBackendError(err.message)
+      toast.error(err.message)
+    },
   })
 
-  const availableCIs     = (cisData?.allCIs?.items ?? [])
-    .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-    .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
-  const titleMissing     = !title.trim()
-  const descMissing      = !description.trim()
-  const emergencyMissing = changeType === 'emergency' && !emergencyReason.trim()
-  const step2Valid       = !titleMissing && !descMissing && !emergencyMissing
+  const canSubmit = title.trim() !== '' && selectedCIs.length > 0 && !loading
 
-  function handleNext() {
-    if (step === 1) {
-      setSubmitted(true)
-      if (!step2Valid) return
-    }
-    setStep(s => s + 1)
-  }
-
-  function handleSubmit() {
-    const missing = validateFormFields(changeFieldRules, changeFormValues)
-    if (missing.length > 0) {
-      const errs: Record<string, string> = {}
-      missing.forEach((f) => { errs[f] = 'Campo obbligatorio' })
-      setFieldErrors(errs)
-      return
-    }
-    setFieldErrors({})
+  const handleSubmit = () => {
+    if (!canSubmit) return
+    setBackendError(null)
     void createChange({
       variables: {
         input: {
           title:         title.trim(),
           description:   description.trim() || null,
-          type:          changeType,
-          priority,
-          affectedCIIds: selectedCIs.map(c => c.id),
+          changeOwner:   ownerId || null,
+          affectedCIIds: selectedCIs.map(ci => ci.id),
         },
       },
     })
   }
 
-  const typeConf = TYPE_CONFIG[changeType]
-  const prioConf = PRIORITY_CONFIG.find(p => p.value === priority)!
-
   return (
-    <PageContainer style={{ minHeight: '100%', backgroundColor: '#f8fafc', paddingBottom: '64px' }}>
-      <div style={{ maxWidth: 580, margin: '0 auto' }}>
-
-        {/* Header */}
+    <PageContainer style={{ minHeight: '100%', backgroundColor: '#f8fafc', paddingBottom: 64 }}>
+      <div style={{ maxWidth: 620, margin: '0 auto' }}>
         <button
           onClick={() => navigate('/changes')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
+          style={{
+            display:       'inline-flex',
+            alignItems:    'center',
+            gap:           5,
+            background:    'none',
+            border:        'none',
+            cursor:        'pointer',
+            fontSize:      'var(--font-size-body)',
+            color:         'var(--color-slate-light)',
+            marginBottom:  16,
+            padding:       0,
+          }}
         >
           ← Changes
         </button>
 
-        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+        <h1 style={{
+          fontSize:      'var(--font-size-page-title)',
+          fontWeight:    600,
+          color:         'var(--color-slate-dark)',
+          margin:        '0 0 4px',
+          letterSpacing: '-0.02em',
+        }}>
           Nuovo Change
         </h1>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
-          Compila i dettagli del change da aprire
+          Apri un RFC per introdurre una modifica controllata ai sistemi
         </p>
 
-        <ProgressBar current={step} />
-
-        {/* ── STEP 1: Tipo ───────────────────────────────────────────────────── */}
-        {step === 0 && (
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <label style={{ ...fieldLabel, marginBottom: 12 }}>
-              Tipo di Change <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+        <div style={{
+          background:    '#fff',
+          border:        '1px solid #e5e7eb',
+          borderRadius:  12,
+          padding:       '28px 32px',
+          boxShadow:     '0 1px 4px rgba(0,0,0,0.06)',
+        }}>
+          {/* TITOLO */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>
+              Titolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
-
-            {typeLoading ? (
-              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
-            ) : typeValues.filter(t => t !== 'standard').map(t => {
-              const c   = lookupOrError(TYPE_CONFIG as unknown as Record<string, { label: string; desc: string; color: string; bg: string; border: string; icon: string }>, t, 'TYPE_CONFIG', { label: t.charAt(0).toUpperCase() + t.slice(1) + ' Change', desc: '', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd', icon: '🔵' })
-              const sel = changeType === t
-              return (
-                <div
-                  key={t}
-                  onClick={() => setChangeType(t as keyof typeof TYPE_CONFIG)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '12px 16px', borderRadius: 8, marginBottom: 8,
-                    border: `1.5px solid ${sel ? c.border : '#e5e7eb'}`,
-                    background: sel ? c.bg : '#fff',
-                    cursor: 'pointer', transition: 'all 0.15s',
-                  }}
-                >
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: sel ? c.color : '#d1d5db' }} />
-                  <div>
-                    <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: sel ? c.color : 'var(--color-slate)' }}>{c.label}</div>
-                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{c.desc}</div>
-                  </div>
-                </div>
-              )
-            })}
-
-            {/* Standard Change → Catalogo */}
-            <div
-              onClick={() => navigate('/changes/catalog')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '12px 16px', borderRadius: 8, marginBottom: 8,
-                border: '1.5px solid #86efac', background: '#f0fdf4',
-                cursor: 'pointer', transition: 'all 0.15s',
-              }}
-            >
-              <BookOpen size={16} color="#16a34a" style={{ flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#16a34a' }}>Standard Change</div>
-                <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>Le Standard Change vengono create dal Catalogo →</div>
-              </div>
-            </div>
-
-            {changeType !== 'standard' && (() => {
-              const matchingWf = workflows.find(w => w.changeSubtype === changeType && w.active)
-              if (!matchingWf) return null
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '8px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 'var(--font-size-body)', color: '#0369a1' }}>
-                  <span style={{ fontWeight: 600 }}>{t('pages.changes.autoWorkflow', 'Workflow')}:</span>
-                  <span>{matchingWf.name} v{matchingWf.version}</span>
-                </div>
-              )
-            })()}
-
-            <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 16, paddingTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
-              <NextBtn onClick={handleNext} />
-            </div>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Es. Upgrade database produzione a PostgreSQL 16"
+              style={inputBase}
+              autoFocus
+              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+            />
           </div>
-        )}
 
-        {/* ── STEP 2: Dettagli ───────────────────────────────────────────────── */}
-        {step === 1 && (
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+          {/* DESCRIZIONE */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>Descrizione</label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Cosa stai cambiando, perché, e come lo verifichi…"
+              rows={4}
+              style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
+              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+            />
+          </div>
 
-            {/* TITOLO */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={fieldLabel}>Titolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+          {/* CHANGE OWNER */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>Change Owner</label>
+            <select
+              value={ownerId}
+              onChange={e => setOwnerId(e.target.value)}
+              style={inputBase}
+            >
+              <option value="">— Nessuno —</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* CI AFFECTED */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>
+              CI Impattati <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <span style={{
+                position:      'absolute',
+                left:          12,
+                top:           '50%',
+                transform:     'translateY(-50%)',
+                fontSize:      'var(--font-size-card-title)',
+                pointerEvents: 'none',
+                color:         'var(--color-slate-light)',
+              }}>
+                🔍
+              </span>
               <input
                 type="text"
-                value={title}
-                onChange={e => { setTitle(e.target.value); if (submitted) setSubmitted(false) }}
-                placeholder="Es. Aggiornamento certificati SSL"
-                style={{ ...inputBase, borderColor: submitted && titleMissing ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
-                autoFocus
-                onFocus={onFocus}
-                onBlur={e => { (e.currentTarget as HTMLElement).style.borderColor = submitted && titleMissing ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
+                value={ciSearch}
+                onChange={e => setCiSearch(e.target.value)}
+                placeholder="Cerca CI per nome…"
+                style={{ ...inputBase, paddingLeft: 36 }}
+                onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
+                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
               />
-              {submitted && titleMissing && <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>Campo obbligatorio</p>}
-            </div>
-
-            {/* DESCRIZIONE */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={fieldLabel}>
-                Descrizione <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
-              </label>
-              <textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder="Descrizione del change…"
-                rows={3}
-                style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
-                onFocus={onFocus}
-                onBlur={onBlur}
-              />
-            </div>
-
-            {/* PRIORITÀ */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={fieldLabel}>Priorità <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {priorityLoading ? (
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
-                ) : priorityValues.map(v => {
-                  const cfg = PRIORITY_CONFIG.find(p => p.value === v) ?? { value: v, label: v.charAt(0).toUpperCase() + v.slice(1), color: 'var(--color-brand)', bg: '#f0f9ff', border: 'var(--color-brand)' }
-                  const sel = priority === cfg.value
-                  return (
-                    <button
-                      key={cfg.value}
-                      type="button"
-                      onClick={() => setPriority(cfg.value)}
+              {ciResults.length > 0 && ciSearch.length >= 2 && (
+                <div style={{
+                  position:     'absolute',
+                  left:         0,
+                  right:        0,
+                  top:          '100%',
+                  marginTop:    4,
+                  background:   '#fff',
+                  border:       '1px solid #e5e7eb',
+                  borderRadius: 8,
+                  boxShadow:    '0 4px 12px rgba(0,0,0,0.1)',
+                  maxHeight:    220,
+                  overflowY:    'auto',
+                  zIndex:       20,
+                }}>
+                  {ciResults.map(ci => (
+                    <div
+                      key={ci.id}
+                      onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
                       style={{
-                        padding: '7px 16px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                        border: `1.5px solid ${sel ? cfg.border : '#e5e7eb'}`,
-                        background: sel ? cfg.bg : '#f8fafc',
-                        color: sel ? cfg.color : 'var(--color-slate)',
-                        fontWeight: sel ? 600 : 400,
-                        transition: 'all 0.15s',
+                        padding:      '8px 12px',
+                        cursor:       'pointer',
+                        display:      'flex',
+                        alignItems:   'center',
+                        gap:          8,
+                        borderBottom: '1px solid #f3f4f6',
                       }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                     >
-                      {cfg.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* CI IMPATTATI */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={fieldLabel}>
-                CI Impattati{' '}
-                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#b0b8c5' }}>(opzionale)</span>
-              </label>
-
-              {selectedCIs.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                  {selectedCIs.map(ci => (
-                    <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: '1px solid #c7d2fe', color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)' }}>
-                      {ci.name}
-                      <button type="button" onClick={() => setSelectedCIs(s => s.filter(x => x.id !== ci.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand-hover)', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
-                        <X size={12} />
-                      </button>
-                    </span>
+                      <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>
+                        {ci.name}
+                      </span>
+                      <span style={{
+                        fontSize:        'var(--font-size-body)',
+                        padding:         '1px 6px',
+                        borderRadius:    4,
+                        backgroundColor: '#f3f4f6',
+                        color:           'var(--color-slate)',
+                      }}>
+                        {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                      </span>
+                    </div>
                   ))}
                 </div>
               )}
-
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>🔍</span>
-                <input
-                  value={ciSearch}
-                  onChange={e => setCiSearch(e.target.value)}
-                  style={{ ...inputBase, paddingLeft: 36 }}
-                  placeholder="Cerca per nome..."
-                  onFocus={onFocus}
-                  onBlur={onBlur}
-                />
-                {availableCIs.length > 0 && (
-                  <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 4, backgroundColor: '#fff', maxHeight: 180, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10 }}>
-                    {availableCIs.map(ci => (
-                      <div
-                        key={ci.id}
-                        onClick={() => { setSelectedCIs(s => [...s, ci]); setCiSearch('') }}
-                        style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
-                      >
-                        <span style={{ fontWeight: 500, flex: 1 }}>{ci.name}</span>
-                        <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: 'var(--color-slate)' }}>{ci.type}{ci.environment ? ` · ${ci.environment}` : ''}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {impactData?.changeImpactAnalysis && (
-                <div style={{ marginTop: 12 }}>
-                  <ImpactPanel analysis={impactData.changeImpactAnalysis} compact={true} />
-                </div>
-              )}
             </div>
 
-            {/* MOTIVO EMERGENZA */}
-            {changeType === 'emergency' && (
-              <div style={{ marginBottom: 20 }}>
-                <label style={fieldLabel}>Motivo Emergenza <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
-                <textarea
-                  value={emergencyReason}
-                  onChange={e => setEmergencyReason(e.target.value)}
-                  placeholder="Descrivi il motivo per cui è necessario un cambiamento d'emergenza…"
-                  rows={3}
-                  style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6, borderColor: submitted && emergencyMissing ? 'var(--color-trigger-sla-breach)' : '#e5e7eb', backgroundColor: '#fffbeb' }}
-                  onFocus={onFocus}
-                  onBlur={e => { (e.currentTarget as HTMLElement).style.borderColor = submitted && emergencyMissing ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
-                />
-                {submitted && emergencyMissing && <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>Campo obbligatorio per Emergency Change</p>}
+            {selectedCIs.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                {selectedCIs.map(ci => (
+                  <span
+                    key={ci.id}
+                    style={{
+                      display:     'inline-flex',
+                      alignItems:  'center',
+                      gap:         6,
+                      padding:     '4px 10px',
+                      borderRadius: 6,
+                      background:  'var(--color-brand-light)',
+                      border:      '1px solid #c7d2fe',
+                      color:       'var(--color-brand-hover)',
+                      fontSize:    'var(--font-size-body)',
+                    }}
+                  >
+                    <span style={{ fontWeight: 500 }}>{ci.name}</span>
+                    <span style={{ opacity: 0.7, fontSize: 'var(--font-size-label)' }}>
+                      {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCIs(p => p.filter(c => c.id !== ci.id))}
+                      style={{
+                        background: 'none',
+                        border:     'none',
+                        cursor:     'pointer',
+                        color:      'var(--color-brand-hover)',
+                        padding:    0,
+                        lineHeight: 1,
+                        display:    'flex',
+                        alignItems: 'center',
+                        opacity:    0.7,
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
               </div>
             )}
 
-            <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <BackBtn onClick={() => setStep(0)} />
-              <NextBtn onClick={handleNext} />
-            </div>
+            <p style={{
+              fontSize:  'var(--font-size-label)',
+              color:     'var(--color-slate-light)',
+              margin:    '8px 0 0',
+            }}>
+              Ogni CI deve avere Owner Group e Support Group configurati, altrimenti la creazione fallirà.
+            </p>
           </div>
-        )}
 
-        {/* ── STEP 3: Riepilogo ──────────────────────────────────────────────── */}
-        {step === 2 && (
-          <div>
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-              <h2 style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>
-                Riepilogo
-              </h2>
-
-              <SummaryRow label="Tipo" value={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 10px', borderRadius: 100, backgroundColor: typeConf.bg, color: typeConf.color, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>
-                  {typeConf.icon} {typeConf.label}
-                </span>
-              } />
-              <SummaryRow label="Titolo" value={title} />
-              <SummaryRow label="Descrizione" value={description || '—'} />
-              <SummaryRow label="Priorità" value={
-                <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: prioConf.bg, color: prioConf.color, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>
-                  {prioConf.label}
-                </span>
-              } />
-              <SummaryRow label="CI Impattati" value={
-                selectedCIs.length === 0 ? '—' : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {selectedCIs.map(ci => (
-                      <span key={ci.id} style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-                        {ci.name}
-                      </span>
-                    ))}
-                  </div>
-                )
-              } />
-              {changeType === 'emergency' && (
-                <SummaryRow label="Motivo Emergenza" value={<span style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{emergencyReason}</span>} />
-              )}
-
-              <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 20, marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <BackBtn onClick={() => setStep(1)} />
-                <NextBtn onClick={handleSubmit} label={loading ? 'Creazione…' : '✓ Crea Change'} disabled={loading} />
-              </div>
+          {/* Backend error banner */}
+          {backendError && (
+            <div style={{
+              marginBottom:    20,
+              padding:         '10px 14px',
+              borderRadius:    8,
+              background:      '#fef2f2',
+              border:          '1.5px solid var(--color-danger)',
+              color:           'var(--color-trigger-sla-breach)',
+              fontSize:        'var(--font-size-body)',
+              fontWeight:      500,
+            }}>
+              {backendError}
             </div>
+          )}
 
-            <div style={{ textAlign: 'center', marginTop: 16 }}>
-              <button type="button" onClick={() => navigate('/changes')} style={{ background: 'none', border: 'none', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
-                Annulla
-              </button>
-            </div>
+          {/* Footer */}
+          <div style={{
+            borderTop:      '1px solid #f3f4f6',
+            marginTop:      8,
+            paddingTop:     20,
+            display:        'flex',
+            justifyContent: 'space-between',
+            alignItems:     'center',
+          }}>
+            <button
+              type="button"
+              onClick={() => navigate('/changes')}
+              style={{
+                background: 'none',
+                border:     'none',
+                cursor:     'pointer',
+                fontSize:   'var(--font-size-body)',
+                color:      'var(--color-slate)',
+                padding:    0,
+              }}
+            >
+              Annulla
+            </button>
+            <button
+              type="button"
+              disabled={!canSubmit}
+              onClick={handleSubmit}
+              style={{
+                background:   'var(--color-brand)',
+                color:        '#fff',
+                border:       'none',
+                borderRadius: 8,
+                padding:      '10px 24px',
+                fontSize:     'var(--font-size-card-title)',
+                fontWeight:   600,
+                cursor:       canSubmit ? 'pointer' : 'not-allowed',
+                opacity:      canSubmit ? 1 : 0.5,
+                transition:   'opacity 150ms',
+              }}
+            >
+              {loading ? 'Creazione…' : 'Crea Change'}
+            </button>
           </div>
-        )}
-
+        </div>
       </div>
     </PageContainer>
   )

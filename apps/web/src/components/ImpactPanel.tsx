@@ -14,6 +14,7 @@ import {
   CheckCircle,
 } from 'lucide-react'
 import { StatusBadge } from '@/components/StatusBadge'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 const SEV_STYLE: Record<string, { bg: string; color: string }> = {
   critical: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
@@ -21,10 +22,14 @@ const SEV_STYLE: Record<string, { bg: string; color: string }> = {
   medium:   { bg: '#fffbeb', color: 'var(--color-warning)' },
   low:      { bg: '#ecfdf5', color: 'var(--color-success)' },
 }
-const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
-  standard:  { bg: 'var(--color-brand-light)', color: 'var(--color-brand)' },
-  normal:    { bg: '#f0fdf4', color: '#16a34a' },
-  emergency: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
+const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
+  assessment: { bg: '#dbeafe',               color: '#2563eb' },
+  approval:   { bg: '#ede9fe',               color: '#7c3aed' },
+  scheduled:  { bg: '#e0f2fe',               color: '#0284c7' },
+  validation: { bg: '#fef3c7',               color: '#ca8a04' },
+  deployment: { bg: '#dcfce7',               color: '#16a34a' },
+  review:     { bg: '#e0f2fe',               color: '#0369a1' },
+  closed:     { bg: 'var(--color-slate-bg)', color: 'var(--color-slate-light)' },
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -37,7 +42,7 @@ export interface ImpactIncident {
   ciName: string; ciId: string; createdAt: string; isOpen: boolean
 }
 export interface ImpactChange {
-  id: string; number: string; title: string; type: string; status: string
+  id: string; code: string; title: string; phase: string
   ciName: string; ciId: string; createdAt: string
 }
 export interface ImpactBreakdown {
@@ -95,6 +100,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
   const [showIncidents,   setShowIncidents]   = useState(false)
   const [showChanges,     setShowChanges]     = useState(false)
   const [showAllChanges,  setShowAllChanges]  = useState(false)
+  const { isTerminal: isChangeTerminal } = useWorkflowSteps('change')
 
   const palette     = lookupOrError(RISK_PALETTE, analysis.riskLevel, 'RISK_PALETTE', RISK_PALETTE['low']!)
   const { breakdown } = analysis
@@ -274,19 +280,17 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                   Nessun change recente sui CI affected
                 </div>
               ) : (() => {
-                const DONE = ['completed', 'failed', 'rejected']
-                const inCorso    = analysis.recentChanges.filter((c) => !DONE.includes(c.status))
-                const completati = analysis.recentChanges.filter((c) =>  DONE.includes(c.status))
+                const inCorso    = analysis.recentChanges.filter((c) => !isChangeTerminal(c.phase))
+                const completati = analysis.recentChanges.filter((c) =>  isChangeTerminal(c.phase))
                 const visibleCompletati = showAllChanges ? completati : completati.slice(0, 3)
                 const changeRow = (ch: ImpactChange) => {
-                  const tc = lookupStyle(TYPE_COLOR, ch.type, 'TYPE_COLOR')
+                  const pc = lookupStyle(PHASE_STYLE, ch.phase, 'PHASE_STYLE')
                   return (
                     <a key={ch.id} href={`/changes/${ch.id}`} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', gap: 8, textDecoration: 'none' }}>
-                      <span style={{ padding: '2px 7px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: tc.bg, color: tc.color, flexShrink: 0, marginTop: 1 }}>{ch.type}</span>
+                      <span style={{ padding: '2px 7px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', backgroundColor: pc.bg, color: pc.color, flexShrink: 0, marginTop: 1 }}>{ch.phase}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ch.number}</div>
+                        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ch.code}</div>
                         <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ch.title}</div>
-                        <div style={{ marginTop: 2 }}><StatusBadge value={ch.status} /></div>
                       </div>
                     </a>
                   )

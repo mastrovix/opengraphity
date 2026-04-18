@@ -14,6 +14,8 @@ import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { Pagination } from '@/components/ui/Pagination'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { styleForCategory } from '@/lib/workflowStepStyle'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -78,30 +80,24 @@ interface ArticleForm {
 const EMPTY_FORM: ArticleForm = { title: '', body: '', category: 'how-to', tags: '' }
 const PAGE_SIZE = 20
 
-const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  draft:          { bg: '#FEF9C3', color: '#854D0E' },
-  pending_review: { bg: '#FFF7ED', color: '#C2410C' },
-  published:      { bg: '#DCFCE7', color: '#166534' },
-  archived:       { bg: '#F1F5F9', color: '#475569' },
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  draft:          'Bozza',
-  pending_review: 'In revisione',
-  published:      'Pubblicato',
-  archived:       'Archiviato',
-}
-
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_STYLE[status]
+// Icon chosen by step category (admin-editable metadata), not step name.
+function CategoryIcon({ category }: { category: string | null | undefined }) {
+  if (category === 'published') return <CheckCircle size={10} />
+  if (category === 'closed')    return <Archive     size={10} />
+  if (category === 'waiting')   return <Clock       size={10} />
+  return null
+}
+
+function StatusBadge({ status, label, category }: {
+  status: string; label?: string; category?: string | null
+}) {
+  const s = styleForCategory(category)
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, ...(s ?? {}) }}>
-      {status === 'published'      ? <CheckCircle size={10} /> :
-       status === 'archived'       ? <Archive     size={10} /> :
-       status === 'pending_review' ? <Clock       size={10} /> : null}
-      {STATUS_LABEL[status] ?? status}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, backgroundColor: s.bg, color: s.color }}>
+      <CategoryIcon category={category} />
+      {label || status}
     </span>
   )
 }
@@ -112,6 +108,7 @@ export function KBAdminPage() {
   const { t } = useTranslation()
   const { data: catData } = useQuery<{ kbCategories: { name: string }[] }>(GET_KB_CATEGORIES, { fetchPolicy: 'cache-first' })
   const CATEGORIES = (catData?.kbCategories ?? []).map(c => c.name)
+  const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep } = useWorkflowSteps('kb_article')
 
   // List state
   const [page,    setPage]    = useState(0)
@@ -132,10 +129,8 @@ export function KBAdminPage() {
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
   const KB_FILTER_FIELDS: FieldConfig[] = [
-    { key: 'status', label: 'Stato', type: 'enum', options: [
-      { value: 'draft', label: 'Bozza' }, { value: 'pending_review', label: 'In revisione' },
-      { value: 'published', label: 'Pubblicato' }, { value: 'archived', label: 'Archiviato' },
-    ]},
+    { key: 'status', label: 'Stato', type: 'enum',
+      options: kbSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
     { key: 'category', label: 'Categoria', type: 'enum', options: [
       { value: 'hardware', label: 'Hardware' }, { value: 'software', label: 'Software' },
       { value: 'network', label: 'Network' }, { value: 'security', label: 'Security' },
@@ -155,17 +150,24 @@ export function KBAdminPage() {
       toast.success(t('pages.kbAdmin.created'))
       closeForm()
       void refetch()
-      // If a publish was requested right after create, trigger it
+      // If a publish was requested right after create, trigger the forward
+      // transition from the workflow's initial step. The destination is
+      // defined by the workflow, not by this page.
       if (publishingRef.current && d.createKBArticle.workflowInstanceId) {
         publishingRef.current = false
-        void execTransition({
-          variables: { instanceId: d.createKBArticle.workflowInstanceId, toStep: 'pending_review' },
-        }).then((res) => {
-          if (res.data?.executeWorkflowTransition.success) {
-            toast.success('Articolo inviato per revisione')
-            void refetch()
-          }
-        })
+        const forwardFromInitial = kbSteps
+          .filter((s) => !s.isInitial && !s.isTerminal)
+          .map((s) => s.name)[0]
+        if (forwardFromInitial) {
+          void execTransition({
+            variables: { instanceId: d.createKBArticle.workflowInstanceId, toStep: forwardFromInitial },
+          }).then((res) => {
+            if (res.data?.executeWorkflowTransition.success) {
+              toast.success('Articolo inviato per revisione')
+              void refetch()
+            }
+          })
+        }
       }
     },
     onError: (e: { message: string }) => { publishingRef.current = false; toast.error(e.message) },
@@ -174,11 +176,15 @@ export function KBAdminPage() {
   const [updateArticle, { loading: updating }] = useMutation<{ updateKBArticle: KBArticle }>(UPDATE_ARTICLE, {
     onCompleted: (d) => {
       if (publishingRef.current) {
-        // After content save, trigger the workflow transition
+        // After content save, trigger the forward transition from the
+        // initial step (workflow decides which step that leads to).
         publishingRef.current = false
         const wi = d.updateKBArticle.workflowInstanceId ?? editArticle?.workflowInstanceId
-        if (wi) {
-          void execTransition({ variables: { instanceId: wi, toStep: 'pending_review' } }).then((res) => {
+        const forwardFromInitial = kbSteps
+          .filter((s) => !s.isInitial && !s.isTerminal)
+          .map((s) => s.name)[0]
+        if (wi && forwardFromInitial) {
+          void execTransition({ variables: { instanceId: wi, toStep: forwardFromInitial } }).then((res) => {
             if (res.data?.executeWorkflowTransition.success) {
               toast.success('Articolo inviato per revisione')
               closeForm()
@@ -186,7 +192,7 @@ export function KBAdminPage() {
             }
           })
         } else {
-          toast.error('WorkflowInstance non trovata — impossibile inviare per revisione')
+          toast.error('WorkflowInstance o step di revisione non trovato')
         }
       } else {
         toast.success(t('pages.kbAdmin.updated'))
@@ -248,7 +254,11 @@ export function KBAdminPage() {
       <div style={{ fontWeight: 500, color: '#1a2332', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
     ) },
     { key: 'category', label: 'Categoria', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
-    { key: 'status', label: 'Status', sortable: true, render: (v) => <StatusBadge status={String(v)} /> },
+    { key: 'status', label: 'Status', sortable: true, render: (v) => {
+      const status = String(v)
+      const meta = kbStepByName.get(status)
+      return <StatusBadge status={status} label={meta?.label} category={meta?.category ?? null} />
+    } },
     { key: 'authorName', label: 'Autore', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
     { key: 'views', label: 'Views', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
     { key: 'updatedAt', label: 'Aggiornato', sortable: true, render: (v) => <span style={{ color: '#94a3b8' }}>{new Date(String(v)).toLocaleDateString()}</span> },
@@ -302,7 +312,10 @@ export function KBAdminPage() {
             <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>
               {editId ? t('pages.kbAdmin.editArticle') : t('pages.kbAdmin.newArticle')}
             </h3>
-            {editArticle && <StatusBadge status={editArticle.status} />}
+            {editArticle && (() => {
+              const meta = kbStepByName.get(editArticle.status)
+              return <StatusBadge status={editArticle.status} label={meta?.label} category={meta?.category ?? null} />
+            })()}
           </div>
 
           {/* Fields */}
@@ -349,7 +362,7 @@ export function KBAdminPage() {
             </button>
 
             {/* Publish — only when editing an existing draft */}
-            {editId && editArticle?.status === 'draft' && (
+            {editId && editArticle?.status === kbInitialStep?.name && (
               <button
                 onClick={handlePublish}
                 disabled={isBusy}
@@ -373,7 +386,7 @@ export function KBAdminPage() {
           </div>
 
           {/* Info note — only when editing an existing draft */}
-          {editId && editArticle?.status === 'draft' && (
+          {editId && editArticle?.status === kbInitialStep?.name && (
             <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>
               "Salva" aggiorna il contenuto senza cambiare stato. "Invia per revisione" salva e avvia il processo di approvazione.
             </p>

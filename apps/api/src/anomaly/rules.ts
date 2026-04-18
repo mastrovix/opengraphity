@@ -177,7 +177,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
       MATCH (ci)
       ${CI_MATCH}
       MATCH (inc:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)
-      WHERE inc.severity = 'critical' AND NOT inc.status IN ['resolved', 'closed']
+      WHERE inc.severity = 'critical' AND NOT inc.status IN $incidentTerminal
       WITH ci, count(inc) AS criticalCount
       WHERE criticalCount >= 5
       RETURN

@@ -45,7 +45,16 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hasChanges,         setHasChanges]         = useState(false)
   const [pendingChanges,     setPendingChanges]     = useState<PendingTransitionChange[]>([])
-  const [pendingStepChanges, setPendingStepChanges] = useState<{ stepName: string; label: string; enterActions: string | null; exitActions: string | null }[]>([])
+  const [pendingStepChanges, setPendingStepChanges] = useState<{
+    stepName:     string
+    label:        string
+    enterActions: string | null
+    exitActions:  string | null
+    isInitial?:   boolean
+    isTerminal?:  boolean
+    isOpen?:      boolean
+    category?:    string | null
+  }[]>([])
 
   const selectedWorkflow = defToWorkflowKey(def)
 
@@ -154,7 +163,16 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     setHasChanges(true)
   }, [])
 
-  const handleSaveStepLocally = useCallback((change: { stepName: string; label: string; enterActions: string | null; exitActions: string | null }) => {
+  const handleSaveStepLocally = useCallback((change: {
+    stepName:     string
+    label:        string
+    enterActions: string | null
+    exitActions:  string | null
+    isInitial?:   boolean
+    isTerminal?:  boolean
+    isOpen?:      boolean
+    category?:    string | null
+  }) => {
     setPendingStepChanges((prev) => {
       const idx = prev.findIndex((c) => c.stepName === change.stepName)
       if (idx >= 0) {

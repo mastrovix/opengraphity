@@ -346,7 +346,9 @@ export async function approveRequest(
       const nowSse = new Date().toISOString()
 
       if (entityType === 'kb_article') {
-        // ── KB Article: transition workflow to 'published' ────────────────────
+        // ── KB Article: approval granted → fire the forward workflow
+        //    transition from the current step (the "publish" step is named by
+        //    the workflow definition, not by this resolver).
         const wiRes = await session.executeRead((tx) =>
           tx.run(
             `MATCH (a:KBArticle {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -358,11 +360,19 @@ export async function approveRequest(
         if (wiRes.records.length > 0) {
           const instanceId = wiRes.records[0].get('instanceId') as string
           const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
-          await workflowEngine.transition(
-            session,
-            { instanceId, toStepName: 'published', triggeredBy: ctx.userId, triggerType: 'manual' },
-            actionCtx,
-          )
+          // Pick the first manual transition whose target is NOT the initial
+          // step — that's the forward path (draft → ... → active-state).
+          const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
+          const initial = await getInitialStepName(session, ctx.tenantId, 'kb_article')
+          const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
+          const forward = transitions.find((t) => t.toStep !== initial)
+          if (forward) {
+            await workflowEngine.transition(
+              session,
+              { instanceId, toStepName: forward.toStep, triggeredBy: ctx.userId, triggerType: 'manual' },
+              actionCtx,
+            )
+          }
         }
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
@@ -467,9 +477,11 @@ export async function rejectRequest(
       if (wiRes.records.length > 0) {
         const instanceId = wiRes.records[0].get('instanceId') as string
         const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
+        const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
+        const initialStep = await getInitialStepName(session, ctx.tenantId, 'kb_article')
         await workflowEngine.transition(
           session,
-          { instanceId, toStepName: 'draft', triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note },
+          { instanceId, toStepName: initialStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note },
           actionCtx,
         )
       }

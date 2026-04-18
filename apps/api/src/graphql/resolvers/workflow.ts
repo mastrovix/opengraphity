@@ -11,6 +11,9 @@ import {
   incidentWorkflowInstance,
   incidentAvailableTransitionsField,
   incidentWorkflowHistoryField,
+  changeWorkflowInstance,
+  changeAvailableTransitionsField,
+  changeWorkflowHistoryField,
 } from './workflowQueries.js'
 import {
   updateWorkflowStep,
@@ -141,5 +144,10 @@ export const workflowResolvers = {
     workflowInstance:     incidentWorkflowInstance,
     availableTransitions: incidentAvailableTransitionsField,
     workflowHistory:      incidentWorkflowHistoryField,
+  },
+  Change: {
+    workflowInstance:     changeWorkflowInstance,
+    availableTransitions: changeAvailableTransitionsField,
+    workflowHistory:      changeWorkflowHistoryField,
   },
 }

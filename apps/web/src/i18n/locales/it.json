@@ -36,6 +36,7 @@
     "itilProcesses": "Processi ITIL",
     "incidents": "Incident",
     "changes": "Change",
+    "myTasks": "I miei task",
     "problems": "Problem",
     "requests": "Richieste",
     "reporting": "Reporting",
@@ -69,9 +70,8 @@
     "businessRules": "Business Rules",
     "slaPolicies": "Policy SLA",
     "integrations": "Integrazioni",
-    "changeCatalog": "Catalogo Change",
+    "assessmentQuestions": "Domande Assessment",
     "whatIf": "What-if Planning",
-    "changeCalendar": "Calendario Change",
     "collapse": "Comprimi sidebar",
     "expand": "Espandi sidebar"
   },
@@ -90,19 +90,15 @@
     "changes": {
       "title": "Change",
       "new": "+ Nuovo Change",
-      "type": "Tipo",
-      "priority": "Priorità",
-      "scheduledStart": "Inizio Previsto",
+      "code": "Codice",
+      "phase": "Fase",
+      "requester": "Richiedente",
+      "risk": "Rischio",
       "title_col": "Titolo",
-      "team": "Team",
-      "ci": "CI",
       "createdAt": "Creato il",
-      "step": "Step",
       "noResults": "Nessun change trovato",
       "noResultsDesc": "Crea il primo change o modifica i filtri applicati.",
-      "count": "{{count}} change",
-      "autoWorkflow": "Workflow",
-      "catalog": "Catalogo Standard Change"
+      "count": "{{count}} change"
     },
     "problems": {
       "title": "Problem",

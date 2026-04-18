@@ -26,8 +26,13 @@ export const GET_BLAST_RADIUS = gql`
 export const GET_CI_CHANGES = gql`
   query GetCIChanges($ciId: ID!) {
     ciChanges(ciId: $ciId) {
-      id number title type priority status
-      createdAt scheduledStart
+      id
+      code
+      title
+      workflowInstance { currentStep }
+      aggregateRiskScore
+      approvalStatus
+      createdAt
     }
   }
 `

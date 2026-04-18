@@ -200,7 +200,8 @@ export async function kbCategories(
   const session = getSession(undefined, 'READ')
   try {
     const res = await session.executeRead((tx) => tx.run(`
-      MATCH (a:KBArticle {tenant_id: $tenantId, status: 'published'})
+      MATCH (a:KBArticle {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+      WHERE s.category = 'published'
       RETURN a.category AS name, count(a) AS count
       ORDER BY count DESC
     `, { tenantId: ctx.tenantId }))
@@ -226,8 +227,15 @@ export async function createKBArticle(
 
   const id     = uuidv4()
   const now    = new Date().toISOString()
-  // Publishing goes through approval — treat status=published at creation as draft
-  const status = args.status === 'published' ? 'draft' : (args.status ?? 'draft')
+  // Publishing goes through approval — new articles always start at the
+  // workflow's initial step. Explicit published status is rejected here.
+  const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
+  const initialStep = await (async () => {
+    const s = getSession(undefined, 'READ')
+    try { return await getInitialStepName(s, ctx.tenantId, 'kb_article') }
+    finally { await s.close() }
+  })()
+  const status = initialStep
   const slug   = generateSlug(args.title) + '-' + id.slice(0, 8)
 
   // Step 1: create the article node
@@ -282,7 +290,7 @@ export async function createKBArticle(
       authorId:    ctx.userId,
       authorName:  ctx.userEmail,
       now,
-      publishedAt: status === 'published' ? now : null,
+      publishedAt: null,
     }))
 
     created = mapArticle(res.records[0])
@@ -296,7 +304,7 @@ export async function createKBArticle(
   try {
     await workflowEngine.createInstance(wiSession, ctx.tenantId, id, 'kb_article')
     created.workflowInstanceId = null  // will be populated on next fetch
-    created.currentStep        = 'draft'
+    created.currentStep        = initialStep
   } catch (err) {
     logger.warn({ err, tenantId: ctx.tenantId }, 'kb_article: workflow instance creation failed — skipping')
   } finally {

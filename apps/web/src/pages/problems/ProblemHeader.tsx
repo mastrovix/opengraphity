@@ -1,5 +1,7 @@
 import { ArrowLeft } from 'lucide-react'
 import { lookupOrError } from '@/lib/tokens'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { buttonStyleForCategory } from '@/lib/workflowStepStyle'
 
 interface WorkflowTransition {
   toStep:        string
@@ -20,25 +22,19 @@ const PRIORITY_COLOR: Record<string, string> = {
   critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: '#ca8a04', low: '#16a34a',
 }
 
-const STATUS_BG: Record<string, string> = {
-  new: 'var(--color-brand-light)', under_investigation: 'var(--color-brand-light)', change_requested: 'var(--color-brand-light)',
-  change_in_progress: 'var(--color-brand-light)', resolved: 'var(--color-brand-light)', closed: 'var(--color-brand-light)',
-  rejected: 'var(--color-brand-light)', deferred: 'var(--color-brand-light)',
-}
+// Every problem status renders with the same brand colours — a single value,
+// no per-name lookup needed.
+const STATUS_BG = 'var(--color-brand-light)'
+const STATUS_FG = 'var(--color-brand)'
 
-const STATUS_FG: Record<string, string> = {
-  new: 'var(--color-brand)', under_investigation: 'var(--color-brand)', change_requested: 'var(--color-brand)',
-  change_in_progress: 'var(--color-brand)', resolved: 'var(--color-brand)', closed: 'var(--color-brand)',
-  rejected: 'var(--color-brand)', deferred: 'var(--color-brand)',
-}
-
-function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProperties {
-  const base: React.CSSProperties = { padding: '6px 14px', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, border: '1px solid transparent', transition: 'opacity 0.15s' }
-  if (toStep === 'resolved') return { ...base, backgroundColor: 'var(--color-trigger-automatic)', color: '#fff', borderColor: 'var(--color-trigger-automatic)' }
-  if (toStep === 'rejected') return { ...base, backgroundColor: 'var(--color-trigger-sla-breach)', color: '#fff', borderColor: 'var(--color-trigger-sla-breach)' }
-  if (toStep === 'closed')   return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
-  console.error(`[transitionButtonStyle] valore sconosciuto: "${toStep}"`)
-  return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
+function transitionButtonStyle(category: string | null | undefined, disabled: boolean): React.CSSProperties {
+  const base: React.CSSProperties = {
+    padding: '6px 14px', borderRadius: 6,
+    fontSize: 'var(--font-size-card-title)', fontWeight: 500,
+    cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+    border: '1px solid transparent', transition: 'opacity 0.15s',
+  }
+  return { ...base, ...buttonStyleForCategory(category) }
 }
 
 interface ProblemHeaderProps {
@@ -56,6 +52,7 @@ export function ProblemHeader({
   onBack,
   onTransitionClick,
 }: ProblemHeaderProps) {
+  const { byName: stepByName } = useWorkflowSteps('problem')
   return (
     <div style={{ marginBottom: 24 }}>
       <button onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
@@ -67,7 +64,7 @@ export function ProblemHeader({
         <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : '#f3f4f6', color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 600, border: `1px solid ${lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', '#e5e7eb')}` }}>
           {problem.priority}
         </span>
-        <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', '#f3f4f6'), color: lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+        <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG, color: STATUS_FG, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
           {problem.status.replace(/_/g, ' ')}
         </span>
       </div>
@@ -76,7 +73,7 @@ export function ProblemHeader({
       {manualTransitions.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
           {manualTransitions.map((tr) => (
-            <button key={tr.toStep} onClick={() => onTransitionClick(tr)} disabled={transitioning} style={transitionButtonStyle(tr.toStep, transitioning)}>
+            <button key={tr.toStep} onClick={() => onTransitionClick(tr)} disabled={transitioning} style={transitionButtonStyle(stepByName.get(tr.toStep)?.category ?? null, transitioning)}>
               {tr.label}
             </button>
           ))}

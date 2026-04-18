@@ -10,6 +10,12 @@ export function workflowSDL(): string {
     updatedAt:   String!
   }
 
+  type TransitionResult {
+    success:  Boolean!
+    error:    String
+    instance: WorkflowInstance
+  }
+
   type WorkflowTransition {
     toStep:        String!
     label:         String!
@@ -38,6 +44,11 @@ export function workflowSDL(): string {
     exitActions:         String
     timerDelayMinutes:   Int
     subWorkflowId:       String
+    isInitial:           Boolean!
+    isTerminal:          Boolean!
+    isOpen:              Boolean!
+    category:            String
+    order:               Int!
   }
 
   type WorkflowTransitionDef {
@@ -94,6 +105,10 @@ export function workflowSDL(): string {
     label:        String!
     enterActions: String
     exitActions:  String
+    isInitial:    Boolean
+    isTerminal:   Boolean
+    isOpen:       Boolean
+    category:     String
   }
   `
 }

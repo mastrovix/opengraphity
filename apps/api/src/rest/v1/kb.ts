@@ -10,11 +10,15 @@ router.get('/', requirePermission('kb:read'), async (req: Request, res: Response
   const offset = (page - 1) * limit
   const session = getSession()
   try {
+    // "Public" articles = workflow is in a step with category='published'.
     const countRow = await runQueryOne<{ total: number }>(session, `
-      MATCH (a:KBArticle {tenant_id: $tenantId, status: 'published'}) RETURN count(a) AS total
+      MATCH (a:KBArticle {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+      WHERE s.category = 'published'
+      RETURN count(a) AS total
     `, { tenantId: req.apiKey!.tenantId })
     const rows = await runQuery<{ props: Record<string, unknown> }>(session, `
-      MATCH (a:KBArticle {tenant_id: $tenantId, status: 'published'})
+      MATCH (a:KBArticle {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+      WHERE s.category = 'published'
       RETURN properties(a) AS props ORDER BY a.published_at DESC SKIP toInteger($offset) LIMIT toInteger($limit)
     `, { tenantId: req.apiKey!.tenantId, offset, limit })
     res.json({
@@ -28,7 +32,8 @@ router.get('/:slug', requirePermission('kb:read'), async (req: Request, res: Res
   const session = getSession()
   try {
     const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
-      MATCH (a:KBArticle {slug: $slug, tenant_id: $tenantId, status: 'published'})
+      MATCH (a:KBArticle {slug: $slug, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+      WHERE s.category = 'published'
       RETURN properties(a) AS props
     `, { slug: req.params['slug'], tenantId: req.apiKey!.tenantId })
     if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Article not found' } }); return }

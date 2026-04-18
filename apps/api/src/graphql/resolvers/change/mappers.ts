@@ -3,103 +3,7 @@ import { mapUser, mapTeam } from '../../../lib/mappers.js'
 
 export type Props = Record<string, unknown>
 
-export { mapUser, mapTeam }
-
-export function mapChange(props: Props) {
-  return {
-    id:             props['id']             as string,
-    number:         (props['number'] ?? '') as string,
-    tenantId:       props['tenant_id']      as string,
-    title:          props['title']          as string,
-    description:    (props['description']   ?? null) as string | null,
-    type:           props['type']           as string,
-    priority:       (props['priority']      ?? 'medium') as string,
-    status:         props['status']         as string,
-    scheduledStart: (props['scheduled_start'] ?? null) as string | null,
-    scheduledEnd:   (props['scheduled_end']   ?? null) as string | null,
-    implementedAt:  (props['implemented_at']  ?? null) as string | null,
-    createdAt:      props['created_at']     as string,
-    updatedAt:      props['updated_at']     as string,
-    // populated by field resolvers
-    assignedTeam: null, assignee: null,
-    affectedCIs: [], relatedIncidents: [],
-    changeTasks: [],
-    createdBy: null, comments: [],
-  }
-}
-
-export function mapChangeTask(
-  props: Props,
-  ci?: Props | null,
-  team?: Props | null,
-  user?: Props | null,
-  vTeam?: Props | null,
-  vUser?: Props | null,
-) {
-  return {
-    id:                props['id']                 as string,
-    taskType:          props['task_type']           as string,
-    changeId:          props['change_id']           as string,
-    status:            props['status']              as string,
-    title:             (props['title']              ?? null) as string | null,
-    order:             props['order'] != null ? Number(props['order']) : null,
-    description:       (props['description']        ?? null) as string | null,
-    notes:             (props['notes']              ?? null) as string | null,
-    riskLevel:         (props['risk_level']         ?? null) as string | null,
-    impactDescription: (props['impact_description'] ?? null) as string | null,
-    mitigation:        (props['mitigation']         ?? null) as string | null,
-    skipReason:        (props['skip_reason']        ?? null) as string | null,
-    completedAt:       (props['completed_at']       ?? null) as string | null,
-    scheduledStart:    (props['scheduled_start']    ?? null) as string | null,
-    scheduledEnd:      (props['scheduled_end']      ?? null) as string | null,
-    durationDays:      props['duration_days'] != null ? Number(props['duration_days']) : null,
-    hasValidation:     (props['has_validation']     ?? null) as boolean | null,
-    validationStatus:  (props['validation_status']  ?? null) as string | null,
-    validationStart:   (props['validation_start']   ?? null) as string | null,
-    validationEnd:     (props['validation_end']     ?? null) as string | null,
-    validationNotes:   (props['validation_notes']   ?? null) as string | null,
-    type:              (props['type']               ?? null) as string | null,
-    rollbackPlan:      (props['rollback_plan']      ?? null) as string | null,
-    createdAt:         (props['created_at']         ?? null) as string | null,
-    ciId:              (props['ci_id']              ?? null) as string | null,
-    ci:                ci    ? mapCI(ci)    : null,
-    assignedTeam:      team  ? mapTeam(team)  : null,
-    assignee:          user  ? mapUser(user)  : null,
-    validationTeam:    vTeam ? mapTeam(vTeam) : null,
-    validationUser:    vUser ? mapUser(vUser) : null,
-  }
-}
-
-export function mapWI(wi: Record<string, unknown>) {
-  return {
-    id:          wi['id']           as string,
-    currentStep: wi['current_step'] as string,
-    status:      wi['status']       as string,
-    createdAt:   wi['created_at']   as string,
-    updatedAt:   wi['updated_at']   as string,
-  }
-}
-
-export function mapExec(e: Record<string, unknown>) {
-  return {
-    id: e['id'] as string, stepName: e['step_name'] as string,
-    enteredAt: e['entered_at'] as string, exitedAt: (e['exited_at'] ?? null) as string | null,
-    durationMs: e['duration_ms'] == null ? null : (typeof e['duration_ms'] === 'object' ? (e['duration_ms'] as { toNumber(): number }).toNumber() : Math.round(Number(e['duration_ms']))),
-    triggeredBy: e['triggered_by'] as string, triggerType: e['trigger_type'] as string,
-    notes: (e['notes'] ?? null) as string | null,
-  }
-}
-
-export function mapChangeComment(props: Props, user?: Props | null) {
-  return {
-    id:        props['id']         as string,
-    changeId:  props['change_id']  as string,
-    text:      props['text']       as string,
-    type:      props['type']       as string,
-    createdAt: props['created_at'] as string,
-    createdBy: user ? mapUser(user) : null,
-  }
-}
+export { mapCI, mapUser, mapTeam }
 
 export function toInt(v: unknown, fallback = 0): number {
   if (v == null) return fallback
@@ -107,4 +11,141 @@ export function toInt(v: unknown, fallback = 0): number {
   if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
     return (v as { toNumber: () => number }).toNumber()
   return Number(v)
+}
+
+export function mapChange(props: Props) {
+  return {
+    id:                 props['id']                  as string,
+    tenantId:           props['tenant_id']           as string,
+    code:               props['code']                as string,
+    title:              props['title']               as string,
+    description:        (props['description']          ?? null) as string | null,
+    aggregateRiskScore: props['aggregate_risk_score'] != null ? toInt(props['aggregate_risk_score']) : null,
+    approvalRoute:      (props['approval_route']       ?? null) as string | null,
+    approvalStatus:     (props['approval_status']      ?? null) as string | null,
+    approvalAt:         (props['approval_at']          ?? null) as string | null,
+    createdAt:          props['created_at']          as string,
+    updatedAt:          props['updated_at']          as string,
+    requester:   null,
+    changeOwner: null,
+    approvalBy:  null,
+  }
+}
+
+export function mapAssessmentTask(props: Props) {
+  return {
+    id:            props['id']             as string,
+    code:          (props['code'] ?? '')   as string,
+    responderRole: props['responder_role'] as string,
+    status:        props['status']         as string,
+    score:         props['score'] != null ? toInt(props['score']) : null,
+    completedAt:   (props['completed_at']    ?? null) as string | null,
+    createdAt:     props['created_at']     as string,
+    completedBy:   null,
+    assignedTeam:  null,
+    assignee:      null,
+    responses:     [] as unknown[],
+  }
+}
+
+export function mapAnswerOption(props: Props) {
+  return {
+    id:        props['id']    as string,
+    label:     props['label'] as string,
+    score:     toInt(props['score']),
+    sortOrder: toInt(props['sort_order']),
+  }
+}
+
+export function mapAssessmentQuestion(props: Props) {
+  return {
+    id:        props['id']         as string,
+    text:      props['text']       as string,
+    category:  props['category']   as string,
+    isCore:    Boolean(props['is_core']),
+    isActive:  Boolean(props['is_active']),
+    createdAt: props['created_at'] as string,
+    options:   [] as ReturnType<typeof mapAnswerOption>[],
+  }
+}
+
+export function mapValidationTest(props: Props) {
+  return {
+    id:       props['id']        as string,
+    code:     (props['code'] ?? '') as string,
+    status:   props['status']    as string,
+    result:   (props['result']     ?? null) as string | null,
+    testedAt: (props['tested_at']  ?? null) as string | null,
+    testedBy: null,
+  }
+}
+
+type RawWindow = { start?: unknown; end?: unknown }
+type RawStep   = { title?: unknown; validationWindow?: RawWindow; releaseWindow?: RawWindow }
+
+function parseSteps(v: unknown): Array<{ title: string; validationWindow: { start: string; end: string }; releaseWindow: { start: string; end: string } }> {
+  if (typeof v !== 'string' || v.length === 0) return []
+  try {
+    const arr = JSON.parse(v) as unknown
+    if (!Array.isArray(arr)) return []
+    return (arr as RawStep[])
+      .filter((s): s is RawStep => typeof s === 'object' && s !== null)
+      .map((s) => ({
+        title: String(s.title ?? ''),
+        validationWindow: {
+          start: String(s.validationWindow?.start ?? ''),
+          end:   String(s.validationWindow?.end   ?? ''),
+        },
+        releaseWindow: {
+          start: String(s.releaseWindow?.start ?? ''),
+          end:   String(s.releaseWindow?.end   ?? ''),
+        },
+      }))
+  } catch {
+    return []
+  }
+}
+
+export function mapDeployPlanTask(props: Props) {
+  return {
+    id:          props['id']            as string,
+    code:        (props['code'] ?? '')  as string,
+    status:      props['status']        as string,
+    steps:       parseSteps(props['steps']),
+    completedAt: (props['completed_at'] ?? null) as string | null,
+    createdAt:   props['created_at']    as string,
+    assignedTeam: null,
+    assignee:     null,
+    completedBy:  null,
+  }
+}
+
+export function mapDeploymentTask(props: Props) {
+  return {
+    id:         props['id']         as string,
+    code:       (props['code'] ?? '') as string,
+    status:     props['status']     as string,
+    deployedAt: (props['deployed_at'] ?? null) as string | null,
+    deployedBy: null,
+  }
+}
+
+export function mapReviewTask(props: Props) {
+  return {
+    id:         props['id']         as string,
+    code:       (props['code'] ?? '') as string,
+    status:     props['status']     as string,
+    result:     (props['result']      ?? null) as string | null,
+    reviewedAt: (props['reviewed_at']  ?? null) as string | null,
+    reviewedBy: null,
+  }
+}
+
+export function mapAuditEntry(props: Props) {
+  return {
+    timestamp: props['timestamp'] as string,
+    action:    props['action']    as string,
+    detail:    (props['detail']     ?? null) as string | null,
+    actor:     null,
+  }
 }

@@ -13,7 +13,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { CIGraph } from '@/components/CIGraph'
 import { CIIncidentsCard } from '@/components/CIIncidentsCard'
-import { CIChangesCard } from '@/components/CIChangesCard'
+import { CIChangeList } from '@/components/CIChangeList'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
 import { GET_BLAST_RADIUS, GET_ALL_CIS } from '@/graphql/queries'
@@ -634,7 +634,7 @@ export function CIDetailPage() {
           </SectionCard>
 
           <CIIncidentsCard ciId={ci.id} />
-          <CIChangesCard ciId={ci.id} />
+          <CIChangeList ciId={ci.id} />
         </div>
 
       </div>

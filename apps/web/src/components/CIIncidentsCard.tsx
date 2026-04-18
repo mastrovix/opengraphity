@@ -6,6 +6,7 @@ import { CountBadge } from '@/components/ui/CountBadge'
 import { lookupStyle } from '@/lib/tokens'
 import { StatusBadge } from '@/components/StatusBadge'
 import { GET_CI_INCIDENTS } from '@/graphql/queries'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 interface Incident {
   id:        string
@@ -33,8 +34,6 @@ function SeverityBadge({ severity }: { severity: string }) {
   )
 }
 
-const CLOSED_STATUSES = new Set(['resolved', 'closed'])
-
 export function CIIncidentsCard({ ciId }: { ciId: string }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -42,10 +41,11 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
   const { data } = useQuery<{ ciIncidents: Incident[] }>(GET_CI_INCIDENTS, {
     variables: { ciId },
   })
+  const { isTerminal } = useWorkflowSteps('incident')
 
   const incidents = data?.ciIncidents ?? []
-  const open_incidents  = incidents.filter(i => !CLOSED_STATUSES.has(i.status))
-  const closed_incidents = incidents.filter(i =>  CLOSED_STATUSES.has(i.status))
+  const open_incidents  = incidents.filter(i => !isTerminal(i.status))
+  const closed_incidents = incidents.filter(i =>  isTerminal(i.status))
 
   function renderRow(inc: Incident, faded = false) {
     return (

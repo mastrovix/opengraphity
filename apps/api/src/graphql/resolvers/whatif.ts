@@ -2,6 +2,7 @@ import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
+import { getTerminalStepNames } from '../../lib/workflowHelpers.js'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -104,11 +105,12 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
   if (impactedIds.length > 0) {
     const s3 = getSession(undefined, 'READ')
     try {
+      const terminalSteps = await getTerminalStepNames(s3, tenantId, 'incident')
       const row = await runQueryOne<{ cnt: unknown }>(s3, `
         MATCH (ci)<-[:AFFECTS]-(inc {tenant_id: $tenantId})
-        WHERE ci.id IN $impactedIds AND NOT inc.status IN ['resolved', 'closed']
+        WHERE ci.id IN $impactedIds AND NOT inc.status IN $terminalSteps
         RETURN count(inc) AS cnt
-      `, { impactedIds, tenantId })
+      `, { impactedIds, tenantId, terminalSteps })
       openIncidents = toNum(row?.cnt)
     } finally { await s3.close() }
   }

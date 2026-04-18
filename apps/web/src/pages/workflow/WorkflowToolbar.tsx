@@ -117,7 +117,7 @@ export function WorkflowToolbar({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {def && (
+        {def && def.entityType !== 'change' && (
           <button
             onClick={() => setShowAddStep(true)}
             style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}

@@ -9,6 +9,8 @@ import {
   AlertCircle,
   Search,
   GitPullRequest,
+  HelpCircle,
+  ClipboardList,
   Inbox,
   ListChecks,
   SlidersHorizontal,
@@ -41,7 +43,6 @@ import {
   Clock,
   Plug,
   FlaskConical,
-  CalendarDays,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -78,8 +79,8 @@ const CONFIG_ITEM_DEFS = [
 const ITSM_ITEM_DEFS = [
   { to: '/incidents', labelKey: 'sidebar.incidents', icon: AlertCircle    },
   { to: '/problems',  labelKey: 'sidebar.problems',  icon: Search         },
-  { to: '/changes',           labelKey: 'sidebar.changes',        icon: GitPullRequest },
-  { to: '/changes/calendar', labelKey: 'sidebar.changeCalendar', icon: CalendarDays   },
+  { to: '/changes',   labelKey: 'sidebar.changes',   icon: GitPullRequest },
+  { to: '/my-tasks',  labelKey: 'sidebar.myTasks',   icon: ClipboardList  },
   { to: '/requests',  labelKey: 'sidebar.requests',  icon: Inbox          },
 ]
 
@@ -96,8 +97,8 @@ const ADMIN_NAV_ITEM_DEFS = [
   { to: '/admin/triggers',         labelKey: 'sidebar.autoTriggers',   icon: Zap         },
   { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
   { to: '/admin/sla-policies',     labelKey: 'sidebar.slaPolicies',    icon: Clock       },
-  { to: '/admin/integrations',     labelKey: 'sidebar.integrations',   icon: Plug        },
-  { to: '/admin/change-catalog',  labelKey: 'sidebar.changeCatalog',  icon: BookOpen    },
+  { to: '/admin/integrations',         labelKey: 'sidebar.integrations',        icon: Plug        },
+  { to: '/admin/assessment-questions', labelKey: 'sidebar.assessmentQuestions', icon: HelpCircle  },
 ]
 
 interface SidebarProps {

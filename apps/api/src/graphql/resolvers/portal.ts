@@ -190,6 +190,10 @@ async function myTicketStats(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
+    const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
+    const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
+    const stepByName = new Map(steps.map((s) => [s.name, s]))
+
     const result = await session.executeRead((tx) =>
       tx.run(`
         MATCH (i:Incident {tenant_id: $tenantId, created_by: $userId})
@@ -202,9 +206,11 @@ async function myTicketStats(
       const status = r.get('status') as string
       const cnt    = toInt(r.get('cnt'))
       total += cnt
-      if (status === 'new' || status === 'open' || status === 'assigned') open += cnt
-      else if (status === 'in_progress' || status === 'escalated' || status === 'pending') inProgress += cnt
-      else if (status === 'resolved') resolved += cnt
+      const step = stepByName.get(status)
+      if (!step) continue
+      if (step.category === 'resolved' || step.isTerminal) resolved += cnt
+      else if (step.isInitial) open += cnt
+      else inProgress += cnt
     }
 
     return { open, inProgress, resolved, total }
@@ -234,6 +240,8 @@ async function createTicket(
   const now = new Date().toISOString()
 
   const ticket = await withSession(async (session) => {
+    const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
+    const initialStatus = await getInitialStepName(session, ctx.tenantId, 'incident')
     const rows = await session.executeWrite((tx) =>
       tx.run(`
         CREATE (i:Incident {
@@ -243,14 +251,14 @@ async function createTicket(
           description: $description,
           severity:    $priority,
           priority:    $priority,
-          status:      'new',
+          status:      $status,
           category:    $category,
           created_by:  $userId,
           created_at:  $now,
           updated_at:  $now
         })
         RETURN properties(i) AS props
-      `, { id, tenantId: ctx.tenantId, title, description: description ?? null, priority, category, userId: ctx.userId, now }),
+      `, { id, tenantId: ctx.tenantId, title, description: description ?? null, priority, category, userId: ctx.userId, now, status: initialStatus }),
     )
     const props = rows.records[0]?.get('props') as Record<string, unknown> | undefined
     if (!props) throw new Error('Failed to create ticket')
@@ -355,16 +363,29 @@ async function reopenTicket(
     const status     = r.get('status')    as string
 
     if (createdBy !== ctx.userId) throw new ForbiddenError('Access denied')
-    if (status !== 'resolved')    throw new Error('Only resolved tickets can be reopened')
+
+    const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
+    const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
+    const resolvedStep = steps.find((s) => s.category === 'resolved')
+    if (!resolvedStep || status !== resolvedStep.name) {
+      throw new Error('Only resolved tickets can be reopened')
+    }
+    // Reopen back to an active step: prefer the first non-initial step
+    // marked as 'active' (typical "in progress"), fall back to any active.
+    const reopenTo =
+      steps.find((s) => s.isOpen && s.category === 'active' && !s.isInitial) ??
+      steps.find((s) => s.isOpen && s.category === 'active') ??
+      steps.find((s) => s.isOpen)
+    if (!reopenTo) throw new Error('No active step available to reopen to')
 
     const now = new Date().toISOString()
 
     const updated = await session.executeWrite((tx) =>
       tx.run(`
         MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
-        SET i.status = 'in_progress', i.updated_at = $now
+        SET i.status = $status, i.updated_at = $now
         RETURN properties(i) AS props
-      `, { ticketId, tenantId: ctx.tenantId, now }),
+      `, { ticketId, tenantId: ctx.tenantId, now, status: reopenTo.name }),
     )
 
     void audit(ctx, 'portal.ticket.reopened', 'Incident', ticketId)

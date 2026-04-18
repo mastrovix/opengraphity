@@ -2,6 +2,7 @@ import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { cache } from '../../lib/cache.js'
 import { withSession } from './ci-utils.js'
+import { getTerminalStepNames } from '../../lib/workflowHelpers.js'
 
 interface TopologyArgs {
   types?:        string[]
@@ -73,6 +74,8 @@ export const topologyResolvers = {
       if (cached) return cached
 
       return withSession(async (session) => {
+        const incidentTerminal = await getTerminalStepNames(session, ctx.tenantId, 'incident')
+        const changeTerminal   = await getTerminalStepNames(session, ctx.tenantId, 'change')
 
         // ── BRANCH A: ego-network from a specific CI ──────────────────────
         if (args.selectedCiId) {
@@ -140,10 +143,10 @@ export const topologyResolvers = {
                     AND ($status IS NULL OR ci.status = $status)))
             OPTIONAL MATCH (i:Incident)-[:AFFECTED_BY]->(ci)
               WHERE i.tenant_id = $tenantId
-                AND NOT i.status IN ['resolved', 'closed']
+                AND NOT i.status IN $incidentTerminal
             OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
               WHERE ch.tenant_id = $tenantId
-                AND NOT ch.status IN ['rejected', 'failed']
+                AND NOT ch.status IN $changeTerminal
             WITH ci,
                  count(DISTINCT i)  AS incidentCount,
                  count(DISTINCT ch) AS changeCount
@@ -157,7 +160,7 @@ export const topologyResolvers = {
               incidentCount,
               changeCount
             ORDER BY ci.name
-          `, { nodeIds, tenantId: ctx.tenantId, ciId: args.selectedCiId, environment, status }))
+          `, { nodeIds, tenantId: ctx.tenantId, ciId: args.selectedCiId, environment, status, incidentTerminal, changeTerminal }))
 
           const nodes = nodesResult.records.map(mapNode)
 
@@ -187,6 +190,8 @@ export const topologyResolvers = {
           ciLabels: args.types && args.types.length > 0
             ? args.types.map(labelFromType)
             : CI_LABELS,
+          incidentTerminal,
+          changeTerminal,
         }
 
         const extraConditions: string[] = []
@@ -209,10 +214,10 @@ export const topologyResolvers = {
             ${extraWhere}
           OPTIONAL MATCH (i:Incident)-[:AFFECTED_BY]->(ci)
             WHERE i.tenant_id = $tenantId
-              AND NOT i.status IN ['resolved', 'closed']
+              AND NOT i.status IN $incidentTerminal
           OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
             WHERE ch.tenant_id = $tenantId
-              AND NOT ch.status IN ['rejected', 'failed']
+              AND NOT ch.status IN $changeTerminal
           WITH ci,
                count(DISTINCT i)  AS incidentCount,
                count(DISTINCT ch) AS changeCount

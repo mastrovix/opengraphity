@@ -9,6 +9,12 @@ export interface WFStep {
   exitActions:  string | null
   timerDelayMinutes?: number | null
   subWorkflowId?:     string | null
+  // Workflow metadata — editable in the designer, single source of truth
+  // for "is this the initial step?", "is this a terminal state?", etc.
+  isInitial?:   boolean
+  isTerminal?:  boolean
+  isOpen?:      boolean
+  category?:    string | null
 }
 
 export interface WFTransition {

@@ -169,7 +169,7 @@ app.set('trust proxy', 1)
 
 app.use(rateLimit({
   windowMs: 15 * 60 * 1_000,
-  max:      100,
+  max:      process.env['NODE_ENV'] === 'production' && process.env['RATE_LIMIT_MAX'] ? Number(process.env['RATE_LIMIT_MAX']) : 1000,
   skip:     (req) => req.path === '/api/sse',
   standardHeaders: true,
   legacyHeaders:   false,

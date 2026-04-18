@@ -47,15 +47,28 @@ interface StepPanelProps {
   definitionId: string
   onClose:      () => void
   onSaved:      (updated: Partial<WFStep>) => void
-  onSaveLocally?: (change: { stepName: string; label: string; enterActions: string | null; exitActions: string | null }) => void
+  onSaveLocally?: (change: {
+    stepName:     string
+    label:        string
+    enterActions: string | null
+    exitActions:  string | null
+    isInitial?:   boolean
+    isTerminal?:  boolean
+    isOpen?:      boolean
+    category?:    string | null
+  }) => void
 }
 
 export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved, onSaveLocally }: StepPanelProps) {
   const { t } = useTranslation()
   const { values: SEVERITY_VALUES } = useEnumValues('incident', 'severity')
   const { values: PRIORITY_VALUES } = useEnumValues('incident', 'priority')
-  const [activeTab, setActiveTab] = useState<'props' | 'notify'>('props')
+  const [activeTab, setActiveTab] = useState<'props' | 'notify' | 'metadata'>('props')
   const [label, setLabel]         = useState(step.label)
+  const [isInitial,  setIsInitial]  = useState(Boolean(step.isInitial))
+  const [isTerminal, setIsTerminal] = useState(Boolean(step.isTerminal))
+  const [isOpen,     setIsOpen]     = useState(step.isOpen ?? !Boolean(step.isTerminal))
+  const [category,   setCategory]   = useState(step.category ?? '')
 
   // Parse initial actions (computed once from props — stable until save)
   const allEnterActions: AnyAction[]  = step.enterActions ? (JSON.parse(step.enterActions) as AnyAction[]) : []
@@ -113,7 +126,12 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
 
   const enterActionsChanged = JSON.stringify(editableEnterActions) !== JSON.stringify(initEnterActions)
   const exitActionsChanged  = JSON.stringify(editableExitActions)  !== JSON.stringify(initExitActions)
-  const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged
+  const metadataChanged     =
+       isInitial  !== Boolean(step.isInitial)
+    || isTerminal !== Boolean(step.isTerminal)
+    || isOpen     !== (step.isOpen ?? !Boolean(step.isTerminal))
+    || category   !== (step.category ?? '')
+  const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged && !metadataChanged
   const notifyUnchanged     = notifyEnabled === !!existingNR
     && notifyTitleKey === (existingNR?.params.title_key  ?? '')
     && notifySeverity === (existingNR?.params.severity   ?? 'info')
@@ -124,8 +142,15 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
   const handleSave = () => {
     const enterActions = buildEnterActions()
     const exitActions  = buildExitActions()
-    onSaveLocally?.({ stepName: step.name, label, enterActions, exitActions })
-    onSaved({ label, enterActions, exitActions })
+    const categoryValue = category.trim() ? category.trim() : null
+    onSaveLocally?.({
+      stepName: step.name, label, enterActions, exitActions,
+      isInitial, isTerminal, isOpen, category: categoryValue,
+    })
+    onSaved({
+      label, enterActions, exitActions,
+      isInitial, isTerminal, isOpen, category: categoryValue,
+    })
   }
 
   const handleConfirmAdd = (forKey: 'enter' | 'exit') => {
@@ -545,9 +570,56 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}>
-        <button style={tabStyle(activeTab === 'props')}  onClick={() => setActiveTab('props')}>Proprietà</button>
-        <button style={tabStyle(activeTab === 'notify')} onClick={() => setActiveTab('notify')}>Notifiche</button>
+        <button style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>Proprietà</button>
+        <button style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>Metadati</button>
+        <button style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>Notifiche</button>
       </div>
+
+      {activeTab === 'metadata' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0' }}>
+          <PanelField label="Step iniziale">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={isInitial} onChange={(e) => setIsInitial(e.target.checked)} style={{ accentColor: ACCENT_COLOR }} />
+              <span>Il processo parte da questo step</span>
+            </label>
+          </PanelField>
+          <PanelField label="Step terminale">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={isTerminal}
+                onChange={(e) => { setIsTerminal(e.target.checked); setIsOpen(!e.target.checked) }}
+                style={{ accentColor: ACCENT_COLOR }}
+              />
+              <span>Il processo è chiuso quando arriva qui</span>
+            </label>
+          </PanelField>
+          <PanelField label="Step aperto">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer', opacity: isTerminal ? 0.5 : 1 }}>
+              <input type="checkbox" checked={isOpen} disabled={isTerminal} onChange={(e) => setIsOpen(e.target.checked)} style={{ accentColor: ACCENT_COLOR }} />
+              <span>L'entità è considerata "aperta" in questo step</span>
+            </label>
+          </PanelField>
+          <PanelField label="Categoria">
+            <input
+              list="wf-step-categories"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="es. active, waiting, resolved, closed, failed, draft"
+              style={inputStyle}
+            />
+            <datalist id="wf-step-categories">
+              <option value="active" />
+              <option value="waiting" />
+              <option value="escalated" />
+              <option value="resolved" />
+              <option value="closed" />
+              <option value="failed" />
+              <option value="draft" />
+            </datalist>
+          </PanelField>
+        </div>
+      )}
 
       {activeTab === 'props' && (
         <>

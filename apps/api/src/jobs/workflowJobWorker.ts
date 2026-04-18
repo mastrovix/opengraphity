@@ -49,12 +49,33 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
 
   switch (job.name) {
     case 'auto_close': {
-      // 1. Transizione workflow → "closed" in Neo4j (aggiorna step, esegue exit/enter actions)
+      // 1. Transizione workflow → terminal step 'closed-like' in Neo4j
       const session = getSession(undefined, 'WRITE')
       try {
+        const { getWorkflowSteps } = await import('../lib/workflowHelpers.js')
+        // The job is scheduled from an entity-specific step, so we resolve the
+        // workflow's entity_type via the instance, then pick the step marked
+        // as closure (category='closed' preferred, else first terminal).
+        const wiRes = await session.executeRead((tx) => tx.run(`
+          MATCH (wi:WorkflowInstance {id: $instanceId})
+          RETURN wi.entity_type AS entityType
+        `, { instanceId }))
+        const entityType = wiRes.records[0]?.get('entityType') as string | undefined
+        if (!entityType) {
+          logger.warn({ instanceId, entityId }, '[workflow-jobs] auto_close: workflow instance not found')
+          return
+        }
+        const steps = await getWorkflowSteps(session, tenantId, entityType)
+        const target =
+          steps.find((s) => s.category === 'closed') ??
+          steps.find((s) => s.isTerminal)
+        if (!target) {
+          logger.warn({ entityType, entityId }, '[workflow-jobs] auto_close: no terminal step found')
+          return
+        }
         const result = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: 'closed', triggeredBy: 'system', triggerType: 'automatic' },
+          { instanceId, toStepName: target.name, triggeredBy: 'system', triggerType: 'automatic' },
           { userId: 'system', entityData: {} },
         )
         if (!result.success) {
@@ -196,11 +217,9 @@ async function processNotificationJob(job: Job): Promise<void> {
       const { incidentId, tenantId, ruleId } = job.data as { incidentId: string; tenantId: string; ruleId: string }
       const session = getSession(undefined, 'READ')
       try {
-        const result = await session.executeRead(tx =>
-          tx.run(`MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN i.status AS status`, { id: incidentId, tenantId }),
-        )
-        const status = result.records[0]?.get('status') as string | undefined
-        if (status && !['resolved', 'closed'].includes(status)) {
+        const { isEntityOpen } = await import('../lib/workflowHelpers.js')
+        const open = await isEntityOpen(session, incidentId, tenantId)
+        if (open) {
           logger.info({ incidentId, ruleId }, '[notification-jobs] escalation_check: incident still open, escalation triggered')
           // Escalation notification logic would call notification service here
         } else {

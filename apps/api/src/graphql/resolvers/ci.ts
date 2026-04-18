@@ -185,29 +185,26 @@ async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLConte
 async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session,
-      `MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(n {id: $ciId})
+      `MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(n {id: $ciId})
        RETURN properties(c) AS props
        ORDER BY c.created_at DESC`,
       { ciId: args.ciId, tenantId: ctx.tenantId },
     )
     return rows.map((r) => ({
-      id:             r.props['id']              as string,
-      number:         (r.props['number'] ?? '') as string,
-      tenantId:       r.props['tenant_id']       as string,
-      title:          r.props['title']           as string,
-      description:    (r.props['description']    ?? null) as string | null,
-      type:           r.props['type']            as string,
-      priority:       (r.props['priority']       ?? 'medium') as string,
-      status:         r.props['status']          as string,
-      scheduledStart: (r.props['scheduled_start'] ?? null) as string | null,
-      scheduledEnd:   (r.props['scheduled_end']   ?? null) as string | null,
-      implementedAt:  (r.props['implemented_at']  ?? null) as string | null,
-      createdAt:      r.props['created_at']      as string,
-      updatedAt:      r.props['updated_at']      as string,
-      assignedTeam: null, assignee: null,
-      affectedCIs: [], relatedIncidents: [],
-      deploySteps: [], assessmentTasks: [],
-      validation: null, createdBy: null, comments: [],
+      id:                 r.props['id']                     as string,
+      tenantId:           r.props['tenant_id']              as string,
+      code:               r.props['code']                   as string,
+      title:              r.props['title']                  as string,
+      description:        (r.props['description']            ?? null) as string | null,
+      phase:              r.props['phase']                  as string,
+      aggregateRiskScore: r.props['aggregate_risk_score'] != null
+        ? Number(r.props['aggregate_risk_score']) : null,
+      approvalRoute:      (r.props['approval_route']         ?? null) as string | null,
+      approvalStatus:     (r.props['approval_status']        ?? null) as string | null,
+      approvalAt:         (r.props['approval_at']            ?? null) as string | null,
+      createdAt:          r.props['created_at']             as string,
+      updatedAt:          r.props['updated_at']             as string,
+      requester: null, changeOwner: null, approvalBy: null,
     }))
   })
 }

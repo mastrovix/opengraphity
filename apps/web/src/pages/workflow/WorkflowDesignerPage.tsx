@@ -84,6 +84,18 @@ export function WorkflowDesignerPage() {
         onRefetch={refetch}
       />
 
+      {def?.entityType === 'change' && (
+        <div style={{
+          padding: '10px 24px',
+          backgroundColor: '#fef9c3',
+          borderBottom: '1px solid #fde68a',
+          fontSize: 'var(--font-size-body)',
+          color: '#713f12',
+        }}>
+          Gli step di questo workflow sono fissi. Puoi personalizzare label, azioni e condizioni.
+        </div>
+      )}
+
       <WorkflowCanvas
         nodes={nodes}
         edges={edges}

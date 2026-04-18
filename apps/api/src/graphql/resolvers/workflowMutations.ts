@@ -12,9 +12,67 @@ import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
-  incident: 'Incident',
-  problem:  'Problem',
-  change:   'Change',
+  incident:   'Incident',
+  problem:    'Problem',
+  change:     'Change',
+  kb_article: 'KBArticle',
+}
+
+/**
+ * Apply the `on_enter_fields` metadata of the newly-entered step to the
+ * underlying entity. Value tokens:
+ *   '$now'    → current ISO timestamp
+ *   '$userId' → current user id
+ *   '$notes'  → transition notes (can be null)
+ * Any other string is taken verbatim.
+ *
+ * The entity label is resolved from the WorkflowInstance.entity_type.
+ */
+async function applyOnEnterFields(
+  session: import('neo4j-driver').Session,
+  instanceId: string,
+  stepName: string,
+  userId: string,
+  notes?: string,
+): Promise<void> {
+  const fieldsRow = await session.executeRead((tx) => tx.run(`
+    MATCH (wi:WorkflowInstance {id: $instanceId})-[:CURRENT_STEP]->(step:WorkflowStep)
+    WHERE step.name = $stepName
+    RETURN step.on_enter_fields AS fields,
+           wi.entity_id   AS entityId,
+           wi.tenant_id   AS tenantId,
+           wi.entity_type AS entityType
+  `, { instanceId, stepName }))
+  if (!fieldsRow.records.length) return
+  const rec       = fieldsRow.records[0]
+  const raw       = rec.get('fields')     as string | null
+  if (!raw) return
+  const entityId   = rec.get('entityId')   as string
+  const tenantId   = rec.get('tenantId')   as string
+  const entityType = rec.get('entityType') as string
+  const label      = ENTITY_LABELS[entityType]
+  if (!label) return
+
+  let parsed: Record<string, string>
+  try { parsed = JSON.parse(raw) as Record<string, string> } catch { return }
+  const keys = Object.keys(parsed)
+  if (keys.length === 0) return
+
+  const nowIso = new Date().toISOString()
+  const resolveValue = (v: string) => {
+    if (v === '$now')    return nowIso
+    if (v === '$userId') return userId
+    if (v === '$notes')  return notes ?? null
+    return v
+  }
+  const setClauses = keys.map((k) => `e.\`${k}\` = $__val_${k}`)
+  const params: Record<string, unknown> = { entityId, tenantId, now: nowIso }
+  for (const [k, v] of Object.entries(parsed)) params[`__val_${k}`] = resolveValue(v)
+  await session.executeWrite((tx) => tx.run(
+    `MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
+     SET ${setClauses.join(', ')}, e.updated_at = $now`,
+    params,
+  ))
 }
 
 // ── Publish workflow.step.entered for notify_rule enter_actions ───────────────
@@ -225,10 +283,19 @@ export async function executeWorkflowTransition(
 
         const id = uuidv4()
         const now = new Date().toISOString()
+        // Look up the initial workflow step name for this entity type; fall
+        // back to 'open' only if the entity has no workflow defined.
+        const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
+        let initialStatus: string
+        try {
+          initialStatus = await getInitialStepName(session, ctx.tenantId, type)
+        } catch {
+          initialStatus = 'open'
+        }
         await session.executeWrite((tx) =>
           tx.run(
             `CREATE (e:${label} $props) RETURN e.id AS id`,
-            { props: { id, status: 'new', created_at: now, updated_at: now, ...nodeData } },
+            { props: { id, status: initialStatus, created_at: now, updated_at: now, ...nodeData } },
           ),
         )
 
@@ -430,22 +497,13 @@ export async function executeWorkflowTransition(
           CREATE (i)-[:HAS_COMMENT]->(c)
         `, { incidentId, tenantId, text: commentText, userId: ctx.userId, now }))
 
-        if (toStep === 'resolved') {
-          await incidentService.resolveIncident(incidentId, { tenantId, userId: ctx.userId })
-          void audit(ctx, 'incident.resolved',    'Incident', incidentId)
-        } else if (toStep === 'escalated') {
-          await incidentService.escalateIncident(incidentId, { tenantId, userId: ctx.userId })
-          void audit(ctx, 'incident.escalated',   'Incident', incidentId)
-        } else if (toStep === 'closed') {
-          await incidentService.closeIncident(incidentId, { tenantId, userId: ctx.userId })
-          void audit(ctx, 'incident.closed',      'Incident', incidentId)
-        } else if (toStep === 'in_progress') {
-          await incidentService.inProgressIncident(incidentId, { tenantId, userId: ctx.userId })
-          void audit(ctx, 'incident.in_progress', 'Incident', incidentId)
-        } else if (toStep === 'pending') {
-          await incidentService.onHoldIncident(incidentId, { tenantId, userId: ctx.userId })
-          void audit(ctx, 'incident.on_hold',     'Incident', incidentId)
-        }
+        // Generic post-transition: publish an event named after the target
+        // step and audit. Field updates (resolved_at, assigned_at, etc.)
+        // are driven by the step's `on_enter_fields` metadata, applied below.
+        await incidentService.publishIncidentTransition(incidentId, toStep, { tenantId, userId: ctx.userId })
+        void audit(ctx, `incident.${toStep}`, 'Incident', incidentId)
+
+        await applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes)
 
         // Publish workflow.step.entered for any notify_rule enter_actions on this step
         await publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'incident', incidentId)
@@ -463,16 +521,8 @@ export async function executeWorkflowTransition(
       if (kbResult.records.length > 0) {
         const kbId     = kbResult.records[0].get('id')     as string
         const tenantId = kbResult.records[0].get('tenantId') as string
-        if (toStep === 'published') {
-          const pubNow = new Date().toISOString()
-          await session.executeWrite((tx) =>
-            tx.run(`
-              MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
-              SET a.published_at = $now, a.updated_at = $now
-            `, { id: kbId, tenantId, now: pubNow }),
-          )
-          void audit(ctx, 'kb_article.published', 'KBArticle', kbId)
-        }
+        void audit(ctx, `kb_article.${toStep}`, 'KBArticle', kbId)
+        await applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes)
         await publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'kb_article', kbId)
       }
     }
@@ -504,6 +554,10 @@ export async function saveWorkflowChanges(
       label:        string
       enterActions: string | null
       exitActions:  string | null
+      isInitial?:   boolean | null
+      isTerminal?:  boolean | null
+      isOpen?:      boolean | null
+      category?:    string | null
     }> | null
   },
   ctx: GraphQLContext,
@@ -525,7 +579,7 @@ export async function saveWorkflowChanges(
         `, { transitions }),
       )
     }
-    // Update step properties (label, enterActions, exitActions)
+    // Update step properties (label, enterActions, exitActions, metadata)
     if (steps && steps.length > 0) {
       await session.executeWrite((tx) =>
         tx.run(`
@@ -533,9 +587,26 @@ export async function saveWorkflowChanges(
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: st.stepName})
           SET s.label         = st.label,
               s.enter_actions = st.enterActions,
-              s.exit_actions  = st.exitActions
+              s.exit_actions  = st.exitActions,
+              s.is_initial    = coalesce(st.isInitial,  s.is_initial),
+              s.is_terminal   = coalesce(st.isTerminal, s.is_terminal),
+              s.is_open       = coalesce(st.isOpen,     s.is_open),
+              s.category      = coalesce(st.category,   s.category)
         `, { definitionId, tenantId: ctx.tenantId, steps }),
       )
+
+      // If any step was marked isInitial=true, demote the others in the same
+      // workflow so there's at most one initial step.
+      const initialStepName = steps.find((s) => s.isInitial === true)?.stepName
+      if (initialStepName) {
+        await session.executeWrite((tx) =>
+          tx.run(`
+            MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)
+            WHERE s.name <> $keep
+            SET s.is_initial = false
+          `, { definitionId, tenantId: ctx.tenantId, keep: initialStepName }),
+        )
+      }
     }
     // Update step positions
     if (positions.length > 0) {

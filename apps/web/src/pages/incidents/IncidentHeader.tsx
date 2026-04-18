@@ -1,6 +1,8 @@
 import { ArrowLeft } from 'lucide-react'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge }   from '@/components/StatusBadge'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { buttonStyleForCategory } from '@/lib/workflowStepStyle'
 
 interface WorkflowTransition {
   toStep:        string
@@ -26,7 +28,7 @@ interface Incident {
   availableTransitions: WorkflowTransition[]
 }
 
-function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProperties {
+function transitionButtonStyle(category: string | null | undefined, disabled: boolean): React.CSSProperties {
   const base: React.CSSProperties = {
     padding:      '6px 14px',
     borderRadius: 6,
@@ -37,11 +39,7 @@ function transitionButtonStyle(toStep: string, disabled: boolean): React.CSSProp
     border:       '1px solid transparent',
     transition:   'opacity 0.15s',
   }
-  if (toStep === 'resolved')  return { ...base, backgroundColor: 'var(--color-trigger-automatic)', color: '#fff', borderColor: 'var(--color-trigger-automatic)' }
-  if (toStep === 'escalated') return { ...base, backgroundColor: 'var(--color-trigger-sla-breach)', color: '#fff', borderColor: 'var(--color-trigger-sla-breach)' }
-  if (toStep === 'closed')    return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
-  console.error(`[transitionButtonStyle] valore sconosciuto: "${toStep}"`)
-  return { ...base, backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' }
+  return { ...base, ...buttonStyleForCategory(category) }
 }
 
 interface IncidentHeaderProps {
@@ -59,6 +57,7 @@ export function IncidentHeader({
   onBack,
   onTransitionClick,
 }: IncidentHeaderProps) {
+  const { byName: stepByName } = useWorkflowSteps('incident')
   return (
     <div style={{ marginBottom: 24 }}>
       {/* Row 1 — back */}
@@ -103,7 +102,7 @@ export function IncidentHeader({
               key={tr.toStep}
               onClick={() => onTransitionClick(tr)}
               disabled={transitioning}
-              style={transitionButtonStyle(tr.toStep, transitioning)}
+              style={transitionButtonStyle(stepByName.get(tr.toStep)?.category ?? null, transitioning)}
             >
               {tr.label}
             </button>

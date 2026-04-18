@@ -44,9 +44,11 @@ async function loadTenants(): Promise<TenantRow[]> {
 async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> {
   const session = getSession(undefined, 'READ')
   try {
+    const { getTerminalStepNames } = await import('../lib/workflowHelpers.js')
+    const incidentTerminal = await getTerminalStepNames(session, tenantId, 'incident')
     // GDS-based rules may fail if the plugin is not installed — skip gracefully
     const result = await session.executeRead(tx =>
-      tx.run(rule.cypher, { tenantId }),
+      tx.run(rule.cypher, { tenantId, incidentTerminal }),
     )
     return result.records.map(r => ({
       entityId:      r.get('entityId')      as string,

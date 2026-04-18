@@ -6,6 +6,7 @@ import type { ServiceCtx } from './incidentService.js'
 import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
+import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 
 export interface ProblemEventPayload {
   id: string; title: string; priority: string; status: string; assignedTo: string
@@ -57,6 +58,7 @@ export async function createProblem(
     const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as any)?.toNumber === 'function' ? (rawCnt as any).toNumber() : Number(rawCnt ?? 0)
     const number = 'PRB' + String(count + 1).padStart(8, '0')
 
+    const initialStatus = await getInitialStepName(session, ctx.tenantId, 'problem')
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (p:Problem {
         id:          $id,
@@ -65,7 +67,7 @@ export async function createProblem(
         title:       $title,
         description: $description,
         priority:    $priority,
-        status:      'new',
+        status:      $status,
         workaround:  $workaround,
         created_at:  $now,
         updated_at:  $now
@@ -74,7 +76,8 @@ export async function createProblem(
     `, {
       id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
-      priority: input.priority, workaround: input.workaround ?? null, now,
+      priority: input.priority, workaround: input.workaround ?? null,
+      status: initialStatus, now,
     })
     if (!rows[0]) throw new Error('Failed to create problem')
     return rows[0].props
@@ -109,15 +112,16 @@ export async function createProblem(
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
   }, true)
 
+  const initialStatus = await withSession((s) => getInitialStepName(s, ctx.tenantId, 'problem'))
   await publishEvent('problem.created', ctx.tenantId, ctx.userId, {
     id,
     title:      input.title,
     priority:   input.priority,
-    status:     'new',
+    status:     initialStatus,
     assignedTo: '—',
   } satisfies ProblemEventPayload)
 
-  const entityData = { id, title: input.title, priority: input.priority, status: 'new', category: input.category ?? null }
+  const entityData = { id, title: input.title, priority: input.priority, status: initialStatus, category: input.category ?? null }
   void evaluateTriggers(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId)
     .then(() => evaluateBusinessRules(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId))
   void scheduleTimerTriggers(ctx.tenantId, 'problem', id)
@@ -125,30 +129,10 @@ export async function createProblem(
   return created
 }
 
-export async function investigateProblem(id: string, ctx: ServiceCtx) {
+/** Emit a generic transition event. Event type is `problem.<stepName>`. */
+export async function publishProblemTransition(id: string, stepName: string, ctx: ServiceCtx) {
   const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publishEvent('problem.under_investigation', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: 'under_investigation', assignedTo: '—' },
-  )
-}
-
-export async function deferProblem(id: string, ctx: ServiceCtx) {
-  const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publishEvent('problem.deferred', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: 'deferred', assignedTo: '—' },
-  )
-}
-
-export async function resolveProblem(id: string, ctx: ServiceCtx) {
-  const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publishEvent('problem.resolved', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: 'resolved', assignedTo: '—' },
-  )
-}
-
-export async function closeProblem(id: string, ctx: ServiceCtx) {
-  const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publishEvent('problem.closed', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: 'closed', assignedTo: '—' },
+  await publishEvent(`problem.${stepName}`, ctx.tenantId, ctx.userId,
+    payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: stepName, assignedTo: '—' },
   )
 }

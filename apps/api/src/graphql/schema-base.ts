@@ -3,6 +3,7 @@ import { enumTypeSDL } from './schema-enum.js'
 import { incidentSDL } from './schema-incident.js'
 import { problemSDL } from './schema-problem.js'
 import { changeSDL } from './schema-change.js'
+import { impactSDL } from './schema-impact.js'
 import { serviceRequestSDL } from './schema-service-request.js'
 import { userTeamSDL } from './schema-user-team.js'
 import { workflowSDL } from './schema-workflow.js'
@@ -23,7 +24,6 @@ import { fieldRulesSDL } from './schema-fieldRules.js'
 import { automationSchema } from './schema-automation.js'
 import { integrationsSchema } from './schema-integrations.js'
 import { collaborationSchema } from './schema-collaboration.js'
-import { standardChangeCatalogSDL } from './schema-standard-change-catalog.js'
 import { whatifSDL } from './schema-whatif.js'
 
 export function buildBaseSDL(): string {
@@ -37,12 +37,6 @@ export function buildBaseSDL(): string {
     # Problems
     problems(limit: Int, offset: Int, status: String, priority: String, search: String, filters: String, sortField: String, sortDirection: String): ProblemsResult!
     problem(id: ID!): Problem
-
-    # Changes
-    changes(status: String, type: String, priority: String, search: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): ChangesResult!
-    change(id: ID!): Change
-    changeTasks(changeId: ID!, taskType: String): [ChangeTask!]!
-    changeImpactAnalysis(ciIds: [ID!]!): ImpactAnalysis!
 
     # Service Requests
     serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): [ServiceRequest!]!
@@ -164,17 +158,6 @@ export function buildBaseSDL(): string {
     whatIfAnalysis(ciId: ID!, action: String!, depth: Int): WhatIfResult!
     whatIfCompare(scenarios: [WhatIfScenarioInput!]!): [WhatIfResult!]!
 
-    # Change Calendar
-    changeCalendarEvents(from: String!, to: String!): [ChangeCalendarEvent!]!
-    changeCalendarConflicts(from: String!, to: String!): [ChangeConflict!]!
-    changeCalendarSuggestedSlots(duration: Int!, ciIds: [ID!], from: String!, to: String!): [SuggestedSlot!]!
-
-    # Standard Change Catalog
-    changeCatalogCategories: [ChangeCatalogCategory!]!
-    changeCatalogCategory(id: ID!): ChangeCatalogCategory
-    standardChangeCatalog(categoryId: String, search: String, filters: String, sortField: String, sortDirection: String): [StandardChangeCatalogEntry!]!
-    standardChangeCatalogEntry(id: ID!): StandardChangeCatalogEntry
-
     # Discovery / Sync
     syncSources: [SyncSource!]!
     syncSource(id: ID!): SyncSource
@@ -218,33 +201,6 @@ export function buildBaseSDL(): string {
     assignProblemToUser(problemId: ID!, userId: ID!): Problem!
     executeProblemTransition(problemId: ID!, toStep: String!, notes: String): Problem!
     addProblemComment(problemId: ID!, text: String!): ProblemComment!
-
-    # Changes
-    createChange(input: CreateChangeInput!): Change!
-    approveChange(id: ID!): Change!
-    rejectChange(id: ID!, reason: String!): Change!
-    deployChange(id: ID!): Change!
-    failChange(id: ID!, reason: String!): Change!
-    addAffectedCIToChange(changeId: ID!, ciId: ID!, relationType: String): Change!
-    removeAffectedCIFromChange(changeId: ID!, ciId: ID!, reason: String!): Change!
-    addChangeComment(changeId: ID!, text: String!): ChangeComment!
-    saveDeploySteps(changeId: ID!, steps: [CreateDeployStepInput!]!): Change!
-    saveChangeValidation(changeId: ID!, scheduledStart: String!, scheduledEnd: String!): Change!
-    updateChangeTask(id: ID!, input: UpdateChangeTaskInput!): ChangeTask!
-    updateAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): ChangeTask!
-    completeAssessmentTask(taskId: ID!, input: UpdateAssessmentTaskInput!): ChangeTask!
-    rejectAssessmentTask(taskId: ID!, reason: String!): ChangeTask!
-    assignDeployStepToTeam(stepId: ID!, teamId: ID!): ChangeTask!
-    assignDeployStepToUser(stepId: ID!, userId: ID!): ChangeTask!
-    assignDeployStepValidationTeam(stepId: ID!, teamId: ID!): ChangeTask!
-    assignDeployStepValidationUser(stepId: ID!, userId: ID!): ChangeTask!
-    updateDeployStepStatus(stepId: ID!, status: String!, notes: String, skipReason: String): ChangeTask!
-    updateDeployStepValidation(stepId: ID!, status: String!, notes: String): ChangeTask!
-    executeChangeTransition(instanceId: ID!, toStep: String!, notes: String): TransitionResult!
-    completeChangeValidation(changeId: ID!, notes: String): ChangeTask!
-    failChangeValidation(changeId: ID!): ChangeTask!
-    assignAssessmentTaskTeam(taskId: ID!, teamId: ID!): ChangeTask!
-    assignAssessmentTaskUser(taskId: ID!, userId: ID!): ChangeTask!
 
     # Service Requests
     createServiceRequest(input: CreateServiceRequestInput!): ServiceRequest!
@@ -418,15 +374,6 @@ export function buildBaseSDL(): string {
     addTicketComment(ticketId: ID!, body: String!): EntityComment!
     reopenTicket(ticketId: ID!): MyTicket!
 
-    # Standard Change Catalog
-    createChangeCatalogCategory(name: String!, description: String, icon: String, color: String, order: Int): ChangeCatalogCategory!
-    updateChangeCatalogCategory(id: ID!, name: String, description: String, icon: String, color: String, order: Int, enabled: Boolean): ChangeCatalogCategory!
-    deleteChangeCatalogCategory(id: ID!): Boolean!
-    reorderChangeCatalogCategories(categoryIds: [ID!]!): [ChangeCatalogCategory!]!
-    createStandardChangeCatalogEntry(categoryId: String!, name: String!, description: String!, riskLevel: String!, impact: String!, defaultTitleTemplate: String!, defaultDescriptionTemplate: String!, defaultPriority: String!, ciTypes: [String!], checklist: String, estimatedDurationHours: Float, requiresDowntime: Boolean, rollbackProcedure: String, icon: String, color: String, workflowId: String, ciRequired: Boolean, maintenanceWindow: String, notifyTeam: Boolean, requireCompletionConfirm: Boolean): StandardChangeCatalogEntry!
-    updateStandardChangeCatalogEntry(id: ID!, name: String, description: String, categoryId: String, riskLevel: String, impact: String, defaultTitleTemplate: String, defaultDescriptionTemplate: String, defaultPriority: String, ciTypes: [String!], checklist: String, estimatedDurationHours: Float, requiresDowntime: Boolean, rollbackProcedure: String, icon: String, color: String, enabled: Boolean, workflowId: String, ciRequired: Boolean, maintenanceWindow: String, notifyTeam: Boolean, requireCompletionConfirm: Boolean): StandardChangeCatalogEntry!
-    deleteStandardChangeCatalogEntry(id: ID!): Boolean!
-    createChangeFromCatalog(catalogEntryId: ID!, title: String, description: String, ciIds: [ID!]): Change!
   }
 
   # ── Domain enums ─────────────────────────────────────────────────────────────
@@ -460,7 +407,7 @@ export function buildBaseSDL(): string {
   ${automationSchema}
   ${integrationsSchema}
   ${collaborationSchema}
-  ${standardChangeCatalogSDL()}
+  ${impactSDL()}
   ${whatifSDL()}
   `
 }

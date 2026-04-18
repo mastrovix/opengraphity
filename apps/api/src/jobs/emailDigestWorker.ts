@@ -37,17 +37,23 @@ async function sendDigestForTenant(tenantId: string): Promise<void> {
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
 
   try {
+    const { getOpenStepNames, getWorkflowSteps } = await import('../lib/workflowHelpers.js')
+    const incidentOpen = await getOpenStepNames(session, tenantId, 'incident')
+    const changeOpen   = await getOpenStepNames(session, tenantId, 'change')
+    const incidentSteps = await getWorkflowSteps(session, tenantId, 'incident')
+    const resolvedStep = (incidentSteps.find(s => s.category === 'resolved') ?? incidentSteps.find(s => s.isTerminal))?.name ?? null
+
     // Stats
     const stats = await runQuery<Record<string, unknown>>(session, `
-      OPTIONAL MATCH (i:Incident {tenant_id: $t}) WHERE i.status IN ['new', 'assigned', 'in_progress', 'pending', 'escalated', 'security_review']
+      OPTIONAL MATCH (i:Incident {tenant_id: $t}) WHERE i.status IN $incidentOpen
       WITH count(i) AS openInc
-      OPTIONAL MATCH (r:Incident {tenant_id: $t}) WHERE r.status = 'resolved' AND r.resolved_at >= $since
+      OPTIONAL MATCH (r:Incident {tenant_id: $t}) WHERE r.status = $resolvedStep AND r.resolved_at >= $since
       WITH openInc, count(r) AS resolvedToday
-      OPTIONAL MATCH (c:Change {tenant_id: $t}) WHERE c.status IN ['draft', 'assessment', 'scheduled', 'deployment', 'validation']
+      OPTIONAL MATCH (c:Change {tenant_id: $t})-[:HAS_WORKFLOW]->(wi:WorkflowInstance) WHERE wi.current_step IN $changeOpen
       WITH openInc, resolvedToday, count(c) AS ongoingChanges
       OPTIONAL MATCH (s:SLAStatus {tenant_id: $t}) WHERE s.breached = true AND s.started_at >= $since
       RETURN openInc, resolvedToday, ongoingChanges, count(s) AS slaBreaches
-    `, { t: tenantId, since: yesterday })
+    `, { t: tenantId, since: yesterday, incidentOpen, changeOpen, resolvedStep })
 
     const s = stats[0] ?? {}
     const digestStats = {

@@ -11,6 +11,7 @@ import { CountBadge } from '@/components/ui/CountBadge'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI } from '@/graphql/mutations'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { IncidentHeader } from './IncidentHeader'
 import { IncidentTimeline } from './IncidentTimeline'
 import { IncidentCIList } from './IncidentCIList'
@@ -211,13 +212,21 @@ export function IncidentDetailPage() {
   const users     = usersData?.users ?? []
   const teams     = teamsData?.teams ?? []
   const ciResults = ciSearchData?.allCIs?.items ?? []
+  const { byName: incidentStepByName } = useWorkflowSteps('incident')
 
   function handleTransitionClick(tr: WorkflowTransition) {
-    if (tr.toStep === 'assigned' && !incident?.assignedTeam) {
+    // Assignment gates are no longer hardcoded per step name. If the target
+    // of this transition is a non-terminal step whose category is 'active',
+    // a team must be assigned — and if the user is moving past the first
+    // non-initial step, an assignee is required too. The workflow itself
+    // decides which steps these are via the `category` metadata.
+    const targetMeta = incidentStepByName.get(tr.toStep)
+    const currentMeta = incidentStepByName.get(incident?.status ?? '')
+    if (targetMeta?.category === 'active' && currentMeta?.isInitial && !incident?.assignedTeam) {
       toast.error('Seleziona prima un team dalla card Dettagli')
       return
     }
-    if (tr.toStep === 'in_progress' && !incident?.assignee && incident?.status === 'assigned') {
+    if (targetMeta?.category === 'active' && !currentMeta?.isInitial && !incident?.assignee && incident?.assignedTeam) {
       toast.error('Seleziona prima un utente dalla card Dettagli')
       return
     }
@@ -351,8 +360,9 @@ export function IncidentDetailPage() {
                   )}
                 </div>
 
-                {/* Assegnazione a due step */}
-                {incident.status !== 'closed' && (() => {
+                {/* Assegnazione a due step — nascosta quando l'incident è in
+                    uno step terminale (es. closed / resolved). */}
+                {!incidentStepByName.get(incident.status)?.isTerminal && (() => {
                   const hasTeam = !!incident.assignedTeam
                   const hasUser = !!incident.assignee && !awaitingUserAssign
 

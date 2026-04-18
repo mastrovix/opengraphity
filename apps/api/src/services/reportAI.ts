@@ -132,7 +132,10 @@ REGOLE:
 - Non includere mai UUID nelle tabelle — usa titoli e nomi leggibili
 - Nelle tabelle usa solo colonne significative: Titolo, Tipo, Stato, Severity, CI, Team, Data
 - Tronca testi lunghi a 40 caratteri nelle celle
-- Per calcolare MTTR usa WorkflowStepExecution dove step_name='new' (entered_at) e step_name='resolved' (entered_at)
+- Per calcolare MTTR usa WorkflowStepExecution. Trova dinamicamente lo step iniziale (entered_at) e lo step finale via:
+  MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: 'incident'})-[:HAS_STEP]->(s:WorkflowStep)
+  WHERE coalesce(s.is_initial, s.type = 'start') OR s.category = 'resolved' OR coalesce(s.is_terminal, s.type = 'end')
+  RETURN s.name. Poi usa questi nomi per cercare StepExecution entered_at.
 - Le date sono in formato ISO string
 - Puoi eseguire più query per rispondere
 - Rispondi in italiano
@@ -331,7 +334,10 @@ REGOLE:
 - Non includere mai UUID nelle tabelle — usa titoli e nomi leggibili
 - Nelle tabelle usa solo colonne significative: Titolo, Tipo, Stato, Severity, CI, Team, Data
 - Tronca testi lunghi a 40 caratteri nelle celle
-- Per calcolare MTTR usa WorkflowStepExecution dove step_name='new' (entered_at) e step_name='resolved' (entered_at)
+- Per calcolare MTTR usa WorkflowStepExecution. Trova dinamicamente lo step iniziale (entered_at) e lo step finale via:
+  MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: 'incident'})-[:HAS_STEP]->(s:WorkflowStep)
+  WHERE coalesce(s.is_initial, s.type = 'start') OR s.category = 'resolved' OR coalesce(s.is_terminal, s.type = 'end')
+  RETURN s.name. Poi usa questi nomi per cercare StepExecution entered_at.
 - Le date sono in formato ISO string
 - Puoi eseguire più query per rispondere
 - Rispondi in italiano

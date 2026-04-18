@@ -3,168 +3,222 @@ import { gql } from '@apollo/client'
 export const CREATE_CHANGE = gql`
   mutation CreateChange($input: CreateChangeInput!) {
     createChange(input: $input) {
-      id title type status
-      workflowInstance { id currentStep }
+      id
+      code
+      title
+      createdAt
+      workflowInstance { id currentStep status }
     }
   }
 `
 
-export const SAVE_DEPLOY_STEPS = gql`
-  mutation SaveDeploySteps($changeId: ID!, $steps: [CreateDeployStepInput!]!) {
-    saveDeploySteps(changeId: $changeId, steps: $steps) {
-      id changeTasks {
-        id taskType order title scheduledStart scheduledEnd durationDays
-        hasValidation validationStart validationEnd
-        assignedTeam { id name }
-      }
+export const ADD_CI_TO_CHANGE = gql`
+  mutation AddCIToChange($changeId: ID!, $ciId: ID!) {
+    addCIToChange(changeId: $changeId, ciId: $ciId) {
+      ciPhase
+      ci { id name type status environment }
     }
   }
 `
 
-export const SAVE_CHANGE_VALIDATION = gql`
-  mutation SaveChangeValidation($changeId: ID!, $scheduledStart: String!, $scheduledEnd: String!) {
-    saveChangeValidation(changeId: $changeId, scheduledStart: $scheduledStart, scheduledEnd: $scheduledEnd) {
-      id changeTasks {
-        id taskType scheduledStart scheduledEnd status
-      }
+export const REMOVE_CI_FROM_CHANGE = gql`
+  mutation RemoveCIFromChange($changeId: ID!, $ciId: ID!) {
+    removeCIFromChange(changeId: $changeId, ciId: $ciId)
+  }
+`
+
+export const SUBMIT_ASSESSMENT_RESPONSE = gql`
+  mutation SubmitAssessmentResponse($taskId: ID!, $questionId: ID!, $optionId: ID!) {
+    submitAssessmentResponse(taskId: $taskId, questionId: $questionId, optionId: $optionId) {
+      id
+      status
+      score
+      completedAt
     }
   }
 `
 
 export const COMPLETE_ASSESSMENT_TASK = gql`
-  mutation CompleteAssessmentTask($taskId: ID!, $input: UpdateAssessmentTaskInput!) {
-    completeAssessmentTask(taskId: $taskId, input: $input) {
-      id status riskLevel impactDescription completedAt
+  mutation CompleteAssessmentTask($taskId: ID!) {
+    completeAssessmentTask(taskId: $taskId) {
+      id
+      status
+      score
+      completedAt
     }
   }
 `
 
-export const REJECT_ASSESSMENT_TASK = gql`
-  mutation RejectAssessmentTask($taskId: ID!, $reason: String!) {
-    rejectAssessmentTask(taskId: $taskId, reason: $reason) {
-      id status notes
+export const ASSIGN_ASSESSMENT_TASK_TO_TEAM = gql`
+  mutation AssignAssessmentTaskToTeam($taskId: ID!, $teamId: ID!) {
+    assignAssessmentTaskToTeam(taskId: $taskId, teamId: $teamId) {
+      id
+      assignedTeam { id name }
+      assignee { id name }
     }
   }
 `
 
-export const UPDATE_CHANGE_TASK = gql`
-  mutation UpdateChangeTask($id: ID!, $input: UpdateChangeTaskInput!) {
-    updateChangeTask(id: $id, input: $input) {
-      id rollbackPlan
-    }
-  }
-`
-
-export const UPDATE_DEPLOY_STEP_STATUS = gql`
-  mutation UpdateDeployStepStatus($stepId: ID!, $status: String!, $notes: String, $skipReason: String) {
-    updateDeployStepStatus(stepId: $stepId, status: $status, notes: $notes, skipReason: $skipReason) {
-      id status notes skipReason completedAt
+export const ASSIGN_ASSESSMENT_TASK_TO_USER = gql`
+  mutation AssignAssessmentTaskToUser($taskId: ID!, $userId: ID!) {
+    assignAssessmentTaskToUser(taskId: $taskId, userId: $userId) {
+      id
+      assignee { id name }
     }
   }
 `
 
 export const EXECUTE_CHANGE_TRANSITION = gql`
-  mutation ExecuteChangeTransition($instanceId: ID!, $toStep: String!, $notes: String) {
-    executeChangeTransition(instanceId: $instanceId, toStep: $toStep, notes: $notes) {
-      success error
-      instance { id currentStep status }
+  mutation ExecuteChangeTransition($changeId: ID!, $toStep: String!, $notes: String) {
+    executeChangeTransition(changeId: $changeId, toStep: $toStep, notes: $notes) {
+      id
+      workflowInstance { id currentStep status }
+      availableTransitions { toStep label requiresInput inputField condition }
     }
   }
 `
 
-export const ADD_AFFECTED_CI_TO_CHANGE = gql`
-  mutation AddAffectedCIToChange($changeId: ID!, $ciId: ID!, $relationType: String) {
-    addAffectedCIToChange(changeId: $changeId, ciId: $ciId, relationType: $relationType) {
-      id affectedCIs { id name type status environment }
+export const COMPLETE_VALIDATION_TEST = gql`
+  mutation CompleteValidationTest($changeId: ID!, $ciId: ID!, $result: String!) {
+    completeValidationTest(changeId: $changeId, ciId: $ciId, result: $result) {
+      id
+      status
+      result
+      testedAt
     }
   }
 `
 
-export const REMOVE_AFFECTED_CI_FROM_CHANGE = gql`
-  mutation RemoveAffectedCIFromChange($changeId: ID!, $ciId: ID!, $reason: String!) {
-    removeAffectedCIFromChange(changeId: $changeId, ciId: $ciId, reason: $reason) {
-      id affectedCIs { id name type status environment }
-      comments { id text type createdAt createdBy { id name } }
+export const SAVE_DEPLOY_PLAN = gql`
+  mutation SaveDeployPlan($taskId: ID!, $steps: [DeployStepInput!]!) {
+    saveDeployPlan(taskId: $taskId, steps: $steps) {
+      id
+      status
+      steps {
+        title
+        validationWindow { start end }
+        releaseWindow { start end }
+      }
     }
   }
 `
 
-export const ADD_CHANGE_COMMENT = gql`
-  mutation AddChangeComment($changeId: ID!, $text: String!) {
-    addChangeComment(changeId: $changeId, text: $text) {
-      id text type createdAt createdBy { id name }
+export const COMPLETE_DEPLOY_PLAN_TASK = gql`
+  mutation CompleteDeployPlanTask($taskId: ID!) {
+    completeDeployPlanTask(taskId: $taskId) {
+      id
+      status
+      completedAt
     }
   }
 `
 
-export const UPDATE_DEPLOY_STEP_VALIDATION = gql`
-  mutation UpdateDeployStepValidation($stepId: ID!, $status: String!, $notes: String) {
-    updateDeployStepValidation(stepId: $stepId, status: $status, notes: $notes) {
-      id validationStatus validationNotes
+export const COMPLETE_DEPLOYMENT = gql`
+  mutation CompleteDeployment($changeId: ID!, $ciId: ID!) {
+    completeDeployment(changeId: $changeId, ciId: $ciId) {
+      id
+      status
+      deployedAt
     }
   }
 `
 
-export const COMPLETE_CHANGE_VALIDATION = gql`
-  mutation CompleteChangeValidation($changeId: ID!, $notes: String) {
-    completeChangeValidation(changeId: $changeId, notes: $notes) {
-      id status notes completedAt
+export const COMPLETE_REVIEW = gql`
+  mutation CompleteReview($changeId: ID!, $ciId: ID!, $result: String!) {
+    completeReview(changeId: $changeId, ciId: $ciId, result: $result) {
+      id
+      status
+      result
+      reviewedAt
     }
   }
 `
 
-export const FAIL_CHANGE_VALIDATION = gql`
-  mutation FailChangeValidation($changeId: ID!) {
-    failChangeValidation(changeId: $changeId) {
-      id status completedAt
+export const CREATE_QUESTION = gql`
+  mutation CreateAssessmentQuestion($input: CreateQuestionInput!) {
+    createAssessmentQuestion(input: $input) {
+      id
+      text
+      category
+      isCore
+      isActive
+      options { id label score sortOrder }
     }
   }
 `
 
-export const ASSIGN_ASSESSMENT_TASK_TEAM = gql`
-  mutation AssignAssessmentTaskTeam($taskId: ID!, $teamId: ID!) {
-    assignAssessmentTaskTeam(taskId: $taskId, teamId: $teamId) {
-      id assignedTeam { id name }
+export const UPDATE_QUESTION = gql`
+  mutation UpdateAssessmentQuestion($id: ID!, $input: UpdateQuestionInput!) {
+    updateAssessmentQuestion(id: $id, input: $input) {
+      id
+      text
+      category
+      isCore
+      isActive
+      options { id label score sortOrder }
     }
   }
 `
 
-export const ASSIGN_ASSESSMENT_TASK_USER = gql`
-  mutation AssignAssessmentTaskUser($taskId: ID!, $userId: ID!) {
-    assignAssessmentTaskUser(taskId: $taskId, userId: $userId) {
-      id assignee { id name }
-    }
+export const DELETE_QUESTION = gql`
+  mutation DeleteAssessmentQuestion($id: ID!) {
+    deleteAssessmentQuestion(id: $id)
   }
 `
 
-export const ASSIGN_DEPLOY_STEP_TO_TEAM = gql`
-  mutation AssignDeployStepToTeam($stepId: ID!, $teamId: ID!) {
-    assignDeployStepToTeam(stepId: $stepId, teamId: $teamId) {
-      id assignedTeam { id name }
-    }
+export const ASSIGN_QUESTION_TO_CITYPE = gql`
+  mutation AssignQuestionToCIType($questionId: ID!, $ciTypeId: ID!, $weight: Int!, $sortOrder: Int!) {
+    assignQuestionToCIType(questionId: $questionId, ciTypeId: $ciTypeId, weight: $weight, sortOrder: $sortOrder)
   }
 `
 
-export const ASSIGN_DEPLOY_STEP_TO_USER = gql`
-  mutation AssignDeployStepToUser($stepId: ID!, $userId: ID!) {
-    assignDeployStepToUser(stepId: $stepId, userId: $userId) {
-      id assignee { id name }
-    }
+export const REMOVE_QUESTION_FROM_CITYPE = gql`
+  mutation RemoveQuestionFromCIType($questionId: ID!, $ciTypeId: ID!) {
+    removeQuestionFromCIType(questionId: $questionId, ciTypeId: $ciTypeId)
   }
 `
 
-export const ASSIGN_DEPLOY_STEP_VALIDATION_TEAM = gql`
-  mutation AssignDeployStepValidationTeam($stepId: ID!, $teamId: ID!) {
-    assignDeployStepValidationTeam(stepId: $stepId, teamId: $teamId) {
-      id validationTeam { id name }
-    }
+export const REOPEN_TASK = gql`
+  mutation ReopenAssessmentTask($taskId: ID!, $reason: String!) {
+    reopenAssessmentTask(taskId: $taskId, reason: $reason) { id status }
   }
 `
 
-export const ASSIGN_DEPLOY_STEP_VALIDATION_USER = gql`
-  mutation AssignDeployStepValidationUser($stepId: ID!, $userId: ID!) {
-    assignDeployStepValidationUser(stepId: $stepId, userId: $userId) {
-      id validationUser { id name }
+export const REOPEN_DEPLOY_PLAN = gql`
+  mutation ReopenDeployPlanTask($taskId: ID!, $reason: String!) {
+    reopenDeployPlanTask(taskId: $taskId, reason: $reason) { id status }
+  }
+`
+
+export const REOPEN_VALIDATION = gql`
+  mutation ReopenValidationTest($id: ID!, $reason: String!) {
+    reopenValidationTest(id: $id, reason: $reason) { id status }
+  }
+`
+
+export const REOPEN_DEPLOYMENT = gql`
+  mutation ReopenDeploymentTask($id: ID!, $reason: String!) {
+    reopenDeploymentTask(id: $id, reason: $reason) { id status }
+  }
+`
+
+export const REOPEN_REVIEW = gql`
+  mutation ReopenReviewTask($id: ID!, $reason: String!) {
+    reopenReviewTask(id: $id, reason: $reason) { id status }
+  }
+`
+
+export const SEND_TASK_REMINDER = gql`
+  mutation SendTaskReminder($taskId: ID!, $userId: ID!) {
+    sendTaskReminder(taskId: $taskId, userId: $userId)
+  }
+`
+
+export const SET_QUESTION_CORE = gql`
+  mutation SetQuestionCore($questionId: ID!, $isCore: Boolean!) {
+    setQuestionCore(questionId: $questionId, isCore: $isCore) {
+      id
+      isCore
     }
   }
 `

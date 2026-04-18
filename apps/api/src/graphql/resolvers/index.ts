@@ -34,9 +34,8 @@ import { customWidgetResolvers } from './customWidget.js'
 import { automationResolvers } from './automation.js'
 import { integrationsResolvers } from './integrations.js'
 import { collaborationResolvers } from './collaboration.js'
-import { standardChangeCatalogResolvers } from './standardChangeCatalog.js'
 import { whatifResolvers } from './whatif.js'
-import { changeCalendarResolvers } from './changeCalendar.js'
+import { impactResolvers } from './impact.js'
 import { ciRelationshipResolvers } from './ciRelationships.js'
 import { cmdbResolvers } from './cmdb.js'
 const { updateCIFields: updateCIFieldsMutation } = cmdbResolvers.Mutation
@@ -277,9 +276,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...automationResolvers.Query,
       ...integrationsResolvers.Query,
       ...collaborationResolvers.Query,
-      ...standardChangeCatalogResolvers.Query,
       ...whatifResolvers.Query,
-      ...changeCalendarResolvers.Query,
+      ...impactResolvers.Query,
       auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
@@ -315,7 +313,6 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...automationResolvers.Mutation,
       ...integrationsResolvers.Mutation,
       ...collaborationResolvers.Mutation,
-      ...standardChangeCatalogResolvers.Mutation,
       ...queueStatsResolvers.Mutation,
       ...ciRelationshipResolvers.Mutation,
       createUser,
@@ -325,17 +322,17 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...incidentResolvers.Incident,
       ...workflowResolvers.Incident,
     },
+    Change: {
+      ...workflowResolvers.Change,
+    },
     Team:               teamResolvers.Team,
     User:               { teams: userTeams },
     Problem:            { ...problemResolvers.Problem },
     ProblemComment:     {},
-    Change:             { ...changeResolvers.Change },
-    ChangeTask:         { ...changeResolvers.ChangeTask },
     ServiceRequest:     serviceRequestResolvers.ServiceRequest,
     ReportConversation: reportResolvers.ReportConversation,
     DashboardConfig:    { ...dashboardResolvers.DashboardConfig },
     DashboardWidget:    { ...dashboardResolvers.DashboardWidget },
-    StandardChangeCatalogEntry: { ...standardChangeCatalogResolvers.StandardChangeCatalogEntry },
   }
 
   return mergeResolvers([dynamicCI as IResolvers, staticResolvers as IResolvers])

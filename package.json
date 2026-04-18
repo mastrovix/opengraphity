@@ -7,7 +7,8 @@
     "build": "pnpm --recursive build",
     "test": "pnpm --recursive test",
     "lint": "pnpm --recursive lint",
-    "neo4j:init": "pnpm --filter @opengraphity/neo4j init"
+    "neo4j:init": "pnpm --filter @opengraphity/neo4j init",
+    "deploy:web": "pnpm --filter @opengraphity/web build && docker compose -f infra/docker-compose.yml up -d --build web"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

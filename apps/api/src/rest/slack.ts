@@ -57,14 +57,16 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
       const userId   = u['id']        as string
       const now      = new Date().toISOString()
       const id       = randomUUID()
+      const { getInitialStepName } = await import('../lib/workflowHelpers.js')
+      const initialStatus = await getInitialStepName(session, tenantId, 'incident')
       await session.executeWrite((tx) =>
         tx.run(
           `CREATE (i:Incident {
             id: $id, tenant_id: $tenantId, title: $title,
-            severity: $sev, status: 'new', created_at: $now, updated_at: $now,
+            severity: $sev, status: $status, created_at: $now, updated_at: $now,
             created_by: $userId
           })`,
-          { id, tenantId, title, sev, now, userId },
+          { id, tenantId, title, sev, now, userId, status: initialStatus },
         ),
       )
       res.json({ response_type: 'in_channel', text: `✅ Incident *${title}* creato con severity *${sev}*. ID: \`${id}\`` })
@@ -131,19 +133,11 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
           ),
         )
       } else if (actionType === 'resolve') {
-        await session.executeWrite((tx) =>
-          tx.run(
-            "MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.status = 'resolved', i.updated_at = $now",
-            { incidentId, tenantId, now },
-          ),
-        )
+        const { resolveIncident } = await import('../services/incidentService.js')
+        await resolveIncident(incidentId, { tenantId, userId })
       } else if (actionType === 'escalate') {
-        await session.executeWrite((tx) =>
-          tx.run(
-            "MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.status = 'escalated', i.updated_at = $now",
-            { incidentId, tenantId, now },
-          ),
-        )
+        const { escalateIncident } = await import('../services/incidentService.js')
+        await escalateIncident(incidentId, { tenantId, userId })
       }
 
       if (responseUrl) {

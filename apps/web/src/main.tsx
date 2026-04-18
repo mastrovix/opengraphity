@@ -15,6 +15,9 @@ import { CreateProblemPage } from '@/pages/problems/CreateProblemPage'
 import { ChangeListPage } from '@/pages/changes/ChangeListPage'
 import { CreateChangePage } from '@/pages/changes/CreateChangePage'
 import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
+import { TaskViewPage } from '@/pages/tasks/TaskViewPage'
+import { MyTasksPage } from '@/pages/MyTasksPage'
+import { QuestionAdminPage } from '@/pages/admin/QuestionAdminPage'
 import { RequestListPage } from '@/pages/requests/RequestListPage'
 import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestPage'
 import { ServiceRequestDetailPage } from '@/pages/requests/ServiceRequestDetailPage'
@@ -56,10 +59,6 @@ import { AutoTriggersPage } from '@/pages/admin/AutoTriggersPage'
 import { BusinessRulesPage } from '@/pages/admin/BusinessRulesPage'
 import { SLAPoliciesPage } from '@/pages/admin/SLAPoliciesPage'
 import { IntegrationsPage } from '@/pages/admin/IntegrationsPage'
-import { ChangeCatalogPage } from '@/pages/changes/ChangeCatalogPage'
-import { ChangeCalendarPage } from '@/pages/changes/ChangeCalendarPage'
-import { ChangeCatalogCreatePage } from '@/pages/changes/ChangeCatalogCreatePage'
-import { ChangeCatalogAdminPage } from '@/pages/admin/ChangeCatalogAdminPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
@@ -109,11 +108,10 @@ const router = createBrowserRouter([
       { path: 'problems/new',      element: <CreateProblemPage />,       errorElement: <RouteError /> },
       { path: 'problems/:id',      element: <ProblemDetailPage />,       errorElement: <RouteError /> },
       { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
-      { path: 'changes/catalog',            element: <ChangeCatalogPage />,         errorElement: <RouteError /> },
-      { path: 'changes/catalog/:entryId',  element: <ChangeCatalogCreatePage />,   errorElement: <RouteError /> },
-      { path: 'changes/calendar',   element: <ChangeCalendarPage />,      errorElement: <RouteError /> },
       { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },
       { path: 'changes/:id',       element: <ChangeDetailPage />,        errorElement: <RouteError /> },
+      { path: 'tasks/:taskId',     element: <TaskViewPage />,            errorElement: <RouteError /> },
+      { path: 'my-tasks',          element: <MyTasksPage />,             errorElement: <RouteError /> },
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
       { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
       { path: 'requests/:id',      element: <ServiceRequestDetailPage />,errorElement: <RouteError /> },
@@ -160,7 +158,7 @@ const router = createBrowserRouter([
       { path: 'admin/business-rules',      element: <BusinessRulesPage />,       errorElement: <RouteError /> },
       { path: 'admin/sla-policies',        element: <SLAPoliciesPage />,         errorElement: <RouteError /> },
       { path: 'admin/integrations',        element: <IntegrationsPage />,        errorElement: <RouteError /> },
-      { path: 'admin/change-catalog',    element: <ChangeCatalogAdminPage />,  errorElement: <RouteError /> },
+      { path: 'admin/assessment-questions', element: <QuestionAdminPage />,      errorElement: <RouteError /> },
       { path: 'approvals',                element: <ApprovalsPage />,           errorElement: <RouteError /> },
       { path: 'knowledge-base',           element: <KnowledgeBasePage />,       errorElement: <RouteError /> },
       { path: 'knowledge-base/:slug',     element: <KBArticlePage />,           errorElement: <RouteError /> },

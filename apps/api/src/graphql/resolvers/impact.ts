@@ -1,11 +1,21 @@
-import { withSession, getSession, ciTypeFromLabels } from '../ci-utils.js'
-import { calculateRiskScore } from '../../../lib/riskScore.js'
-import type { GraphQLContext } from '../../../context.js'
-import { toInt } from './mappers.js'
+import { withSession, getSession, ciTypeFromLabels } from './ci-utils.js'
+import { calculateRiskScore } from '../../lib/riskScore.js'
+import { getTerminalStepNames } from '../../lib/workflowHelpers.js'
+import type { GraphQLContext } from '../../context.js'
 
 type Session = ReturnType<typeof getSession>
 
+function toInt(v: unknown, fallback = 0): number {
+  if (v == null) return fallback
+  if (typeof v === 'number') return v
+  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
+    return (v as { toNumber: () => number }).toNumber()
+  return Number(v)
+}
+
 export async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: string[]) {
+  const incidentTerminal = await getTerminalStepNames(session, tenantId, 'incident')
+
   // 1. Blast radius
   const blastResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
@@ -32,33 +42,31 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     distance:    toInt(r.get('distance'), 1),
   }))
 
-  // 2a. Open incidents (any date)
+  // 2a. Open incidents
   const openResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (i:Incident {tenant_id: $tenantId})
-          -[:AFFECTED_BY]->(ci {id: ciId})
-    WHERE NOT i.status IN ['resolved', 'closed']
+    MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci {id: ciId})
+    WHERE NOT i.status IN $terminalSteps
     RETURN DISTINCT i.id AS id, i.number AS number, i.title AS title,
            i.severity AS severity, i.status AS status,
            ci.name AS ciName, ci.id AS ciId,
            i.created_at AS createdAt, true AS isOpen
     ORDER BY i.created_at DESC
-  `, { ciIds, tenantId }))
+  `, { ciIds, tenantId, terminalSteps: incidentTerminal }))
 
   // 2b. Recently resolved incidents (last 30 days)
   const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const recentIncResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (i:Incident {tenant_id: $tenantId})
-          -[:AFFECTED_BY]->(ci {id: ciId})
+    MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci {id: ciId})
     WHERE i.created_at >= $since
-    AND i.status IN ['resolved', 'closed']
+    AND i.status IN $terminalSteps
     RETURN DISTINCT i.id AS id, i.number AS number, i.title AS title,
            i.severity AS severity, i.status AS status,
            ci.name AS ciName, ci.id AS ciId,
            i.created_at AS createdAt, false AS isOpen
     ORDER BY i.created_at DESC
-  `, { ciIds, tenantId, since: since30 }))
+  `, { ciIds, tenantId, since: since30, terminalSteps: incidentTerminal }))
 
   const openIncidents = [
     ...openResult.records,
@@ -77,15 +85,15 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
 
   const openIncidentsCount = openResult.records.length
 
-  // 3. Recent changes on same CIs (last 60 days)
+  // 3. Recent RFC-based changes on same CIs (last 60 days)
   const since60 = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
   const changeResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci {id: ciId})
+    MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci {id: ciId})
     WHERE c.created_at >= $since
-    AND c.status <> 'draft'
-    RETURN c.id AS id, c.number AS number, c.title AS title,
-           c.type AS type, c.status AS status,
+    OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    RETURN c.id AS id, c.code AS code, c.title AS title,
+           coalesce(wi.current_step, '') AS phase, c.approval_status AS approvalStatus,
            ci.name AS ciName, ci.id AS ciId,
            c.created_at AS createdAt
     ORDER BY c.created_at DESC
@@ -94,14 +102,18 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
 
   const recentChanges = changeResult.records.map((r) => ({
     id:        r.get('id') as string,
-    number:    (r.get('number') ?? '') as string,
+    code:      (r.get('code') ?? '') as string,
     title:     r.get('title') as string,
-    type:      r.get('type') as string,
-    status:    r.get('status') as string,
+    phase:     r.get('phase') as string,
     ciName:    r.get('ciName') as string,
     ciId:      r.get('ciId') as string,
     createdAt: r.get('createdAt') as string,
   }))
+
+  const approvalStatuses = changeResult.records.map((r) => (r.get('approvalStatus') ?? null) as string | null)
+  const failedChanges  = approvalStatuses.filter((s) => s === 'rejected').length
+  const changeTerminal = await getTerminalStepNames(session, tenantId, 'change')
+  const ongoingChanges = recentChanges.filter((c) => !changeTerminal.includes(c.phase)).length
 
   // 4. Environments of affected CIs
   const ciResult = await session.executeRead((tx) => tx.run(`
@@ -116,8 +128,6 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   // 5. Risk score
   const productionCIs  = affectedEnvs.filter((e) => e === 'production').length
   const blastRadiusCIs = blastRadius.length
-  const failedChanges  = recentChanges.filter((c) => c.status === 'failed').length
-  const ongoingChanges    = recentChanges.filter((c) => !['completed', 'failed', 'rejected', 'draft'].includes(c.status)).length
 
   const { score, level: riskLevel, details } = calculateRiskScore({
     productionCIs,
@@ -144,26 +154,10 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   }
 }
 
-export async function changeImpactAnalysisQuery(
-  _: unknown,
-  { ciIds }: { ciIds: string[] },
-  ctx: GraphQLContext,
-) {
+async function changeImpactAnalysisQuery(_: unknown, { ciIds }: { ciIds: string[] }, ctx: GraphQLContext) {
   return withSession((session) => computeImpactAnalysis(session, ctx.tenantId, ciIds))
 }
 
-export async function changeImpactAnalysisField(
-  parent: { id: string },
-  _: unknown,
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const r = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci)
-      RETURN ci.id AS ciId
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    const ciIds = r.records.map((rec) => rec.get('ciId') as string)
-    if (ciIds.length === 0) return null
-    return computeImpactAnalysis(session, ctx.tenantId, ciIds)
-  })
+export const impactResolvers = {
+  Query: { changeImpactAnalysis: changeImpactAnalysisQuery },
 }
