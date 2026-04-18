@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { lookupOrError } from '@/lib/tokens'
 import { GET_MY_TASKS, GET_ME } from '@/graphql/queries'
 import { ASSIGN_ASSESSMENT_TASK_TO_USER } from '@/graphql/mutations'
+import { TASK_STATUS, ASSESSMENT_ROLE } from '@/lib/taskStatus'
 
 interface MyTask {
   id:         string
@@ -59,7 +60,7 @@ function fmtDate(iso: string | null | undefined): string {
 
 function kindWithRole(t: MyTask): string {
   if (t.kind === 'assessment') {
-    return t.role === 'owner' ? 'Assessment Functional' : 'Assessment Technical'
+    return t.role === ASSESSMENT_ROLE.OWNER ? 'Assessment Functional' : 'Assessment Technical'
   }
   return KIND_LABEL[t.kind] ?? t.kind
 }
@@ -72,7 +73,7 @@ interface TaskRowProps {
 
 function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
   const kindColor  = lookupOrError(KIND_COLOR,  task.kind,   'KIND_COLOR',  KIND_COLOR['assessment']!)
-  const stateColor = lookupOrError(STATE_COLOR, task.status, 'STATE_COLOR', STATE_COLOR['pending']!)
+  const stateColor = lookupOrError(STATE_COLOR, task.status, 'STATE_COLOR', STATE_COLOR[TASK_STATUS.PENDING]!)
   return (
     <div
       style={{

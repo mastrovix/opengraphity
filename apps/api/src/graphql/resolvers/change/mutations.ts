@@ -1,6 +1,10 @@
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
+import {
+  TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ASSESSMENT_ROLE,
+  ROLE_LABEL, ROLE_TO_RELATION, ROLE_TO_CATEGORY,
+} from '../../../lib/taskStatus.js'
 import { withSession, runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
@@ -170,8 +174,8 @@ async function assertUserInCITeam(
     logger.error({ ciId, role }, '[authz] utente non identificato')
     throw new Error('Non autorizzato: utente non identificato')
   }
-  const rel = role === 'owner' ? 'OWNED_BY' : 'SUPPORTED_BY'
-  const roleLabel = role === 'owner' ? 'Owner' : 'Support'
+  const rel = ROLE_TO_RELATION[role]
+  const roleLabel = ROLE_LABEL[role]
   const row = await runQueryOne<{ ok: boolean | null }>(session, `
     MATCH (ci {id: $ciId, tenant_id: $tenantId})-[:${rel}]->(team:Team)
     OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)
@@ -233,19 +237,19 @@ export async function createChange(
       CREATE (c)-[:AFFECTS_CI {ci_phase: 'assessment'}]->(ci)
       CREATE (ownerT:AssessmentTask {
         id: randomUUID(), code: ct.ownerCode, tenant_id: $tenantId, ci_id: ci.id,
-        responder_role: 'owner', status: 'pending', score: null, created_at: $now
+        responder_role: '${ASSESSMENT_ROLE.OWNER}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
       })
       CREATE (c)-[:HAS_ASSESSMENT]->(ownerT)
       CREATE (ownerT)-[:ASSIGNED_TO_TEAM]->(ownerTeam)
       CREATE (supportT:AssessmentTask {
         id: randomUUID(), code: ct.supportCode, tenant_id: $tenantId, ci_id: ci.id,
-        responder_role: 'support', status: 'pending', score: null, created_at: $now
+        responder_role: '${ASSESSMENT_ROLE.SUPPORT}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
       })
       CREATE (c)-[:HAS_ASSESSMENT]->(supportT)
       CREATE (supportT)-[:ASSIGNED_TO_TEAM]->(supportTeam)
       CREATE (dp:DeployPlanTask {
         id: randomUUID(), code: ct.planCode, tenant_id: $tenantId, ci_id: ci.id,
-        status: 'pending', steps: '[]',
+        status: '${TASK_STATUS.PENDING}', steps: '[]',
         created_at: $now
       })
       CREATE (c)-[:HAS_DEPLOY_PLAN]->(dp)
@@ -286,19 +290,19 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       ON CREATE SET r_aci.ci_phase = 'assessment'
       MERGE (ownerT:AssessmentTask {change_key: $changeId + '-' + $ciId + '-owner'})
         ON CREATE SET ownerT.id = randomUUID(), ownerT.code = $ownerCode, ownerT.tenant_id = $tenantId,
-          ownerT.ci_id = $ciId, ownerT.responder_role = 'owner',
-          ownerT.status = 'pending', ownerT.score = null, ownerT.created_at = $now
+          ownerT.ci_id = $ciId, ownerT.responder_role = '${ASSESSMENT_ROLE.OWNER}',
+          ownerT.status = '${TASK_STATUS.PENDING}', ownerT.score = null, ownerT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(ownerT)
       MERGE (ownerT)-[:ASSIGNED_TO_TEAM]->(ownerTeam)
       MERGE (supportT:AssessmentTask {change_key: $changeId + '-' + $ciId + '-support'})
         ON CREATE SET supportT.id = randomUUID(), supportT.code = $supportCode, supportT.tenant_id = $tenantId,
-          supportT.ci_id = $ciId, supportT.responder_role = 'support',
-          supportT.status = 'pending', supportT.score = null, supportT.created_at = $now
+          supportT.ci_id = $ciId, supportT.responder_role = '${ASSESSMENT_ROLE.SUPPORT}',
+          supportT.status = '${TASK_STATUS.PENDING}', supportT.score = null, supportT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(supportT)
       MERGE (supportT)-[:ASSIGNED_TO_TEAM]->(supportTeam)
       MERGE (dp:DeployPlanTask {change_key: $changeId + '-' + $ciId + '-deployplan'})
         ON CREATE SET dp.id = randomUUID(), dp.code = $planCode, dp.tenant_id = $tenantId,
-          dp.ci_id = $ciId, dp.status = 'pending',
+          dp.ci_id = $ciId, dp.status = '${TASK_STATUS.PENDING}',
           dp.steps = '[]',
           dp.created_at = $now
       MERGE (c)-[:HAS_DEPLOY_PLAN]->(dp)
@@ -364,10 +368,10 @@ export async function submitAssessmentResponse(
       RETURN properties(t) AS props, c.id AS changeId
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!task) throw new Error(`AssessmentTask ${args.taskId} non trovata`)
-    if (task.props['status'] === 'completed') {
+    if (task.props['status'] === TASK_STATUS.COMPLETED) {
       throw new Error('Task già completata, impossibile modificare le risposte')
     }
-    const role = task.props['responder_role'] === 'support' ? 'support' : 'owner'
+    const role = task.props['responder_role'] === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, task.props['ci_id'] as string, ctx.tenantId, ctx, role)
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
@@ -388,7 +392,7 @@ export async function submitAssessmentResponse(
       FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
         CREATE (resp)-[:ANSWERED_BY]->(u)
       )
-      SET t.status = 'in-progress'
+      SET t.status = '${TASK_STATUS.IN_PROGRESS}'
     `, { taskId: args.taskId, questionId: args.questionId, optionId: args.optionId,
          tenantId: ctx.tenantId, userId: ctx.userId, now }))
 
@@ -396,7 +400,7 @@ export async function submitAssessmentResponse(
     const qText    = await getQuestionText(session, args.questionId, ctx.tenantId)
     const optLabel = await getAnswerLabel(session, args.optionId)
     await writeAudit(session, task.changeId, ctx.tenantId, 'assessment_response_submitted', ctx.userId,
-      `${role === 'owner' ? 'Owner' : 'Support'} · ${ciName}: "${qText}" → ${optLabel}`)
+      `${ROLE_LABEL[role]} · ${ciName}: "${qText}" → ${optLabel}`)
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props
@@ -425,12 +429,12 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
              ci.environment AS ciEnv
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!ctx1) throw new Error(`AssessmentTask ${args.taskId} non trovata`)
-    if (ctx1.taskProps['status'] === 'completed') throw new Error('Task già completata')
+    if (ctx1.taskProps['status'] === TASK_STATUS.COMPLETED) throw new Error('Task già completata')
 
-    const role = ctx1.taskProps['responder_role'] === 'support' ? 'support' : 'owner'
+    const role = ctx1.taskProps['responder_role'] === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, ctx1.ciId, ctx.tenantId, ctx, role)
 
-    const taskCategory = role === 'owner' ? 'functional' : 'technical'
+    const taskCategory = ROLE_TO_CATEGORY[role]
 
     // Load all questions assigned to this CITypeDefinition for the task's category
     type QRow = { questionId: string; weight: unknown; maxScore: unknown }
@@ -494,7 +498,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
-      SET t.status = 'completed', t.score = $score, t.completed_at = $now
+      SET t.status = '${TASK_STATUS.COMPLETED}', t.score = $score, t.completed_at = $now
       WITH t
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
@@ -505,7 +509,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
     const ciName1 = await getCIName(session, ctx1.ciId, ctx.tenantId)
     const role1   = ctx1.taskProps['responder_role'] as string
     await writeAudit(session, ctx1.changeId, ctx.tenantId, 'assessment_task_completed', ctx.userId,
-      `${role1 === 'owner' ? 'Owner' : 'Support'} · ${ciName1}: score ${score}`)
+      `${ROLE_LABEL[role1]} · ${ciName1}: score ${score}`)
 
     // Check if both tasks for this CI are completed; if so, compute CI risk score
     await recomputeCIRiskIfReady(session, ctx1.changeId, ctx1.ciId, ctx.tenantId, ctx.userId)
@@ -538,7 +542,7 @@ export async function assignAssessmentTaskToTeam(
   return withSession(async (session) => {
     const tctx = await loadTaskContext(session, args.taskId, ctx.tenantId)
     if (!tctx) throw new Error(`AssessmentTask ${args.taskId} non trovata`)
-    const role = tctx.role === 'support' ? 'support' : 'owner'
+    const role = tctx.role === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, role)
 
     await session.executeWrite((tx) => tx.run(`
@@ -560,7 +564,7 @@ export async function assignAssessmentTaskToTeam(
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'assessment_team_assigned', ctx.userId,
-      `${role === 'owner' ? 'Owner' : 'Support'} · ${ciName}: team riassegnato`)
+      `${ROLE_LABEL[role]} · ${ciName}: team riassegnato`)
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props
@@ -577,7 +581,7 @@ export async function assignAssessmentTaskToUser(
   return withSession(async (session) => {
     const tctx = await loadTaskContext(session, args.taskId, ctx.tenantId)
     if (!tctx) throw new Error(`AssessmentTask ${args.taskId} non trovata`)
-    const role = tctx.role === 'support' ? 'support' : 'owner'
+    const role = tctx.role === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, role)
 
     // Verify that the target user is MEMBER_OF the team assigned to this task
@@ -606,7 +610,7 @@ export async function assignAssessmentTaskToUser(
       MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name
     `, { id: args.userId, tenantId: ctx.tenantId })
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'assessment_user_assigned', ctx.userId,
-      `${role === 'owner' ? 'Owner' : 'Support'} · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
+      `${ROLE_LABEL[role]} · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props
@@ -620,10 +624,10 @@ async function recomputeCIRiskIfReady(session: Session, changeId: string, ciId: 
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {ci_id: $ciId})
     WITH collect({role: t.responder_role, status: t.status, score: t.score}) AS tasks
     RETURN
-      any(x IN tasks WHERE x.role = 'owner'   AND x.status = 'completed') AS ownerDone,
-      any(x IN tasks WHERE x.role = 'support' AND x.status = 'completed') AS supportDone,
-      [x IN tasks WHERE x.role = 'owner'   | x.score][0] AS ownerScore,
-      [x IN tasks WHERE x.role = 'support' | x.score][0] AS supportScore
+      any(x IN tasks WHERE x.role = '${ASSESSMENT_ROLE.OWNER}'   AND x.status = '${TASK_STATUS.COMPLETED}') AS ownerDone,
+      any(x IN tasks WHERE x.role = '${ASSESSMENT_ROLE.SUPPORT}' AND x.status = '${TASK_STATUS.COMPLETED}') AS supportDone,
+      [x IN tasks WHERE x.role = '${ASSESSMENT_ROLE.OWNER}'   | x.score][0] AS ownerScore,
+      [x IN tasks WHERE x.role = '${ASSESSMENT_ROLE.SUPPORT}' | x.score][0] AS supportScore
   `, { changeId, ciId, tenantId })
   if (!row || !row.ownerDone || !row.supportDone) return
 
@@ -676,13 +680,13 @@ async function createValidationAndDeploymentTasks(session: Session, changeId: st
     MATCH (c)-[:AFFECTS_CI]->(ci {id: cc.ciId})
     MERGE (vt:ValidationTest {change_key: $changeId + '-' + ci.id})
       ON CREATE SET vt.id = randomUUID(), vt.code = cc.valCode, vt.tenant_id = $tenantId,
-        vt.ci_id = ci.id, vt.status = 'pending',
+        vt.ci_id = ci.id, vt.status = '${TASK_STATUS.PENDING}',
         vt.result = null, vt.tested_at = null, vt.created_at = $now
     MERGE (c)-[:HAS_VALIDATION]->(vt)
     WITH c, ci, cc
     MERGE (dt:DeploymentTask {change_key: $changeId + '-' + ci.id + '-exec'})
       ON CREATE SET dt.id = randomUUID(), dt.code = cc.depCode, dt.tenant_id = $tenantId,
-        dt.ci_id = ci.id, dt.status = 'pending',
+        dt.ci_id = ci.id, dt.status = '${TASK_STATUS.PENDING}',
         dt.created_at = $now
     MERGE (c)-[:HAS_DEPLOYMENT]->(dt)
   `, { changeId, tenantId, now, ciCodes }))
@@ -702,7 +706,7 @@ async function createReviewTasks(session: Session, changeId: string, tenantId: s
     UNWIND $ciCodes AS cc
     MERGE (rv:ReviewTask {change_key: $changeId + '-' + cc.ciId + '-review'})
       ON CREATE SET rv.id = randomUUID(), rv.code = cc.code, rv.tenant_id = $tenantId,
-        rv.ci_id = cc.ciId, rv.status = 'pending', rv.created_at = $now
+        rv.ci_id = cc.ciId, rv.status = '${TASK_STATUS.PENDING}', rv.created_at = $now
     MERGE (c)-[:HAS_REVIEW]->(rv)
   `, { changeId, tenantId, now, ciCodes }))
 }
@@ -777,7 +781,7 @@ export async function completeValidationTest(
   args: { changeId: string; ciId: string; result: string },
   ctx: GraphQLContext,
 ) {
-  if (args.result !== 'pass' && args.result !== 'fail') {
+  if (args.result !== VALIDATION_RESULT.PASS && args.result !== VALIDATION_RESULT.FAIL) {
     throw new Error('result deve essere "pass" o "fail"')
   }
   return withSession(async (session) => {
@@ -785,7 +789,7 @@ export async function completeValidationTest(
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_VALIDATION]->(vt:ValidationTest {ci_id: $ciId})
-      SET vt.status = 'completed', vt.result = $result, vt.tested_at = $now
+      SET vt.status = '${TASK_STATUS.COMPLETED}', vt.result = $result, vt.tested_at = $now
       WITH c, vt
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
@@ -840,7 +844,7 @@ export async function saveDeployPlan(
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, wi.current_step AS currentStep
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new Error(`DeployPlanTask ${args.taskId} non trovata`)
-    if (tctx.status === 'completed') throw new Error('Task già completata')
+    if (tctx.status === TASK_STATUS.COMPLETED) throw new Error('Task già completata')
     const initialStepName = await getInitialStepName(session, ctx.tenantId, 'change')
     if (tctx.currentStep !== initialStepName) throw new Error(`Piano deploy editabile solo nello step iniziale (${initialStepName})`)
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
@@ -856,7 +860,7 @@ export async function saveDeployPlan(
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId})
-      SET dp.steps = $steps, dp.status = 'in-progress'
+      SET dp.steps = $steps, dp.status = '${TASK_STATUS.IN_PROGRESS}'
     `, { taskId: args.taskId, tenantId: ctx.tenantId, steps: JSON.stringify(normalized) }))
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
@@ -877,7 +881,7 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, dp.steps AS steps
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new Error(`DeployPlanTask ${args.taskId} non trovata`)
-    if (tctx.status === 'completed') throw new Error('Task già completata')
+    if (tctx.status === TASK_STATUS.COMPLETED) throw new Error('Task già completata')
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
 
     const steps = tctx.steps ? JSON.parse(tctx.steps) as unknown[] : []
@@ -888,7 +892,7 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId})
-      SET dp.status = 'completed', dp.completed_at = $now
+      SET dp.status = '${TASK_STATUS.COMPLETED}', dp.completed_at = $now
       WITH dp
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
@@ -919,7 +923,7 @@ export async function completeDeployment(_: unknown, args: { changeId: string; c
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_DEPLOYMENT]->(dt:DeploymentTask {ci_id: $ciId})
-      SET dt.status = 'completed', dt.deployed_at = $now
+      SET dt.status = '${TASK_STATUS.COMPLETED}', dt.deployed_at = $now
       WITH c, dt
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
@@ -947,7 +951,7 @@ export async function completeReview(
   args: { changeId: string; ciId: string; result: string },
   ctx: GraphQLContext,
 ) {
-  if (args.result !== 'confirmed' && args.result !== 'rejected') {
+  if (args.result !== REVIEW_RESULT.CONFIRMED && args.result !== REVIEW_RESULT.REJECTED) {
     throw new Error('result deve essere "confirmed" o "rejected"')
   }
   return withSession(async (session) => {
@@ -955,7 +959,7 @@ export async function completeReview(
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_REVIEW]->(rv:ReviewTask {ci_id: $ciId})
-      SET rv.status = 'completed', rv.result = $result, rv.reviewed_at = $now
+      SET rv.status = '${TASK_STATUS.COMPLETED}', rv.result = $result, rv.reviewed_at = $now
       WITH c, rv
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
@@ -998,7 +1002,7 @@ export async function reopenAssessmentTask(_: unknown, args: { taskId: string; r
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
-      SET t.status = 'in-progress', t.score = null, t.completed_at = null
+      SET t.status = '${TASK_STATUS.IN_PROGRESS}', t.score = null, t.completed_at = null
       WITH t
       OPTIONAL MATCH (t)-[r:COMPLETED_BY]->()
       DELETE r
@@ -1042,7 +1046,7 @@ export async function reopenDeployPlanTask(_: unknown, args: { taskId: string; r
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId})
-      SET dp.status = 'in-progress', dp.completed_at = null
+      SET dp.status = '${TASK_STATUS.IN_PROGRESS}', dp.completed_at = null
       WITH dp
       OPTIONAL MATCH (dp)-[r:COMPLETED_BY]->()
       DELETE r
@@ -1075,7 +1079,7 @@ export async function reopenValidationTest(_: unknown, args: { id: string; reaso
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (vt:ValidationTest {id: $id, tenant_id: $tenantId})
-      SET vt.status = 'pending', vt.result = null, vt.tested_at = null
+      SET vt.status = '${TASK_STATUS.PENDING}', vt.result = null, vt.tested_at = null
       WITH vt
       OPTIONAL MATCH (vt)-[r:TESTED_BY]->()
       DELETE r
@@ -1103,7 +1107,7 @@ export async function reopenDeploymentTask(_: unknown, args: { id: string; reaso
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (dt:DeploymentTask {id: $id, tenant_id: $tenantId})
-      SET dt.status = 'pending', dt.deployed_at = null
+      SET dt.status = '${TASK_STATUS.PENDING}', dt.deployed_at = null
       WITH dt
       OPTIONAL MATCH (dt)-[r:DEPLOYED_BY]->()
       DELETE r
@@ -1131,7 +1135,7 @@ export async function reopenReviewTask(_: unknown, args: { id: string; reason: s
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (rv:ReviewTask {id: $id, tenant_id: $tenantId})
-      SET rv.status = 'pending', rv.result = null, rv.reviewed_at = null
+      SET rv.status = '${TASK_STATUS.PENDING}', rv.result = null, rv.reviewed_at = null
       WITH rv
       OPTIONAL MATCH (rv)-[r:REVIEWED_BY]->()
       DELETE r

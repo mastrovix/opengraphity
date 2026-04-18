@@ -17,6 +17,9 @@ import {
   REMOVE_QUESTION_FROM_CITYPE,
   SET_QUESTION_CORE,
 } from '@/graphql/mutations'
+import { QUESTION_CATEGORY } from '@/lib/taskStatus'
+
+type QuestionCategoryKey = typeof QUESTION_CATEGORY[keyof typeof QUESTION_CATEGORY]
 
 interface AnswerOption {
   id?:       string
@@ -94,7 +97,7 @@ export function QuestionAdminPage() {
 
   // Editor state
   const [text,      setText]     = useState('')
-  const [category,  setCategory] = useState<'functional' | 'technical'>('functional')
+  const [category,  setCategory] = useState<QuestionCategoryKey>(QUESTION_CATEGORY.FUNCTIONAL)
   const [isCore,    setIsCore]   = useState(true)
   const [isActive,  setIsActive] = useState(true)
   const [options,   setOptions]  = useState<AnswerOption[]>([])
@@ -115,7 +118,7 @@ export function QuestionAdminPage() {
   useEffect(() => {
     if (selected) {
       setText(selected.text)
-      setCategory(selected.category as 'functional' | 'technical')
+      setCategory(selected.category as QuestionCategoryKey)
       setIsCore(selected.isCore)
       setIsActive(selected.isActive)
       setOptions(selected.options.map(o => ({ id: o.id, label: o.label, score: o.score, sortOrder: o.sortOrder })))
@@ -164,7 +167,7 @@ export function QuestionAdminPage() {
   const handleNew = () => {
     setSelectedId(null)
     setText('')
-    setCategory('functional')
+    setCategory(QUESTION_CATEGORY.FUNCTIONAL)
     setIsCore(true)
     setIsActive(true)
     setOptions([{ label: '', score: 0, sortOrder: 0 }])
@@ -309,9 +312,10 @@ export function QuestionAdminPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
                   <label style={labelStyle}>Categoria</label>
-                  <select value={category} onChange={e => setCategory(e.target.value as 'functional' | 'technical')} style={inputStyle}>
-                    <option value="functional">Functional</option>
-                    <option value="technical">Technical</option>
+                  <select value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} style={inputStyle} title="Categoria della domanda">
+                    {Object.values(QUESTION_CATEGORY).map((v) => (
+                      <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
+                    ))}
                   </select>
                 </div>
                 <div>

@@ -1,5 +1,6 @@
 import { withSession, runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
+import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
 import {
   mapChange,
   mapAssessmentTask,
@@ -198,9 +199,9 @@ export async function changeAffectedCIs(_: unknown, args: { changeId: string }, 
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci)
       WHERE ci.tenant_id = $tenantId
       OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(ownerT:AssessmentTask)
-        WHERE ownerT.ci_id = ci.id AND ownerT.responder_role = 'owner'
+        WHERE ownerT.ci_id = ci.id AND ownerT.responder_role = $ownerRole
       OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(supportT:AssessmentTask)
-        WHERE supportT.ci_id = ci.id AND supportT.responder_role = 'support'
+        WHERE supportT.ci_id = ci.id AND supportT.responder_role = $supportRole
       OPTIONAL MATCH (c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask) WHERE dp.ci_id = ci.id
       OPTIONAL MATCH (c)-[:HAS_VALIDATION]->(vt:ValidationTest) WHERE vt.ci_id = ci.id
       OPTIONAL MATCH (c)-[:HAS_DEPLOYMENT]->(dt:DeploymentTask) WHERE dt.ci_id = ci.id
@@ -215,7 +216,7 @@ export async function changeAffectedCIs(_: unknown, args: { changeId: string }, 
              properties(dt) AS deployment,
              properties(rv) AS review
       ORDER BY ci.name
-    `, { changeId: args.changeId, tenantId: ctx.tenantId })
+    `, { changeId: args.changeId, tenantId: ctx.tenantId, ownerRole: ASSESSMENT_ROLE.OWNER, supportRole: ASSESSMENT_ROLE.SUPPORT })
 
     // Collect IDs of assessment tasks and deploy plan tasks for batch loading
     const assessTaskIds: string[] = []
@@ -335,7 +336,7 @@ type MyTaskRow = {
   createdAt:  string
 }
 
-const ASSESSMENT_ACTIVE = "['pending','in-progress']"
+const ASSESSMENT_ACTIVE = `['${TASK_STATUS.PENDING}','${TASK_STATUS.IN_PROGRESS}']`
 
 export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {

@@ -8,6 +8,10 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import {
+  TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ASSESSMENT_ROLE,
+  QUESTION_CATEGORY, ROLE_LABEL,
+} from '@/lib/taskStatus'
+import {
   GET_TASK_BY_ID,
   GET_CHANGE,
   GET_CHANGE_AFFECTED_CIS,
@@ -67,20 +71,20 @@ const DOT_COLOR: Record<DotState, string> = { not_started: 'var(--color-slate-li
 
 function assessDotState(t: AssessmentTask | null): DotState {
   if (!t) return 'not_started'
-  if (t.status === 'completed') return 'completed'
-  if (t.status === 'in-progress' || t.responses.length > 0) return 'in_progress'
+  if (t.status === TASK_STATUS.COMPLETED) return 'completed'
+  if (t.status === TASK_STATUS.IN_PROGRESS || t.responses.length > 0) return 'in_progress'
   return 'not_started'
 }
 function planDotState(t: DeployPlanTask | null): DotState {
   if (!t) return 'not_started'
-  if (t.status === 'completed') return 'completed'
+  if (t.status === TASK_STATUS.COMPLETED) return 'completed'
   if (t.steps.length > 0) return 'in_progress'
   return 'not_started'
 }
 function simpleDotState(t: { status: string; result?: string | null } | null): DotState {
   if (!t) return 'not_started'
-  if (t.status === 'completed') return (t.result === 'fail' || t.result === 'rejected') ? 'failed' : 'completed'
-  if (t.status !== 'pending') return 'in_progress'
+  if (t.status === TASK_STATUS.COMPLETED) return (t.result === VALIDATION_RESULT.FAIL || t.result === REVIEW_RESULT.REJECTED) ? 'failed' : 'completed'
+  if (t.status !== TASK_STATUS.PENDING) return 'in_progress'
   return 'not_started'
 }
 
@@ -148,8 +152,8 @@ export function TaskViewPage() {
 
   const { data: changeData } = useQuery<{ change: ChangeData | null }>(GET_CHANGE, { variables: { id: task?.changeId ?? '' }, skip: !task, fetchPolicy: 'cache-and-network' })
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId: task?.changeId ?? '' }, skip: !task, fetchPolicy: 'cache-and-network' })
-  const { data: funcCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: 'functional' }, skip: !task || (task.kind !== 'assessment') })
-  const { data: techCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: 'technical' }, skip: !task || (task.kind !== 'assessment') })
+  const { data: funcCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.FUNCTIONAL }, skip: !task || (task.kind !== 'assessment') })
+  const { data: techCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.TECHNICAL }, skip: !task || (task.kind !== 'assessment') })
   const { data: meData } = useQuery<{ me: { id: string; role: string; teams: { id: string }[] } | null }>(GET_ME, { fetchPolicy: 'cache-first' })
   const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; teams: { id: string }[] }> }>(GET_USERS, { variables: { sortField: 'name', sortDirection: 'asc' }, fetchPolicy: 'cache-first' })
   const { byName: changeStepByName } = useWorkflowSteps('change')
@@ -211,13 +215,13 @@ export function TaskViewPage() {
   const planTask = task.kind === 'deploy-plan' ? ciAffected?.deployPlan : null
 
   const assessRole = assessTask?.responderRole ?? null
-  const catalog = assessRole === 'owner' ? (funcCat?.assessmentQuestionCatalog ?? []) : assessRole === 'support' ? (techCat?.assessmentQuestionCatalog ?? []) : []
+  const catalog = assessRole === ASSESSMENT_ROLE.OWNER ? (funcCat?.assessmentQuestionCatalog ?? []) : assessRole === ASSESSMENT_ROLE.SUPPORT ? (techCat?.assessmentQuestionCatalog ?? []) : []
 
   // Gate: is user in the right team?
   const ciOwnerTeamId = ciAffected?.ci.ownerGroup?.id ?? null
   const ciSupportTeamId = ciAffected?.ci.supportGroup?.id ?? null
   const canEdit = isAdmin || (
-    task.kind === 'assessment' ? (assessRole === 'owner' ? !!ciOwnerTeamId && userTeamIds.has(ciOwnerTeamId) : !!ciSupportTeamId && userTeamIds.has(ciSupportTeamId))
+    task.kind === 'assessment' ? (assessRole === ASSESSMENT_ROLE.OWNER ? !!ciOwnerTeamId && userTeamIds.has(ciOwnerTeamId) : !!ciSupportTeamId && userTeamIds.has(ciSupportTeamId))
     : task.kind === 'deploy-plan' ? !!ciSupportTeamId && userTeamIds.has(ciSupportTeamId)
     : task.kind === 'validation' || task.kind === 'review' ? !!ciOwnerTeamId && userTeamIds.has(ciOwnerTeamId)
     : task.kind === 'deployment' ? !!ciSupportTeamId && userTeamIds.has(ciSupportTeamId)
@@ -228,24 +232,24 @@ export function TaskViewPage() {
 
   // Check if the specific task is completed
   const isTaskCompleted = (() => {
-    if (task.kind === 'assessment') return assessTask?.status === 'completed'
-    if (task.kind === 'deploy-plan') return planTask?.status === 'completed'
-    if (task.kind === 'validation') return ciAffected?.validation?.status === 'completed'
-    if (task.kind === 'deployment') return ciAffected?.deployment?.status === 'completed'
-    if (task.kind === 'review') return ciAffected?.review?.status === 'completed'
+    if (task.kind === 'assessment') return assessTask?.status === TASK_STATUS.COMPLETED
+    if (task.kind === 'deploy-plan') return planTask?.status === TASK_STATUS.COMPLETED
+    if (task.kind === 'validation') return ciAffected?.validation?.status === TASK_STATUS.COMPLETED
+    if (task.kind === 'deployment') return ciAffected?.deployment?.status === TASK_STATUS.COMPLETED
+    if (task.kind === 'review') return ciAffected?.review?.status === TASK_STATUS.COMPLETED
     return false
   })()
 
   // Responsible team ID (for gate panel)
   const responsibleTeamId = (() => {
-    if (task.kind === 'assessment') return assessRole === 'owner' ? ciOwnerTeamId : ciSupportTeamId
+    if (task.kind === 'assessment') return assessRole === ASSESSMENT_ROLE.OWNER ? ciOwnerTeamId : ciSupportTeamId
     if (task.kind === 'deploy-plan' || task.kind === 'deployment') return ciSupportTeamId
     return ciOwnerTeamId // validation, review
   })()
 
   // Approval route live
   const allScores = allAffected.filter(a => a.riskScore != null).map(a => a.riskScore!)
-  const allAssessmentsDone = allAffected.length > 0 && allAffected.every(a => a.assessmentOwner?.status === 'completed' && a.assessmentSupport?.status === 'completed')
+  const allAssessmentsDone = allAffected.length > 0 && allAffected.every(a => a.assessmentOwner?.status === TASK_STATUS.COMPLETED && a.assessmentSupport?.status === TASK_STATUS.COMPLETED)
   const liveRoute = allScores.length === 0
     ? { label: 'Da calcolare', color: 'var(--color-slate-light)', bg: '#f1f5f9' }
     : (() => {
@@ -310,7 +314,7 @@ export function TaskViewPage() {
             if (!t) return null
             const teamId = t.assignedTeam?.id ?? null
             const teamUsers = getTeamUsers(teamId)
-            const canAssign = canEdit && t.status !== 'completed'
+            const canAssign = canEdit && t.status !== TASK_STATUS.COMPLETED
             return (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e5e7eb' }}>
                 <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
@@ -348,7 +352,7 @@ export function TaskViewPage() {
                       <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: 'var(--color-slate)', whiteSpace: 'nowrap' }}>W:{entry.weight}</span>
                     </div>
                     <select
-                      disabled={!canEdit || assessTask.status === 'completed'}
+                      disabled={!canEdit || assessTask.status === TASK_STATUS.COMPLETED}
                       value={selectedId ?? ''}
                       onChange={(e) => { if (e.target.value) void submitAnswer({ variables: { taskId: assessTask.id, questionId: q.id, optionId: e.target.value } }) }}
                       style={{ ...inputStyle, maxWidth: 400 }}
@@ -359,7 +363,7 @@ export function TaskViewPage() {
                   </div>
                 )
               })}
-              {assessTask.status !== 'completed' && (
+              {assessTask.status !== TASK_STATUS.COMPLETED && (
                 <StickyAction
                   label={`Completa (${assessTask.responses.length}/${catalog.length})`}
                   disabled={!canEdit || assessTask.responses.length < catalog.length}
@@ -378,8 +382,8 @@ export function TaskViewPage() {
             <div>
               <p style={{ marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Verifica il CI in ambiente pre-produzione e registra l'esito.</p>
               <div style={{ display: 'flex', gap: 12 }}>
-                <button type="button" disabled={!canEdit} onClick={() => void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result: 'pass' } })} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>Pass</button>
-                <button type="button" disabled={!canEdit} onClick={() => void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result: 'fail' } })} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-danger)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>Fail</button>
+                <button type="button" disabled={!canEdit} onClick={() => void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result: VALIDATION_RESULT.PASS } })} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>Pass</button>
+                <button type="button" disabled={!canEdit} onClick={() => void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result: VALIDATION_RESULT.FAIL } })} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-danger)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>Fail</button>
               </div>
             </div>
           )}
@@ -397,8 +401,8 @@ export function TaskViewPage() {
             <div>
               <p style={{ marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Verifica l'esito del deploy e conferma o rigetta.</p>
               <div style={{ display: 'flex', gap: 12 }}>
-                <button type="button" disabled={!canEdit} onClick={() => void completeRev({ variables: { changeId: task.changeId, ciId: task.ciId, result: 'confirmed' } })} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>Confirmed</button>
-                <button type="button" disabled={!canEdit} onClick={() => void completeRev({ variables: { changeId: task.changeId, ciId: task.ciId, result: 'rejected' } })} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-danger)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>Rejected</button>
+                <button type="button" disabled={!canEdit} onClick={() => void completeRev({ variables: { changeId: task.changeId, ciId: task.ciId, result: REVIEW_RESULT.CONFIRMED } })} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>Confirmed</button>
+                <button type="button" disabled={!canEdit} onClick={() => void completeRev({ variables: { changeId: task.changeId, ciId: task.ciId, result: REVIEW_RESULT.REJECTED } })} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-danger)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>Rejected</button>
               </div>
             </div>
           )}
@@ -449,7 +453,7 @@ export function TaskViewPage() {
                 </div>
 
                 {/* Assessment responses for current CI */}
-                {ciAffected && ciAffected.assessmentOwner?.status === 'completed' && ciAffected.assessmentSupport?.status === 'completed' && (
+                {ciAffected && ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED && (
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6, fontSize: 'var(--font-size-label)' }}>
                       Risposte Assessment · {task.ciName}
@@ -457,7 +461,7 @@ export function TaskViewPage() {
                     {[ciAffected.assessmentOwner, ciAffected.assessmentSupport].map((at, i) => (
                       <div key={i} style={{ marginBottom: 6 }}>
                         <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 2 }}>
-                          {at.responderRole === 'owner' ? 'Functional' : 'Technical'} · Score: {at.score ?? '—'}
+                          {ROLE_LABEL[at.responderRole] ?? at.responderRole} · Score: {at.score ?? '—'}
                         </div>
                       </div>
                     ))}
@@ -466,7 +470,7 @@ export function TaskViewPage() {
                     </div>
                   </div>
                 )}
-                {ciAffected && !(ciAffected.assessmentOwner?.status === 'completed' && ciAffected.assessmentSupport?.status === 'completed') && (
+                {ciAffected && !(ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED) && (
                   <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
                     Owner: {ciAffected.assessmentOwner?.status ?? '—'} · Support: {ciAffected.assessmentSupport?.status ?? '—'}
                   </div>
@@ -612,7 +616,7 @@ function DeployPlanForm({ task, canEdit, onSave, onComplete }: {
   const emptyStep = (): DeployStep => ({ title: '', validationWindow: { start: '', end: '' }, releaseWindow: { start: '', end: '' } })
   const isComplete = (s: DeployStep) => s.title.trim().length > 0 && !!s.validationWindow.start && !!s.validationWindow.end && !!s.releaseWindow.start && !!s.releaseWindow.end
   const allComplete = steps.length >= 1 && steps.every(isComplete)
-  const completed = task.status === 'completed'
+  const completed = task.status === TASK_STATUS.COMPLETED
 
   return (
     <div>

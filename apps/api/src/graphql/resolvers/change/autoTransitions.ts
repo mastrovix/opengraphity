@@ -3,6 +3,7 @@ import type { ActionContext } from '@opengraphity/workflow'
 import { runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
+import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../../../lib/taskStatus.js'
 
 type Session2 = Parameters<typeof runQuery>[0]
 export type AfterEnterStep = (session: Session2, changeId: string, tenantId: string, stepName: string) => Promise<void>
@@ -19,12 +20,12 @@ const CONDITIONS: Record<string, (session: Session, changeId: string, tenantId: 
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
       WITH c, count(ci) AS ciCount
       OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(at:AssessmentTask)
-        WHERE at.status <> 'completed'
+        WHERE at.status <> $completedStatus
       OPTIONAL MATCH (c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask)
-        WHERE dp.status <> 'completed'
+        WHERE dp.status <> $completedStatus
       WITH ciCount, count(DISTINCT at) + count(DISTINCT dp) AS pending
       RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
-    `, { changeId, tenantId })
+    `, { changeId, tenantId, completedStatus: TASK_STATUS.COMPLETED })
     return (row?.pending ?? 1) === 0
   },
 
@@ -35,26 +36,26 @@ const CONDITIONS: Record<string, (session: Session, changeId: string, tenantId: 
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
       WITH c, count(ci) AS ciCount
       OPTIONAL MATCH (c)-[:HAS_VALIDATION]->(vt:ValidationTest)
-        WHERE vt.status <> 'completed' OR vt.result <> 'pass'
+        WHERE vt.status <> $completedStatus OR vt.result <> $passResult
       OPTIONAL MATCH (c)-[:HAS_DEPLOYMENT]->(dt:DeploymentTask)
-        WHERE dt.status <> 'completed'
+        WHERE dt.status <> $completedStatus
       WITH ciCount, count(DISTINCT vt) + count(DISTINCT dt) AS pending
       RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
-    `, { changeId, tenantId })
+    `, { changeId, tenantId, completedStatus: TASK_STATUS.COMPLETED, passResult: VALIDATION_RESULT.PASS })
     return (row?.pending ?? 1) === 0
   },
 
   // All reviews confirmed = for every AFFECTS_CI, review task completed
-  // with result = 'confirmed'.
+  // with the "confirmed" review result.
   all_reviews_confirmed: async (session, changeId, tenantId) => {
     const row = await runQueryOne<{ pending: number }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
       WITH c, count(ci) AS ciCount
       OPTIONAL MATCH (c)-[:HAS_REVIEW]->(rv:ReviewTask)
-        WHERE rv.status <> 'completed' OR rv.result <> 'confirmed'
+        WHERE rv.status <> $completedStatus OR rv.result <> $confirmedResult
       WITH ciCount, count(DISTINCT rv) AS pending
       RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
-    `, { changeId, tenantId })
+    `, { changeId, tenantId, completedStatus: TASK_STATUS.COMPLETED, confirmedResult: REVIEW_RESULT.CONFIRMED })
     return (row?.pending ?? 1) === 0
   },
 }

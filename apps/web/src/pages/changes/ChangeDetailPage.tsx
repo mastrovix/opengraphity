@@ -20,6 +20,7 @@ import {
   REMOVE_CI_FROM_CHANGE,
 } from '@/graphql/mutations'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '@/lib/taskStatus'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,8 +59,12 @@ interface AuditEntry { timestamp: string; action: string; detail: string | null;
 
 function StatusLabel({ status }: { status: string | null | undefined }) {
   const s = status ?? '—'
-  const color = s === 'completed' ? '#16a34a' : s === 'in-progress' ? '#f59e0b' : s === 'pending' ? '#ef4444' : s === 'failed' || s === 'rejected' ? '#ef4444' : '#d1d5db'
-  const label = s === 'pending' ? 'TO BE COMPLETED' : s.replace(/_/g, ' ')
+  const color =
+    s === TASK_STATUS.COMPLETED   ? '#16a34a' :
+    s === TASK_STATUS.IN_PROGRESS ? '#f59e0b' :
+    s === TASK_STATUS.PENDING     ? '#ef4444' :
+    s === 'failed' || s === REVIEW_RESULT.REJECTED ? '#ef4444' : '#d1d5db'
+  const label = s === TASK_STATUS.PENDING ? 'TO BE COMPLETED' : s.replace(/_/g, ' ')
   return <strong style={{ color, textTransform: 'uppercase' }}>{label}</strong>
 }
 
@@ -129,8 +134,8 @@ function TaskStatusRow({ label, code, status, scheduledDate, result, actor, date
   assignedTeam?: string | null; assignee?: string | null
   action?: React.ReactNode
 }) {
-  const isScheduled = scheduledDate && status === 'pending' && new Date(scheduledDate).getTime() > Date.now()
-  const isCompleted = status === 'completed'
+  const isScheduled = scheduledDate && status === TASK_STATUS.PENDING && new Date(scheduledDate).getTime() > Date.now()
+  const isCompleted = status === TASK_STATUS.COMPLETED
   return (
     <div style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-label)' }}>
       <span style={{ width: 90, flexShrink: 0, color: 'var(--color-slate)', fontWeight: 500, paddingTop: 1 }}>{label}</span>
@@ -200,7 +205,7 @@ function ModalOverlay({ title, onClose, children }: { title: string; onClose: ()
 }
 
 function CIExpandedRow({ a }: { a: AffectedCI }) {
-  const bothAssessDone = a.assessmentOwner?.status === 'completed' && a.assessmentSupport?.status === 'completed'
+  const bothAssessDone = a.assessmentOwner?.status === TASK_STATUS.COMPLETED && a.assessmentSupport?.status === TASK_STATUS.COMPLETED
   const [modal, setModal] = useState<'functional' | 'technical' | 'plan' | null>(null)
 
   const renderResponsesModal = (task: AssessmentTask, label: string) => (
@@ -268,30 +273,30 @@ function CIExpandedRow({ a }: { a: AffectedCI }) {
         // only gate — the workflow step doesn't appear here.
         const assessAction = (task: AssessmentTask | null, modalKey: 'functional' | 'technical') => {
           const btns: React.ReactNode[] = []
-          if (task?.status === 'completed') btns.push(<EyeButton key="eye" onClick={() => setModal(modalKey)} />)
-          if (task && task.status !== 'completed') btns.push(<OpenTaskButton key="open" taskId={task.id} />)
+          if (task?.status === TASK_STATUS.COMPLETED) btns.push(<EyeButton key="eye" onClick={() => setModal(modalKey)} />)
+          if (task && task.status !== TASK_STATUS.COMPLETED) btns.push(<OpenTaskButton key="open" taskId={task.id} />)
           return btns.length > 0 ? <span style={{ display: 'flex', gap: 4 }}>{btns}</span> : undefined
         }
 
         const planAction = () => {
           const btns: React.ReactNode[] = []
-          if (a.deployPlan?.status === 'completed') btns.push(<EyeButton key="eye" onClick={() => setModal('plan')} />)
-          if (a.deployPlan && a.deployPlan.status !== 'completed') btns.push(<OpenTaskButton key="open" taskId={a.deployPlan.id} />)
+          if (a.deployPlan?.status === TASK_STATUS.COMPLETED) btns.push(<EyeButton key="eye" onClick={() => setModal('plan')} />)
+          if (a.deployPlan && a.deployPlan.status !== TASK_STATUS.COMPLETED) btns.push(<OpenTaskButton key="open" taskId={a.deployPlan.id} />)
           return btns.length > 0 ? <span style={{ display: 'flex', gap: 4 }}>{btns}</span> : undefined
         }
 
         const valAction = () => {
-          if (a.validation && a.validation.status !== 'completed' && notScheduled(firstValStart)) return <OpenTaskButton taskId={a.validation.id} />
+          if (a.validation && a.validation.status !== TASK_STATUS.COMPLETED && notScheduled(firstValStart)) return <OpenTaskButton taskId={a.validation.id} />
           return undefined
         }
 
         const depAction = () => {
-          if (a.deployment && a.deployment.status !== 'completed' && a.deployment.status !== 'planning' && notScheduled(firstRelStart)) return <OpenTaskButton taskId={a.deployment.id} />
+          if (a.deployment && a.deployment.status !== TASK_STATUS.COMPLETED && a.deployment.status !== TASK_STATUS.PLANNING && notScheduled(firstRelStart)) return <OpenTaskButton taskId={a.deployment.id} />
           return undefined
         }
 
         const revAction = () => {
-          if (a.review && a.review.status !== 'completed') return <OpenTaskButton taskId={a.review.id} />
+          if (a.review && a.review.status !== TASK_STATUS.COMPLETED) return <OpenTaskButton taskId={a.review.id} />
           return undefined
         }
 
@@ -317,7 +322,7 @@ function CIExpandedRow({ a }: { a: AffectedCI }) {
               <TaskStatusRow label="Validation" code={a.validation.code} status={a.validation.status ?? null} scheduledDate={firstValStart} result={a.validation.result} actor={a.validation.testedBy?.name} date={a.validation.testedAt}
                 action={valAction()} />
             )}
-            {a.deployment && a.deployment.status !== 'planning' && (
+            {a.deployment && a.deployment.status !== TASK_STATUS.PLANNING && (
               <TaskStatusRow label="Deploy" code={a.deployment.code} status={a.deployment.status ?? null} scheduledDate={firstRelStart} actor={a.deployment.deployedBy?.name} date={a.deployment.deployedAt}
                 action={depAction()} />
             )}
@@ -599,11 +604,11 @@ export function ChangeDetailPage() {
 
   // Counts
   const totalTasks = affected.length * 3
-  const completedTasks = affected.reduce((n, a) => n + (a.assessmentOwner?.status === 'completed' ? 1 : 0) + (a.assessmentSupport?.status === 'completed' ? 1 : 0) + (a.deployPlan?.status === 'completed' ? 1 : 0), 0)
+  const completedTasks = affected.reduce((n, a) => n + (a.assessmentOwner?.status === TASK_STATUS.COMPLETED ? 1 : 0) + (a.assessmentSupport?.status === TASK_STATUS.COMPLETED ? 1 : 0) + (a.deployPlan?.status === TASK_STATUS.COMPLETED ? 1 : 0), 0)
 
   // Approval route live
   const allScores = affected.filter(a => a.riskScore != null).map(a => a.riskScore!)
-  const allAssessmentsDone = affected.length > 0 && affected.every(a => a.assessmentOwner?.status === 'completed' && a.assessmentSupport?.status === 'completed')
+  const allAssessmentsDone = affected.length > 0 && affected.every(a => a.assessmentOwner?.status === TASK_STATUS.COMPLETED && a.assessmentSupport?.status === TASK_STATUS.COMPLETED)
   const liveRoute = allScores.length === 0
     ? { label: '— da calcolare —', color: 'var(--color-slate-light)', bg: '#f1f5f9' }
     : (() => {
@@ -622,7 +627,7 @@ export function ChangeDetailPage() {
     const inTeam = (tid: string | null) => isAdmin || (!!tid && userTeamIds.has(tid))
     const oOk = inTeam(a.ci.ownerGroup?.id ?? null); const sOk = inTeam(a.ci.supportGroup?.id ?? null)
     if (oOk && a.assessmentOwner   && a.assessmentOwner.status   !== 'completed') return a.assessmentOwner.id
-    if (sOk && a.assessmentSupport && a.assessmentSupport.status !== 'completed') return a.assessmentSupport.id
+    if (sOk && a.assessmentSupport && a.assessmentSupport.status !== TASK_STATUS.COMPLETED) return a.assessmentSupport.id
     if (sOk && a.deployPlan        && a.deployPlan.status        !== 'completed') return a.deployPlan.id
     if (oOk && a.validation        && a.validation.status        !== 'completed') return a.validation.id
     if (sOk && a.deployment        && a.deployment.status        !== 'completed') return a.deployment.id
@@ -747,9 +752,9 @@ export function ChangeDetailPage() {
                   // result). Missing tasks are ignored — the workflow creates
                   // them on entering the corresponding step.
                   const taskDone = (t: { status?: string } | null | undefined) =>
-                    !t || t.status === 'completed'
-                  const validationDone = !a.validation || (a.validation.status === 'completed' && a.validation.result === 'pass')
-                  const reviewDone     = !a.review     || (a.review.status     === 'completed' && a.review.result     === 'confirmed')
+                    !t || t.status === TASK_STATUS.COMPLETED
+                  const validationDone = !a.validation || (a.validation.status === TASK_STATUS.COMPLETED && a.validation.result === VALIDATION_RESULT.PASS)
+                  const reviewDone     = !a.review     || (a.review.status     === TASK_STATUS.COMPLETED && a.review.result     === REVIEW_RESULT.CONFIRMED)
                   const done =
                     taskDone(a.assessmentOwner) &&
                     taskDone(a.assessmentSupport) &&
