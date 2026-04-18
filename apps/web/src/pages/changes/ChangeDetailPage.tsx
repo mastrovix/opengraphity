@@ -6,7 +6,7 @@
 //   - components/PlanModal.tsx          (deploy-plan modal)
 //   - components/AuditTimeline.tsx      (audit filters + timeline)
 // ChangeDetailPage stays as orchestrator (queries + composition).
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
@@ -73,13 +73,13 @@ function StatusLabel({ status }: { status: string | null | undefined }) {
     s === TASK_STATUS.PENDING     ? 'var(--color-danger)' :
     s === 'failed' || s === REVIEW_RESULT.REJECTED ? 'var(--color-danger)' : '#d1d5db'
   const label = s === TASK_STATUS.PENDING ? 'TO BE COMPLETED' : s.replace(/_/g, ' ')
-  return <strong style={{ color, textTransform: 'uppercase' }}>{label}</strong>
+  return <strong title={s} style={{ color, textTransform: 'uppercase' }}>{label}</strong>
 }
 
 function RiskBadge({ score }: { score: number | null | undefined }) {
   if (score == null) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
   const p = score <= 30 ? { bg: '#dcfce7', color: '#15803d', label: 'LOW' } : score <= 60 ? { bg: '#fef3c7', color: '#b45309', label: 'MEDIUM' } : { bg: '#fee2e2', color: '#b91c1c', label: 'HIGH' }
-  return <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: p.bg, color: p.color }}>{p.label} · {score}</span>
+  return <span title={`${p.label} · score ${score}`} style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: p.bg, color: p.color }}>{p.label} · {score}</span>
 }
 
 function fmtDate(iso: string | null | undefined): string { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString() } catch { return iso } }
@@ -100,8 +100,9 @@ function PhaseChipBar({ current, steps }: {
         const labelColor = isCur ? 'var(--color-brand)' : isPast ? 'var(--color-slate-dark)' : 'var(--color-slate-light)'
         const lineColor = isPast ? 'var(--color-brand)' : '#e5e7eb'
 
+        const statusText = isPast ? 'completato' : isCur ? 'corrente' : 'in sospeso'
         return (
-          <div key={p.name} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+          <div key={p.name} title={`${p.label} — ${statusText}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
             {!isLast && (
               <div style={{ position: 'absolute', top: 4, left: '50%', right: '-50%', height: 2, background: lineColor, zIndex: 0 }} />
             )}
@@ -199,12 +200,26 @@ function EyeButton({ onClick }: { onClick: () => void }) {
 }
 
 function ModalOverlay({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  // ESC to close + aria-label on the dialog + focus the first focusable element
+  // on mount. Focus-trap is minimal (browser-default tab order inside the
+  // container).
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    queueMicrotask(() => {
+      const focusable = containerRef.current?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      focusable?.focus()
+    })
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
+    <div role="dialog" aria-modal="true" aria-label={title}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={onClose}>
+      <div ref={containerRef} style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{title}</h3>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
+          <button type="button" onClick={onClose} aria-label="Chiudi" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
         </div>
         {children}
       </div>
@@ -660,7 +675,7 @@ export function ChangeDetailPage() {
           <DetailField label="Titolo" value={change.title} />
           {change.description && <DescriptionField value={change.description} />}
           {change.changeOwner && <DetailField label="Change Owner" value={change.changeOwner.name} />}
-          {change.requester && <DetailField label="Requestor" value={change.requester.name} />}
+          {change.requester && <DetailField label="Requester" value={change.requester.name} />}
           <DetailField label="Creato il" value={fmtDate(change.createdAt)} />
           <DetailField label="Aggiornato il" value={fmtDate(change.updatedAt)} />
         </div>

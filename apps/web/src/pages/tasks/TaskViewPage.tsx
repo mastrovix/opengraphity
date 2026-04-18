@@ -433,7 +433,7 @@ export function TaskViewPage() {
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '0 0 8px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{change.title}</p>
                 {change.description && <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', margin: '0 0 8px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{change.description}</p>}
                 <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
-                  {change.requester && <span>Requestor: <strong style={{ color: 'var(--color-slate)' }}>{change.requester.name}</strong></span>}
+                  {change.requester && <span>Requester: <strong style={{ color: 'var(--color-slate)' }}>{change.requester.name}</strong></span>}
                   {change.changeOwner && <span style={{ marginLeft: 8 }}>Owner: <strong style={{ color: 'var(--color-slate)' }}>{change.changeOwner.name}</strong></span>}
                 </div>
 
