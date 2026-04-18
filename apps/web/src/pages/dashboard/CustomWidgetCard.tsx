@@ -64,19 +64,19 @@ function TypeIcon({ type, color }: { type: string; color: string }) {
 
 function buildBarOption(data: WidgetDataResult, color: string) {
   return {
-    tooltip: { trigger: 'axis', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-body)' } },
+    tooltip: { trigger: 'axis', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-body)' } },
     grid:    { top: 12, right: 12, bottom: 20, left: 40, containLabel: true },
-    xAxis:   { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-table)', color: '#64748b' } },
-    yAxis:   { type: 'value', axisLabel: { fontSize: 'var(--font-size-table)', color: '#64748b' } },
+    xAxis:   { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
+    yAxis:   { type: 'value', axisLabel: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
     series:  [{ type: 'bar', data: data.series.map(s => s.value), itemStyle: { color, borderRadius: [3, 3, 0, 0] } }],
   }
 }
 
 function buildPieOption(data: WidgetDataResult, _color: string, donut = false) {
-  const palette = ['#0EA5E9','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#84cc16']
+  const palette = ['#0EA5E9','#10b981','var(--color-warning)','var(--color-danger)','#8b5cf6','#06b6d4','#84cc16']
   return {
-    tooltip: { trigger: 'item', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-body)' }, formatter: '{b}: {c} ({d}%)' },
-    legend:  { orient: 'horizontal', bottom: 0, textStyle: { fontSize: 'var(--font-size-table)', color: '#64748b' } },
+    tooltip: { trigger: 'item', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-body)' }, formatter: '{b}: {c} ({d}%)' },
+    legend:  { orient: 'horizontal', bottom: 0, textStyle: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
     series:  [{
       type: 'pie', radius: donut ? ['40%', '70%'] : '65%',
       center: ['50%', '45%'],
@@ -89,10 +89,10 @@ function buildPieOption(data: WidgetDataResult, _color: string, donut = false) {
 
 function buildLineOption(data: WidgetDataResult, color: string) {
   return {
-    tooltip: { trigger: 'axis', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-body)' } },
+    tooltip: { trigger: 'axis', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-body)' } },
     grid:    { top: 12, right: 12, bottom: 20, left: 40, containLabel: true },
-    xAxis:   { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-table)', color: '#64748b' } },
-    yAxis:   { type: 'value', axisLabel: { fontSize: 'var(--font-size-table)', color: '#64748b' } },
+    xAxis:   { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
+    yAxis:   { type: 'value', axisLabel: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
     series:  [{
       type: 'line', data: data.series.map(s => s.value),
       smooth: true, lineStyle: { color }, itemStyle: { color },
@@ -167,7 +167,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
           >✏</button>
           <button
             onClick={onRemove}
-            style={{ width: 20, height: 20, border: '1px solid #fca5a5', background: '#fef2f2', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 20, height: 20, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title="Rimuovi widget"
           >×</button>
         </div>
@@ -192,7 +192,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
     return (
       <div style={cardStyle}>
         {header}
-        <div style={{ padding: 16, fontSize: 'var(--font-size-body)', color: '#ef4444' }}>
+        <div style={{ padding: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
           {error?.message ?? 'Errore nel caricamento dati'}
         </div>
       </div>
@@ -226,7 +226,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
         <div style={{ overflow: 'auto', maxHeight: 220 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
+              <tr style={{ background: 'var(--color-slate-bg)' }}>
                 <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--color-slate-light)', fontWeight: 600 }}>Label</th>
                 <th style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--color-slate-light)', fontWeight: 600 }}>Valore</th>
               </tr>

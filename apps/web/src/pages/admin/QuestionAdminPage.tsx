@@ -68,7 +68,7 @@ const labelStyle: React.CSSProperties = {
 
 const CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
   functional: { bg: '#dbeafe', color: '#2563eb' },
-  technical:  { bg: '#dcfce7', color: '#16a34a' },
+  technical:  { bg: '#dcfce7', color: 'var(--color-success)' },
 }
 
 function CategoryBadge({ category }: { category: string }) {

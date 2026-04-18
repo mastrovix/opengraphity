@@ -487,7 +487,7 @@ export function ProblemDetailPage() {
                 <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
               } />
               <DetailField label="Step workflow" value={
-                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', '#f3f4f6'), color: lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', 'var(--color-border-light)'), color: lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                   {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
                 </span>
               } />

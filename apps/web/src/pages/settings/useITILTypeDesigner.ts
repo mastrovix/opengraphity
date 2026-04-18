@@ -183,7 +183,7 @@ export function useITILTypeDesigner() {
     setSettingsForm({
       label:            selectedType.label,
       icon:             selectedType.icon  ?? '',
-      color:            selectedType.color ?? '#0284c7',
+      color:            selectedType.color ?? 'var(--color-trigger-manual)',
       validationScript: selectedType.validationScript ?? '',
     })
   }
@@ -198,7 +198,7 @@ export function useITILTypeDesigner() {
     setSettingsForm({
       label:            itilType.label,
       icon:             itilType.icon  ?? '',
-      color:            itilType.color ?? '#0284c7',
+      color:            itilType.color ?? 'var(--color-trigger-manual)',
       validationScript: itilType.validationScript ?? '',
     })
   }

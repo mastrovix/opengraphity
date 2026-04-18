@@ -35,8 +35,8 @@ interface UserRow {
 }
 
 const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin:    { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
-  operator: { bg: '#eff6ff', color: '#2563eb' },
+  admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
+  operator: { bg: 'var(--color-info-bg)', color: '#2563eb' },
   viewer:   { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' },
 }
 
@@ -122,15 +122,15 @@ export function UsersPage() {
           <PageTitle icon={<User size={22} color="#38bdf8" />}>
             {t('pages.users.title')}
           </PageTitle>
-          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.users.count', { count: total })}
           </p>
         </div>
         <button
           onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
         >
           {t('pages.users.newUser')}
         </button>
@@ -198,7 +198,7 @@ export function UsersPage() {
                         const t = teams.find(x => x.id === tid)
                         if (!t) return null
                         return (
-                          <span key={tid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
+                          <span key={tid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
                             {t.name}{t.type ? ` (${t.type})` : ''}
                             <button type="button" onClick={() => setForm(prev => ({ ...prev, teamIds: prev.teamIds.filter(id => id !== tid) }))}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
@@ -233,7 +233,7 @@ export function UsersPage() {
                             key={t.id}
                             onMouseDown={() => { setForm(prev => ({ ...prev, teamIds: [...new Set([...prev.teamIds, t.id])] })); setTeamSearch('') }}
                             style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-slate-bg)' }}
                             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                           >
                             <Users size={14} color="var(--color-slate-light)" />

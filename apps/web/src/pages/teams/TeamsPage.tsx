@@ -23,8 +23,8 @@ interface Team {
 function TypeBadge({ type }: { type: string | null }) {
   if (!type) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
-    owner:   { bg: '#eff6ff', color: '#2563eb' },
-    support: { bg: '#f0fdf4', color: '#16a34a' },
+    owner:   { bg: 'var(--color-info-bg)', color: '#2563eb' },
+    support: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
   }
   const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
   return (
@@ -91,7 +91,7 @@ export function TeamsPage() {
           <PageTitle icon={<UsersRound size={22} color="#38bdf8" />}>
             {t('pages.teams.title')}
           </PageTitle>
-          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.teams.count', { count: total })}
           </p>
         </div>
@@ -102,7 +102,7 @@ export function TeamsPage() {
             alignItems:      'center',
             gap:             6,
             padding:         '8px 16px',
-            backgroundColor: '#38bdf8',
+            backgroundColor: 'var(--color-brand)',
             color:           '#fff',
             border:          'none',
             borderRadius:    6,

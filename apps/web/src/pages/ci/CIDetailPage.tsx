@@ -410,7 +410,7 @@ export function CIDetailPage() {
                   )}
                   {ci.supportGroup && (
                     <DetailField label="Support Group" value={
-                      <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: '#ecfdf5', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-success-bg)', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
                         {(ci.supportGroup as Team).name}
                       </span>
                     } />
@@ -502,7 +502,7 @@ export function CIDetailPage() {
 
             {/* Delete confirmation */}
             {deleteRel && (
-              <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ padding: '12px 16px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 8, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 'var(--font-size-body)', color: '#991b1b' }}>
                   {t('pages.ci.removeRelation', { relationType: deleteRel.relationType, name: deleteRel.name })}
                 </span>
@@ -515,7 +515,7 @@ export function CIDetailPage() {
                   </button>
                   <button
                     onClick={handleRemoveRelation}
-                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}
+                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer' }}
                   >
                     {t('common.delete')}
                   </button>
@@ -586,7 +586,7 @@ export function CIDetailPage() {
                       />
                       {addRelForm.targetCI && (
                         <div style={{ marginTop: 6, padding: '6px 10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span><strong>{addRelForm.targetCI.name}</strong> <span style={{ color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>({addRelForm.targetCI.type})</span></span>
+                          <span><strong>{addRelForm.targetCI.name}</strong> <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({addRelForm.targetCI.type})</span></span>
                           <button onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: null, search: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><X size={14} color="#94a3b8" /></button>
                         </div>
                       )}
@@ -620,9 +620,9 @@ export function CIDetailPage() {
                     <button
                       onClick={handleAddRelation}
                       disabled={!addRelForm.targetCI}
-                      style={{ padding: '8px 16px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: addRelForm.targetCI ? '#38bdf8' : '#d1d5db', color: '#fff', cursor: addRelForm.targetCI ? 'pointer' : 'default', fontWeight: 500, transition: 'background 150ms' }}
-                      onMouseEnter={e => { if (addRelForm.targetCI) (e.currentTarget as HTMLElement).style.background = '#0ea5e9' }}
-                      onMouseLeave={e => { if (addRelForm.targetCI) (e.currentTarget as HTMLElement).style.background = '#38bdf8' }}
+                      style={{ padding: '8px 16px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: addRelForm.targetCI ? 'var(--color-brand)' : '#d1d5db', color: '#fff', cursor: addRelForm.targetCI ? 'pointer' : 'default', fontWeight: 500, transition: 'background 150ms' }}
+                      onMouseEnter={e => { if (addRelForm.targetCI) (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)' }}
+                      onMouseLeave={e => { if (addRelForm.targetCI) (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)' }}
                     >
                       {t('pages.ci.addRelation')}
                     </button>

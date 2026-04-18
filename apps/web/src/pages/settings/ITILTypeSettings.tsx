@@ -58,7 +58,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
       </FormField>
 
       <FormField label="Validation script (opzionale)">
-        <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
           Variabili: <code>input</code>. Usa <code>throw 'msg'</code> per errore globale.
         </p>
         <textarea

@@ -6,10 +6,10 @@ import { colors, fontSize, fontWeight } from '@/lib/tokens'
 // ── Re-exported from NotificationRulesPage ────────────────────────────────────
 
 export const SEVERITY_COLOR: Record<string, string> = {
-  info:    '#0284c7',
+  info:    'var(--color-trigger-manual)',
   success: '#22c55e',
   warning: '#eab308',
-  error:   '#ef4444',
+  error:   'var(--color-danger)',
 }
 
 const CHANNELS_OPTIONS: { value: string; labelKey: string }[] = [
@@ -118,7 +118,7 @@ export function RuleRow({
       </td>
 
       {/* Event */}
-      <td style={{ padding: '10px 12px', fontSize: fontSize.table, color: '#0f172a', fontWeight: fontWeight.medium }}>
+      <td style={{ padding: '10px 12px', fontSize: fontSize.table, color: 'var(--color-slate-dark)', fontWeight: fontWeight.medium }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {titleLabel}
           {rule.isSeed
@@ -126,7 +126,7 @@ export function RuleRow({
             : <span title={t('notificationRules.customRule',   'Regola personalizzata')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color="#94a3b8" /></span>
           }
         </div>
-        <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
+        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
       </td>
 
       {/* Severity */}
@@ -134,7 +134,7 @@ export function RuleRow({
         <select
           value={rule.severityOverride}
           onChange={(e) => debounce({ severityOverride: e.target.value })}
-          style={{ ...selectStyle, color: SEVERITY_COLOR[rule.severityOverride] ?? '#64748b', fontWeight: fontWeight.medium }}
+          style={{ ...selectStyle, color: SEVERITY_COLOR[rule.severityOverride] ?? 'var(--color-slate)', fontWeight: fontWeight.medium }}
         >
           {SEVERITY_OPTIONS.map((s) => (
             <option key={s} value={s} style={{ color: SEVERITY_COLOR[s] }}>{t(`notificationRules.severity.${s}`)}</option>
@@ -146,7 +146,7 @@ export function RuleRow({
       <td style={{ padding: '10px 12px' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {CHANNELS_OPTIONS.map(({ value, labelKey }) => (
-            <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: '#64748b' }}>
+            <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
               <input
                 type="checkbox"
                 checked={rule.channels.includes(value)}
@@ -161,7 +161,7 @@ export function RuleRow({
 
       {/* Target */}
       <td style={{ padding: '10px 12px', width: 160 }}>
-        <select value={rule.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: '#64748b' }}>
+        <select value={rule.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
           {TARGET_OPTIONS.map(({ value, labelKey }) => (
             <option key={value} value={value}>{t(labelKey)}</option>
           ))}
@@ -176,10 +176,10 @@ export function RuleRow({
             title={t('notificationRules.deleteRule')}
             style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 4,
-              color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--color-slate-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ef4444' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#94a3b8' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-danger)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
           >
             <Trash2 size={14} />
           </button>

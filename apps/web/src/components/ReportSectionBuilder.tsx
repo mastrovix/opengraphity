@@ -476,7 +476,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               )}
             </div>
 
-            <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16 }}>
+            <div style={{ background: 'var(--color-slate-bg)', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16 }}>
               <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Riepilogo</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rootEntry && (

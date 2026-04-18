@@ -115,7 +115,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
                 </div>
                 {/* Bubble */}
                 <div style={{
-                  background: own ? '#e0f2fe' : '#f8fafc', borderRadius: 8,
+                  background: own ? '#e0f2fe' : 'var(--color-slate-bg)', borderRadius: 8,
                   padding: '6px 10px', fontSize: 'var(--font-size-body)',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>

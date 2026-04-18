@@ -163,7 +163,7 @@ function ValueInput({
               fontSize:        11,
               padding:         '2px 8px',
               borderRadius:    4,
-              border:          `1px solid ${selected.includes(opt.value) ? '#0284c7' : '#e2e8f0'}`,
+              border:          `1px solid ${selected.includes(opt.value) ? 'var(--color-trigger-manual)' : '#e2e8f0'}`,
               backgroundColor: selected.includes(opt.value) ? 'rgba(2,132,199,0.1)' : '#fff',
               color:           selected.includes(opt.value) ? 'var(--color-brand)' : 'var(--color-slate)',
               cursor:          'pointer',
@@ -483,11 +483,11 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                         borderRadius:    4,
                         border:          '1px solid #fecaca',
                         backgroundColor: '#fff',
-                        color:           '#ef4444',
+                        color:           'var(--color-danger)',
                         cursor:          'pointer',
                         flexShrink:      0,
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fef2f2' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-danger-bg)' }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fff' }}
                     >
                       <X size={13} />

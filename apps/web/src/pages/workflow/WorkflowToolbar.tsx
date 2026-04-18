@@ -103,7 +103,7 @@ export function WorkflowToolbar({
               normal:    { bg: '#dbeafe', fg: '#1e40af' },
               emergency: { bg: '#fee2e2', fg: '#991b1b' },
             }
-            const s = lookupOrError(subtypeStyles, def.changeSubtype, 'subtypeStyles', { bg: '#ef4444', fg: '#fff' })
+            const s = lookupOrError(subtypeStyles, def.changeSubtype, 'subtypeStyles', { bg: 'var(--color-danger)', fg: '#fff' })
             return (
               <span style={{
                 fontSize: 'var(--font-size-table)', fontWeight: 600, padding: '2px 8px',
@@ -163,9 +163,9 @@ export function WorkflowToolbar({
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}
           onClick={e => { if (e.target === e.currentTarget) setShowAddStep(false) }}>
           <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 380, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
-            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#0f172a' }}>Aggiungi Step</div>
+            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Aggiungi Step</div>
             <div>
-              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>TIPO</div>
+              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>TIPO</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SPECIAL_STEP_TYPES.map(s => (
                   <button key={s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : '#e2e6f0'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : '#fff', color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
@@ -175,12 +175,12 @@ export function WorkflowToolbar({
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>LABEL</div>
+              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>LABEL</div>
               <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder="es. Attesa Timer" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
             </div>
             {stepType === 'timer_wait' && (
               <div>
-                <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>RITARDO (minuti)</div>
+                <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>RITARDO (minuti)</div>
                 <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder="es. 60" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
               </div>
             )}

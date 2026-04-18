@@ -6,11 +6,11 @@ export const C = {
   bg:           '#3d4856',
   border:       '#4f5e70',
   textDefault:  '#e2e8f0',
-  textSection:  '#94a3b8',
-  textChevron:  '#94a3b8',
+  textSection:  'var(--color-slate-light)',
+  textChevron:  'var(--color-slate-light)',
   hoverBg:      'rgba(255,255,255,0.08)',
   activeBg:     'rgba(255,255,255,0.08)',
-  brand:        '#38bdf8',
+  brand:        'var(--color-brand)',
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────

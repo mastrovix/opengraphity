@@ -29,10 +29,10 @@ const inputBase: React.CSSProperties = {
 }
 
 const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: string }> = {
-  critical: { bg: '#fef2f2', border: 'var(--color-danger)', color: 'var(--color-trigger-sla-breach)' },
+  critical: { bg: 'var(--color-danger-bg)', border: 'var(--color-danger)', color: 'var(--color-trigger-sla-breach)' },
   high:     { bg: '#fff7ed', border: 'var(--color-brand)', color: 'var(--color-brand)' },
-  medium:   { bg: '#fefce8', border: 'var(--color-warning)', color: '#b45309' },
-  low:      { bg: '#f0fdf4', border: 'var(--color-success)', color: '#15803d' },
+  medium:   { bg: 'var(--color-warning-bg)', border: 'var(--color-warning)', color: '#b45309' },
+  low:      { bg: 'var(--color-success-bg)', border: 'var(--color-success)', color: '#15803d' },
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ export function CreateIncidentPage() {
 
 
   return (
-    <PageContainer style={{ minHeight: '100%', backgroundColor: '#f8fafc', paddingBottom: '64px' }}>
+    <PageContainer style={{ minHeight: '100%', backgroundColor: 'var(--color-slate-bg)', paddingBottom: '64px' }}>
       <div style={{ maxWidth: 580, margin: '0 auto' }}>
 
         {/* Header */}
@@ -182,7 +182,7 @@ export function CreateIncidentPage() {
                     style={{
                       padding: '7px 16px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                       border: `1.5px solid ${sel ? (c?.border ?? 'var(--color-brand)') : '#e5e7eb'}`,
-                      background: sel ? (c?.bg ?? '#f0f9ff') : '#f8fafc',
+                      background: sel ? (c?.bg ?? '#f0f9ff') : 'var(--color-slate-bg)',
                       color: sel ? (c?.color ?? 'var(--color-brand)') : 'var(--color-slate)',
                       fontWeight: sel ? 600 : 400,
                       transition: 'all 0.15s',
@@ -244,11 +244,11 @@ export function CreateIncidentPage() {
                       key={ci.id}
                       onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
                       style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-slate-bg)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
-                      <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f3f4f6', color: 'var(--color-slate)' }}>
+                      <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
                         {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
                       </span>
                     </div>
@@ -286,7 +286,7 @@ export function CreateIncidentPage() {
             {/* Tag team selezionato */}
             {selectedTeam && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
                   {selectedTeam.name}
                   <button
                     type="button"
@@ -325,7 +325,7 @@ export function CreateIncidentPage() {
                         key={t.id}
                         onMouseDown={() => { setSelectedTeam(t); setTeamSearch(''); setTeamDropdownOpen(false) }}
                         style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-slate-bg)' }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                       >
                         <Users size={14} color="var(--color-slate-light)" />

@@ -226,7 +226,7 @@ export function RichTextEditor({
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
       {/* ── Toolbar ── */}
       {!readOnly && (
-        <div style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '6px 8px', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+        <div style={{ background: 'var(--color-slate-bg)', borderBottom: '1px solid #e2e8f0', padding: '6px 8px', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
           {/* Text formatting */}
           <Btn onClick={() => editor.chain().focus().toggleBold().run()}          active={editor.isActive('bold')}          title="Grassetto (Ctrl+B)"><Bold size={14} /></Btn>
           <Btn onClick={() => editor.chain().focus().toggleItalic().run()}        active={editor.isActive('italic')}        title="Corsivo (Ctrl+I)"><Italic size={14} /></Btn>

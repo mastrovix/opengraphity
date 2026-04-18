@@ -87,7 +87,7 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     }))
 
     const newEdges: Edge[] = def.transitions.map((tr) => {
-      const edgeColor  = lookupOrError(TRIGGER_COLOR, tr.trigger, 'TRIGGER_COLOR', '#ef4444')
+      const edgeColor  = lookupOrError(TRIGGER_COLOR, tr.trigger, 'TRIGGER_COLOR', 'var(--color-danger)')
       const baseKey    = `${tr.fromStepName}→${tr.toStepName}`
       const triggerKey = `${tr.fromStepName}→${tr.toStepName}→${tr.trigger}`
       const isBack     = backTransitions.has(baseKey)

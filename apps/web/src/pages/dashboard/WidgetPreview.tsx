@@ -17,7 +17,7 @@ interface WidgetPreviewProps {
 
 export function WidgetPreview({ widgetType, color, title, previewData, previewLoading, timeRange }: WidgetPreviewProps) {
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', background: '#f8fafc', minWidth: 0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', background: 'var(--color-slate-bg)', minWidth: 0 }}>
       <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: 'var(--color-slate-light)', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 14 }}>
         Anteprima live
       </div>
@@ -107,7 +107,7 @@ function InlinePreview({
       <div style={{ maxHeight: 200, overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
-            <tr style={{ background: '#f8fafc' }}>
+            <tr style={{ background: 'var(--color-slate-bg)' }}>
               <th style={{ padding: '5px 10px', textAlign: 'left', color: 'var(--color-slate-light)', fontWeight: 600 }}>Label</th>
               <th style={{ padding: '5px 10px', textAlign: 'right', color: 'var(--color-slate-light)', fontWeight: 600 }}>Valore</th>
             </tr>
@@ -149,30 +149,30 @@ function EChartsPreview({ widgetType, color, data }: { widgetType: string; color
 
   if (!ReactECharts) return <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento grafico…</div>
 
-  const palette = ['#0EA5E9','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#84cc16']
+  const palette = ['#0EA5E9','#10b981','var(--color-warning)','var(--color-danger)','#8b5cf6','#06b6d4','#84cc16']
 
   let option: object
 
   if (widgetType === 'chart_bar') {
     option = {
-      tooltip: { trigger: 'axis', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-table)' } },
+      tooltip: { trigger: 'axis', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-table)' } },
       grid: { top: 8, right: 8, bottom: 20, left: 36, containLabel: true },
-      xAxis: { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
-      yAxis: { type: 'value', axisLabel: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
+      xAxis: { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' } },
+      yAxis: { type: 'value', axisLabel: { fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' } },
       series: [{ type: 'bar', data: data.series.map(s => s.value), itemStyle: { color, borderRadius: [3,3,0,0] } }],
     }
   } else if (widgetType === 'chart_line') {
     option = {
-      tooltip: { trigger: 'axis', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-table)' } },
+      tooltip: { trigger: 'axis', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-table)' } },
       grid: { top: 8, right: 8, bottom: 20, left: 36, containLabel: true },
-      xAxis: { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
-      yAxis: { type: 'value', axisLabel: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
+      xAxis: { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' } },
+      yAxis: { type: 'value', axisLabel: { fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' } },
       series: [{ type: 'line', data: data.series.map(s => s.value), smooth: true, lineStyle: { color }, itemStyle: { color }, areaStyle: { color: `${color}22` } }],
     }
   } else if (widgetType === 'chart_pie' || widgetType === 'chart_donut') {
     option = {
-      tooltip: { trigger: 'item', backgroundColor: '#1e293b', textStyle: { color: '#f8fafc', fontSize: 'var(--font-size-table)' }, formatter: '{b}: {c} ({d}%)' },
-      legend: { orient: 'horizontal', bottom: 0, textStyle: { fontSize: 'var(--font-size-label)', color: '#64748b' } },
+      tooltip: { trigger: 'item', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-table)' }, formatter: '{b}: {c} ({d}%)' },
+      legend: { orient: 'horizontal', bottom: 0, textStyle: { fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' } },
       series: [{
         type: 'pie', radius: widgetType === 'chart_donut' ? ['38%','65%'] : '60%', center: ['50%','42%'],
         data: data.series.map((s, i) => ({ name: s.label, value: s.value, itemStyle: { color: palette[i % palette.length] } })),

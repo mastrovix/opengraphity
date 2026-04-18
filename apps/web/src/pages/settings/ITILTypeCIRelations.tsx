@@ -28,7 +28,7 @@ export function ITILTypeCIRelations({
     <div>
       {/* Add-relation inline form */}
       {showRelForm ? (
-        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+        <div style={{ background: 'var(--color-slate-bg)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={labelS}>{t('itilDesigner.ciRelations.ciType')} *</label>
@@ -51,7 +51,7 @@ export function ITILTypeCIRelations({
               <datalist id="rel-type-suggestions">
                 {RELATION_SUGGESTIONS.map((s) => <option key={s} value={s} />)}
               </datalist>
-              <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', marginTop: 3 }}>{t('itilDesigner.ciRelations.suggestions')}</div>
+              <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 3 }}>{t('itilDesigner.ciRelations.suggestions')}</div>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -97,7 +97,7 @@ export function ITILTypeCIRelations({
 
       {/* Rules table */}
       {rules.length === 0 ? (
-        <p style={{ color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>{t('itilDesigner.ciRelations.empty')}</p>
+        <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('itilDesigner.ciRelations.empty')}</p>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
@@ -109,7 +109,7 @@ export function ITILTypeCIRelations({
                 t('itilDesigner.ciRelations.description'),
                 '',
               ].map((h) => (
-                <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 'var(--font-size-table)', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -118,17 +118,17 @@ export function ITILTypeCIRelations({
               const ciLabel = ciTypes.find((ct) => ct.name === rule.ciType)?.label ?? rule.ciType
               return (
                 <tr key={rule.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '8px' }}><span style={{ padding: '2px 8px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>{ciLabel}</span></td>
+                  <td style={{ padding: '8px' }}><span style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--color-info-bg)', color: '#2563eb', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>{ciLabel}</span></td>
                   <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{rule.relationType}</td>
                   <td style={{ padding: '8px' }}>
-                    <span style={{ padding: '2px 8px', borderRadius: 4, background: rule.direction === 'outgoing' ? '#f0fdf4' : '#fef9c3', color: rule.direction === 'outgoing' ? '#16a34a' : '#854d0e', fontSize: 'var(--font-size-table)' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 4, background: rule.direction === 'outgoing' ? 'var(--color-success-bg)' : '#fef9c3', color: rule.direction === 'outgoing' ? 'var(--color-success)' : '#854d0e', fontSize: 'var(--font-size-table)' }}>
                       {rule.direction === 'outgoing' ? '\u2192' : '\u2190'} {rule.direction}
                     </span>
                   </td>
-                  <td style={{ padding: '8px', color: '#64748b', fontSize: 'var(--font-size-body)' }}>{rule.description ?? '\u2014'}</td>
+                  <td style={{ padding: '8px', color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{rule.description ?? '\u2014'}</td>
                   <td style={{ padding: '8px' }}>
                     <button
-                      style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', color: '#dc2626', fontSize: 'var(--font-size-body)' }}
+                      style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}
                       onClick={() => onDeleteRule(rule.id)}
                     ><X size={12} /></button>
                   </td>

@@ -109,7 +109,7 @@ function SortableItem({
           </select>
           <button
             onClick={() => onRemove(widget.tempId)}
-            style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid #fca5a5', background: '#fef2f2', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+            style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
           >×</button>
         </div>
         <div style={{ position: 'relative' }}>
@@ -266,7 +266,7 @@ export function DashboardEditMode({
                     <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)' }}>{expandedTemplates.has(template.id) ? '▲' : '▼'}</span>
                   </button>
                   {expandedTemplates.has(template.id) && (
-                    <div style={{ background: '#f9fafb', paddingBottom: 4 }}>
+                    <div style={{ background: 'var(--color-slate-bg)', paddingBottom: 4 }}>
                       {(template.sections ?? []).length === 0 && (
                         <div style={{ padding: '6px 14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessuna sezione</div>
                       )}

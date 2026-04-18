@@ -122,7 +122,7 @@ export function AuditLogPage() {
           <PageTitle icon={<ShieldCheck size={22} color="#38bdf8" />}>
             {t('pages.audit.title')}
           </PageTitle>
-          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} ${t('pages.audit.entries')}`}
           </p>
         </div>
@@ -133,7 +133,7 @@ export function AuditLogPage() {
 
       {/* Error */}
       {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 'var(--font-size-body)', marginBottom: 16 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 16 }}>
           {(error as { graphQLErrors?: Array<{ message: string }> }).graphQLErrors?.[0]?.message ?? error.message}
         </div>
       )}
@@ -162,7 +162,7 @@ export function AuditLogPage() {
         let parsed: unknown
         try { parsed = JSON.parse(entry.details) } catch { parsed = entry.details }
         return (
-          <div style={{ marginTop: 12, padding: 16, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <div style={{ marginTop: 12, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid #e2e8f0' }}>
             <strong style={{ fontSize: 'var(--font-size-body)' }}>{t('pages.audit.details', { action: entry.action })}</strong>
             <pre style={{ marginTop: 8, fontSize: 'var(--font-size-body)', overflowX: 'auto', margin: '8px 0 0 0' }}>
               {JSON.stringify(parsed, null, 2)}

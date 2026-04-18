@@ -65,7 +65,7 @@ export function AppLayout() {
             flex:            1,
             overflowY:       'auto',
             padding:         0,
-            backgroundColor: '#f8fafc',
+            backgroundColor: 'var(--color-slate-bg)',
           }}
         >
           <Outlet />

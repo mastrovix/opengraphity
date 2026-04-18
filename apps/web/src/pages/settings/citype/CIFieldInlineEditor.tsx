@@ -47,7 +47,7 @@ export function CIFieldInlineEditor({
   const selectedEnum = form.enumTypeId ? enumTypes.find((e) => e.id === form.enumTypeId) : null
 
   return (
-    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 8 }}>
+    <div style={{ background: 'var(--color-slate-bg)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 8 }}>
       {/* name + label */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div>
@@ -142,7 +142,7 @@ export function CIFieldInlineEditor({
           </div>
           {scriptTab === 'validation' && (
             <div>
-              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'msg'</code> per errore.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
@@ -152,7 +152,7 @@ export function CIFieldInlineEditor({
           )}
           {scriptTab === 'visibility' && (
             <div>
-              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 Variabili: <code>input</code>. Ritorna <code>true/false</code>.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
@@ -162,7 +162,7 @@ export function CIFieldInlineEditor({
           )}
           {scriptTab === 'default' && (
             <div>
-              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 Variabili: <code>input</code>. Ritorna il valore di default.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}

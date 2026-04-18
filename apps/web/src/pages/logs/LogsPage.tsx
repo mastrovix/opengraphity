@@ -24,9 +24,9 @@ const LEVEL_STYLES: Record<string, React.CSSProperties> = {
   trace:   { backgroundColor: '#f1f5f9', color: 'var(--color-slate-light)' },
   debug:   { backgroundColor: '#f1f5f9', color: 'var(--color-slate-light)' },
   info:    { backgroundColor: 'rgba(2,132,199,0.12)', color: '#2563eb' },
-  warn:    { backgroundColor: '#fff7ed', color: '#d97706' },
-  error:   { backgroundColor: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
-  fatal:   { backgroundColor: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
+  warn:    { backgroundColor: '#fff7ed', color: 'var(--color-trigger-timer)' },
+  error:   { backgroundColor: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
+  fatal:   { backgroundColor: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
 }
 
 const PAGE_SIZE = 50
@@ -156,7 +156,7 @@ export function LogsPage() {
         <PageTitle icon={<ScrollText size={22} color="#38bdf8" />}>
           {t('pages.logs.title')}
         </PageTitle>
-        <p style={{ color: '#0f172a', fontSize: 'var(--font-size-body)', margin: '4px 0 0' }}>
+        <p style={{ color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', margin: '4px 0 0' }}>
           {loading ? '—' : total > 0 ? t('pages.logs.count', { count: total }) : t('common.noResults')}
         </p>
       </div>

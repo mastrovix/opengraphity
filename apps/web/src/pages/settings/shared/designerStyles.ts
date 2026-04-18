@@ -23,7 +23,7 @@ export const labelS: React.CSSProperties = {
 
 export const btnPrimary: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '8px 16px', border: 'none', borderRadius: 6, background: '#38bdf8',
+  padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
   color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
 }
 
@@ -36,7 +36,7 @@ export const btnSecondary: React.CSSProperties = {
 export const btnDanger: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   padding: '4px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: '#ef4444', fontSize: 'var(--font-size-body)', cursor: 'pointer',
+  color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 export const FIELD_TYPES = ['string', 'number', 'date', 'boolean', 'enum'] as const

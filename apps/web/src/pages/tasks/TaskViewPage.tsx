@@ -67,7 +67,7 @@ interface ChangeData { id: string; code: string; title: string; description: str
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 type DotState = 'not_started' | 'in_progress' | 'completed' | 'failed'
-const DOT_COLOR: Record<DotState, string> = { not_started: 'var(--color-slate-light)', in_progress: '#eab308', completed: '#22c55e', failed: '#ef4444' }
+const DOT_COLOR: Record<DotState, string> = { not_started: 'var(--color-slate-light)', in_progress: '#eab308', completed: '#22c55e', failed: 'var(--color-danger)' }
 
 function assessDotState(t: AssessmentTask | null): DotState {
   if (!t) return 'not_started'
@@ -292,7 +292,7 @@ export function TaskViewPage() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '6px 12px', borderRadius: 6,
-                  border: '1px solid #eab308', background: '#fefce8',
+                  border: '1px solid #eab308', background: 'var(--color-warning-bg)',
                   color: '#92400e', fontWeight: 600, cursor: 'pointer',
                   fontSize: 'var(--font-size-body)',
                 }}
@@ -316,7 +316,7 @@ export function TaskViewPage() {
             const teamUsers = getTeamUsers(teamId)
             const canAssign = canEdit && t.status !== TASK_STATUS.COMPLETED
             return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '10px 14px', background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid #e5e7eb' }}>
                 <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
                   Team: {t.assignedTeam?.name ?? '—'}
                 </span>
@@ -621,7 +621,7 @@ function DeployPlanForm({ task, canEdit, onSave, onComplete }: {
   return (
     <div>
       {steps.map((s, i) => (
-        <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 14, marginBottom: 10, background: '#f8fafc' }}>
+        <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 14, marginBottom: 10, background: 'var(--color-slate-bg)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <span style={labelStyle}>Step {i + 1}</span>
             {canEdit && !completed && <button type="button" onClick={() => { setSteps(p => p.filter((_, j) => j !== i)); mark() }} style={{ background: 'none', border: '1px solid #fecaca', color: 'var(--color-danger)', cursor: 'pointer', padding: 4, borderRadius: 4 }}><X size={12} /></button>}

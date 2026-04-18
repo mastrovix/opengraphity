@@ -19,10 +19,10 @@ interface Incident {
 }
 
 const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
-  critical: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
-  high:     { bg: '#fef2f2', color: 'var(--color-brand)' },
-  medium:   { bg: '#fffbeb', color: 'var(--color-warning)' },
-  low:      { bg: '#ecfdf5', color: 'var(--color-success)' },
+  critical: { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
+  high:     { bg: 'var(--color-danger-bg)', color: 'var(--color-brand)' },
+  medium:   { bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
+  low:      { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
 }
 
 function SeverityBadge({ severity }: { severity: string }) {

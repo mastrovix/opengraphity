@@ -108,13 +108,13 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
           <input ref={fileRef} type="file" accept={accept} style={{ display: 'none' }} onChange={handleInputChange} />
 
           {fileName ? (
-            <div style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, background: '#f9fafb' }}>
+            <div style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, background: 'var(--color-slate-bg)' }}>
               <div>
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: '#111827' }}>{fileName}</div>
                 {fileSize != null && <div style={{ fontSize: 'var(--font-size-table)', color: '#6b7280', marginTop: 2 }}>{formatBytes(fileSize)}</div>}
               </div>
               <button type="button" onClick={handleRemove}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', fontWeight: 500, border: '1px solid #fca5a5', borderRadius: 6, background: '#fff', color: '#dc2626', cursor: 'pointer' }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', fontWeight: 500, border: '1px solid #fca5a5', borderRadius: 6, background: '#fff', color: 'var(--color-trigger-sla-breach)', cursor: 'pointer' }}>
                 <X size={12} /> {t('pages.sync.fileRemove')}
               </button>
             </div>
@@ -124,7 +124,7 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
               onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#2563eb' }}
               onDragLeave={e => { e.currentTarget.style.borderColor = '#d1d5db' }}
               onDrop={handleDrop}
-              style={{ border: '2px dashed #d1d5db', borderRadius: 8, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: '#f9fafb', marginBottom: 8, transition: 'border-color 0.15s' }}
+              style={{ border: '2px dashed #d1d5db', borderRadius: 8, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: 'var(--color-slate-bg)', marginBottom: 8, transition: 'border-color 0.15s' }}
             >
               <Upload size={20} style={{ color: '#9ca3af', margin: '0 auto 8px', display: 'block' }} />
               <div style={{ fontSize: 'var(--font-size-body)', color: '#374151' }}>
@@ -223,7 +223,7 @@ export function SyncSourcesTab({
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <button
           onClick={() => setShowCreate(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
           <Plus size={14} />Add Source
         </button>
@@ -241,8 +241,8 @@ export function SyncSourcesTab({
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: '#111827' }}>{s.name}</span>
-                <span style={{ fontSize: 'var(--font-size-table)', color: '#6b7280', background: '#f3f4f6', borderRadius: 4, padding: '2px 6px' }}>{s.connectorType}</span>
-                <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? '#16a34a' : '#6b7280' }}>{s.enabled ? 'enabled' : 'disabled'}</span>
+                <span style={{ fontSize: 'var(--font-size-table)', color: '#6b7280', background: 'var(--color-border-light)', borderRadius: 4, padding: '2px 6px' }}>{s.connectorType}</span>
+                <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? 'var(--color-success)' : '#6b7280' }}>{s.enabled ? 'enabled' : 'disabled'}</span>
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280', marginTop: 2 }}>
                 Last sync: {formatDate(s.lastSyncAt)}
@@ -255,7 +255,7 @@ export function SyncSourcesTab({
               <button onClick={() => onTestConnection(s.id)}  style={btnStyle('#fff', '#374151')}>Test</button>
               <button onClick={() => openSchedule(s)}         style={btnStyle('#fff', '#7c3aed')}><Clock size={12} />Schedule</button>
               <button onClick={() => onTriggerSync(s.id)}     style={btnStyle('#2563eb', '#fff')}><Play size={12} />Sync Now</button>
-              <button onClick={() => onDeleteSource(s.id)}    style={btnStyle('#fff', '#dc2626')}><Trash2 size={12} /></button>
+              <button onClick={() => onDeleteSource(s.id)}    style={btnStyle('#fff', 'var(--color-trigger-sla-breach)')}><Trash2 size={12} /></button>
             </div>
           </div>
         ))}
@@ -309,7 +309,7 @@ export function SyncSourcesTab({
                       <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', margin: '16px 0 8px', color: '#374151' }}>Credentials</div>
                       {selectedConnector.credentialFields.map(f => (
                         <div key={f.name}>
-                          <label style={labelStyle}>{f.label}{f.required && <span style={{ color: '#dc2626' }}>*</span>}</label>
+                          <label style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
                           <input
                             style={inputStyle}
                             type={f.type === 'password' ? 'password' : 'text'}
@@ -328,7 +328,7 @@ export function SyncSourcesTab({
                       <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', margin: '16px 0 8px', color: '#374151' }}>Configuration</div>
                       {selectedConnector.configFields.map(f => (
                         <div key={f.name}>
-                          <label style={labelStyle}>{f.label}{f.required && <span style={{ color: '#dc2626' }}>*</span>}</label>
+                          <label style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
                           {f.options ? (
                             <select style={inputStyle} value={form[f.name] ?? f.defaultValue ?? ''} onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}>
                               {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}

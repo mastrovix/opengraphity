@@ -30,10 +30,10 @@ function entityPath(notif: InAppNotification): string | null {
 // ── Severity icon ─────────────────────────────────────────────────────────────
 
 const SEVERITY_ICON: Record<string, { icon: React.FC<{ size: number; color: string }>; color: string }> = {
-  error:   { icon: AlertTriangle, color: '#ef4444' },
-  warning: { icon: Clock,         color: '#f59e0b' },
+  error:   { icon: AlertTriangle, color: 'var(--color-danger)' },
+  warning: { icon: Clock,         color: 'var(--color-warning)' },
   success: { icon: Shield,        color: '#22c55e' },
-  info:    { icon: Bell,          color: '#0284c7' },
+  info:    { icon: Bell,          color: 'var(--color-trigger-manual)' },
 }
 
 function entityIcon(notif: InAppNotification) {
@@ -71,7 +71,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
         borderBottom:    '1px solid #f1f5f9',
         transition:      'background 0.15s',
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#f8fafc' }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--color-slate-bg)' }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = notif.read ? '#ffffff' : '#f0f9ff' }}
     >
       {/* Icon */}
@@ -84,7 +84,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
         <div style={{
           fontSize:    13,
           fontWeight:  notif.read ? 400 : 600,
-          color:       '#0f172a',
+          color:       'var(--color-slate-dark)',
           marginBottom: 2,
           whiteSpace:  'nowrap',
           overflow:    'hidden',
@@ -94,7 +94,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
         </div>
         <div style={{
           fontSize:    12,
-          color:       '#64748b',
+          color:       'var(--color-slate)',
           whiteSpace:  'nowrap',
           overflow:    'hidden',
           textOverflow:'ellipsis',
@@ -105,7 +105,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
 
       {/* Timestamp + unread dot */}
       <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-        <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
           {timeAgo(notif.timestamp, t)}
         </span>
         {!notif.read && (
@@ -113,7 +113,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
             width:           6,
             height:          6,
             borderRadius:    '50%',
-            backgroundColor: '#0284c7',
+            backgroundColor: 'var(--color-trigger-manual)',
           }} />
         )}
       </div>
@@ -171,7 +171,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         borderBottom:   '1px solid #f1f5f9',
         flexShrink:     0,
       }}>
-        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#0f172a' }}>
+        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
           {t('notifications.title')}
         </span>
         {notifications.length > 0 && (
@@ -182,7 +182,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
               alignItems:      'center',
               gap:             4,
               fontSize:        12,
-              color:           '#0284c7',
+              color:           'var(--color-trigger-manual)',
               background:      'none',
               border:          'none',
               cursor:          'pointer',
@@ -206,7 +206,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
             justifyContent: 'center',
             padding:        '32px 16px',
             gap:            8,
-            color:          '#94a3b8',
+            color:          'var(--color-slate-light)',
           }}>
             <Bell size={24} color="#cbd5e1" />
             <span style={{ fontSize: 'var(--font-size-body)' }}>{t('notifications.empty')}</span>

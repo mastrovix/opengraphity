@@ -57,15 +57,15 @@ export function SyncHistoryTab({
                   {r.durationMs != null && <span style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>({formatMs(r.durationMs)})</span>}
                 </div>
                 <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280', display: 'flex', gap: 12 }}>
-                  <span style={{ color: '#16a34a' }}>+{r.ciCreated}</span>
+                  <span style={{ color: 'var(--color-success)' }}>+{r.ciCreated}</span>
                   <span style={{ color: '#2563eb' }}>~{r.ciUpdated}</span>
                   <span>={r.ciUnchanged}</span>
                   {r.ciStale > 0    && <span style={{ color: '#ca8a04' }}>stale:{r.ciStale}</span>}
-                  {r.ciConflicts > 0 && <span style={{ color: '#dc2626' }}>conflict:{r.ciConflicts}</span>}
+                  {r.ciConflicts > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>conflict:{r.ciConflicts}</span>}
                 </div>
               </div>
               {r.errorMessage && (
-                <div style={{ fontSize: 'var(--font-size-body)', color: '#dc2626', marginTop: 4, padding: '4px 8px', background: '#fef2f2', borderRadius: 4 }}>
+                <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', marginTop: 4, padding: '4px 8px', background: 'var(--color-danger-bg)', borderRadius: 4 }}>
                   {r.errorMessage}
                 </div>
               )}

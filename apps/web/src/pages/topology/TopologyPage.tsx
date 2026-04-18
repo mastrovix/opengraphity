@@ -252,7 +252,7 @@ export function TopologyPage() {
                 Topology Map
               </div>
               <div style={{
-                fontSize: 'var(--font-size-card-title)', color: '#94a3b8',
+                fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-light)',
                 fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
                 textAlign: 'center',
               }}>
@@ -317,7 +317,7 @@ export function TopologyPage() {
                 · profondità: {maxHops !== null ? `${maxHops} hop` : 'tutti'}
               </span>
             )}
-            {totalIncident > 0 && <span style={{ color: '#dc2626', marginLeft: 8 }}>{totalIncident} incident attivi</span>}
+            {totalIncident > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 8 }}>{totalIncident} incident attivi</span>}
             {totalChange   > 0 && <span style={{ color: '#8b5cf6', marginLeft: 8 }}>{totalChange} change in corso</span>}
           </div>
         </div>
@@ -374,7 +374,7 @@ export function TopologyPage() {
                   <button
                     onClick={() => navigate(`/incidents?ci=${selectedNode.id}`)}
                     style={{
-                      fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#dc2626',
+                      fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)',
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
                     }}
                   >
@@ -526,7 +526,7 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
               color: 'var(--color-slate-light)',
               borderBottom: '1px solid #f1f5f9',
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#f8fafc' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-slate-bg)' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
             — Tutti —
@@ -547,12 +547,12 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
                 fontWeight: o.id === value ? 600 : 400,
                 display:    'flex', alignItems: 'center', justifyContent: 'space-between',
               }}
-              onMouseEnter={(e) => { if (o.id !== value) (e.currentTarget as HTMLElement).style.background = '#f8fafc' }}
+              onMouseEnter={(e) => { if (o.id !== value) (e.currentTarget as HTMLElement).style.background = 'var(--color-slate-bg)' }}
               onMouseLeave={(e) => { if (o.id !== value) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
               <span>{o.name}</span>
               {o.incidentCount > 0 && (
-                <span style={{ fontSize: 'var(--font-size-label)', color: '#dc2626', fontWeight: 600 }}>
+                <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-trigger-sla-breach)', fontWeight: 600 }}>
                   {o.incidentCount} INC
                 </span>
               )}
@@ -570,7 +570,7 @@ function StatusBadge({ status }: { status: string }) {
     inactive:    { bg: '#fee2e2', color: '#991b1b' },
     maintenance: { bg: '#fef9c3', color: '#854d0e' },
   }
-  const s = map[status] ?? { bg: '#f1f5f9', color: '#64748b' }
+  const s = map[status] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
   return (
     <span style={{
       fontSize: 'var(--font-size-body)', fontWeight: 600,

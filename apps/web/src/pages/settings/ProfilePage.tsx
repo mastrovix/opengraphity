@@ -101,7 +101,7 @@ export default function ProfilePage() {
               alignItems:   'center',
               gap:          8,
               padding:      '10px 14px',
-              background:   '#f0fdf4',
+              background:   'var(--color-success-bg)',
               border:       '1px solid #bbf7d0',
               borderRadius: 6,
               marginBottom: 12,

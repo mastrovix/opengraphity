@@ -14,7 +14,7 @@ export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewP
     name:             selectedType.name,
     label:            selectedType.label,
     icon:             selectedType.icon  || '',
-    color:            selectedType.color || '#0284c7',
+    color:            selectedType.color || 'var(--color-trigger-manual)',
     active:           selectedType.active,
     validationScript: selectedType.validationScript ?? null,
     chainFamilies:    ['Application', 'Infrastructure'],
@@ -31,11 +31,11 @@ export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewP
 
   return (
     <div style={{ maxWidth: 520 }}>
-      <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', marginBottom: 16 }}>
+      <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16 }}>
         Anteprima del form — tutti i campi visibili.
       </p>
       {selectedType.fields.length === 0
-        ? <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>Nessun campo. Aggiungi campi nella tab "Campi".</p>
+        ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun campo. Aggiungi campi nella tab "Campi".</p>
         : <CIDynamicForm
             ciType={previewType}
             onSubmit={async () => { toast.info('Preview — nessun dato salvato') }}

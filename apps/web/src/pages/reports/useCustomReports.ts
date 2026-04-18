@@ -42,7 +42,7 @@ export const VIS_LABELS: Record<string, string> = { private: 'Privato', groups: 
 export const VIS_COLORS: Record<string, { bg: string; fg: string }> = {
   all:     { bg: '#dcfce7', fg: '#15803d' },
   groups:  { bg: '#fef3c7', fg: '#92400e' },
-  private: { bg: '#f3f4f6', fg: 'var(--color-slate)' },
+  private: { bg: 'var(--color-border-light)', fg: 'var(--color-slate)' },
 }
 
 const GET_CHANNELS_SLIM = gql`query GetChannelsSlim { notificationChannels { id name platform } }`

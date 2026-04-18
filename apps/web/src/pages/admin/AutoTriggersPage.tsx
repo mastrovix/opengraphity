@@ -219,7 +219,7 @@ export function AutoTriggersPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<Zap size={22} color="#38bdf8" />}>Auto Trigger</PageTitle>
-          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${triggers.length} trigger`}
           </p>
         </div>

@@ -62,7 +62,7 @@ const CATEGORIES: { key: string; events: string[] }[] = [
 
 const TH: React.CSSProperties = {
   padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-table)',
-  fontWeight: fontWeight.semibold, color: '#94a3b8',
+  fontWeight: fontWeight.semibold, color: 'var(--color-slate-light)',
   textTransform: 'uppercase', letterSpacing: '0.06em',
 }
 
@@ -113,7 +113,7 @@ export default function NotificationRulesPage() {
   const customRules = allRules.filter((r) => !STANDARD_EVENTS.includes(r.eventType))
 
   const tableHeader = (
-    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+    <tr style={{ background: 'var(--color-slate-bg)', borderBottom: '1px solid #e2e8f0' }}>
       <th style={{ ...TH, width: 52 }}>{t('notificationRules.enabled')}</th>
       <th style={TH}>{t('notificationRules.event')}</th>
       <th style={{ ...TH, width: 120 }}>{t('notificationRules.header.severity')}</th>
@@ -131,7 +131,7 @@ export default function NotificationRulesPage() {
           <PageTitle icon={<Bell size={22} color="#38bdf8" />}>
             {t('notificationRules.title')}
           </PageTitle>
-          <p style={{ fontSize: fontSize.body, color: '#64748b', margin: 0 }}>
+          <p style={{ fontSize: fontSize.body, color: 'var(--color-slate)', margin: 0 }}>
             {t('notificationRules.description')}
           </p>
         </div>
@@ -139,7 +139,7 @@ export default function NotificationRulesPage() {
           onClick={() => setShowDialog(true)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff',
+            padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff',
             border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500,
             cursor: 'pointer', transition: 'background-color 150ms',
           }}
@@ -150,7 +150,7 @@ export default function NotificationRulesPage() {
       </div>
 
       {loading && !data ? (
-        <div style={{ color: '#94a3b8', fontSize: fontSize.body }}>{t('common.loading', 'Caricamento…')}</div>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: fontSize.body }}>{t('common.loading', 'Caricamento…')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           {CATEGORIES.map(({ key, events }) => {
@@ -160,7 +160,7 @@ export default function NotificationRulesPage() {
               <section key={key}>
                 <h2 style={{
                   fontSize: fontSize.sectionTitle, fontWeight: fontWeight.semibold,
-                  color: '#0f172a', margin: '0 0 10px', paddingBottom: 8,
+                  color: 'var(--color-slate-dark)', margin: '0 0 10px', paddingBottom: 8,
                   borderBottom: '2px solid #e2e8f0',
                 }}>
                   {t(`notificationRules.category.${key.toLowerCase()}`, key)}
@@ -184,7 +184,7 @@ export default function NotificationRulesPage() {
             <section>
               <h2 style={{
                 fontSize: fontSize.sectionTitle, fontWeight: fontWeight.semibold,
-                color: '#0f172a', margin: '0 0 10px', paddingBottom: 8,
+                color: 'var(--color-slate-dark)', margin: '0 0 10px', paddingBottom: 8,
                 borderBottom: '2px solid #e2e8f0',
               }}>
                 {t('notificationRules.category.custom', 'Custom')}

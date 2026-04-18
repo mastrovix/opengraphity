@@ -39,8 +39,8 @@ interface UserData {
 // ── Badges ────────────────────────────────────────────────────────────────────
 
 const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin:    { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
-  operator: { bg: '#eff6ff', color: '#2563eb' },
+  admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
+  operator: { bg: 'var(--color-info-bg)', color: '#2563eb' },
   viewer:   { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' },
 }
 
@@ -135,8 +135,8 @@ export function UserDetailPage() {
                         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', cursor: 'pointer' }} onClick={() => navigate(`/teams/${t.id}`)}>{t.name}</span>
                         {t.type && (
                           <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, fontWeight: 600,
-                            background: t.type === 'support' ? '#f0fdf4' : t.type === 'owner' ? '#eff6ff' : '#f8fafc',
-                            color: t.type === 'support' ? '#16a34a' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)',
+                            background: t.type === 'support' ? 'var(--color-success-bg)' : t.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)',
+                            color: t.type === 'support' ? 'var(--color-success)' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)',
                           }}>{t.type}</span>
                         )}
                       </div>
@@ -145,7 +145,7 @@ export function UserDetailPage() {
                       onClick={() => updateTeams({ variables: { userId: user.id, teamIds: userTeamIds.filter(tid => tid !== t.id) } })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
                       title="Rimuovi dal team"
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#fef2f2' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                     >
                       <X size={14} color="#ef4444" />
@@ -165,7 +165,7 @@ export function UserDetailPage() {
               </button>
             ) : (
               <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 8 }}>
-                <div style={{ padding: '6px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '6px 12px', background: 'var(--color-slate-bg)', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Team disponibili</span>
                   <button onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>Chiudi</button>
                 </div>
@@ -185,8 +185,8 @@ export function UserDetailPage() {
                         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
                         {t.type && (
                           <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, fontWeight: 600,
-                            background: t.type === 'support' ? '#f0fdf4' : t.type === 'owner' ? '#eff6ff' : '#f8fafc',
-                            color: t.type === 'support' ? '#16a34a' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)',
+                            background: t.type === 'support' ? 'var(--color-success-bg)' : t.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)',
+                            color: t.type === 'support' ? 'var(--color-success)' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)',
                           }}>{t.type}</span>
                         )}
                       </div>

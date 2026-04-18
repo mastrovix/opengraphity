@@ -139,7 +139,7 @@ const ACCENT_COLOR = colors.brand
 const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: NodeProps) {
   const { step, accentColor } = data as StepNodeData
   const [hovered, setHovered] = useState(false)
-  const bg = lookupOrError(STEP_BG, step.type, 'STEP_BG', '#ef4444')
+  const bg = lookupOrError(STEP_BG, step.type, 'STEP_BG', 'var(--color-danger)')
 
   return (
     <div
@@ -346,7 +346,7 @@ export function WorkflowCanvas({
             position="bottom-right"
             nodeColor={(n) => {
               const step = (n.data as StepNodeData | undefined)?.step
-              return lookupOrError(STEP_BG, step?.type ?? 'standard', 'STEP_BG', '#ef4444')
+              return lookupOrError(STEP_BG, step?.type ?? 'standard', 'STEP_BG', 'var(--color-danger)')
             }}
             style={{ border: '1px solid #e2e6f0', borderRadius: 8 }}
           />

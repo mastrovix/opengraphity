@@ -18,12 +18,12 @@ interface ServiceRequest {
   assignee: { id: string; name: string; email: string } | null
 }
 
-const PRIORITY_COLOR: Record<string, string> = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#22c55e' }
+const PRIORITY_COLOR: Record<string, string> = { critical: 'var(--color-danger)', high: '#f97316', medium: '#eab308', low: '#22c55e' }
 const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
   open:        { bg: '#dbeafe', fg: '#1d4ed8' },
   in_progress: { bg: '#fef3c7', fg: '#92400e' },
   completed:   { bg: '#d1fae5', fg: '#065f46' },
-  cancelled:   { bg: '#f3f4f6', fg: '#6b7280' },
+  cancelled:   { bg: 'var(--color-border-light)', fg: '#6b7280' },
 }
 
 function timeAgo(iso: string): string {
@@ -50,7 +50,7 @@ export function ServiceRequestDetailPage() {
     </PageContainer>
   )
 
-  const stColor = lookupOrError(STATUS_COLOR, sr.status, 'STATUS_COLOR', { bg: '#f3f4f6', fg: '#6b7280' })
+  const stColor = lookupOrError(STATUS_COLOR, sr.status, 'STATUS_COLOR', { bg: 'var(--color-border-light)', fg: '#6b7280' })
 
   return (
     <PageContainer>

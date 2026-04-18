@@ -27,7 +27,7 @@ function FieldEditor({
     setForm((f) => ({ ...f, [key]: val }))
 
   return (
-    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 8 }}>
+    <div style={{ background: 'var(--color-slate-bg)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 8 }}>
       {/* name + label */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div>
@@ -119,7 +119,7 @@ function FieldEditor({
           </div>
           {scriptTab === 'validation' && (
             <div>
-              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'msg'</code> per errore.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
@@ -129,7 +129,7 @@ function FieldEditor({
           )}
           {scriptTab === 'visibility' && (
             <div>
-              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 Variabili: <code>input</code>. Ritorna <code>true/false</code>.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
@@ -139,7 +139,7 @@ function FieldEditor({
           )}
           {scriptTab === 'default' && (
             <div>
-              <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 Variabili: <code>input</code>. Ritorna il valore di default.
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
@@ -201,7 +201,7 @@ export function ITILTypeFields({
       {/* System fields */}
       {systemFields.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em', marginBottom: 8 }}>
             CAMPI DI SISTEMA ({systemFields.length}) — non modificabili
           </div>
           {systemFields.map((f) => (
@@ -231,7 +231,7 @@ export function ITILTypeFields({
       {/* Custom fields */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em' }}>
+          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>
             CAMPI PERSONALIZZATI ({customFields.length})
           </div>
           <button
@@ -264,7 +264,7 @@ export function ITILTypeFields({
           )
         ))}
         {customFields.length === 0 && !addingField && (
-          <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
+          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
             Nessun campo personalizzato. Clicca "+ Aggiungi campo" per aggiungerne uno.
           </div>
         )}

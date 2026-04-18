@@ -51,8 +51,8 @@ interface Team {
 function TypeBadge({ type }: { type: string | null }) {
   if (!type) return <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
-    owner:   { bg: '#eff6ff', color: '#2563eb' },
-    support: { bg: '#f0fdf4', color: '#16a34a' },
+    owner:   { bg: 'var(--color-info-bg)', color: '#2563eb' },
+    support: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
   }
   const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
   return (
@@ -83,7 +83,7 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
             key={ci.id}
             onClick={() => onRowClick(ci)}
             style={{ cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8f9fc' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-slate-bg)' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
           >
             <td style={{ padding: '8px 8px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{ci.name}</td>
@@ -164,7 +164,7 @@ export function TeamDetailPage() {
                     onClick={() => removeManager({ variables: { teamId: team.id } })}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', borderRadius: 4 }}
                     title="Rimuovi manager"
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#fef2f2' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                   >
                     <X size={12} color="#ef4444" />
@@ -203,7 +203,7 @@ export function TeamDetailPage() {
 
                 {/* Confirmation banner */}
                 {pendingManagerUser && (
-                  <div style={{ padding: '12px 20px', background: '#fffbeb', borderBottom: '1px solid #fbbf24' }}>
+                  <div style={{ padding: '12px 20px', background: 'var(--color-warning-bg)', borderBottom: '1px solid #fbbf24' }}>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginBottom: 10 }}>
                       Il manager attuale <strong>{team.manager?.name}</strong> verrà sostituito da <strong>{pendingManagerUser.name}</strong>. Confermi?
                     </div>

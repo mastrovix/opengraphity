@@ -142,7 +142,7 @@ export function ProblemCIList({
                               </select>
                             )}
                             {relTypes.length === 1 && (
-                              <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
+                              <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: 'var(--color-info-bg)', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
                             )}
                             <button onClick={() => handleAdd(ci)}
                               style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>+</button>

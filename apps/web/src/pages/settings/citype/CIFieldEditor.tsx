@@ -15,7 +15,7 @@ export { btnPrimary, btnSecondary } from '../shared/designerStyles'
 export const btnDanger: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   padding: '4px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: '#ef4444', fontSize: 'var(--font-size-body)', cursor: 'pointer',
+  color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -156,7 +156,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
           {(['validation', 'visibility', 'default'] as const).map((tab) => (
             <button key={tab} onClick={() => setScriptTab(tab)}
               style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                background: scriptTab === tab ? 'var(--color-brand-light)' : '#f9fafb',
+                background: scriptTab === tab ? 'var(--color-brand-light)' : 'var(--color-slate-bg)',
                 color: scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
                 fontWeight: scriptTab === tab ? 600 : 400 }}>
               {tab}Script
@@ -166,7 +166,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
 
         {scriptTab === 'validation' && (
           <div>
-            <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'messaggio'</code> per errore.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.validationScript}
@@ -176,7 +176,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
         )}
         {scriptTab === 'visibility' && (
           <div>
-            <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               Variabili: <code>input</code>. Ritorna <code>true/false</code>.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.visibilityScript}
@@ -186,7 +186,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
         )}
         {scriptTab === 'default' && (
           <div>
-            <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               Variabili: <code>input</code>. Ritorna il valore di default.
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.defaultScript}

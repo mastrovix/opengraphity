@@ -48,7 +48,7 @@ const btnSecondary: React.CSSProperties = {
 const btnDanger: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: '#ef4444', fontSize: 'var(--font-size-body)', cursor: 'pointer',
+  color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 // ── CreateEnumDialog ──────────────────────────────────────────────────────────
@@ -218,7 +218,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
 
       {e.isSystem && (
         <p style={{
-          fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: '#f8fafc',
+          fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'var(--color-slate-bg)',
           padding: '10px 14px', borderRadius: 6, margin: 0,
         }}>
           {t('pages.dictionary.systemNote')}
@@ -230,7 +230,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
         <label htmlFor="editor-name" style={labelS}>{t('pages.dictionary.nameLabel')}</label>
         <input
           id="editor-name"
-          style={{ ...inputS, background: '#f8fafc', color: '#8892a4' }}
+          style={{ ...inputS, background: 'var(--color-slate-bg)', color: '#8892a4' }}
           value={e.name}
           readOnly
         />
@@ -252,7 +252,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
         <label htmlFor="editor-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
         <select
           id="editor-scope"
-          style={{ ...inputS, ...(e.isSystem ? { background: '#f8fafc', color: '#8892a4' } : {}) }}
+          style={{ ...inputS, ...(e.isSystem ? { background: 'var(--color-slate-bg)', color: '#8892a4' } : {}) }}
           value={scope}
           onChange={(ev) => setDirtyScope(ev.target.value)}
           disabled={e.isSystem}
@@ -329,7 +329,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
               </button>
             ) : (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 'var(--font-size-body)', color: '#ef4444' }}>{t('pages.dictionary.confirmDelete')}</span>
+                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>{t('pages.dictionary.confirmDelete')}</span>
                 <button
                   type="button"
                   style={{ ...btnDanger, fontWeight: 600 }}
@@ -420,7 +420,7 @@ export function EnumDesignerPage() {
                 <div style={{
                   padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600,
                   textTransform: 'uppercase', letterSpacing: '0.06em',
-                  color: '#94a3b8', background: '#f9fafb',
+                  color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)',
                   borderBottom: '1px solid #f3f4f6',
                 }}>
                   {groupName}
@@ -446,7 +446,7 @@ export function EnumDesignerPage() {
                     <span style={{ flex: 1, fontSize: 'var(--font-size-body)', fontWeight: selectedId === e.id ? 600 : 500, color: selectedId === e.id ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {e.label}
                     </span>
-                    <span style={{ fontSize: 'var(--font-size-label)', color: '#94a3b8', flexShrink: 0 }}>
+                    <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>
                       {e.values.length}
                     </span>
                   </button>
@@ -467,7 +467,7 @@ export function EnumDesignerPage() {
           ) : (
             <div style={{
               background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
-              padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 'var(--font-size-body)',
+              padding: 40, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)',
             }}>
               {t('common.noResults')}
             </div>

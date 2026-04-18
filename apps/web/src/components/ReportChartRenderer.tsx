@@ -6,7 +6,7 @@ import { BarChart2 } from 'lucide-react'
 const COLORS = [
   'var(--color-brand)', '#0891b2', 'var(--color-trigger-automatic)',
   'var(--color-trigger-timer)', 'var(--color-trigger-sla-breach)', '#7c3aed',
-  'var(--color-brand)', '#16a34a', 'var(--color-brand)',
+  'var(--color-brand)', 'var(--color-success)', 'var(--color-brand)',
   '#0d9488',
 ]
 
@@ -14,7 +14,7 @@ const COLORS = [
 
 const BASE_TOOLTIP = {
   trigger: 'item' as const,
-  backgroundColor: '#1e293b',
+  backgroundColor: 'var(--color-slate-dark)',
   borderColor: '#334155',
   borderWidth: 1,
   textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" },
@@ -116,7 +116,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
         graphic: [
           {
             type: 'text', left: 'center', top: '40%',
-            style: { text: total.toLocaleString('it-IT'), fontSize: 'var(--font-size-page-title)', fontWeight: 700, fill: '#1e293b' },
+            style: { text: total.toLocaleString('it-IT'), fontSize: 'var(--font-size-page-title)', fontWeight: 700, fill: 'var(--color-slate-dark)' },
           },
           {
             type: 'text', left: 'center', top: '50%',
@@ -301,7 +301,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
                   {(row as unknown[]).map((cell, j) => (
                     <td key={j} style={{
                       padding: '10px 14px', fontSize: 'var(--font-size-card-title)',
-                      color: j === 0 ? '#1e293b' : 'var(--color-slate)',
+                      color: j === 0 ? 'var(--color-slate-dark)' : 'var(--color-slate)',
                       fontWeight: j === 0 ? 500 : 400,
                     }}>
                       {String(cell ?? '—')}

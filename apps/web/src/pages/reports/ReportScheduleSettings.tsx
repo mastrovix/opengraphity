@@ -91,7 +91,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
           </div>
         )}
 
-        <div style={{ marginBottom: 20, padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+        <div style={{ marginBottom: 20, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid #e5e7eb' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: settingsSched ? 14 : 0 }}>
             <input type="checkbox" checked={settingsSched} onChange={e => setSettingsSched(e.target.checked)} />
             <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>Abilita schedulazione</span>
@@ -163,7 +163,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                 <label style={labelStyle}>Formato report</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['pdf', 'excel'] as const).map((fmt) => (
-                    <label key={fmt} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: `1px solid ${settingsFormat === fmt ? '#0284c7' : '#d1d5db'}`, background: settingsFormat === fmt ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: settingsFormat === fmt ? 600 : 400, color: settingsFormat === fmt ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                    <label key={fmt} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: `1px solid ${settingsFormat === fmt ? 'var(--color-trigger-manual)' : '#d1d5db'}`, background: settingsFormat === fmt ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: settingsFormat === fmt ? 600 : 400, color: settingsFormat === fmt ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                       <input type="radio" name="schedFormat" value={fmt} checked={settingsFormat === fmt} onChange={() => setSettingsFormat(fmt)} style={{ margin: 0 }} />
                       {fmt === 'pdf' ? '\uD83D\uDCC4 PDF' : '\uD83D\uDCCA Excel'}
                     </label>

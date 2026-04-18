@@ -18,12 +18,12 @@ export function formatDate(iso: string | null): string {
 
 export function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { color: string; icon: React.ReactNode }> = {
-    completed: { color: '#16a34a', icon: <CheckCircle size={12} /> },
+    completed: { color: 'var(--color-success)', icon: <CheckCircle size={12} /> },
     running:   { color: '#2563eb', icon: <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> },
-    failed:    { color: '#dc2626', icon: <XCircle size={12} /> },
+    failed:    { color: 'var(--color-trigger-sla-breach)', icon: <XCircle size={12} /> },
     queued:    { color: '#ca8a04', icon: <Clock size={12} /> },
     open:      { color: '#ca8a04', icon: <AlertTriangle size={12} /> },
-    resolved:  { color: '#16a34a', icon: <CheckCircle size={12} /> },
+    resolved:  { color: 'var(--color-success)', icon: <CheckCircle size={12} /> },
   }
   const c = lookupOrError(cfg, status, 'StatusBadge:cfg', { color: '#6b7280', icon: null as React.ReactNode })
   return (

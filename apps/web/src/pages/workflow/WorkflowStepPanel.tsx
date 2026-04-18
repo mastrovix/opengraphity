@@ -342,7 +342,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
           const enumOptions = cond.field === 'severity' ? SEVERITY_VALUES : PRIORITY_VALUES
 
           return (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e6f0', borderRadius: 6 }}>
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', background: 'var(--color-slate-bg)', border: '1px solid #e2e6f0', borderRadius: 6 }}>
               {i > 0 && conditions.length >= 2 && (
                 <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
                   {(['AND', 'OR'] as const).map((opt) => (
@@ -521,7 +521,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
       })}
 
       {addingFor === forKey ? (
-        <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: '#f8fafc' }}>
+        <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               {t('workflow.actionType')}

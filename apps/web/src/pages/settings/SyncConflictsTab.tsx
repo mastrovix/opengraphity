@@ -45,14 +45,14 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: '#111827' }}>{c.externalId}</span>
-                      <span style={{ fontSize: 'var(--font-size-table)', background: '#f3f4f6', padding: '2px 6px', borderRadius: 4 }}>{c.ciType}</span>
+                      <span style={{ fontSize: 'var(--font-size-table)', background: 'var(--color-border-light)', padding: '2px 6px', borderRadius: 4 }}>{c.ciType}</span>
                       <StatusBadge status={c.status} />
                     </div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280', marginTop: 2 }}>
                       Locked fields: {fields.join(', ') || '—'} · {formatDate(c.createdAt)}
                     </div>
                     {c.resolution && (
-                      <div style={{ fontSize: 'var(--font-size-body)', color: '#16a34a', marginTop: 2 }}>Resolution: {c.resolution}</div>
+                      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)', marginTop: 2 }}>Resolution: {c.resolution}</div>
                     )}
                   </div>
                   {c.status === 'open' && (

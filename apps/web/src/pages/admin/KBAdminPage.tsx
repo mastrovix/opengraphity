@@ -253,25 +253,25 @@ export function KBAdminPage() {
     { key: 'title', label: 'Titolo', sortable: true, render: (v) => (
       <div style={{ fontWeight: 500, color: '#1a2332', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
     ) },
-    { key: 'category', label: 'Categoria', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
+    { key: 'category', label: 'Categoria', sortable: true, render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
     { key: 'status', label: 'Status', sortable: true, render: (v) => {
       const status = String(v)
       const meta = kbStepByName.get(status)
       return <StatusBadge status={status} label={meta?.label} category={meta?.category ?? null} />
     } },
-    { key: 'authorName', label: 'Autore', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
-    { key: 'views', label: 'Views', sortable: true, render: (v) => <span style={{ color: '#64748b' }}>{String(v)}</span> },
-    { key: 'updatedAt', label: 'Aggiornato', sortable: true, render: (v) => <span style={{ color: '#94a3b8' }}>{new Date(String(v)).toLocaleDateString()}</span> },
+    { key: 'authorName', label: 'Autore', sortable: true, render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'views', label: 'Views', sortable: true, render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'updatedAt', label: 'Aggiornato', sortable: true, render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{new Date(String(v)).toLocaleDateString()}</span> },
     { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <button onClick={() => startEdit(row)} style={{ color: '#38bdf8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
+        <button onClick={() => startEdit(row)} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
         {deleteId === row.id ? (
           <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
+            <button onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
             <button onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
           </div>
         ) : (
-          <button onClick={() => setDeleteId(row.id)} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
+          <button onClick={() => setDeleteId(row.id)} style={{ color: 'var(--color-slate-light)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
         )}
       </div>
     ) },
@@ -290,15 +290,15 @@ export function KBAdminPage() {
           <PageTitle icon={<BookOpen size={22} color="#38bdf8" />}>
             {t('pages.kbAdmin.title')}
           </PageTitle>
-          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : total === 1 ? '1 articolo' : `${total} articoli`}
           </p>
         </div>
         <button
           onClick={() => { closeForm(); setShowForm(true) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
         >
           <Plus size={14} /> {t('pages.kbAdmin.new')}
         </button>
@@ -306,7 +306,7 @@ export function KBAdminPage() {
 
       {/* ── Article form ── */}
       {showForm && (
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 20, marginBottom: 20, background: '#f8fafc' }}>
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 20, marginBottom: 20, background: 'var(--color-slate-bg)' }}>
           {/* Form header: title + status badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>
@@ -321,23 +321,23 @@ export function KBAdminPage() {
           {/* Fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
+              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
               <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder="Titolo articolo" />
             </div>
             <div>
-              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Categoria *</label>
+              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Categoria *</label>
               <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
                 {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Tag (separati da virgola)</label>
+              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Tag (separati da virgola)</label>
               <input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} style={inputStyle} placeholder="vpn, windows, accesso" />
             </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Contenuto *</label>
+            <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Contenuto *</label>
             <RichTextEditor
               key={editId ?? 'new'}
               value={form.body}
@@ -345,7 +345,7 @@ export function KBAdminPage() {
               placeholder="Scrivi il contenuto dell'articolo..."
               minHeight="320px"
             />
-            <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', marginTop: 4 }}>{form.body.length} / 50000 caratteri</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{form.body.length} / 50000 caratteri</div>
           </div>
 
           {/* ── Action buttons ── */}
@@ -354,9 +354,9 @@ export function KBAdminPage() {
             <button
               onClick={handleSave}
               disabled={isBusy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: '#38bdf8', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
-              onMouseEnter={(e) => { if (!isBusy) (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
+              onMouseEnter={(e) => { if (!isBusy) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
             >
               {creating || updating ? t('common.loading') : t('common.save')}
             </button>
@@ -366,9 +366,9 @@ export function KBAdminPage() {
               <button
                 onClick={handlePublish}
                 disabled={isBusy}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: '#38bdf8', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
-                onMouseEnter={(e) => { if (!isBusy) (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
+                onMouseEnter={(e) => { if (!isBusy) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
               >
                 <Send size={14} />
                 Invia per revisione
@@ -387,7 +387,7 @@ export function KBAdminPage() {
 
           {/* Info note — only when editing an existing draft */}
           {editId && editArticle?.status === kbInitialStep?.name && (
-            <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>
+            <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
               "Salva" aggiorna il contenuto senza cambiare stato. "Invia per revisione" salva e avvia il processo di approvazione.
             </p>
           )}

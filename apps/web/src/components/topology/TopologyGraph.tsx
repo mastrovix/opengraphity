@@ -41,8 +41,8 @@ interface Props {
 // ── Color constants ───────────────────────────────────────────────────────────
 
 const NODE_RADIUS  = 16
-const NODE_COLOR   = '#64748b'   // ardesia — uguale per tutti i tipi CI
-const EDGE_COLOR   = '#0284c7'   // cyan — uguale per tutti i tipi relazione
+const NODE_COLOR   = 'var(--color-slate)'   // ardesia — uguale per tutti i tipi CI
+const EDGE_COLOR   = 'var(--color-trigger-manual)'   // cyan — uguale per tutti i tipi relazione
 const NODE_SELECTED_COLOR = '#f97316'  // arancione — nodo evidenziato
 
 const EDGE_DIST: Record<string, number> = {
@@ -317,7 +317,7 @@ export default function TopologyGraph({
     nodeEl.filter((d) => d.incidentCount > 0).append('circle')
       .attr('class', 'topo-pulse-incident')
       .attr('r', r + 6).attr('fill', 'none')
-      .attr('stroke', '#dc2626').attr('stroke-width', 3).attr('pointer-events', 'none')
+      .attr('stroke', 'var(--color-trigger-sla-breach)').attr('stroke-width', 3).attr('pointer-events', 'none')
 
     // Layer 2: change ring — r+4
     nodeEl.filter((d) => d.changeCount > 0).append('circle')

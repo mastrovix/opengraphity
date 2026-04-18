@@ -162,7 +162,7 @@ export function IncidentCIList({
                               </select>
                             )}
                             {relTypes.length === 1 && (
-                              <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
+                              <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: 'var(--color-info-bg)', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
                             )}
                             <button
                               onClick={() => handleAddCI(ci)}

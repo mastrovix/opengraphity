@@ -171,10 +171,10 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
           overflow:     'hidden',
         }}>
           {loading && (
-            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>Caricamento...</div>
+            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento...</div>
           )}
           {error && (
-            <div style={{ padding: '12px 16px', fontSize: 'var(--font-size-body)', color: '#ef4444' }}>
+            <div style={{ padding: '12px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
               Errore nel caricamento dell'articolo.
             </div>
           )}
@@ -185,7 +185,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <div>
                     <h4 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>{article.title}</h4>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                       <span>{article.category}</span>
                       <span>·</span>
                       <span>di {article.authorName}</span>
@@ -196,7 +196,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
                   {(article.tags ?? []).length > 0 && (
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {(article.tags ?? []).map((tag) => (
-                        <span key={tag} style={{ padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: '#64748b', fontSize: 'var(--font-size-table)' }}>
+                        <span key={tag} style={{ padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: 'var(--color-slate)', fontSize: 'var(--font-size-table)' }}>
                           {tag}
                         </span>
                       ))}
@@ -241,10 +241,10 @@ function ApprovalCard({
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <StatusBadge status={req.status} />
-            <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>
               {req.entityType}
             </span>
-            <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
               {req.approvalType === 'any' ? '1 approvatore sufficiente' :
                req.approvalType === 'all' ? 'tutti gli approvatori richiesti' :
                'maggioranza richiesta'}
@@ -259,7 +259,7 @@ function ApprovalCard({
           {req.description && (
             <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-body)', color: '#475569' }}>{req.description}</p>
           )}
-          <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>
+          <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
             <span><Clock size={11} style={{ verticalAlign: 'middle' }} /> {new Date(req.requestedAt).toLocaleString()}</span>
             <span>{req.approvedBy.length}/{req.approvers.length} approvazioni</span>
             {req.dueDate && <span>Scadenza: {new Date(req.dueDate).toLocaleDateString()}</span>}
@@ -286,7 +286,7 @@ function ApprovalCard({
             </button>
             <button
               onClick={() => setNoteOpen(noteOpen === 'reject' ? null : 'reject')}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               <XCircle size={14} /> Rifiuta
             </button>
@@ -295,7 +295,7 @@ function ApprovalCard({
       </div>
 
       {noteOpen && (
-        <div style={{ marginTop: 12, padding: 12, background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+        <div style={{ marginTop: 12, padding: 12, background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid #e2e8f0' }}>
           <textarea
             placeholder={noteOpen === 'reject' ? 'Motivo del rifiuto (obbligatorio)...' : 'Nota opzionale...'}
             value={note}
@@ -312,7 +312,7 @@ function ApprovalCard({
                   onReject(req.id, note); setNoteOpen(null); setNote('')
                 }
               }}
-              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: noteOpen === 'approve' ? '#22c55e' : '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: noteOpen === 'approve' ? '#22c55e' : 'var(--color-danger)', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               Conferma {noteOpen === 'approve' ? 'Approvazione' : 'Rifiuto'}
             </button>
@@ -391,7 +391,7 @@ export function ApprovalsPage() {
           <PageTitle icon={<CheckSquare size={22} color="#38bdf8" />}>
             {t('pages.approvals.title')}
           </PageTitle>
-          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {t('pages.approvals.subtitle')}
           </p>
         </div>
@@ -402,7 +402,7 @@ export function ApprovalsPage() {
         <button style={tabStyle(tab === 'mine')} onClick={() => setTab('mine')}>
           {t('pages.approvals.tabMine')}
           {myItems.length > 0 && (
-            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: '#ef4444', color: '#fff', fontSize: 'var(--font-size-table)' }}>
+            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: 'var(--color-danger)', color: '#fff', fontSize: 'var(--font-size-table)' }}>
               {myItems.length}
             </span>
           )}
@@ -419,7 +419,7 @@ export function ApprovalsPage() {
       {/* Content */}
       {tab === 'mine' ? (
         myLoading ? (
-          <div style={{ color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
         ) : myItems.length === 0 ? (
           <EmptyState
             icon={<CheckSquare size={32} color="var(--color-slate-light)" />}
@@ -433,7 +433,7 @@ export function ApprovalsPage() {
       ) : (
         <>
           {allLoading ? (
-            <div style={{ color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+            <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
           ) : allItems.length === 0 ? (
             <EmptyState
               icon={<CheckSquare size={32} color="var(--color-slate-light)" />}

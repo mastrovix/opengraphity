@@ -43,7 +43,7 @@ const KIND_COLOR: Record<string, { bg: string; color: string }> = {
   assessment:    { bg: '#dbeafe', color: '#2563eb' },
   'deploy-plan': { bg: '#ede9fe', color: '#7c3aed' },
   validation:    { bg: '#fef3c7', color: '#ca8a04' },
-  deployment:    { bg: '#dcfce7', color: '#16a34a' },
+  deployment:    { bg: '#dcfce7', color: 'var(--color-success)' },
   review:        { bg: '#e0f2fe', color: '#0369a1' },
 }
 

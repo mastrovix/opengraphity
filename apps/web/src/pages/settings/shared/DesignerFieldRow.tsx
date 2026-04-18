@@ -46,14 +46,14 @@ export function DesignerFieldRow({
         <div>
           <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>
             {field.label}
-            <span style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', marginLeft: 6, fontWeight: 400 }}>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 6, fontWeight: 400 }}>
               {field.name}
             </span>
           </div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8', marginTop: 1 }}>
+          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>
             {field.fieldType}
             {field.required && (
-              <span style={{ marginLeft: 6, color: '#ef4444' }}>required</span>
+              <span style={{ marginLeft: 6, color: 'var(--color-danger)' }}>required</span>
             )}
             {field.fieldType === 'enum' && field.enumValues && field.enumValues.length > 0 && (
               <span style={{ marginLeft: 6 }}>[{field.enumValues.join(', ')}]</span>

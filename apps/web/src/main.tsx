@@ -77,7 +77,7 @@ function RouteError() {
       justifyContent: 'center',
       height:         '100vh',
       gap:            16,
-      background:     '#f8f9fc',
+      background:     'var(--color-slate-bg)',
     }}>
       <div style={{ fontSize: 48 }}>⚠️</div>
       <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>

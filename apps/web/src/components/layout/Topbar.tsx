@@ -19,8 +19,8 @@ const C = {
   bg:          '#3d4856',
   border:      '#2e3744',
   textDefault: '#e2e8f0',
-  textMuted:   '#94a3b8',
-  brand:       '#38bdf8',
+  textMuted:   'var(--color-slate-light)',
+  brand:       'var(--color-brand)',
   hoverBg:     'rgba(255,255,255,0.08)',
 }
 
@@ -173,7 +173,7 @@ export function Topbar() {
                   minWidth:        14,
                   height:          14,
                   borderRadius:    7,
-                  backgroundColor: '#ef4444',
+                  backgroundColor: 'var(--color-danger)',
                   color:           '#fff',
                   fontSize:        9,
                   fontWeight:      700,
@@ -216,7 +216,7 @@ export function Topbar() {
                 height:          32,
                 borderRadius:    '50%',
                 backgroundColor: C.brand,
-                color:           '#0f172a',
+                color:           'var(--color-slate-dark)',
                 fontSize:        11,
                 fontWeight:      700,
                 display:         'flex',
@@ -250,7 +250,7 @@ export function Topbar() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={logout}
-              style={{ fontSize: 12, padding: '10px 16px', color: '#ef4444' }}
+              style={{ fontSize: 12, padding: '10px 16px', color: 'var(--color-danger)' }}
             >
               {t('auth.logout')}
             </DropdownMenuItem>

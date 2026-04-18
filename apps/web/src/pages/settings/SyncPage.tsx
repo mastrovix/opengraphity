@@ -16,7 +16,7 @@ export function SyncPage() {
         <PageTitle icon={<Activity size={22} color="#38bdf8" />}>
           CMDB Sync
         </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', margin: '4px 0 0' }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '4px 0 0' }}>
           Import and sync configuration items from external sources
         </p>
       </div>
@@ -32,7 +32,7 @@ export function SyncPage() {
             style={{
               padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer',
               fontSize: 'var(--font-size-body)', fontWeight: 500,
-              background: hook.tab === t ? '#38bdf8' : 'transparent',
+              background: hook.tab === t ? 'var(--color-brand)' : 'transparent',
               color: hook.tab === t ? '#fff' : 'var(--color-slate)',
             }}
           >

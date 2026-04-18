@@ -81,7 +81,7 @@ export const spacing = {
 
 // ── LOOKUP HELPER ───────────────────────────────────────────────────────────
 
-const ERROR_STYLE = { bg: '#ef4444', color: '#fff' }
+const ERROR_STYLE = { bg: 'var(--color-danger)', color: '#fff' }
 
 export function lookupOrError<T>(map: Record<string, T>, key: string, mapName: string, errorFallback: T): T {
   const val = map[key]

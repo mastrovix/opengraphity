@@ -88,7 +88,7 @@ export function CreateChangePage() {
   }
 
   return (
-    <PageContainer style={{ minHeight: '100%', backgroundColor: '#f8fafc', paddingBottom: 64 }}>
+    <PageContainer style={{ minHeight: '100%', backgroundColor: 'var(--color-slate-bg)', paddingBottom: 64 }}>
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
         <button
           onClick={() => navigate('/changes')}
@@ -227,7 +227,7 @@ export function CreateChangePage() {
                         gap:          8,
                         borderBottom: '1px solid #f3f4f6',
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f8fafc' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-slate-bg)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>
@@ -237,7 +237,7 @@ export function CreateChangePage() {
                         fontSize:        'var(--font-size-body)',
                         padding:         '1px 6px',
                         borderRadius:    4,
-                        backgroundColor: '#f3f4f6',
+                        backgroundColor: 'var(--color-border-light)',
                         color:           'var(--color-slate)',
                       }}>
                         {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
@@ -306,7 +306,7 @@ export function CreateChangePage() {
               marginBottom:    20,
               padding:         '10px 14px',
               borderRadius:    8,
-              background:      '#fef2f2',
+              background:      'var(--color-danger-bg)',
               border:          '1.5px solid var(--color-danger)',
               color:           'var(--color-trigger-sla-breach)',
               fontSize:        'var(--font-size-body)',

@@ -231,7 +231,7 @@ export function CIDynamicForm({
       {globalError && (
         <div style={{
           padding:      '10px 14px',
-          background:   '#fef2f2',
+          background:   'var(--color-danger-bg)',
           border:       '1px solid #fecaca',
           borderRadius: 6,
           color:        'var(--color-trigger-sla-breach)',

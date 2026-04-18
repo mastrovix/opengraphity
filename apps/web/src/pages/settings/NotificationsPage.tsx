@@ -183,7 +183,7 @@ export default function NotificationsPage() {
                   <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{ch.name}</div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{ch.eventTypes.join(', ')}</div>
                 </div>
-                {tr === true  && <span style={{ fontSize: 'var(--font-size-body)', color: '#16a34a' }}>✓ Inviato</span>}
+                {tr === true  && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)' }}>✓ Inviato</span>}
                 {tr === false && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>✗ Errore</span>}
                 <button onClick={() => void handleTest(ch.id)}   style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: '1px solid #e5e7eb', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Testa</button>
                 <button onClick={() => openEdit(ch)}              style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'none', border: '1px solid #e5e7eb', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Modifica</button>

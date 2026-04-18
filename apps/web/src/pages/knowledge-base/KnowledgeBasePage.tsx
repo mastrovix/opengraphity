@@ -37,7 +37,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 const CATEGORY_COLORS: Record<string, string> = {
   hardware: '#3b82f6', software: '#8b5cf6', network: '#06b6d4',
-  security: '#ef4444', 'how-to': '#22c55e', faq: '#f59e0b', general: '#94a3b8',
+  security: 'var(--color-danger)', 'how-to': '#22c55e', faq: 'var(--color-warning)', general: 'var(--color-slate-light)',
 }
 
 const PAGE_SIZE = 15
@@ -76,17 +76,17 @@ export function KnowledgeBasePage() {
             {t('pages.kb.title')}
           </h1>
         </div>
-        <p style={{ fontSize: 'var(--font-size-card-title)', color: '#64748b', margin: '0 0 24px' }}>{t('pages.kb.subtitle')}</p>
+        <p style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate)', margin: '0 0 24px' }}>{t('pages.kb.subtitle')}</p>
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, maxWidth: 500, margin: '0 auto' }}>
           <div style={{ position: 'relative', flex: 1 }}>
-            <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+            <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-slate-light)' }} />
             <input
               type="text"
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               placeholder={t('pages.kb.searchPlaceholder')}
               style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 8, border: '2px solid #e2e8f0', fontSize: 'var(--font-size-body)', boxSizing: 'border-box', outline: 'none' }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = '#38bdf8' }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-brand)' }}
               onBlur={(e)  => { e.currentTarget.style.borderColor = '#e2e8f0' }}
             />
           </div>
@@ -97,7 +97,7 @@ export function KnowledgeBasePage() {
             <button
               type="button"
               onClick={() => { setSearch(''); setInputVal(''); setCategory(''); setPage(0) }}
-              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', fontSize: 'var(--font-size-card-title)', cursor: 'pointer', color: '#64748b' }}
+              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', fontSize: 'var(--font-size-card-title)', cursor: 'pointer', color: 'var(--color-slate)' }}
             >
               ✕
             </button>
@@ -121,12 +121,12 @@ export function KnowledgeBasePage() {
                   background: '#fff', cursor: 'pointer', textAlign: 'center',
                   transition: 'all 150ms',
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = lookupOrError(CATEGORY_COLORS, cat.name, 'CATEGORY_COLORS', '#ef4444') }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = lookupOrError(CATEGORY_COLORS, cat.name, 'CATEGORY_COLORS', 'var(--color-danger)') }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0' }}
               >
                 <div style={{ fontSize: 'var(--font-size-page-title)', marginBottom: 6 }}>{lookupOrError(CATEGORY_ICONS, cat.name, 'CATEGORY_ICONS', '📄')}</div>
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#1a2332', marginBottom: 2 }}>{cat.name}</div>
-                <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>{cat.count} articoli</div>
+                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{cat.count} articoli</div>
               </button>
             ))}
           </div>
@@ -136,8 +136,8 @@ export function KnowledgeBasePage() {
       {/* Active category filter */}
       {category && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <span style={{ fontSize: 'var(--font-size-body)', color: '#64748b' }}>{t('pages.kb.category')}:</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', '#ef4444'), color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('pages.kb.category')}:</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', 'var(--color-danger)'), color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
             {lookupOrError(CATEGORY_ICONS, category, 'CATEGORY_ICONS', '📄')} {category}
             <button onClick={() => { setCategory(''); setPage(0) }} style={{ marginLeft: 4, background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
           </span>
@@ -153,7 +153,7 @@ export function KnowledgeBasePage() {
         )}
 
         {loading ? (
-          <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', textAlign: 'center', padding: 32 }}>{t('common.loading')}</div>
+          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center', padding: 32 }}>{t('common.loading')}</div>
         ) : articles.length === 0 ? (
           <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.noArticles')} />
         ) : (
@@ -166,23 +166,23 @@ export function KnowledgeBasePage() {
               >
                 <div
                   style={{ padding: '16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', transition: 'all 150ms' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#38bdf8'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(56,189,248,0.1)' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(56,189,248,0.1)' }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 8px', borderRadius: 10, background: lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', '#ef4444') + '20', color: lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', '#ef4444'), fontWeight: 600 }}>
+                        <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 8px', borderRadius: 10, background: lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', 'var(--color-danger)') + '20', color: lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', 'var(--color-danger)'), fontWeight: 600 }}>
                           {lookupOrError(CATEGORY_ICONS, a.category, 'CATEGORY_ICONS', '📄')} {a.category}
                         </span>
                         {a.tags.slice(0, 3).map((tag) => (
-                          <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: '#64748b' }}>
+                          <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: 'var(--color-slate)' }}>
                             <Tag size={8} style={{ verticalAlign: 'middle' }} /> {tag}
                           </span>
                         ))}
                       </div>
                       <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>{a.title}</h3>
-                      <div style={{ display: 'flex', gap: 12, fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>
+                      <div style={{ display: 'flex', gap: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                         <span>{a.authorName}</span>
                         <span>{a.publishedAt ? new Date(a.publishedAt).toLocaleDateString() : '—'}</span>
                         <span><Eye size={10} style={{ verticalAlign: 'middle' }} /> {a.views}</span>

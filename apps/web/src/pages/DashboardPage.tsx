@@ -243,7 +243,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
             {canDelete && !confirmDelete && (
               <button
                 onClick={() => setConfirmDelete(true)}
-                style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: 'var(--color-danger)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}
+                style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}
               >
                 Elimina
               </button>
@@ -357,7 +357,7 @@ export function DashboardPage() {
                   onClick={() => handleSelectDashboard(d.id)}
                   style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: d.id === activeDashboardId ? '#f0f9ff' : 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: d.id === activeDashboardId ? 'var(--color-brand-hover)' : 'var(--color-slate)', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
-                  {d.isDefault && <span style={{ fontSize: 'var(--font-size-label)', color: '#f59e0b' }}>★</span>}
+                  {d.isDefault && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-warning)' }}>★</span>}
                   <span>{d.name}</span>
                   {d.visibility !== 'private' && (
                     <span style={{ marginLeft: 'auto', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
@@ -486,7 +486,7 @@ export function DashboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header strip */}
-      <div style={{ flexShrink: 0, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ flexShrink: 0, background: 'var(--color-slate-bg)', borderBottom: '1px solid #e5e7eb' }}>
         {header}
       </div>
 

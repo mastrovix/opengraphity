@@ -3,8 +3,8 @@ import * as d3 from 'd3'
 import { lookupOrError } from '@/lib/tokens'
 
 const MINI_R = 16
-const MINI_NODE_COLOR = '#64748b'
-const MINI_EDGE_COLOR = '#0284c7'
+const MINI_NODE_COLOR = 'var(--color-slate)'
+const MINI_EDGE_COLOR = 'var(--color-trigger-manual)'
 
 type IconPath = [string, Record<string, string>]
 const MINI_ICONS: Record<string, IconPath[]> = {
@@ -117,7 +117,7 @@ export function MiniPathGraph({ pathNames, targetName, impactedName, nameTypeMap
     nodeSel.append('text')
       .text(d => d.name.length > 16 ? d.name.slice(0, 15) + '…' : d.name)
       .attr('text-anchor', 'middle').attr('dy', MINI_R + 14)
-      .attr('font-size', 10).attr('fill', '#0f172a').attr('font-weight', 500)
+      .attr('font-size', 10).attr('fill', 'var(--color-slate-dark)').attr('font-weight', 500)
       .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
 
   }, [pathNames, targetName, impactedName, nameTypeMap, typeIconMap])

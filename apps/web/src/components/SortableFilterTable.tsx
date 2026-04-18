@@ -30,7 +30,7 @@ interface Props<T> {
 }
 
 const thStyle: React.CSSProperties = {
-  background:    '#f9fafb',
+  background:    'var(--color-slate-bg)',
   borderBottom:  `2px solid ${colors.border}`,
   padding:       '8px 12px 6px',
   textAlign:     'left',

@@ -22,7 +22,7 @@ export function timeAgo(s: string): string {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 export const PRIORITY_COLOR: Record<string, string> = {
-  critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: '#ca8a04', low: '#16a34a',
+  critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: '#ca8a04', low: 'var(--color-success)',
 }
 
 export const STATUS_BG: Record<string, string> = {

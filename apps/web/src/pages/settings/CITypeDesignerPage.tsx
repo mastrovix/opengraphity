@@ -144,14 +144,14 @@ export function CITypeDesignerPage() {
                 <Layout size={20} color="var(--color-brand)" />
                 <div>
                   <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Campi Base</div>
-                  <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>Ereditati da tutti i tipi CI</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Ereditati da tutti i tipi CI</div>
                 </div>
               </div>
               <div style={{ padding: '20px 24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <div>
-                    <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em' }}>CAMPI DI SISTEMA</div>
-                    <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', marginTop: 2 }}>{baseType.fields.length} campi — non eliminabili</div>
+                    <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>CAMPI DI SISTEMA</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{baseType.fields.length} campi — non eliminabili</div>
                   </div>
                   <button style={btnPrimary} onClick={() => { setEditingBaseField(null); setShowBaseFieldModal(true) }}>
                     <Plus size={13} /> Aggiungi campo base
@@ -184,11 +184,11 @@ export function CITypeDesignerPage() {
                   <CIIcon icon={selected.icon} size={20} color={selected.color ?? 'var(--color-brand)'} />
                   <div>
                     <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selected.label}</div>
-                    <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>{selected.name}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{selected.name}</div>
                   </div>
                   <button
                     onClick={() => updateType({ variables: { id: selected.id, input: { active: !selected.active } } })}
-                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: selected.active ? '#dcfce7' : '#f3f4f6', color: selected.active ? '#16a34a' : '#94a3b8', fontWeight: 500 }}>
+                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: selected.active ? '#dcfce7' : 'var(--color-border-light)', color: selected.active ? 'var(--color-success)' : 'var(--color-slate-light)', fontWeight: 500 }}>
                     {selected.active ? '● active' : '○ inactive'}
                   </button>
                 </div>
@@ -272,7 +272,7 @@ export function CITypeDesignerPage() {
                     </div>
 
                     <FormField label="Validation script (opzionale)">
-                      <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', margin: '0 0 6px' }}>
+                      <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                         Variabili: <code>input</code>. Usa <code>throw 'msg'</code> per errore globale.
                       </p>
                       <textarea style={{ ...textareaS, minHeight: 100 }} value={settingsForm.validationScript}
@@ -307,7 +307,7 @@ export function CITypeDesignerPage() {
                       {/* Base / inherited fields (read-only rows) */}
                       {systemFields.length > 0 && (
                         <div style={{ marginBottom: 20 }}>
-                          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 8 }}>
+                          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em', marginBottom: 8 }}>
                             CAMPI BASE ({systemFields.length}) — Ereditati da __base__ — non modificabili
                           </div>
                           {systemFields.map((f) => (
@@ -326,7 +326,7 @@ export function CITypeDesignerPage() {
                       {/* Specific fields — inline editing */}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.06em' }}>
+                          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>
                             CAMPI SPECIFICI ({specificFields.length})
                           </div>
                           <button style={btnPrimary} onClick={() => { setAddingField(true); setEditingFieldId(null) }} disabled={addingField}>
@@ -372,7 +372,7 @@ export function CITypeDesignerPage() {
                         ))}
 
                         {specificFields.length === 0 && !addingField && (
-                          <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
+                          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
                             Nessun campo specifico. Clicca "+ Aggiungi campo" per crearne uno.
                           </div>
                         )}
@@ -414,11 +414,11 @@ export function CITypeDesignerPage() {
                 {/* Tab: Preview */}
                 {activeTab === 'preview' && (
                   <div style={{ maxWidth: 520 }}>
-                    <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8', marginBottom: 16 }}>
+                    <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16 }}>
                       Anteprima del form di creazione CI — campi specifici del tipo.
                     </p>
                     {selected.fields.length === 0
-                      ? <p style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>Nessun campo specifico. Aggiungi campi nella tab "Campi".</p>
+                      ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun campo specifico. Aggiungi campi nella tab "Campi".</p>
                       : <CIDynamicForm ciType={selected} onSubmit={async () => { toast.info('Preview — nessun dato salvato') }} onCancel={() => setActiveTab('fields')} />
                     }
                   </div>

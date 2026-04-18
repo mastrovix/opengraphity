@@ -296,7 +296,7 @@ export default function ReportsPage() {
 
       {/* ── Sidebar sinistra ────────────────────────────────────────────── */}
       <div style={{
-        width: 240, flexShrink: 0, background: '#f9fafb',
+        width: 240, flexShrink: 0, background: 'var(--color-slate-bg)',
         borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column',
       }}>
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -322,7 +322,7 @@ export default function ReportsPage() {
                   transition: 'background 0.1s',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
                 }}
-                onMouseEnter={(e) => { if (activeId !== c.id) (e.currentTarget as HTMLDivElement).style.background = '#f3f4f6' }}
+                onMouseEnter={(e) => { if (activeId !== c.id) (e.currentTarget as HTMLDivElement).style.background = 'var(--color-border-light)' }}
                 onMouseLeave={(e) => { if (activeId !== c.id) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               >
                 <div style={{ minWidth: 0 }}>
@@ -370,7 +370,7 @@ export default function ReportsPage() {
               >
                 <div style={{
                   maxWidth: msg.role === 'user' ? '70%' : '85%',
-                  background: msg.role === 'user' ? '#1e3a5f' : '#f9fafb',
+                  background: msg.role === 'user' ? '#1e3a5f' : 'var(--color-slate-bg)',
                   color: msg.role === 'user' ? '#fff' : 'var(--color-slate-dark)',
                   border: msg.role === 'user' ? 'none' : '1px solid #e5e7eb',
                   borderRadius: 12,
@@ -390,7 +390,7 @@ export default function ReportsPage() {
                               <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 'var(--font-size-body)' }}>{children}</table>
                             </div>
                           ),
-                          thead: ({ children }) => <thead style={{ background: '#f8fafc' }}>{children}</thead>,
+                          thead: ({ children }) => <thead style={{ background: 'var(--color-slate-bg)' }}>{children}</thead>,
                           tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
                           th: ({ children }) => (
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
@@ -431,7 +431,7 @@ export default function ReportsPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <div style={{
                   maxWidth: '85%',
-                  background: '#f9fafb',
+                  background: 'var(--color-slate-bg)',
                   color: 'var(--color-slate-dark)',
                   border: '1px solid #e5e7eb',
                   borderRadius: 12,
@@ -455,7 +455,7 @@ export default function ReportsPage() {
                               <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 'var(--font-size-body)' }}>{children}</table>
                             </div>
                           ),
-                          thead: ({ children }) => <thead style={{ background: '#f8fafc' }}>{children}</thead>,
+                          thead: ({ children }) => <thead style={{ background: 'var(--color-slate-bg)' }}>{children}</thead>,
                           tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
                           th: ({ children }) => (
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
@@ -568,7 +568,7 @@ export default function ReportsPage() {
 }
 
 const exportBtnStyle: React.CSSProperties = {
-  fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', background: '#f9fafb',
+  fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)',
   border: '1px solid #e5e7eb', borderRadius: 5,
   padding: '4px 10px', cursor: 'pointer',
 }

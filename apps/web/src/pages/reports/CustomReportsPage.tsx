@@ -7,7 +7,7 @@ export function CustomReportsPage() {
   const h = useCustomReports()
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f8fafc' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--color-slate-bg)' }}>
 
       {h.view === 'list' && (
         <ReportListView

@@ -17,7 +17,7 @@ const baseEntryStyle = (selected: boolean): React.CSSProperties => ({
   width: '100%', textAlign: 'left',
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '10px 16px', cursor: 'pointer',
-  background: selected ? '#f0f9ff' : '#f9fafb',
+  background: selected ? '#f0f9ff' : 'var(--color-slate-bg)',
   borderLeft: `3px solid ${selected ? 'var(--color-brand)' : 'transparent'}`,
   borderTop: 'none', borderRight: 'none',
   borderBottom: '1px solid #e5e7eb',
@@ -52,18 +52,18 @@ export function CITypeList({
       </div>
 
       {loading && (
-        <div style={{ padding: 20, color: '#94a3b8', fontSize: 'var(--font-size-body)' }}>Caricamento…</div>
+        <div style={{ padding: 20, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento…</div>
       )}
 
       <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
         {/* Campi Base special entry */}
         <button onClick={onSelectBase} style={baseEntryStyle(selectedBase)}>
-          <Layout size={15} color={selectedBase ? 'var(--color-brand)' : '#64748b'} />
+          <Layout size={15} color={selectedBase ? 'var(--color-brand)' : 'var(--color-slate)'} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
               Campi Base
             </div>
-            <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>Condivisi da tutti i tipi</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>Condivisi da tutti i tipi</div>
           </div>
           <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 600, background: '#cffafe', color: 'var(--color-brand)', flexShrink: 0 }}>
             Sistema
@@ -71,7 +71,7 @@ export function CITypeList({
         </button>
 
         {/* Separator */}
-        <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--color-slate-bg)', borderBottom: '1px solid #f3f4f6' }}>
           Tipi CI
         </div>
 
@@ -84,13 +84,13 @@ export function CITypeList({
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {t.label}
                 </div>
-                <div style={{ fontSize: 'var(--font-size-table)', color: '#94a3b8' }}>{t.name}</div>
+                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t.name}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: t.active ? '#dcfce7' : '#f3f4f6', color: t.active ? '#16a34a' : '#94a3b8' }}>
+                <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: t.active ? '#dcfce7' : 'var(--color-border-light)', color: t.active ? 'var(--color-success)' : 'var(--color-slate-light)' }}>
                   {t.active ? 'active' : 'inactive'}
                 </span>
-                <span style={{ fontSize: 'var(--font-size-label)', color: '#94a3b8' }}>
+                <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                   {t.fields.length} campi
                 </span>
               </div>
@@ -102,7 +102,7 @@ export function CITypeList({
       {!loading && ciTypes.length === 0 && (
         <div style={{ padding: '16px 16px 20px', textAlign: 'center' }}>
           <Layers size={24} color="#94a3b8" style={{ marginBottom: 8 }} />
-          <div style={{ fontSize: 'var(--font-size-body)', color: '#94a3b8' }}>Nessun tipo CI</div>
+          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun tipo CI</div>
         </div>
       )}
     </div>

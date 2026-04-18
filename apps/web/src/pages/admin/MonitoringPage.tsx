@@ -51,7 +51,7 @@ const sectionTitle: React.CSSProperties = {
 }
 
 const statCard: React.CSSProperties = {
-  background:   '#f8f9fc',
+  background:   'var(--color-slate-bg)',
   border:       '1px solid #e5e7eb',
   borderRadius: 8,
   padding:      '14px 18px',
@@ -60,7 +60,7 @@ const statCard: React.CSSProperties = {
 }
 
 function StatusDot({ status }: { status: string }) {
-  const color = status === 'ok' ? '#16a34a' : '#ef4444'
+  const color = status === 'ok' ? 'var(--color-success)' : 'var(--color-danger)'
   return (
     <div style={{
       width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0,
@@ -157,7 +157,7 @@ export function MonitoringPage() {
                 <StatusDot status={check?.status ?? 'unknown'} />
                 <div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{label}</div>
-                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: check?.status === 'ok' ? '#16a34a' : '#ef4444' }}>
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: check?.status === 'ok' ? 'var(--color-success)' : 'var(--color-danger)' }}>
                     {check?.status === 'ok' ? t('pages.monitoring.health.ok') : t('pages.monitoring.health.error')}
                   </div>
                   {check?.latencyMs !== null && check?.latencyMs !== undefined && (
@@ -166,7 +166,7 @@ export function MonitoringPage() {
                     </div>
                   )}
                   {check?.error && (
-                    <div style={{ fontSize: 'var(--font-size-table)', color: '#ef4444', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', marginTop: 2 }}>
                       {check.error}
                     </div>
                   )}
@@ -201,7 +201,7 @@ export function MonitoringPage() {
           </div>
           <div style={statCard}>
             <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.errorRate')}</div>
-            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: metrics && metrics.requests.errorRate > 0.05 ? '#ef4444' : 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: metrics && metrics.requests.errorRate > 0.05 ? 'var(--color-danger)' : 'var(--color-slate-dark)' }}>
               {metrics ? `${(metrics.requests.errorRate * 100).toFixed(1)}%` : '—'}
             </div>
           </div>
@@ -226,7 +226,7 @@ export function MonitoringPage() {
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: '#3b82f6', fontWeight: 600 }}>{t('pages.monitoring.queues.waiting')}</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: '#22c55e', fontWeight: 600 }}>{t('pages.monitoring.queues.active')}</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: '#6b7280', fontWeight: 600 }}>{t('pages.monitoring.queues.completed')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: '#ef4444', fontWeight: 600 }}>{t('pages.monitoring.queues.failed')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px', color: 'var(--color-danger)', fontWeight: 600 }}>{t('pages.monitoring.queues.failed')}</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: '#8b5cf6', fontWeight: 600 }}>{t('pages.monitoring.queues.delayed')}</th>
               </tr>
             </thead>
@@ -237,7 +237,7 @@ export function MonitoringPage() {
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.waiting}</td>
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.active}</td>
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.completed}</td>
-                  <td style={{ textAlign: 'right', padding: '8px 12px', color: q.failed > 0 ? '#ef4444' : undefined }}>{q.failed}</td>
+                  <td style={{ textAlign: 'right', padding: '8px 12px', color: q.failed > 0 ? 'var(--color-danger)' : undefined }}>{q.failed}</td>
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.delayed}</td>
                 </tr>
               ))}
@@ -280,7 +280,7 @@ export function MonitoringPage() {
                     <td style={{ padding: '6px 0', fontFamily: 'monospace', wordBreak: 'break-all', color: '#374151' }}>
                       {sq.query}
                     </td>
-                    <td style={{ padding: '6px 12px', color: '#ef4444', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '6px 12px', color: 'var(--color-danger)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {sq.durationMs.toFixed(0)}ms
                     </td>
                     <td style={{ padding: '6px 0', color: '#9ca3af', whiteSpace: 'nowrap' }}>
@@ -301,8 +301,8 @@ export function MonitoringPage() {
           trace.enabled ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a' }} />
-                <span style={{ fontSize: 'var(--font-size-body)', color: '#16a34a', fontWeight: 600 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-success)' }} />
+                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)', fontWeight: 600 }}>
                   {t('pages.monitoring.tracing.enabled')}
                 </span>
                 {trace.endpoint && (
@@ -333,7 +333,7 @@ export function MonitoringPage() {
                         </td>
                         <td style={{ textAlign: 'right', padding: '6px 12px', fontWeight: 600 }}>{tr.durationMs.toFixed(1)}ms</td>
                         <td style={{ textAlign: 'right', padding: '6px 12px' }}>
-                          <span style={{ color: tr.status === 'OK' ? '#16a34a' : '#ef4444', fontWeight: 600 }}>
+                          <span style={{ color: tr.status === 'OK' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 600 }}>
                             {tr.status}
                           </span>
                         </td>

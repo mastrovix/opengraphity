@@ -17,17 +17,17 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 const SEV_STYLE: Record<string, { bg: string; color: string }> = {
-  critical: { bg: '#fef2f2', color: 'var(--color-trigger-sla-breach)' },
-  high:     { bg: '#fef2f2', color: 'var(--color-brand)' },
-  medium:   { bg: '#fffbeb', color: 'var(--color-warning)' },
-  low:      { bg: '#ecfdf5', color: 'var(--color-success)' },
+  critical: { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
+  high:     { bg: 'var(--color-danger-bg)', color: 'var(--color-brand)' },
+  medium:   { bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
+  low:      { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
 }
 const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
   assessment: { bg: '#dbeafe',               color: '#2563eb' },
   approval:   { bg: '#ede9fe',               color: '#7c3aed' },
-  scheduled:  { bg: '#e0f2fe',               color: '#0284c7' },
+  scheduled:  { bg: '#e0f2fe',               color: 'var(--color-trigger-manual)' },
   validation: { bg: '#fef3c7',               color: '#ca8a04' },
-  deployment: { bg: '#dcfce7',               color: '#16a34a' },
+  deployment: { bg: '#dcfce7',               color: 'var(--color-success)' },
   review:     { bg: '#e0f2fe',               color: '#0369a1' },
   closed:     { bg: 'var(--color-slate-bg)', color: 'var(--color-slate-light)' },
 }
@@ -122,7 +122,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
   return (
     <>
       {/* Metrics strip — badge + counters */}
-      <div style={{ background: '#f9fafb', borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+      <div style={{ background: 'var(--color-slate-bg)', borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <span style={{ ...BADGE_BASE, backgroundColor: palette.bg, color: palette.color, border: `1px solid ${palette.border}` }}>
           {analysis.riskLevel.toUpperCase()} · {analysis.riskScore}
         </span>
@@ -137,14 +137,14 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
 
       {/* Score breakdown */}
       {breakdown.scoreDetails !== 'Nessun fattore di rischio rilevato' && (
-        <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '6px 20px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+        <div style={{ background: 'var(--color-slate-bg)', borderBottom: '1px solid #e5e7eb', padding: '6px 20px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
           {breakdown.scoreDetails}
         </div>
       )}
 
       {/* Warning banner */}
       {(analysis.riskLevel === 'high' || analysis.riskLevel === 'critical') && (
-        <div style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a', padding: '8px 20px', fontSize: 'var(--font-size-body)', color: '#92400e', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <div style={{ background: 'var(--color-warning-bg)', borderBottom: '1px solid #fde68a', padding: '8px 20px', fontSize: 'var(--font-size-body)', color: '#92400e', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <AlertTriangle size={14} style={{ color: 'var(--color-trigger-timer)', flexShrink: 0, marginTop: 1 }} />
           <span>Questo change impatta CI critici. Valuta attentamente la finestra di manutenzione.</span>
         </div>
@@ -170,7 +170,7 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
                   Nessun CI nel blast radius
                 </div>
               ) : (() => {
-                const DIST_BG:    Record<string, string> = { '1': '#fef2f2', '2': '#fff7ed', '3': '#fefce8', '4': 'var(--color-slate-bg)' }
+                const DIST_BG:    Record<string, string> = { '1': 'var(--color-danger-bg)', '2': '#fff7ed', '3': 'var(--color-warning-bg)', '4': 'var(--color-slate-bg)' }
                 const DIST_COLOR: Record<string, string> = { '1': 'var(--color-trigger-sla-breach)', '2': 'var(--color-brand)', '3': '#ca8a04', '4': 'var(--color-slate)' }
                 const byDistance = analysis.blastRadius.reduce((acc, ci) => {
                   const d = ci.distance ?? 1

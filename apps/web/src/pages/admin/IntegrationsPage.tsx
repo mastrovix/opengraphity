@@ -225,7 +225,7 @@ export function IntegrationsPage() {
     { key: 'createdAt', label: '', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button style={btnSecondary} title="Rigenera token" onClick={() => handleRegenToken(row.id)}><RefreshCw size={13} /></button>
-        <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteIn({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteIn({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
       </div>
     ) },
   ]
@@ -243,13 +243,13 @@ export function IntegrationsPage() {
     { key: 'lastStatusCode', label: 'Ultimo Status', sortable: true, render: (v) => {
       if (!v) return '—'
       const ok = Number(v) >= 200 && Number(v) < 300
-      return <span style={{ ...badgeS, background: ok ? '#dcfce7' : '#fee2e2', color: ok ? '#16a34a' : '#dc2626' }}>{String(v)}</span>
+      return <span style={{ ...badgeS, background: ok ? '#dcfce7' : '#fee2e2', color: ok ? 'var(--color-success)' : 'var(--color-trigger-sla-breach)' }}>{String(v)}</span>
     } },
-    { key: 'lastError', label: 'Ultimo Errore', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: '#ef4444', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
+    { key: 'lastError', label: 'Ultimo Errore', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button style={btnSecondary} title="Test" onClick={() => handleTestOutbound(row.id)}><Play size={13} /></button>
-        <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteOut({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteOut({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
       </div>
     ) },
   ]
@@ -269,7 +269,7 @@ export function IntegrationsPage() {
     { key: 'createdAt', label: '', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button style={btnSecondary} title="Rigenera chiave" onClick={() => handleRegenApiKey(row.id)}><RefreshCw size={13} /></button>
-        <button style={{ ...btnSecondary, color: '#ef4444', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteKey({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteKey({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
       </div>
     ) },
   ]
@@ -284,7 +284,7 @@ export function IntegrationsPage() {
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<Plug size={22} color="#38bdf8" />}>Integrazioni</PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
           Webhook, API Keys e connessioni esterne
         </p>
       </div>
@@ -423,11 +423,11 @@ export function IntegrationsPage() {
       {/* Secret reveal modal */}
       {modal === 'secret' && (
         <ModalPortal modalType="secret" onClose={() => { setModal(null); setSecret('') }}>
-          <div style={{ background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: '#92400e' }}>
+          <div style={{ background: 'var(--color-warning-bg)', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: '#92400e' }}>
             Questo token non sarà più visibile. Copialo ora!
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <code style={{ flex: 1, padding: '8px 12px', background: '#f9fafb', borderRadius: 6, fontSize: 'var(--font-size-body)', wordBreak: 'break-all', border: '1px solid #e5e7eb' }}>{secret}</code>
+            <code style={{ flex: 1, padding: '8px 12px', background: 'var(--color-slate-bg)', borderRadius: 6, fontSize: 'var(--font-size-body)', wordBreak: 'break-all', border: '1px solid #e5e7eb' }}>{secret}</code>
             <button style={btnSecondary} onClick={() => copyText(secret)}><Copy size={14} /> Copia</button>
           </div>
         </ModalPortal>

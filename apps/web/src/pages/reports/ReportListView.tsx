@@ -70,15 +70,15 @@ export function ReportListView(props: ReportListViewProps) {
             <PageTitle icon={<LayoutGrid size={22} color="#38bdf8" />}>
               {tr('pages.reportBuilder.title')}
             </PageTitle>
-            <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
               {tr('pages.reportBuilder.count', { count: templates.length })}
             </p>
           </div>
           <button
             onClick={() => setShowNewDialog(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#38bdf8', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#0ea5e9' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#38bdf8' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
           >
             {tr('pages.reportBuilder.new')}
           </button>
@@ -132,7 +132,7 @@ export function ReportListView(props: ReportListViewProps) {
                               cursor: 'pointer', fontSize: 'var(--font-size-card-title)',
                               color: item.danger ? 'var(--color-trigger-sla-breach)' : 'var(--color-slate)',
                             }}
-                              onMouseEnter={e => (e.currentTarget.style.background = item.danger ? '#fef2f2' : '#f9fafb')}
+                              onMouseEnter={e => (e.currentTarget.style.background = item.danger ? 'var(--color-danger-bg)' : 'var(--color-slate-bg)')}
                               onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                             >{item.label}</button>
                           ))}

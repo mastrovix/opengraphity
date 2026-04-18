@@ -62,10 +62,10 @@ export const TIME_RANGES = [
 export const PRESET_COLORS = [
   '#0EA5E9', // cyan
   '#10b981', // green
-  '#ef4444', // red
-  '#f59e0b', // amber
+  'var(--color-danger)', // red
+  'var(--color-warning)', // amber
   '#8b5cf6', // purple
-  '#64748b', // slate
+  'var(--color-slate)', // slate
 ]
 
 export const SIZE_OPTIONS = [

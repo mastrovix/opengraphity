@@ -102,6 +102,13 @@
   --input:             var(--border);
   --ring:              var(--accent);
   --radius:            0.5rem;
+
+  /* Surface/backgrounds for status badges and alert tints */
+  --color-border-light: #f3f4f6;
+  --color-danger-bg:    #fef2f2;
+  --color-success-bg:   #ecfdf5;
+  --color-warning-bg:   #fffbeb;
+  --color-info-bg:      #eff6ff;
 }
 
 @theme inline {

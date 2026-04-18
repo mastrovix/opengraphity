@@ -26,10 +26,10 @@ const SUBTYPE_COLORS: Record<string, { bg: string; fg: string }> = {
 }
 
 const ENTITY_META: Record<string, { label: string; Icon: typeof AlertCircle; color: string }> = {
-  incident:        { label: 'Incident',        Icon: AlertCircle,    color: '#ef4444' },
+  incident:        { label: 'Incident',        Icon: AlertCircle,    color: 'var(--color-danger)' },
   change:          { label: 'Change',          Icon: GitPullRequest, color: '#8b5cf6' },
-  problem:         { label: 'Problem',         Icon: Search,         color: '#f59e0b' },
-  service_request: { label: 'Service Request', Icon: Inbox,          color: '#0ea5e9' },
+  problem:         { label: 'Problem',         Icon: Search,         color: 'var(--color-warning)' },
+  service_request: { label: 'Service Request', Icon: Inbox,          color: 'var(--color-brand)' },
   kb_article:      { label: 'Knowledge Base',  Icon: BookOpen,       color: '#10b981' },
 }
 
@@ -70,7 +70,7 @@ export function WorkflowListPage() {
           <PageTitle icon={<Route size={22} color="#38bdf8" />}>
             {t('pages.workflow.title', 'Workflow')}
           </PageTitle>
-          <p style={{ fontSize: 'var(--font-size-body)', color: '#0f172a', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${defs.length} workflow`}
           </p>
         </div>
@@ -94,7 +94,7 @@ export function WorkflowListPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(columnKeys.length, 4)}, 1fr)`, gap: 24 }}>
           {columnKeys.map((entityType) => {
-            const meta = lookupOrError(ENTITY_META, entityType, 'ENTITY_META', { label: entityType, Icon: Route, color: '#ef4444' })
+            const meta = lookupOrError(ENTITY_META, entityType, 'ENTITY_META', { label: entityType, Icon: Route, color: 'var(--color-danger)' })
             const items = grouped.get(entityType)!
 
             return (
@@ -138,7 +138,7 @@ export function WorkflowListPage() {
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {def.changeSubtype && (() => {
-                            const sc = lookupOrError(SUBTYPE_COLORS, def.changeSubtype, 'SUBTYPE_COLORS', { bg: '#ef4444', fg: '#fff' })
+                            const sc = lookupOrError(SUBTYPE_COLORS, def.changeSubtype, 'SUBTYPE_COLORS', { bg: 'var(--color-danger)', fg: '#fff' })
                             return (
                               <span style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 4, background: sc.bg, color: sc.fg, fontWeight: 600 }}>
                                 {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
@@ -163,7 +163,7 @@ export function WorkflowListPage() {
                           fontWeight:      600,
                           padding:         '2px 8px',
                           borderRadius:    100,
-                          backgroundColor: def.active ? 'var(--color-brand-light)' : '#f9fafb',
+                          backgroundColor: def.active ? 'var(--color-brand-light)' : 'var(--color-slate-bg)',
                           color:           def.active ? 'var(--color-brand)' : 'var(--color-slate-light)',
                           border:          def.active ? '1px solid #a5f3fc' : '1px solid #e5e7eb',
                         }}>

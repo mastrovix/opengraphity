@@ -60,10 +60,10 @@ interface AuditEntry { timestamp: string; action: string; detail: string | null;
 function StatusLabel({ status }: { status: string | null | undefined }) {
   const s = status ?? '—'
   const color =
-    s === TASK_STATUS.COMPLETED   ? '#16a34a' :
-    s === TASK_STATUS.IN_PROGRESS ? '#f59e0b' :
-    s === TASK_STATUS.PENDING     ? '#ef4444' :
-    s === 'failed' || s === REVIEW_RESULT.REJECTED ? '#ef4444' : '#d1d5db'
+    s === TASK_STATUS.COMPLETED   ? 'var(--color-success)' :
+    s === TASK_STATUS.IN_PROGRESS ? 'var(--color-warning)' :
+    s === TASK_STATUS.PENDING     ? 'var(--color-danger)' :
+    s === 'failed' || s === REVIEW_RESULT.REJECTED ? 'var(--color-danger)' : '#d1d5db'
   const label = s === TASK_STATUS.PENDING ? 'TO BE COMPLETED' : s.replace(/_/g, ' ')
   return <strong style={{ color, textTransform: 'uppercase' }}>{label}</strong>
 }
@@ -347,7 +347,7 @@ function CIExpandedRow({ a }: { a: AffectedCI }) {
 // ── Audit Timeline ────────────────────────────────────────────────────────────
 
 type AuditCategory = 'stato' | 'assessment' | 'assegnazioni' | 'commenti' | 'sistema'
-const AUDIT_CAT_COLOR: Record<AuditCategory, string> = { stato: '#16a34a', assessment: '#2563eb', assegnazioni: '#7c3aed', commenti: '#64748b', sistema: '#94a3b8' }
+const AUDIT_CAT_COLOR: Record<AuditCategory, string> = { stato: 'var(--color-success)', assessment: '#2563eb', assegnazioni: '#7c3aed', commenti: 'var(--color-slate)', sistema: 'var(--color-slate-light)' }
 const AUDIT_CAT_LABEL: Record<AuditCategory, string> = { stato: 'Stato', assessment: 'Assessment', assegnazioni: 'Assegnazioni', commenti: 'Commenti', sistema: 'Sistema' }
 
 function categorizeAction(action: string): AuditCategory {
@@ -390,7 +390,7 @@ function AuditTimeline({ audit }: { audit: AuditEntry[] }) {
               </div>
               {/* Right: card */}
               <div style={{ flex: 1, paddingBottom: 10 }}>
-                <div style={{ padding: '6px 10px', background: '#f8fafc', borderRadius: 6, border: '1px solid #f3f4f6' }}>
+                <div style={{ padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid #f3f4f6' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{fmtTS(e.timestamp)}</span>
                     <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: `${color}15`, color }}>{e.action.replace(/_/g, ' ')}</span>
@@ -466,8 +466,8 @@ function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, refetch
                     {ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: '#f1f5f9', color: 'var(--color-slate)' }}>{ci.environment}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 12, marginTop: 3, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasOwner ? '#16a34a' : '#ef4444', marginRight: 4, verticalAlign: 'middle' }} />Owner: {ci.ownerGroup?.name ?? '—'}</span>
-                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasSupport ? '#16a34a' : '#ef4444', marginRight: 4, verticalAlign: 'middle' }} />Support: {ci.supportGroup?.name ?? '—'}</span>
+                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasOwner ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />Owner: {ci.ownerGroup?.name ?? '—'}</span>
+                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasSupport ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />Support: {ci.supportGroup?.name ?? '—'}</span>
                   </div>
                 </div>
                 {alreadyAdded ? (
@@ -692,7 +692,7 @@ export function ChangeDetailPage() {
               {tr.label}
             </button>
           ))}
-          {wfIsTerminal(currentStep) && <span style={{ fontSize: 'var(--font-size-label)', color: '#16a34a', fontWeight: 600 }}>✓ Completato</span>}
+          {wfIsTerminal(currentStep) && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-success)', fontWeight: 600 }}>✓ Completato</span>}
           {transitions.length === 0 && currentStep && !wfIsTerminal(currentStep) && (
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{wfByName.get(currentStep)?.label ?? currentStep} in corso</span>
           )}
@@ -820,7 +820,7 @@ export function ChangeDetailPage() {
                       type="button"
                       onClick={() => setConfirmRemoveCI({ id: a.ci.id, name: a.ci.name })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--color-slate-light)', flexShrink: 0 }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-danger)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
                     >
                       <X size={14} />
@@ -867,7 +867,7 @@ export function ChangeDetailPage() {
                           <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{b.ci.name}</span>
                           <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: 'var(--color-slate)' }}>{b.ci.type}</span> : null}</span>
                           <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: 'var(--color-slate)' }}>{b.ci.environment}</span> : null}</span>
-                          <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? '#fef2f2' : b.distance === 2 ? '#fff7ed' : '#f1f5f9', color: b.distance === 1 ? '#ef4444' : b.distance === 2 ? '#b45309' : 'var(--color-slate)' }}>{b.distance} hop</span></span>
+                          <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? '#fff7ed' : '#f1f5f9', color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? '#b45309' : 'var(--color-slate)' }}>{b.distance} hop</span></span>
                           <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{b.affectedBy.name}</span>
                           {currentStep === wfInitialStep?.name && (
                             <span style={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
@@ -923,7 +923,7 @@ export function ChangeDetailPage() {
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" onClick={() => setConfirmRemoveCI(null)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Annulla</button>
-                <button type="button" onClick={() => void removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>Rimuovi</button>
+                <button type="button" onClick={() => void removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>Rimuovi</button>
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ const btnStyle = (disabled: boolean): React.CSSProperties => ({
   fontSize: 'var(--font-size-body)',
   border: '1px solid #e5e7eb',
   borderRadius: 4,
-  background: disabled ? '#f9fafb' : '#fff',
+  background: disabled ? 'var(--color-slate-bg)' : '#fff',
   color: disabled ? '#c4c9d4' : 'var(--color-slate)',
   cursor: disabled ? 'not-allowed' : 'pointer',
 })

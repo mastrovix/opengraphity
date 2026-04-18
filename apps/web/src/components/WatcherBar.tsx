@@ -59,7 +59,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
         style={{
           display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 6,
           fontSize: 'var(--font-size-table)', fontWeight: 600, cursor: 'pointer',
-          border: '1px solid #e5e7eb', background: '#f9fafb', color: 'var(--color-slate)',
+          border: '1px solid #e5e7eb', background: 'var(--color-slate-bg)', color: 'var(--color-slate)',
         }}
       >
         <Eye size={12} /> {watchersList.length}
