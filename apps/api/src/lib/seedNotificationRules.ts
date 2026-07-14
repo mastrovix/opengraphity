@@ -1,5 +1,6 @@
 import type { Session } from 'neo4j-driver'
 import { v4 as uuidv4 } from 'uuid'
+import { notificationLogger } from './logger.js'
 
 interface RuleDef {
   event_type: string
@@ -72,5 +73,5 @@ export async function seedNotificationRules(tenantId: string, session: Session):
     if (wasCreated) created++; else skipped++
   }
 
-  console.log(`  ✓ NotificationRule: ${created} create, ${skipped} già esistenti`)
+  notificationLogger.info({ created, skipped }, 'NotificationRule seed completato')
 }

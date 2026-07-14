@@ -132,6 +132,9 @@ export function buildBaseSDL(): string {
     # Attachments
     attachments(entityType: String!, entityId: String!): [Attachment!]!
 
+    # Global search (command palette)
+    globalSearch(query: String!, limitPerType: Int): [SearchHit!]!
+
     # Comments
     comments(entityType: String!, entityId: String!, includeInternal: Boolean): [EntityComment!]!
 
@@ -401,6 +404,16 @@ export function buildBaseSDL(): string {
   ${approvalSDL()}
   ${attachmentsSDL()}
   ${commentsSDL()}
+
+  type SearchHit {
+    entityType: String!
+    id:         ID!
+    number:     String
+    title:      String!
+    status:     String
+    ciType:     String
+    slug:       String
+  }
   ${knowledgeBaseSDL()}
   ${portalSDL()}
   ${fieldRulesSDL()}

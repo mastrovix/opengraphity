@@ -1,3 +1,5 @@
+import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
@@ -70,7 +72,7 @@ async function createTeam(
       id, tenantId: ctx.tenantId, name: input.name, description: input.description ?? null, type: null, now,
     })
     const row = rows[0]
-    if (!row) throw new Error('Failed to create Team')
+    if (!row) throw new GraphQLError('Failed to create Team', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     void audit(ctx, 'team.created', 'Team', id)
     return mapTeam(row.props)
   }, true)
@@ -93,7 +95,7 @@ async function assignCIOwner(
       ciId: args.ciId, teamId: args.teamId, tenantId: ctx.tenantId,
     })
     const row = rows[0]
-    if (!row) throw new Error('ConfigurationItem or Team not found')
+    if (!row) throw new NotFoundError('ConfigurationItem or Team')
     row.props['type'] = ciTypeFromLabels([row.label])
     return mapCI(row.props)
   }, true)
@@ -116,7 +118,7 @@ async function assignCISupportGroup(
       ciId: args.ciId, teamId: args.teamId, tenantId: ctx.tenantId,
     })
     const row = rows[0]
-    if (!row) throw new Error('ConfigurationItem or Team not found')
+    if (!row) throw new NotFoundError('ConfigurationItem or Team')
     row.props['type'] = ciTypeFromLabels([row.label])
     return mapCI(row.props)
   }, true)
@@ -190,7 +192,7 @@ async function setTeamManager(_: unknown, args: { teamId: string; userId: string
       CREATE (t)-[:MANAGED_BY]->(u)
       RETURN properties(t) AS props
     `, { teamId: args.teamId, userId: args.userId, tenantId: ctx.tenantId })
-    if (!row) throw new Error('Team or User not found')
+    if (!row) throw new NotFoundError('Team or User')
     void audit(ctx, 'team.manager_set', 'Team', args.teamId)
     return mapTeam(row.props)
   }, true)
@@ -206,7 +208,7 @@ async function removeTeamManager(_: unknown, args: { teamId: string }, ctx: Grap
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       RETURN properties(t) AS props
     `, { teamId: args.teamId, tenantId: ctx.tenantId })
-    if (!row) throw new Error('Team not found')
+    if (!row) throw new NotFoundError('Team')
     void audit(ctx, 'team.manager_removed', 'Team', args.teamId)
     return mapTeam(row.props)
   }, true)

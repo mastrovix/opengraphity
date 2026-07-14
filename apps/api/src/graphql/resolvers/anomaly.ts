@@ -1,3 +1,4 @@
+import { NotFoundError } from '../../lib/errors.js'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { anomalyScannerQueue } from '../../anomaly/anomalyEngine.js'
@@ -191,7 +192,7 @@ export const anomalyResolvers = {
           resolvedBy:       ctx.userId || 'unknown',
           now,
         })
-        if (!row) throw new Error('Anomaly not found')
+        if (!row) throw new NotFoundError('Anomaly')
         cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
         void audit(ctx, 'anomaly.resolved', 'Anomaly', args.id, { resolutionStatus: args.resolutionStatus })
         return mapAnomaly(row.props)

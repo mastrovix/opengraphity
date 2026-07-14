@@ -1,3 +1,4 @@
+import { ValidationError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
@@ -61,7 +62,7 @@ async function addWorkflowStep(
   ctx: GraphQLContext,
 ) {
   const ALLOWED_TYPES = new Set(['standard', 'parallel_fork', 'parallel_join', 'timer_wait', 'sub_workflow'])
-  if (!ALLOWED_TYPES.has(type)) throw new Error(`Invalid step type: ${type}`)
+  if (!ALLOWED_TYPES.has(type)) throw new ValidationError(`Invalid step type: ${type}`)
 
   return withSession(async (session) => {
     const stepId = randomUUID()
@@ -106,7 +107,7 @@ async function removeWorkflowStep(
       tx.run(`MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName}) RETURN s.type AS type`, { definitionId, stepName }),
     )
     const stepType = res.records[0]?.get('type') as string | null
-    if (!stepType || PROTECTED.has(stepType)) throw new Error(`Cannot remove step: ${stepName}`)
+    if (!stepType || PROTECTED.has(stepType)) throw new ValidationError(`Cannot remove step: ${stepName}`)
 
     await session.executeWrite(tx =>
       tx.run(`

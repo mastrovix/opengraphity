@@ -7,6 +7,8 @@
  * stays a clean star with helpers.ts at the center.
  */
 
+import { GraphQLError } from 'graphql'
+import { ForbiddenError, ValidationError } from '../../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import {
   TASK_STATUS, ASSESSMENT_ROLE, ROLE_LABEL, ROLE_TO_RELATION,
@@ -90,7 +92,7 @@ export async function assertCIHasOwnerAndSupport(session: Session, tenantId: str
     if (!r.ownerTeamId || !r.supportTeamId) {
       logger.error({ ciId: r.id, ciName: r.name, hasOwner: !!r.ownerTeamId, hasSupport: !!r.supportTeamId },
         '[createChange] CI manca di Owner Group o Support Group')
-      throw new Error(`CI ${r.name} manca di Owner Group o Support Group`)
+      throw new ValidationError(`CI ${r.name} manca di Owner Group o Support Group`)
     }
   }
 }
@@ -144,18 +146,18 @@ export async function getInstanceId(session: Session, changeId: string, tenantId
     MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     RETURN wi.id AS id
   `, { id: changeId, tenantId })
-  if (!row) throw new Error(`Change ${changeId} senza WorkflowInstance collegata`)
+  if (!row) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
   return row.id
 }
 
 export async function assertInitialStep(session: Session, changeId: string, tenantId: string): Promise<Props> {
   const props = await loadChange(session, changeId, tenantId)
-  if (!props) throw new Error(`Change ${changeId} non trovato`)
+  if (!props) throw new GraphQLError(`Change ${changeId} non trovato`, { extensions: { code: 'NOT_FOUND' } })
   const current = await getCurrentStep(session, changeId, tenantId)
   const initial = await getInitialStepName(session, tenantId, 'change')
   if (current !== initial) {
     logger.error({ changeId, current, initial }, '[change] operazione permessa solo nello step iniziale')
-    throw new Error(`Operazione permessa solo nello step iniziale: step corrente "${current}"`)
+    throw new GraphQLError(`Operazione permessa solo nello step iniziale: step corrente "${current}"`, { extensions: { code: 'CONFLICT' } })
   }
   return props
 }
@@ -174,7 +176,7 @@ export async function assertUserInCITeam(
   if (ctx.role === 'admin') return
   if (!ctx.userId) {
     logger.error({ ciId, role }, '[authz] utente non identificato')
-    throw new Error('Non autorizzato: utente non identificato')
+    throw new ForbiddenError('Non autorizzato: utente non identificato')
   }
   const rel = ROLE_TO_RELATION[role]
   const roleLabel = ROLE_LABEL[role]
@@ -185,14 +187,14 @@ export async function assertUserInCITeam(
   `, { ciId, tenantId, userId: ctx.userId })
   if (!row || !row.ok) {
     logger.error({ userId: ctx.userId, ciId, role, tenantId }, `[authz] user ${ctx.userId} non è nel ${roleLabel} Group del CI ${ciId}`)
-    throw new Error(`Non autorizzato: solo il ${roleLabel} Group del CI può eseguire questa azione`)
+    throw new ForbiddenError(`Non autorizzato: solo il ${roleLabel} Group del CI può eseguire questa azione`)
   }
 }
 
 export function assertAdmin(ctx: GraphQLContext) {
   if (ctx.role !== 'admin') {
     logger.error({ userId: ctx.userId, role: ctx.role }, '[authz] reopen tentativo non-admin')
-    throw new Error('Solo gli admin possono riaprire task')
+    throw new ForbiddenError('Solo gli admin possono riaprire task')
   }
 }
 

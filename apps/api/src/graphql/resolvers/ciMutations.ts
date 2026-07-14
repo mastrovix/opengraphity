@@ -1,3 +1,5 @@
+import { GraphQLError } from 'graphql'
+import { ValidationError } from '../../lib/errors.js'
 import { withSession } from './ci-utils.js'
 import { cache } from '../../lib/cache.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
@@ -9,7 +11,7 @@ type Props = Record<string, unknown>
 
 const SAFE_LABEL_RE = /^[A-Za-z][A-Za-z0-9_]*$/
 function validateLabel(label: string): void {
-  if (!SAFE_LABEL_RE.test(label)) throw new Error(`Invalid CI type label: ${label}`)
+  if (!SAFE_LABEL_RE.test(label)) throw new ValidationError(`Invalid CI type label: ${label}`)
 }
 
 function toSnakeCase(str: string): string {
@@ -104,7 +106,7 @@ export function buildUpdateMutation(
           { id, tenantId: ctx.tenantId, updates },
         ),
       )
-      if (!result.records.length) throw new Error('CI non trovato')
+      if (!result.records.length) throw new GraphQLError('CI non trovato', { extensions: { code: 'NOT_FOUND' } })
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)
       void audit(ctx, 'ci.updated', 'ConfigurationItem', id)

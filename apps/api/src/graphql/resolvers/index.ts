@@ -1,3 +1,5 @@
+import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { mergeResolvers } from '@graphql-tools/merge'
 import type { IResolvers } from '@graphql-tools/utils'
 import { authResolvers } from './auth.js'
@@ -24,6 +26,7 @@ import { enumTypeResolvers } from './enumType.js'
 import { monitoringResolvers } from './monitoring.js'
 import { approvalResolvers } from './approval.js'
 import { attachmentResolvers } from './attachments.js'
+import { globalSearchResolvers } from './globalSearch.js'
 import { commentResolvers } from './comments.js'
 import { knowledgeBaseResolvers } from './knowledgeBase.js'
 import { reportExportResolvers } from './reportExport.js'
@@ -138,7 +141,7 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username: KEYCLOAK_ADMIN_USER, password: KEYCLOAK_ADMIN_PASS }),
   })
-  if (!tokenRes.ok) throw new Error('Keycloak admin auth failed')
+  if (!tokenRes.ok) throw new GraphQLError('Keycloak admin auth failed', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
   const { access_token: adminToken } = await tokenRes.json() as { access_token: string }
 
   // 2. Create user in Keycloak
@@ -149,7 +152,7 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
     body: JSON.stringify({ username: email, email, emailVerified: true, enabled: true, firstName, lastName }),
   })
-  if (kcRes.status !== 201 && kcRes.status !== 409) throw new Error(`Keycloak user creation failed: ${kcRes.status}`)
+  if (kcRes.status !== 201 && kcRes.status !== 409) throw new GraphQLError(`Keycloak user creation failed: ${kcRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
 
   // Get user ID
   const usersRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users?email=${encodeURIComponent(email)}&exact=true`, {
@@ -157,7 +160,7 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
   })
   const kcUsers = await usersRes.json() as { id: string }[]
   const kcUserId = kcUsers[0]?.id
-  if (!kcUserId) throw new Error('User not found in Keycloak after creation')
+  if (!kcUserId) throw new GraphQLError('User not found in Keycloak after creation', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
 
   // Set password
   await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/reset-password`, {
@@ -235,7 +238,7 @@ async function updateUserTeams(_: unknown, args: { userId: string; teamIds: stri
       RETURN properties(u) AS props
     `, { userId: args.userId, tenantId: ctx.tenantId })
 
-    if (!row) throw new Error('User not found')
+    if (!row) throw new NotFoundError('User')
     return mapUser(row.props)
   } finally { await session.close() }
 }
@@ -267,6 +270,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...enumTypeResolvers.Query,
       ...approvalResolvers.Query,
       ...attachmentResolvers.Query,
+      ...globalSearchResolvers.Query,
       ...commentResolvers.Query,
       ...knowledgeBaseResolvers.Query,
       ...portalResolvers.Query,

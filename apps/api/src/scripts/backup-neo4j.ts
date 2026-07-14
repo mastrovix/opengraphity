@@ -5,6 +5,7 @@
 import { parseArgs }                  from 'node:util'
 import { createWriteStream, mkdirSync } from 'node:fs'
 import { resolve }                    from 'node:path'
+import { pathToFileURL }              from 'node:url'
 import { promisify }                  from 'node:util'
 import { exec }                       from 'node:child_process'
 import { unlink }                     from 'node:fs/promises'
@@ -140,16 +141,24 @@ function toNum(v: unknown): number {
 }
 
 // ── CLI entrypoint ────────────────────────────────────────────────────────────
+// Guarded: this module is also imported by the maintenance worker, which must
+// NOT trigger a backup as an import side-effect (it used to run one on every
+// API boot, writing to the unpersisted/unpruned ./backups inside the container).
 
-const { values } = parseArgs({
-  options: {
-    'output-dir': { type: 'string', short: 'o', default: './backups' },
-  },
-})
+const isDirectRun = process.argv[1] !== undefined
+  && import.meta.url === pathToFileURL(process.argv[1]).href
 
-const outputDir = resolve(values['output-dir'] ?? './backups')
+if (isDirectRun) {
+  const { values } = parseArgs({
+    options: {
+      'output-dir': { type: 'string', short: 'o', default: './backups' },
+    },
+  })
 
-runBackup(outputDir).catch((err: unknown) => {
-  log.fatal({ err }, 'Backup failed')
-  process.exit(1)
-})
+  const outputDir = resolve(values['output-dir'] ?? './backups')
+
+  runBackup(outputDir).catch((err: unknown) => {
+    log.fatal({ err }, 'Backup failed')
+    process.exit(1)
+  })
+}

@@ -1,3 +1,4 @@
+import { NotFoundError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
@@ -209,7 +210,7 @@ async function updateConfigurationItem(
       now,
     })
     const row = rows[0]
-    if (!row) throw new Error('ConfigurationItem not found')
+    if (!row) throw new NotFoundError('ConfigurationItem')
     return mapCI(row.props)
   }, true)
 }
@@ -262,7 +263,7 @@ async function updateCIFields(
     `
     const rows = await runQuery<{ props: Props }>(session, cypher, params)
     const row = rows[0]
-    if (!row) throw new Error('ConfigurationItem not found')
+    if (!row) throw new NotFoundError('ConfigurationItem')
     return mapCI(row.props)
   }, true)
 }

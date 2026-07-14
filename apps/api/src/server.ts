@@ -198,7 +198,9 @@ export async function startServer(): Promise<http.Server> {
 
   const apolloServer = new ApolloServer<GraphQLContext>({
     schema,
-    introspection: true,
+    // Off in production unless explicitly re-enabled (local compose sets
+    // NODE_ENV=production, so the flag keeps Apollo Sandbox usable in dev)
+    introspection: process.env['GRAPHQL_INTROSPECTION'] === 'true' || process.env['NODE_ENV'] !== 'production',
     validationRules: [depthLimit(10)],
     formatError: (formattedError, error) => {
       if (formattedError.extensions?.['code'] !== 'UNAUTHORIZED') {

@@ -1,6 +1,7 @@
 /**
  * Admin-only "reopen" mutations: revert a completed task back to an open state.
  */
+import { GraphQLError } from 'graphql'
 import { TASK_STATUS } from '../../../lib/taskStatus.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
@@ -26,7 +27,7 @@ export async function reopenAssessmentTask(_: unknown, args: { taskId: string; r
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
       RETURN c.id AS changeId, t.ci_id AS ciId, t.responder_role AS role
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new Error(`AssessmentTask ${args.taskId} non trovata`)
+    if (!tctx) throw new GraphQLError(`AssessmentTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
 
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
@@ -70,7 +71,7 @@ export async function reopenDeployPlanTask(_: unknown, args: { taskId: string; r
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {id: $taskId})
       RETURN c.id AS changeId, dp.ci_id AS ciId
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new Error(`DeployPlanTask ${args.taskId} non trovata`)
+    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
 
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
@@ -106,7 +107,7 @@ export async function reopenValidationTest(_: unknown, args: { id: string; reaso
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_VALIDATION]->(vt:ValidationTest {id: $id})
       RETURN c.id AS changeId, vt.ci_id AS ciId
     `, { id: args.id, tenantId: ctx.tenantId })
-    if (!tctx) throw new Error(`ValidationTest ${args.id} non trovata`)
+    if (!tctx) throw new GraphQLError(`ValidationTest ${args.id} non trovata`, { extensions: { code: 'NOT_FOUND' } })
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (vt:ValidationTest {id: $id, tenant_id: $tenantId})
@@ -136,7 +137,7 @@ export async function reopenDeploymentTask(_: unknown, args: { id: string; reaso
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOYMENT]->(dt:DeploymentTask {id: $id})
       RETURN c.id AS changeId, dt.ci_id AS ciId
     `, { id: args.id, tenantId: ctx.tenantId })
-    if (!tctx) throw new Error(`DeploymentTask ${args.id} non trovata`)
+    if (!tctx) throw new GraphQLError(`DeploymentTask ${args.id} non trovata`, { extensions: { code: 'NOT_FOUND' } })
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (dt:DeploymentTask {id: $id, tenant_id: $tenantId})
@@ -166,7 +167,7 @@ export async function reopenReviewTask(_: unknown, args: { id: string; reason: s
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_REVIEW]->(rv:ReviewTask {id: $id})
       RETURN c.id AS changeId, rv.ci_id AS ciId
     `, { id: args.id, tenantId: ctx.tenantId })
-    if (!tctx) throw new Error(`ReviewTask ${args.id} non trovata`)
+    if (!tctx) throw new GraphQLError(`ReviewTask ${args.id} non trovata`, { extensions: { code: 'NOT_FOUND' } })
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (rv:ReviewTask {id: $id, tenant_id: $tenantId})

@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
@@ -52,7 +53,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       RETURN ci.name AS name, labels(ci)[0] AS lbl, ci.environment AS env, ci.status AS status
     `, { ciId, tenantId })
-    if (!tgt) throw new Error(`CI not found: ${ciId}`)
+    if (!tgt) throw new GraphQLError(`CI not found: ${ciId}`, { extensions: { code: 'NOT_FOUND' } })
     targetName = tgt.name
     targetType = tgt.lbl ?? 'Unknown'
     targetEnv = tgt.env

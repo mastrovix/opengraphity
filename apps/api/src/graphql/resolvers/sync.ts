@@ -9,7 +9,7 @@ import {
 import type { GraphQLContext } from '../../context.js'
 import { syncQueue } from '../../discovery/syncWorker.js'
 import { withSession } from './ci-utils.js'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { validateStringLength, validateCronExpression } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
@@ -430,7 +430,7 @@ export const syncResolvers = {
           .map((s: string) => s.charAt(0).toUpperCase() + s.slice(1))
           .join('')
         if (!/^[A-Za-z][A-Za-z0-9]*$/.test(ciLabel)) {
-          throw new Error(`Invalid CI type label: ${conflict.ciType}`)
+          throw new ValidationError(`Invalid CI type label: ${conflict.ciType}`)
         }
 
         if (args.resolution === 'merged') {

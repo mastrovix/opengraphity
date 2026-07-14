@@ -1,3 +1,5 @@
+import { GraphQLError } from 'graphql'
+import { ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
@@ -140,7 +142,7 @@ export async function updateWorkflowStep(
         RETURN s
       `, { definitionId, stepName, tenantId: ctx.tenantId, label, enterActions: enterActions ?? null, exitActions: exitActions ?? null, now }),
     )
-    if (!result.records.length) throw new Error('WorkflowStep non trovato')
+    if (!result.records.length) throw new GraphQLError('WorkflowStep non trovato', { extensions: { code: 'NOT_FOUND' } })
     const s = result.records[0].get('s').properties as Record<string, unknown>
     return {
       id:           s['id']             as string,
@@ -200,7 +202,7 @@ export async function updateWorkflowTransition(
         LIMIT 1
       `, { definitionId, tenantId: ctx.tenantId }),
     )
-    if (!wdResult.records.length) throw new Error('WorkflowDefinition non trovata')
+    if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
     const wd    = wdResult.records[0].get('wd').properties    as Record<string, unknown>
     const steps = wdResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
     const trResult = await session.executeRead((tx) =>
@@ -266,7 +268,7 @@ export async function executeWorkflowTransition(
       `, { instanceId, tenantId: ctx.tenantId }),
     )
     if (entityDataResult.records.length === 0) {
-      throw new Error(`Workflow instance not found: ${instanceId}`)
+      throw new GraphQLError(`Workflow instance not found: ${instanceId}`, { extensions: { code: 'NOT_FOUND' } })
     }
     const entityData: Record<string, unknown> = {
       ...((entityDataResult.records[0].get('entityData') as Record<string, unknown> | null) ?? {}),
@@ -281,7 +283,7 @@ export async function executeWorkflowTransition(
 
       createEntity: async (type, data) => {
         const label = ENTITY_LABELS[type]
-        if (!label) throw new Error(`Unknown entity type: ${type}`)
+        if (!label) throw new ValidationError(`Unknown entity type: ${type}`)
 
         // Extract relation metadata — must not be stored as node properties
         const { parent_id, parent_type, ...nodeData } = data as Record<string, unknown>
@@ -636,7 +638,7 @@ export async function saveWorkflowChanges(
         RETURN wd
       `, { definitionId, tenantId: ctx.tenantId, now }),
     )
-    if (!wdResult.records.length) throw new Error('WorkflowDefinition non trovata')
+    if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
     const wd = wdResult.records[0].get('wd').properties as Record<string, unknown>
 
     void audit(ctx, 'workflow.updated', 'WorkflowDefinition', definitionId)

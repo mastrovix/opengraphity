@@ -23,6 +23,16 @@ export function incidentSDL(): string {
     workflowHistory:      [WorkflowStepExecution!]!
     availableTransitions: [WorkflowTransition!]!
     comments:             [Comment!]!
+    slaStatus:            SLAStatusInfo
+  }
+
+  type SLAStatusInfo {
+    startedAt:        String!
+    responseDeadline: String!
+    resolveDeadline:  String!
+    responseMet:      Boolean!
+    resolveMet:       Boolean!
+    breached:         Boolean!
   }
 
   type Comment {

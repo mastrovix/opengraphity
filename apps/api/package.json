@@ -6,6 +6,8 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "backup:neo4j": "tsx src/scripts/backup-neo4j.ts",
+    "restore:neo4j": "tsx src/scripts/restore-neo4j.ts",
     "seed:teams": "tsx src/scripts/seed-teams.ts",
     "seed:users-bulk": "tsx src/scripts/seed-users-bulk.ts",
     "seed:apps": "tsx src/scripts/seed-apps.ts",

@@ -1,3 +1,4 @@
+import { NotFoundError } from '../../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../../context.js'
 import { mapDashboardConfig, type Props } from './helpers.js'
@@ -32,7 +33,7 @@ export async function addDashboardWidget(
         { dashId: dashboardId, tenantId: ctx.tenantId },
       ),
     )
-    if (!dashResult.records.length) throw new Error('Dashboard not found')
+    if (!dashResult.records.length) throw new NotFoundError('Dashboard')
     const dashProps = dashResult.records[0].get('d') as Props
 
     // Create widget
@@ -78,7 +79,7 @@ export async function removeDashboardWidget(
     )
     const dashProps = dashResult.records.length > 0 ? dashResult.records[0].get('d') as Props : null
 
-    if (!dashProps) throw new Error('Dashboard not found')
+    if (!dashProps) throw new NotFoundError('Dashboard')
 
     await session.executeWrite((tx) =>
       tx.run(
@@ -126,7 +127,7 @@ export async function updateDashboardWidget(
         { widgetId: args.widgetId, tenantId: ctx.tenantId },
       ),
     )
-    if (!dashResult.records.length) throw new Error('Dashboard not found')
+    if (!dashResult.records.length) throw new NotFoundError('Dashboard')
     return mapDashboardConfig(dashResult.records[0].get('d') as Props)
   } finally {
     await session.close()
@@ -157,7 +158,7 @@ export async function reorderDashboardWidgets(
         { id: args.dashboardId, tenantId: ctx.tenantId },
       ),
     )
-    if (!dashResult.records.length) throw new Error('Dashboard not found')
+    if (!dashResult.records.length) throw new NotFoundError('Dashboard')
     return mapDashboardConfig(dashResult.records[0].get('d') as Props)
   } finally {
     await session.close()

@@ -1,6 +1,8 @@
 /**
  * Mutations on DeployPlanTask — editing and completion of the deploy plan.
  */
+import { GraphQLError } from 'graphql'
+import { ValidationError } from '../../../lib/errors.js'
 import { TASK_STATUS } from '../../../lib/taskStatus.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
@@ -19,14 +21,14 @@ type TimeWindowInput = { start: string; end: string }
 type DeployStepInput = { title: string; validationWindow: TimeWindowInput; releaseWindow: TimeWindowInput }
 
 function validateWindow(label: string, w: TimeWindowInput) {
-  if (!w || !w.start || !w.end) throw new Error(`${label}: start e end obbligatori`)
+  if (!w || !w.start || !w.end) throw new ValidationError(`${label}: start e end obbligatori`)
   if (new Date(w.start).getTime() >= new Date(w.end).getTime()) {
-    throw new Error(`${label}: end deve essere dopo start`)
+    throw new ValidationError(`${label}: end deve essere dopo start`)
   }
 }
 
 function validateStep(idx: number, s: DeployStepInput) {
-  if (!s.title || !s.title.trim()) throw new Error(`Step ${idx + 1}: titolo obbligatorio`)
+  if (!s.title || !s.title.trim()) throw new ValidationError(`Step ${idx + 1}: titolo obbligatorio`)
   validateWindow(`Step ${idx + 1} — finestra di validazione`, s.validationWindow)
   validateWindow(`Step ${idx + 1} — finestra di deploy`, s.releaseWindow)
 }
@@ -44,12 +46,12 @@ export async function saveDeployPlan(
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, wi.current_step AS currentStep
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new Error(`DeployPlanTask ${args.taskId} non trovata`)
-    if (tctx.status === TASK_STATUS.COMPLETED) throw new Error('Task già completata')
+    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
     const initialStepName = await getInitialStepName(session, ctx.tenantId, 'change')
-    if (tctx.currentStep !== initialStepName) throw new Error(`Piano deploy editabile solo nello step iniziale (${initialStepName})`)
+    if (tctx.currentStep !== initialStepName) throw new GraphQLError(`Piano deploy editabile solo nello step iniziale (${initialStepName})`, { extensions: { code: 'CONFLICT' } })
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
-    if (!Array.isArray(args.steps) || args.steps.length < 1) throw new Error('Almeno 1 step obbligatorio')
+    if (!Array.isArray(args.steps) || args.steps.length < 1) throw new ValidationError('Almeno 1 step obbligatorio')
     args.steps.forEach((s, i) => validateStep(i, s))
 
     const normalized = args.steps.map(s => ({
@@ -82,13 +84,13 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {id: $taskId})
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, dp.steps AS steps
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new Error(`DeployPlanTask ${args.taskId} non trovata`)
-    if (tctx.status === TASK_STATUS.COMPLETED) throw new Error('Task già completata')
+    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
 
     const steps = tctx.steps ? JSON.parse(tctx.steps) as unknown[] : []
     if (!Array.isArray(steps) || steps.length === 0) {
-      throw new Error('Almeno 1 step deve essere compilato prima di completare')
+      throw new GraphQLError('Almeno 1 step deve essere compilato prima di completare', { extensions: { code: 'CONFLICT' } })
     }
 
     const now = new Date().toISOString()

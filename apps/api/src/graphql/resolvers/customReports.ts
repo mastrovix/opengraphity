@@ -495,7 +495,7 @@ async function updateReportSchedule(
         },
       ),
     )
-    if (!result.records.length) throw new Error('Template non trovato')
+    if (!result.records.length) throw new GraphQLError('Template non trovato', { extensions: { code: 'NOT_FOUND' } })
     return mapTemplate(result.records[0].get('p') as Props)
   }, true)
 }

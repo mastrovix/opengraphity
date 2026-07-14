@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../../context.js'
@@ -59,7 +60,7 @@ export async function createDashboard(
         },
       ),
     )
-    if (!created.records.length) throw new Error('Failed to create dashboard')
+    if (!created.records.length) throw new GraphQLError('Failed to create dashboard', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
 
     // Create CREATED_BY rel (best-effort)
     await session.executeWrite((tx) =>
@@ -136,7 +137,7 @@ export async function updateDashboard(
         params,
       ),
     )
-    if (!result.records.length) throw new Error('Dashboard not found or access denied')
+    if (!result.records.length) throw new GraphQLError('Dashboard not found or access denied', { extensions: { code: 'NOT_FOUND' } })
 
     // Set as default: unset others, then set this
     if (isDefault) {
@@ -203,7 +204,7 @@ export async function deleteDashboard(
       ),
     )
     const cnt = Math.round(Number(countResult.records[0].get('cnt')))
-    if (cnt <= 1) throw new Error('Non puoi eliminare l\'unica dashboard')
+    if (cnt <= 1) throw new GraphQLError('Non puoi eliminare l\'unica dashboard', { extensions: { code: 'CONFLICT' } })
 
     await session.executeWrite((tx) =>
       tx.run(
@@ -230,7 +231,7 @@ export async function cloneDashboard(_: unknown, args: { id: string; newName: st
         { id: args.id, tenantId: ctx.tenantId },
       ),
     )
-    if (!src.records.length) throw new Error('Dashboard non trovata')
+    if (!src.records.length) throw new GraphQLError('Dashboard non trovata', { extensions: { code: 'NOT_FOUND' } })
     const sp = src.records[0].get('p') as Props
 
     // Create cloned dashboard

@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
@@ -93,7 +94,7 @@ async function createITILCIRelationRule(
       ),
     )
     if (existing.records.length > 0) {
-      throw new Error(`Esiste già una relazione con questo tipo di CI.`)
+      throw new GraphQLError('Esiste già una relazione con questo tipo di CI.', { extensions: { code: 'CONFLICT' } })
     }
 
     await session.executeWrite((tx) =>

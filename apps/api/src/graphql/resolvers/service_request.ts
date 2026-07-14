@@ -1,3 +1,4 @@
+import { NotFoundError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLResolveInfo } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
@@ -132,7 +133,7 @@ async function updateServiceRequest(
       now,
     })
     const row = rows[0]
-    if (!row) throw new Error('ServiceRequest not found')
+    if (!row) throw new NotFoundError('ServiceRequest')
     void audit(ctx, 'request.updated', 'ServiceRequest', id)
     return mapRequest(row.props)
   }, true)

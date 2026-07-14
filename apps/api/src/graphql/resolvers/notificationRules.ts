@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { randomUUID } from 'crypto'
 import { Queue } from 'bullmq'
 import type { GraphQLContext } from '../../context.js'
@@ -119,7 +120,7 @@ async function updateNotificationRule(
         },
       ),
     )
-    if (!result.records.length) throw new Error('NotificationRule non trovata')
+    if (!result.records.length) throw new GraphQLError('NotificationRule non trovata', { extensions: { code: 'NOT_FOUND' } })
     const props = result.records[0].get('r').properties as Record<string, unknown>
     const rule = mapRule(props)
     invalidateRuleCache(ctx.tenantId, rule.eventType)
@@ -225,7 +226,7 @@ async function deleteNotificationRule(
         { id, tenantId: ctx.tenantId },
       ),
     )
-    if (!result.records.length) throw new Error('Regola non trovata o non eliminabile')
+    if (!result.records.length) throw new GraphQLError('Regola non trovata o non eliminabile', { extensions: { code: 'NOT_FOUND' } })
     const eventType = result.records[0].get('eventType') as string
     invalidateRuleCache(ctx.tenantId, eventType)
     // Remove digest job if any

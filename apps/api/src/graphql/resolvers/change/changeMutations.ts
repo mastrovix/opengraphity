@@ -3,6 +3,8 @@
  *   createChange, addCIToChange, removeCIFromChange,
  *   executeChangeTransition, sendTaskReminder.
  */
+import { GraphQLError } from 'graphql'
+import { ValidationError } from '../../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
@@ -33,7 +35,7 @@ export async function createChange(
 ) {
   const { title, description, changeOwner, affectedCIIds } = args.input
   if (!affectedCIIds || affectedCIIds.length === 0) {
-    throw new Error('Un change deve avere almeno un CI impattato')
+    throw new ValidationError('Un change deve avere almeno un CI impattato')
   }
   return withSession(async (session) => {
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)
@@ -155,7 +157,7 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci {id: $ciId})
       RETURN properties(ci) AS ciProps, labels(ci)[0] AS ciLabel
     `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId })
-    if (!row) throw new Error('CI non trovato dopo aggiunta')
+    if (!row) throw new GraphQLError('CI non trovato dopo aggiunta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     row.ciProps['type'] = row.ciProps['type'] as string | undefined ?? row.ciLabel.toLowerCase()
     const { mapCI } = await import('../ci-utils.js')
     return {
@@ -213,7 +215,7 @@ export async function executeChangeTransition(
       triggerType: 'manual',
       notes:       args.notes,
     }, actionCtx)
-    if (!result.success) throw new Error(result.error ?? 'Transizione fallita')
+    if (!result.success) throw new GraphQLError(result.error ?? 'Transizione fallita', { extensions: { code: 'CONFLICT' } })
 
     await afterEnterStep(session, args.changeId, ctx.tenantId, args.toStep)
     await writeAudit(session, args.changeId, ctx.tenantId,

@@ -2,6 +2,7 @@
  * Mutations run during the deployment / review phases:
  *   completeValidationTest, completeDeployment, completeReview.
  */
+import { ValidationError } from '../../../lib/errors.js'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../../../lib/taskStatus.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
@@ -22,7 +23,7 @@ export async function completeValidationTest(
   ctx: GraphQLContext,
 ) {
   if (args.result !== VALIDATION_RESULT.PASS && args.result !== VALIDATION_RESULT.FAIL) {
-    throw new Error('result deve essere "pass" o "fail"')
+    throw new ValidationError('result deve essere "pass" o "fail"')
   }
   return withSession(async (session) => {
     await assertUserInCITeam(session, args.ciId, ctx.tenantId, ctx, 'owner')
@@ -90,7 +91,7 @@ export async function completeReview(
   ctx: GraphQLContext,
 ) {
   if (args.result !== REVIEW_RESULT.CONFIRMED && args.result !== REVIEW_RESULT.REJECTED) {
-    throw new Error('result deve essere "confirmed" o "rejected"')
+    throw new ValidationError('result deve essere "confirmed" o "rejected"')
   }
   return withSession(async (session) => {
     await assertUserInCITeam(session, args.ciId, ctx.tenantId, ctx, 'owner')

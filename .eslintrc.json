@@ -16,6 +16,22 @@
     "no-constant-condition": ["error", { "checkLoops": false }],
     "@typescript-eslint/no-explicit-any": "warn",
     "react-hooks/rules-of-hooks": "error",
-    "react-hooks/exhaustive-deps": "warn"
-  }
+    "react-hooks/exhaustive-deps": "warn",
+    "no-console": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "apps/web/**",
+        "apps/portal/**",
+        "packages/**",
+        "apps/api/src/scripts/**",
+        "**/__tests__/**",
+        "**/*.test.ts"
+      ],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
 }

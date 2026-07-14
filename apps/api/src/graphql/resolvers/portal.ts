@@ -1,6 +1,7 @@
+import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { withSession } from './ci-utils.js'
-import { ForbiddenError } from '../../lib/errors.js'
+import { ForbiddenError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -233,7 +234,7 @@ async function createTicket(
     loadEnumValues(ctx.tenantId, 'category'),
     loadEnumValues(ctx.tenantId, 'priority'),
   ])
-  if (allowedCategories.size > 0 && !allowedCategories.has(category)) throw new Error(`Invalid category: ${category}`)
+  if (allowedCategories.size > 0 && !allowedCategories.has(category)) throw new ValidationError(`Invalid category: ${category}`)
   if (allowedPriorities.size > 0 && !allowedPriorities.has(priority)) priority = 'medium'
 
   const id  = uuidv4()
@@ -261,7 +262,7 @@ async function createTicket(
       `, { id, tenantId: ctx.tenantId, title, description: description ?? null, priority, category, userId: ctx.userId, now, status: initialStatus }),
     )
     const props = rows.records[0]?.get('props') as Record<string, unknown> | undefined
-    if (!props) throw new Error('Failed to create ticket')
+    if (!props) throw new GraphQLError('Failed to create ticket', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     return mapTicket(props)
   }, true)
 
@@ -368,7 +369,7 @@ async function reopenTicket(
     const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
     const resolvedStep = steps.find((s) => s.category === 'resolved')
     if (!resolvedStep || status !== resolvedStep.name) {
-      throw new Error('Only resolved tickets can be reopened')
+      throw new GraphQLError('Only resolved tickets can be reopened', { extensions: { code: 'CONFLICT' } })
     }
     // Reopen back to an active step: prefer the first non-initial step
     // marked as 'active' (typical "in progress"), fall back to any active.
@@ -376,7 +377,7 @@ async function reopenTicket(
       steps.find((s) => s.isOpen && s.category === 'active' && !s.isInitial) ??
       steps.find((s) => s.isOpen && s.category === 'active') ??
       steps.find((s) => s.isOpen)
-    if (!reopenTo) throw new Error('No active step available to reopen to')
+    if (!reopenTo) throw new GraphQLError('No active step available to reopen to', { extensions: { code: 'CONFLICT' } })
 
     const now = new Date().toISOString()
 

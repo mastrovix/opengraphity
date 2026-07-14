@@ -1,3 +1,5 @@
+import { GraphQLError } from 'graphql'
+import { ValidationError } from '../../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { withSession, runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
@@ -29,10 +31,10 @@ export async function createAssessmentQuestion(
 ) {
   const { text, category, isCore, options } = args.input
   if (category !== 'functional' && category !== 'technical') {
-    throw new Error('category deve essere "functional" o "technical"')
+    throw new ValidationError('category deve essere "functional" o "technical"')
   }
   if (!options || options.length === 0) {
-    throw new Error('Una domanda deve avere almeno una opzione')
+    throw new ValidationError('Una domanda deve avere almeno una opzione')
   }
   const id = uuidv4()
   const now = new Date().toISOString()
@@ -72,7 +74,7 @@ export async function updateAssessmentQuestion(
   const { id } = args
   const { text, category, isCore, isActive, options } = args.input
   if (category && category !== 'functional' && category !== 'technical') {
-    throw new Error('category deve essere "functional" o "technical"')
+    throw new ValidationError('category deve essere "functional" o "technical"')
   }
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
@@ -112,7 +114,7 @@ export async function deleteAssessmentQuestion(_: unknown, args: { id: string },
     const usedCount = used ? Number(used.count) : 0
     if (usedCount > 0) {
       logger.error({ questionId: args.id, usedCount }, '[questionAdmin] impossibile eliminare: in uso')
-      throw new Error('Impossibile eliminare: la domanda ha risposte associate')
+      throw new GraphQLError('Impossibile eliminare: la domanda ha risposte associate', { extensions: { code: 'CONFLICT' } })
     }
     await session.executeWrite((tx) => tx.run(`
       MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})

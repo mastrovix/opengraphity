@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import jwt from 'jsonwebtoken'
 import { getSession } from '@opengraphity/neo4j'
 
@@ -9,7 +10,7 @@ export const authResolvers = {
   Mutation: {
     login: async (_: unknown, { email, password }: { email: string; password: string }) => {
       if (!email.includes('@') || password.length < 6) {
-        throw new Error('Credenziali non valide')
+        throw new GraphQLError('Credenziali non valide', { extensions: { code: 'UNAUTHENTICATED' } })
       }
 
       const session = getSession()
@@ -19,7 +20,7 @@ export const authResolvers = {
         )
 
         if (result.records.length === 0) {
-          throw new Error('Credenziali non valide')
+          throw new GraphQLError('Credenziali non valide', { extensions: { code: 'UNAUTHENTICATED' } })
         }
 
         const u        = result.records[0]!.get('u').properties as Record<string, string>

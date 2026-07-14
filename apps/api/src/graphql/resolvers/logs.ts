@@ -1,3 +1,4 @@
+import { ForbiddenError } from '../../lib/errors.js'
 import type { GraphQLContext } from '../../context.js'
 import { getLogs, type LogEntry } from '../../lib/logBuffer.js'
 
@@ -42,7 +43,7 @@ async function logs(
   ctx: GraphQLContext,
 ) {
   if (ctx.role !== 'admin') {
-    throw new Error('Forbidden: logs are only accessible to admins')
+    throw new ForbiddenError('Forbidden: logs are only accessible to admins')
   }
 
   let entries = getLogs() // already newest-first

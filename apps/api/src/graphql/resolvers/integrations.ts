@@ -1,3 +1,4 @@
+import { NotFoundError } from '../../lib/errors.js'
 import { randomBytes, createHash, createHmac } from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
 import { withSession } from './ci-utils.js'
@@ -153,7 +154,7 @@ async function deleteOutboundWebhook(_: unknown, args: { id: string }, ctx: Grap
 async function testOutboundWebhook(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   return withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:OutboundWebhook {id: $id, tenant_id: $t}) RETURN properties(w) AS props`, { id: args.id, t: ctx.tenantId })
-    if (!rows[0]) throw new Error('Webhook not found')
+    if (!rows[0]) throw new NotFoundError('Webhook')
     const w = rows[0].props
     const body = JSON.stringify({ event_type: 'test', entity: { id: 'test', title: 'Test webhook' }, timestamp: new Date().toISOString(), tenant_id: ctx.tenantId })
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(w['headers'] ? JSON.parse(w['headers'] as string) : {}) }
