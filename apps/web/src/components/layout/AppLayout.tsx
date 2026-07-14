@@ -8,12 +8,14 @@ const SIDEBAR_WIDTH     = 240
 const SIDEBAR_COLLAPSED = 56
 
 export function AppLayout() {
+  // Hooks must run unconditionally, before any early return
+  const [collapsed, setCollapsed] = useState(false)
+
   if (!keycloak.authenticated) {
     keycloak.login()
     return null
   }
 
-  const [collapsed, setCollapsed] = useState(false)
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH
 
   return (

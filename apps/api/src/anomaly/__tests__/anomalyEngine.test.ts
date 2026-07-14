@@ -28,7 +28,7 @@ vi.mock('../rules.js', () => ({
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { startAnomalyScanner, anomalyScannerQueue } = await import('../anomalyEngine.js')
-const { Queue, Worker } = await import('bullmq')
+const { Worker } = await import('bullmq')
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 

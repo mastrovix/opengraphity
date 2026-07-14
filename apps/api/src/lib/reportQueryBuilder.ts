@@ -107,7 +107,7 @@ export function buildReportQuery(
   tenantId: string,
 ): { query: string; params: Record<string, unknown> } {
   const params: Record<string, unknown> = { tenantId }
-  const { nodes, edges, chartType, metric, groupByNodeId, groupByField, limit, sortDir } = section
+  const { nodes, edges, chartType, groupByNodeId, groupByField, limit, sortDir } = section
 
   // 1. Find root node
   const rootNode = nodes.find(n => n.isRoot)

@@ -124,28 +124,6 @@ async function assignCISupportGroup(
 
 // ── Field resolvers ──────────────────────────────────────────────────────────
 
-async function ciOwner(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const cypher = `
-      MATCH (ci {id: $id, tenant_id: $tenantId})-[:OWNED_BY]->(t:Team)
-      RETURN properties(t) as props
-    `
-    const row = await runQueryOne<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
-    return row ? mapTeam(row.props) : null
-  })
-}
-
-async function ciSupportGroup(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const cypher = `
-      MATCH (ci {id: $id, tenant_id: $tenantId})-[:SUPPORTED_BY]->(t:Team)
-      RETURN properties(t) as props
-    `
-    const row = await runQueryOne<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
-    return row ? mapTeam(row.props) : null
-  })
-}
-
 async function teamMembers(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const cypher = `

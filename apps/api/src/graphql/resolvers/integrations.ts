@@ -4,10 +4,8 @@ import { withSession } from './ci-utils.js'
 import { runQuery } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
-import { logger } from '../../lib/logger.js'
 
 type Props = Record<string, unknown>
-const log = logger.child({ module: 'integrations' })
 
 function hash(val: string): string { return createHash('sha256').update(val).digest('hex') }
 function genToken(): string { return randomBytes(32).toString('hex') }

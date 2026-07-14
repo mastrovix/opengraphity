@@ -60,7 +60,7 @@ function RelationList({
   onDelete?: (rel: CIRelation) => void
 }) {
   const grouped = relations.reduce<Record<string, CIRelation[]>>((acc, rel) => {
-    ;(acc[rel.relation] ??= []).push(rel)
+    (acc[rel.relation] ??= []).push(rel)
     return acc
   }, {})
 

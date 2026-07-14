@@ -199,7 +199,7 @@ async function main() {
     // 3. Match and migrate
     let migrated = 0
     let created  = 0
-    let alreadyDone = 0
+    let _alreadyDone = 0
 
     for (const field of fields) {
       let match = findMatch(field.enumValues, field.fieldName, enumDefs)
@@ -269,7 +269,7 @@ async function main() {
         migrated++
       } else {
         console.info(`  WARN  ${field.typeName}.${field.fieldName} — write returned no records`)
-        alreadyDone++
+        _alreadyDone++
       }
     }
 

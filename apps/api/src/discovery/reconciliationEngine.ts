@@ -4,8 +4,6 @@ import { getSession } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type {
   DiscoveredCI,
-  DiscoveredRelation,
-  MappingRule,
   SyncSourceConfig,
   CIDiscoveryMetadata,
 } from '@opengraphity/discovery'
@@ -326,7 +324,7 @@ async function syncRelations(
   tenantId:   string,
 ): Promise<{ created: number; removed: number }> {
   let created = 0
-  let removed = 0
+  const removed = 0
 
   const ciResult = await session.executeRead(tx => tx.run(
     `MATCH (ci:ConfigurationItem {discovery_external_id: $externalId, discovery_source_id: $sourceId, tenant_id: $tenantId})

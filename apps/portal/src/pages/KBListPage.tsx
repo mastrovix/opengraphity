@@ -21,7 +21,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 }
 
 function excerpt(body: string, max = 200): string {
-  const plain = body.replace(/[#*`\[\]]/g, '').trim()
+  const plain = body.replace(/[#*`[\]]/g, '').trim()
   return plain.length > max ? plain.slice(0, max) + '…' : plain
 }
 

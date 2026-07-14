@@ -14,8 +14,6 @@ const connection = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type Props = Record<string, unknown>
-
 interface RuleHit {
   entityId:      string
   entityType:    string

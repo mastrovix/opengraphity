@@ -1,5 +1,4 @@
 import type express from 'express'
-import jwt from 'jsonwebtoken'
 import { getSession } from '@opengraphity/neo4j'
 import { verifyKeycloakToken } from '../auth/keycloak.js'
 import { buildContext } from '../context.js'

@@ -33,8 +33,8 @@ function getResourceTypes(config: K8sConfig): Set<string> {
   return new Set(raw.split(',').map(s => s.trim()).filter(Boolean))
 }
 
-function makeKubeConfig(creds: Record<string, string>, cfg: K8sConfig) {
-  const { KubeConfig } = require('@kubernetes/client-node') as typeof import('@kubernetes/client-node')
+async function makeKubeConfig(creds: Record<string, string>, cfg: K8sConfig) {
+  const { KubeConfig } = await import('@kubernetes/client-node')
   const kc = new KubeConfig()
   if (creds['kubeconfig']) {
     kc.loadFromString(creds['kubeconfig'])
@@ -83,7 +83,7 @@ export const kubernetesConnector: Connector = {
     const k8s = await import('@kubernetes/client-node')
     const { CoreV1Api, AppsV1Api, NetworkingV1Api } = k8s
 
-    const kc          = makeKubeConfig(creds, cfg)
+    const kc          = await makeKubeConfig(creds, cfg)
     const coreApi     = kc.makeApiClient(CoreV1Api)
     const appsApi     = kc.makeApiClient(AppsV1Api)
     const networkApi  = kc.makeApiClient(NetworkingV1Api)
@@ -327,7 +327,7 @@ export const kubernetesConnector: Connector = {
       const cfg = config.config as K8sConfig
       const k8s = await import('@kubernetes/client-node')
       const { CoreV1Api } = k8s
-      const kc      = makeKubeConfig(creds, cfg)
+      const kc      = await makeKubeConfig(creds, cfg)
       const coreApi = kc.makeApiClient(CoreV1Api)
       const nsList  = await coreApi.listNamespace()
       return { ok: true, message: `Connected — ${nsList.items.length} namespaces found` }

@@ -92,7 +92,6 @@ describe('reconcileBatch', () => {
     await reconcileBatch(batch, testSource, 'run-1', 'tenant-1', stats)
 
     expect(mockSession.executeWrite).toHaveBeenCalledOnce()
-    const writeArg = mockSession.executeWrite.mock.calls[0]![0]
     // executeWrite is called with a callback — verify the CI was created (stats updated)
     expect(stats.ciCreated).toBe(1)
     expect(stats.ciUpdated).toBe(0)
@@ -111,7 +110,9 @@ describe('reconcileBatch', () => {
     const mockSession = makeMockSession(
       // findExisting → ritorna record con props esistenti
       [[{ id: 'ci-existing-1', props: existingProps }]],
-      // updateCI write
+      // updateCI write (MATCH SET)
+      [[]],
+      // SyncChangeRecord write (storico sync)
       [[]],
     )
     vi.mocked(getSession).mockReturnValue(mockSession as never)
@@ -136,7 +137,8 @@ describe('reconcileBatch', () => {
 
     await reconcileBatch(batch, testSource, 'run-1', 'tenant-1', stats)
 
-    expect(mockSession.executeWrite).toHaveBeenCalledOnce()
+    // 2 write: UPDATE del CI + creazione SyncChangeRecord per lo storico sync
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(2)
     expect(stats.ciConflicts).toBe(0)
     expect(mockSession.close).toHaveBeenCalledOnce()
   })

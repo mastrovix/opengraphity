@@ -7,14 +7,6 @@ import { ANOMALY_RULES } from '../anomaly/rules.js'
 
 const TENANT = 'c-one'
 
-function toNum(v: unknown): number {
-  if (typeof v === 'number') return v
-  if (v && typeof (v as { toNumber(): number }).toNumber === 'function') {
-    return (v as { toNumber(): number }).toNumber()
-  }
-  return Number(v ?? 0)
-}
-
 async function main() {
   const now = new Date().toISOString()
   console.log(`\n=== Anomaly Scanner — ${now} ===\n`)

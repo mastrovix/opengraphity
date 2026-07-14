@@ -67,7 +67,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
   const [label, setLabel]         = useState(step.label)
   const [isInitial,  setIsInitial]  = useState(Boolean(step.isInitial))
   const [isTerminal, setIsTerminal] = useState(Boolean(step.isTerminal))
-  const [isOpen,     setIsOpen]     = useState(step.isOpen ?? !Boolean(step.isTerminal))
+  const [isOpen,     setIsOpen]     = useState(step.isOpen ?? !step.isTerminal)
   const [category,   setCategory]   = useState(step.category ?? '')
 
   // Parse initial actions (computed once from props — stable until save)
@@ -129,7 +129,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
   const metadataChanged     =
        isInitial  !== Boolean(step.isInitial)
     || isTerminal !== Boolean(step.isTerminal)
-    || isOpen     !== (step.isOpen ?? !Boolean(step.isTerminal))
+    || isOpen     !== (step.isOpen ?? !step.isTerminal)
     || category   !== (step.category ?? '')
   const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged && !metadataChanged
   const notifyUnchanged     = notifyEnabled === !!existingNR

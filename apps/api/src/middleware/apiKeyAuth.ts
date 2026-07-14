@@ -2,7 +2,7 @@
  * API Key authentication middleware for REST API v1.
  * Reads X-API-Key header, validates against Neo4j ApiKey nodes.
  */
-import { createHash, timingSafeEqual } from 'crypto'
+import { createHash } from 'crypto'
 import type { Request, Response, NextFunction } from 'express'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'

@@ -6,7 +6,7 @@ import type { ServiceCtx } from './incidentService.js'
 import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
-import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
+import { getInitialStepName } from '../lib/workflowHelpers.js'
 
 export interface ProblemEventPayload {
   id: string; title: string; priority: string; status: string; assignedTo: string

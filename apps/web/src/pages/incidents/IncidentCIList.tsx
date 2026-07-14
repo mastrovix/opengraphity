@@ -23,7 +23,7 @@ interface CIRelationRule {
 
 function groupByType<T extends { type: string }>(items: T[]): Record<string, T[]> {
   return items.reduce<Record<string, T[]>>((acc, item) => {
-    ;(acc[item.type] ??= []).push(item)
+    (acc[item.type] ??= []).push(item)
     return acc
   }, {})
 }

@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "pnpm --parallel --filter './apps/*' dev",
     "build": "pnpm --recursive build",
-    "test": "pnpm --recursive test",
-    "lint": "pnpm --recursive lint",
+    "test": "pnpm --recursive --if-present test",
+    "lint": "eslint 'apps/*/src/**/*.{ts,tsx}' 'packages/*/src/**/*.ts'",
+    "typecheck": "pnpm --recursive exec tsc --noEmit",
     "neo4j:init": "pnpm --filter @opengraphity/neo4j init",
     "deploy:web": "pnpm --filter @opengraphity/web build && docker compose -f infra/docker-compose.yml up -d --build web"
   },
@@ -21,6 +22,7 @@
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
     "prettier": "^3.2.0",
     "tsx": "^4.21.0",
     "typescript": "^5.4.0",

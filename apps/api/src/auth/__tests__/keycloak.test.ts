@@ -10,6 +10,8 @@ vi.mock('jwks-rsa', () => ({
 
 vi.mock('jsonwebtoken', () => ({
   default: {
+    // The source pre-decodes the (unverified) token to read the issuer
+    decode: () => ({ iss: 'http://localhost:8080/realms/c-one' }),
     verify: (
       token: string,
       _getKey: unknown,

@@ -7,12 +7,10 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { parseMentions } from '../../lib/mentionParser.js'
 import { audit } from '../../lib/audit.js'
-import { logger } from '../../lib/logger.js'
 import { sseManager } from '@opengraphity/notifications'
 import { GraphQLError } from 'graphql'
 
 type Props = Record<string, unknown>
-const log = logger.child({ module: 'collaboration' })
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

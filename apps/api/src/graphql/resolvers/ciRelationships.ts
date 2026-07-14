@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { cache } from '../../lib/cache.js'

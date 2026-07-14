@@ -11,7 +11,13 @@ const mockSession = {
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 vi.mock('@opengraphity/events', () => ({
-  publish: vi.fn().mockResolvedValue(undefined),
+  publish:         vi.fn().mockResolvedValue(undefined),
+  getRedisOptions: vi.fn(() => ({})),
+}))
+
+vi.mock('../../lib/triggerEngine.js', () => ({
+  evaluateTriggers:      vi.fn().mockResolvedValue(undefined),
+  scheduleTimerTriggers: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@opengraphity/workflow', () => ({
@@ -22,8 +28,22 @@ vi.mock('@opengraphity/workflow', () => ({
 }))
 
 vi.mock('@opengraphity/neo4j', () => ({
-  getSession: vi.fn(),
-  runQuery:   vi.fn(),
+  getSession:  vi.fn(),
+  runQuery:    vi.fn(),
+  runQueryOne: vi.fn(),
+}))
+
+vi.mock('../../lib/rulesEngine.js', () => ({
+  evaluateBusinessRules: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../lib/workflowHelpers.js', () => ({
+  getInitialStepName: vi.fn().mockResolvedValue('new'),
+  getWorkflowSteps:   vi.fn().mockResolvedValue([
+    { name: 'new',       isInitial: true,  isTerminal: false, isOpen: true,  category: null },
+    { name: 'escalated', isInitial: false, isTerminal: false, isOpen: true,  category: 'escalated' },
+    { name: 'resolved',  isInitial: false, isTerminal: true,  isOpen: false, category: 'resolved' },
+  ]),
 }))
 
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
@@ -47,7 +67,7 @@ vi.mock('../../lib/mappers.js', () => ({
 const { createIncident, resolveIncident, escalateIncident } = await import('../incidentService.js')
 const { publish } = await import('@opengraphity/events')
 const { workflowEngine } = await import('@opengraphity/workflow')
-const { runQuery } = await import('@opengraphity/neo4j')
+const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
@@ -62,6 +82,8 @@ describe('createIncident', () => {
     vi.mocked(runQuery).mockResolvedValue([
       { props: { id: 'inc-1', title: 'Test incident', severity: 'high', status: 'open' } },
     ])
+    // incident-number progressive count
+    vi.mocked(runQueryOne).mockResolvedValue({ cnt: 0 })
   })
 
   it('chiama publish con type incident.created', async () => {
@@ -87,6 +109,8 @@ describe('createIncident', () => {
       ctx.tenantId,
       expect.any(String),  // generated uuid
       'incident',
+      undefined,           // definitionId
+      null,                // category
     )
   })
 
@@ -108,6 +132,8 @@ describe('resolveIncident', () => {
     vi.mocked(runQuery).mockResolvedValue([
       { props: { id: 'inc-1', title: 'Test incident', severity: 'high', status: 'resolved' } },
     ])
+    // workflow-instance lookup
+    vi.mocked(runQueryOne).mockResolvedValue({ instanceId: 'wi-1' })
     mockSession.executeRead.mockResolvedValue({ records: [] })
   })
 
@@ -130,6 +156,8 @@ describe('resolveIncident', () => {
 describe('escalateIncident', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // workflow-instance lookup
+    vi.mocked(runQueryOne).mockResolvedValue({ instanceId: 'wi-1' })
     mockSession.executeRead.mockResolvedValue({ records: [] })
   })
 

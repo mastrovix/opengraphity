@@ -138,7 +138,7 @@ async function generateExcel(templateName: string, data: SectionData[], filePath
   summary.columns = [{ width: 40 }]
 
   for (const sec of data) {
-    const safeName = sec.title.replace(/[\\\/*?:[\]]/g, '_').slice(0, 31)
+    const safeName = sec.title.replace(/[\\/*?:[\]]/g, '_').slice(0, 31)
     const sheet = workbook.addWorksheet(safeName)
 
     sheet.getCell('A1').value = sec.title

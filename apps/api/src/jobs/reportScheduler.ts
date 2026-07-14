@@ -11,7 +11,7 @@ import { logger } from '../lib/logger.js'
 // Base path for scheduled report files
 // NOTE: email delivery via SMTP is not yet implemented.
 //       When email is available, add an email sender here alongside the SSE notification.
-const SCHEDULED_REPORTS_DIR = path.join(
+const _SCHEDULED_REPORTS_DIR = path.join(
   process.env['ATTACHMENT_DIR'] ?? path.resolve('./data/attachments'),
   'scheduled-reports',
 )
