@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { BookOpen, Search, Eye, ThumbsUp, Tag } from 'lucide-react'
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
+import { QueryError } from '@/components/QueryError'
 import { lookupOrError } from '@/lib/tokens'
 
 const GET_CATEGORIES = gql`
@@ -50,7 +51,7 @@ export function KnowledgeBasePage() {
   const [inputVal, setInputVal] = useState('')
 
   const { data: catData } = useQuery<{ kbCategories: KBCategory[] }>(GET_CATEGORIES, { fetchPolicy: 'cache-and-network' })
-  const { data, loading }  = useQuery<{ kbArticles: { items: KBArticle[]; total: number } }>(GET_ARTICLES, {
+  const { data, loading, error, refetch }  = useQuery<{ kbArticles: { items: KBArticle[]; total: number } }>(GET_ARTICLES, {
     variables: { search: search || undefined, category: category || undefined, page: page + 1, pageSize: PAGE_SIZE },
     fetchPolicy: 'cache-and-network',
   })
@@ -152,13 +153,17 @@ export function KnowledgeBasePage() {
           </h2>
         )}
 
-        {loading ? (
-          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center', padding: 32 }}>{t('common.loading')}</div>
-        ) : articles.length === 0 ? (
-          <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.noArticles')} />
+        {error && !data ? (
+          <QueryError message={error.message} onRetry={() => void refetch()} />
         ) : (
-          <div>
-            {articles.map((a) => (
+          <>
+            {loading ? (
+              <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center', padding: 32 }}>{t('common.loading')}</div>
+            ) : articles.length === 0 ? (
+              <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.noArticles')} />
+            ) : (
+              <div>
+                {articles.map((a) => (
               <Link
                 key={a.id}
                 to={`/knowledge-base/${a.slug}`}
@@ -197,6 +202,8 @@ export function KnowledgeBasePage() {
         )}
 
         <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+          </>
+        )}
       </div>
     </PageContainer>
   )

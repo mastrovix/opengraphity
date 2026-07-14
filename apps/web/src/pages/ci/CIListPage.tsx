@@ -7,6 +7,7 @@ import { gql } from '@apollo/client'
 import { toast } from 'sonner'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { Button } from '@/components/Button'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
@@ -15,6 +16,10 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { CIDynamicForm } from '@/components/CIDynamicForm'
 import { PageTitle } from '@/components/PageTitle'
 import { Pagination } from '@/components/ui/Pagination'
+import { QueryError } from '@/components/QueryError'
+import { ExportCsvButton } from '@/components/ExportCsvButton'
+import { exportToCsv } from '@/lib/csvExport'
+import { apolloClient } from '@/lib/apollo'
 
 import { toPascalCase, pluralize } from '@/lib/stringUtils'
 
@@ -92,7 +97,7 @@ export function CIListPage() {
     return { queryKey: key, listQuery: query, createMutation: mutation }
   }, [typeName])
 
-  const { data, loading, refetch } = useQuery<Record<string, { total: number; items: CIItem[] }>>(
+  const { data, loading, error, refetch } = useQuery<Record<string, { total: number; items: CIItem[] }>>(
     listQuery ?? gql`query EmptyCIList { __typename }`,
     {
       variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
@@ -197,39 +202,55 @@ export function CIListPage() {
             {loading ? '—' : `${total} ${ciTypeLabel.toLowerCase()}`}
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-        >
+        <Button onClick={() => setShowCreate(true)}>
           {newLabel}
-        </button>
+        </Button>
       </div>
 
-      <FilterBuilder
-        fields={filterFields}
-        onApply={(group) => { setFilterGroup(group); setPage(0) }}
-      />
-
-      {!loading && items.length === 0 ? (
-        <EmptyState
-          icon={<CIIcon icon={ciType.icon} size={32} color="var(--color-slate-light)" />}
-          title={t('pages.cmdb.noCiOfType', { type: ciTypeLabel })}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <FilterBuilder
+            fields={filterFields}
+            onApply={(group) => { setFilterGroup(group); setPage(0) }}
+          />
+        </div>
+        <ExportCsvButton
+          onExport={async () => {
+            if (!listQuery || !queryKey) return
+            const res = await apolloClient.query<Record<string, { total: number; items: CIItem[] }>>({
+              query: listQuery,
+              variables: { limit: 10000, offset: 0, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
+              fetchPolicy: 'network-only',
+            })
+            exportToCsv(typeName ?? 'ci', COLUMNS, res.data?.[queryKey]?.items ?? [])
+          }}
         />
+      </div>
+
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
       ) : (
-        <SortableFilterTable
-          columns={COLUMNS}
-          data={items}
-          loading={loading}
-          onRowClick={(row) => navigate(`/ci/${typeName}/${row.id}`)}
-          onSort={handleSort}
-          sortField={sortField}
-          sortDir={sortDir}
-        />
-      )}
+        <>
+          {!loading && items.length === 0 ? (
+            <EmptyState
+              icon={<CIIcon icon={ciType.icon} size={32} color="var(--color-slate-light)" />}
+              title={t('pages.cmdb.noCiOfType', { type: ciTypeLabel })}
+            />
+          ) : (
+            <SortableFilterTable
+              columns={COLUMNS}
+              data={items}
+              loading={loading}
+              onRowClick={(row) => navigate(`/ci/${typeName}/${row.id}`)}
+              onSort={handleSort}
+              sortField={sortField}
+              sortDir={sortDir}
+            />
+          )}
 
-      <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+        </>
+      )}
 
       {/* Create modal */}
       {showCreate && (

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
@@ -122,6 +123,7 @@ interface User  { id: string; name: string; email: string; teams: { id: string; 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ProblemDetailPage() {
+  const { t }    = useTranslation()
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -269,9 +271,9 @@ export function ProblemDetailPage() {
   if (!problem) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>
-        Problem non trovato.{' '}
+        {t('pages.problems.notFound')}{' '}
         <button onClick={() => navigate('/problems')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
-          Torna alla lista
+          {t('detail.backToList')}
         </button>
       </div>
     )
@@ -304,7 +306,7 @@ export function ProblemDetailPage() {
           {/* Descrizione */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.description')}</span>
               {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {descOpen && (
@@ -312,7 +314,7 @@ export function ProblemDetailPage() {
                 {problem.description ? (
                   <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{problem.description}</p>
                 ) : (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
+                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
                 )}
               </div>
             )}
@@ -425,7 +427,7 @@ export function ProblemDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Commenti</span>
+                <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.comments')}</span>
                 <CountBadge count={problem.comments.length} />
               </div>
               {commentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
@@ -433,7 +435,7 @@ export function ProblemDetailPage() {
             {commentsOpen && (
               <div style={{ padding: 16 }}>
                 {problem.comments.length === 0 ? (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Nessun commento ancora.</p>
+                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>{t('detail.noCommentsYet')}</p>
                 ) : (
                   <div style={{ marginBottom: 16 }}>
                     {problem.comments.slice().reverse().map((c, i) => (
@@ -444,7 +446,7 @@ export function ProblemDetailPage() {
                           </div>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
-                              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? 'Utente sconosciuto'}</span>
+                              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? t('detail.unknownUser')}</span>
                               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                             </div>
                             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
@@ -457,15 +459,15 @@ export function ProblemDetailPage() {
                 )}
                 <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px 0' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <Label style={{ fontSize: 'var(--font-size-body)' }}>Scrivi un commento</Label>
-                  <MentionInput value={commentText} onChange={setCommentText} placeholder="Scrivi un commento... Usa @ per menzionare" rows={3} />
+                  <Label style={{ fontSize: 'var(--font-size-body)' }}>{t('detail.writeComment')}</Label>
+                  <MentionInput value={commentText} onChange={setCommentText} placeholder={t('detail.commentPlaceholder')} rows={3} />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                       disabled={!commentText.trim() || addingComment}
                       onClick={() => void addComment({ variables: { problemId: problem.id, text: commentText.trim() } })}
                       style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
                     >
-                      {addingComment ? 'Invio…' : 'Invia commento'}
+                      {addingComment ? t('detail.sending') : t('detail.sendComment')}
                     </button>
                   </div>
                 </div>
@@ -485,36 +487,36 @@ export function ProblemDetailPage() {
 
           {/* Dettagli */}
           <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dettagli</h3>
+            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('detail.sections.details')}</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <DetailField label="Priorità" value={
+              <DetailField label={t('detail.priority')} value={
                 <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
               } />
-              <DetailField label="Step workflow" value={
+              <DetailField label={t('detail.workflowStep')} value={
                 <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', 'var(--color-border-light)'), color: lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                   {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
                 </span>
               } />
 
               {/* Team assignment */}
-              <DetailField label="Team assegnato" value={
+              <DetailField label={t('detail.assignedTeam')} value={
                 problem.assignedTeam && !showReassign ? (
                   <div>
                     <div style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</div>
-                    <button onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>Riassegna</button>
+                    <button onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>{t('detail.reassign')}</button>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', backgroundColor: 'var(--surface)', outline: 'none' }}>
-                      <option value="">Seleziona team…</option>
+                      <option value="">{t('detail.selectTeam')}</option>
                       {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {showReassign && (
-                        <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>Annulla</button>
+                        <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
                       )}
                       <button disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
-                        {assigningTeam ? 'Assegnazione…' : 'Assegna'}
+                        {assigningTeam ? t('detail.assigning') : t('detail.assign')}
                       </button>
                     </div>
                   </div>
@@ -522,7 +524,7 @@ export function ProblemDetailPage() {
               } />
 
               {/* User assignment */}
-              <DetailField label="Assegnato a" value={
+              <DetailField label={t('detail.assignedTo')} value={
                 problem.assignee ? (
                   <div>
                     <div style={{ fontWeight: 500 }}>{problem.assignee.name}</div>
@@ -531,20 +533,20 @@ export function ProblemDetailPage() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', backgroundColor: 'var(--surface)', outline: 'none' }}>
-                      <option value="">Seleziona utente…</option>
+                      <option value="">{t('detail.selectUser')}</option>
                       {(problem.assignedTeam ? users.filter((u) => u.teams?.some((t) => t.id === problem.assignedTeam!.id)) : users).map((u) => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
                     </select>
                     <button disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
-                      {assigningUser ? 'Assegnazione…' : 'Assegna'}
+                      {assigningUser ? t('detail.assigning') : t('detail.assign')}
                     </button>
                   </div>
                 )
               } />
 
               {/* Affected users */}
-              <DetailField label="Utenti impattati" value={
+              <DetailField label={t('detail.affectedUsers')} value={
                 <input
                   type="number"
                   value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
@@ -564,11 +566,11 @@ export function ProblemDetailPage() {
               } />
 
               {problem.createdBy && (
-                <DetailField label="Creato da" value={<span style={{ fontWeight: 500 }}>{problem.createdBy.name}</span>} />
+                <DetailField label={t('detail.createdBy')} value={<span style={{ fontWeight: 500 }}>{problem.createdBy.name}</span>} />
               )}
-              <DetailField label="Creato il" value={formatDate(problem.createdAt)} />
-              {problem.updatedAt && <DetailField label="Aggiornato" value={timeAgo(problem.updatedAt)} />}
-              {problem.resolvedAt && <DetailField label="Risolto il" value={formatDate(problem.resolvedAt)} />}
+              <DetailField label={t('detail.createdAt')} value={formatDate(problem.createdAt)} />
+              {problem.updatedAt && <DetailField label={t('detail.updatedAt')} value={timeAgo(problem.updatedAt)} />}
+              {problem.resolvedAt && <DetailField label={t('detail.resolvedAt')} value={formatDate(problem.resolvedAt)} />}
             </div>
           </Card>
 

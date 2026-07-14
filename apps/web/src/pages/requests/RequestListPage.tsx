@@ -5,6 +5,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Inbox } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -12,6 +13,9 @@ import { EmptyState } from '@/components/EmptyState'
 import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
 import { useEntityFields } from '@/hooks/useEntityFields'
 import { GET_SERVICE_REQUESTS } from '@/graphql/queries'
+import { QueryError } from '@/components/QueryError'
+import { ExportCsvButton } from '@/components/ExportCsvButton'
+import { exportToCsv } from '@/lib/csvExport'
 
 interface ServiceRequest {
   id:        string
@@ -63,8 +67,9 @@ export function RequestListPage() {
 
   const filtersJson = filterGroup ? JSON.stringify(filterGroup) : undefined
 
-  const { data, loading } = useQuery<{ serviceRequests: ServiceRequest[] }>(GET_SERVICE_REQUESTS, {
+  const { data, loading, error, refetch } = useQuery<{ serviceRequests: ServiceRequest[] }>(GET_SERVICE_REQUESTS, {
     variables: { filters: filtersJson, sortField, sortDirection: sortDir },
+    pollInterval: 30_000,   // keep the list fresh without manual reload
   })
 
   function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction) }
@@ -82,31 +87,39 @@ export function RequestListPage() {
             {loading ? '—' : t('pages.requests.count', { count: items.length })}
           </p>
         </div>
-        <button
-          onClick={() => navigate('/requests/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-        >
+        <Button onClick={() => navigate('/requests/new')}>
           {t('pages.requests.new')}
-        </button>
+        </Button>
       </div>
 
-      <FilterBuilder
-        fields={filterFields}
-        onApply={(group) => { setFilterGroup(group) }}
-      />
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <FilterBuilder
+            fields={filterFields}
+            onApply={(group) => { setFilterGroup(group) }}
+          />
+        </div>
+        <ExportCsvButton
+          onExport={async () => { exportToCsv('service-requests', columns, items) }}
+        />
+      </div>
 
-      <SortableFilterTable<ServiceRequest>
-        columns={columns}
-        data={items}
-        loading={loading}
-        onSort={handleSort}
-        sortField={sortField}
-        sortDir={sortDir}
-        onRowClick={(row) => navigate(`/requests/${row.id}`)}
-        emptyComponent={<EmptyState icon={<Inbox size={32} />} title={t('pages.requests.noResults')} description={t('pages.requests.noResultsDesc')} />}
-      />
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      ) : (
+        <>
+          <SortableFilterTable<ServiceRequest>
+            columns={columns}
+            data={items}
+            loading={loading}
+            onSort={handleSort}
+            sortField={sortField}
+            sortDir={sortDir}
+            onRowClick={(row) => navigate(`/requests/${row.id}`)}
+            emptyComponent={<EmptyState icon={<Inbox size={32} />} title={t('pages.requests.noResults')} description={t('pages.requests.noResultsDesc')} />}
+          />
+        </>
+      )}
     </PageContainer>
   )
 }

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { keycloak } from '../../lib/keycloak'
+import { CommandPalette } from '@/components/CommandPalette'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 
@@ -9,7 +10,20 @@ const SIDEBAR_COLLAPSED = 56
 
 export function AppLayout() {
   // Hooks must run unconditionally, before any early return
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed]     = useState(false)
+  const [searchOpen, setSearchOpen]   = useState(false)
+
+  // Global Cmd+K / Ctrl+K shortcut for the command palette
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   if (!keycloak.authenticated) {
     keycloak.login()
@@ -60,7 +74,7 @@ export function AppLayout() {
           minWidth:       0,
         }}
       >
-        <Topbar />
+        <Topbar onOpenSearch={() => setSearchOpen(true)} />
         <main
           id="main-content"
           style={{
@@ -73,6 +87,8 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { EmptyState } from '@/components/EmptyState'
+import { QueryError } from '@/components/QueryError'
 import { lookupOrError } from '@/lib/tokens'
 import { GET_MY_TASKS, GET_ME } from '@/graphql/queries'
 import { ASSIGN_ASSESSMENT_TASK_TO_USER } from '@/graphql/mutations'
@@ -172,7 +173,7 @@ export function MyTasksPage() {
   const { data: meData } = useQuery<{ me: { id: string } | null }>(GET_ME, { fetchPolicy: 'cache-first' })
   const currentUserId = meData?.me?.id ?? null
 
-  const { data, loading, refetch } = useQuery<{ myTasks: MyTasksResult }>(GET_MY_TASKS, {
+  const { data, loading, error, refetch } = useQuery<{ myTasks: MyTasksResult }>(GET_MY_TASKS, {
     fetchPolicy: 'cache-and-network',
   })
 
@@ -208,46 +209,52 @@ export function MyTasksPage() {
         </p>
       </div>
 
-      {!loading && total === 0 && (
-        <EmptyState
-          icon={<ClipboardList size={32} />}
-          title="Nessun task per te"
-          description="Quando un change entra in una fase che ti coinvolge, i task appariranno qui."
-        />
-      )}
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      ) : (
+        <>
+          {!loading && total === 0 && (
+            <EmptyState
+              icon={<ClipboardList size={32} />}
+              title="Nessun task per te"
+              description="Quando un change entra in una fase che ti coinvolge, i task appariranno qui."
+            />
+          )}
 
-      {/* ── Assegnati a me ── */}
-      {assignedToMe.length > 0 && (
-        <SectionCard title="Assegnati a me" count={assignedToMe.length} defaultOpen>
-          {assignedGroups.map((g) => (
-            <div key={g.changeId} style={{ marginBottom: 4 }}>
-              {g.tasks.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                />
+          {/* ── Assegnati a me ── */}
+          {assignedToMe.length > 0 && (
+            <SectionCard title="Assegnati a me" count={assignedToMe.length} defaultOpen>
+              {assignedGroups.map((g) => (
+                <div key={g.changeId} style={{ marginBottom: 4 }}>
+                  {g.tasks.map((t) => (
+                    <TaskRow
+                      key={t.id}
+                      task={t}
+                    />
+                  ))}
+                </div>
               ))}
-            </div>
-          ))}
-        </SectionCard>
-      )}
+            </SectionCard>
+          )}
 
-      {/* ── Da assegnare ── */}
-      {unassigned.length > 0 && (
-        <SectionCard title="Da assegnare" count={unassigned.length} defaultOpen>
-          {unassignedGroups.map((g) => (
-            <div key={g.changeId} style={{ marginBottom: 4 }}>
-              {g.tasks.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  onClaim={(t.kind === 'assessment' || t.kind === 'deploy-plan') ? () => handleClaim(t) : undefined}
-                  claimLoading={claiming}
-                />
+          {/* ── Da assegnare ── */}
+          {unassigned.length > 0 && (
+            <SectionCard title="Da assegnare" count={unassigned.length} defaultOpen>
+              {unassignedGroups.map((g) => (
+                <div key={g.changeId} style={{ marginBottom: 4 }}>
+                  {g.tasks.map((t) => (
+                    <TaskRow
+                      key={t.id}
+                      task={t}
+                      onClaim={(t.kind === 'assessment' || t.kind === 'deploy-plan') ? () => handleClaim(t) : undefined}
+                      claimLoading={claiming}
+                    />
+                  ))}
+                </div>
               ))}
-            </div>
-          ))}
-        </SectionCard>
+            </SectionCard>
+          )}
+        </>
       )}
     </PageContainer>
   )

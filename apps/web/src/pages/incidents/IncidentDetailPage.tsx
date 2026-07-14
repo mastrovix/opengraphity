@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
@@ -16,6 +17,7 @@ import { IncidentHeader } from './IncidentHeader'
 import { IncidentTimeline } from './IncidentTimeline'
 import { IncidentCIList } from './IncidentCIList'
 import { WatcherBar } from '@/components/WatcherBar'
+import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { MentionInput } from '@/components/MentionInput'
@@ -79,6 +81,7 @@ interface Incident {
   availableTransitions: WorkflowTransition[]
   workflowHistory:      WorkflowStepExecution[]
   comments:             Comment[]
+  slaStatus:            SlaStatusInfo | null
 }
 
 interface Comment {
@@ -94,6 +97,7 @@ interface User { id: string; name: string; email: string; teams: { id: string; n
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function IncidentDetailPage() {
+  const { t }    = useTranslation()
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -270,12 +274,12 @@ export function IncidentDetailPage() {
   if (!incident) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>
-        Incident non trovato.{' '}
+        {t('pages.incidents.notFound')}{' '}
         <button
           onClick={() => navigate('/incidents')}
           style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
         >
-          Torna alla lista
+          {t('detail.backToList')}
         </button>
       </div>
     )
@@ -310,7 +314,7 @@ export function IncidentDetailPage() {
           {/* Descrizione */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Descrizione</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.description')}</span>
               {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {descOpen && (
@@ -318,7 +322,7 @@ export function IncidentDetailPage() {
                 {incident.description ? (
                   <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{incident.description}</p>
                 ) : (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessuna descrizione.</p>
+                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
                 )}
               </div>
             )}
@@ -327,32 +331,37 @@ export function IncidentDetailPage() {
           {/* Dettagli */}
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setDetailsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: detailsOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Dettagli</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.details')}</span>
               {detailsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
             </div>
             {detailsOpen && (
               <div style={{ padding: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <DetailField label="Severity" value={<SeverityBadge value={incident.severity} />} />
-                  <DetailField label="Step workflow" value={
+                  <DetailField label={t('pages.incidents.severity')} value={<SeverityBadge value={incident.severity} />} />
+                  <DetailField label={t('sla.title')} value={
+                    incident.slaStatus
+                      ? <SlaBadge sla={incident.slaStatus} />
+                      : <span style={{ color: 'var(--text-muted)' }}>{t('sla.none')}</span>
+                  } />
+                  <DetailField label={t('detail.workflowStep')} value={
                     <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', fontWeight: 600, textTransform: 'capitalize' }}>
                       {incident.workflowInstance?.currentStep.replace(/_/g, ' ') ?? 'N/D'}
                     </span>
                   } />
-                  <DetailField label="Assegnato a" value={
+                  <DetailField label={t('detail.assignedTo')} value={
                     incident.assignee ? (
                       <div>
                         <div style={{ fontWeight: 500 }}>{incident.assignee.name}</div>
                         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{incident.assignee.email}</div>
                       </div>
                     ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>Non assegnato</span>
+                      <span style={{ color: 'var(--text-muted)' }}>{t('detail.notAssigned')}</span>
                     )
                   } />
-                  <DetailField label="Aperto il" value={formatDate(incident.createdAt)} />
-                  <DetailField label="Aggiornato" value={timeAgo(incident.updatedAt)} />
+                  <DetailField label={t('detail.openedAt')} value={formatDate(incident.createdAt)} />
+                  <DetailField label={t('detail.updatedAt')} value={timeAgo(incident.updatedAt)} />
                   {incident.resolvedAt && (
-                    <DetailField label="Risolto il" value={formatDate(incident.resolvedAt)} />
+                    <DetailField label={t('detail.resolvedAt')} value={formatDate(incident.resolvedAt)} />
                   )}
                   {incident.rootCause && (
                     <div style={{ gridColumn: '1 / -1' }}>
@@ -371,16 +380,16 @@ export function IncidentDetailPage() {
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
-                          Team: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
+                          {t('detail.team')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
                         </div>
                         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
-                          Assegnato: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignee!.name}</span>
+                          {t('detail.assignedTo')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignee!.name}</span>
                         </div>
                         <button
                           onClick={() => { setShowReassign(true); setAwaitingUserAssign(false) }}
                           style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer', textAlign: 'left' }}
                         >
-                          Riassegna
+                          {t('detail.reassign')}
                         </button>
                       </div>
                     )
@@ -389,19 +398,19 @@ export function IncidentDetailPage() {
                   if (!hasTeam || showReassign) {
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>Team</label>
+                        <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.team')}</label>
                         <select
                           value={selectedTeamId}
                           onChange={(e) => setSelectedTeamId(e.target.value)}
                           style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', color: 'var(--text-primary)', backgroundColor: 'var(--surface)', outline: 'none' }}
                         >
-                          <option value="">Seleziona team…</option>
+                          <option value="">{t('detail.selectTeam')}</option>
                           {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                         <div style={{ display: 'flex', gap: 8 }}>
                           {showReassign && (
                             <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '7px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                              Annulla
+                              {t('common.cancel')}
                             </button>
                           )}
                           <button
@@ -413,7 +422,7 @@ export function IncidentDetailPage() {
                             }}
                             style={{ flex: 1, padding: '7px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}
                           >
-                            {assigningTeam ? 'Assegnazione…' : 'Assegna team'}
+                            {assigningTeam ? t('detail.assigning') : t('detail.assignTeam')}
                           </button>
                         </div>
                       </div>
@@ -424,15 +433,15 @@ export function IncidentDetailPage() {
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
-                        Team: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
+                        {t('detail.team')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
                       </div>
-                      <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>Assegnato a</label>
+                      <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.assignedTo')}</label>
                       <select
                         value={selectedUserId}
                         onChange={(e) => setSelectedUserId(e.target.value)}
                         style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', color: 'var(--text-primary)', backgroundColor: 'var(--surface)', outline: 'none' }}
                       >
-                        <option value="">Seleziona utente…</option>
+                        <option value="">{t('detail.selectUser')}</option>
                         {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                       <button
@@ -443,7 +452,7 @@ export function IncidentDetailPage() {
                         }}
                         style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
                       >
-                        {assigningUser ? 'Assegnazione…' : 'Prendi in carico'}
+                        {assigningUser ? t('detail.assigning') : t('detail.takeOwnership')}
                       </button>
                     </div>
                   )
@@ -475,7 +484,7 @@ export function IncidentDetailPage() {
           <Card style={{ marginBottom: 16, padding: 0 }}>
             <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Commenti</span>
+                <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.comments')}</span>
                 <CountBadge count={incident.comments.length} />
               </div>
               {commentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
@@ -483,7 +492,7 @@ export function IncidentDetailPage() {
             {commentsOpen && (
               <div style={{ padding: 16 }}>
                 {incident.comments.length === 0 ? (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Nessun commento ancora.</p>
+                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>{t('detail.noCommentsYet')}</p>
                 ) : (
                   <div style={{ marginBottom: 16 }}>
                     {incident.comments.slice().reverse().map((c, i) => (
@@ -494,7 +503,7 @@ export function IncidentDetailPage() {
                           </div>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
-                              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? 'Utente sconosciuto'}</span>
+                              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? t('detail.unknownUser')}</span>
                               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                             </div>
                             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
@@ -509,15 +518,15 @@ export function IncidentDetailPage() {
                 )}
                 <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px 0' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <Label style={{ fontSize: 'var(--font-size-body)' }}>Scrivi un commento</Label>
-                  <MentionInput value={commentText} onChange={setCommentText} placeholder="Scrivi un commento... Usa @ per menzionare" rows={3} />
+                  <Label style={{ fontSize: 'var(--font-size-body)' }}>{t('detail.writeComment')}</Label>
+                  <MentionInput value={commentText} onChange={setCommentText} placeholder={t('detail.commentPlaceholder')} rows={3} />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                       disabled={!commentText.trim() || addingComment}
                       onClick={() => void addComment({ variables: { id: incident.id, text: commentText.trim() } })}
                       style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
                     >
-                      {addingComment ? 'Invio…' : 'Invia commento'}
+                      {addingComment ? t('detail.sending') : t('detail.sendComment')}
                     </button>
                   </div>
                 </div>

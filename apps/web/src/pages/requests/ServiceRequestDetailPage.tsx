@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -38,6 +39,7 @@ function timeAgo(iso: string): string {
 }
 
 export function ServiceRequestDetailPage() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { data, loading } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id })
@@ -46,8 +48,8 @@ export function ServiceRequestDetailPage() {
   if (loading) return <PageContainer><Skeleton style={{ height: 300 }} /></PageContainer>
   if (!sr) return (
     <PageContainer>
-      <p style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Service request non trovata.</p>
-      <button onClick={() => navigate('/requests')} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>Torna alla lista</button>
+      <p style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('pages.requests.notFound')}</p>
+      <button onClick={() => navigate('/requests')} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>{t('detail.backToList')}</button>
     </PageContainer>
   )
 
@@ -60,7 +62,7 @@ export function ServiceRequestDetailPage() {
         onClick={() => navigate('/requests')}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
       >
-        ← Service Requests
+        ← {t('pages.requests.title')}
       </button>
 
       {/* Header */}
@@ -81,8 +83,8 @@ export function ServiceRequestDetailPage() {
         <div>
           {/* Description */}
           <div style={{ marginBottom: 16 }}>
-            <SectionCard collapsible={false} defaultOpen title="Descrizione">
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || 'Nessuna descrizione.'}</p>
+            <SectionCard collapsible={false} defaultOpen title={t('detail.sections.description')}>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || t('detail.noDescription')}</p>
             </SectionCard>
           </div>
 
@@ -94,12 +96,12 @@ export function ServiceRequestDetailPage() {
         </div>
 
         {/* Sidebar */}
-        <SectionCard collapsible={false} defaultOpen title="Dettagli">
-          <DetailField label="Richiedente" value={sr.requestedBy?.name ?? null} />
-          <DetailField label="Assegnatario" value={sr.assignee?.name ?? null} />
-          <DetailField label="Scadenza" value={sr.dueDate ? new Date(sr.dueDate).toLocaleDateString('it-IT') : null} />
-          <DetailField label="Creato il" value={new Date(sr.createdAt).toLocaleDateString('it-IT')} />
-          {sr.completedAt && <DetailField label="Completato" value={new Date(sr.completedAt).toLocaleDateString('it-IT')} />}
+        <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
+          <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
+          <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
+          <DetailField label={t('detail.dueDate')} value={sr.dueDate ? new Date(sr.dueDate).toLocaleDateString('it-IT') : null} />
+          <DetailField label={t('detail.createdAt')} value={new Date(sr.createdAt).toLocaleDateString('it-IT')} />
+          {sr.completedAt && <DetailField label={t('detail.completedAt')} value={new Date(sr.completedAt).toLocaleDateString('it-IT')} />}
         </SectionCard>
       </div>
     </PageContainer>

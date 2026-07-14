@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -142,10 +143,12 @@ interface RichTextEditorProps {
 export function RichTextEditor({
   value,
   onChange,
-  placeholder = 'Scrivi qui...',
+  placeholder,
   minHeight   = '300px',
   readOnly    = false,
 }: RichTextEditorProps) {
+  const { t } = useTranslation()
+  const effectivePlaceholder = placeholder ?? t('common.writeHere')
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Tracks the last markdown value we pushed into the editor.
   // null = never set (component just mounted). Compared against `value` to
@@ -172,7 +175,7 @@ export function RichTextEditor({
       TableHeader,
       TableCell,
       CodeBlockLowlight.configure({ lowlight }),
-      Placeholder.configure({ placeholder }),
+      Placeholder.configure({ placeholder: effectivePlaceholder }),
     ],
     editable: !readOnly,
     onUpdate: ({ editor: e }) => handleUpdate(e.getHTML()),

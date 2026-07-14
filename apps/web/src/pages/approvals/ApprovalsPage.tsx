@@ -9,6 +9,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
+import { QueryError } from '@/components/QueryError'
 import { toast } from 'sonner'
 import { lookupOrError } from '@/lib/tokens'
 import ReactMarkdown from 'react-markdown'
@@ -347,12 +348,12 @@ export function ApprovalsPage() {
     { key: 'requestedAt', label: 'Data richiesta', type: 'date' },
   ]
 
-  const { data: myData, loading: myLoading, refetch: refetchMine } = useQuery<{ myPendingApprovals: ApprovalRequest[] }>(
+  const { data: myData, loading: myLoading, error: myError, refetch: refetchMine } = useQuery<{ myPendingApprovals: ApprovalRequest[] }>(
     MY_PENDING,
     { fetchPolicy: 'cache-and-network', skip: tab !== 'mine' },
   )
 
-  const { data: allData, loading: allLoading, refetch: refetchAll } = useQuery<{ approvalRequests: { items: ApprovalRequest[]; total: number } }>(
+  const { data: allData, loading: allLoading, error: allError, refetch: refetchAll } = useQuery<{ approvalRequests: { items: ApprovalRequest[]; total: number } }>(
     ALL_APPROVALS,
     {
       variables: { page: page + 1, pageSize: PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : undefined },
@@ -418,7 +419,9 @@ export function ApprovalsPage() {
 
       {/* Content */}
       {tab === 'mine' ? (
-        myLoading ? (
+        myError && !myData ? (
+          <QueryError message={myError.message} onRetry={() => void refetchMine()} />
+        ) : myLoading ? (
           <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
         ) : myItems.length === 0 ? (
           <EmptyState
@@ -430,6 +433,8 @@ export function ApprovalsPage() {
             <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} showActions />
           ))
         )
+      ) : allError && !allData ? (
+        <QueryError message={allError.message} onRetry={() => void refetchAll()} />
       ) : (
         <>
           {allLoading ? (

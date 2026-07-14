@@ -1,6 +1,7 @@
 import { ApolloClient, InMemoryCache, createHttpLink, from } from '@apollo/client/core'
 import { setContext } from '@apollo/client/link/context'
 import { onError } from '@apollo/client/link/error'
+import { toast } from 'sonner'
 // Legacy auth helpers kept for fallback reference
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { getToken as _getToken, removeToken as _removeToken, isTokenExpired as _isTokenExpired } from './auth'
@@ -10,6 +11,18 @@ import { clientLogger } from './clientLogger'
 const httpLink = createHttpLink({
   uri: import.meta.env['VITE_API_URL'] ?? '/graphql',
 })
+
+// Toast dedupe: a page firing N queries that all fail must not stack N toasts.
+const recentToasts = new Map<string, number>()
+const TOAST_DEDUPE_MS = 5_000
+
+function toastOnce(key: string, message: string): void {
+  const now  = Date.now()
+  const last = recentToasts.get(key)
+  if (last !== undefined && now - last < TOAST_DEDUPE_MS) return
+  recentToasts.set(key, now)
+  toast.error(message)
+}
 
 const errorLink = onError((errResponse) => {
   const { operation } = errResponse
@@ -23,6 +36,7 @@ const errorLink = onError((errResponse) => {
           path:      path as Record<string, unknown> | undefined,
           operation: operation.operationName,
         })
+        toastOnce(`gql:${message}`, message)
       }
     })
   }
@@ -30,6 +44,7 @@ const errorLink = onError((errResponse) => {
     clientLogger.error(`Network error: ${networkError.message}`, {
       operation: operation.operationName,
     })
+    toastOnce('network', 'Errore di connessione al server')
   }
 })
 

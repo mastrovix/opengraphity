@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm'
 import { BookOpen, Eye, ThumbsUp, ThumbsDown, Tag, ArrowLeft, User, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
+import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { lookupOrError } from '@/lib/tokens'
 
 const GET_ARTICLE = gql`
@@ -122,6 +123,11 @@ export function KBArticlePage() {
             ))}
           </div>
         )}
+
+        {/* Allegati */}
+        <div style={{ marginTop: 24 }}>
+          <AttachmentsSection entityType="kb_article" entityId={article.id} />
+        </div>
 
         {/* Helpful feedback */}
         <div style={{ marginTop: 32, padding: 20, background: 'var(--color-slate-bg)', borderRadius: 10, border: '1px solid #e2e8f0', textAlign: 'center' }}>

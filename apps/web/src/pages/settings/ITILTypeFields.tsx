@@ -67,7 +67,7 @@ function FieldEditor({
           </select>
         </div>
         <div>
-          <label style={labelS}>Order</label>
+          <label style={labelS}>{t('itilDesigner.order')}</label>
           <input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </div>
         <div style={{ paddingTop: 20 }}>
@@ -86,13 +86,13 @@ function FieldEditor({
       {/* enum dropdown */}
       {form.fieldType === 'enum' && (
         <div style={{ marginBottom: 12 }}>
-          <label style={labelS}>Enum di riferimento *</label>
+          <label style={labelS}>{t('itilDesigner.enumRef')} *</label>
           <select
             style={selectS}
             value={form.enumTypeId ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, enumTypeId: e.target.value || null }))}
           >
-            <option value="">— Seleziona enum —</option>
+            <option value="">{t('itilDesigner.selectEnum')}</option>
             {(enumTypesData?.enumTypes ?? []).map((e) => (
               <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
             ))}
@@ -103,7 +103,7 @@ function FieldEditor({
       {/* scripts (collapsible) */}
       <details style={{ marginBottom: 12 }}>
         <summary style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none', marginBottom: 8 }}>
-          Script avanzati (validazione, visibilità, default)
+          {t('itilDesigner.advancedScripts')}
         </summary>
         <div style={{ paddingTop: 8 }}>
           <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
@@ -202,7 +202,7 @@ export function ITILTypeFields({
       {systemFields.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em', marginBottom: 8 }}>
-            CAMPI DI SISTEMA ({systemFields.length}) — non modificabili
+            {t('itilDesigner.systemFields', { count: systemFields.length })}
           </div>
           {systemFields.map((f) => (
             editingFieldId === f.id ? (
@@ -232,7 +232,7 @@ export function ITILTypeFields({
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>
-            CAMPI PERSONALIZZATI ({customFields.length})
+            {t('itilDesigner.customFields', { count: customFields.length })}
           </div>
           <button
             style={btnPrimary}
@@ -265,7 +265,7 @@ export function ITILTypeFields({
         ))}
         {customFields.length === 0 && !addingField && (
           <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
-            Nessun campo personalizzato. Clicca "+ Aggiungi campo" per aggiungerne uno.
+            {t('itilDesigner.noCustomFields')}
           </div>
         )}
       </div>

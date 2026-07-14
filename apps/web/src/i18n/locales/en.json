@@ -20,7 +20,8 @@
     "resolvedAt": "Resolved at",
     "resolvedBy": "Resolved by",
     "title": "Title",
-    "select": "Select"
+    "select": "Select",
+    "writeHere": "Write here..."
   },
   "sidebar": {
     "workspace": "WORKSPACE",
@@ -85,7 +86,8 @@
       "title_col": "Title",
       "noResults": "No incidents found",
       "noResultsDesc": "Open a new incident or adjust the applied filters.",
-      "count": "{{count}} incidents"
+      "count": "{{count}} incidents",
+      "notFound": "Incident not found."
     },
     "changes": {
       "title": "Changes",
@@ -109,7 +111,8 @@
       "createdAt": "Created",
       "noResults": "No problems found",
       "noResultsDesc": "Create a new problem or adjust the filters.",
-      "count": "{{count}} problems"
+      "count": "{{count}} problems",
+      "notFound": "Problem not found."
     },
     "requests": {
       "title": "Requests",
@@ -120,7 +123,8 @@
       "createdAt": "Created",
       "noResults": "No requests found",
       "noResultsDesc": "Create a new service request.",
-      "count": "{{count}} requests"
+      "count": "{{count}} requests",
+      "notFound": "Service request not found."
     },
     "cmdb": {
       "count": "{{count}} CI",
@@ -185,7 +189,12 @@
       "createdAt": "Created",
       "noResults": "No teams",
       "noResultsDesc": "There are no teams for this tenant.",
-      "count": "{{count}} teams"
+      "count": "{{count}} teams",
+      "notFound": "Team not found.",
+      "noOwnedCIs": "No owned CIs",
+      "noSupportedCIs": "No supported CIs",
+      "members": "Members",
+      "noMembers": "No members"
     },
     "users": {
       "title": "Users",
@@ -557,6 +566,14 @@
       "dirOutgoing": "This CI → ...",
       "dirIncoming": "... → This CI",
       "searchTarget": "Search CI..."
+    },
+    "tasks": {
+      "reopen": {
+        "title": "Reopen task",
+        "prompt": "Enter the reason for reopening (min 10 characters).",
+        "placeholder": "Reason for reopening...",
+        "confirm": "Confirm reopen"
+      }
     }
   },
   "filter": {
@@ -662,7 +679,14 @@
       "selectCIType": "— Select CI type —",
       "cancel": "Cancel",
       "add": "Add"
-    }
+    },
+    "order": "Order",
+    "enumRef": "Reference enum",
+    "selectEnum": "— Select enum —",
+    "advancedScripts": "Advanced scripts (validation, visibility, default)",
+    "systemFields": "SYSTEM FIELDS ({{count}}) — not editable",
+    "customFields": "CUSTOM FIELDS ({{count}})",
+    "noCustomFields": "No custom fields. Click \"+ Add field\" to add one."
   },
   "ciTypeDesigner": {
     "chain": "Chain",
@@ -707,5 +731,77 @@
     "downloadFailed": "Download failed",
     "deleted": "Attachment deleted",
     "confirmDelete": "Delete this attachment?"
+  },
+  "queryError": {
+    "title": "Failed to load data",
+    "retry": "Retry"
+  },
+  "csvExport": {
+    "button": "Export CSV",
+    "tooltip": "Download all filtered rows as CSV",
+    "failed": "Export failed"
+  },
+  "detail": {
+    "sections": {
+      "description": "Description",
+      "details": "Details",
+      "comments": "Comments",
+      "information": "Information"
+    },
+    "noDescription": "No description.",
+    "noCommentsYet": "No comments yet.",
+    "writeComment": "Write a comment",
+    "commentPlaceholder": "Write a comment... Use @ to mention",
+    "unknownUser": "Unknown user",
+    "sending": "Sending…",
+    "sendComment": "Send comment",
+    "workflowStep": "Workflow step",
+    "assignedTo": "Assigned to",
+    "notAssigned": "Not assigned",
+    "assignedTeam": "Assigned team",
+    "team": "Team",
+    "openedAt": "Opened",
+    "updatedAt": "Updated",
+    "resolvedAt": "Resolved",
+    "createdAt": "Created",
+    "completedAt": "Completed",
+    "createdBy": "Created by",
+    "requester": "Requester",
+    "assignee": "Assignee",
+    "dueDate": "Due date",
+    "priority": "Priority",
+    "affectedUsers": "Affected users",
+    "reassign": "Reassign",
+    "selectTeam": "Select team…",
+    "selectUser": "Select user…",
+    "assignTeam": "Assign team",
+    "assign": "Assign",
+    "assigning": "Assigning…",
+    "takeOwnership": "Take ownership",
+    "backToList": "Back to list"
+  },
+  "search": {
+    "placeholder": "Search incidents, changes, CIs…",
+    "hint": "Search",
+    "noResults": "No results found",
+    "typeToSearch": "Type at least 2 characters to search",
+    "groups": {
+      "incident": "Incidents",
+      "change": "Changes",
+      "problem": "Problems",
+      "service_request": "Service Requests",
+      "ci": "Configuration Items",
+      "kb_article": "Knowledge Base"
+    }
+  },
+  "sla": {
+    "title": "SLA",
+    "met": "SLA met",
+    "breached": "SLA breached",
+    "overdueBy": "Overdue by {{time}}",
+    "remaining": "{{time}} left",
+    "response": "Response",
+    "resolve": "Resolution",
+    "none": "No SLA"
   }
 }

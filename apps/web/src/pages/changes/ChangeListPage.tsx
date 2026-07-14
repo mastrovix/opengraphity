@@ -5,11 +5,16 @@ import { useTranslation } from 'react-i18next'
 import { GitPullRequest } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
+import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
 import { GET_CHANGES } from '@/graphql/queries'
+import { QueryError } from '@/components/QueryError'
+import { ExportCsvButton } from '@/components/ExportCsvButton'
+import { exportToCsv } from '@/lib/csvExport'
+import { apolloClient } from '@/lib/apollo'
 import { lookupOrError } from '@/lib/tokens'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
@@ -113,9 +118,10 @@ export function ChangeListPage() {
       options: wfSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
   ]
 
-  const { data, loading, refetch } = useQuery<{ changes: { items: ChangeRow[]; total: number } }>(GET_CHANGES, {
+  const { data, loading, error, refetch } = useQuery<{ changes: { items: ChangeRow[]; total: number } }>(GET_CHANGES, {
     variables: { currentStep, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
     fetchPolicy: 'cache-and-network',
+    pollInterval: 30_000,   // keep the list fresh without manual reload
   })
 
   useEffect(() => {
@@ -191,48 +197,65 @@ export function ChangeListPage() {
             {loading ? '—' : t('pages.changes.count', { count: total })}
           </p>
         </div>
-        <button
-          onClick={() => navigate('/changes/new')}
-          style={{
-            display:         'flex',
-            alignItems:      'center',
-            gap:             6,
-            padding:         '8px 16px',
-            backgroundColor: 'var(--color-brand)',
-            color:           '#fff',
-            border:          'none',
-            borderRadius:    6,
-            fontSize:        'var(--font-size-card-title)',
-            fontWeight:      500,
-            cursor:          'pointer',
-            transition:      'background-color 150ms',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-        >
+        <Button onClick={() => navigate('/changes/new')}>
           {t('pages.changes.new')}
-        </button>
+        </Button>
       </div>
 
-      <FilterBuilder
-        fields={filterFields}
-        onApply={(group) => { setFilterGroup(group); setPage(0) }}
-      />
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <FilterBuilder
+            fields={filterFields}
+            onApply={(group) => { setFilterGroup(group); setPage(0) }}
+          />
+        </div>
+        <ExportCsvButton
+          onExport={async () => {
+            const res = await apolloClient.query<{ changes: { items: ChangeRow[] } }>({
+              query: GET_CHANGES,
+              variables: { currentStep, limit: 10000, offset: 0 },
+              fetchPolicy: 'network-only',
+            })
+            const rows = (res.data?.changes?.items ?? []).map((r) => ({
+              code:      r.code,
+              title:     r.title,
+              phase:     stepByName.get(r.workflowInstance?.currentStep ?? '')?.label ?? r.workflowInstance?.currentStep ?? '',
+              requester: r.requester?.name ?? '',
+              risk:      r.aggregateRiskScore,
+              createdAt: r.createdAt,
+            }))
+            exportToCsv('changes', [
+              { key: 'code',      label: t('pages.changes.code') },
+              { key: 'title',     label: t('pages.changes.title_col') },
+              { key: 'phase',     label: t('pages.changes.phase') },
+              { key: 'requester', label: t('pages.changes.requester') },
+              { key: 'risk',      label: t('pages.changes.risk') },
+              { key: 'createdAt', label: t('pages.changes.createdAt') },
+            ], rows)
+          }}
+        />
+      </div>
 
-      <SortableFilterTable<ChangeRow>
-        columns={columns}
-        data={items}
-        loading={loading}
-        emptyComponent={<EmptyState icon={<GitPullRequest size={32} />} title={t('pages.changes.noResults')} description={t('pages.changes.noResultsDesc')} />}
-        onRowClick={(row) => navigate(`/changes/${row.id}`)}
-      />
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      ) : (
+        <>
+          <SortableFilterTable<ChangeRow>
+            columns={columns}
+            data={items}
+            loading={loading}
+            emptyComponent={<EmptyState icon={<GitPullRequest size={32} />} title={t('pages.changes.noResults')} description={t('pages.changes.noResultsDesc')} />}
+            onRowClick={(row) => navigate(`/changes/${row.id}`)}
+          />
 
-      <Pagination
-        currentPage={page + 1}
-        totalPages={totalPages}
-        onPrev={() => setPage(p => p - 1)}
-        onNext={() => setPage(p => p + 1)}
-      />
+          <Pagination
+            currentPage={page + 1}
+            totalPages={totalPages}
+            onPrev={() => setPage(p => p - 1)}
+            onNext={() => setPage(p => p + 1)}
+          />
+        </>
+      )}
     </PageContainer>
   )
 }

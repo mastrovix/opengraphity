@@ -6,6 +6,7 @@ export const GET_INCIDENTS = gql`
       total
       items {
         id number title severity status createdAt
+        slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached }
       }
     }
   }
@@ -39,6 +40,7 @@ export const GET_INCIDENT = gql`
         id text createdAt updatedAt
         author { id name email }
       }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached }
     }
   }
 `

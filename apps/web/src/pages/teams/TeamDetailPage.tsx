@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { Users, UsersRound, X, Search } from 'lucide-react'
@@ -13,6 +14,7 @@ import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER } from '@/graphql/mutations'
 import { ciPath } from '@/lib/ciPath'
 import { toast } from 'sonner'
 import { lookupStyle } from '@/lib/tokens'
+import { AttachmentsSection } from '@/components/AttachmentsSection'
 
 interface Member {
   id:    string
@@ -65,6 +67,7 @@ function TypeBadge({ type }: { type: string | null }) {
 // ── CI mini-table ─────────────────────────────────────────────────────────────
 
 function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: (ci: CIRef) => void; emptyMsg: string }) {
+  const { t } = useTranslation()
   if (items.length === 0) {
     return <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title={emptyMsg} />
   }
@@ -72,7 +75,7 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-          {['Nome', 'Tipo', 'Environment', 'Status'].map((h) => (
+          {[t('pages.cmdb.name'), t('pages.teams.type'), t('pages.cmdb.environment'), t('pages.cmdb.status')].map((h) => (
             <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
           ))}
         </tr>
@@ -100,6 +103,7 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function TeamDetailPage() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [showManagerModal, setShowManagerModal] = useState(false)
@@ -124,11 +128,11 @@ export function TeamDetailPage() {
   const teamMembers = team?.members ?? []
 
   if (loading && !team) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento...</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
   }
 
   if (!team) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Team non trovato.</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('pages.teams.notFound')}</div>
   }
 
   return (
@@ -136,25 +140,25 @@ export function TeamDetailPage() {
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/teams')}>
-          ← Teams
+          ← {t('pages.teams.title')}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <UsersRound size={22} color="#38bdf8" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
         </div>
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>
-          Creato il {new Date(team.createdAt).toLocaleDateString('it-IT')}
+          {t('detail.createdAt')} {new Date(team.createdAt).toLocaleDateString('it-IT')}
         </div>
       </div>
 
       {/* Body */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <SectionCard title="Informazioni" defaultOpen>
+        <SectionCard title={t('detail.sections.information')} defaultOpen>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <DetailField label="ID" value={team.id} mono />
-            <DetailField label="Nome" value={team.name} />
+            <DetailField label={t('pages.teams.name')} value={team.name} />
             <DetailField label="Tenant ID" value={team.tenantId} mono />
-            <DetailField label="Tipo" value={<TypeBadge type={team.type} />} />
+            <DetailField label={t('pages.teams.type')} value={<TypeBadge type={team.type} />} />
             <DetailField label="Manager" value={
               team.manager ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -174,8 +178,8 @@ export function TeamDetailPage() {
                 <span style={{ color: 'var(--color-brand)', cursor: 'pointer', fontWeight: 500 }} onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }}>+ Assegna</span>
               )
             } />
-            <DetailField label="Descrizione" value={team.description} />
-            <DetailField label="Creato il" value={new Date(team.createdAt).toLocaleDateString('it-IT')} />
+            <DetailField label={t('pages.teams.description')} value={team.description} />
+            <DetailField label={t('detail.createdAt')} value={new Date(team.createdAt).toLocaleDateString('it-IT')} />
           </div>
         </SectionCard>
 
@@ -277,14 +281,14 @@ export function TeamDetailPage() {
         })()}
 
         {/* Members */}
-        <SectionCard title={`Membri (${team.members.length})`} defaultOpen>
+        <SectionCard title={`${t('pages.teams.members')} (${team.members.length})`} defaultOpen>
           {team.members.length === 0 ? (
-            <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title="Nessun membro" />
+            <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title={t('pages.teams.noMembers')} />
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  {['Nome', 'Email', 'Ruolo'].map((h) => (
+                  {[t('pages.users.name'), t('pages.users.email'), t('pages.users.role')].map((h) => (
                     <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                   ))}
                 </tr>
@@ -304,13 +308,16 @@ export function TeamDetailPage() {
 
         {/* Owned CIs */}
         <SectionCard title={`CI Owned (${team.ownedCIs.length})`} defaultOpen={false}>
-          <CITable items={team.ownedCIs} onRowClick={(ci) => navigate(ciPath(ci))} emptyMsg="Nessun CI in ownership" />
+          <CITable items={team.ownedCIs} onRowClick={(ci) => navigate(ciPath(ci))} emptyMsg={t('pages.teams.noOwnedCIs')} />
         </SectionCard>
 
         {/* Supported CIs */}
         <SectionCard title={`CI Supported (${team.supportedCIs.length})`} defaultOpen={false}>
-          <CITable items={team.supportedCIs} onRowClick={(ci) => navigate(ciPath(ci))} emptyMsg="Nessun CI in supporto" />
+          <CITable items={team.supportedCIs} onRowClick={(ci) => navigate(ciPath(ci))} emptyMsg={t('pages.teams.noSupportedCIs')} />
         </SectionCard>
+
+        {/* Allegati */}
+        <AttachmentsSection entityType="team" entityId={team.id} />
       </div>
     </PageContainer>
   )

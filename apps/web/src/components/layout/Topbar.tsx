@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Bell } from 'lucide-react'
+import { Bell, Search } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -117,12 +117,17 @@ function getUserInfo() {
   return { email, display, initials }
 }
 
-export function Topbar() {
+interface TopbarProps {
+  onOpenSearch?: () => void
+}
+
+export function Topbar({ onOpenSearch }: TopbarProps) {
   const { t } = useTranslation()
   const { logout } = useAuth()
   const { display, initials } = getUserInfo()
   const { unreadCount } = useNotificationContext()
   const [panelOpen, setPanelOpen] = useState(false)
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
 
   return (
     <header
@@ -143,6 +148,46 @@ export function Topbar() {
       <Breadcrumb />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Global search */}
+        {onOpenSearch && (
+          <button
+            onClick={onOpenSearch}
+            aria-label={t('search.placeholder')}
+            title={t('search.hint')}
+            style={{
+              display:         'flex',
+              alignItems:      'center',
+              gap:             8,
+              height:          32,
+              padding:         '0 10px',
+              borderRadius:    6,
+              border:          `1px solid ${C.border}`,
+              backgroundColor: 'transparent',
+              color:           C.textMuted,
+              fontSize:        11,
+              cursor:          'pointer',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+          >
+            <Search size={14} />
+            <span>{t('search.hint')}</span>
+            <kbd
+              style={{
+                fontSize:     10,
+                border:       `1px solid ${C.border}`,
+                borderRadius: 4,
+                padding:      '1px 5px',
+                lineHeight:   1.4,
+                color:        C.textMuted,
+                fontFamily:   'inherit',
+              }}
+            >
+              {isMac ? '⌘K' : 'Ctrl+K'}
+            </kbd>
+          </button>
+        )}
+
         {/* Bell */}
         <div style={{ position: 'relative' }}>
           <button

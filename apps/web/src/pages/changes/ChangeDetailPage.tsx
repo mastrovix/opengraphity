@@ -13,6 +13,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { ChevronRight, Plus, PlusCircle, X } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
+import { Button } from '@/components/Button'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { EmptyState } from '@/components/EmptyState'
@@ -325,7 +326,7 @@ export function ChangeDetailPage() {
                 Rimuovere <strong>{confirmRemoveCI.name}</strong> dal change? Tutti i task associati verranno eliminati.
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" onClick={() => setConfirmRemoveCI(null)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Annulla</button>
+                <Button variant="secondary" size="xs" onClick={() => setConfirmRemoveCI(null)}>Annulla</Button>
                 <button type="button" onClick={() => void removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>Rimuovi</button>
               </div>
             </div>
@@ -348,19 +349,19 @@ export function ChangeDetailPage() {
               autoFocus
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-              <button type="button" onClick={() => setTransitionModal(null)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Annulla</button>
-              <button
-                type="button"
+              <Button variant="secondary" size="xs" onClick={() => setTransitionModal(null)}>Annulla</Button>
+              <Button
+                size="xs"
                 disabled={!transitionNotes.trim()}
                 onClick={async () => {
                   const m = transitionModal
                   setTransitionModal(null)
                   await runTransition(m.toStep, m.label, transitionNotes.trim())
                 }}
-                style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: '#fff', fontWeight: 600, cursor: transitionNotes.trim() ? 'pointer' : 'not-allowed', fontSize: 'var(--font-size-body)', opacity: transitionNotes.trim() ? 1 : 0.6 }}
+                style={{ fontWeight: 600, opacity: transitionNotes.trim() ? 1 : 0.6 }}
               >
                 Conferma
-              </button>
+              </Button>
             </div>
           </div>
         </div>

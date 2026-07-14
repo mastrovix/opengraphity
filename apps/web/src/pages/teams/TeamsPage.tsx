@@ -5,12 +5,16 @@ import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { UsersRound } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_TEAMS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { lookupStyle } from '@/lib/tokens'
+import { QueryError } from '@/components/QueryError'
+import { ExportCsvButton } from '@/components/ExportCsvButton'
+import { exportToCsv } from '@/lib/csvExport'
 
 interface Team {
   id:          string
@@ -72,7 +76,7 @@ export function TeamsPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
 
-  const { data, loading } = useQuery<{ teams: Team[] }>(GET_TEAMS, {
+  const { data, loading, error, refetch } = useQuery<{ teams: Team[] }>(GET_TEAMS, {
     variables: { filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
   })
@@ -95,49 +99,47 @@ export function TeamsPage() {
             {loading ? '—' : t('pages.teams.count', { count: total })}
           </p>
         </div>
-        <button
-          disabled
-          style={{
-            display:         'flex',
-            alignItems:      'center',
-            gap:             6,
-            padding:         '8px 16px',
-            backgroundColor: 'var(--color-brand)',
-            color:           '#fff',
-            border:          'none',
-            borderRadius:    6,
-            fontSize:        14,
-            fontWeight:      500,
-            cursor:          'not-allowed',
-          }}
-        >
+        <Button disabled style={{ fontSize: 14 }}>
           {t('pages.teams.new')}
-        </button>
+        </Button>
       </div>
 
-      <FilterBuilder
-        fields={FILTER_FIELDS}
-        onApply={(group) => { setFilterGroup(group); setPage(0) }}
-      />
-
-      <SortableFilterTable
-        columns={COLUMNS}
-        data={pageItems}
-        loading={loading}
-        onSort={handleSort}
-        sortField={sortField}
-        sortDir={sortDir}
-        emptyComponent={
-          <EmptyState
-            icon={<UsersRound size={32} color="var(--color-slate-light)" />}
-            title={t('pages.teams.noResults')}
-            description={t('pages.teams.noResultsDesc')}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <FilterBuilder
+            fields={FILTER_FIELDS}
+            onApply={(group) => { setFilterGroup(group); setPage(0) }}
           />
-        }
-        onRowClick={(row) => navigate(`/teams/${row.id}`)}
-      />
+        </div>
+        <ExportCsvButton
+          onExport={async () => { exportToCsv('teams', COLUMNS, teams) }}
+        />
+      </div>
 
-      <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      ) : (
+        <>
+          <SortableFilterTable
+            columns={COLUMNS}
+            data={pageItems}
+            loading={loading}
+            onSort={handleSort}
+            sortField={sortField}
+            sortDir={sortDir}
+            emptyComponent={
+              <EmptyState
+                icon={<UsersRound size={32} color="var(--color-slate-light)" />}
+                title={t('pages.teams.noResults')}
+                description={t('pages.teams.noResultsDesc')}
+              />
+            }
+            onRowClick={(row) => navigate(`/teams/${row.id}`)}
+          />
+
+          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+        </>
+      )}
     </PageContainer>
   )
 }

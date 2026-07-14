@@ -20,7 +20,8 @@
     "resolvedAt": "Risolta il",
     "resolvedBy": "Risolta da",
     "title": "Titolo",
-    "select": "Seleziona"
+    "select": "Seleziona",
+    "writeHere": "Scrivi qui..."
   },
   "sidebar": {
     "workspace": "WORKSPACE",
@@ -85,7 +86,8 @@
       "title_col": "Titolo",
       "noResults": "Nessun incident trovato",
       "noResultsDesc": "Apri un nuovo incident o modifica i filtri applicati.",
-      "count": "{{count}} incident"
+      "count": "{{count}} incident",
+      "notFound": "Incident non trovato."
     },
     "changes": {
       "title": "Change",
@@ -109,7 +111,8 @@
       "createdAt": "Creato il",
       "noResults": "Nessun problema trovato",
       "noResultsDesc": "Crea un nuovo problem o modifica i filtri.",
-      "count": "{{count}} problem"
+      "count": "{{count}} problem",
+      "notFound": "Problem non trovato."
     },
     "requests": {
       "title": "Richieste",
@@ -120,7 +123,8 @@
       "createdAt": "Creato il",
       "noResults": "Nessuna richiesta trovata",
       "noResultsDesc": "Crea una nuova service request.",
-      "count": "{{count}} richieste"
+      "count": "{{count}} richieste",
+      "notFound": "Service request non trovata."
     },
     "cmdb": {
       "count": "{{count}} CI",
@@ -185,7 +189,12 @@
       "createdAt": "Creato il",
       "noResults": "Nessun team",
       "noResultsDesc": "Non ci sono team per questo tenant.",
-      "count": "{{count}} team"
+      "count": "{{count}} team",
+      "notFound": "Team non trovato.",
+      "noOwnedCIs": "Nessun CI in ownership",
+      "noSupportedCIs": "Nessun CI in supporto",
+      "members": "Membri",
+      "noMembers": "Nessun membro"
     },
     "users": {
       "title": "Utenti",
@@ -557,6 +566,14 @@
       "dirOutgoing": "Questo CI → ...",
       "dirIncoming": "... → Questo CI",
       "searchTarget": "Cerca CI..."
+    },
+    "tasks": {
+      "reopen": {
+        "title": "Riapri task",
+        "prompt": "Inserisci il motivo della riapertura (min 10 caratteri).",
+        "placeholder": "Motivo della riapertura...",
+        "confirm": "Conferma riapertura"
+      }
     }
   },
   "filter": {
@@ -662,7 +679,14 @@
       "selectCIType": "— Seleziona tipo CI —",
       "cancel": "Annulla",
       "add": "Aggiungi"
-    }
+    },
+    "order": "Ordine",
+    "enumRef": "Enum di riferimento",
+    "selectEnum": "— Seleziona enum —",
+    "advancedScripts": "Script avanzati (validazione, visibilità, default)",
+    "systemFields": "CAMPI DI SISTEMA ({{count}}) — non modificabili",
+    "customFields": "CAMPI PERSONALIZZATI ({{count}})",
+    "noCustomFields": "Nessun campo personalizzato. Clicca \"+ Aggiungi campo\" per aggiungerne uno."
   },
   "ciTypeDesigner": {
     "chain": "Chain",
@@ -707,5 +731,77 @@
     "downloadFailed": "Download fallito",
     "deleted": "Allegato eliminato",
     "confirmDelete": "Eliminare questo allegato?"
+  },
+  "queryError": {
+    "title": "Errore nel caricamento dei dati",
+    "retry": "Riprova"
+  },
+  "csvExport": {
+    "button": "Esporta CSV",
+    "tooltip": "Scarica tutte le righe filtrate in CSV",
+    "failed": "Esportazione fallita"
+  },
+  "detail": {
+    "sections": {
+      "description": "Descrizione",
+      "details": "Dettagli",
+      "comments": "Commenti",
+      "information": "Informazioni"
+    },
+    "noDescription": "Nessuna descrizione.",
+    "noCommentsYet": "Nessun commento ancora.",
+    "writeComment": "Scrivi un commento",
+    "commentPlaceholder": "Scrivi un commento... Usa @ per menzionare",
+    "unknownUser": "Utente sconosciuto",
+    "sending": "Invio…",
+    "sendComment": "Invia commento",
+    "workflowStep": "Step workflow",
+    "assignedTo": "Assegnato a",
+    "notAssigned": "Non assegnato",
+    "assignedTeam": "Team assegnato",
+    "team": "Team",
+    "openedAt": "Aperto il",
+    "updatedAt": "Aggiornato",
+    "resolvedAt": "Risolto il",
+    "createdAt": "Creato il",
+    "completedAt": "Completato",
+    "createdBy": "Creato da",
+    "requester": "Richiedente",
+    "assignee": "Assegnatario",
+    "dueDate": "Scadenza",
+    "priority": "Priorità",
+    "affectedUsers": "Utenti impattati",
+    "reassign": "Riassegna",
+    "selectTeam": "Seleziona team…",
+    "selectUser": "Seleziona utente…",
+    "assignTeam": "Assegna team",
+    "assign": "Assegna",
+    "assigning": "Assegnazione…",
+    "takeOwnership": "Prendi in carico",
+    "backToList": "Torna alla lista"
+  },
+  "search": {
+    "placeholder": "Cerca incident, change, CI…",
+    "hint": "Cerca",
+    "noResults": "Nessun risultato trovato",
+    "typeToSearch": "Digita almeno 2 caratteri per cercare",
+    "groups": {
+      "incident": "Incident",
+      "change": "Change",
+      "problem": "Problem",
+      "service_request": "Richieste di servizio",
+      "ci": "Configuration Item",
+      "kb_article": "Knowledge Base"
+    }
+  },
+  "sla": {
+    "title": "SLA",
+    "met": "SLA rispettato",
+    "breached": "SLA violato",
+    "overdueBy": "In ritardo di {{time}}",
+    "remaining": "{{time}} rimanenti",
+    "response": "Risposta",
+    "resolve": "Risoluzione",
+    "none": "Nessuno SLA"
   }
 }

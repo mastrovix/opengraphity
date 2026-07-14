@@ -8,6 +8,7 @@ import { User, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { gql } from '@apollo/client'
 import { PageTitle } from '@/components/PageTitle'
+import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_USERS, GET_TEAMS } from '@/graphql/queries'
@@ -15,6 +16,9 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { Pagination } from '@/components/ui/Pagination'
 import { inputS, selectS, labelS, btnPrimary, btnSecondary } from '@/pages/settings/shared/designerStyles'
 import { lookupStyle } from '@/lib/tokens'
+import { QueryError } from '@/components/QueryError'
+import { ExportCsvButton } from '@/components/ExportCsvButton'
+import { exportToCsv } from '@/lib/csvExport'
 
 // ── TeamSearchInput — stable component outside render to avoid focus loss ────
 
@@ -92,7 +96,7 @@ export function UsersPage() {
   const [form, setForm] = useState({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] as string[] })
   const [teamSearch, setTeamSearch] = useState('')
 
-  const { data, loading, refetch } = useQuery<{ users: UserRow[] }>(GET_USERS, {
+  const { data, loading, error, refetch } = useQuery<{ users: UserRow[] }>(GET_USERS, {
     variables: { sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
   })
@@ -126,39 +130,47 @@ export function UsersPage() {
             {loading ? '—' : t('pages.users.count', { count: total })}
           </p>
         </div>
-        <button
-          onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-        >
+        <Button onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }) }}>
           {t('pages.users.newUser')}
-        </button>
+        </Button>
       </div>
 
-      <FilterBuilder
-        fields={FILTER_FIELDS}
-        onApply={(group) => { setFilterGroup(group); setPage(0) }}
-      />
-
-      <SortableFilterTable
-        columns={COLUMNS}
-        data={pageItems}
-        loading={loading}
-        onSort={handleSort}
-        sortField={sortField}
-        sortDir={sortDir}
-        emptyComponent={
-          <EmptyState
-            icon={<User size={32} color="var(--color-slate-light)" />}
-            title={t('pages.users.noResults')}
-            description={t('pages.users.noResultsDesc')}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <FilterBuilder
+            fields={FILTER_FIELDS}
+            onApply={(group) => { setFilterGroup(group); setPage(0) }}
           />
-        }
-        onRowClick={(row) => navigate(`/users/${row.id}`)}
-      />
+        </div>
+        <ExportCsvButton
+          onExport={async () => { exportToCsv('users', COLUMNS, filtered) }}
+        />
+      </div>
 
-      <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      ) : (
+        <>
+          <SortableFilterTable
+            columns={COLUMNS}
+            data={pageItems}
+            loading={loading}
+            onSort={handleSort}
+            sortField={sortField}
+            sortDir={sortDir}
+            emptyComponent={
+              <EmptyState
+                icon={<User size={32} color="var(--color-slate-light)" />}
+                title={t('pages.users.noResults')}
+                description={t('pages.users.noResultsDesc')}
+              />
+            }
+            onRowClick={(row) => navigate(`/users/${row.id}`)}
+          />
+
+          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+        </>
+      )}
       {/* Create User Modal */}
       {modalOpen && createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}

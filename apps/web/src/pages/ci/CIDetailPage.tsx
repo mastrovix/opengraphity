@@ -14,6 +14,7 @@ import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { CIGraph } from '@/components/CIGraph'
 import { CIIncidentsCard } from '@/components/CIIncidentsCard'
 import { CIChangeList } from '@/components/CIChangeList'
+import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
 import { GET_BLAST_RADIUS, GET_ALL_CIS } from '@/graphql/queries'
@@ -635,6 +636,8 @@ export function CIDetailPage() {
 
           <CIIncidentsCard ciId={ci.id} />
           <CIChangeList ciId={ci.id} />
+
+          <AttachmentsSection entityType="ci" entityId={ci.id} />
         </div>
 
       </div>

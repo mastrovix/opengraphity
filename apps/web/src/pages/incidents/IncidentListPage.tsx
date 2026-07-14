@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -13,6 +14,11 @@ import { GET_INCIDENTS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
 import { useEntityFields } from '@/hooks/useEntityFields'
 import { Pagination } from '@/components/ui/Pagination'
+import { QueryError } from '@/components/QueryError'
+import { ExportCsvButton } from '@/components/ExportCsvButton'
+import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
+import { exportToCsv } from '@/lib/csvExport'
+import { apolloClient } from '@/lib/apollo'
 
 interface Incident {
   id:        string
@@ -21,6 +27,7 @@ interface Incident {
   severity:  string
   status:    string
   createdAt: string
+  slaStatus: SlaStatusInfo | null
 }
 
 const PAGE_SIZE = 50
@@ -44,6 +51,13 @@ export function IncidentListPage() {
       width:   '130px',
       sortable: true,
       render:  (v) => <StatusBadge value={String(v)} />,
+    },
+    {
+      key:      'slaStatus',
+      label:    t('sla.title'),
+      width:    '140px',
+      sortable: false,
+      render:   (v) => <SlaBadge sla={v as SlaStatusInfo | null} compact />,
     },
     {
       key:      'createdAt',
@@ -70,11 +84,12 @@ export function IncidentListPage() {
     setSortField(field); setSortDir(dir); setPage(0)
   }
 
-  const { data, loading, refetch } = useQuery<{
+  const { data, loading, error, refetch } = useQuery<{
     incidents: { items: Incident[]; total: number }
   }>(GET_INCIDENTS, {
     variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
+    pollInterval: 30_000,   // keep the list fresh without manual reload
   })
 
   const items = data?.incidents?.items ?? []
@@ -98,33 +113,48 @@ export function IncidentListPage() {
             {loading ? '—' : t('pages.incidents.count', { count: total })}
           </p>
         </div>
-        <button
-          onClick={() => navigate('/incidents/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-        >
+        <Button onClick={() => navigate('/incidents/new')}>
           {t('pages.incidents.new')}
-        </button>
+        </Button>
       </div>
 
-      <FilterBuilder
-        fields={filterFields}
-        onApply={(group) => { setFilterGroup(group); setPage(0) }}
-      />
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <FilterBuilder
+            fields={filterFields}
+            onApply={(group) => { setFilterGroup(group); setPage(0) }}
+          />
+        </div>
+        <ExportCsvButton
+          onExport={async () => {
+            const res = await apolloClient.query<{ incidents: { items: Incident[] } }>({
+              query: GET_INCIDENTS,
+              variables: { limit: 10000, offset: 0, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
+              fetchPolicy: 'network-only',
+            })
+            exportToCsv('incidents', columns, res.data?.incidents?.items ?? [])
+          }}
+        />
+      </div>
 
-      <SortableFilterTable<Incident>
-        columns={columns}
-        data={items}
-        loading={loading}
-        emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title={t('pages.incidents.noResults')} description={t('pages.incidents.noResultsDesc')} />}
-        onRowClick={(row) => navigate(`/incidents/${row.id}`)}
-        onSort={handleSort}
-        sortField={sortField}
-        sortDir={sortDir}
-      />
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      ) : (
+        <>
+          <SortableFilterTable<Incident>
+            columns={columns}
+            data={items}
+            loading={loading}
+            emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title={t('pages.incidents.noResults')} description={t('pages.incidents.noResultsDesc')} />}
+            onRowClick={(row) => navigate(`/incidents/${row.id}`)}
+            onSort={handleSort}
+            sortField={sortField}
+            sortDir={sortDir}
+          />
 
-      <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+        </>
+      )}
     </PageContainer>
   )
 }

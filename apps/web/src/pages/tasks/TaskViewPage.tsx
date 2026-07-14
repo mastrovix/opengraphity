@@ -48,6 +48,7 @@ import { ChangeOverviewSidebar } from './components/ChangeOverviewSidebar'
 import { ReopenModal } from './components/ReopenModal'
 import { TeamGatePanel } from './components/TeamGatePanel'
 import { KIND_TITLE, inputStyle } from './components/shared'
+import { AttachmentsSection } from '@/components/AttachmentsSection'
 
 interface TaskDetail {
   id: string; code: string; kind: string
@@ -309,6 +310,10 @@ export function TaskViewPage() {
               onComplete={(result) => void completeRev({ variables: { changeId: task.changeId, ciId: task.ciId, result } })}
             />
           )}
+
+          <div style={{ marginTop: 16 }}>
+            <AttachmentsSection entityType="task" entityId={id} />
+          </div>
         </div>
 
         <ChangeOverviewSidebar
