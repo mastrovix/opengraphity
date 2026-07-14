@@ -5,6 +5,7 @@ import { DesignerFieldRow } from './shared/DesignerFieldRow'
 import {
   inputS, selectS, textareaS, labelS, btnPrimary, btnSecondary, FIELD_TYPES,
 } from './shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
 import type { EnumTypeRef } from './shared/designerStyles'
 import type { ITILField, FieldFormState, EnumTypeOption } from './useITILTypeDesigner'
 import { emptyForm, fieldToForm } from './useITILTypeDesigner'
@@ -55,7 +56,7 @@ function FieldEditor({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px auto', gap: 12, marginBottom: 12 }}>
         <div>
           <label style={labelS}>{t('itilDesigner.fieldType')}</label>
-          <select
+          <Select
             style={{ ...selectS, background: isSystem ? '#f1f5f9' : '#fff' }}
             value={form.fieldType}
             disabled={isSystem}
@@ -64,11 +65,11 @@ function FieldEditor({
             {FIELD_TYPES.map((ft) => (
               <option key={ft} value={ft}>{ft}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label style={labelS}>{t('itilDesigner.order')}</label>
-          <input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
+          <Input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </div>
         <div style={{ paddingTop: 20 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: isSystem ? 'default' : 'pointer' }}>
@@ -87,7 +88,7 @@ function FieldEditor({
       {form.fieldType === 'enum' && (
         <div style={{ marginBottom: 12 }}>
           <label style={labelS}>{t('itilDesigner.enumRef')} *</label>
-          <select
+          <Select
             style={selectS}
             value={form.enumTypeId ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, enumTypeId: e.target.value || null }))}
@@ -96,7 +97,7 @@ function FieldEditor({
             {(enumTypesData?.enumTypes ?? []).map((e) => (
               <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 

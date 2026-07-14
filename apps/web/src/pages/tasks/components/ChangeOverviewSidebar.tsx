@@ -5,6 +5,7 @@
  */
 import { Link } from 'react-router-dom'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { Pill } from '@/components/ui/Pill'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ROLE_LABEL } from '@/lib/taskStatus'
 import type { AffectedCI, AssessmentTaskData, ChangeData, DeployPlanTaskData } from '@/types/change'
@@ -59,16 +60,16 @@ function CIDots({ a }: { a: AffectedCI }) {
 function PhaseBadge({ phase, label, category }: { phase: string; label?: string; category?: string | null }) {
   const s = styleForCategory(category)
   return (
-    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'capitalize' }}>
       {label || phase}
-    </span>
+    </Pill>
   )
 }
 
 function RiskBadge({ score }: { score: number | null | undefined }) {
   if (score == null) return null
   const p = score <= 30 ? { bg: '#dcfce7', color: '#15803d' } : score <= 60 ? { bg: '#fef3c7', color: '#b45309' } : { bg: '#fee2e2', color: '#b91c1c' }
-  return <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: p.bg, color: p.color }}>{score}</span>
+  return <Pill bg={p.bg} color={p.color} style={{ fontSize: 'var(--font-size-label)' }}>{score}</Pill>
 }
 
 export function ChangeOverviewSidebar({
@@ -98,7 +99,7 @@ export function ChangeOverviewSidebar({
                 label={stepLabel ?? undefined}
                 category={stepCategory}
               />
-              <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: liveRoute.bg, color: liveRoute.color }}>{liveRoute.label}</span>
+              <Pill bg={liveRoute.bg} color={liveRoute.color} style={{ fontSize: 'var(--font-size-label)' }}>{liveRoute.label}</Pill>
             </div>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '0 0 8px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{change.title}</p>
             {change.description && (

@@ -15,6 +15,7 @@ import {
   paramsToRaw,
   buildActionParams,
 } from './workflow-panel-helpers'
+import { Input, Select } from '@/components/ui/FormControls'
 
 const ACCENT_COLOR = colors.brand
 
@@ -204,17 +205,17 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
     const field = (key: string, lbl: string, placeholder = '', inputType = 'text') => (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={labelStyle}>{lbl}</span>
-        <input type={inputType} value={params[key] ?? ''} onChange={(e) => setParams((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} style={inputStyle} />
+        <Input type={inputType} value={params[key] ?? ''} onChange={(e) => setParams((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} style={inputStyle} />
       </div>
     )
 
     if (type === 'sla_start' || type === 'sla_stop') return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={labelStyle}>sla_type</span>
-        <select value={params['sla_type'] ?? 'response'} onChange={(e) => setParams((p) => ({ ...p, sla_type: e.target.value }))} style={inputStyle}>
+        <Select value={params['sla_type'] ?? 'response'} onChange={(e) => setParams((p) => ({ ...p, sla_type: e.target.value }))} style={inputStyle}>
           <option value="response">response</option>
           <option value="resolve">resolve</option>
-        </select>
+        </Select>
       </div>
     )
     if (type === 'schedule_job') return (
@@ -229,19 +230,19 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
       <>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={labelStyle}>entity_type</span>
-          <select value={params['entity_type'] ?? 'incident'} onChange={(e) => setParams((p) => ({ ...p, entity_type: e.target.value }))} style={inputStyle}>
+          <Select value={params['entity_type'] ?? 'incident'} onChange={(e) => setParams((p) => ({ ...p, entity_type: e.target.value }))} style={inputStyle}>
             <option value="incident">incident</option>
             <option value="problem">problem</option>
             <option value="change">change</option>
-          </select>
+          </Select>
         </div>
         {field('title_template', 'title_template', '{title} — escalated')}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={labelStyle}>link_to_current</span>
-          <select value={params['link_to_current'] ?? 'true'} onChange={(e) => setParams((p) => ({ ...p, link_to_current: e.target.value }))} style={inputStyle}>
+          <Select value={params['link_to_current'] ?? 'true'} onChange={(e) => setParams((p) => ({ ...p, link_to_current: e.target.value }))} style={inputStyle}>
             <option value="true">true</option>
             <option value="false">false</option>
-          </select>
+          </Select>
         </div>
         {field('copy_fields', 'copy_fields (comma-sep)', 'severity,priority')}
       </>
@@ -251,10 +252,10 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
       <>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={labelStyle}>target_type</span>
-          <select value={params['target_type'] ?? 'team'} onChange={(e) => setParams((p) => ({ ...p, target_type: e.target.value }))} style={inputStyle}>
+          <Select value={params['target_type'] ?? 'team'} onChange={(e) => setParams((p) => ({ ...p, target_type: e.target.value }))} style={inputStyle}>
             <option value="team">team</option>
             <option value="user">user</option>
-          </select>
+          </Select>
         </div>
         {field('target_id', 'target_id', 'UUID of team/user')}
         {field('target_name', 'target_name (template)', '{assigned_team}')}
@@ -265,13 +266,13 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
       <>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={labelStyle}>field</span>
-          <select value={params['field'] ?? 'severity'} onChange={(e) => setParams((p) => ({ ...p, field: e.target.value }))} style={inputStyle}>
+          <Select value={params['field'] ?? 'severity'} onChange={(e) => setParams((p) => ({ ...p, field: e.target.value }))} style={inputStyle}>
             <option value="severity">severity</option>
             <option value="priority">priority</option>
             <option value="status">status</option>
             <option value="description">description</option>
             <option value="category">category</option>
-          </select>
+          </Select>
         </div>
         {field('value', 'value', 'critical or {field}')}
       </>
@@ -282,11 +283,11 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
         {field('url', 'url', 'https://example.com/hook')}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={labelStyle}>method</span>
-          <select value={params['method'] ?? 'POST'} onChange={(e) => setParams((p) => ({ ...p, method: e.target.value }))} style={inputStyle}>
+          <Select value={params['method'] ?? 'POST'} onChange={(e) => setParams((p) => ({ ...p, method: e.target.value }))} style={inputStyle}>
             <option value="POST">POST</option>
             <option value="PUT">PUT</option>
             <option value="GET">GET</option>
-          </select>
+          </Select>
         </div>
         {field('payload_template', 'payload_template (JSON)', '{}')}
       </>
@@ -297,18 +298,18 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
         {field('title_template', 'title_template', 'Pubblicazione: {title}')}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={labelStyle}>approver_role</span>
-          <select value={params['approver_role'] ?? 'admin'} onChange={(e) => setParams((p) => ({ ...p, approver_role: e.target.value }))} style={inputStyle}>
+          <Select value={params['approver_role'] ?? 'admin'} onChange={(e) => setParams((p) => ({ ...p, approver_role: e.target.value }))} style={inputStyle}>
             <option value="admin">admin</option>
             <option value="manager">manager</option>
-          </select>
+          </Select>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={labelStyle}>approval_type</span>
-          <select value={params['approval_type'] ?? 'any'} onChange={(e) => setParams((p) => ({ ...p, approval_type: e.target.value }))} style={inputStyle}>
+          <Select value={params['approval_type'] ?? 'any'} onChange={(e) => setParams((p) => ({ ...p, approval_type: e.target.value }))} style={inputStyle}>
             <option value="any">any (1 approver sufficient)</option>
             <option value="all">all (all approvers required)</option>
             <option value="majority">majority</option>
-          </select>
+          </Select>
         </div>
       </>
     )
@@ -355,38 +356,38 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
               )}
 
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <select
+                <Select
                   value={cond.field}
                   onChange={(e) => updateRow(i, { field: e.target.value, value: '' })}
                   style={{ ...inputStyle, flex: 1, fontSize: 'var(--font-size-table)', padding: '5px 6px' }}
                 >
                   {COND_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
-                </select>
+                </Select>
                 <button onClick={() => removeRow(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 2, flexShrink: 0, display: 'flex' }}>
                   <X size={11} />
                 </button>
               </div>
 
-              <select
+              <Select
                 value={cond.operator}
                 onChange={(e) => updateRow(i, { operator: e.target.value })}
                 style={{ ...inputStyle, fontSize: 'var(--font-size-table)', padding: '5px 6px' }}
               >
                 {COND_OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              </Select>
 
               {needsValue && (
                 isEnumField ? (
-                  <select
+                  <Select
                     value={cond.value}
                     onChange={(e) => updateRow(i, { value: e.target.value })}
                     style={{ ...inputStyle, fontSize: 'var(--font-size-table)', padding: '5px 6px' }}
                   >
                     <option value="">— seleziona —</option>
                     {enumOptions.map((v) => <option key={v} value={v}>{v}</option>)}
-                  </select>
+                  </Select>
                 ) : (
-                  <input
+                  <Input
                     value={cond.value}
                     onChange={(e) => updateRow(i, { value: e.target.value })}
                     placeholder="valore..."
@@ -466,7 +467,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
                   <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     {t('workflow.actionType')}
                   </span>
-                  <select
+                  <Select
                     value={editingAction.type}
                     onChange={(e) => setEditingAction((prev) => prev ? { ...prev, type: e.target.value, params: {} } : null)}
                     style={inputStyle}
@@ -480,7 +481,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
                     <option value="update_field">update_field</option>
                     <option value="call_webhook">call_webhook</option>
                     <option value="create_approval_request">create_approval_request</option>
-                  </select>
+                  </Select>
                 </div>
                 {renderParamFields(
                   editingAction.type,
@@ -526,7 +527,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
             <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               {t('workflow.actionType')}
             </span>
-            <select value={newActionType} onChange={(e) => { setNewActionType(e.target.value); setNewActionParams({}) }} style={inputStyle}>
+            <Select value={newActionType} onChange={(e) => { setNewActionType(e.target.value); setNewActionParams({}) }} style={inputStyle}>
               <option value="sla_start">sla_start</option>
               <option value="sla_stop">sla_stop</option>
               <option value="schedule_job">schedule_job</option>
@@ -535,7 +536,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
               <option value="assign_to">assign_to</option>
               <option value="update_field">update_field</option>
               <option value="call_webhook">call_webhook</option>
-            </select>
+            </Select>
           </div>
           {renderParamFields(newActionType, newActionParams, (updater) => setNewActionParams((p) => updater(p)))}
           {renderConditionsSection(
@@ -601,7 +602,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
             </label>
           </PanelField>
           <PanelField label="Categoria">
-            <input
+            <Input
               list="wf-step-categories"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
@@ -624,7 +625,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
       {activeTab === 'props' && (
         <>
           <PanelField label="Label">
-            <input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
           </PanelField>
 
           <PanelField label="Name">
@@ -680,7 +681,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
           {notifyEnabled && (
             <>
               <PanelField label="Chiave titolo (i18n)">
-                <input
+                <Input
                   value={notifyTitleKey}
                   onChange={(e) => setNotifyTitleKey(e.target.value)}
                   placeholder="es. notification.custom.step.title"
@@ -689,9 +690,9 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
               </PanelField>
 
               <PanelField label="Severità">
-                <select value={notifySeverity} onChange={(e) => setNotifySeverity(e.target.value)} style={inputStyle}>
+                <Select value={notifySeverity} onChange={(e) => setNotifySeverity(e.target.value)} style={inputStyle}>
                   {NR_SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
+                </Select>
               </PanelField>
 
               <PanelField label="Canali">
@@ -711,9 +712,9 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
               </PanelField>
 
               <PanelField label="Destinatari">
-                <select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)} style={inputStyle}>
+                <Select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)} style={inputStyle}>
                   {NR_TARGETS.map((tgt) => <option key={tgt} value={tgt}>{tgt}</option>)}
-                </select>
+                </Select>
               </PanelField>
             </>
           )}

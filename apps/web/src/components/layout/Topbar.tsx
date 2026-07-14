@@ -154,6 +154,7 @@ export function Topbar({ onOpenSearch }: TopbarProps) {
             onClick={onOpenSearch}
             aria-label={t('search.placeholder')}
             title={t('search.hint')}
+            className="hover-bg"
             style={{
               display:         'flex',
               alignItems:      'center',
@@ -162,13 +163,11 @@ export function Topbar({ onOpenSearch }: TopbarProps) {
               padding:         '0 10px',
               borderRadius:    6,
               border:          `1px solid ${C.border}`,
-              backgroundColor: 'transparent',
               color:           C.textMuted,
               fontSize:        11,
               cursor:          'pointer',
+              ['--hover-bg' as string]: C.hoverBg,
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
           >
             <Search size={14} />
             <span>{t('search.hint')}</span>
@@ -192,6 +191,7 @@ export function Topbar({ onOpenSearch }: TopbarProps) {
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setPanelOpen(v => !v)}
+            className="hover-bg"
             style={{
               position:        'relative',
               display:         'flex',
@@ -201,12 +201,11 @@ export function Topbar({ onOpenSearch }: TopbarProps) {
               height:          32,
               borderRadius:    6,
               border:          'none',
-              backgroundColor: panelOpen ? C.hoverBg : 'transparent',
+              backgroundColor: panelOpen ? C.hoverBg : undefined,
               color:           C.brand,
               cursor:          'pointer',
+              ['--hover-bg' as string]: C.hoverBg,
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = panelOpen ? C.hoverBg : 'transparent' }}
           >
             <Bell size={16} />
             {unreadCount > 0 && (
@@ -242,6 +241,7 @@ export function Topbar({ onOpenSearch }: TopbarProps) {
         {/* User dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger
+            className="hover-bg"
             style={{
               display:         'flex',
               alignItems:      'center',
@@ -249,11 +249,9 @@ export function Topbar({ onOpenSearch }: TopbarProps) {
               padding:         '4px 8px',
               borderRadius:    6,
               border:          'none',
-              backgroundColor: 'transparent',
               cursor:          'pointer',
+              ['--hover-bg' as string]: C.hoverBg,
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
           >
             <div
               style={{

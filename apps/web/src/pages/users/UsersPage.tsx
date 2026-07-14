@@ -16,6 +16,7 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { Pagination } from '@/components/ui/Pagination'
 import { inputS, selectS, labelS } from '@/pages/settings/shared/designerStyles'
 import { lookupStyle } from '@/lib/tokens'
+import { Pill } from '@/components/ui/Pill'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
@@ -47,9 +48,9 @@ const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
 function RoleBadge({ role }: { role: string }) {
   const s = lookupStyle(ROLE_STYLES, role, 'ROLE_STYLES')
   return (
-    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
       {role}
-    </span>
+    </Pill>
   )
 }
 
@@ -122,7 +123,7 @@ export function UsersPage() {
   return (
     <PageContainer>
       <ListPageHeader
-        icon={<User size={22} color="#38bdf8" />}
+        icon={<User size={22} color="var(--color-icon-accent)" />}
         title={t('pages.users.title')}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
@@ -258,9 +259,8 @@ export function UsersPage() {
                           <div
                             key={t.id}
                             onMouseDown={() => { setForm(prev => ({ ...prev, teamIds: [...new Set([...prev.teamIds, t.id])] })); setTeamSearch('') }}
+                            className="hover-bg"
                             style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-slate-bg)' }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                           >
                             <Users size={14} color="var(--color-slate-light)" />
                             <div style={{ flex: 1 }}>

@@ -521,13 +521,12 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
         }}>
           <div
             onClick={() => handleSelect(null)}
+            className="hover-bg"
             style={{
               padding: '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
               color: 'var(--color-slate-light)',
               borderBottom: '1px solid #f1f5f9',
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-slate-bg)' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
             — Tutti —
           </div>

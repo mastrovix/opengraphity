@@ -30,11 +30,12 @@ export function navItemStyle(isActive: boolean, isCollapsed: boolean): React.CSS
     fontWeight:      isActive ? 600 : 400,
     fontSize:        13,
     color:           isActive ? C.brand : C.textDefault,
-    backgroundColor: isActive ? C.activeBg : 'transparent',
+    backgroundColor: isActive ? C.activeBg : undefined,
     borderLeft:      isActive ? `2px solid ${C.brand}` : '2px solid transparent',
     transition:      'background 150ms, color 150ms',
     cursor:          'pointer',
     boxSizing:       'border-box' as const,
+    ['--hover-bg' as string]: C.hoverBg,
   }
 }
 
@@ -62,19 +63,12 @@ export function parentGroupStyle(isActive: boolean): React.CSSProperties {
     padding:         '7px 10px',
     borderRadius:    6,
     cursor:          'pointer',
-    backgroundColor: isActive ? C.activeBg : 'transparent',
+    backgroundColor: isActive ? C.activeBg : undefined,
     borderLeft:      isActive ? `2px solid ${C.brand}` : '2px solid transparent',
     transition:      'background 150ms',
     margin:          '1px 0',
+    ['--hover-bg' as string]: C.hoverBg,
   }
-}
-
-export function hoverOn(e: React.MouseEvent, active: boolean) {
-  if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg
-}
-
-export function hoverOff(e: React.MouseEvent, active: boolean) {
-  if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
 }
 
 // ── NavItem component ─────────────────────────────────────────────────────────
@@ -93,9 +87,8 @@ export function NavItem({ to, label, icon: Icon, collapsed, isActive, badge = 0 
     <NavLink
       to={to}
       title={collapsed ? label : undefined}
+      className="hover-bg"
       style={navItemStyle(isActive, collapsed)}
-      onMouseEnter={(e) => hoverOn(e, isActive)}
-      onMouseLeave={(e) => hoverOff(e, isActive)}
     >
       <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
       {!collapsed && <span style={{ flex: 1 }}>{label}</span>}

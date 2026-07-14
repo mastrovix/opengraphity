@@ -24,6 +24,7 @@ import {
   inputS, selectS, textareaS,
   btnPrimary, btnDanger,
 } from './shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
 import type { EnumTypeRef } from './shared/designerStyles'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
 import { CIFieldInlineEditor, FormField } from './citype/CIFieldInlineEditor'
@@ -115,7 +116,7 @@ export function CITypeDesignerPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Layers size={22} color="#38bdf8" />}>
+        <PageTitle icon={<Layers size={22} color="var(--color-icon-accent)" />}>
           CI Type Designer
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
@@ -217,15 +218,15 @@ export function CITypeDesignerPage() {
                 {activeTab === 'settings' && settingsForm && (
                   <div style={{ maxWidth: 480 }}>
                     <FormField label="Label">
-                      <input style={inputS} value={settingsForm.label}
+                      <Input style={inputS} value={settingsForm.label}
                         onChange={(e) => setSettingsForm((p) => p && ({ ...p, label: e.target.value }))} />
                     </FormField>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
                       <FormField label="Icona">
-                        <select style={selectS} value={settingsForm.icon}
+                        <Select style={selectS} value={settingsForm.icon}
                           onChange={(e) => setSettingsForm((p) => p && ({ ...p, icon: e.target.value }))}>
                           {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
-                        </select>
+                        </Select>
                       </FormField>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20 }}>
                         <CIIcon icon={settingsForm.icon} size={24} color={settingsForm.color} />

@@ -128,7 +128,7 @@ export default function NotificationRulesPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
-          <PageTitle icon={<Bell size={22} color="#38bdf8" />}>
+          <PageTitle icon={<Bell size={22} color="var(--color-icon-accent)" />}>
             {t('notificationRules.title')}
           </PageTitle>
           <p style={{ fontSize: fontSize.body, color: 'var(--color-slate)', margin: 0 }}>

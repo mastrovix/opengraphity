@@ -4,6 +4,7 @@ import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
 import { UserCircle } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { Input } from '@/components/ui/FormControls'
 
 const GET_ME = gql`
   query Me {
@@ -51,14 +52,11 @@ export default function ProfilePage() {
     color:      'var(--color-slate)',
     marginBottom: 6,
   }
+  // Overrides on top of the shared FormControls base style.
   const inputStyle: React.CSSProperties = {
-    width:        '100%',
-    padding:      '8px 12px',
-    border:       '1px solid #d1d5db',
-    borderRadius: 6,
-    fontSize:     13,
-    outline:      'none',
-    boxSizing:    'border-box',
+    padding:    '8px 12px',
+    fontSize:   13,
+    background: 'transparent',
   }
   const btn: React.CSSProperties = {
     padding:      '8px 18px',
@@ -80,7 +78,7 @@ export default function ProfilePage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<UserCircle size={22} color="#38bdf8" />}>
+        <PageTitle icon={<UserCircle size={22} color="var(--color-icon-accent)" />}>
           Profilo
         </PageTitle>
       </div>
@@ -121,7 +119,7 @@ export default function ProfilePage() {
         ) : (
           <div>
             <label style={label}>Il tuo Slack User ID</label>
-            <input
+            <Input
               style={inputStyle}
               value={input}
               onChange={(e) => { setInput(e.target.value); setSaved(false) }}

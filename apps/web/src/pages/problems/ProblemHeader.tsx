@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
+import { Pill } from '@/components/ui/Pill'
 import { lookupOrError } from '@/lib/tokens'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { buttonStyleForCategory } from '@/lib/workflowStepStyle'
@@ -61,12 +62,12 @@ export function ProblemHeader({
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>
-        <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : 'var(--color-border-light)', color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 600, border: `1px solid ${lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', '#e5e7eb')}` }}>
+        <Pill bg={PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : 'var(--color-border-light)'} color={lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)')} radius={4} style={{ fontSize: 'var(--font-size-body)', border: `1px solid ${lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', '#e5e7eb')}` }}>
           {problem.priority}
-        </span>
-        <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: STATUS_BG, color: STATUS_FG, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+        </Pill>
+        <Pill bg={STATUS_BG} color={STATUS_FG} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
           {problem.status.replace(/_/g, ' ')}
-        </span>
+        </Pill>
       </div>
       <div style={{ fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--text-muted)' }}>{problem.id}</div>
 

@@ -8,6 +8,8 @@ import { Button } from '@/components/Button'
 import { Users, UsersRound, X, Search } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { Pill } from '@/components/ui/Pill'
+import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
@@ -60,9 +62,9 @@ function TypeBadge({ type }: { type: string | null }) {
   }
   const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
   return (
-    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
       {type}
-    </span>
+    </Pill>
   )
 }
 
@@ -70,35 +72,19 @@ function TypeBadge({ type }: { type: string | null }) {
 
 function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: (ci: CIRef) => void; emptyMsg: string }) {
   const { t } = useTranslation()
-  if (items.length === 0) {
-    return <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title={emptyMsg} />
-  }
+  const columns: SimpleColumn<CIRef>[] = [
+    { key: 'name',        label: t('pages.cmdb.name'),        render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
+    { key: 'type',        label: t('pages.teams.type'),       render: (v) => <span style={{ color: 'var(--color-slate)', textTransform: 'capitalize' }}>{String(v).replace(/_/g, ' ')}</span> },
+    { key: 'environment', label: t('pages.cmdb.environment'), render: (v) => <EnvBadge environment={String(v)} /> },
+    { key: 'status',      label: t('pages.cmdb.status'),      render: (v) => <StatusBadge value={String(v)} /> },
+  ]
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-      <thead>
-        <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-          {[t('pages.cmdb.name'), t('pages.teams.type'), t('pages.cmdb.environment'), t('pages.cmdb.status')].map((h) => (
-            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((ci) => (
-          <tr
-            key={ci.id}
-            onClick={() => onRowClick(ci)}
-            style={{ cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-slate-bg)' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
-          >
-            <td style={{ padding: '8px 8px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{ci.name}</td>
-            <td style={{ padding: '8px 8px', color: 'var(--color-slate)', textTransform: 'capitalize' }}>{ci.type.replace(/_/g, ' ')}</td>
-            <td style={{ padding: '8px 8px' }}><EnvBadge environment={ci.environment} /></td>
-            <td style={{ padding: '8px 8px' }}><StatusBadge value={ci.status} /></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <SimpleTable<CIRef>
+      columns={columns}
+      rows={items}
+      onRowClick={onRowClick}
+      empty={<EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title={emptyMsg} />}
+    />
   )
 }
 
@@ -145,7 +131,7 @@ export function TeamDetailPage() {
           ← {t('pages.teams.title')}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <UsersRound size={22} color="#38bdf8" />
+          <UsersRound size={22} color="var(--color-icon-accent)" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
         </div>
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>
@@ -255,9 +241,8 @@ export function TeamDetailPage() {
                             setManager({ variables: { teamId: team.id, userId: u.id } })
                           }
                         }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', cursor: 'pointer', borderBottom: i < filtered.length - 1 ? '1px solid #f3f4f6' : 'none' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f0f9ff' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                        className="hover-bg"
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', cursor: 'pointer', borderBottom: i < filtered.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
                       >
                         <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <Users size={13} color="var(--color-brand)" />
@@ -281,24 +266,14 @@ export function TeamDetailPage() {
           {team.members.length === 0 ? (
             <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title={t('pages.teams.noMembers')} />
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  {[t('pages.users.name'), t('pages.users.email'), t('pages.users.role')].map((h) => (
-                    <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {team.members.map((m) => (
-                  <tr key={m.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '8px 8px', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{m.name}</td>
-                    <td style={{ padding: '8px 8px', color: 'var(--color-slate)' }}>{m.email}</td>
-                    <td style={{ padding: '8px 8px', color: 'var(--color-slate)', textTransform: 'capitalize' }}>{m.role}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <SimpleTable<Member>
+              columns={[
+                { key: 'name',  label: t('pages.users.name'),  render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
+                { key: 'email', label: t('pages.users.email'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+                { key: 'role',  label: t('pages.users.role'),  render: (v) => <span style={{ color: 'var(--color-slate)', textTransform: 'capitalize' }}>{String(v)}</span> },
+              ]}
+              rows={team.members}
+            />
           )}
         </SectionCard>
 

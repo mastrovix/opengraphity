@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/ui/skeleton'
 import { GET_WORKFLOW_LIST } from '@/graphql/queries'
 import { lookupOrError } from '@/lib/tokens'
+import { Pill } from '@/components/ui/Pill'
 
 interface WorkflowDef {
   id:             string
@@ -67,7 +68,7 @@ export function WorkflowListPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Route size={22} color="#38bdf8" />}>
+          <PageTitle icon={<Route size={22} color="var(--color-icon-accent)" />}>
             {t('pages.workflow.title', 'Workflow')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
@@ -140,35 +141,27 @@ export function WorkflowListPage() {
                           {def.changeSubtype && (() => {
                             const sc = lookupOrError(SUBTYPE_COLORS, def.changeSubtype, 'SUBTYPE_COLORS', { bg: 'var(--color-danger)', fg: '#fff' })
                             return (
-                              <span style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 4, background: sc.bg, color: sc.fg, fontWeight: 600 }}>
+                              <Pill bg={sc.bg} color={sc.fg} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                                 {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
-                              </span>
+                              </Pill>
                             )
                           })()}
                           {def.category ? (
-                            <span style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
+                            <Pill bg="#fef3c7" color="#92400e" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                               {def.category}
-                            </span>
+                            </Pill>
                           ) : (
-                            <span style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#166534', fontWeight: 600 }}>
+                            <Pill bg="#dcfce7" color="#166534" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                               Default
-                            </span>
+                            </Pill>
                           )}
                         </div>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{
-                          fontSize:        11,
-                          fontWeight:      600,
-                          padding:         '2px 8px',
-                          borderRadius:    100,
-                          backgroundColor: def.active ? 'var(--color-brand-light)' : 'var(--color-slate-bg)',
-                          color:           def.active ? 'var(--color-brand)' : 'var(--color-slate-light)',
-                          border:          def.active ? '1px solid #a5f3fc' : '1px solid #e5e7eb',
-                        }}>
+                        <Pill bg={def.active ? 'var(--color-brand-light)' : 'var(--color-slate-bg)'} color={def.active ? 'var(--color-brand)' : 'var(--color-slate-light)'} radius={100} style={{ fontSize: 11, border: def.active ? '1px solid #a5f3fc' : '1px solid #e5e7eb' }}>
                           {def.active ? 'Attivo' : 'Inattivo'}
-                        </span>
+                        </Pill>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>v{def.version}</span>
                       </div>
                     </div>

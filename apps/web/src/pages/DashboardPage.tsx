@@ -3,6 +3,7 @@ import { useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
+import { Input, Select } from '@/components/ui/FormControls'
 import { toast } from 'sonner'
 import { LayoutDashboard } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
@@ -87,25 +88,25 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
       }
     >
         <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>Nome</label>
-        <input
+        <Input
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Es. Operations Overview"
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 'var(--font-size-card-title)', marginBottom: 12, boxSizing: 'border-box' }}
+          style={{ padding: '8px 10px', fontSize: 'var(--font-size-card-title)', marginBottom: 12, outline: undefined }}
           onKeyDown={(e) => e.key === 'Enter' && void handleCreate()}
         />
 
         <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>Visibilità</label>
-        <select
+        <Select
           value={visibility}
           onChange={(e) => setVisibility(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 'var(--font-size-card-title)', marginBottom: 12 }}
+          style={{ padding: '8px 10px', fontSize: 'var(--font-size-card-title)', marginBottom: 12, outline: undefined }}
         >
           <option value="private">Privata (solo io)</option>
           <option value="teams">Condivisa con team</option>
           <option value="all">Tutti nel tenant</option>
-        </select>
+        </Select>
 
         {visibility === 'teams' && (
           <div style={{ marginBottom: 12 }}>
@@ -242,22 +243,22 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
       }
     >
         <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>Nome</label>
-        <input
+        <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 'var(--font-size-card-title)', marginBottom: 12, boxSizing: 'border-box' }}
+          style={{ padding: '8px 10px', fontSize: 'var(--font-size-card-title)', marginBottom: 12, outline: undefined }}
         />
 
         <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>Visibilità</label>
-        <select
+        <Select
           value={visibility}
           onChange={(e) => setVisibility(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 'var(--font-size-card-title)', marginBottom: 12 }}
+          style={{ padding: '8px 10px', fontSize: 'var(--font-size-card-title)', marginBottom: 12, outline: undefined }}
         >
           <option value="private">Privata (solo io)</option>
           <option value="teams">Condivisa con team</option>
           <option value="all">Tutti nel tenant</option>
-        </select>
+        </Select>
 
         {visibility === 'teams' && (
           <div style={{ marginBottom: 12 }}>
@@ -344,7 +345,7 @@ export function DashboardPage() {
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <PageTitle icon={<LayoutDashboard size={22} color="#38bdf8" />}>
+        <PageTitle icon={<LayoutDashboard size={22} color="var(--color-icon-accent)" />}>
           Dashboard
         </PageTitle>
 

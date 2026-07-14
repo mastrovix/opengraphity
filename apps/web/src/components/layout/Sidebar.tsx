@@ -47,7 +47,7 @@ import {
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
-import { C, navItemStyle, subItemStyle, parentGroupStyle, hoverOn, hoverOff, NavItem } from './SidebarNavItems'
+import { C, navItemStyle, subItemStyle, parentGroupStyle, NavItem } from './SidebarNavItems'
 import { SidebarCollapseButton } from './SidebarUserMenu'
 
 const MY_PENDING_APPROVALS_COUNT = gql`
@@ -234,8 +234,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             to="/incidents"
             title={t('sidebar.itilProcesses')}
             style={navItemStyle(itsmActive, true)}
-            onMouseEnter={(e) => hoverOn(e, itsmActive)}
-            onMouseLeave={(e) => hoverOff(e, itsmActive)}
+            className="hover-bg"
           >
             <ListChecks size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
@@ -244,8 +243,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             <div
               onClick={() => setItsmOpen((p) => !p)}
               style={parentGroupStyle(itsmActive)}
-              onMouseEnter={(e) => hoverOn(e, itsmActive)}
-              onMouseLeave={(e) => hoverOff(e, itsmActive)}
+              className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <ListChecks size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
@@ -279,8 +277,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             to="/reports"
             title={t('sidebar.reporting')}
             style={navItemStyle(reportingActive, true)}
-            onMouseEnter={(e) => hoverOn(e, reportingActive)}
-            onMouseLeave={(e) => hoverOff(e, reportingActive)}
+            className="hover-bg"
           >
             <BarChart2 size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
@@ -289,8 +286,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             <div
               onClick={() => setReportingOpen((p) => !p)}
               style={parentGroupStyle(reportingActive)}
-              onMouseEnter={(e) => hoverOn(e, reportingActive)}
-              onMouseLeave={(e) => hoverOff(e, reportingActive)}
+              className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <BarChart2 size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
@@ -324,8 +320,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             to="/anomalies"
             title={t('sidebar.analysis')}
             style={navItemStyle(analysisActive, true)}
-            onMouseEnter={(e) => hoverOn(e, analysisActive)}
-            onMouseLeave={(e) => hoverOff(e, analysisActive)}
+            className="hover-bg"
           >
             <Activity size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
@@ -334,8 +329,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             <div
               onClick={() => setAnalysisOpen((p) => !p)}
               style={parentGroupStyle(analysisActive)}
-              onMouseEnter={(e) => hoverOn(e, analysisActive)}
-              onMouseLeave={(e) => hoverOff(e, analysisActive)}
+              className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Activity size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
@@ -381,8 +375,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             to="/cmdb"
             title={t('sidebar.cmdb')}
             style={navItemStyle(cmdbActive, true)}
-            onMouseEnter={(e) => hoverOn(e, cmdbActive)}
-            onMouseLeave={(e) => hoverOff(e, cmdbActive)}
+            className="hover-bg"
           >
             <Server size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
@@ -391,8 +384,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             <div
               onClick={() => setCmdbOpen((p) => !p)}
               style={parentGroupStyle(cmdbActive)}
-              onMouseEnter={(e) => hoverOn(e, cmdbActive)}
-              onMouseLeave={(e) => hoverOff(e, cmdbActive)}
+              className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Server size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
@@ -446,8 +438,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             <div
               onClick={() => setTeamsOpen((p) => !p)}
               style={parentGroupStyle(false)}
-              onMouseEnter={(e) => hoverOn(e, false)}
-              onMouseLeave={(e) => hoverOff(e, false)}
+              className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Users size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
@@ -483,8 +474,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             to="/workflow"
             title={t('sidebar.configuration')}
             style={navItemStyle(configActive, true)}
-            onMouseEnter={(e) => hoverOn(e, configActive)}
-            onMouseLeave={(e) => hoverOff(e, configActive)}
+            className="hover-bg"
           >
             <SlidersHorizontal size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
           </NavLink>
@@ -493,8 +483,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             <div
               onClick={() => setConfigOpen((p) => !p)}
               style={parentGroupStyle(configActive)}
-              onMouseEnter={(e) => hoverOn(e, configActive)}
-              onMouseLeave={(e) => hoverOff(e, configActive)}
+              className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <SlidersHorizontal size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
@@ -538,8 +527,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                   to={to}
                   title={collapsed ? label : undefined}
                   style={navItemStyle(isActive, collapsed)}
-                  onMouseEnter={(e) => hoverOn(e, isActive)}
-                  onMouseLeave={(e) => hoverOff(e, isActive)}
+                  className="hover-bg"
                 >
                   <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
                   {!collapsed && label}
@@ -553,8 +541,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 to="/settings/notifications"
                 title={t('sidebar.settings')}
                 style={navItemStyle(settingsActive, true)}
-                onMouseEnter={(e) => hoverOn(e, settingsActive)}
-                onMouseLeave={(e) => hoverOff(e, settingsActive)}
+                className="hover-bg"
               >
                 <Settings size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
               </NavLink>
@@ -563,8 +550,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 <div
                   onClick={() => setSettingsOpen((p) => !p)}
                   style={parentGroupStyle(settingsActive)}
-                  onMouseEnter={(e) => hoverOn(e, settingsActive)}
-                  onMouseLeave={(e) => hoverOff(e, settingsActive)}
+                  className="hover-bg"
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Settings size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />

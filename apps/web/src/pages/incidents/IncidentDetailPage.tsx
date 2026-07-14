@@ -23,6 +23,8 @@ import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
 import { DetailField } from '@/components/ui/DetailField'
+import { Select, Textarea } from '@/components/ui/FormControls'
+import { Pill } from '@/components/ui/Pill'
 import { formatDate, timeAgo } from './IncidentCard'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -327,9 +329,9 @@ export function IncidentDetailPage() {
                       : <span style={{ color: 'var(--text-muted)' }}>{t('sla.none')}</span>
                   } />
                   <DetailField label={t('detail.workflowStep')} value={
-                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', fontWeight: 600, textTransform: 'capitalize' }}>
+                    <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
                       {incident.workflowInstance?.currentStep.replace(/_/g, ' ') ?? 'N/D'}
-                    </span>
+                    </Pill>
                   } />
                   <DetailField label={t('detail.assignedTo')} value={
                     incident.assignee ? (
@@ -382,14 +384,14 @@ export function IncidentDetailPage() {
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.team')}</label>
-                        <select
+                        <Select
                           value={selectedTeamId}
                           onChange={(e) => setSelectedTeamId(e.target.value)}
-                          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', color: 'var(--text-primary)', backgroundColor: 'var(--surface)', outline: 'none' }}
+                          style={{ padding: '8px 10px', border: '1px solid var(--border)', color: 'var(--text-primary)', background: 'var(--surface)' }}
                         >
                           <option value="">{t('detail.selectTeam')}</option>
                           {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
+                        </Select>
                         <div style={{ display: 'flex', gap: 8 }}>
                           {showReassign && (
                             <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '7px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>
@@ -419,14 +421,14 @@ export function IncidentDetailPage() {
                         {t('detail.team')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
                       </div>
                       <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.assignedTo')}</label>
-                      <select
+                      <Select
                         value={selectedUserId}
                         onChange={(e) => setSelectedUserId(e.target.value)}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', color: 'var(--text-primary)', backgroundColor: 'var(--surface)', outline: 'none' }}
+                        style={{ padding: '8px 10px', border: '1px solid var(--border)', color: 'var(--text-primary)', background: 'var(--surface)' }}
                       >
                         <option value="">{t('detail.selectUser')}</option>
                         {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
+                      </Select>
                       <button
                         disabled={!selectedUserId || !selectedUserId.trim() || assigningUser}
                         onClick={() => {
@@ -582,12 +584,12 @@ export function IncidentDetailPage() {
                 ? 'Descrivi la causa radice prima di risolvere (minimo 10 caratteri).'
                 : 'Aggiungi una nota per questa transizione (minimo 10 caratteri).'}
             </p>
-            <textarea
+            <Textarea
               value={transitionNotes}
               onChange={(e) => { setTransitionNotes(e.target.value); setNotesError('') }}
               placeholder={pendingTransition.inputField === 'rootCause' ? 'Es: Memory leak in payment-service v2.3.1...' : 'Note sulla transizione...'}
               rows={4}
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.6, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
+              style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}
               autoFocus
             />
             {notesError && (

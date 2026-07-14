@@ -7,6 +7,7 @@ import { lookupOrError } from '@/lib/tokens'
 import { GET_CI_CHANGES } from '@/graphql/queries'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { styleForCategory } from '@/lib/workflowStepStyle'
+import { Pill } from '@/components/ui/Pill'
 
 interface ChangeRow {
   id:                 string
@@ -23,19 +24,9 @@ function PhaseBadge({ phase, label, category }: {
 }) {
   const s = styleForCategory(category)
   return (
-    <span style={{
-      padding:         '2px 8px',
-      borderRadius:    6,
-      fontSize:        'var(--font-size-label)',
-      fontWeight:      600,
-      backgroundColor: s.bg,
-      color:           s.color,
-      marginTop:       1,
-      flexShrink:      0,
-      textTransform:   'capitalize',
-    }}>
+    <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', marginTop: 1, flexShrink: 0, textTransform: 'capitalize' }}>
       {label || phase}
-    </span>
+    </Pill>
   )
 }
 

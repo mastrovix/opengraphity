@@ -11,6 +11,8 @@ import { toast } from 'sonner'
 import {
   inputS, selectS, labelS, btnPrimary, btnSecondary,
 } from '@/pages/settings/shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
+import { Pill } from '@/components/ui/Pill'
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
 
@@ -43,10 +45,11 @@ const PERMISSIONS = ['incidents:read', 'incidents:write', 'changes:read', 'chang
 
 const tabS: React.CSSProperties = { padding: '8px 18px', border: 'none', borderBottom: '2px solid transparent', background: 'none', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', cursor: 'pointer' }
 const tabActiveS: React.CSSProperties = { ...tabS, color: 'var(--color-brand)', borderBottomColor: 'var(--color-brand)' }
-const badgeS: React.CSSProperties = { display: 'inline-block', padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', background: '#f0f4ff', color: 'var(--color-brand)', marginRight: 4 }
 const textareaS: React.CSSProperties = { ...inputS, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)', resize: 'vertical' as const, minHeight: 70 }
 const toggleS = (on: boolean): React.CSSProperties => ({ width: 36, height: 20, borderRadius: 10, background: on ? 'var(--color-brand)' : '#d1d5db', position: 'relative', cursor: 'pointer', border: 'none', transition: 'background .2s' })
 const toggleDot = (on: boolean): React.CSSProperties => ({ position: 'absolute', top: 2, left: on ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' })
+// Pill overrides: these badges are regular-weight with a small right gap.
+const PILL_S: React.CSSProperties = { fontWeight: 400, marginRight: 4 }
 
 function fmtDate(d: string | null) { return d ? new Date(d).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
 function copyText(t: string) { navigator.clipboard.writeText(t); toast.success('Copiato!') }
@@ -203,7 +206,7 @@ export function IntegrationsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const inboundColumns: ColumnDef<any>[] = [
     { key: 'name', label: 'Nome', sortable: true },
-    { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <span style={badgeS}>{String(v)}</span> },
+    { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <Pill bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
     { key: 'id', label: 'Endpoint URL', sortable: true, render: (v) => (
       <>
         <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace' }}>/api/webhooks/in/{String(v)}</span>
@@ -227,14 +230,14 @@ export function IntegrationsPage() {
     { key: 'url', label: 'URL', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
     { key: 'events', label: 'Events', sortable: true, render: (v) => {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
-      return <>{events.map(e => <span key={e} style={badgeS}>{e}</span>)}</>
+      return <>{events.map(e => <Pill key={e} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
     } },
     { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleOutbound(row.id, row.enabled)} /> },
     { key: 'sendCount', label: 'Invii', sortable: true, render: (v) => String(v ?? 0) },
     { key: 'lastStatusCode', label: 'Ultimo Status', sortable: true, render: (v) => {
       if (!v) return '—'
       const ok = Number(v) >= 200 && Number(v) < 300
-      return <span style={{ ...badgeS, background: ok ? '#dcfce7' : '#fee2e2', color: ok ? 'var(--color-success)' : 'var(--color-trigger-sla-breach)' }}>{String(v)}</span>
+      return <Pill bg={ok ? '#dcfce7' : '#fee2e2'} color={ok ? 'var(--color-success)' : 'var(--color-trigger-sla-breach)'} radius={12} style={PILL_S}>{String(v)}</Pill>
     } },
     { key: 'lastError', label: 'Ultimo Errore', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
@@ -251,7 +254,7 @@ export function IntegrationsPage() {
     { key: 'keyPrefix', label: 'Prefisso', sortable: true, render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
     { key: 'permissions', label: 'Permessi', sortable: true, render: (v) => {
       const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
-      return <>{perms.map(p => <span key={p} style={badgeS}>{p}</span>)}</>
+      return <>{perms.map(p => <Pill key={p} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>
     } },
     { key: 'rateLimit', label: 'Rate Limit', sortable: true, render: (v) => `${String(v)}/min` },
     { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleKey(row.id, row.enabled)} /> },
@@ -274,7 +277,7 @@ export function IntegrationsPage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Plug size={22} color="#38bdf8" />}>Integrazioni</PageTitle>
+        <PageTitle icon={<Plug size={22} color="var(--color-icon-accent)" />}>Integrazioni</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
           Webhook, API Keys e connessioni esterne
         </p>
@@ -302,11 +305,11 @@ export function IntegrationsPage() {
         {modal === 'inbound' && (
           <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Nome</label><input style={inputS} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
+              <div><label style={labelS}>Nome</label><Input style={inputS} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
               <div><label style={labelS}>Entity Type</label>
-                <select style={selectS} value={inForm.entityType} onChange={e => setInForm({ ...inForm, entityType: e.target.value })}>
+                <Select style={selectS} value={inForm.entityType} onChange={e => setInForm({ ...inForm, entityType: e.target.value })}>
                   {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </Select>
               </div>
               <div><label style={labelS}>Field Mapping (JSON)</label><textarea style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} /></div>
               <div><label style={labelS}>Default Values (JSON)</label><textarea style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} /></div>
@@ -337,12 +340,12 @@ export function IntegrationsPage() {
         {modal === 'outbound' && (
           <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Nome</label><input style={inputS} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
-              <div><label style={labelS}>URL</label><input style={inputS} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
+              <div><label style={labelS}>Nome</label><Input style={inputS} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
+              <div><label style={labelS}>URL</label><Input style={inputS} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
               <div><label style={labelS}>Method</label>
-                <select style={selectS} value={outForm.method} onChange={e => setOutForm({ ...outForm, method: e.target.value })}>
+                <Select style={selectS} value={outForm.method} onChange={e => setOutForm({ ...outForm, method: e.target.value })}>
                   {HTTP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
+                </Select>
               </div>
               <div><label style={labelS}>Headers (JSON)</label><textarea style={textareaS} value={outForm.headers} onChange={e => setOutForm({ ...outForm, headers: e.target.value })} /></div>
               <div>
@@ -357,7 +360,7 @@ export function IntegrationsPage() {
                 </div>
               </div>
               <div><label style={labelS}>Payload Template</label><textarea style={textareaS} value={outForm.payloadTemplate} onChange={e => setOutForm({ ...outForm, payloadTemplate: e.target.value })} /></div>
-              <div><label style={labelS}>Secret</label><input style={inputS} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
+              <div><label style={labelS}>Secret</label><Input style={inputS} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={outForm.retryOnFailure} onChange={e => setOutForm({ ...outForm, retryOnFailure: e.target.checked })} />
                 Riprova in caso di errore
@@ -388,7 +391,7 @@ export function IntegrationsPage() {
         {modal === 'apikey' && (
           <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Nome</label><input style={inputS} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
+              <div><label style={labelS}>Nome</label><Input style={inputS} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
               <div>
                 <label style={labelS}>Permessi</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
@@ -400,8 +403,8 @@ export function IntegrationsPage() {
                   ))}
                 </div>
               </div>
-              <div><label style={labelS}>Rate Limit (req/min)</label><input style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
-              <div><label style={labelS}>Scadenza</label><input style={inputS} type="date" value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /></div>
+              <div><label style={labelS}>Rate Limit (req/min)</label><Input style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
+              <div><label style={labelS}>Scadenza</label><Input style={inputS} type="date" value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <button style={btnSecondary} onClick={() => setModal(null)}>Annulla</button>
                 <button style={btnPrimary} onClick={handleCreateApiKey} disabled={!keyForm.name || !keyForm.permissions.length}>Crea</button>

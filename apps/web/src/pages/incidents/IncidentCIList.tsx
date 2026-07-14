@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, ChevronDown, ChevronRight } from 'lucide-react'
+import { Input } from '@/components/ui/FormControls'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { ciPath } from '@/lib/ciPath'
@@ -127,7 +128,7 @@ export function IncidentCIList({
           {/* Search input */}
           {showCISearch && (
             <div style={{ marginBottom: 12, position: 'relative' }}>
-              <input
+              <Input
                 type="text"
                 value={ciSearch}
                 onChange={(e) => onSearchChange(e.target.value)}
@@ -137,7 +138,7 @@ export function IncidentCIList({
                     : 'Cerca CI per nome (min. 2 caratteri)...'
                 }
                 autoFocus
-                style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }}
+                style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
               />
               {filteredResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>

@@ -16,16 +16,13 @@ export const panelStyle: React.CSSProperties = {
   gap:             14,
 }
 
+// Overrides on top of the shared FormControls base style (see ui/FormControls).
 export const panelInputStyle: React.CSSProperties = {
-  width:           '100%',
   padding:         '7px 10px',
   border:          '1px solid #e2e6f0',
-  borderRadius:    6,
   fontSize:        13,
   color:           'var(--color-slate-dark)',
-  outline:         'none',
   backgroundColor: '#fafafa',
-  boxSizing:       'border-box',
 }
 
 export function saveButtonStyle(disabled: boolean): React.CSSProperties {

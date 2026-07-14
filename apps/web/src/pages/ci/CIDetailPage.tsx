@@ -12,6 +12,8 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DetailField } from '@/components/ui/DetailField'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { Input, Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
+import { Pill } from '@/components/ui/Pill'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { CIGraph } from '@/components/CIGraph'
 import { CIIncidentsCard } from '@/components/CIIncidentsCard'
@@ -105,14 +107,6 @@ function RelationList({
 
 // ── EditField ─────────────────────────────────────────────────────────────
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', boxSizing: 'border-box', padding: '6px 10px',
-  fontSize: 'var(--font-size-body)', borderRadius: 6,
-  border: '1px solid #d1d5db', background: '#fff',
-  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-  outline: 'none',
-}
-
 function EditField({ label, value, onChange, enumValues, multiline }: {
   label: string
   value: string
@@ -122,18 +116,16 @@ function EditField({ label, value, onChange, enumValues, multiline }: {
 }) {
   return (
     <div>
-      <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
-        {label}
-      </div>
+      <FieldLabel>{label}</FieldLabel>
       {enumValues && enumValues.length > 0 ? (
-        <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
+        <Select value={value} onChange={e => onChange(e.target.value)}>
           <option value="">—</option>
           {enumValues.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
+        </Select>
       ) : multiline ? (
-        <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} />
+        <Textarea value={value} onChange={e => onChange(e.target.value)} rows={3} />
       ) : (
-        <input type="text" value={value} onChange={e => onChange(e.target.value)} style={inputStyle} />
+        <Input type="text" value={value} onChange={e => onChange(e.target.value)} />
       )}
     </div>
   )
@@ -327,7 +319,7 @@ export function CIDetailPage() {
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <CIIcon icon={ciType.icon} size={24} color="#38bdf8" />
+        <CIIcon icon={ciType.icon} size={24} color="var(--color-icon-accent)" />
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{ci.name}</h1>
         {ci.status && <StatusBadge value={ci.status} />}
       </div>
@@ -406,16 +398,16 @@ export function CIDetailPage() {
                   <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
                   {ci.ownerGroup && (
                     <DetailField label="Owner Group" value={
-                      <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-brand-light)', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-brand)' }}>
+                      <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                         {(ci.ownerGroup as Team).name}
-                      </span>
+                      </Pill>
                     } />
                   )}
                   {ci.supportGroup && (
                     <DetailField label="Support Group" value={
-                      <span style={{ padding: '2px 8px', borderRadius: 100, backgroundColor: 'var(--color-success-bg)', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-trigger-automatic)' }}>
+                      <Pill bg="var(--color-success-bg)" color="var(--color-trigger-automatic)" radius={100} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                         {(ci.supportGroup as Team).name}
-                      </span>
+                      </Pill>
                     } />
                   )}
                   {specificFields.map(f => (
@@ -559,15 +551,15 @@ export function CIDetailPage() {
                       <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
                         {t('pages.ci.relationType')}
                       </label>
-                      <select
+                      <Select
                         value={addRelForm.relationType}
                         onChange={e => setAddRelForm(prev => ({ ...prev, relationType: e.target.value, targetCI: null, search: '' }))}
-                        style={{ width: '100%', padding: '8px 10px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', boxSizing: 'border-box' }}
+                        style={{ padding: '8px 10px', outline: undefined }}
                       >
                         <option value="DEPENDS_ON">DEPENDS_ON</option>
                         <option value="HOSTED_ON">HOSTED_ON</option>
                         <option value="USES_CERTIFICATE">USES_CERTIFICATE</option>
-                      </select>
+                      </Select>
                     </div>
 
                     {/* Direction */}
@@ -590,11 +582,11 @@ export function CIDetailPage() {
                       <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
                         CI Target
                       </label>
-                      <input
+                      <Input
                         placeholder={t('pages.ci.searchTarget')}
                         value={addRelForm.search}
                         onChange={e => handleCISearch(e.target.value)}
-                        style={{ width: '100%', padding: '8px 10px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #d1d5db', boxSizing: 'border-box' }}
+                        style={{ padding: '8px 10px', outline: undefined }}
                       />
                       {addRelForm.targetCI && (
                         <div style={{ marginTop: 6, padding: '6px 10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -608,9 +600,8 @@ export function CIDetailPage() {
                             <div
                               key={c.id}
                               onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: c, search: c.name }))}
-                              style={{ padding: '8px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
-                              onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
-                              onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+                              className="hover-bg"
+                              style={{ padding: '8px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', ['--hover-bg' as string]: '#f1f5f9' }}
                             >
                               <span style={{ fontWeight: 500 }}>{c.name}</span>{' '}
                               <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({c.type.replace(/_/g, ' ')})</span>

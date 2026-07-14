@@ -15,6 +15,7 @@ import {
   DELETE_FIELD_REQUIREMENT,
 } from '@/graphql/mutations'
 import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from './designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -190,33 +191,33 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 1fr', gap: 10, marginBottom: 10 }}>
         <div>
           <label style={labelS}>{t('fieldRules.visibility.triggerField')}</label>
-          <select style={selectS} value={form.triggerField} onChange={(e) => onChange({ triggerField: e.target.value, triggerValue: '' })}>
+          <Select style={selectS} value={form.triggerField} onChange={(e) => onChange({ triggerField: e.target.value, triggerValue: '' })}>
             {fields.map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
-          </select>
+          </Select>
         </div>
         <div>
           <label style={labelS}>{t('fieldRules.visibility.triggerValue')}</label>
           {isEnumTrigger && triggerField?.enumValues.length ? (
-            <select style={selectS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })}>
+            <Select style={selectS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })}>
               <option value="">— scegli —</option>
               {triggerField.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
+            </Select>
           ) : (
-            <input style={inputS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })} placeholder={t('fieldRules.visibility.triggerValuePlaceholder')} />
+            <Input style={inputS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })} placeholder={t('fieldRules.visibility.triggerValuePlaceholder')} />
           )}
         </div>
         <div>
           <label style={labelS}>{t('fieldRules.visibility.action')}</label>
-          <select style={selectS} value={form.action} onChange={(e) => onChange({ action: e.target.value as 'show' | 'hide' })}>
+          <Select style={selectS} value={form.action} onChange={(e) => onChange({ action: e.target.value as 'show' | 'hide' })}>
             <option value="show">{t('fieldRules.show')}</option>
             <option value="hide">{t('fieldRules.hide')}</option>
-          </select>
+          </Select>
         </div>
         <div>
           <label style={labelS}>{t('fieldRules.visibility.targetField')}</label>
-          <select style={selectS} value={form.targetField} onChange={(e) => onChange({ targetField: e.target.value })}>
+          <Select style={selectS} value={form.targetField} onChange={(e) => onChange({ targetField: e.target.value })}>
             {fields.filter((f) => f.name !== form.triggerField).map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
-          </select>
+          </Select>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

@@ -8,6 +8,7 @@ import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { GET_ITIL_TYPES, GET_CI_TYPES, GET_TEAMS } from '@/graphql/queries'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
 import { X } from 'lucide-react'
 
 const GET_USERS_COND = gql`query GetUsersCond { users { id name email } }`
@@ -164,7 +165,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove }
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
       {/* Field dropdown */}
-      <select
+      <Select
         style={{ ...selectS, width: 160 }}
         value={condition.field}
         onChange={e => onChange({ field: e.target.value, value: '' })}
@@ -174,16 +175,16 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove }
           const typeLabel = FIELD_TYPE_LABELS[f.fieldType] ?? f.fieldType
           return <option key={f.name} value={f.name}>{f.label} ({typeLabel})</option>
         })}
-      </select>
+      </Select>
 
       {/* Operator dropdown */}
-      <select
+      <Select
         style={{ ...selectS, width: 110 }}
         value={condition.operator}
         onChange={e => onChange({ operator: e.target.value })}
       >
         {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
-      </select>
+      </Select>
 
       {/* Value input — type-specific, hidden for is_null/is_not_null */}
       {!hideValue && renderValueInput(condition, selectedField, onChange, usersData?.users ?? [], teamsData?.teams ?? [])}
@@ -202,60 +203,60 @@ function renderValueInput(
   teams: { id: string; name: string }[],
 ) {
   if (!field) {
-    return <input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+    return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
   // User → dropdown with users
   if (field.fieldType === 'user') {
     return (
-      <select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
+      <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">-- Utente --</option>
         {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-      </select>
+      </Select>
     )
   }
 
   // Team → dropdown with teams
   if (field.fieldType === 'team') {
     return (
-      <select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
+      <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">-- Team --</option>
         {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
+      </Select>
     )
   }
 
   // Enum → dropdown
   if (field.fieldType === 'enum' && field.enumValues.length > 0) {
     return (
-      <select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
+      <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">-- Valore --</option>
         {field.enumValues.map(v => <option key={v} value={v}>{v}</option>)}
-      </select>
+      </Select>
     )
   }
 
   // Boolean → Sì/No dropdown
   if (field.fieldType === 'boolean') {
     return (
-      <select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
+      <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">-- Valore --</option>
         <option value="true">Sì</option>
         <option value="false">No</option>
-      </select>
+      </Select>
     )
   }
 
   // Date → date picker
   if (field.fieldType === 'date') {
-    return <input type="date" style={{ ...inputS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+    return <Input type="date" style={{ ...inputS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
   // Number → numeric input
   if (field.fieldType === 'number') {
-    return <input type="number" style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+    return <Input type="number" style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
   // String → text input
-  return <input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+  return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
 }

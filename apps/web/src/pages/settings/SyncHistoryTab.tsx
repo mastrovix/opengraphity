@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { SyncSource, SyncRun } from './useSyncPage'
 import { formatMs, formatDate, StatusBadge, inputStyle } from './syncShared'
+import { Select } from '@/components/ui/FormControls'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -28,10 +29,10 @@ export function SyncHistoryTab({
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <select style={{ ...inputStyle, width: 240 }} value={selected} onChange={e => handleChange(e.target.value)}>
+        <Select style={{ ...inputStyle, width: 240 }} value={selected} onChange={e => handleChange(e.target.value)}>
           <option value="">Select source...</option>
           {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        </Select>
       </div>
 
       {!selected && (

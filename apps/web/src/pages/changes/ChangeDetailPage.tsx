@@ -16,6 +16,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { FieldLabel } from '@/components/ui/FormControls'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { EmptyState } from '@/components/EmptyState'
 import {
@@ -362,9 +363,9 @@ export function ChangeDetailPage() {
             </>
           }
         >
-          <label style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, display: 'block' }}>
+          <FieldLabel style={{ fontWeight: 400 }}>
             {transitionModal.inputField ?? 'Note'}
-          </label>
+          </FieldLabel>
           <textarea
             value={transitionNotes}
             onChange={(e) => setTransitionNotes(e.target.value)}

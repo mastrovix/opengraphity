@@ -124,7 +124,7 @@ export function CMDBPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Server size={22} color="#38bdf8" />}>
+          <PageTitle icon={<Server size={22} color="var(--color-icon-accent)" />}>
             {pageTitle}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

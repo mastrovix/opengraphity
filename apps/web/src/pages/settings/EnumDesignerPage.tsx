@@ -6,6 +6,7 @@ import { Lock, LockOpen, Plus, X, Save, Trash2, Tag } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
+import { Input, Select } from '@/components/ui/FormControls'
 import { toast } from 'sonner'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import {
@@ -29,10 +30,9 @@ interface EnumType {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
+// Per-page overrides on top of the shared FormControls base style.
 const inputS: React.CSSProperties = {
-  width: '100%', padding: '7px 10px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
-  outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box',
+  padding: '7px 10px', border: '1px solid #e5e7eb', color: 'var(--color-slate-dark)',
 }
 const labelS: React.CSSProperties = {
   display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
@@ -103,7 +103,7 @@ function CreateEnumDialog({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label htmlFor="enum-name" style={labelS}>{t('pages.dictionary.nameFieldLabel')}</label>
-            <input
+            <Input
               id="enum-name"
               style={inputS}
               value={name}
@@ -116,7 +116,7 @@ function CreateEnumDialog({
           </div>
           <div>
             <label htmlFor="enum-label" style={labelS}>{t('pages.dictionary.labelLabel')}</label>
-            <input
+            <Input
               id="enum-label"
               style={inputS}
               value={label}
@@ -127,7 +127,7 @@ function CreateEnumDialog({
           </div>
           <div>
             <label htmlFor="enum-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
-            <select
+            <Select
               id="enum-scope"
               style={inputS}
               value={scope}
@@ -136,7 +136,7 @@ function CreateEnumDialog({
               <option value="shared">{t('pages.dictionary.scopeShared')}</option>
               <option value="itil">{t('pages.dictionary.scopeItil')}</option>
               <option value="cmdb">{t('pages.dictionary.scopeCmdb')}</option>
-            </select>
+            </Select>
           </div>
         </div>
     </Modal>
@@ -222,7 +222,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
       {/* Nome (readonly) */}
       <div>
         <label htmlFor="editor-name" style={labelS}>{t('pages.dictionary.nameLabel')}</label>
-        <input
+        <Input
           id="editor-name"
           style={{ ...inputS, background: 'var(--color-slate-bg)', color: '#8892a4' }}
           value={e.name}
@@ -233,7 +233,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
       {/* Label */}
       <div>
         <label htmlFor="editor-label" style={labelS}>{t('pages.dictionary.labelLabel')}</label>
-        <input
+        <Input
           id="editor-label"
           style={inputS}
           value={label}
@@ -244,7 +244,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
       {/* Scope */}
       <div>
         <label htmlFor="editor-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
-        <select
+        <Select
           id="editor-scope"
           style={{ ...inputS, ...(e.isSystem ? { background: 'var(--color-slate-bg)', color: '#8892a4' } : {}) }}
           value={scope}
@@ -254,7 +254,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
           <option value="shared">{t('pages.dictionary.scopeShared')}</option>
           <option value="itil">{t('pages.dictionary.scopeItil')}</option>
           <option value="cmdb">{t('pages.dictionary.scopeCmdb')}</option>
-        </select>
+        </Select>
       </div>
 
       {/* Values */}
@@ -289,7 +289,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <input
+          <Input
             style={{ ...inputS, flex: 1 }}
             value={newVal}
             onChange={(ev) => setNewVal(ev.target.value)}
@@ -382,7 +382,7 @@ export function EnumDesignerPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Tag size={22} color="#38bdf8" />}>
+        <PageTitle icon={<Tag size={22} color="var(--color-icon-accent)" />}>
           {t('pages.dictionary.title')}
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>

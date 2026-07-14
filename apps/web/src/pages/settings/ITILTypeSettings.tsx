@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { CIIcon } from '@/lib/ciIcon'
 import { FormField } from './citype/CIFieldInlineEditor'
 import { inputS, selectS, textareaS, btnPrimary } from './shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
 import type { SettingsFormState } from './useITILTypeDesigner'
 
 const ICONS = ['box', 'database', 'server', 'shield', 'hard-drive', 'cloud', 'globe', 'cpu', 'network', 'monitor', 'lock', 'alert-circle', 'bug', 'git-pull-request', 'inbox']
@@ -18,7 +19,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
   return (
     <div style={{ maxWidth: 480 }}>
       <FormField label="Label">
-        <input
+        <Input
           style={inputS}
           value={settingsForm.label}
           onChange={(e) => setSettingsForm((p) => p && ({ ...p, label: e.target.value }))}
@@ -27,14 +28,14 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
         <FormField label="Icona">
-          <select
+          <Select
             style={selectS}
             value={settingsForm.icon}
             onChange={(e) => setSettingsForm((p) => p && ({ ...p, icon: e.target.value }))}
           >
             <option value="">— nessuna —</option>
             {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
-          </select>
+          </Select>
         </FormField>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20 }}>
           {settingsForm.icon ? (

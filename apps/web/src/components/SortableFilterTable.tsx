@@ -190,7 +190,7 @@ export function SortableFilterTable<T extends object>({
                       transition:      'border-color 0.15s',
                     }}
                     onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid #38bdf8'
+                      (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid var(--color-icon-accent)'
                     }}
                     onMouseLeave={(e) => {
                       (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid transparent'

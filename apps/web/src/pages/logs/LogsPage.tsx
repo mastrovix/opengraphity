@@ -8,6 +8,7 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { ScrollText } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { Pagination } from '@/components/ui/Pagination'
+import { Pill } from '@/components/ui/Pill'
 
 const GET_LOGS = gql`
   query GetLogs($limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
@@ -20,7 +21,7 @@ const GET_LOGS = gql`
   }
 `
 
-const LEVEL_STYLES: Record<string, React.CSSProperties> = {
+const LEVEL_STYLES: Record<string, { backgroundColor: string; color: string }> = {
   trace:   { backgroundColor: '#f1f5f9', color: 'var(--color-slate-light)' },
   debug:   { backgroundColor: '#f1f5f9', color: 'var(--color-slate-light)' },
   info:    { backgroundColor: 'rgba(2,132,199,0.12)', color: '#2563eb' },
@@ -41,20 +42,11 @@ interface LogEntry {
 }
 
 function LevelBadge({ level }: { level: string }) {
-  const style = LEVEL_STYLES[level] ?? LEVEL_STYLES['info']
+  const style = LEVEL_STYLES[level] ?? LEVEL_STYLES['info']!
   return (
-    <span style={{
-      ...style,
-      padding:      '2px 8px',
-      borderRadius: 4,
-      fontSize:     11,
-      fontWeight:   600,
-      display:      'inline-block',
-      minWidth:     46,
-      textAlign:    'center',
-    }}>
+    <Pill bg={style.backgroundColor} color={style.color} radius={4} style={{ fontSize: 11, minWidth: 46, textAlign: 'center' }}>
       {level.toUpperCase()}
-    </span>
+    </Pill>
   )
 }
 
@@ -153,7 +145,7 @@ export function LogsPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<ScrollText size={22} color="#38bdf8" />}>
+        <PageTitle icon={<ScrollText size={22} color="var(--color-icon-accent)" />}>
           {t('pages.logs.title')}
         </PageTitle>
         <p style={{ color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', margin: '4px 0 0' }}>

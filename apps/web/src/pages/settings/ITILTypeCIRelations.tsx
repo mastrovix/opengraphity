@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { Plus, X, Check } from 'lucide-react'
 import { inputS, selectS, labelS, btnPrimary, btnSecondary } from './shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
+import { Pill } from '@/components/ui/Pill'
 import type { ITILCIRelationRule, RelFormState } from './useITILTypeDesigner'
 
 const RELATION_SUGGESTIONS = ['IMPACTS', 'AFFECTED_BY', 'MODIFIES', 'TARGETS', 'ROOT_CAUSE', 'DEPENDS_ON', 'HOSTED_ON']
@@ -32,7 +34,7 @@ export function ITILTypeCIRelations({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={labelS}>{t('itilDesigner.ciRelations.ciType')} *</label>
-              <select style={selectS} value={relForm.ciType}
+              <Select style={selectS} value={relForm.ciType}
                 onChange={(e) => setRelForm((f) => ({ ...f, ciType: e.target.value }))}>
                 <option value="">{t('itilDesigner.ciRelations.selectCIType')}</option>
                 {ciTypes
@@ -40,11 +42,11 @@ export function ITILTypeCIRelations({
                   .map((ct) => (
                   <option key={ct.id} value={ct.name}>{ct.label}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label style={labelS}>{t('itilDesigner.ciRelations.relationType')} *</label>
-              <input style={inputS} list="rel-type-suggestions"
+              <Input style={inputS} list="rel-type-suggestions"
                 value={relForm.relationType}
                 onChange={(e) => setRelForm((f) => ({ ...f, relationType: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') }))}
                 placeholder="IMPACTS" />
@@ -57,15 +59,15 @@ export function ITILTypeCIRelations({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={labelS}>{t('itilDesigner.ciRelations.direction')}</label>
-              <select style={selectS} value={relForm.direction}
+              <Select style={selectS} value={relForm.direction}
                 onChange={(e) => setRelForm((f) => ({ ...f, direction: e.target.value }))}>
                 <option value="outgoing">{t('itilDesigner.ciRelations.outgoing')}</option>
                 <option value="incoming">{t('itilDesigner.ciRelations.incoming')}</option>
-              </select>
+              </Select>
             </div>
             <div>
               <label style={labelS}>{t('itilDesigner.ciRelations.description')}</label>
-              <input style={inputS} value={relForm.description}
+              <Input style={inputS} value={relForm.description}
                 onChange={(e) => setRelForm((f) => ({ ...f, description: e.target.value }))}
                 placeholder="Es. Server impattati dall'incident" />
             </div>
@@ -118,12 +120,12 @@ export function ITILTypeCIRelations({
               const ciLabel = ciTypes.find((ct) => ct.name === rule.ciType)?.label ?? rule.ciType
               return (
                 <tr key={rule.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '8px' }}><span style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--color-info-bg)', color: '#2563eb', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>{ciLabel}</span></td>
+                  <td style={{ padding: '8px' }}><Pill bg="var(--color-info-bg)" color="#2563eb" radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>{ciLabel}</Pill></td>
                   <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{rule.relationType}</td>
                   <td style={{ padding: '8px' }}>
-                    <span style={{ padding: '2px 8px', borderRadius: 4, background: rule.direction === 'outgoing' ? 'var(--color-success-bg)' : '#fef9c3', color: rule.direction === 'outgoing' ? 'var(--color-success)' : '#854d0e', fontSize: 'var(--font-size-table)' }}>
+                    <Pill bg={rule.direction === 'outgoing' ? 'var(--color-success-bg)' : '#fef9c3'} color={rule.direction === 'outgoing' ? 'var(--color-success)' : '#854d0e'} radius={4} style={{ fontWeight: 400 }}>
                       {rule.direction === 'outgoing' ? '\u2192' : '\u2190'} {rule.direction}
-                    </span>
+                    </Pill>
                   </td>
                   <td style={{ padding: '8px', color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{rule.description ?? '\u2014'}</td>
                   <td style={{ padding: '8px' }}>

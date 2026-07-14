@@ -87,7 +87,7 @@ export function ProblemListPage() {
   return (
     <PageContainer>
       <ListPageHeader
-        icon={<Search size={22} color="#38bdf8" />}
+        icon={<Search size={22} color="var(--color-icon-accent)" />}
         title={t('pages.problems.title')}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>

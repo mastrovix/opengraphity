@@ -5,6 +5,7 @@ import { ClipboardList, UserPlus } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { Pill } from '@/components/ui/Pill'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { lookupOrError } from '@/lib/tokens'
@@ -119,18 +120,9 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
           Creato il {fmtDate(task.createdAt)}
         </div>
       </Link>
-      <span style={{
-        fontSize:        'var(--font-size-label)',
-        fontWeight:      600,
-        padding:         '2px 8px',
-        borderRadius:    6,
-        backgroundColor: stateColor.bg,
-        color:           stateColor.color,
-        textTransform:   'uppercase',
-        flexShrink:      0,
-      }}>
+      <Pill bg={stateColor.bg} color={stateColor.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase', flexShrink: 0 }}>
         {stateColor.label}
-      </span>
+      </Pill>
       {onClaim && (
         <button
           type="button"

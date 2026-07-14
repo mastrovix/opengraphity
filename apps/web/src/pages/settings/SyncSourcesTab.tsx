@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Play, Clock, Upload, X } from 'lucide-react'
 import type { SyncSource, ConnectorInfo } from './useSyncPage'
 import { formatMs, formatDate, StatusBadge, inputStyle, labelStyle, btnStyle } from './syncShared'
+import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 
@@ -278,13 +279,13 @@ export function SyncSourcesTab({
           }
         >
           <label style={labelStyle}>Cron preset</label>
-          <select style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
+          <Select style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
             {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-          </select>
+          </Select>
           {schedPreset === '__custom__' && (
             <>
               <label style={{ ...labelStyle, marginTop: 8 }}>Custom cron expression</label>
-              <input style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder="e.g. 0 */4 * * *" />
+              <Input style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder="e.g. 0 */4 * * *" />
             </>
           )}
         </Modal>
@@ -307,13 +308,13 @@ export function SyncSourcesTab({
           }
         >
               <label style={labelStyle}>Name</label>
-              <input style={inputStyle} value={form['name'] ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+              <Input style={inputStyle} value={form['name'] ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
 
               <label style={labelStyle}>Connector Type</label>
-              <select style={inputStyle} value={selectedType} onChange={e => { setSelectedType(e.target.value); setForm({}); setCredForm({}) }} required>
+              <Select style={inputStyle} value={selectedType} onChange={e => { setSelectedType(e.target.value); setForm({}); setCredForm({}) }} required>
                 <option value="">Select connector...</option>
                 {connectors.map(c => <option key={c.type} value={c.type}>{c.displayName}</option>)}
-              </select>
+              </Select>
 
               {selectedConnector && (
                 <>
@@ -323,7 +324,7 @@ export function SyncSourcesTab({
                       {selectedConnector.credentialFields.map(f => (
                         <div key={f.name}>
                           <label style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
-                          <input
+                          <Input
                             style={inputStyle}
                             type={f.type === 'password' ? 'password' : 'text'}
                             placeholder={f.placeholder ?? ''}
@@ -343,9 +344,9 @@ export function SyncSourcesTab({
                         <div key={f.name}>
                           <label style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
                           {f.options ? (
-                            <select style={inputStyle} value={form[f.name] ?? f.defaultValue ?? ''} onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}>
+                            <Select style={inputStyle} value={form[f.name] ?? f.defaultValue ?? ''} onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}>
                               {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
+                            </Select>
                           ) : f.type === 'textarea' ? (
                             <TextareaFileField
                               fieldName={f.name}
@@ -354,7 +355,7 @@ export function SyncSourcesTab({
                               required={f.required}
                             />
                           ) : (
-                            <input
+                            <Input
                               style={inputStyle}
                               value={form[f.name] ?? f.defaultValue ?? ''}
                               onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}
@@ -368,7 +369,7 @@ export function SyncSourcesTab({
                   )}
                   <div style={{ marginTop: 8 }}>
                     <label style={labelStyle}>Schedule (cron, optional)</label>
-                    <input style={inputStyle} placeholder="0 */6 * * * (every 6h)" value={form['scheduleCron'] ?? ''} onChange={e => setForm(c => ({ ...c, scheduleCron: e.target.value }))} />
+                    <Input style={inputStyle} placeholder="0 */6 * * * (every 6h)" value={form['scheduleCron'] ?? ''} onChange={e => setForm(c => ({ ...c, scheduleCron: e.target.value }))} />
                   </div>
                 </>
               )}

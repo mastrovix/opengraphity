@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
 import { QueryError } from '@/components/QueryError'
 import { lookupOrError } from '@/lib/tokens'
+import { Pill } from '@/components/ui/Pill'
 
 const GET_CATEGORIES = gql`
   query KBCategories { kbCategories { name count } }
@@ -177,9 +178,9 @@ export function KnowledgeBasePage() {
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 8px', borderRadius: 10, background: lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', 'var(--color-danger)') + '20', color: lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', 'var(--color-danger)'), fontWeight: 600 }}>
+                        <Pill bg={lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', 'var(--color-danger)') + '20'} color={lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', 'var(--color-danger)')} radius={10}>
                           {lookupOrError(CATEGORY_ICONS, a.category, 'CATEGORY_ICONS', '📄')} {a.category}
-                        </span>
+                        </Pill>
                         {a.tags.slice(0, 3).map((tag) => (
                           <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: 'var(--color-slate)' }}>
                             <Tag size={8} style={{ verticalAlign: 'middle' }} /> {tag}

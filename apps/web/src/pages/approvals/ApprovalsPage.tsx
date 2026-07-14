@@ -12,6 +12,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { QueryError } from '@/components/QueryError'
 import { toast } from 'sonner'
 import { lookupOrError } from '@/lib/tokens'
+import { Textarea } from '@/components/ui/FormControls'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -297,12 +298,12 @@ function ApprovalCard({
 
       {noteOpen && (
         <div style={{ marginTop: 12, padding: 12, background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid #e2e8f0' }}>
-          <textarea
+          <Textarea
             placeholder={noteOpen === 'reject' ? 'Motivo del rifiuto (obbligatorio)...' : 'Nota opzionale...'}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
-            style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 'var(--font-size-body)', resize: 'vertical', boxSizing: 'border-box' }}
+            style={{ padding: 8, borderRadius: 4, border: '1px solid #e2e8f0', lineHeight: 'normal', outline: undefined }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button
@@ -388,7 +389,7 @@ export function ApprovalsPage() {
   return (
     <PageContainer>
       <ListPageHeader
-        icon={<CheckSquare size={22} color="#38bdf8" />}
+        icon={<CheckSquare size={22} color="var(--color-icon-accent)" />}
         title={t('pages.approvals.title')}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

@@ -22,6 +22,8 @@ import { AutomationPreview } from '@/components/AutomationPreview'
 import {
   inputS, selectS, textareaS, labelS, btnPrimary, btnSecondary,
 } from '@/pages/settings/shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
+import { Pill } from '@/components/ui/Pill'
 import { createPortal } from 'react-dom'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
@@ -55,10 +57,6 @@ const ACTION_LABELS: Record<string, string> = {
 const EMPTY_CONDITION: Condition = { field: '', operator: 'equals', value: '' }
 const EMPTY_ACTION: RuleAction   = { type: 'set_field', params: {} }
 
-const badgeStyle = (bg: string, fg: string): React.CSSProperties => ({
-  display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-  fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg,
-})
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -210,8 +208,8 @@ export function BusinessRulesPage() {
     { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
     { key: 'entityType', label: 'Entità', sortable: true },
     { key: 'eventType', label: 'Evento', sortable: true, render: (v) => String(v).replace('on_', '') },
-    { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <span style={badgeStyle(v === 'AND' ? '#dbeafe' : '#fef3c7', v === 'AND' ? '#1d4ed8' : '#92400e')}>{String(v)}</span> },
-    { key: 'stopOnMatch', label: 'Stop', sortable: true, render: (v) => v ? <span style={badgeStyle('#fee2e2', 'var(--color-trigger-sla-breach)')}>STOP</span> : null },
+    { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <Pill bg={v === 'AND' ? '#dbeafe' : '#fef3c7'} color={v === 'AND' ? '#1d4ed8' : '#92400e'} radius={10}>{String(v)}</Pill> },
+    { key: 'stopOnMatch', label: 'Stop', sortable: true, render: (v) => v ? <Pill bg="#fee2e2" color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
     { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
       <div onClick={() => handleToggleEnabled(row)} style={{ width: 36, height: 20, borderRadius: 10, background: row.enabled ? 'var(--color-brand)' : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background .2s' }}>
         <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: row.enabled ? 18 : 2, transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.15)' }} />
@@ -248,7 +246,7 @@ export function BusinessRulesPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<GitBranch size={22} color="#38bdf8" />}>Business Rules</PageTitle>
+          <PageTitle icon={<GitBranch size={22} color="var(--color-icon-accent)" />}>Business Rules</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${rules.length} regole`}
           </p>
@@ -297,11 +295,11 @@ export function BusinessRulesPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div>
                 <label style={labelS}>Nome *</label>
-                <input style={inputS} value={name} onChange={e => setName(e.target.value)} placeholder="Assegna priorità alta" />
+                <Input style={inputS} value={name} onChange={e => setName(e.target.value)} placeholder="Assegna priorità alta" />
               </div>
               <div>
                 <label style={labelS}>Priorità</label>
-                <input style={inputS} type="number" value={priority} onChange={e => setPriority(+e.target.value)} min={1} />
+                <Input style={inputS} type="number" value={priority} onChange={e => setPriority(+e.target.value)} min={1} />
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -311,15 +309,15 @@ export function BusinessRulesPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div>
                 <label style={labelS}>Tipo entità</label>
-                <select style={selectS} value={entityType} onChange={e => setEntityType(e.target.value)}>
+                <Select style={selectS} value={entityType} onChange={e => setEntityType(e.target.value)}>
                   {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label style={labelS}>Evento</label>
-                <select style={selectS} value={eventType} onChange={e => setEventType(e.target.value)}>
+                <Select style={selectS} value={eventType} onChange={e => setEventType(e.target.value)}>
                   {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -358,9 +356,9 @@ export function BusinessRulesPage() {
               <label style={{ ...labelS, marginBottom: 8 }}>Azioni</label>
               {actions.map((a, i) => (
                 <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 8 }}>
-                  <select style={{ ...selectS, width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>
+                  <Select style={{ ...selectS, width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>
                     {ACTION_TYPES.map(t => <option key={t} value={t}>{ACTION_LABELS[t] ?? t}</option>)}
-                  </select>
+                  </Select>
                   <ActionParamsEditor
                     actionType={a.type}
                     params={a.params}

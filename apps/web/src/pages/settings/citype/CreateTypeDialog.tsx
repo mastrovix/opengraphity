@@ -6,6 +6,7 @@ import {
   inputS, selectS,
   btnPrimary, btnSecondary,
 } from '../shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
 import { FormField } from './CIFieldInlineEditor'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -40,18 +41,18 @@ export function CreateTypeDialog({
         </>
       }>
       <FormField label="name (slug, snake_case) *">
-        <input style={inputS} value={form.name} placeholder="es. load_balancer"
+        <Input style={inputS} value={form.name} placeholder="es. load_balancer"
           onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
       </FormField>
       <FormField label="label (nome visualizzato) *">
-        <input style={inputS} value={form.label} placeholder="es. Load Balancer"
+        <Input style={inputS} value={form.label} placeholder="es. Load Balancer"
           onChange={(e) => set('label', e.target.value)} />
       </FormField>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
         <FormField label="Icona">
-          <select style={selectS} value={form.icon} onChange={(e) => set('icon', e.target.value)}>
+          <Select style={selectS} value={form.icon} onChange={(e) => set('icon', e.target.value)}>
             {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
-          </select>
+          </Select>
         </FormField>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingTop: 20 }}>
           <CIIcon icon={form.icon} size={24} color={form.color} />

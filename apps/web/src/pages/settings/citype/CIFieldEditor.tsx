@@ -8,6 +8,8 @@ import {
   btnPrimary, btnSecondary,
   FIELD_TYPES,
 } from '../shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
+import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 
 // Re-export shared button styles for any remaining consumers
@@ -102,22 +104,22 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
         <Field label="name (slug) *">
-          <input style={inputS} value={form.name} disabled={!!initial}
+          <Input style={inputS} value={form.name} disabled={!!initial}
             onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
         </Field>
         <Field label="label *">
-          <input style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} />
+          <Input style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} />
         </Field>
         <Field label="Tipo">
-          <select style={selectS} value={form.fieldType} onChange={(e) => {
+          <Select style={selectS} value={form.fieldType} onChange={(e) => {
             set('fieldType', e.target.value)
             if (e.target.value !== 'enum') set('enumTypeId', null)
           }}>
             {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Order">
-          <input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
+          <Input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </Field>
       </div>
 
@@ -128,18 +130,18 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
 
       {form.fieldType === 'enum' && (
         <Field label="Enum di riferimento *">
-          <select style={selectS} value={form.enumTypeId ?? ''} onChange={(e) => set('enumTypeId', e.target.value || null)}>
+          <Select style={selectS} value={form.enumTypeId ?? ''} onChange={(e) => set('enumTypeId', e.target.value || null)}>
             <option value="">— Seleziona enum —</option>
             {enumTypes.map((e) => (
               <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
             ))}
-          </select>
+          </Select>
           {selectedEnum && (
             <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {selectedEnum.values.map((v) => (
-                <span key={v} style={{ padding: '2px 8px', background: '#f0f4ff', borderRadius: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }}>
+                <Pill key={v} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={{ fontWeight: 400 }}>
                   {v}
-                </span>
+                </Pill>
               ))}
             </div>
           )}
@@ -147,7 +149,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
       )}
 
       <Field label="Valore di default">
-        <input style={inputS} value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
+        <Input style={inputS} value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
       </Field>
 
       {/* Script tabs */}

@@ -8,6 +8,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { Users, User, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { lookupStyle } from '@/lib/tokens'
+import { Pill } from '@/components/ui/Pill'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
 
 const UPDATE_USER_TEAMS = gql`
@@ -47,9 +48,9 @@ const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
 function RoleBadge({ role }: { role: string }) {
   const s = lookupStyle(ROLE_STYLES, role, 'ROLE_STYLES')
   return (
-    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
       {role}
-    </span>
+    </Pill>
   )
 }
 
@@ -97,7 +98,7 @@ export function UserDetailPage() {
           ← Users
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <User size={22} color="#38bdf8" />
+          <User size={22} color="var(--color-icon-accent)" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
           <RoleBadge role={user.role} />
         </div>
@@ -134,10 +135,12 @@ export function UserDetailPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', cursor: 'pointer' }} onClick={() => navigate(`/teams/${t.id}`)}>{t.name}</span>
                         {t.type && (
-                          <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, fontWeight: 600,
-                            background: t.type === 'support' ? 'var(--color-success-bg)' : t.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)',
-                            color: t.type === 'support' ? 'var(--color-success)' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)',
-                          }}>{t.type}</span>
+                          <Pill
+                            bg={t.type === 'support' ? 'var(--color-success-bg)' : t.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
+                            color={t.type === 'support' ? 'var(--color-success)' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)'}
+                            radius={4}
+                            style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}
+                          >{t.type}</Pill>
                         )}
                       </div>
                     </div>
@@ -175,19 +178,20 @@ export function UserDetailPage() {
                   <div
                     key={t.id}
                     onClick={() => { updateTeams({ variables: { userId: user.id, teamIds: [...userTeamIds, t.id] } }); setShowAddTeam(false) }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', borderBottom: i < availableTeams.length - 1 ? '1px solid #f3f4f6' : 'none' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f0f9ff' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                    className="hover-bg"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', borderBottom: i < availableTeams.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
                   >
                     <Plus size={14} color="var(--color-brand)" />
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
                         {t.type && (
-                          <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, fontWeight: 600,
-                            background: t.type === 'support' ? 'var(--color-success-bg)' : t.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)',
-                            color: t.type === 'support' ? 'var(--color-success)' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)',
-                          }}>{t.type}</span>
+                          <Pill
+                            bg={t.type === 'support' ? 'var(--color-success-bg)' : t.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
+                            color={t.type === 'support' ? 'var(--color-success)' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)'}
+                            radius={4}
+                            style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}
+                          >{t.type}</Pill>
                         )}
                       </div>
                       {t.description && (

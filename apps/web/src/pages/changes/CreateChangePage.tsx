@@ -219,6 +219,7 @@ export function CreateChangePage() {
                     <div
                       key={ci.id}
                       onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
+                      className="hover-bg"
                       style={{
                         padding:      '8px 12px',
                         cursor:       'pointer',
@@ -227,8 +228,6 @@ export function CreateChangePage() {
                         gap:          8,
                         borderBottom: '1px solid #f3f4f6',
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-slate-bg)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>
                         {ci.name}

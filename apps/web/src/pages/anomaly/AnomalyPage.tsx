@@ -324,7 +324,7 @@ export function AnomalyPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <PageTitle icon={<ShieldAlert size={22} color="#38bdf8" />}>
+          <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" />}>
             {t('pages.anomalies.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

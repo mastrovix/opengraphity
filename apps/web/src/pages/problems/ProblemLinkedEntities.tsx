@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, ChevronDown, ChevronRight } from 'lucide-react'
+import { Input } from '@/components/ui/FormControls'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { ciPath } from '@/lib/ciPath'
@@ -118,9 +119,9 @@ export function ProblemCIList({
         <div style={{ padding: '16px 20px 20px' }}>
           {showCISearch && (
             <div style={{ marginBottom: 12, position: 'relative' }}>
-              <input type="text" value={ciSearch} onChange={(e) => onSearchChange(e.target.value)}
+              <Input type="text" value={ciSearch} onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={allowedTypes.length > 0 ? `Cerca CI (${allowedTypes.join(', ')}) — min. 2 car…` : 'Cerca CI (min. 2 caratteri)...'}
-                autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }} />
+                autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
               {filteredResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                   {filteredResults.map((ci) => {
@@ -230,11 +231,11 @@ export function ProblemIncidentList({
         <div style={{ padding: '16px 20px 20px' }}>
           {showIncidentSearch && (
             <div style={{ marginBottom: 12 }}>
-              <input type="text" value={incidentSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Filtra incident per titolo..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }} />
+              <Input type="text" value={incidentSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Filtra incident per titolo..." autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
               {incidentResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                   {incidentResults.filter((i) => !relatedIncidents.find((r) => r.id === i.id) && (incidentSearch.length < 2 || i.title.toLowerCase().includes(incidentSearch.toLowerCase()))).map((inc) => (
-                    <div key={inc.id} onClick={() => onLink(inc.id)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
+                    <div key={inc.id} onClick={() => onLink(inc.id)} className="hover-bg" style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', ['--hover-bg' as string]: 'var(--surface-2)' }}>
                       <span style={{ fontWeight: 500 }}>{inc.title}</span>
                       <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>{inc.status}</span>
                     </div>
@@ -315,11 +316,11 @@ export function ProblemChangeList({
         <div style={{ padding: '16px 20px 20px' }}>
           {showChangeSearch && (
             <div style={{ marginBottom: 12 }}>
-              <input type="text" value={changeSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Cerca change (min. 2 caratteri)..." autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }} />
+              <Input type="text" value={changeSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Cerca change (min. 2 caratteri)..." autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
               {changeResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                   {changeResults.filter((c) => !relatedChanges.find((r) => r.id === c.id)).map((ch) => (
-                    <div key={ch.id} onClick={() => onLink(ch.id)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface-2)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
+                    <div key={ch.id} onClick={() => onLink(ch.id)} className="hover-bg" style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', ['--hover-bg' as string]: 'var(--surface-2)' }}>
                       <span style={{ fontWeight: 500 }}>{ch.title}</span>
                       <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>{ch.type} · {ch.status}</span>
                     </div>

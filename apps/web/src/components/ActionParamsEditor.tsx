@@ -7,6 +7,7 @@ import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_WORKFLOW_LIST, GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
 import { gql } from '@apollo/client'
 
 const GET_USERS = gql`query GetUsers { users { id name email } }`
@@ -77,43 +78,43 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange }:
   switch (actionType) {
     case 'assign_team':
       return (
-        <select style={{ ...selectS, flex: 1 }} value={params['team_id'] ?? ''} onChange={e => onChange('team_id', e.target.value)}>
+        <Select style={{ ...selectS, flex: 1 }} value={params['team_id'] ?? ''} onChange={e => onChange('team_id', e.target.value)}>
           <option value="">-- Seleziona team --</option>
           {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        </Select>
       )
 
     case 'assign_user':
       return (
-        <select style={{ ...selectS, flex: 1 }} value={params['user_id'] ?? ''} onChange={e => onChange('user_id', e.target.value)}>
+        <Select style={{ ...selectS, flex: 1 }} value={params['user_id'] ?? ''} onChange={e => onChange('user_id', e.target.value)}>
           <option value="">-- Seleziona utente --</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-        </select>
+        </Select>
       )
 
     case 'transition_workflow':
       return (
-        <select style={{ ...selectS, flex: 1 }} value={params['to_step'] ?? ''} onChange={e => onChange('to_step', e.target.value)}>
+        <Select style={{ ...selectS, flex: 1 }} value={params['to_step'] ?? ''} onChange={e => onChange('to_step', e.target.value)}>
           <option value="">-- Seleziona step --</option>
           {steps.map(s => <option key={s.name} value={s.name}>{s.label || s.name}</option>)}
-        </select>
+        </Select>
       )
 
     case 'set_priority':
       return (
-        <select style={{ ...selectS, flex: 1 }} value={params['priority'] ?? ''} onChange={e => onChange('priority', e.target.value)}>
+        <Select style={{ ...selectS, flex: 1 }} value={params['priority'] ?? ''} onChange={e => onChange('priority', e.target.value)}>
           <option value="">-- Seleziona priorità --</option>
           {(priorityValues.length > 0 ? priorityValues : severityValues).map(v =>
             <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
           )}
-        </select>
+        </Select>
       )
 
     case 'set_field':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           {/* Field dropdown */}
-          <select
+          <Select
             style={{ ...selectS, width: 160 }}
             value={params['field'] ?? ''}
             onChange={e => { onChange('field', e.target.value); onChange('value', '') }}
@@ -122,7 +123,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange }:
             {fieldMetas.map(f => (
               <option key={f.name} value={f.name}>{f.label} ({FIELD_TYPE_LABELS[f.fieldType] ?? f.fieldType})</option>
             ))}
-          </select>
+          </Select>
           {/* Value input — adapts to field type */}
           {renderFieldValue(params['value'] ?? '', v => onChange('value', v), selectedFieldMeta, users, teams)}
         </div>
@@ -146,25 +147,25 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange }:
     case 'call_webhook':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
-          <select style={{ ...selectS, width: 90 }} value={params['method'] ?? 'POST'} onChange={e => onChange('method', e.target.value)}>
+          <Select style={{ ...selectS, width: 90 }} value={params['method'] ?? 'POST'} onChange={e => onChange('method', e.target.value)}>
             <option value="POST">POST</option>
             <option value="PUT">PUT</option>
             <option value="GET">GET</option>
-          </select>
-          <input style={{ ...inputS, flex: 1, minWidth: 200 }} placeholder="https://..." value={params['url'] ?? ''} onChange={e => onChange('url', e.target.value)} />
+          </Select>
+          <Input style={{ ...inputS, flex: 1, minWidth: 200 }} placeholder="https://..." value={params['url'] ?? ''} onChange={e => onChange('url', e.target.value)} />
         </div>
       )
 
     case 'set_sla':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-          <input style={{ ...inputS, width: 100 }} type="number" placeholder="Risposta (min)" value={params['response_minutes'] ?? ''} onChange={e => onChange('response_minutes', e.target.value)} />
-          <input style={{ ...inputS, width: 100 }} type="number" placeholder="Risoluzione (min)" value={params['resolve_minutes'] ?? ''} onChange={e => onChange('resolve_minutes', e.target.value)} />
+          <Input style={{ ...inputS, width: 100 }} type="number" placeholder="Risposta (min)" value={params['response_minutes'] ?? ''} onChange={e => onChange('response_minutes', e.target.value)} />
+          <Input style={{ ...inputS, width: 100 }} type="number" placeholder="Risoluzione (min)" value={params['resolve_minutes'] ?? ''} onChange={e => onChange('resolve_minutes', e.target.value)} />
         </div>
       )
 
     default:
-      return <input style={{ ...inputS, flex: 1 }} placeholder="Parametri..." value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)} />
+      return <Input style={{ ...inputS, flex: 1 }} placeholder="Parametri..." value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)} />
   }
 }
 
@@ -175,52 +176,52 @@ function renderFieldValue(
   users: { id: string; name: string; email: string }[],
   teams: { id: string; name: string }[],
 ) {
-  if (!field) return <input style={{ ...inputS, flex: 1 }} placeholder="Seleziona un campo" disabled />
+  if (!field) return <Input style={{ ...inputS, flex: 1 }} placeholder="Seleziona un campo" disabled />
 
   if (field.fieldType === 'enum' && field.enumValues.length > 0) {
     return (
-      <select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
+      <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
         <option value="">-- Valore --</option>
         {field.enumValues.map(v => <option key={v} value={v}>{v}</option>)}
-      </select>
+      </Select>
     )
   }
 
   if (field.fieldType === 'user') {
     return (
-      <select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
+      <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
         <option value="">-- Utente --</option>
         {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-      </select>
+      </Select>
     )
   }
 
   if (field.fieldType === 'team') {
     return (
-      <select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
+      <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
         <option value="">-- Team --</option>
         {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
+      </Select>
     )
   }
 
   if (field.fieldType === 'boolean') {
     return (
-      <select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
+      <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
         <option value="">-- Valore --</option>
         <option value="true">Sì</option>
         <option value="false">No</option>
-      </select>
+      </Select>
     )
   }
 
   if (field.fieldType === 'date') {
-    return <input type="date" style={{ ...inputS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)} />
+    return <Input type="date" style={{ ...inputS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)} />
   }
 
   if (field.fieldType === 'number') {
-    return <input type="number" style={{ ...inputS, flex: 1 }} placeholder="Valore" value={value} onChange={e => onValue(e.target.value)} />
+    return <Input type="number" style={{ ...inputS, flex: 1 }} placeholder="Valore" value={value} onChange={e => onValue(e.target.value)} />
   }
 
-  return <input style={{ ...inputS, flex: 1 }} placeholder="Valore" value={value} onChange={e => onValue(e.target.value)} />
+  return <Input style={{ ...inputS, flex: 1 }} placeholder="Valore" value={value} onChange={e => onValue(e.target.value)} />
 }

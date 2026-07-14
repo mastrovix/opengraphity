@@ -99,9 +99,8 @@ export function WatcherBar({ entityType, entityId }: Props) {
                 <div
                   key={u.id}
                   onClick={() => { add({ variables: { entityType, entityId, userId: u.id } }); setShowAdd(false) }}
-                  style={{ padding: '4px 6px', cursor: 'pointer', fontSize: 'var(--font-size-body)', borderRadius: 4 }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f0f9ff' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  className="hover-bg"
+                  style={{ padding: '4px 6px', cursor: 'pointer', fontSize: 'var(--font-size-body)', borderRadius: 4, ['--hover-bg' as string]: '#f0f9ff' }}
                 >
                   {u.name} <span style={{ color: 'var(--color-slate-light)' }}>({u.email})</span>
                 </div>

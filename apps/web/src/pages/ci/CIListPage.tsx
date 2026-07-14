@@ -195,7 +195,7 @@ export function CIListPage() {
   return (
     <PageContainer>
       <ListPageHeader
-        icon={<CIIcon icon={ciType.icon} size={22} color="#38bdf8" />}
+        icon={<CIIcon icon={ciType.icon} size={22} color="var(--color-icon-accent)" />}
         title={ciTypeLabel}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

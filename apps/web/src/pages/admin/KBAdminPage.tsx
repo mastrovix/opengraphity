@@ -287,7 +287,7 @@ export function KBAdminPage() {
       {/* ── Header ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<BookOpen size={22} color="#38bdf8" />}>
+          <PageTitle icon={<BookOpen size={22} color="var(--color-icon-accent)" />}>
             {t('pages.kbAdmin.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
@@ -297,8 +297,6 @@ export function KBAdminPage() {
         <button
           onClick={() => { closeForm(); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
         >
           <Plus size={14} /> {t('pages.kbAdmin.new')}
         </button>
@@ -355,8 +353,6 @@ export function KBAdminPage() {
               onClick={handleSave}
               disabled={isBusy}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
-              onMouseEnter={(e) => { if (!isBusy) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
             >
               {creating || updating ? t('common.loading') : t('common.save')}
             </button>
@@ -367,8 +363,6 @@ export function KBAdminPage() {
                 onClick={handlePublish}
                 disabled={isBusy}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
-                onMouseEnter={(e) => { if (!isBusy) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
               >
                 <Send size={14} />
                 Invia per revisione

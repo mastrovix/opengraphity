@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import type { WFTransition, PendingTransitionChange } from './workflow-types'
 import { panelStyle, panelInputStyle, saveButtonStyle, PanelHeader, PanelField } from './workflow-panel-helpers'
+import { Input, Select } from '@/components/ui/FormControls'
 
 const inputStyle = panelInputStyle
 
@@ -39,16 +40,16 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
       </PanelField>
 
       <PanelField label="Label">
-        <input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
+        <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
       </PanelField>
 
       <PanelField label="Trigger">
-        <select value={trigger} onChange={(e) => setTrigger(e.target.value)} style={inputStyle}>
+        <Select value={trigger} onChange={(e) => setTrigger(e.target.value)} style={inputStyle}>
           <option value="manual">manual</option>
           <option value="automatic">automatic</option>
           <option value="timer">timer</option>
           <option value="sla_breach">sla_breach</option>
-        </select>
+        </Select>
       </PanelField>
 
       <PanelField label="Richiede Input">
@@ -64,16 +65,16 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
 
       {requiresInput && (
         <PanelField label="Campo Input">
-          <select value={inputField} onChange={(e) => setInputField(e.target.value)} style={inputStyle}>
+          <Select value={inputField} onChange={(e) => setInputField(e.target.value)} style={inputStyle}>
             <option value="">— nessuno —</option>
             <option value="rootCause">rootCause</option>
             <option value="notes">notes</option>
-          </select>
+          </Select>
         </PanelField>
       )}
 
       <PanelField label="Condizione (opzionale)">
-        <input
+        <Input
           value={condition}
           onChange={(e) => setCondition(e.target.value)}
           placeholder="es. has_linked_change"
@@ -83,7 +84,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
 
       {trigger === 'timer' && (
         <PanelField label="Timer (ore)">
-          <input
+          <Input
             type="number"
             min={1}
             value={timerHours}

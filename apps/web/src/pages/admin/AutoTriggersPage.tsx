@@ -13,6 +13,7 @@ import { CREATE_AUTO_TRIGGER, UPDATE_AUTO_TRIGGER, DELETE_AUTO_TRIGGER } from '@
 import {
   inputS, selectS, labelS, btnPrimary, btnSecondary,
 } from '@/pages/settings/shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { ActionParamsEditor } from '@/components/ActionParamsEditor'
@@ -212,7 +213,7 @@ export function AutoTriggersPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Zap size={22} color="#38bdf8" />}>Auto Trigger</PageTitle>
+          <PageTitle icon={<Zap size={22} color="var(--color-icon-accent)" />}>Auto Trigger</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${triggers.length} trigger`}
           </p>
@@ -258,21 +259,21 @@ export function AutoTriggersPage() {
         >
             {/* Name */}
             <label style={labelS}>Nome</label>
-            <input style={inputS} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="es. Auto-assign P1 incidents" />
+            <Input style={inputS} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="es. Auto-assign P1 incidents" />
 
             {/* Entity + Event */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
               <div>
                 <label style={labelS}>Tipo entità</label>
-                <select style={selectS} value={form.entityType} onChange={e => setForm(p => ({ ...p, entityType: e.target.value }))}>
+                <Select style={selectS} value={form.entityType} onChange={e => setForm(p => ({ ...p, entityType: e.target.value }))}>
                   {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label style={labelS}>Tipo evento</label>
-                <select style={selectS} value={form.eventType} onChange={e => setForm(p => ({ ...p, eventType: e.target.value }))}>
+                <Select style={selectS} value={form.eventType} onChange={e => setForm(p => ({ ...p, eventType: e.target.value }))}>
                   {EVENT_TYPES.map(t => <option key={t} value={t}>{EVENT_LABELS[t] || t}</option>)}
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -280,7 +281,7 @@ export function AutoTriggersPage() {
             {form.eventType === 'on_timer' && (
               <div style={{ marginTop: 14 }}>
                 <label style={labelS}>Ritardo timer (minuti)</label>
-                <input style={{ ...inputS, width: 120 }} type="number" min={0} value={form.timerDelayMinutes} onChange={e => setForm(p => ({ ...p, timerDelayMinutes: Number(e.target.value) }))} />
+                <Input style={{ ...inputS, width: 120 }} type="number" min={0} value={form.timerDelayMinutes} onChange={e => setForm(p => ({ ...p, timerDelayMinutes: Number(e.target.value) }))} />
               </div>
             )}
 
@@ -304,9 +305,9 @@ export function AutoTriggersPage() {
               <label style={{ ...labelS, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>Azioni</label>
               {form.actions.map((a, i) => (
                 <div key={i} style={{ ...chipRow, flexWrap: 'wrap' }}>
-                  <select style={{ ...selectS, width: 180 }} value={a.type} onChange={e => setAction(i, { type: e.target.value, params: {} })}>
+                  <Select style={{ ...selectS, width: 180 }} value={a.type} onChange={e => setAction(i, { type: e.target.value, params: {} })}>
                     {ACTION_TYPES.map(at => <option key={at} value={at}>{ACTION_LABELS[at]}</option>)}
-                  </select>
+                  </Select>
                   <ActionParamsEditor
                     actionType={a.type}
                     params={a.params as Record<string, string>}

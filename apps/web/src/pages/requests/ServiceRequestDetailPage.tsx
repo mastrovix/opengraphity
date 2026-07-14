@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
+import { Pill } from '@/components/ui/Pill'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
@@ -70,8 +71,8 @@ export function ServiceRequestDetailPage() {
         <div>
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-table)', fontWeight: 600, background: stColor.bg, color: stColor.fg }}>{sr.status}</span>
-            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-table)', fontWeight: 600, border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', '#9ca3af')}`, color: lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', '#9ca3af') }}>{sr.priority}</span>
+            <Pill bg={stColor.bg} color={stColor.fg}>{sr.status}</Pill>
+            <Pill bg="transparent" color={lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', '#9ca3af')} style={{ border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', '#9ca3af')}` }}>{sr.priority}</Pill>
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
           </div>
         </div>

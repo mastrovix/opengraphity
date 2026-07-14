@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { lookupOrError } from '@/lib/tokens'
+import { Pill } from '@/components/ui/Pill'
 
 const GET_ARTICLE = gql`
   query KBArticleBySlug($slug: String!) {
@@ -81,9 +82,9 @@ export function KBArticlePage() {
         </Link>
 
         <div style={{ marginBottom: 12 }}>
-          <span style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px', borderRadius: 12, background: lookupOrError(CATEGORY_COLORS, article.category, 'CATEGORY_COLORS', 'var(--color-danger)') + '20', color: lookupOrError(CATEGORY_COLORS, article.category, 'CATEGORY_COLORS', 'var(--color-danger)'), fontWeight: 600 }}>
+          <Pill bg={lookupOrError(CATEGORY_COLORS, article.category, 'CATEGORY_COLORS', 'var(--color-danger)') + '20'} color={lookupOrError(CATEGORY_COLORS, article.category, 'CATEGORY_COLORS', 'var(--color-danger)')} radius={12} style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px' }}>
             {article.category}
-          </span>
+          </Pill>
         </div>
 
         <h1 style={{ fontSize: 26, fontWeight: 700, color: '#1a2332', margin: '0 0 16px', lineHeight: 1.3 }}>

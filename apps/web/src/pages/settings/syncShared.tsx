@@ -58,10 +58,10 @@ export function StatsBar({ stats }: { stats: SyncStats }) {
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
+// Overrides on top of the shared FormControls base style (see ui/FormControls).
+// `background: transparent` preserves the original look (no background was set).
 export const inputStyle: React.CSSProperties = {
-  display: 'block', width: '100%', border: '1px solid #d1d5db',
-  borderRadius: 6, padding: '6px 10px', fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
-  marginBottom: 8, outline: 'none',
+  display: 'block', marginBottom: 8, background: 'transparent',
 }
 
 export const labelStyle: React.CSSProperties = {

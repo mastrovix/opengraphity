@@ -10,6 +10,7 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
+import { Pill } from '@/components/ui/Pill'
 import { GET_CHANGES } from '@/graphql/queries'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
@@ -51,18 +52,9 @@ const NEUTRAL_STYLE = { bg: '#f1f5f9', color: 'var(--color-slate)' }
 function PhaseBadge({ phase, label, category }: { phase: string; label?: string; category?: string | null }) {
   const style = lookupOrError(CATEGORY_STYLE, category ?? '__miss__', 'CATEGORY_STYLE', NEUTRAL_STYLE)
   return (
-    <span style={{
-      display:         'inline-block',
-      padding:         '2px 8px',
-      borderRadius:    6,
-      fontSize:        'var(--font-size-label)',
-      fontWeight:      600,
-      backgroundColor: style.bg,
-      color:           style.color,
-      textTransform:   'capitalize',
-    }}>
+    <Pill bg={style.bg} color={style.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'capitalize', whiteSpace: 'normal' }}>
       {label || phase}
-    </span>
+    </Pill>
   )
 }
 
@@ -78,19 +70,9 @@ function RiskBadge({ score }: { score: number | null }) {
   }
   const p = lookupOrError(palette, level, 'RISK_PALETTE', palette['low']!)
   return (
-    <span style={{
-      display:         'inline-flex',
-      alignItems:      'center',
-      gap:             6,
-      padding:         '2px 8px',
-      borderRadius:    6,
-      fontSize:        'var(--font-size-label)',
-      fontWeight:      600,
-      backgroundColor: p.bg,
-      color:           p.color,
-    }}>
+    <Pill bg={p.bg} color={p.color} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-label)' }}>
       {p.label} · {score}
-    </span>
+    </Pill>
   )
 }
 

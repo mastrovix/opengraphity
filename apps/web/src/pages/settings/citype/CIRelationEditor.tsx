@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { Modal } from '@/components/Modal'
+import { Input, Select } from '@/components/ui/FormControls'
 import type { CITypeDef, CIRelationDef } from '@/contexts/MetamodelContext'
 
 // ── Style constants ────────────────────────────────────────────────────────────
 
+// Per-file overrides on top of the shared FormControls base style.
 const inputS: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
-  backgroundColor: '#fff', boxSizing: 'border-box',
+  padding: '8px 12px', border: '1px solid #e5e7eb', color: 'var(--color-slate-dark)',
 }
 
 const selectS: React.CSSProperties = {
@@ -86,34 +86,34 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
       }>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
         <Field label="name (slug) *">
-          <input style={inputS} value={form.name}
+          <Input style={inputS} value={form.name}
             onChange={e => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
         </Field>
         <Field label="label *">
-          <input style={inputS} value={form.label} onChange={e => set('label', e.target.value)} />
+          <Input style={inputS} value={form.label} onChange={e => set('label', e.target.value)} />
         </Field>
         <Field label="Tipo relazione Neo4j *">
-          <input style={inputS} value={form.relationshipType}
+          <Input style={inputS} value={form.relationshipType}
             onChange={e => set('relationshipType', e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
             placeholder="DEPENDS_ON" />
         </Field>
         <Field label="Tipo target">
-          <select style={selectS} value={form.targetType} onChange={e => set('targetType', e.target.value)}>
+          <Select style={selectS} value={form.targetType} onChange={e => set('targetType', e.target.value)}>
             <option value="any">qualsiasi</option>
             {allTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Cardinalità">
-          <select style={selectS} value={form.cardinality} onChange={e => set('cardinality', e.target.value)}>
+          <Select style={selectS} value={form.cardinality} onChange={e => set('cardinality', e.target.value)}>
             <option value="one">one</option>
             <option value="many">many</option>
-          </select>
+          </Select>
         </Field>
         <Field label="Direzione">
-          <select style={selectS} value={form.direction} onChange={e => set('direction', e.target.value)}>
+          <Select style={selectS} value={form.direction} onChange={e => set('direction', e.target.value)}>
             <option value="outgoing">outgoing</option>
             <option value="incoming">incoming</option>
-          </select>
+          </Select>
         </Field>
       </div>
     </Modal>

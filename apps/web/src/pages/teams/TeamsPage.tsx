@@ -12,6 +12,7 @@ import { GET_TEAMS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { lookupStyle } from '@/lib/tokens'
+import { Pill } from '@/components/ui/Pill'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
@@ -32,9 +33,9 @@ function TypeBadge({ type }: { type: string | null }) {
   }
   const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
   return (
-    <span style={{ fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: s.bg, color: s.color, textTransform: 'capitalize' }}>
+    <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'inherit', textTransform: 'capitalize' }}>
       {type}
-    </span>
+    </Pill>
   )
 }
 
@@ -91,7 +92,7 @@ export function TeamsPage() {
   return (
     <PageContainer>
       <ListPageHeader
-        icon={<UsersRound size={22} color="#38bdf8" />}
+        icon={<UsersRound size={22} color="var(--color-icon-accent)" />}
         title={t('pages.teams.title')}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

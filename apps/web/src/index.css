@@ -41,6 +41,8 @@
   --color-slate-bg:     #f1f5f9;
   --color-white:        var(--surface);
   --color-border:       var(--border);
+  /* Accent used by page/section icons throughout the app */
+  --color-icon-accent:  #38bdf8;
 
   /* Brand alpha variants (for hex+opacity patterns in React Flow nodes) */
   --color-brand-a08:    rgba(2, 132, 199, 0.08);
@@ -299,4 +301,11 @@ tr:hover .sft-td * {
 .ty-badge {
   font-size: var(--font-size-small);
   font-weight: 500;
+}
+
+/* ── Design-system hover utilities ──────────────────────────────────────────
+   Replaces the manual onMouseEnter/Leave backgroundColor handlers.
+   Override the color per element with `style={{ '--hover-bg': '#f8fafc' }}`. */
+.hover-bg:hover {
+  background-color: var(--hover-bg, var(--color-slate-bg));
 }

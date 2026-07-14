@@ -8,6 +8,7 @@ import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import type { WorkflowDefinition, WorkflowKey } from './workflow-types'
 import { ADD_WORKFLOW_STEP } from '@/graphql/mutations'
+import { Pill } from '@/components/ui/Pill'
 
 const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
   incident:  'Incident',
@@ -88,16 +89,9 @@ export function WorkflowToolbar({
             {WORKFLOW_LABELS[selectedWorkflow]}
           </h1>
           {def && (
-            <span style={{
-              fontSize:        11,
-              fontWeight:      600,
-              padding:         '2px 8px',
-              borderRadius:    100,
-              backgroundColor: 'var(--color-brand-a08)',
-              color:           accentColor,
-            }}>
+            <Pill bg="var(--color-brand-a08)" color={accentColor} radius={100} style={{ fontSize: 11 }}>
               v{def.version} · Attivo
-            </span>
+            </Pill>
           )}
           {def?.changeSubtype && (() => {
             const subtypeStyles: Record<string, { bg: string; fg: string }> = {
@@ -107,12 +101,9 @@ export function WorkflowToolbar({
             }
             const s = lookupOrError(subtypeStyles, def.changeSubtype, 'subtypeStyles', { bg: 'var(--color-danger)', fg: '#fff' })
             return (
-              <span style={{
-                fontSize: 'var(--font-size-table)', fontWeight: 600, padding: '2px 8px',
-                borderRadius: 4, backgroundColor: s.bg, color: s.fg,
-              }}>
+              <Pill bg={s.bg} color={s.fg} radius={4}>
                 {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
-              </span>
+              </Pill>
             )
           })()}
         </div>

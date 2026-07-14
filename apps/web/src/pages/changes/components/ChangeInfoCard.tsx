@@ -8,6 +8,7 @@
  * parent can open the notes modal or execute the transition directly.
  */
 import { SectionCard } from '@/components/ui/SectionCard'
+import { Pill } from '@/components/ui/Pill'
 import type { AvailableTransition, ChangeData } from '@/types/change'
 import { DescriptionField, DetailField, RiskBadge, fmtDate } from './shared'
 
@@ -42,7 +43,7 @@ export function ChangeInfoCard({
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         {change.aggregateRiskScore != null && <RiskBadge score={change.aggregateRiskScore} />}
         {liveRoute.label !== '— da calcolare —' && (
-          <span style={{ padding: '3px 10px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: liveRoute.bg, color: liveRoute.color }}>{liveRoute.label}</span>
+          <Pill bg={liveRoute.bg} color={liveRoute.color} style={{ padding: '3px 10px', fontSize: 'var(--font-size-label)' }}>{liveRoute.label}</Pill>
         )}
         {currentStep === initialStepName && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 180 }}>

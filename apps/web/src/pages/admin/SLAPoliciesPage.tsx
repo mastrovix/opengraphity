@@ -13,6 +13,8 @@ import { GET_SLA_POLICIES, GET_TEAMS } from '@/graphql/queries'
 import { CREATE_SLA_POLICY, UPDATE_SLA_POLICY, DELETE_SLA_POLICY } from '@/graphql/mutations'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
+import { Input, Select } from '@/components/ui/FormControls'
+import { Pill } from '@/components/ui/Pill'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -46,10 +48,9 @@ const ENTITY_LABELS: Record<string, string> = {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
+// Per-page overrides on top of the shared FormControls base style.
 const inputS: React.CSSProperties = {
-  width: '100%', padding: '7px 10px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
-  outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box',
+  padding: '7px 10px', border: '1px solid #e5e7eb', color: 'var(--color-slate-dark)',
 }
 const selectS: React.CSSProperties = {
   ...inputS, appearance: 'none' as const,
@@ -62,10 +63,6 @@ const btnPrimary: React.CSSProperties = {
   padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
   color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
 }
-const badge = (bg: string, fg: string): React.CSSProperties => ({
-  display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg,
-})
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtMinutes(m: number): string {
@@ -196,15 +193,15 @@ export function SLAPoliciesPage() {
         <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row)}</div>
       </div>
     ) },
-    { key: 'priority', label: 'Priorita', sortable: true, render: (v) => v ? <span style={badge('#fef3c7', '#92400e')}>{String(v)}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
-    { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <span style={badge('#dbeafe', '#1e40af')}>{String(v)}</span> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
+    { key: 'priority', label: 'Priorita', sortable: true, render: (v) => v ? <Pill bg="#fef3c7" color="#92400e" radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
+    { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <Pill bg="#dbeafe" color="#1e40af" radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
     { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{v ? String(v) : 'Tutti'}</span> },
     { key: 'responseMinutes', label: 'Risposta', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
     { key: 'resolveMinutes', label: 'Risoluzione', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
-    { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <span style={badge(v ? '#dcfce7' : 'var(--color-border-light)', v ? '#15803d' : 'var(--color-slate)')}>{v ? 'Si' : 'No'}</span> },
+    { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <Pill bg={v ? '#dcfce7' : 'var(--color-border-light)'} color={v ? '#15803d' : 'var(--color-slate)'} radius={10}>{v ? 'Si' : 'No'}</Pill> },
     { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
       <button onClick={() => handleToggle(row)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
-        {row.enabled ? <ToggleRight size={22} color="#38bdf8" /> : <ToggleLeft size={22} color="#cbd5e1" />}
+        {row.enabled ? <ToggleRight size={22} color="var(--color-icon-accent)" /> : <ToggleLeft size={22} color="#cbd5e1" />}
       </button>
     ) },
     { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
@@ -231,7 +228,7 @@ export function SLAPoliciesPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Shield size={22} color="#38bdf8" />}>SLA Policies</PageTitle>
+          <PageTitle icon={<Shield size={22} color="var(--color-icon-accent)" />}>SLA Policies</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${policies.length} policy`}
           </p>
@@ -284,57 +281,57 @@ export function SLAPoliciesPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label style={labelS}>Nome *</label>
-                <input style={inputS} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="es. SLA Critical Incident" />
+                <Input style={inputS} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="es. SLA Critical Incident" />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelS}>Tipo Entita *</label>
-                  <select style={selectS} value={form.entityType} onChange={e => setForm({ ...form, entityType: e.target.value })}>
+                  <Select style={selectS} value={form.entityType} onChange={e => setForm({ ...form, entityType: e.target.value })}>
                     {ENTITY_TYPES.map(et => <option key={et} value={et}>{ENTITY_LABELS[et]}</option>)}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label style={labelS}>Priorita</label>
-                  <select style={selectS} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
+                  <Select style={selectS} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
                     <option value="">Tutte</option>
                     {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
+                  </Select>
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelS}>Categoria</label>
-                  <select style={selectS} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                  <Select style={selectS} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
                     <option value="">Tutte</option>
                     {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label style={labelS}>Team</label>
-                  <select style={selectS} value={form.teamId} onChange={e => setForm({ ...form, teamId: e.target.value })}>
+                  <Select style={selectS} value={form.teamId} onChange={e => setForm({ ...form, teamId: e.target.value })}>
                     <option value="">Tutti</option>
                     {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
+                  </Select>
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelS}>Tempo Risposta (minuti) *</label>
-                  <input style={inputS} type="number" min={1} value={form.responseMinutes} onChange={e => setForm({ ...form, responseMinutes: Number(e.target.value) })} />
+                  <Input style={inputS} type="number" min={1} value={form.responseMinutes} onChange={e => setForm({ ...form, responseMinutes: Number(e.target.value) })} />
                 </div>
                 <div>
                   <label style={labelS}>Tempo Risoluzione (minuti) *</label>
-                  <input style={inputS} type="number" min={1} value={form.resolveMinutes} onChange={e => setForm({ ...form, resolveMinutes: Number(e.target.value) })} />
+                  <Input style={inputS} type="number" min={1} value={form.resolveMinutes} onChange={e => setForm({ ...form, resolveMinutes: Number(e.target.value) })} />
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={labelS}>Timezone</label>
-                  <input style={inputS} value={form.timezone} onChange={e => setForm({ ...form, timezone: e.target.value })} />
+                  <Input style={inputS} value={form.timezone} onChange={e => setForm({ ...form, timezone: e.target.value })} />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 2 }}>
                   <button onClick={() => setForm({ ...form, businessHours: !form.businessHours })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>

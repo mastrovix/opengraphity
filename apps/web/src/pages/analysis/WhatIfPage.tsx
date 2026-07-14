@@ -10,6 +10,8 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { MiniPathGraph } from '@/components/MiniPathGraph'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Pill } from '@/components/ui/Pill'
+import { Input } from '@/components/ui/FormControls'
 import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
 import { lookupOrError } from '@/lib/tokens'
 
@@ -45,7 +47,7 @@ const IMPACT_STYLES: Record<string, { bg: string; fg: string }> = {
 }
 
 function badge(bg: string, fg: string, text: string) {
-  return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg }}>{text}</span>
+  return <Pill bg={bg} color={fg} radius={10}>{text}</Pill>
 }
 
 /** Convert PascalCase Neo4j label to snake_case route param: "DatabaseInstance" → "database_instance" */
@@ -191,7 +193,7 @@ export function WhatIfPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<FlaskConical size={22} color="#38bdf8" />}>
+        <PageTitle icon={<FlaskConical size={22} color="var(--color-icon-accent)" />}>
           {t('pages.whatIf.title')}
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
@@ -203,8 +205,8 @@ export function WhatIfPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 16, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {/* CI search */}
         <div style={{ position: 'relative', width: 300 }}>
-          <input
-            style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', outline: 'none', boxSizing: 'border-box' }}
+          <Input
+            style={{ padding: '8px 12px', border: '1px solid #e5e7eb' }}
             placeholder={t('pages.whatIf.searchCI')}
             value={selectedCI ? selectedCI.name : ciSearch}
             onChange={e => { setCiSearch(e.target.value); setSelectedCI(null); setDropdownOpen(true) }}
@@ -217,9 +219,8 @@ export function WhatIfPage() {
                 <div
                   key={ci.id}
                   onMouseDown={() => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }}
-                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f0f9ff' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff' }}
+                  className="hover-bg"
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between', ['--hover-bg' as string]: '#f0f9ff' }}
                 >
                   <span style={{ fontWeight: 500 }}>{ci.name}</span>
                   <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{ci.type}</span>

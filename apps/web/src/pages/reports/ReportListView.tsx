@@ -69,7 +69,7 @@ export function ReportListView(props: ReportListViewProps) {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
-            <PageTitle icon={<LayoutGrid size={22} color="#38bdf8" />}>
+            <PageTitle icon={<LayoutGrid size={22} color="var(--color-icon-accent)" />}>
               {tr('pages.reportBuilder.title')}
             </PageTitle>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
@@ -79,8 +79,6 @@ export function ReportListView(props: ReportListViewProps) {
           <button
             onClick={() => setShowNewDialog(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
           >
             {tr('pages.reportBuilder.new')}
           </button>
@@ -128,14 +126,13 @@ export function ReportListView(props: ReportListViewProps) {
                             { label: '\u29C9 Duplica',               action: () => duplicateTemplate(t), danger: false },
                             { label: '\uD83D\uDDD1 Elimina',        action: () => handleDeleteTemplate(t.id), danger: true },
                           ].map(item => (
-                            <button key={item.label} onClick={item.action} style={{
+                            <button key={item.label} onClick={item.action} className="hover-bg" style={{
                               display: 'block', width: '100%', textAlign: 'left',
-                              padding: '10px 14px', border: 'none', background: 'none',
+                              padding: '10px 14px', border: 'none',
                               cursor: 'pointer', fontSize: 'var(--font-size-card-title)',
                               color: item.danger ? 'var(--color-trigger-sla-breach)' : 'var(--color-slate)',
+                              ['--hover-bg' as string]: item.danger ? 'var(--color-danger-bg)' : 'var(--color-slate-bg)',
                             }}
-                              onMouseEnter={e => (e.currentTarget.style.background = item.danger ? 'var(--color-danger-bg)' : 'var(--color-slate-bg)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                             >{item.label}</button>
                           ))}
                         </div>

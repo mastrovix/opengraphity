@@ -32,6 +32,8 @@ import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
 import { DetailField } from '@/components/ui/DetailField'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
+import { Pill } from '@/components/ui/Pill'
 import { Card, formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
 import { lookupOrError } from '@/lib/tokens'
 
@@ -311,7 +313,7 @@ export function ProblemDetailPage() {
 
           {/* Root Cause */}
           <SectionCard title="Root Cause" defaultOpen>
-                <textarea
+                <Textarea
                   value={editRootCause ?? (problem.rootCause ?? '')}
                   onChange={(e) => setEditRootCause(e.target.value)}
                   onBlur={() => {
@@ -323,13 +325,13 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="Descrivi la causa radice del problema..."
                   rows={4}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
+                  style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
           </SectionCard>
 
           {/* Workaround */}
           <SectionCard title="Workaround" defaultOpen>
-                <textarea
+                <Textarea
                   value={editWorkaround ?? (problem.workaround ?? '')}
                   onChange={(e) => setEditWorkaround(e.target.value)}
                   onBlur={() => {
@@ -341,7 +343,7 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="Descrivi il workaround temporaneo..."
                   rows={3}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
+                  style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
           </SectionCard>
 
@@ -457,9 +459,9 @@ export function ProblemDetailPage() {
                 <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
               } />
               <DetailField label={t('detail.workflowStep')} value={
-                <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', 'var(--color-border-light)'), color: lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)'), fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+                <Pill bg={lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', 'var(--color-border-light)')} color={lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)')} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                   {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
-                </span>
+                </Pill>
               } />
 
               {/* Team assignment */}
@@ -471,10 +473,10 @@ export function ProblemDetailPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', backgroundColor: 'var(--surface)', outline: 'none' }}>
+                    <Select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
                       <option value="">{t('detail.selectTeam')}</option>
                       {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
+                    </Select>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {showReassign && (
                         <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
@@ -496,12 +498,12 @@ export function ProblemDetailPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', backgroundColor: 'var(--surface)', outline: 'none' }}>
+                    <Select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
                       <option value="">{t('detail.selectUser')}</option>
                       {(problem.assignedTeam ? users.filter((u) => u.teams?.some((t) => t.id === problem.assignedTeam!.id)) : users).map((u) => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
-                    </select>
+                    </Select>
                     <button disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
                       {assigningUser ? t('detail.assigning') : t('detail.assign')}
                     </button>
@@ -511,7 +513,7 @@ export function ProblemDetailPage() {
 
               {/* Affected users */}
               <DetailField label={t('detail.affectedUsers')} value={
-                <input
+                <Input
                   type="number"
                   value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
                   onChange={(e) => setEditAffectedUsers(e.target.value)}
@@ -525,7 +527,7 @@ export function ProblemDetailPage() {
                   }}
                   placeholder="0"
                   min={0}
-                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none' }}
+                  style={{ padding: '5px 8px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
               } />
 
@@ -571,13 +573,13 @@ export function ProblemDetailPage() {
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
             Aggiungi una nota per questa transizione (minimo 10 caratteri).
           </p>
-          <textarea
+          <Textarea
             value={transitionNotes}
             onChange={(e) => setTransitionNotes(e.target.value)}
             placeholder="Note sulla transizione..."
             rows={4}
             autoFocus
-            style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.6, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
+            style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}
           />
         </Modal>
       )}

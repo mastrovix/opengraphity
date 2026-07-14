@@ -18,6 +18,7 @@ import {
   SET_QUESTION_CORE,
 } from '@/graphql/mutations'
 import { QUESTION_CATEGORY } from '@/lib/taskStatus'
+import { Pill } from '@/components/ui/Pill'
 
 type QuestionCategoryKey = typeof QUESTION_CATEGORY[keyof typeof QUESTION_CATEGORY]
 
@@ -74,13 +75,9 @@ const CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
 function CategoryBadge({ category }: { category: string }) {
   const s = CATEGORY_COLORS[category] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
   return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: 6,
-      fontSize: 'var(--font-size-label)', fontWeight: 600,
-      backgroundColor: s.bg, color: s.color, textTransform: 'uppercase',
-    }}>
+    <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }}>
       {category}
-    </span>
+    </Pill>
   )
 }
 

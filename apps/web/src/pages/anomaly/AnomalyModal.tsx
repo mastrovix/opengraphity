@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Lightbulb } from 'lucide-react'
 import { colors } from '@/lib/tokens'
+import { Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { RULE_SUGGESTION_KEYS } from './AnomalyPage'
 
 interface Anomaly {
@@ -71,9 +72,9 @@ export function ResolutionForm({
 
       {/* Resolution status dropdown */}
       <div>
-        <label style={{ display: 'block', fontSize: 'var(--font-size-table)', fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+        <FieldLabel style={{ fontSize: 'var(--font-size-table)', letterSpacing: '0.04em', marginBottom: 6 }}>
           {t('pages.anomalies.actionLabel')}
-        </label>
+        </FieldLabel>
         <select
           value={resolutionStatus}
           onChange={(e) => setResolutionStatus(e.target.value)}
@@ -94,21 +95,15 @@ export function ResolutionForm({
 
       {/* Note textarea */}
       <div>
-        <label style={{ display: 'block', fontSize: 'var(--font-size-table)', fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+        <FieldLabel style={{ fontSize: 'var(--font-size-table)', letterSpacing: '0.04em', marginBottom: 6 }}>
           {t('pages.anomalies.noteLabel')}
-        </label>
-        <textarea
+        </FieldLabel>
+        <Textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder={t('pages.anomalies.notePlaceholder')}
           rows={4}
-          style={{
-            width: '100%', fontSize: 'var(--font-size-body)', lineHeight: 1.6,
-            border: `1px solid ${colors.border}`, borderRadius: 6,
-            padding: '8px 10px', resize: 'vertical',
-            background: 'var(--surface)', color: colors.slateDark,
-            boxSizing: 'border-box',
-          }}
+          style={{ padding: '8px 10px', border: `1px solid ${colors.border}`, background: 'var(--surface)', color: colors.slateDark, outline: undefined }}
         />
         <div style={{ fontSize: 'var(--font-size-table)', color: note.trim().length < 10 ? colors.slateLight : colors.success, marginTop: 4 }}>
           {t('pages.anomalies.minChars', { count: note.trim().length })}

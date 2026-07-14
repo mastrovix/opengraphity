@@ -13,13 +13,13 @@ export function SidebarCollapseButton({ collapsed, onToggle }: SidebarUserMenuPr
     <button
       onClick={onToggle}
       aria-label={collapsed ? t('sidebar.expand', 'Espandi sidebar') : t('sidebar.collapse', 'Comprimi sidebar')}
+      className="hover-bg"
       style={{
         display:         'flex',
         alignItems:      'center',
         justifyContent:  collapsed ? 'center' : 'flex-start',
         gap:             8,
         padding:         collapsed ? '12px 0' : '12px 16px',
-        background:      'none',
         border:          'none',
         borderTop:       `1px solid ${C.border}`,
         color:           C.textSection,
@@ -28,9 +28,8 @@ export function SidebarCollapseButton({ collapsed, onToggle }: SidebarUserMenuPr
         flexShrink:      0,
         fontSize:        12,
         transition:      'background 150ms',
+        ['--hover-bg' as string]: C.hoverBg,
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = C.hoverBg }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
     >
       {collapsed
         ? <ChevronRight size={14} aria-hidden="true" />
