@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
@@ -7,14 +6,15 @@ import { useTranslation } from 'react-i18next'
 import { User, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { gql } from '@apollo/client'
-import { PageTitle } from '@/components/PageTitle'
+import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_USERS, GET_TEAMS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
-import { inputS, selectS, labelS, btnPrimary, btnSecondary } from '@/pages/settings/shared/designerStyles'
+import { inputS, selectS, labelS } from '@/pages/settings/shared/designerStyles'
 import { lookupStyle } from '@/lib/tokens'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
@@ -121,19 +121,20 @@ export function UsersPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <PageTitle icon={<User size={22} color="#38bdf8" />}>
-            {t('pages.users.title')}
-          </PageTitle>
+      <ListPageHeader
+        icon={<User size={22} color="#38bdf8" />}
+        title={t('pages.users.title')}
+        subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.users.count', { count: total })}
           </p>
-        </div>
-        <Button onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }) }}>
-          {t('pages.users.newUser')}
-        </Button>
-      </div>
+        }
+        actions={
+          <Button onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }) }}>
+            {t('pages.users.newUser')}
+          </Button>
+        }
+      />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>
@@ -172,15 +173,28 @@ export function UsersPage() {
         </>
       )}
       {/* Create User Modal */}
-      {modalOpen && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-             onClick={() => setModalOpen(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 8px 30px rgba(0,0,0,.18)' }}
-               onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Nuovo utente</span>
-              <X size={18} style={{ cursor: 'pointer', color: 'var(--color-slate)' }} onClick={() => setModalOpen(false)} />
-            </div>
+      {modalOpen && (
+        <Modal
+          open
+          onClose={() => setModalOpen(false)}
+          title="Nuovo utente"
+          width={440}
+          footer={(() => {
+            const canCreate = !creating && form.username.trim() && form.email.trim() && form.firstName.trim() && form.lastName.trim() && form.password.trim() && form.role
+            return (
+              <>
+                <Button variant="secondary" onClick={() => setModalOpen(false)}>Annulla</Button>
+                <Button
+                  disabled={!canCreate}
+                  style={{ opacity: canCreate ? 1 : 0.5 }}
+                  onClick={() => createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
+                >
+                  {creating ? 'Creazione…' : 'Crea utente'}
+                </Button>
+              </>
+            )
+          })()}
+        >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div><label style={labelS}>Username <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="mario.rossi" /></div>
               <div><label style={labelS}>Email <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
@@ -261,25 +275,8 @@ export function UsersPage() {
                   })()}
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                <button style={btnSecondary} onClick={() => setModalOpen(false)}>Annulla</button>
-                {(() => {
-                  const canCreate = !creating && form.username.trim() && form.email.trim() && form.firstName.trim() && form.lastName.trim() && form.password.trim() && form.role
-                  return (
-                    <button
-                      style={{ ...btnPrimary, opacity: canCreate ? 1 : 0.5, cursor: canCreate ? 'pointer' : 'not-allowed' }}
-                      disabled={!canCreate}
-                      onClick={() => createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
-                    >
-                      {creating ? 'Creazione…' : 'Crea utente'}
-                    </button>
-                  )
-                })()}
-              </div>
             </div>
-          </div>
-        </div>,
-        document.body,
+        </Modal>
       )}
     </PageContainer>
   )

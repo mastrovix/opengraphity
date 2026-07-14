@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { Lock, LockOpen, Plus, X, Save, Trash2, Tag } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
 import { toast } from 'sonner'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import {
@@ -82,24 +84,23 @@ function CreateEnumDialog({
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="create-enum-title"
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      title={t('pages.dictionary.createTitle')}
+      width={400}
+      as="form"
+      onSubmit={handleSubmit}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} style={{ padding: '7px 14px' }}>{t('common.cancel')}</Button>
+          <Button type="submit" disabled={loading} icon={<Plus size={14} aria-hidden="true" />} style={{ padding: '7px 14px', fontSize: 'var(--font-size-body)' }}>
+            {t('common.create')}
+          </Button>
+        </>
+      }
     >
-      <div
-        style={{ background: '#fff', borderRadius: 10, padding: 24, width: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 id="create-enum-title" style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, marginBottom: 20 }}>
-          {t('pages.dictionary.createTitle')}
-        </h2>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label htmlFor="enum-name" style={labelS}>{t('pages.dictionary.nameFieldLabel')}</label>
             <input
@@ -137,15 +138,8 @@ function CreateEnumDialog({
               <option value="cmdb">{t('pages.dictionary.scopeCmdb')}</option>
             </select>
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-            <button type="button" style={btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
-            <button type="submit" style={btnPrimary} disabled={loading}>
-              <Plus size={14} aria-hidden="true" /> {t('common.create')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </div>
+    </Modal>
   )
 }
 

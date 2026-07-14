@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
+import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
-import { CountBadge } from '@/components/ui/CountBadge'
+import { SectionCard } from '@/components/ui/SectionCard'
 import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_INCIDENTS, GET_CHANGES, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import {
   UPDATE_PROBLEM,
@@ -150,14 +151,10 @@ export function ProblemDetailPage() {
   const [editWorkaround,    setEditWorkaround]    = useState<string | null>(null)
   const [editAffectedUsers, setEditAffectedUsers] = useState<string | null>(null)
 
-  const [descOpen,       setDescOpen]       = useState(true)
-  const [rootCauseOpen,  setRootCauseOpen]  = useState(true)
-  const [workaroundOpen, setWorkaroundOpen] = useState(true)
   const [ciOpen,         setCiOpen]         = useState(true)
   const [incidentsOpen,  setIncidentsOpen]  = useState(true)
   const [changesOpen,    setChangesOpen]    = useState(true)
   const [timelineOpen,   setTimelineOpen]   = useState(true)
-  const [commentsOpen,   setCommentsOpen]   = useState(true)
 
   const { data, loading, refetch } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
   const { data: usersData }        = useQuery<{ users: User[] }>(GET_USERS)
@@ -304,30 +301,16 @@ export function ProblemDetailPage() {
         <div>
 
           {/* Descrizione */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.description')}</span>
-              {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {descOpen && (
-              <div style={{ padding: 16 }}>
-                {problem.description ? (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{problem.description}</p>
-                ) : (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
-                )}
-              </div>
+          <SectionCard title={t('detail.sections.description')} defaultOpen>
+            {problem.description ? (
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{problem.description}</p>
+            ) : (
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
             )}
-          </Card>
+          </SectionCard>
 
           {/* Root Cause */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setRootCauseOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: rootCauseOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Root Cause</span>
-              {rootCauseOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {rootCauseOpen && (
-              <div style={{ padding: 16 }}>
+          <SectionCard title="Root Cause" defaultOpen>
                 <textarea
                   value={editRootCause ?? (problem.rootCause ?? '')}
                   onChange={(e) => setEditRootCause(e.target.value)}
@@ -342,18 +325,10 @@ export function ProblemDetailPage() {
                   rows={4}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
                 />
-              </div>
-            )}
-          </Card>
+          </SectionCard>
 
           {/* Workaround */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setWorkaroundOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: workaroundOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Workaround</span>
-              {workaroundOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {workaroundOpen && (
-              <div style={{ padding: 16 }}>
+          <SectionCard title="Workaround" defaultOpen>
                 <textarea
                   value={editWorkaround ?? (problem.workaround ?? '')}
                   onChange={(e) => setEditWorkaround(e.target.value)}
@@ -368,9 +343,7 @@ export function ProblemDetailPage() {
                   rows={3}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', outline: 'none', resize: 'vertical', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.6 }}
                 />
-              </div>
-            )}
-          </Card>
+          </SectionCard>
 
           <ProblemCIList
             problemId={problem.id}
@@ -424,16 +397,8 @@ export function ProblemDetailPage() {
           <AttachmentsSection entityType="problem" entityId={problem.id} />
 
           {/* Commenti */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.comments')}</span>
-                <CountBadge count={problem.comments.length} />
-              </div>
-              {commentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {commentsOpen && (
-              <div style={{ padding: 16 }}>
+          <SectionCard title={t('detail.sections.comments')} count={problem.comments.length} defaultOpen>
+            <div>
                 {problem.comments.length === 0 ? (
                   <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>{t('detail.noCommentsYet')}</p>
                 ) : (
@@ -471,9 +436,8 @@ export function ProblemDetailPage() {
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
-          </Card>
+            </div>
+          </SectionCard>
 
           <InternalChatPanel
             entityType="problem"
@@ -579,38 +543,43 @@ export function ProblemDetailPage() {
 
       {/* Transition Dialog */}
       {isTransitionDialogOpen && pendingTransition && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 480, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
-            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 12px 0' }}>
-              {`Transizione → ${pendingTransition.toStep.replace(/_/g, ' ')}`}
-            </h2>
-            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
-              Aggiungi una nota per questa transizione (minimo 10 caratteri).
-            </p>
-            <textarea
-              value={transitionNotes}
-              onChange={(e) => setTransitionNotes(e.target.value)}
-              placeholder="Note sulla transizione..."
-              rows={4}
-              autoFocus
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.6, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
-            />
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-              <button onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}>
+        <Modal
+          open
+          onClose={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }}
+          title={`Transizione → ${pendingTransition.toStep.replace(/_/g, ' ')}`}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
+              >
                 Annulla
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => {
                   if (transitionNotes.trim().length < 10) { toast.error('Note troppo brevi (minimo 10 caratteri)'); return }
                   void execTransition({ variables: { problemId: problem.id, toStep: pendingTransition.toStep, notes: transitionNotes.trim() } })
                 }}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
+                style={{ padding: '8px 16px', borderRadius: 8, fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
               >
                 {transitioning ? 'Esecuzione...' : 'Conferma'}
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+            </>
+          }
+        >
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
+            Aggiungi una nota per questa transizione (minimo 10 caratteri).
+          </p>
+          <textarea
+            value={transitionNotes}
+            onChange={(e) => setTransitionNotes(e.target.value)}
+            placeholder="Note sulla transizione..."
+            rows={4}
+            autoFocus
+            style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.6, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", outline: 'none' }}
+          />
+        </Modal>
       )}
     </PageContainer>
   )

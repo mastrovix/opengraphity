@@ -7,10 +7,12 @@ import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
-import { Shield, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Shield, Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_SLA_POLICIES, GET_TEAMS } from '@/graphql/queries'
 import { CREATE_SLA_POLICY, UPDATE_SLA_POLICY, DELETE_SLA_POLICY } from '@/graphql/mutations'
+import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -59,11 +61,6 @@ const btnPrimary: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
   padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
   color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
-}
-const btnSecondary: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 const badge = (bg: string, fg: string): React.CSSProperties => ({
   display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color: fg,
@@ -271,19 +268,20 @@ export function SLAPoliciesPage() {
 
       {/* ── Create / Edit Modal ──────────────────────────────────────────────── */}
       {modalOpen && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
-             onClick={e => { if (e.target === e.currentTarget) setModalOpen(false) }}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.22)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #f3f4f6' }}>
-              <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
-                {editingId ? 'Modifica Policy' : 'Nuova SLA Policy'}
-              </h2>
-              <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex' }}>
-                <X size={20} color="var(--color-slate)" />
-              </button>
-            </div>
-
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Modal
+          open
+          onClose={() => setModalOpen(false)}
+          title={editingId ? 'Modifica Policy' : 'Nuova SLA Policy'}
+          width={560}
+          zIndex={9999}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setModalOpen(false)} style={{ padding: '7px 14px' }}>Annulla</Button>
+              <Button onClick={() => void handleSave()}>{editingId ? 'Salva' : 'Crea'}</Button>
+            </>
+          }
+        >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label style={labelS}>Nome *</label>
                 <input style={inputS} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="es. SLA Critical Incident" />
@@ -354,31 +352,29 @@ export function SLAPoliciesPage() {
                 {form.businessHours ? ' (orario lavorativo)' : ' (24/7)'}
               </div>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 24px', borderTop: '1px solid #f3f4f6' }}>
-              <button style={btnSecondary} onClick={() => setModalOpen(false)}>Annulla</button>
-              <button style={btnPrimary} onClick={handleSave}>{editingId ? 'Salva' : 'Crea'}</button>
-            </div>
-          </div>
-        </div>,
+        </Modal>,
         document.body,
       )}
 
       {/* ── Delete Confirmation ──────────────────────────────────────────────── */}
       {deleteId && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
-             onClick={e => { if (e.target === e.currentTarget) setDeleteId(null) }}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 400, boxShadow: '0 24px 80px rgba(0,0,0,0.22)', padding: '24px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Conferma eliminazione</h3>
-            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 20px' }}>
-              Sei sicuro di voler eliminare questa SLA policy? L'azione non e reversibile.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button style={btnSecondary} onClick={() => setDeleteId(null)}>Annulla</button>
-              <button style={{ ...btnPrimary, background: 'var(--color-danger)' }} onClick={handleDelete}>Elimina</button>
-            </div>
-          </div>
-        </div>,
+        <Modal
+          open
+          onClose={() => setDeleteId(null)}
+          title="Conferma eliminazione"
+          width={400}
+          zIndex={9999}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setDeleteId(null)} style={{ padding: '7px 14px' }}>Annulla</Button>
+              <Button onClick={() => void handleDelete()} style={{ background: 'var(--color-danger)' }}>Elimina</Button>
+            </>
+          }
+        >
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0 }}>
+            Sei sicuro di voler eliminare questa SLA policy? L'azione non e reversibile.
+          </p>
+        </Modal>,
         document.body,
       )}
     </PageContainer>

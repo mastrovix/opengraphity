@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Play, Clock, Upload, X } from 'lucide-react'
 import type { SyncSource, ConnectorInfo } from './useSyncPage'
 import { formatMs, formatDate, StatusBadge, inputStyle, labelStyle, btnStyle } from './syncShared'
+import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -263,36 +265,47 @@ export function SyncSourcesTab({
 
       {/* Schedule modal */}
       {schedSource && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: 10, padding: 24, width: 400 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700 }}>Schedule — {schedSource.name}</h3>
-              <button onClick={() => setSchedSource(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={18} /></button>
-            </div>
-            <label style={labelStyle}>Cron preset</label>
-            <select style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
-              {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-            </select>
-            {schedPreset === '__custom__' && (
-              <>
-                <label style={{ ...labelStyle, marginTop: 8 }}>Custom cron expression</label>
-                <input style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder="e.g. 0 */4 * * *" />
-              </>
-            )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-              <button onClick={() => setSchedSource(null)} style={{ ...btnStyle('#fff', '#374151') }}>Cancel</button>
-              <button onClick={() => void handleSaveScheduleLocal()} style={{ ...btnStyle('#2563eb', '#fff') }}>Save</button>
-            </div>
-          </div>
-        </div>
+        <Modal
+          open
+          onClose={() => setSchedSource(null)}
+          title={`Schedule — ${schedSource.name}`}
+          width={400}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setSchedSource(null)} style={btnStyle('#fff', '#374151')}>Cancel</Button>
+              <Button onClick={() => void handleSaveScheduleLocal()} style={btnStyle('#2563eb', '#fff')}>Save</Button>
+            </>
+          }
+        >
+          <label style={labelStyle}>Cron preset</label>
+          <select style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
+            {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+          {schedPreset === '__custom__' && (
+            <>
+              <label style={{ ...labelStyle, marginTop: 8 }}>Custom cron expression</label>
+              <input style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder="e.g. 0 */4 * * *" />
+            </>
+          )}
+        </Modal>
       )}
 
       {/* Create modal */}
       {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: 10, padding: 24, width: 520, maxHeight: '80vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 'var(--font-size-card-title)', fontWeight: 700 }}>Add Sync Source</h3>
-            <form onSubmit={handleCreate}>
+        <Modal
+          open
+          onClose={() => setShowCreate(false)}
+          title="Add Sync Source"
+          width={520}
+          as="form"
+          onSubmit={(e) => void handleCreate(e)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setShowCreate(false)} style={btnStyle('#fff', '#374151')}>Cancel</Button>
+              <Button type="submit" style={btnStyle('#2563eb', '#fff')}>Create Source</Button>
+            </>
+          }
+        >
               <label style={labelStyle}>Name</label>
               <input style={inputStyle} value={form['name'] ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
 
@@ -359,14 +372,7 @@ export function SyncSourcesTab({
                   </div>
                 </>
               )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-                <button type="button" onClick={() => setShowCreate(false)} style={btnStyle('#fff', '#374151')}>Cancel</button>
-                <button type="submit" style={btnStyle('#2563eb', '#fff')}>Create Source</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

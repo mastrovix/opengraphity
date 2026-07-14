@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { colors, lookupOrError } from '@/lib/tokens'
+import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
 import type { WorkflowDefinition, WorkflowKey } from './workflow-types'
 import { ADD_WORKFLOW_STEP } from '@/graphql/mutations'
 
@@ -160,10 +162,32 @@ export function WorkflowToolbar({
 
       {/* Add Step Dialog */}
       {showAddStep && def && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowAddStep(false) }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 380, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
-            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Aggiungi Step</div>
+        <Modal
+          open
+          onClose={() => setShowAddStep(false)}
+          title="Aggiungi Step"
+          width={380}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid #e2e6f0' }}>Annulla</Button>
+              <Button
+                disabled={!stepLabel.trim() || addingStep}
+                onClick={() => {
+                  const name = stepLabel.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+                  void addWorkflowStep({ variables: {
+                    definitionId: def.id, name: `${stepType}_${name}_${Date.now().toString(36)}`,
+                    label: stepLabel.trim(), type: stepType,
+                    timerDelayMinutes: stepType === 'timer_wait' && timerMins ? Number(timerMins) : undefined,
+                  } })
+                }}
+                style={{ padding: '7px 16px', backgroundColor: accentColor, fontSize: 'var(--font-size-body)', fontWeight: 600 }}
+              >
+                Aggiungi
+              </Button>
+            </>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>TIPO</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -184,25 +208,8 @@ export function WorkflowToolbar({
                 <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder="es. 60" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
               </div>
             )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Annulla</button>
-              <button
-                disabled={!stepLabel.trim() || addingStep}
-                onClick={() => {
-                  const name = stepLabel.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
-                  void addWorkflowStep({ variables: {
-                    definitionId: def.id, name: `${stepType}_${name}_${Date.now().toString(36)}`,
-                    label: stepLabel.trim(), type: stepType,
-                    timerDelayMinutes: stepType === 'timer_wait' && timerMins ? Number(timerMins) : undefined,
-                  } })
-                }}
-                style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: accentColor, color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600 }}
-              >
-                Aggiungi
-              </button>
-            </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

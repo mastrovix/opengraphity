@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
+import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
 import { toast } from 'sonner'
 import { LayoutDashboard } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
@@ -64,10 +66,26 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-        <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 16 }}>Nuova dashboard</h2>
-
+    <Modal
+      open
+      onClose={onClose}
+      title="Nuova dashboard"
+      width={380}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} style={{ padding: '7px 14px', border: '1px solid #d1d5db', fontSize: 'var(--font-size-card-title)' }}>
+            Annulla
+          </Button>
+          <Button
+            onClick={() => void handleCreate()}
+            disabled={creating || !name.trim()}
+            style={{ padding: '7px 14px', backgroundColor: creating || !name.trim() ? '#67e8f9' : 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
+          >
+            {creating ? 'Creazione…' : 'Crea'}
+          </Button>
+        </>
+      }
+    >
         <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>Nome</label>
         <input
           autoFocus
@@ -104,20 +122,7 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button onClick={onClose} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
-            Annulla
-          </button>
-          <button
-            onClick={() => void handleCreate()}
-            disabled={creating || !name.trim()}
-            style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: creating || !name.trim() ? '#67e8f9' : 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: creating || !name.trim() ? 'not-allowed' : 'pointer' }}
-          >
-            {creating ? 'Creazione…' : 'Crea'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -193,10 +198,49 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-        <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 16 }}>Impostazioni dashboard</h2>
-
+    <Modal
+      open
+      onClose={onClose}
+      title="Impostazioni dashboard"
+      width={400}
+      footerStyle={{ justifyContent: 'space-between' }}
+      footer={
+        <>
+          <div>
+            {canDelete && !confirmDelete && (
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmDelete(true)}
+                style={{ padding: '7px 14px', border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-card-title)' }}
+              >
+                Elimina
+              </Button>
+            )}
+            {confirmDelete && (
+              <Button
+                onClick={() => void handleDelete()}
+                disabled={deleting}
+                style={{ padding: '7px 14px', backgroundColor: 'var(--color-danger)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
+              >
+                {deleting ? 'Eliminazione…' : 'Conferma eliminazione'}
+              </Button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="secondary" onClick={onClose} style={{ padding: '7px 14px', border: '1px solid #d1d5db', fontSize: 'var(--font-size-card-title)' }}>
+              Annulla
+            </Button>
+            <Button
+              onClick={() => void handleSave()}
+              disabled={saving}
+              style={{ padding: '7px 14px', backgroundColor: saving ? '#67e8f9' : 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
+            >
+              {saving ? 'Salvataggio…' : 'Salva'}
+            </Button>
+          </div>
+        </>
+      }
+    >
         <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>Nome</label>
         <input
           value={name}
@@ -237,42 +281,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
             ★ Imposta come default
           </button>
         )}
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 8 }}>
-          <div>
-            {canDelete && !confirmDelete && (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}
-              >
-                Elimina
-              </button>
-            )}
-            {confirmDelete && (
-              <button
-                onClick={() => void handleDelete()}
-                disabled={deleting}
-                style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: 'pointer' }}
-              >
-                {deleting ? 'Eliminazione…' : 'Conferma eliminazione'}
-              </button>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onClose} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
-              Annulla
-            </button>
-            <button
-              onClick={() => void handleSave()}
-              disabled={saving}
-              style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: saving ? '#67e8f9' : 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}
-            >
-              {saving ? 'Salvataggio…' : 'Salva'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 

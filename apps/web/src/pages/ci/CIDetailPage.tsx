@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
+import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
 import { toPascalCase } from '@/lib/stringUtils'
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -526,23 +528,32 @@ export function CIDetailPage() {
 
             {/* Add relation modal */}
             {showAddRel && ci && createPortal(
-              <div
-                style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
-                onClick={e => { if (e.target === e.currentTarget) { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) } }}
+              <Modal
+                open
+                onClose={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
+                title={`${t('pages.ci.addRelation')} — ${ci.name}`}
+                width={480}
+                zIndex={9999}
+                footer={
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
+                      style={{ color: 'var(--color-slate-dark)' }}
+                    >
+                      {t('common.cancel')}
+                    </Button>
+                    <Button
+                      onClick={() => void handleAddRelation()}
+                      disabled={!addRelForm.targetCI}
+                      style={{ fontSize: 'var(--font-size-body)', ...(addRelForm.targetCI ? {} : { backgroundColor: '#d1d5db' }) }}
+                    >
+                      {t('pages.ci.addRelation')}
+                    </Button>
+                  </>
+                }
               >
-                <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, boxShadow: '0 24px 80px rgba(0,0,0,0.22)' }}>
-                  {/* Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #f3f4f6' }}>
-                    <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
-                      {t('pages.ci.addRelation')} — {ci.name}
-                    </h2>
-                    <button onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex' }}>
-                      <X size={20} color="var(--color-slate)" />
-                    </button>
-                  </div>
-
-                  {/* Body */}
-                  <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {/* Relation type */}
                     <div>
                       <label style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
@@ -608,28 +619,14 @@ export function CIDetailPage() {
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* Footer */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 24px', borderTop: '1px solid #f3f4f6' }}>
-                    <button
-                      onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
-                      style={{ padding: '8px 16px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
-                    >
-                      {t('common.cancel')}
-                    </button>
-                    <button
-                      onClick={handleAddRelation}
-                      disabled={!addRelForm.targetCI}
-                      style={{ padding: '8px 16px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: addRelForm.targetCI ? 'var(--color-brand)' : '#d1d5db', color: '#fff', cursor: addRelForm.targetCI ? 'pointer' : 'default', fontWeight: 500, transition: 'background 150ms' }}
-                      onMouseEnter={e => { if (addRelForm.targetCI) (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)' }}
-                      onMouseLeave={e => { if (addRelForm.targetCI) (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)' }}
-                    >
-                      {t('pages.ci.addRelation')}
-                    </button>
+                    {/* Spacer: reserves room in the scrollable Modal body so the
+                        absolutely-positioned dropdown above is never clipped */}
+                    {ciSearchResults.length > 0 && !addRelForm.targetCI && (
+                      <div aria-hidden="true" style={{ height: Math.min(ciSearchResults.length * 37, 180) - 6, flexShrink: 0 }} />
+                    )}
                   </div>
-                </div>
-              </div>,
+              </Modal>,
               document.body,
             )}
           </SectionCard>

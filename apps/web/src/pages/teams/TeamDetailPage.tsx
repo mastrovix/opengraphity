@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
+import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
 import { Users, UsersRound, X, Search } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -190,21 +192,14 @@ export function TeamDetailPage() {
             ? candidates.filter(u => u.name.toLowerCase().includes(managerSearch.toLowerCase()) || u.email.toLowerCase().includes(managerSearch.toLowerCase()))
             : candidates
           return (
-            <div
-              onClick={() => { setShowManagerModal(false); setPendingManagerUser(null) }}
-              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+            <Modal
+              open
+              onClose={() => { setShowManagerModal(false); setPendingManagerUser(null) }}
+              title={team.manager ? 'Cambia manager' : 'Assegna manager'}
+              width={440}
             >
-              <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: 440, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-                {/* Header */}
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-                    {team.manager ? 'Cambia manager' : 'Assegna manager'}
-                  </span>
-                  <button onClick={() => { setShowManagerModal(false); setPendingManagerUser(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
-                    <X size={16} color="var(--color-slate-light)" />
-                  </button>
-                </div>
-
+              {/* Cancel the Modal body padding so sections run edge-to-edge */}
+              <div style={{ margin: -24 }}>
                 {/* Confirmation banner */}
                 {pendingManagerUser && (
                   <div style={{ padding: '12px 20px', background: 'var(--color-warning-bg)', borderBottom: '1px solid #fbbf24' }}>
@@ -212,18 +207,19 @@ export function TeamDetailPage() {
                       Il manager attuale <strong>{team.manager?.name}</strong> verrà sostituito da <strong>{pendingManagerUser.name}</strong>. Confermi?
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button
+                      <Button
                         onClick={() => { setManager({ variables: { teamId: team.id, userId: pendingManagerUser.id } }); setPendingManagerUser(null) }}
-                        style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
+                        style={{ padding: '6px 16px', fontWeight: 600, fontSize: 'var(--font-size-body)' }}
                       >
                         Conferma
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="secondary"
                         onClick={() => setPendingManagerUser(null)}
-                        style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: 'var(--color-slate)', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
+                        style={{ padding: '6px 16px', fontWeight: 600 }}
                       >
                         Annulla
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -246,7 +242,7 @@ export function TeamDetailPage() {
 
                 {/* User list */}
                 {!pendingManagerUser && (
-                  <div style={{ overflowY: 'auto', flex: 1 }}>
+                  <div style={{ overflowY: 'auto', maxHeight: 'calc(70vh - 160px)' }}>
                     {filtered.length === 0 ? (
                       <div style={{ padding: '20px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun membro trovato</div>
                     ) : filtered.map((u, i) => (
@@ -276,7 +272,7 @@ export function TeamDetailPage() {
                   </div>
                 )}
               </div>
-            </div>
+            </Modal>
           )
         })()}
 

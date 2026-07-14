@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ClipboardList, UserPlus } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
-import { PageTitle } from '@/components/PageTitle'
+import { ListPageHeader } from '@/components/ListPageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
@@ -197,17 +197,18 @@ export function MyTasksPage() {
 
   return (
     <PageContainer>
-      <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<ClipboardList size={22} color="var(--color-brand)" />}>
-          I miei task
-        </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '4px 0 0' }}>
-          {loading && total === 0
-            ? '—'
-            : `${total} task (${assignedToMe.length} assegnati a te · ${unassigned.length} da prendere in carico)`
-          }
-        </p>
-      </div>
+      <ListPageHeader
+        icon={<ClipboardList size={22} color="var(--color-brand)" />}
+        title="I miei task"
+        subtitle={
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '4px 0 0' }}>
+            {loading && total === 0
+              ? '—'
+              : `${total} task (${assignedToMe.length} assegnati a te · ${unassigned.length} da prendere in carico)`
+            }
+          </p>
+        }
+      />
 
       {error && !data ? (
         <QueryError message={error.message} onRetry={() => void refetch()} />

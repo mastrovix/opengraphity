@@ -13,6 +13,8 @@ import { CREATE_AUTO_TRIGGER, UPDATE_AUTO_TRIGGER, DELETE_AUTO_TRIGGER } from '@
 import {
   inputS, selectS, labelS, btnPrimary, btnSecondary,
 } from '@/pages/settings/shared/designerStyles'
+import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
 import { ActionParamsEditor } from '@/components/ActionParamsEditor'
 import { ConditionRowEditor } from '@/components/ConditionRowEditor'
 import { AutomationPreview } from '@/components/AutomationPreview'
@@ -57,14 +59,6 @@ const emptyForm = (): FormData => ({
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const overlay: React.CSSProperties = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 9000,
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-}
-const modal: React.CSSProperties = {
-  background: '#fff', borderRadius: 12, width: 680, maxHeight: '90vh',
-  overflow: 'auto', padding: '28px 32px', boxShadow: '0 20px 60px rgba(0,0,0,.18)',
-}
 const chipRow: React.CSSProperties = {
   display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6,
 }
@@ -249,13 +243,19 @@ export function AutoTriggersPage() {
 
       {/* ── Create / Edit Modal ─────────────────────────────────────────────── */}
       {isModalOpen && createPortal(
-        <div style={overlay} onClick={closeModal}>
-          <div style={modal} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 'var(--font-size-section-title)', color: 'var(--color-slate-dark)' }}>{editing ? 'Modifica Trigger' : 'Nuovo Trigger'}</h3>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={closeModal}><X size={20} color="var(--color-slate)" /></button>
-            </div>
-
+        <Modal
+          open
+          onClose={closeModal}
+          title={editing ? 'Modifica Trigger' : 'Nuovo Trigger'}
+          width={680}
+          zIndex={9000}
+          footer={
+            <>
+              <Button variant="secondary" onClick={closeModal} style={{ padding: '7px 14px' }}>Annulla</Button>
+              <Button onClick={handleSave}>{editing ? 'Salva modifiche' : 'Crea trigger'}</Button>
+            </>
+          }
+        >
             {/* Name */}
             <label style={labelS}>Nome</label>
             <input style={inputS} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="es. Auto-assign P1 incidents" />
@@ -333,30 +333,31 @@ export function AutoTriggersPage() {
               actions={form.actions}
               timerMinutes={form.eventType === 'on_timer' ? form.timerDelayMinutes : null}
             />
-
-            {/* Footer buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
-              <button style={btnSecondary} onClick={closeModal}>Annulla</button>
-              <button style={btnPrimary} onClick={handleSave}>{editing ? 'Salva modifiche' : 'Crea trigger'}</button>
-            </div>
-          </div>
-        </div>,
+        </Modal>,
         document.body,
       )}
 
       {/* ── Delete confirmation ─────────────────────────────────────────────── */}
       {deleteId && createPortal(
-        <div style={overlay} onClick={() => setDeleteId(null)}>
-          <div style={{ ...modal, width: 420, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+        <Modal
+          open
+          onClose={() => setDeleteId(null)}
+          title="Eliminare questo trigger?"
+          width={420}
+          zIndex={9000}
+          footerStyle={{ justifyContent: 'center', gap: 10 }}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setDeleteId(null)} style={{ padding: '7px 14px' }}>Annulla</Button>
+              <Button onClick={() => deleteTrigger({ variables: { id: deleteId } })} style={{ background: 'var(--color-danger, #ef4444)' }}>Elimina</Button>
+            </>
+          }
+        >
+          <div style={{ textAlign: 'center' }}>
             <Trash2 size={32} color="var(--color-danger, #ef4444)" style={{ marginBottom: 12 }} />
-            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--font-size-section-title)', color: 'var(--color-slate-dark)' }}>Eliminare questo trigger?</h3>
-            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', marginBottom: 20 }}>Questa azione non puo essere annullata.</p>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 10 }}>
-              <button style={btnSecondary} onClick={() => setDeleteId(null)}>Annulla</button>
-              <button style={{ ...btnPrimary, background: 'var(--color-danger, #ef4444)' }} onClick={() => deleteTrigger({ variables: { id: deleteId } })}>Elimina</button>
-            </div>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0 }}>Questa azione non puo essere annullata.</p>
           </div>
-        </div>,
+        </Modal>,
         document.body,
       )}
     </PageContainer>

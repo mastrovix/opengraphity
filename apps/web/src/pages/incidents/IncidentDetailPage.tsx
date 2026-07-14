@@ -3,12 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/Modal'
-import { CountBadge } from '@/components/ui/CountBadge'
+import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI } from '@/graphql/mutations'
@@ -24,7 +23,7 @@ import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
 import { DetailField } from '@/components/ui/DetailField'
-import { Card, formatDate, timeAgo } from './IncidentCard'
+import { formatDate, timeAgo } from './IncidentCard'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -116,10 +115,7 @@ export function IncidentDetailPage() {
   const [ciSearch,      setCiSearch]      = useState('')
   const [showCISearch,  setShowCISearch]  = useState(false)
 
-  const [descOpen,     setDescOpen]     = useState(true)
-  const [detailsOpen,  setDetailsOpen]  = useState(true)
   const [ciOpen,       setCiOpen]       = useState(true)
-  const [commentsOpen, setCommentsOpen] = useState(true)
   const [timelineOpen, setTimelineOpen] = useState(true)
 
   const { data, loading, refetch } = useQuery<{ incident: Incident | null }>(
@@ -312,31 +308,18 @@ export function IncidentDetailPage() {
         <div>
 
           {/* Descrizione */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setDescOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: descOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.description')}</span>
-              {descOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {descOpen && (
-              <div style={{ padding: 16 }}>
-                {incident.description ? (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{incident.description}</p>
-                ) : (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
-                )}
-              </div>
+          <SectionCard title={t('detail.sections.description')} defaultOpen>
+            {incident.description ? (
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{incident.description}</p>
+            ) : (
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
             )}
-          </Card>
+          </SectionCard>
 
           {/* Dettagli */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setDetailsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: detailsOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.details')}</span>
-              {detailsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {detailsOpen && (
-              <div style={{ padding: 16 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <SectionCard title={t('detail.sections.details')} defaultOpen>
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                   <DetailField label={t('pages.incidents.severity')} value={<SeverityBadge value={incident.severity} />} />
                   <DetailField label={t('sla.title')} value={
                     incident.slaStatus
@@ -457,9 +440,8 @@ export function IncidentDetailPage() {
                     </div>
                   )
                 })()}
-              </div>
-            )}
-          </Card>
+            </div>
+          </SectionCard>
 
           {/* CI Impattati */}
           <IncidentCIList
@@ -481,16 +463,8 @@ export function IncidentDetailPage() {
           <AttachmentsSection entityType="incident" entityId={incident.id} />
 
           {/* Commenti */}
-          <Card style={{ marginBottom: 16, padding: 0 }}>
-            <div onClick={() => setCommentsOpen((p) => !p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: commentsOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('detail.sections.comments')}</span>
-                <CountBadge count={incident.comments.length} />
-              </div>
-              {commentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-            </div>
-            {commentsOpen && (
-              <div style={{ padding: 16 }}>
+          <SectionCard title={t('detail.sections.comments')} count={incident.comments.length} defaultOpen>
+            <div>
                 {incident.comments.length === 0 ? (
                   <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>{t('detail.noCommentsYet')}</p>
                 ) : (
@@ -530,9 +504,8 @@ export function IncidentDetailPage() {
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
-          </Card>
+            </div>
+          </SectionCard>
 
           {/* Internal Chat (agents only) */}
           <InternalChatPanel

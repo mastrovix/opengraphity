@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { ChevronRight, Plus, PlusCircle, X } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { EmptyState } from '@/components/EmptyState'
@@ -319,36 +320,32 @@ export function ChangeDetailPage() {
         )}
 
         {confirmRemoveCI && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-            <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 420, width: '90%', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
-              <h3 style={{ margin: '0 0 12px', fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>Rimuovere CI</h3>
-              <p style={{ margin: '0 0 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-                Rimuovere <strong>{confirmRemoveCI.name}</strong> dal change? Tutti i task associati verranno eliminati.
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Modal
+            open
+            onClose={() => setConfirmRemoveCI(null)}
+            title="Rimuovere CI"
+            width={420}
+            footer={
+              <>
                 <Button variant="secondary" size="xs" onClick={() => setConfirmRemoveCI(null)}>Annulla</Button>
-                <button type="button" onClick={() => void removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>Rimuovi</button>
-              </div>
-            </div>
-          </div>
+                <Button size="xs" onClick={() => void removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>Rimuovi</Button>
+              </>
+            }
+          >
+            <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+              Rimuovere <strong>{confirmRemoveCI.name}</strong> dal change? Tutti i task associati verranno eliminati.
+            </p>
+          </Modal>
         )}
       </SectionCard>
 
       {transitionModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 480, width: '90%', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{transitionModal.label}</h3>
-            <label style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, display: 'block' }}>
-              {transitionModal.inputField ?? 'Note'}
-            </label>
-            <textarea
-              value={transitionNotes}
-              onChange={(e) => setTransitionNotes(e.target.value)}
-              rows={4}
-              style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }}
-              autoFocus
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        <Modal
+          open
+          onClose={() => setTransitionModal(null)}
+          title={transitionModal.label}
+          footer={
+            <>
               <Button variant="secondary" size="xs" onClick={() => setTransitionModal(null)}>Annulla</Button>
               <Button
                 size="xs"
@@ -362,9 +359,20 @@ export function ChangeDetailPage() {
               >
                 Conferma
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <label style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, display: 'block' }}>
+            {transitionModal.inputField ?? 'Note'}
+          </label>
+          <textarea
+            value={transitionNotes}
+            onChange={(e) => setTransitionNotes(e.target.value)}
+            rows={4}
+            style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }}
+            autoFocus
+          />
+        </Modal>
       )}
 
       <AttachmentsSection entityType="change" entityId={change.id} />

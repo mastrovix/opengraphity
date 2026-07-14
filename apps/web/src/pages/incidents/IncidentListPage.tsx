@@ -4,7 +4,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle } from 'lucide-react'
-import { PageTitle } from '@/components/PageTitle'
+import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
@@ -104,19 +104,20 @@ export function IncidentListPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <PageTitle icon={<AlertCircle size={22} color="#38bdf8" />}>
-            {t('pages.incidents.title')}
-          </PageTitle>
+      <ListPageHeader
+        icon={<AlertCircle size={22} color="#38bdf8" />}
+        title={t('pages.incidents.title')}
+        subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.incidents.count', { count: total })}
           </p>
-        </div>
-        <Button onClick={() => navigate('/incidents/new')}>
-          {t('pages.incidents.new')}
-        </Button>
-      </div>
+        }
+        actions={
+          <Button onClick={() => navigate('/incidents/new')}>
+            {t('pages.incidents.new')}
+          </Button>
+        }
+      />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>

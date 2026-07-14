@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { GitPullRequest } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
-import { PageTitle } from '@/components/PageTitle'
+import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
@@ -188,19 +188,20 @@ export function ChangeListPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <PageTitle icon={<GitPullRequest size={22} color="var(--color-brand)" />}>
-            {t('pages.changes.title')}
-          </PageTitle>
+      <ListPageHeader
+        icon={<GitPullRequest size={22} color="var(--color-brand)" />}
+        title={t('pages.changes.title')}
+        subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.changes.count', { count: total })}
           </p>
-        </div>
-        <Button onClick={() => navigate('/changes/new')}>
-          {t('pages.changes.new')}
-        </Button>
-      </div>
+        }
+        actions={
+          <Button onClick={() => navigate('/changes/new')}>
+            {t('pages.changes.new')}
+          </Button>
+        }
+      />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>

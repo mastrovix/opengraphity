@@ -2,6 +2,8 @@ import { useTranslation } from 'react-i18next'
 import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon, LayoutGrid } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
+import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
 import { lookupOrError } from '@/lib/tokens'
 import {
   type ReportTemplate,
@@ -171,10 +173,21 @@ export function ReportListView(props: ReportListViewProps) {
 
       {/* ── New template dialog ────────────────────────────────────────────────── */}
       {showNewDialog && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-            <div style={{ fontWeight: 600, fontSize: 'var(--font-size-section-title)', marginBottom: 20, color: 'var(--color-slate-dark)' }}>Nuovo report</div>
-
+        <Modal
+          open
+          onClose={() => { setShowNewDialog(false); resetNew() }}
+          title="Nuovo report"
+          width={440}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => { setShowNewDialog(false); resetNew() }} style={btnGhost}>Annulla</Button>
+              <Button disabled={!newName || creating} onClick={() => void handleCreateTemplate()}
+                style={{ ...btnPrimary, opacity: !newName || creating ? 0.6 : 1 }}>
+                {creating ? 'Creazione...' : 'Crea report'}
+              </Button>
+            </>
+          }
+        >
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Nome *</label>
               <input value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} placeholder="Nome report..." />
@@ -206,15 +219,7 @@ export function ReportListView(props: ReportListViewProps) {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowNewDialog(false); resetNew() }} style={btnGhost}>Annulla</button>
-              <button disabled={!newName || creating} onClick={() => void handleCreateTemplate()}
-                style={{ ...btnPrimary, opacity: !newName || creating ? 0.6 : 1 }}>
-                {creating ? 'Creazione...' : 'Crea report'}
-              </button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   )

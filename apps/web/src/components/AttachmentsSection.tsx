@@ -3,8 +3,8 @@ import { gql } from '@apollo/client'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ChevronDown, ChevronRight, Paperclip, Trash2, Download, Loader2 } from 'lucide-react'
-import { CountBadge } from '@/components/ui/CountBadge'
+import { Paperclip, Trash2, Download, Loader2 } from 'lucide-react'
+import { SectionCard } from '@/components/ui/SectionCard'
 import { keycloak } from '@/lib/keycloak'
 
 const GET_ATTACHMENTS = gql`
@@ -62,7 +62,6 @@ interface Props {
  */
 export function AttachmentsSection({ entityType, entityId }: Props) {
   const { t } = useTranslation()
-  const [open, setOpen]           = useState(true)
   const [uploading, setUploading] = useState(false)
   const fileInputRef              = useRef<HTMLInputElement>(null)
 
@@ -122,21 +121,8 @@ export function AttachmentsSection({ entityType, entityId }: Props) {
   }
 
   return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 16 }}>
-      <div
-        onClick={() => setOpen((p) => !p)}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? '1px solid #e5e7eb' : 'none' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Paperclip size={15} color="var(--color-slate-light)" />
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('attachments.title')}</span>
-          <CountBadge count={attachments.length} />
-        </div>
-        {open ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-      </div>
-
-      {open && (
-        <div style={{ padding: 16 }}>
+    <SectionCard title={t('attachments.title')} count={attachments.length} defaultOpen>
+        <div>
           {attachments.length === 0 && (
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 12px' }}>{t('attachments.empty')}</p>
           )}
@@ -185,7 +171,6 @@ export function AttachmentsSection({ entityType, entityId }: Props) {
             onChange={(e) => void handleUpload(e.target.files)}
           />
         </div>
-      )}
-    </div>
+    </SectionCard>
   )
 }

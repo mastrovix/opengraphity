@@ -7,7 +7,7 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { toast } from 'sonner'
 import {
-  GitBranch, Plus, Trash2, Pencil, GripVertical, ChevronUp, ChevronDown, X,
+  GitBranch, Plus, Trash2, Pencil, GripVertical, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { GET_BUSINESS_RULES } from '@/graphql/queries'
 import {
@@ -23,6 +23,8 @@ import {
   inputS, selectS, textareaS, labelS, btnPrimary, btnSecondary,
 } from '@/pages/settings/shared/designerStyles'
 import { createPortal } from 'react-dom'
+import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -277,13 +279,20 @@ export function BusinessRulesPage() {
 
       {/* ── Modal ──────────────────────────────────────────────────────────── */}
       {modalOpen && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.35)' }} onClick={() => { setModalOpen(false); resetForm() }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: 680, maxHeight: '88vh', overflowY: 'auto', padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,.18)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}>{editId ? 'Modifica regola' : 'Nuova regola'}</h2>
-              <button onClick={() => { setModalOpen(false); resetForm() }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-
+        <Modal
+          open
+          onClose={() => { setModalOpen(false); resetForm() }}
+          title={editId ? 'Modifica regola' : 'Nuova regola'}
+          width={680}
+          zIndex={9999}
+          footerStyle={{ gap: 10 }}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => { setModalOpen(false); resetForm() }} style={{ padding: '7px 14px' }}>Annulla</Button>
+              <Button onClick={() => void handleSave()}>{editId ? 'Salva modifiche' : 'Crea regola'}</Button>
+            </>
+          }
+        >
             {/* Basic fields */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div>
@@ -382,14 +391,7 @@ export function BusinessRulesPage() {
               conditionLogic={conditionLogic}
               actions={actions}
             />
-
-            {/* Footer */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button style={btnSecondary} onClick={() => { setModalOpen(false); resetForm() }}>Annulla</button>
-              <button style={btnPrimary} onClick={handleSave}>{editId ? 'Salva modifiche' : 'Crea regola'}</button>
-            </div>
-          </div>
-        </div>,
+        </Modal>,
         document.body,
       )}
     </PageContainer>

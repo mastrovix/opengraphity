@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { UsersRound } from 'lucide-react'
-import { PageTitle } from '@/components/PageTitle'
+import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
@@ -90,19 +90,20 @@ export function TeamsPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <PageTitle icon={<UsersRound size={22} color="#38bdf8" />}>
-            {t('pages.teams.title')}
-          </PageTitle>
+      <ListPageHeader
+        icon={<UsersRound size={22} color="#38bdf8" />}
+        title={t('pages.teams.title')}
+        subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.teams.count', { count: total })}
           </p>
-        </div>
-        <Button disabled style={{ fontSize: 14 }}>
-          {t('pages.teams.new')}
-        </Button>
-      </div>
+        }
+        actions={
+          <Button disabled style={{ fontSize: 14 }}>
+            {t('pages.teams.new')}
+          </Button>
+        }
+      />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>

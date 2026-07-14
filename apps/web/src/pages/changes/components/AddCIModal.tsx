@@ -6,7 +6,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
-import { Search, X } from 'lucide-react'
+import { Search } from 'lucide-react'
+import { Modal } from '@/components/Modal'
 import { GET_ALL_CIS } from '@/graphql/queries'
 import { ADD_CI_TO_CHANGE } from '@/graphql/mutations'
 
@@ -34,12 +35,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
   const results = ciData?.allCIs?.items ?? []
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 560, width: '90%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>Aggiungi CI al Change</h3>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
-        </div>
+    <Modal open onClose={onClose} title="Aggiungi CI al Change" width={560}>
         <div style={{ position: 'relative', marginBottom: 12 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-slate-light)' }} />
           <input
@@ -48,7 +44,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
             style={{ width: '100%', padding: '8px 12px 8px 30px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
           />
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', maxHeight: 400 }}>
+        <div style={{ overflowY: 'auto', maxHeight: 400 }}>
           {search.length < 2 && <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: 0 }}>Digita almeno 2 caratteri per cercare</p>}
           {search.length >= 2 && results.length === 0 && <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: 0 }}>Nessun CI trovato</p>}
           {results.map(ci => {
@@ -89,7 +85,6 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
             )
           })}
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

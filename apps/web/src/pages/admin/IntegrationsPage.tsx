@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
-import { Plug, Plus, Trash2, X, Copy, Play, RefreshCw } from 'lucide-react'
+import { Plug, Plus, Trash2, Copy, Play, RefreshCw } from 'lucide-react'
+import { Modal } from '@/components/Modal'
 import { toast } from 'sonner'
 import {
   inputS, selectS, labelS, btnPrimary, btnSecondary,
@@ -44,8 +44,6 @@ const PERMISSIONS = ['incidents:read', 'incidents:write', 'changes:read', 'chang
 const tabS: React.CSSProperties = { padding: '8px 18px', border: 'none', borderBottom: '2px solid transparent', background: 'none', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', cursor: 'pointer' }
 const tabActiveS: React.CSSProperties = { ...tabS, color: 'var(--color-brand)', borderBottomColor: 'var(--color-brand)' }
 const badgeS: React.CSSProperties = { display: 'inline-block', padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', background: '#f0f4ff', color: 'var(--color-brand)', marginRight: 4 }
-const overlayS: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }
-const modalS: React.CSSProperties = { background: '#fff', borderRadius: 12, padding: 24, width: 520, maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.18)' }
 const textareaS: React.CSSProperties = { ...inputS, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)', resize: 'vertical' as const, minHeight: 70 }
 const toggleS = (on: boolean): React.CSSProperties => ({ width: 36, height: 20, borderRadius: 10, background: on ? 'var(--color-brand)' : '#d1d5db', position: 'relative', cursor: 'pointer', border: 'none', transition: 'background .2s' })
 const toggleDot = (on: boolean): React.CSSProperties => ({ position: 'absolute', top: 2, left: on ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' })
@@ -64,18 +62,11 @@ const MODAL_TITLES: Record<string, string> = {
 }
 
 function ModalPortal({ modalType, children, onClose }: { modalType: string; children: React.ReactNode; onClose: () => void }) {
-  return createPortal(
-    <div style={overlayS} onClick={onClose}>
-      <div style={modalS} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-            {MODAL_TITLES[modalType] ?? ''}
-          </span>
-          <X size={18} style={{ cursor: 'pointer', color: 'var(--color-slate)' }} onClick={onClose} />
-        </div>
-        {children}
-      </div>
-    </div>, document.body)
+  return (
+    <Modal open onClose={onClose} title={MODAL_TITLES[modalType] ?? ''} width={520}>
+      {children}
+    </Modal>
+  )
 }
 
 // ── Component ───────────────────────────────────────────────────────────────

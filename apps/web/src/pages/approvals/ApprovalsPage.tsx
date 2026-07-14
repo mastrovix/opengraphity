@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { CheckSquare, Clock, CheckCircle, XCircle, ChevronDown, ChevronRight, ExternalLink, BookOpen, GitPullRequest, AlertCircle } from 'lucide-react'
-import { PageTitle } from '@/components/PageTitle'
+import { ListPageHeader } from '@/components/ListPageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
@@ -387,16 +387,15 @@ export function ApprovalsPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <PageTitle icon={<CheckSquare size={22} color="#38bdf8" />}>
-            {t('pages.approvals.title')}
-          </PageTitle>
+      <ListPageHeader
+        icon={<CheckSquare size={22} color="#38bdf8" />}
+        title={t('pages.approvals.title')}
+        subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {t('pages.approvals.subtitle')}
           </p>
-        </div>
-      </div>
+        }
+      />
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>

@@ -8,13 +8,14 @@ import { toast } from 'sonner'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
 import { CIIcon } from '@/lib/ciIcon'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { CIDynamicForm } from '@/components/CIDynamicForm'
-import { PageTitle } from '@/components/PageTitle'
+import { ListPageHeader } from '@/components/ListPageHeader'
 import { Pagination } from '@/components/ui/Pagination'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
@@ -193,19 +194,20 @@ export function CIListPage() {
 
   return (
     <PageContainer>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <PageTitle icon={<CIIcon icon={ciType.icon} size={22} color="#38bdf8" />}>
-            {ciTypeLabel}
-          </PageTitle>
+      <ListPageHeader
+        icon={<CIIcon icon={ciType.icon} size={22} color="#38bdf8" />}
+        title={ciTypeLabel}
+        subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${total} ${ciTypeLabel.toLowerCase()}`}
           </p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          {newLabel}
-        </Button>
-      </div>
+        }
+        actions={
+          <Button onClick={() => setShowCreate(true)}>
+            {newLabel}
+          </Button>
+        }
+      />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>
@@ -254,24 +256,16 @@ export function CIListPage() {
 
       {/* Create modal */}
       {showCreate && (
-        <div
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false) }}
-        >
-          <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: 28, width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
-            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 20px 0' }}>
-              {newLabel}
-            </h2>
-            <CIDynamicForm
-              ciType={ciType}
-              loading={creating}
-              onCancel={() => setShowCreate(false)}
-              onSubmit={async (values) => {
-                await createCI({ variables: { input: values } })
-              }}
-            />
-          </div>
-        </div>
+        <Modal open onClose={() => setShowCreate(false)} title={newLabel} width={520}>
+          <CIDynamicForm
+            ciType={ciType}
+            loading={creating}
+            onCancel={() => setShowCreate(false)}
+            onSubmit={async (values) => {
+              await createCI({ variables: { input: values } })
+            }}
+          />
+        </Modal>
       )}
     </PageContainer>
   )
