@@ -9,7 +9,8 @@
     "lint": "eslint 'apps/*/src/**/*.{ts,tsx}' 'packages/*/src/**/*.ts'",
     "typecheck": "pnpm --recursive exec tsc --noEmit",
     "neo4j:init": "pnpm --filter @opengraphity/neo4j init",
-    "deploy:web": "pnpm --filter @opengraphity/web build && docker compose -f infra/docker-compose.yml up -d --build web"
+    "deploy:web": "pnpm --filter @opengraphity/web build && docker compose -f infra/docker-compose.yml up -d --build web",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -19,6 +20,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
