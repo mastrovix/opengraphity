@@ -3,7 +3,8 @@
 FROM node:20-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# pnpm 11+ requires Node 22 (node:sqlite) — pin to the 10.x line used locally
+RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 
 WORKDIR /app
 

@@ -5,6 +5,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
+import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { keycloak } from '@/lib/keycloak'
 import { lookupOrError } from '@/lib/tokens'
@@ -84,6 +85,9 @@ export function ServiceRequestDetailPage() {
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || 'Nessuna descrizione.'}</p>
             </SectionCard>
           </div>
+
+          {/* Allegati */}
+          <AttachmentsSection entityType="service_request" entityId={sr.id} />
 
           {/* Internal Chat */}
           <InternalChatPanel entityType="service_request" entityId={sr.id} currentUserId={keycloak.subject ?? ''} />

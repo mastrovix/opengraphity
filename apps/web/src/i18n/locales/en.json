@@ -695,5 +695,17 @@
       "field": "Field",
       "allSteps": "All steps"
     }
+  },
+  "attachments": {
+    "title": "Attachments",
+    "empty": "No attachments.",
+    "upload": "Attach file",
+    "uploading": "Uploading…",
+    "uploaded": "File uploaded",
+    "uploadFailed": "Upload failed",
+    "download": "Download",
+    "downloadFailed": "Download failed",
+    "deleted": "Attachment deleted",
+    "confirmDelete": "Delete this attachment?"
   }
 }

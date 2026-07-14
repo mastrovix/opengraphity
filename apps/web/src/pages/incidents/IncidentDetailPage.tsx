@@ -16,6 +16,7 @@ import { IncidentHeader } from './IncidentHeader'
 import { IncidentTimeline } from './IncidentTimeline'
 import { IncidentCIList } from './IncidentCIList'
 import { WatcherBar } from '@/components/WatcherBar'
+import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
@@ -466,6 +467,9 @@ export function IncidentDetailPage() {
             onAddCI={(ciId, relationType) => void addCI({ variables: { incidentId: incident.id, ciId, relationType } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
           />
+
+          {/* Allegati */}
+          <AttachmentsSection entityType="incident" entityId={incident.id} />
 
           {/* Commenti */}
           <Card style={{ marginBottom: 16, padding: 0 }}>

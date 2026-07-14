@@ -24,6 +24,7 @@ import { ProblemHeader } from './ProblemHeader'
 import { ProblemTimeline } from './ProblemTimeline'
 import { ProblemCIList, ProblemIncidentList, ProblemChangeList } from './ProblemLinkedEntities'
 import { WatcherBar } from '@/components/WatcherBar'
+import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
@@ -416,6 +417,9 @@ export function ProblemDetailPage() {
             timelineOpen={timelineOpen}
             onToggle={() => setTimelineOpen((p) => !p)}
           />
+
+          {/* Allegati */}
+          <AttachmentsSection entityType="problem" entityId={problem.id} />
 
           {/* Commenti */}
           <Card style={{ marginBottom: 16, padding: 0 }}>

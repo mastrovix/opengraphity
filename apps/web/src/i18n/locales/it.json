@@ -695,5 +695,17 @@
       "field": "Campo",
       "allSteps": "Tutti gli step"
     }
+  },
+  "attachments": {
+    "title": "Allegati",
+    "empty": "Nessun allegato.",
+    "upload": "Allega file",
+    "uploading": "Caricamento…",
+    "uploaded": "File caricato",
+    "uploadFailed": "Caricamento fallito",
+    "download": "Scarica",
+    "downloadFailed": "Download fallito",
+    "deleted": "Allegato eliminato",
+    "confirmDelete": "Eliminare questo allegato?"
   }
 }

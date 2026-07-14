@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { ChevronRight, Plus, PlusCircle, X } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { EmptyState } from '@/components/EmptyState'
 import {
   GET_CHANGE,
@@ -364,6 +365,8 @@ export function ChangeDetailPage() {
           </div>
         </div>
       )}
+
+      <AttachmentsSection entityType="change" entityId={change.id} />
 
       <AuditTimeline audit={audit} />
     </PageContainer>
