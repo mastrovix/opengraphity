@@ -57,9 +57,9 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         // workflow's entity_type via the instance, then pick the step marked
         // as closure (category='closed' preferred, else first terminal).
         const wiRes = await session.executeRead((tx) => tx.run(`
-          MATCH (wi:WorkflowInstance {id: $instanceId})
+          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
           RETURN wi.entity_type AS entityType
-        `, { instanceId }))
+        `, { instanceId, tenantId }))
         const entityType = wiRes.records[0]?.get('entityType') as string | undefined
         if (!entityType) {
           logger.warn({ instanceId, entityId }, '[workflow-jobs] auto_close: workflow instance not found')
@@ -239,7 +239,7 @@ async function processNotificationJob(job: Job): Promise<void> {
     }
 
     case 'timer_wait': {
-      const { instanceId, toStep, tenantId } = job.data as { instanceId: string; toStep: string; tenantId: string }
+      const { instanceId, toStep } = job.data as { instanceId: string; toStep: string; tenantId: string }
       const session = getSession(undefined, 'WRITE')
       try {
         const result = await workflowEngine.transition(

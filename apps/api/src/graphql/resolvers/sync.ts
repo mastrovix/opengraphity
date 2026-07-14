@@ -349,7 +349,7 @@ export const syncResolvers = {
           params,
         ))
         const row = await runQueryOne<{ p: Props }>(session,
-          `MATCH (n:SyncSource {id: $id}) RETURN properties(n) AS p`, { id },
+          `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`, { id, tenantId: ctx.tenantId },
         )
         void audit(ctx, 'sync_source.updated', 'SyncSource', id)
         return mapSource(row!.p)

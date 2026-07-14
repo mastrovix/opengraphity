@@ -298,8 +298,10 @@ export function buildMetamodelMutations() {
       await withSession(async session => {
         await session.executeWrite(tx =>
           tx.run(
-            `MATCH (t:CITypeDefinition {id: $id}) SET t += $updates`,
-            { id: args.id, updates },
+            `MATCH (t:CITypeDefinition {id: $id})
+             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+             SET t += $updates`,
+            { id: args.id, tenantId: ctx.tenantId, updates },
           ),
         )
       }, true)
@@ -320,11 +322,12 @@ export function buildMetamodelMutations() {
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $id})
+            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
             OPTIONAL MATCH (t)-[:HAS_FIELD]->(f)
             OPTIONAL MATCH (t)-[:HAS_RELATION]->(rel)
             OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr)
             DETACH DELETE t, f, rel, sr
-          `, { id: args.id }),
+          `, { id: args.id, tenantId: ctx.tenantId }),
         )
       }, true)
       invalidateSchema(ctx.tenantId)
@@ -408,8 +411,9 @@ export function buildMetamodelMutations() {
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
+            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
             DETACH DELETE f
-          `, { typeId: args.typeId, fieldId: args.fieldId }),
+          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
         )
       }, true)
       invalidateSchema(ctx.tenantId)
@@ -429,6 +433,7 @@ export function buildMetamodelMutations() {
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
+            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
             CREATE (r:CIRelationDefinition {
               id:                $relId,
               name:              $name,
@@ -441,7 +446,7 @@ export function buildMetamodelMutations() {
             })
             CREATE (t)-[:HAS_RELATION]->(r)
           `, {
-            typeId, relId,
+            typeId, tenantId: ctx.tenantId, relId,
             name:             input['name'],
             label:            input['label'],
             relationshipType: input['relationshipType'],
@@ -467,8 +472,9 @@ export function buildMetamodelMutations() {
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_RELATION]->(r:CIRelationDefinition {id: $relationId})
+            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
             DETACH DELETE r
-          `, { typeId: args.typeId, relationId: args.relationId }),
+          `, { typeId: args.typeId, relationId: args.relationId, tenantId: ctx.tenantId }),
         )
       }, true)
       invalidateSchema(ctx.tenantId)

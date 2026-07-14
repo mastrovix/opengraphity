@@ -3,7 +3,6 @@ import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import {
   decryptCredentials,
   getConnector,
-  applyMappingRules,
 } from '@opengraphity/discovery'
 import type { SyncSourceConfig } from '@opengraphity/discovery'
 import { logger } from '../lib/logger.js'
@@ -37,7 +36,7 @@ export const syncQueue = new Queue<SyncJobPayload>('discovery-sync', { connectio
 // ── Processor ─────────────────────────────────────────────────────────────────
 
 async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
-  const { runId, sourceId, tenantId, syncType } = job.data
+  const { runId, sourceId, tenantId } = job.data
   const startedAt = Date.now()
 
   logger.info({ runId, sourceId, tenantId }, '[sync] Starting sync job')
@@ -84,7 +83,7 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
   // ── Get connector ─────────────────────────────────────────────────────────
   const connector = getConnector(source.connector_type)
   if (!connector) {
-    await updateRunStatus(runId, 'failed', 0, `Connector "${source.connector_type}" not registered`)
+    await updateRunStatus(runId, tenantId, 'failed', 0, `Connector "${source.connector_type}" not registered`)
     return
   }
 
@@ -93,12 +92,12 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
   try {
     creds = decryptCredentials(encryptedCreds, ENCRYPTION_KEY)
   } catch (err) {
-    await updateRunStatus(runId, 'failed', 0, `Failed to decrypt credentials: ${String(err)}`)
+    await updateRunStatus(runId, tenantId, 'failed', 0, `Failed to decrypt credentials: ${String(err)}`)
     return
   }
 
   // ── Mark run as running ───────────────────────────────────────────────────
-  await updateRunStatus(runId, 'running', 0)
+  await updateRunStatus(runId, tenantId, 'running', 0)
 
   // ── Stream and reconcile CIs ──────────────────────────────────────────────
   const stats: ReconciliationStats = {
@@ -132,15 +131,15 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logger.error({ err, runId, sourceId }, '[sync] Scan error')
-    await updateRunStatus(runId, 'failed', Date.now() - startedAt, msg, stats)
-    await updateSourceMeta(sourceId, 'failed')
+    await updateRunStatus(runId, tenantId, 'failed', Date.now() - startedAt, msg, stats)
+    await updateSourceMeta(sourceId, tenantId, 'failed')
     await publishSyncEvent('sync.failed', { runId, sourceId, tenantId, error: msg, stats })
     return
   }
 
   const durationMs = Date.now() - startedAt
-  await updateRunStatus(runId, 'completed', durationMs, undefined, stats)
-  await updateSourceMeta(sourceId, 'completed', durationMs)
+  await updateRunStatus(runId, tenantId, 'completed', durationMs, undefined, stats)
+  await updateSourceMeta(sourceId, tenantId, 'completed', durationMs)
   await publishSyncEvent('sync.completed', { runId, sourceId, tenantId, stats })
 
   logger.info({ runId, sourceId, durationMs, ...stats }, '[sync] Sync completed')
@@ -150,6 +149,7 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
 
 async function updateRunStatus(
   runId:      string,
+  tenantId:   string,
   status:     string,
   durationMs: number,
   errorMsg?:  string,
@@ -159,7 +159,7 @@ async function updateRunStatus(
   const s   = getSession()
   try {
     await s.executeWrite(tx => tx.run(
-      `MATCH (r:SyncRun {id: $runId})
+      `MATCH (r:SyncRun {id: $runId, tenant_id: $tenantId})
        SET r.status       = $status,
            r.duration_ms  = $durationMs,
            r.error_message = $errorMsg,
@@ -173,7 +173,7 @@ async function updateRunStatus(
            r.relations_removed = $relRemoved,
            r.updated_at   = $now`,
       {
-        runId, status, durationMs, now,
+        runId, tenantId, status, durationMs, now,
         errorMsg:   errorMsg ?? null,
         completedAt: status !== 'running' ? now : null,
         ciCreated:    stats?.ciCreated       ?? 0,
@@ -192,6 +192,7 @@ async function updateRunStatus(
 
 async function updateSourceMeta(
   sourceId:   string,
+  tenantId:   string,
   status:     string,
   durationMs?: number,
 ): Promise<void> {
@@ -199,10 +200,10 @@ async function updateSourceMeta(
   const s   = getSession()
   try {
     await s.executeWrite(tx => tx.run(
-      `MATCH (n:SyncSource {id: $sourceId})
+      `MATCH (n:SyncSource {id: $sourceId, tenant_id: $tenantId})
        SET n.last_sync_at = $now, n.last_sync_status = $status,
            n.last_sync_duration_ms = $durationMs, n.updated_at = $now`,
-      { sourceId, now, status, durationMs: durationMs ?? null },
+      { sourceId, tenantId, now, status, durationMs: durationMs ?? null },
     ))
   } finally {
     await s.close()

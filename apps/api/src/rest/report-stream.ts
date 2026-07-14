@@ -75,10 +75,10 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
     // 3. Load history (last 10 messages)
     const histResult = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (c:ReportConversation {id: $convId})-[:HAS_MESSAGE]->(m:ReportMessage)
+        `MATCH (c:ReportConversation {id: $convId, tenant_id: $tenantId})-[:HAS_MESSAGE]->(m:ReportMessage)
          RETURN m.role AS role, m.content AS content
          ORDER BY m.created_at ASC LIMIT 10`,
-        { convId },
+        { convId, tenantId },
       ),
     )
     const history = histResult.records.map((r) => ({

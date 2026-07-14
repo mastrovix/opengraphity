@@ -217,9 +217,11 @@ export async function createSectionWithNodesEdges(
   sectionId: string,
   order: number,
   input: SectionInput,
+  tenantId: string,
 ) {
   await session.executeWrite(tx =>
     tx.run(`
+      MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})
       CREATE (s:ReportSection {
         id:                $id,
         template_id:       $templateId,
@@ -233,11 +235,9 @@ export async function createSectionWithNodesEdges(
         limit_val:         $limit,
         sort_dir:          $sortDir
       })
-      WITH s
-      MATCH (r:ReportTemplate {id: $templateId})
       CREATE (r)-[:HAS_SECTION]->(s)
     `, {
-      id: sectionId, templateId, order,
+      id: sectionId, templateId, tenantId, order,
       title: input.title, chartType: input.chartType,
       groupByNodeId: input.groupByNodeId ?? null,
       groupByField:  input.groupByField ?? null,
@@ -251,7 +251,7 @@ export async function createSectionWithNodesEdges(
   for (const node of input.nodes) {
     const nodeId = uuidv4()
     await session.executeWrite(tx => tx.run(`
-      MATCH (s:ReportSection {id: $sectionId})
+      MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
       CREATE (s)-[:HAS_NODE]->(n:ReportNode {
         id:             $id,
         temp_id:        $tempId,
@@ -267,7 +267,7 @@ export async function createSectionWithNodesEdges(
         selected_fields: $selectedFields
       })
     `, {
-      sectionId, id: nodeId, tempId: node.id,
+      sectionId, tenantId, id: nodeId, tempId: node.id,
       entityType: node.entityType, neo4jLabel: node.neo4jLabel,
       label: node.label, isResult: node.isResult, isRoot: node.isRoot,
       positionX: node.positionX, positionY: node.positionY,

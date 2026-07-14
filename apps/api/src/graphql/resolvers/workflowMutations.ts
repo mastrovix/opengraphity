@@ -88,11 +88,11 @@ async function publishNotifyRuleActions(
 ): Promise<void> {
   const result = await session.executeRead((tx) =>
     tx.run(
-      `MATCH (wi:WorkflowInstance {id: $instanceId})
+      `MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
        MATCH (wd:WorkflowDefinition {id: wi.definition_id})
        MATCH (s:WorkflowStep {definition_id: wd.id, name: $stepName})
        RETURN s.enter_actions AS enterActions`,
-      { instanceId, stepName },
+      { instanceId, stepName, tenantId },
     ),
   )
   if (!result.records.length) return
@@ -173,7 +173,8 @@ export async function updateWorkflowTransition(
   return withSession(async (session) => {
     await session.executeWrite((tx) =>
       tx.run(`
-        MATCH ()-[t:TRANSITIONS_TO {id: $transitionId}]->()
+        MATCH (src:WorkflowStep)-[t:TRANSITIONS_TO {id: $transitionId}]->()
+        MATCH (:WorkflowDefinition {id: src.definition_id, tenant_id: $tenantId})
         SET t.label          = coalesce($label, t.label),
             t.trigger        = coalesce($trigger, t.trigger),
             t.requires_input = $requiresInput,
@@ -182,6 +183,7 @@ export async function updateWorkflowTransition(
             t.timer_hours    = coalesce($timerHours, t.timer_hours)
       `, {
         transitionId,
+        tenantId: ctx.tenantId,
         label:         label         ?? null,
         trigger:       trigger       ?? null,
         requiresInput,
@@ -248,26 +250,29 @@ export async function executeWorkflowTransition(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
+    // Tenant-isolation guard: the instance must belong to the caller's tenant.
+    // Everything downstream (engine.transition, re-reads by instanceId) relies
+    // on this check having passed.
     // Pre-fetch entity data for template/condition evaluation in actions
     const entityDataResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (wi:WorkflowInstance {id: $instanceId})
-        MATCH (entity {id: wi.entity_id, tenant_id: wi.tenant_id})
+        MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
+        OPTIONAL MATCH (entity {id: wi.entity_id, tenant_id: $tenantId})
         OPTIONAL MATCH (entity)-[:ASSIGNED_TO]->(assignee)
         OPTIONAL MATCH (entity)-[:ASSIGNED_TO_TEAM]->(team)
         RETURN properties(entity) AS entityData,
                assignee.id AS assigned_to,
                team.id     AS assigned_team
-      `, { instanceId }),
+      `, { instanceId, tenantId: ctx.tenantId }),
     )
-    const entityData: Record<string, unknown> =
-      entityDataResult.records.length > 0
-        ? {
-            ...(entityDataResult.records[0].get('entityData') as Record<string, unknown>),
-            assigned_to:   entityDataResult.records[0].get('assigned_to') ?? null,
-            assigned_team: entityDataResult.records[0].get('assigned_team') ?? null,
-          }
-        : {}
+    if (entityDataResult.records.length === 0) {
+      throw new Error(`Workflow instance not found: ${instanceId}`)
+    }
+    const entityData: Record<string, unknown> = {
+      ...((entityDataResult.records[0].get('entityData') as Record<string, unknown> | null) ?? {}),
+      assigned_to:   entityDataResult.records[0].get('assigned_to') ?? null,
+      assigned_team: entityDataResult.records[0].get('assigned_team') ?? null,
+    }
 
     const actionCtx: ActionContext = {
       userId:     ctx.userId,
@@ -295,7 +300,7 @@ export async function executeWorkflowTransition(
         await session.executeWrite((tx) =>
           tx.run(
             `CREATE (e:${label} $props) RETURN e.id AS id`,
-            { props: { id, status: initialStatus, created_at: now, updated_at: now, ...nodeData } },
+            { props: { id, tenant_id: ctx.tenantId, status: initialStatus, created_at: now, updated_at: now, ...nodeData } },
           ),
         )
 
@@ -311,10 +316,10 @@ export async function executeWorkflowTransition(
               relType === 'CAUSED_BY' ? [label, parentLabel] : [label, parentLabel]
             await session.executeWrite((tx) =>
               tx.run(
-                `MATCH (child:${childLabel} {id: $childId})
-                 MATCH (parent:${parentLabelFinal} {id: $parentId})
+                `MATCH (child:${childLabel} {id: $childId, tenant_id: $tenantId})
+                 MATCH (parent:${parentLabelFinal} {id: $parentId, tenant_id: $tenantId})
                  MERGE (child)-[:${relType}]->(parent)`,
-                { childId: id, parentId: parent_id },
+                { childId: id, parentId: parent_id, tenantId: ctx.tenantId },
               ),
             )
           }
@@ -429,7 +434,7 @@ export async function executeWorkflowTransition(
     // Merge entity data with transition notes (notes map to resolution_notes/root_cause).
     if (entityData && Object.keys(entityData).length > 0) {
       const entityTypeRaw = await session.executeRead((tx) =>
-        tx.run(`MATCH (wi:WorkflowInstance {id: $instanceId}) RETURN wi.entity_type AS et`, { instanceId }),
+        tx.run(`MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId}) RETURN wi.entity_type AS et`, { instanceId, tenantId: ctx.tenantId }),
       )
       const entityType = entityTypeRaw.records[0]?.get('et') as string | null
       if (entityType) {
@@ -568,15 +573,16 @@ export async function saveWorkflowChanges(
     if (transitions.length > 0) {
       await session.executeWrite((tx) =>
         tx.run(`
+          MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
           UNWIND $transitions AS tr
-          MATCH ()-[t:TRANSITIONS_TO {id: tr.transitionId}]->()
+          MATCH (src:WorkflowStep {definition_id: wd.id})-[t:TRANSITIONS_TO {id: tr.transitionId}]->()
           SET t.label          = coalesce(tr.label, t.label),
               t.trigger        = coalesce(tr.trigger, t.trigger),
               t.requires_input = tr.requiresInput,
               t.input_field    = tr.inputField,
               t.condition      = tr.condition,
               t.timer_hours    = tr.timerHours
-        `, { transitions }),
+        `, { transitions, definitionId, tenantId: ctx.tenantId }),
       )
     }
     // Update step properties (label, enterActions, exitActions, metadata)

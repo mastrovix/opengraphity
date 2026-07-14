@@ -56,11 +56,11 @@ export const Mutation = {
         try {
           await shareSession.executeWrite(tx =>
             tx.run(`
-              MATCH (r:ReportTemplate {id: $id})
+              MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})
               UNWIND $teamIds AS teamId
-              MATCH (t:Team {id: teamId})
+              MATCH (t:Team {id: teamId, tenant_id: $tenantId})
               MERGE (r)-[:SHARED_WITH]->(t)
-            `, { id, teamIds: args.input.sharedWithTeamIds }),
+            `, { id, tenantId: ctx.tenantId, teamIds: args.input.sharedWithTeamIds }),
           )
         } finally {
           await shareSession.close()
@@ -114,18 +114,18 @@ export const Mutation = {
         try {
           await shareSession.executeWrite(tx =>
             tx.run(`
-              MATCH (r:ReportTemplate {id: $id})-[rel:SHARED_WITH]->()
+              MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})-[rel:SHARED_WITH]->()
               DELETE rel
-            `, { id: args.id }),
+            `, { id: args.id, tenantId: ctx.tenantId }),
           )
           if (args.input.sharedWithTeamIds!.length > 0) {
             await shareSession.executeWrite(tx =>
               tx.run(`
-                MATCH (r:ReportTemplate {id: $id})
+                MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})
                 UNWIND $teamIds AS teamId
-                MATCH (t:Team {id: teamId})
+                MATCH (t:Team {id: teamId, tenant_id: $tenantId})
                 MERGE (r)-[:SHARED_WITH]->(t)
-              `, { id: args.id, teamIds: args.input.sharedWithTeamIds }),
+              `, { id: args.id, tenantId: ctx.tenantId, teamIds: args.input.sharedWithTeamIds }),
             )
           }
         } finally {
@@ -168,13 +168,13 @@ export const Mutation = {
     try {
       const orderRes = await session.executeRead(tx =>
         tx.run(`
-          MATCH (r:ReportTemplate {id: $templateId})-[:HAS_SECTION]->(s:ReportSection)
+          MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection)
           RETURN coalesce(max(s.order), -1) + 1 AS nextOrder
-        `, { templateId: args.templateId }),
+        `, { templateId: args.templateId, tenantId: ctx.tenantId }),
       )
       const order = Math.round(Number(orderRes.records[0]?.get('nextOrder') ?? 0))
 
-      await createSectionWithNodesEdges(session, args.templateId, sectionId, order, args.input)
+      await createSectionWithNodesEdges(session, args.templateId, sectionId, order, args.input, ctx.tenantId)
     } finally {
       await session.close()
     }
@@ -191,9 +191,9 @@ export const Mutation = {
     try {
       const res = await session.executeRead(tx =>
         tx.run(`
-          MATCH (r:ReportTemplate)-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
+          MATCH (r:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
           RETURN r.id AS templateId, s.order AS order
-        `, { sectionId: args.sectionId }),
+        `, { sectionId: args.sectionId, tenantId: ctx.tenantId }),
       )
       if (!res.records.length) throw new NotFoundError('ReportSection', args.sectionId)
       templateId = res.records[0].get('templateId') as string
@@ -202,18 +202,18 @@ export const Mutation = {
       // Delete old section nodes (DETACH DELETE cascades REPORT_EDGE relationships)
       await session.executeWrite(tx =>
         tx.run(`
-          MATCH (s:ReportSection {id: $sectionId})-[:HAS_NODE]->(n:ReportNode)
+          MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})-[:HAS_NODE]->(n:ReportNode)
           DETACH DELETE n
-        `, { sectionId: args.sectionId }),
+        `, { sectionId: args.sectionId, tenantId: ctx.tenantId }),
       )
       await session.executeWrite(tx =>
         tx.run(`
-          MATCH (s:ReportSection {id: $sectionId})
+          MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
           DETACH DELETE s
-        `, { sectionId: args.sectionId }),
+        `, { sectionId: args.sectionId, tenantId: ctx.tenantId }),
       )
 
-      await createSectionWithNodesEdges(session, templateId, args.sectionId, order, args.input)
+      await createSectionWithNodesEdges(session, templateId, args.sectionId, order, args.input, ctx.tenantId)
     } finally {
       await session.close()
     }
@@ -229,10 +229,10 @@ export const Mutation = {
     try {
       await session.executeWrite(tx =>
         tx.run(`
-          MATCH (s:ReportSection {id: $sectionId})
+          MATCH (:ReportTemplate {id: $templateId, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
           OPTIONAL MATCH (s)-[:HAS_NODE]->(n:ReportNode)
           DETACH DELETE s, n
-        `, { sectionId: args.sectionId }),
+        `, { sectionId: args.sectionId, templateId: args.templateId, tenantId: ctx.tenantId }),
       )
     } finally {
       await session.close()
@@ -250,9 +250,9 @@ export const Mutation = {
       for (let i = 0; i < args.sectionIds.length; i++) {
         await session.executeWrite(tx =>
           tx.run(`
-            MATCH (s:ReportSection {id: $sectionId})
+            MATCH (:ReportTemplate {id: $templateId, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
             SET s.order = $order
-          `, { sectionId: args.sectionIds[i], order: i }),
+          `, { sectionId: args.sectionIds[i], templateId: args.templateId, tenantId: ctx.tenantId, order: i }),
         )
       }
     } finally {
