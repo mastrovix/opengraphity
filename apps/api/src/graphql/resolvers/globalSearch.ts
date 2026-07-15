@@ -2,12 +2,13 @@ import { withSession, ciTypeFromLabels, runQuery } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
 
-// Same whitelist as ci.ts — searchable CI labels
-const CI_LABELS = [
-  'Application', 'Database', 'DatabaseInstance', 'Server', 'Certificate',
-  'SslCertificate', 'VirtualMachine', 'NetworkDevice', 'Storage',
-  'CloudService', 'ApiEndpoint', 'Microservice',
-]
+const TICKET_LABELS: Record<string, string> = {
+  Incident:       'incident',
+  Change:         'change',
+  Problem:        'problem',
+  ServiceRequest: 'service_request',
+  KBArticle:      'kb_article',
+}
 
 export interface SearchHit {
   entityType: string
@@ -19,10 +20,20 @@ export interface SearchHit {
   slug:       string | null
 }
 
+/** Escape Lucene syntax and turn each term into a prefix match. */
+function toLucene(raw: string): string {
+  const terms = raw
+    .split(/\s+/)
+    .map((t) => t.replace(/[+\-&|!(){}[\]^"~*?:\\/]/g, (c) => `\\${c}`))
+    .filter(Boolean)
+  if (!terms.length) return ''
+  return terms.map((t) => `${t}*`).join(' AND ')
+}
+
 /**
- * Tenant-scoped search across the main ITSM entities (title/number/name,
- * case-insensitive CONTAINS). Powers the command palette — a handful of
- * per-label indexed lookups with small limits, not a fulltext engine.
+ * Tenant-scoped search across the main ITSM entities, backed by the
+ * `global_search` fulltext index (see infra/neo4j/init/constraints.cypher) —
+ * indexed prefix search instead of unindexed CONTAINS scans.
  */
 async function globalSearch(
   _: unknown,
@@ -31,77 +42,39 @@ async function globalSearch(
 ): Promise<SearchHit[]> {
   const q = args.query.trim()
   if (q.length < 2) return []
-  const limit = Math.min(Math.max(args.limitPerType ?? 5, 1), 20)
+  const limitPerType = Math.min(Math.max(args.limitPerType ?? 5, 1), 20)
+  const lucene = toLucene(q)
+  if (!lucene) return []
 
   return withSession(async (session) => {
-    const params = { tenantId: ctx.tenantId, q: q.toLowerCase(), limit }
+    // Over-fetch, then cap per type in JS: the index returns global relevance
+    // order, and one very common type must not crowd out the others.
+    const rows = await runQuery<{ props: Props; labels: string[] }>(session, `
+      CALL db.index.fulltext.queryNodes('global_search', $lucene) YIELD node, score
+      WHERE node.tenant_id = $tenantId
+      RETURN properties(node) AS props, labels(node) AS labels
+      ORDER BY score DESC
+      LIMIT toInteger($fetchLimit)
+    `, { lucene, tenantId: ctx.tenantId, fetchLimit: limitPerType * 12 })
 
-    // ITSM entities: matched on title or number
-    const TICKET_TYPES: Array<{ label: string; entityType: string }> = [
-      { label: 'Incident',       entityType: 'incident' },
-      { label: 'Change',         entityType: 'change' },
-      { label: 'Problem',        entityType: 'problem' },
-      { label: 'ServiceRequest', entityType: 'service_request' },
-    ]
-
+    const perType = new Map<string, number>()
     const hits: SearchHit[] = []
 
-    for (const { label, entityType } of TICKET_TYPES) {
-      const rows = await runQuery<{ props: Props }>(session, `
-        MATCH (n:${label} {tenant_id: $tenantId})
-        WHERE toLower(n.title) CONTAINS $q OR toLower(coalesce(n.number, n.code, '')) CONTAINS $q
-        RETURN properties(n) AS props
-        ORDER BY n.created_at DESC LIMIT toInteger($limit)
-      `, params)
-      for (const r of rows) {
-        hits.push({
-          entityType,
-          id:     r.props['id'] as string,
-          number: (r.props['number'] ?? r.props['code'] ?? null) as string | null,
-          title:  r.props['title'] as string,
-          status: (r.props['status'] ?? null) as string | null,
-          ciType: null,
-          slug:   null,
-        })
-      }
-    }
+    for (const r of rows) {
+      const ticketLabel = r.labels.find((l) => TICKET_LABELS[l])
+      const entityType  = ticketLabel ? TICKET_LABELS[ticketLabel]! : 'ci'
+      const count = perType.get(entityType) ?? 0
+      if (count >= limitPerType) continue
+      perType.set(entityType, count + 1)
 
-    // Configuration items: matched on name
-    const ciLabelFilter = CI_LABELS.map((l) => `n:${l}`).join(' OR ')
-    const ciRows = await runQuery<{ props: Props; labels: string[] }>(session, `
-      MATCH (n) WHERE (${ciLabelFilter}) AND n.tenant_id = $tenantId
-        AND toLower(n.name) CONTAINS $q
-      RETURN properties(n) AS props, labels(n) AS labels
-      ORDER BY n.name ASC LIMIT toInteger($limit)
-    `, params)
-    for (const r of ciRows) {
       hits.push({
-        entityType: 'ci',
+        entityType,
         id:     r.props['id'] as string,
-        number: null,
-        title:  r.props['name'] as string,
+        number: (r.props['number'] ?? r.props['code'] ?? null) as string | null,
+        title:  (r.props['title'] ?? r.props['name'] ?? '') as string,
         status: (r.props['status'] ?? null) as string | null,
-        ciType: ciTypeFromLabels(r.labels),
-        slug:   null,
-      })
-    }
-
-    // KB articles: matched on title, navigated by slug
-    const kbRows = await runQuery<{ props: Props }>(session, `
-      MATCH (n:KBArticle {tenant_id: $tenantId})
-      WHERE toLower(n.title) CONTAINS $q
-      RETURN properties(n) AS props
-      ORDER BY n.updated_at DESC LIMIT toInteger($limit)
-    `, params)
-    for (const r of kbRows) {
-      hits.push({
-        entityType: 'kb_article',
-        id:     r.props['id'] as string,
-        number: null,
-        title:  r.props['title'] as string,
-        status: (r.props['status'] ?? null) as string | null,
-        ciType: null,
-        slug:   (r.props['slug'] ?? null) as string | null,
+        ciType: entityType === 'ci' ? ciTypeFromLabels(r.labels) : null,
+        slug:   entityType === 'kb_article' ? ((r.props['slug'] ?? null) as string | null) : null,
       })
     }
 

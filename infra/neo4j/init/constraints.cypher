@@ -30,3 +30,10 @@ CREATE INDEX idx_logentry_tenant   IF NOT EXISTS FOR (n:LogEntry)            ON 
 CREATE INDEX idx_anomaly_tenant    IF NOT EXISTS FOR (n:Anomaly)             ON (n.tenant_id);
 CREATE INDEX idx_workflow_tenant   IF NOT EXISTS FOR (n:WorkflowDefinition)  ON (n.tenant_id);
 CREATE INDEX idx_dashboard_tenant  IF NOT EXISTS FOR (n:DashboardConfig)     ON (n.tenant_id);
+
+// ── Fulltext index for the command-palette global search ─────────────────────
+// CONTAINS on 278k+ nodes cannot use range indexes; the fulltext index gives
+// indexed prefix search across every searchable entity type.
+CREATE FULLTEXT INDEX global_search IF NOT EXISTS
+FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice)
+ON EACH [n.title, n.number, n.code, n.name];

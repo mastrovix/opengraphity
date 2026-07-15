@@ -30,7 +30,7 @@ const globalSearch = globalSearchResolvers.Query.globalSearch
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator' }
 
-type QueryParams = { tenantId: string; q: string; limit: number }
+type QueryParams = { tenantId: string; lucene: string; fetchLimit: number }
 const paramsOfCall = (i: number) => vi.mocked(runQuery).mock.calls[i]![2] as QueryParams
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -50,12 +50,11 @@ describe('globalSearch', () => {
   })
 
   it('mappa i risultati in SearchHit con entityType/id/title corretti', async () => {
-    vi.mocked(runQuery).mockImplementation(async (_session, cypher) => {
-      if (cypher.includes('(n:Incident'))  return [{ props: { id: 'inc-1', number: 'INC0001', title: 'Server down', status: 'open' } }] as never
-      if (cypher.includes('n:Application')) return [{ props: { id: 'ci-1', name: 'web-01', status: 'active' }, labels: ['Server'] }] as never
-      if (cypher.includes('(n:KBArticle'))  return [{ props: { id: 'kb-1', title: 'Reboot guide', status: 'published', slug: 'reboot-guide' } }] as never
-      return [] as never
-    })
+    vi.mocked(runQuery).mockResolvedValue([
+      { props: { id: 'inc-1', number: 'INC0001', title: 'Server down', status: 'open' }, labels: ['Incident'] },
+      { props: { id: 'ci-1', name: 'web-01', status: 'active' }, labels: ['Server'] },
+      { props: { id: 'kb-1', title: 'Reboot guide', status: 'published', slug: 'reboot-guide' }, labels: ['KBArticle'] },
+    ] as never)
 
     const hits = await globalSearch(null, { query: 'serv' }, ctx)
 
@@ -89,36 +88,43 @@ describe('globalSearch', () => {
     })
   })
 
-  it('clampa limitPerType al massimo di 20', async () => {
+  it('clampa limitPerType: max 20, min 1, default 5 (fetchLimit = x12)', async () => {
     await globalSearch(null, { query: 'serv', limitPerType: 999 }, ctx)
+    expect(paramsOfCall(0).fetchLimit).toBe(20 * 12)
 
-    const calls = vi.mocked(runQuery).mock.calls
-    expect(calls.length).toBeGreaterThan(0)
-    for (let i = 0; i < calls.length; i++) {
-      expect(paramsOfCall(i).limit).toBe(20)
-    }
-  })
-
-  it('clampa limitPerType al minimo di 1 (default 5)', async () => {
+    vi.clearAllMocks(); vi.mocked(runQuery).mockResolvedValue([])
     await globalSearch(null, { query: 'serv', limitPerType: 0 }, ctx)
-    expect(paramsOfCall(0).limit).toBe(1)
+    expect(paramsOfCall(0).fetchLimit).toBe(1 * 12)
 
-    vi.clearAllMocks()
-    vi.mocked(runQuery).mockResolvedValue([])
-
+    vi.clearAllMocks(); vi.mocked(runQuery).mockResolvedValue([])
     await globalSearch(null, { query: 'serv' }, ctx)
-    expect(paramsOfCall(0).limit).toBe(5)
+    expect(paramsOfCall(0).fetchLimit).toBe(5 * 12)
   })
 
-  it('ogni chiamata a runQuery riceve il tenantId del contesto e la query lowercase', async () => {
-    await globalSearch(null, { query: '  SERV  ' }, ctx)
+  it('cappa i risultati per tipo a limitPerType', async () => {
+    vi.mocked(runQuery).mockResolvedValue(
+      Array.from({ length: 10 }, (_, i) => ({
+        props: { id: `inc-${i}`, number: `INC${i}`, title: `Incident ${i}`, status: 'open' },
+        labels: ['Incident'],
+      })) as never,
+    )
+    const hits = await globalSearch(null, { query: 'inc', limitPerType: 3 }, ctx)
+    expect(hits).toHaveLength(3)
+  })
+
+  it('usa la fulltext index con tenantId e query Lucene escapata a prefissi', async () => {
+    await globalSearch(null, { query: '  SERV down  ' }, ctx)
 
     const calls = vi.mocked(runQuery).mock.calls
-    // 4 entity ITSM + CI + KB article
-    expect(calls).toHaveLength(6)
-    for (let i = 0; i < calls.length; i++) {
-      expect(paramsOfCall(i).tenantId).toBe('tenant-1')
-      expect(paramsOfCall(i).q).toBe('serv')
-    }
+    expect(calls).toHaveLength(1)
+    const cypher = calls[0]![1] as string
+    expect(cypher).toContain("db.index.fulltext.queryNodes('global_search'")
+    expect(paramsOfCall(0).tenantId).toBe('tenant-1')
+    expect(paramsOfCall(0).lucene).toBe('SERV* AND down*')
+  })
+
+  it('escapa i caratteri speciali Lucene', async () => {
+    await globalSearch(null, { query: 'a+b (test)' }, ctx)
+    expect(paramsOfCall(0).lucene).toBe('a\\+b* AND \\(test\\)*')
   })
 })
