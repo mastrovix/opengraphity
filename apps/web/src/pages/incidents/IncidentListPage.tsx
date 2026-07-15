@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@apollo/client/react'
+import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Users, CheckCircle2, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
+import { BulkActionsBar } from '@/components/BulkActionsBar'
+import { Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
-import { GET_INCIDENTS } from '@/graphql/queries'
+import { GET_INCIDENTS, GET_TEAMS } from '@/graphql/queries'
+import { ASSIGN_INCIDENT_TO_TEAM, RESOLVE_INCIDENT } from '@/graphql/mutations'
 import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
 import { useEntityFields } from '@/hooks/useEntityFields'
 import { Pagination } from '@/components/ui/Pagination'
@@ -80,8 +85,35 @@ export function IncidentListPage() {
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
+  // Bulk selection — reset whenever page, filters or sort change
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkModal, setBulkModal] = useState<'assignTeam' | 'resolve' | null>(null)
+  const [bulkTeamId, setBulkTeamId] = useState('')
+  const [bulkNotes, setBulkNotes] = useState('')
+  const [bulkRunning, setBulkRunning] = useState(false)
+
+  const clearSelection = () => setSelectedIds(new Set())
+
   const handleSort = (field: string, dir: 'asc' | 'desc') => {
-    setSortField(field); setSortDir(dir); setPage(0)
+    setSortField(field); setSortDir(dir); setPage(0); clearSelection()
+  }
+
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = (ids: string[]) => {
+    setSelectedIds((prev) => {
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id))
+      const next = new Set(prev)
+      if (allSelected) ids.forEach((id) => next.delete(id))
+      else ids.forEach((id) => next.add(id))
+      return next
+    })
   }
 
   const { data, loading, error, refetch } = useQuery<{
@@ -95,6 +127,55 @@ export function IncidentListPage() {
   const items = data?.incidents?.items ?? []
   const total = data?.incidents?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
+
+  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, {
+    skip: bulkModal !== 'assignTeam',
+    fetchPolicy: 'cache-first',
+  })
+  const teams = teamsData?.teams ?? []
+
+  const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM)
+  const [resolveIncident] = useMutation(RESOLVE_INCIDENT)
+
+  /** Runs `fn` for every selected id (batches of 5), then shows a summary toast. */
+  const runBulk = async (fn: (id: string) => Promise<unknown>) => {
+    const ids = [...selectedIds]
+    setBulkRunning(true)
+    let ok = 0
+    let failed = 0
+    try {
+      const BATCH = 5
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const results = await Promise.allSettled(ids.slice(i, i + BATCH).map((id) => fn(id)))
+        for (const r of results) {
+          if (r.status === 'fulfilled') ok++
+          else failed++
+        }
+      }
+    } finally {
+      setBulkRunning(false)
+    }
+    const summary = failed > 0
+      ? t('bulk.summaryWithFailed', { ok, failed })
+      : t('bulk.summary', { ok })
+    if (failed > 0) toast.warning(summary)
+    else toast.success(summary)
+    setBulkModal(null)
+    setBulkTeamId('')
+    setBulkNotes('')
+    clearSelection()
+    void refetch()
+  }
+
+  const handleBulkAssign = () => {
+    if (!bulkTeamId) return
+    void runBulk((id) => assignToTeam({ variables: { id, teamId: bulkTeamId } }))
+  }
+
+  const handleBulkResolve = () => {
+    const rootCause = bulkNotes.trim() || null
+    void runBulk((id) => resolveIncident({ variables: { id, rootCause } }))
+  }
 
   useEffect(() => {
     if ((location.state as { refresh?: boolean } | null)?.refresh) {
@@ -123,7 +204,7 @@ export function IncidentListPage() {
         <div style={{ flex: 1 }}>
           <FilterBuilder
             fields={filterFields}
-            onApply={(group) => { setFilterGroup(group); setPage(0) }}
+            onApply={(group) => { setFilterGroup(group); setPage(0); clearSelection() }}
           />
         </div>
         <ExportCsvButton
@@ -142,6 +223,27 @@ export function IncidentListPage() {
         <QueryError message={error.message} onRetry={() => void refetch()} />
       ) : (
         <>
+          <BulkActionsBar count={selectedIds.size} onClear={clearSelection}>
+            <Button
+              variant="secondary"
+              size="xs"
+              disabled={bulkRunning}
+              icon={<Users size={13} />}
+              onClick={() => setBulkModal('assignTeam')}
+            >
+              {t('bulk.assignTeam')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="xs"
+              disabled={bulkRunning}
+              icon={<CheckCircle2 size={13} />}
+              onClick={() => setBulkModal('resolve')}
+            >
+              {t('bulk.resolve')}
+            </Button>
+          </BulkActionsBar>
+
           <SortableFilterTable<Incident>
             columns={columns}
             data={items}
@@ -151,11 +253,76 @@ export function IncidentListPage() {
             onSort={handleSort}
             sortField={sortField}
             sortDir={sortDir}
+            selectable
+            selectedIds={selectedIds}
+            onToggleRow={toggleRow}
+            onToggleAll={toggleAll}
           />
 
-          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => { setPage(p => p - 1); clearSelection() }} onNext={() => { setPage(p => p + 1); clearSelection() }} />
         </>
       )}
+
+      {/* Bulk: assign to team */}
+      <Modal
+        open={bulkModal === 'assignTeam'}
+        onClose={() => { if (!bulkRunning) setBulkModal(null) }}
+        title={t('bulk.assignTeamTitle', { count: selectedIds.size })}
+        footer={
+          <>
+            <Button variant="secondary" size="xs" disabled={bulkRunning} onClick={() => setBulkModal(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              size="xs"
+              disabled={bulkRunning || !bulkTeamId}
+              icon={bulkRunning ? <Loader2 size={13} className="animate-spin" /> : undefined}
+              onClick={handleBulkAssign}
+            >
+              {t('bulk.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <FieldLabel>{t('bulk.team')}</FieldLabel>
+        <Select value={bulkTeamId} onChange={(e) => setBulkTeamId(e.target.value)} disabled={bulkRunning}>
+          <option value="">{t('common.select')}</option>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>{team.name}</option>
+          ))}
+        </Select>
+      </Modal>
+
+      {/* Bulk: resolve */}
+      <Modal
+        open={bulkModal === 'resolve'}
+        onClose={() => { if (!bulkRunning) setBulkModal(null) }}
+        title={t('bulk.resolveTitle', { count: selectedIds.size })}
+        footer={
+          <>
+            <Button variant="secondary" size="xs" disabled={bulkRunning} onClick={() => setBulkModal(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              size="xs"
+              disabled={bulkRunning}
+              icon={bulkRunning ? <Loader2 size={13} className="animate-spin" /> : undefined}
+              onClick={handleBulkResolve}
+            >
+              {t('bulk.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <FieldLabel>{t('bulk.resolveNotes')}</FieldLabel>
+        <Textarea
+          rows={3}
+          value={bulkNotes}
+          onChange={(e) => setBulkNotes(e.target.value)}
+          disabled={bulkRunning}
+          placeholder={t('common.writeHere')}
+        />
+      </Modal>
     </PageContainer>
   )
 }

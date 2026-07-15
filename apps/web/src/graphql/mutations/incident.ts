@@ -24,6 +24,15 @@ export const ASSIGN_INCIDENT_TO_TEAM = gql`
   }
 `
 
+export const RESOLVE_INCIDENT = gql`
+  mutation ResolveIncident($id: ID!, $rootCause: String) {
+    resolveIncident(id: $id, rootCause: $rootCause) {
+      id status
+      workflowInstance { currentStep status }
+    }
+  }
+`
+
 export const ASSIGN_INCIDENT_TO_USER = gql`
   mutation AssignIncidentToUser($id: ID!, $userId: ID) {
     assignIncidentToUser(id: $id, userId: $userId) {

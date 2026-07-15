@@ -27,6 +27,12 @@ interface Props<T> {
   /** If provided, renders an expanded row below the row whose id matches expandedRowId */
   expandedRowId?:  string | null
   renderExpandedRow?: (row: T) => React.ReactNode | null
+  /** Row selection: adds a leading checkbox column. Rows must have `id: string`. */
+  selectable?:     boolean
+  selectedIds?:    Set<string>
+  onToggleRow?:    (id: string) => void
+  /** Called with the ids of the currently rendered rows (page-level select-all). */
+  onToggleAll?:    (ids: string[]) => void
 }
 
 const thStyle: React.CSSProperties = {
@@ -52,6 +58,10 @@ export function SortableFilterTable<T extends object>({
   label,
   expandedRowId,
   renderExpandedRow,
+  selectable = false,
+  selectedIds,
+  onToggleRow,
+  onToggleAll,
 }: Props<T>) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = emptyMessage ?? t('common.noResults')
@@ -101,10 +111,29 @@ export function SortableFilterTable<T extends object>({
         return localSortDir === 'asc' ? cmp : -cmp
       })
 
+  const rowIds = selectable
+    ? sorted.map((row, i) => String((row as Record<string, unknown>)['id'] ?? i))
+    : []
+  const selectedOnPage = rowIds.filter((id) => selectedIds?.has(id)).length
+  const allSelected  = rowIds.length > 0 && selectedOnPage === rowIds.length
+  const someSelected = selectedOnPage > 0 && !allSelected
+
+  const checkboxStyle: React.CSSProperties = {
+    accentColor: 'var(--color-brand)',
+    width:       15,
+    height:      15,
+    margin:      0,
+    display:     'block',
+    cursor:      'pointer',
+  }
+
+  const totalCols = columns.length + (selectable ? 1 : 0)
+
   return (
     <div className="card-border" style={{ overflow: 'hidden' }}>
       <table role="table" aria-label={label} style={{ width: '100%', borderCollapse: 'collapse' }}>
         <colgroup>
+          {selectable && <col style={{ width: '40px' }} />}
           {columns.map((col) => (
             <col key={String(col.key)} style={{ width: col.width }} />
           ))}
@@ -112,6 +141,18 @@ export function SortableFilterTable<T extends object>({
 
         <thead>
           <tr>
+            {selectable && (
+              <th scope="col" style={{ ...thStyle, padding: '8px 0 6px 12px' }}>
+                <input
+                  type="checkbox"
+                  aria-label={t('bulk.selectAll')}
+                  style={checkboxStyle}
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = someSelected }}
+                  onChange={() => onToggleAll?.(rowIds)}
+                />
+              </th>
+            )}
             {columns.map((col) => {
               const isActive = activeSortKey === String(col.key)
               return (
@@ -156,6 +197,7 @@ export function SortableFilterTable<T extends object>({
           {loading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <tr key={i}>
+                {selectable && <td style={{ padding: '12px 0 12px 12px', borderBottom: '1px solid #f1f3f9' }} />}
                 {columns.map((col, ci) => (
                   <td key={String(col.key)} style={{ padding: '12px', borderBottom: '1px solid #f1f3f9' }}>
                     <SkeletonLine width={ci === 0 ? '80%' : ci % 2 === 0 ? '60%' : '70%'} />
@@ -165,7 +207,7 @@ export function SortableFilterTable<T extends object>({
             ))
           ) : sorted.length === 0 ? (
             <tr>
-              <td colSpan={columns.length}>
+              <td colSpan={totalCols}>
                 {emptyComponent ?? (
                   <div style={{ textAlign: 'center', color: colors.slateLight, padding: '40px 20px', fontSize: 'var(--font-size-body)' }}>
                     {resolvedEmptyMessage}
@@ -196,6 +238,21 @@ export function SortableFilterTable<T extends object>({
                       (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid transparent'
                     }}
                   >
+                    {selectable && (
+                      <td
+                        className="sft-td"
+                        style={{ padding: '11px 0 11px 12px', verticalAlign: 'middle' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={t('bulk.selectRow')}
+                          style={checkboxStyle}
+                          checked={selectedIds?.has(rowId) ?? false}
+                          onChange={() => onToggleRow?.(rowId)}
+                        />
+                      </td>
+                    )}
                     {columns.map((col) => (
                       <td
                         key={String(col.key)}
@@ -211,7 +268,7 @@ export function SortableFilterTable<T extends object>({
                   </tr>
                   {expandedContent && (
                     <tr style={{ backgroundColor: '#ffffff' }}>
-                      <td colSpan={columns.length} style={{ padding: 0 }}>
+                      <td colSpan={totalCols} style={{ padding: 0 }}>
                         {expandedContent}
                       </td>
                     </tr>

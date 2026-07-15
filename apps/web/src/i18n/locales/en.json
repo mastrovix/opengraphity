@@ -23,6 +23,22 @@
     "select": "Select",
     "writeHere": "Write here..."
   },
+  "bulk": {
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "selectAll": "Select all (page)",
+    "selectRow": "Select row",
+    "clear": "Clear selection",
+    "assignTeam": "Assign to team",
+    "assignTeamTitle": "Assign {{count}} incidents to a team",
+    "team": "Team",
+    "resolve": "Resolve",
+    "resolveTitle": "Resolve {{count}} incidents",
+    "resolveNotes": "Resolution notes (optional)",
+    "confirm": "Confirm",
+    "summary": "{{ok}} completed",
+    "summaryWithFailed": "{{ok}} completed, {{failed}} failed"
+  },
   "sidebar": {
     "workspace": "WORKSPACE",
     "admin": "ADMIN",
