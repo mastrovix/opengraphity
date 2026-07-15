@@ -6,6 +6,7 @@ import { Monitor, Code, Key, Wifi, HelpCircle, Paperclip } from 'lucide-react'
 import { CREATE_TICKET } from '@/graphql/mutations'
 import { GET_KB_ARTICLES } from '@/graphql/queries'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
+import { uploadAttachment } from '@/lib/attachments'
 
 const CATEGORIES = [
   { key: 'hardware', icon: Monitor },
@@ -30,6 +31,7 @@ export function TicketNewPage() {
   const [description, setDescription] = useState('')
   const [priority,    setPriority]    = useState<'low' | 'medium' | 'high'>('medium')
   const [files,       setFiles]       = useState<File[]>([])
+  const [uploading,   setUploading]   = useState(false)
   const [isDragging,  setIsDragging]  = useState(false)
   const fileInputRef                  = useRef<HTMLInputElement>(null)
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -40,10 +42,27 @@ export function TicketNewPage() {
 
   const [createTicket, { loading }] = useMutation<{ createTicket: { id: string } }>(CREATE_TICKET, {
     onCompleted: (data) => {
-      navigate(`/tickets/${data.createTicket.id}`, { state: { created: true } })
+      void uploadFilesAndNavigate(data.createTicket.id)
     },
     onError: (e: { message: string }) => alert(e.message),
   })
+
+  async function uploadFilesAndNavigate(ticketId: string) {
+    if (files.length > 0) {
+      setUploading(true)
+      const failed: string[] = []
+      for (const file of files) {
+        try {
+          await uploadAttachment('incident', ticketId, file)
+        } catch {
+          failed.push(file.name)
+        }
+      }
+      setUploading(false)
+      if (failed.length > 0) alert(t('ticket.uploadFailed', { files: failed.join(', ') }))
+    }
+    navigate(`/tickets/${ticketId}`, { state: { created: true } })
+  }
 
   const [searchKB, { data: kbData }] = useLazyQuery<{ kbArticles: { items: KBArticle[] } }, { search?: string; pageSize?: number }>(GET_KB_ARTICLES)
 
@@ -73,7 +92,7 @@ export function TicketNewPage() {
     setFiles(prev => prev.filter((_, i) => i !== idx))
   }
 
-  const canSubmit = category !== '' && title.trim().length > 0 && description.trim().length > 0 && !loading
+  const canSubmit = category !== '' && title.trim().length > 0 && description.trim().length > 0 && !loading && !uploading
 
   function handleSubmit() {
     if (!canSubmit) return
@@ -269,7 +288,7 @@ export function TicketNewPage() {
           cursor:          canSubmit ? 'pointer' : 'not-allowed',
         }}
       >
-        {loading ? t('common.loading') : t('ticket.submit')}
+        {uploading ? t('ticket.uploading') : loading ? t('common.loading') : t('ticket.submit')}
       </button>
     </div>
   )

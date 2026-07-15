@@ -74,6 +74,9 @@
     "suggestedArticles": "Articles that might help",
     "foundAnswer": "Found the answer? If so, no need to open a ticket.",
     "dropFiles": "Drop files here or click to attach",
+    "uploading": "Uploading attachments...",
+    "uploadFailed": "Ticket created, but some attachments failed to upload: {{files}}",
+    "downloadFailed": "Download failed",
     "empty": {
       "all": "You have no tickets yet.",
       "open": "No open tickets.",
