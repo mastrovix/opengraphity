@@ -74,6 +74,9 @@
     "suggestedArticles": "Articoli che potrebbero aiutarti",
     "foundAnswer": "Hai trovato la risposta? Se sì, non serve aprire un ticket.",
     "dropFiles": "Trascina file qui o clicca per allegare",
+    "uploading": "Caricamento allegati...",
+    "uploadFailed": "Ticket creato, ma alcuni allegati non sono stati caricati: {{files}}",
+    "downloadFailed": "Download non riuscito",
     "empty": {
       "all": "Non hai ancora nessun ticket.",
       "open": "Nessun ticket aperto.",

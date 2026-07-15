@@ -137,16 +137,16 @@ async function myTicket(
       updatedAt:   r.get('updatedAt')   as string,
     }))
 
-    // Load attachments
+    // Load attachments — the REST upload creates Attachment nodes keyed by
+    // entity_type/entity_id properties, not a HAS_ATTACHMENT relationship
     const attachmentsResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $id})-[:HAS_ATTACHMENT]->(a:Attachment)
+        MATCH (a:Attachment {tenant_id: $tenantId, entity_type: 'incident', entity_id: $id})
         RETURN a.id AS id, a.filename AS filename, a.mime_type AS mimeType,
                a.size_bytes AS sizeBytes, a.uploaded_by AS uploadedBy,
-               a.uploaded_at AS uploadedAt, a.description AS description,
-               a.download_url AS downloadUrl
+               a.uploaded_at AS uploadedAt, a.description AS description
         ORDER BY a.uploaded_at ASC
-      `, { id }),
+      `, { id, tenantId: ctx.tenantId }),
     )
 
     const attachments = attachmentsResult.records.map((r) => ({
@@ -157,7 +157,7 @@ async function myTicket(
       uploadedBy:  r.get('uploadedBy')  as string,
       uploadedAt:  r.get('uploadedAt')  as string,
       description: (r.get('description') ?? null) as string | null,
-      downloadUrl: (r.get('downloadUrl') ?? '') as string,
+      downloadUrl: `/api/attachments/${r.get('id') as string}`,
     }))
 
     // Load workflow history

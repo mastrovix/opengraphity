@@ -7,6 +7,7 @@ import { GET_MY_TICKET, GET_ME } from '@/graphql/queries'
 import { ADD_TICKET_COMMENT, REOPEN_TICKET } from '@/graphql/mutations'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { CommentBubble } from '@/components/CommentBubble'
+import { downloadAttachment } from '@/lib/attachments'
 
 interface EntityComment {
   id: string; body: string; isInternal: boolean
@@ -248,25 +249,27 @@ export function TicketDetailPage() {
           {attachOpen && (
             <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {ticket.attachments.map(a => (
-                <a
+                <button
                   key={a.id}
-                  href={a.downloadUrl}
-                  download={a.filename}
+                  onClick={() => downloadAttachment(a.downloadUrl, a.filename).catch(() => alert(t('ticket.downloadFailed')))}
                   style={{
                     display:         'flex',
                     alignItems:      'center',
                     justifyContent:  'space-between',
+                    width:           '100%',
                     padding:         '8px 12px',
                     backgroundColor: '#F8FAFC',
+                    border:          'none',
                     borderRadius:    6,
                     fontSize:        13,
                     color:           '#0EA5E9',
-                    textDecoration:  'none',
+                    cursor:          'pointer',
+                    textAlign:       'left',
                   }}
                 >
                   <span>{a.filename}</span>
                   <span style={{ color: '#94A3B8', fontSize: 10 }}>{formatBytes(a.sizeBytes)}</span>
-                </a>
+                </button>
               ))}
             </div>
           )}
