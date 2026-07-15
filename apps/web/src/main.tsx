@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApolloProvider } from '@apollo/client/react'
 import { createBrowserRouter, RouterProvider, useRouteError, Navigate, useParams } from 'react-router-dom'
@@ -29,11 +29,11 @@ function CIDetailRedirect({ typeName }: { typeName: string }) {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
 }
-import { WhatIfPage } from '@/pages/analysis/WhatIfPage'
+const WhatIfPage = lazy(() => import('@/pages/analysis/WhatIfPage').then(m => ({ default: m.WhatIfPage })))
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
-import { TopologyPage } from '@/pages/topology/TopologyPage'
+const TopologyPage = lazy(() => import('@/pages/topology/TopologyPage').then(m => ({ default: m.TopologyPage })))
 import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
-import { WorkflowDesignerPage } from '@/pages/workflow/WorkflowDesignerPage'
+const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/WorkflowDesignerPage').then(m => ({ default: m.WorkflowDesignerPage })))
 import NotificationsPage from '@/pages/settings/NotificationsPage'
 import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
 import ProfilePage from '@/pages/settings/ProfilePage'
@@ -41,8 +41,8 @@ import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
 import { EnumDesignerPage }     from '@/pages/settings/EnumDesignerPage.js'
 import { SyncPage }             from '@/pages/settings/SyncPage'
-import ReportsPage from '@/pages/reports/ReportsPage'
-import { CustomReportsPage } from '@/pages/reports/CustomReportsPage'
+const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage'))
+const CustomReportsPage = lazy(() => import('@/pages/reports/CustomReportsPage').then(m => ({ default: m.CustomReportsPage })))
 import { TeamsPage } from '@/pages/teams/TeamsPage'
 import { TeamDetailPage } from '@/pages/teams/TeamDetailPage'
 import { UsersPage } from '@/pages/users/UsersPage'
@@ -50,7 +50,7 @@ import { UserDetailPage } from '@/pages/users/UserDetailPage'
 import { LogsPage } from '@/pages/logs/LogsPage'
 import { QueueStatsPage } from '@/pages/admin/QueueStatsPage'
 import { AuditLogPage } from '@/pages/admin/AuditLogPage'
-import { MonitoringPage } from '@/pages/admin/MonitoringPage'
+const MonitoringPage = lazy(() => import('@/pages/admin/MonitoringPage').then(m => ({ default: m.MonitoringPage })))
 import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage'
 import { KnowledgeBasePage } from '@/pages/knowledge-base/KnowledgeBasePage'
 import { KBArticlePage } from '@/pages/knowledge-base/KBArticlePage'
@@ -66,6 +66,15 @@ import { initKeycloak, keycloak } from '@/lib/keycloak'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
 import '@/i18n/i18n'
+
+/** Fallback shown while a lazy route chunk downloads. */
+function PageLoader() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
+      Caricamento…
+    </div>
+  )
+}
 
 function RouteError() {
   const error = useRouteError() as { status?: number; statusText?: string }
@@ -130,11 +139,11 @@ const router = createBrowserRouter([
       { path: 'servers/:id',                   element: <CIDetailRedirect typeName="server" /> },
       { path: 'certificates',                  element: <Navigate to="/ci/certificate" replace /> },
       { path: 'certificates/:id',              element: <CIDetailRedirect typeName="certificate" /> },
-      { path: 'analysis/what-if',               element: <WhatIfPage />,                  errorElement: <RouteError /> },
+      { path: 'analysis/what-if',               element: <Suspense fallback={<PageLoader />}><WhatIfPage /></Suspense>,                  errorElement: <RouteError /> },
       { path: 'anomalies',                     element: <AnomalyPage />,                 errorElement: <RouteError /> },
-      { path: 'topology',                      element: <TopologyPage />,                errorElement: <RouteError /> },
+      { path: 'topology',                      element: <Suspense fallback={<PageLoader />}><TopologyPage /></Suspense>,                errorElement: <RouteError /> },
       { path: 'workflow',                      element: <WorkflowListPage />,            errorElement: <RouteError /> },
-      { path: 'workflow/:id',                  element: <WorkflowDesignerPage />,        errorElement: <RouteError /> },
+      { path: 'workflow/:id',                  element: <Suspense fallback={<PageLoader />}><WorkflowDesignerPage /></Suspense>,        errorElement: <RouteError /> },
       { path: 'settings/notifications',      element: <NotificationsPage />,       errorElement: <RouteError /> },
       { path: 'settings/notification-rules', element: <NotificationRulesPage />, errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
@@ -143,8 +152,8 @@ const router = createBrowserRouter([
       { path: 'settings/itil-designer',   element: <ITILTypeDesignerPage />,    errorElement: <RouteError /> },
       { path: 'settings/enum-designer',  element: <EnumDesignerPage />,        errorElement: <RouteError /> },
       { path: 'settings/sync',            element: <SyncPage />,                errorElement: <RouteError /> },
-      { path: 'reports',                   element: <ReportsPage />,             errorElement: <RouteError /> },
-      { path: 'custom-reports',            element: <CustomReportsPage />,       errorElement: <RouteError /> },
+      { path: 'reports',                   element: <Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>,             errorElement: <RouteError /> },
+      { path: 'custom-reports',            element: <Suspense fallback={<PageLoader />}><CustomReportsPage /></Suspense>,       errorElement: <RouteError /> },
       { path: 'teams',                     element: <TeamsPage />,               errorElement: <RouteError /> },
       { path: 'teams/:id',                 element: <TeamDetailPage />,          errorElement: <RouteError /> },
       { path: 'users',                     element: <UsersPage />,               errorElement: <RouteError /> },
@@ -152,7 +161,7 @@ const router = createBrowserRouter([
       { path: 'logs',                      element: <LogsPage />,                errorElement: <RouteError /> },
       { path: 'admin/queues',              element: <QueueStatsPage />,          errorElement: <RouteError /> },
       { path: 'admin/audit',              element: <AuditLogPage />,            errorElement: <RouteError /> },
-      { path: 'admin/monitoring',         element: <MonitoringPage />,          errorElement: <RouteError /> },
+      { path: 'admin/monitoring',         element: <Suspense fallback={<PageLoader />}><MonitoringPage /></Suspense>,          errorElement: <RouteError /> },
       { path: 'admin/knowledge-base',     element: <KBAdminPage />,             errorElement: <RouteError /> },
       { path: 'admin/triggers',            element: <AutoTriggersPage />,        errorElement: <RouteError /> },
       { path: 'admin/business-rules',      element: <BusinessRulesPage />,       errorElement: <RouteError /> },

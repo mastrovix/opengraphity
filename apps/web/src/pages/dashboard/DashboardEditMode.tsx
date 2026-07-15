@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -15,7 +16,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { Hash, BarChart2, TrendingUp, PieChart, Table, Gauge, Plus, Pencil, Trash2 } from 'lucide-react'
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
 import type { CustomWidgetData } from './CustomWidgetCard'
-import { CustomWidgetCard } from './CustomWidgetCard'
+const CustomWidgetCard = lazy(() => import('./CustomWidgetCard').then(m => ({ default: m.CustomWidgetCard })))
 import { lookupOrError } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -172,13 +173,14 @@ export function DashboardEditMode({
             {customWidgets.length > 0 && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
                 {customWidgets.map((w) => (
-                  <CustomWidgetCard
-                    key={w.id}
-                    widget={w}
-                    editMode={true}
-                    onEdit={() => onEditCustomWidget(w)}
-                    onRemove={() => onDeleteCustomWidget(w.id)}
-                  />
+                  <Suspense key={w.id} fallback={<div style={{ minHeight: 120 }} />}>
+                    <CustomWidgetCard
+                      widget={w}
+                      editMode={true}
+                      onEdit={() => onEditCustomWidget(w)}
+                      onRemove={() => onDeleteCustomWidget(w.id)}
+                    />
+                  </Suspense>
                 ))}
               </div>
             )}

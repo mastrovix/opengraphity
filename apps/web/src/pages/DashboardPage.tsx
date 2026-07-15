@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
@@ -12,10 +12,10 @@ import {
   UPDATE_DASHBOARD,
   DELETE_DASHBOARD,
 } from '@/graphql/mutations'
-import { DashboardWidget } from './dashboard/DashboardWidget'
-import { DashboardEditMode } from './dashboard/DashboardEditMode'
-import { CustomWidgetCard } from './dashboard/CustomWidgetCard'
-import { WidgetConfigPanel } from './dashboard/WidgetConfigPanel'
+const DashboardWidget = lazy(() => import('./dashboard/DashboardWidget').then(m => ({ default: m.DashboardWidget })))
+const DashboardEditMode = lazy(() => import('./dashboard/DashboardEditMode').then(m => ({ default: m.DashboardEditMode })))
+const CustomWidgetCard = lazy(() => import('./dashboard/CustomWidgetCard').then(m => ({ default: m.CustomWidgetCard })))
+const WidgetConfigPanel = lazy(() => import('./dashboard/WidgetConfigPanel').then(m => ({ default: m.WidgetConfigPanel })))
 import { useDashboard } from './dashboard/useDashboard'
 import type { DashboardConfig, Team } from './dashboard/useDashboard'
 import type { ReportTemplate, ReportSection } from './dashboard/useDashboard'
@@ -443,10 +443,10 @@ export function DashboardPage() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16, padding: 24 }}>
             {viewWidgets.map((widget) => (
-              <DashboardWidget key={widget.id} widget={widget} />
+              <Suspense key={widget.id} fallback={<div style={{ minHeight: 120 }} />}><DashboardWidget widget={widget} /></Suspense>
             ))}
             {viewCustomWidgets.map((widget) => (
-              <CustomWidgetCard key={widget.id} widget={widget} editMode={false} />
+              <Suspense key={widget.id} fallback={<div style={{ minHeight: 120 }} />}><CustomWidgetCard widget={widget} editMode={false} /></Suspense>
             ))}
           </div>
         )}
@@ -478,12 +478,14 @@ export function DashboardPage() {
           />
         )}
         {showWidgetConfig && activeDashboardId && (
-          <WidgetConfigPanel
-            dashboardId={activeDashboardId}
-            widget={editingWidget}
-            onClose={() => setShowWidgetConfig(false)}
-            onSaved={handleWidgetSaved}
-          />
+          <Suspense fallback={null}>
+            <WidgetConfigPanel
+              dashboardId={activeDashboardId}
+              widget={editingWidget}
+              onClose={() => setShowWidgetConfig(false)}
+              onSaved={handleWidgetSaved}
+            />
+          </Suspense>
         )}
       </PageContainer>
     )
@@ -502,6 +504,7 @@ export function DashboardPage() {
 
       {/* Edit area — fills remaining height, scrollable */}
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <Suspense fallback={null}>
         <DashboardEditMode
           pendingWidgets={pendingWidgets}
           templates={templates}
@@ -516,15 +519,18 @@ export function DashboardPage() {
           onEditCustomWidget={handleEditCustomWidget}
           onDeleteCustomWidget={(id) => void handleDeleteCustomWidget(id)}
         />
+        </Suspense>
       </div>
 
       {showWidgetConfig && activeDashboardId && (
-        <WidgetConfigPanel
-          dashboardId={activeDashboardId}
-          widget={editingWidget}
-          onClose={() => setShowWidgetConfig(false)}
-          onSaved={handleWidgetSaved}
-        />
+        <Suspense fallback={null}>
+          <WidgetConfigPanel
+            dashboardId={activeDashboardId}
+            widget={editingWidget}
+            onClose={() => setShowWidgetConfig(false)}
+            onSaved={handleWidgetSaved}
+          />
+        </Suspense>
       )}
     </div>
   )

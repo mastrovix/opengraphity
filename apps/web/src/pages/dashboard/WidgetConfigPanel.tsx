@@ -1,9 +1,10 @@
+import { lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { useWidgetConfig } from './useWidgetConfig'
 import { WidgetTypeSelector } from './WidgetTypeSelector'
 import { WidgetFilterConfig } from './WidgetFilterConfig'
-import { WidgetPreview } from './WidgetPreview'
+const WidgetPreview = lazy(() => import('./WidgetPreview').then(m => ({ default: m.WidgetPreview })))
 import type { CustomWidgetData } from './CustomWidgetCard'
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -80,11 +81,13 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
           </div>
 
           {/* Preview column */}
-          <WidgetPreview
-            widgetType={c.widgetType} color={c.color} title={c.title}
-            previewData={c.previewData} previewLoading={c.previewLoading}
-            timeRange={c.timeRange}
-          />
+          <Suspense fallback={<div style={{ flex: 1 }} />}>
+            <WidgetPreview
+              widgetType={c.widgetType} color={c.color} title={c.title}
+              previewData={c.previewData} previewLoading={c.previewLoading}
+              timeRange={c.timeRange}
+            />
+          </Suspense>
         </div>
 
         {/* Footer */}

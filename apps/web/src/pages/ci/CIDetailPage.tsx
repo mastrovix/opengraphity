@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -15,7 +15,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { Input, Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
-import { CIGraph } from '@/components/CIGraph'
+const CIGraph = lazy(() => import('@/components/CIGraph').then(m => ({ default: m.CIGraph })))
 import { CIIncidentsCard } from '@/components/CIIncidentsCard'
 import { CIChangeList } from '@/components/CIChangeList'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
@@ -425,6 +425,7 @@ export function CIDetailPage() {
           </SectionCard>
 
           <SectionCard title="Mappa Dipendenze">
+            <Suspense fallback={<div style={{ height: 260 }} />}>
             <CIGraph
               centerCI={{
                 id: ci.id, name: ci.name, type: ci.type,
@@ -445,6 +446,7 @@ export function CIDetailPage() {
                 distance: b.distance, parentId: b.parentId,
               }))}
             />
+            </Suspense>
           </SectionCard>
 
           <SectionCard
