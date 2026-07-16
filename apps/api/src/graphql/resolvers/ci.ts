@@ -4,6 +4,8 @@ import type { Props } from './ci-utils.js'
 
 // Whitelist: type string → Neo4j label (prevents Cypher injection)
 const TYPE_TO_LABEL: Record<string, string> = {
+  business_application: 'BusinessApplication',
+  business_capability: 'BusinessCapability',
   application:      'Application',
   database:         'Database',
   database_instance: 'DatabaseInstance',
@@ -125,7 +127,7 @@ async function blastRadius(_: unknown, args: { id: string }, ctx: GraphQLContext
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props; label: string; distance: unknown; parentProps: Props | null }>(session,
       `MATCH (root {id: $id, tenant_id: $tenantId})
-       MATCH path = (root)<-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..5]-(impacted)
+       MATCH path = (root)<-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|REALIZES|ENABLED_BY*1..5]-(impacted)
        WHERE impacted.tenant_id = $tenantId
        WITH impacted, labels(impacted)[0] AS label,
             min(length(path)) AS distance,

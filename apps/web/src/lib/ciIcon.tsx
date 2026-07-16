@@ -1,7 +1,7 @@
 import {
   Box, Database, Server, Shield,
   HardDrive, Cloud, Globe, Cpu, Network,
-  Monitor, Lock,
+  Monitor, Lock, Briefcase, Target,
 } from 'lucide-react'
 
 const iconMap: Record<string, React.ComponentType<{ size?: number; color?: string; style?: React.CSSProperties }>> = {
@@ -16,6 +16,8 @@ const iconMap: Record<string, React.ComponentType<{ size?: number; color?: strin
   network:      Network,
   monitor:      Monitor,
   lock:         Lock,
+  briefcase:    Briefcase,
+  target:       Target,
 }
 
 export function CIIcon({

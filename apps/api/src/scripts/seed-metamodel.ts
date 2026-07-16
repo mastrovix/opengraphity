@@ -77,6 +77,55 @@ const BASE_TYPE: CIType = {
 // ── CI types — no base fields (status, environment, description, notes) ───────
 const CI_TYPES: CIType[] = [
   {
+    // CSDM-style business capability: what the business does, independent of
+    // how. Hierarchical (PARENT_OF, self-referential); enabled by
+    // BusinessApplication CIs via ENABLES.
+    name: 'business_capability', label: 'Business Capability', icon: 'target', color: '#0f766e', neo4j_label: 'BusinessCapability',
+    chain_families: ['Application'],
+    fields: [
+      { name: 'capabilityOwner',   label: 'Capability Owner',   field_type: 'string', order: 10 },
+      { name: 'hierarchyLevel',    label: 'Hierarchy Level',    field_type: 'enum',   order: 11,
+        enum_values: ['level_1', 'level_2', 'level_3'] },
+      { name: 'strategicPriority', label: 'Strategic Priority', field_type: 'enum',   order: 12,
+        enum_values: ['core', 'differentiating', 'supporting'] },
+      { name: 'maturity',          label: 'Maturity',           field_type: 'enum',   order: 13,
+        enum_values: ['initial', 'developing', 'defined', 'managed', 'optimized'] },
+    ],
+    relations: [
+      { name: 'childCapabilities', label: 'Sub-capabilities',    relationship_type: 'PARENT_OF', target_type: 'BusinessCapability',  cardinality: 'many', direction: 'outgoing', order: 1, description: 'Capability figlie nella gerarchia' },
+      { name: 'parentCapability',  label: 'Parent Capability',   relationship_type: 'PARENT_OF', target_type: 'BusinessCapability',  cardinality: 'one',  direction: 'incoming', order: 2, description: 'Capability padre nella gerarchia' },
+      { name: 'enabledBy',         label: 'Enabled By',          relationship_type: 'ENABLED_BY', target_type: 'BusinessApplication', cardinality: 'many', direction: 'outgoing', order: 3, description: 'Business application che abilitano questa capability' },
+    ],
+    systemRels: [
+      { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: false, order: 1 },
+      { name: 'supportGroup', label: 'Support Group', relationship_type: 'SUPPORTED_BY', target_entity: 'Team', required: false, order: 2 },
+    ],
+  },
+  {
+    // CSDM-style business-level catalog entry; the deployed instances are
+    // Application CIs linked via REALIZES.
+    name: 'business_application', label: 'Business Application', icon: 'briefcase', color: '#7c3aed', neo4j_label: 'BusinessApplication',
+    chain_families: ['Application'],
+    fields: [
+      { name: 'businessOwner', label: 'Business Owner', field_type: 'string', order: 10 },
+      { name: 'criticality',   label: 'Criticality',    field_type: 'enum',   order: 11,
+        enum_values: ['mission_critical', 'business_critical', 'business_operational', 'office_productivity'] },
+      { name: 'businessUnit',  label: 'Business Unit',  field_type: 'string', order: 12 },
+      { name: 'costCenter',    label: 'Cost Center',    field_type: 'string', order: 13 },
+      { name: 'userBase',      label: 'User Base',      field_type: 'string', order: 14 },
+    ],
+    relations: [
+      { name: 'realizes',     label: 'Realized By',       relationship_type: 'REALIZES',   target_type: 'Application',        cardinality: 'many', direction: 'outgoing', order: 1, description: 'Istanze applicative tecniche che realizzano questa business application' },
+      { name: 'enables',      label: 'Enables Capability', relationship_type: 'ENABLED_BY', target_type: 'BusinessCapability', cardinality: 'many', direction: 'incoming', order: 2, description: 'Business capability abilitate da questa business application' },
+      { name: 'dependencies', label: 'Dipendenze',        relationship_type: 'DEPENDS_ON', target_type: 'any',                cardinality: 'many', direction: 'outgoing', order: 3, description: 'CI da cui questa business application dipende' },
+      { name: 'dependents',   label: 'Dipendenti',        relationship_type: 'DEPENDS_ON', target_type: 'any',                cardinality: 'many', direction: 'incoming', order: 4, description: 'CI che dipendono da questa business application' },
+    ],
+    systemRels: [
+      { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
+      { name: 'supportGroup', label: 'Support Group', relationship_type: 'SUPPORTED_BY', target_entity: 'Team', required: false, order: 2 },
+    ],
+  },
+  {
     name: 'application', label: 'Application', icon: 'box', color: '#4f46e5', neo4j_label: 'Application',
     chain_families: ['Application'],
     fields: [
@@ -94,6 +143,7 @@ const CI_TYPES: CIType[] = [
       { name: 'dependents',   label: 'Dipendenti',             relationship_type: 'DEPENDS_ON',      target_type: 'any',         cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questa applicazione' },
       { name: 'hostedOn',     label: 'Hosted On',              relationship_type: 'HOSTED_ON',       target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 3, description: 'Server su cui è ospitata questa applicazione' },
       { name: 'certificates', label: 'Uses Certificate',       relationship_type: 'USES_CERTIFICATE',target_type: 'Certificate', cardinality: 'many', direction: 'outgoing', order: 4, description: 'Certificati SSL/TLS utilizzati da questa applicazione' },
+      { name: 'realizedBy',   label: 'Realizes Business App',  relationship_type: 'REALIZES',        target_type: 'BusinessApplication', cardinality: 'many', direction: 'incoming', order: 5, description: 'Business application realizzate da questa istanza applicativa' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },

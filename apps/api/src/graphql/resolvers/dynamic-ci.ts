@@ -135,7 +135,7 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
       const r = await session.executeRead(tx =>
         tx.run(
           `MATCH (root {id: $id, tenant_id: $tenantId})
-           MATCH path = (root)<-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..5]-(impacted)
+           MATCH path = (root)<-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|REALIZES|ENABLED_BY*1..5]-(impacted)
            WHERE impacted.tenant_id = $tenantId
            WITH impacted, min(length(path)) AS distance, collect(path) AS paths
            WITH impacted, distance, [p IN paths WHERE length(p) = distance | p][0] AS shortestPath

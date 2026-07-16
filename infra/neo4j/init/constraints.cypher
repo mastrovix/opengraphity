@@ -35,7 +35,7 @@ CREATE INDEX idx_dashboard_tenant  IF NOT EXISTS FOR (n:DashboardConfig)     ON 
 // CONTAINS on 278k+ nodes cannot use range indexes; the fulltext index gives
 // indexed prefix search across every searchable entity type.
 CREATE FULLTEXT INDEX global_search IF NOT EXISTS
-FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice)
+FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|BusinessCapability|BusinessApplication|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice)
 ON EACH [n.title, n.number, n.code, n.name];
 
 // ── Range indexes on change-task codes (global search: tasks group) ──────────

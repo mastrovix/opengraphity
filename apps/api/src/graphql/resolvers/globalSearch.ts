@@ -35,9 +35,9 @@ function emptyResults(): GlobalSearchResults {
 
 // CI labels covered by the `global_search` fulltext index (static base types).
 const CI_SEARCH_LABELS = [
-  'Application', 'Database', 'DatabaseInstance', 'Server', 'Certificate',
-  'SslCertificate', 'VirtualMachine', 'NetworkDevice', 'Storage',
-  'CloudService', 'ApiEndpoint', 'Microservice',
+  'BusinessCapability', 'BusinessApplication', 'Application', 'Database', 'DatabaseInstance',
+  'Server', 'Certificate', 'SslCertificate', 'VirtualMachine',
+  'NetworkDevice', 'Storage', 'CloudService', 'ApiEndpoint', 'Microservice',
 ] as const
 
 const CI_LABEL_UNION = CI_SEARCH_LABELS.map((l) => `ci:${l}`).join(' OR ')
