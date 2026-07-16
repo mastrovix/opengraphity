@@ -15,12 +15,13 @@ import type { Session } from 'neo4j-driver'
 
 const stepsCache = new Map<string, Promise<StepRow[]>>()
 
-interface StepRow {
+export interface StepRow {
   name:       string
   isInitial:  boolean
   isTerminal: boolean
   isOpen:     boolean
   category:   string | null
+  stepOrder:  number | null
 }
 
 function cacheKey(tenantId: string, entityType: string) {
@@ -39,7 +40,8 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
              coalesce(s.is_initial,  s.type = 'start') AS isInitial,
              coalesce(s.is_terminal, s.type = 'end')   AS isTerminal,
              coalesce(s.is_open,     s.type <> 'end')  AS isOpen,
-             s.category    AS category
+             s.category    AS category,
+             s.step_order  AS stepOrder
     `, { tenantId, entityType })
     return res.records.map((r) => ({
       name:       r.get('name')       as string,
@@ -47,6 +49,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
       isTerminal: Boolean(r.get('isTerminal')),
       isOpen:     Boolean(r.get('isOpen')),
       category:   (r.get('category') ?? null) as string | null,
+      stepOrder:  r.get('stepOrder') != null ? Number(r.get('stepOrder')) : null,
     }))
   })
   stepsCache.set(key, promise)
