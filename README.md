@@ -1,5 +1,7 @@
 # OpenGraphity
 
+[![CI](https://github.com/mastrovix/opengraphity/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mastrovix/opengraphity/actions/workflows/ci.yml)
+
 ITSM platform built on a graph database (Neo4j), with a React frontend, self-service portal, and GraphQL API.
 
 ## Quick Start (Docker)
