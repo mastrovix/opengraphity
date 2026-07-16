@@ -10,6 +10,7 @@ import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
+import { ciLabelPredicate } from '../lib/ciLabels.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -131,7 +132,7 @@ export async function createIncident(
         await runQuery(session, `
           MATCH (i:Incident {id: $id, tenant_id: $tenantId})
           MATCH (ci {id: $ciId, tenant_id: $tenantId})
-          WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
+          WHERE ${ciLabelPredicate('ci')}
           MERGE (i)-[:AFFECTED_BY]->(ci)
         `, { id, tenantId: ctx.tenantId, ciId })
       }

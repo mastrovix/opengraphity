@@ -60,6 +60,8 @@ const LINK_STYLE: Record<string, { stroke: string; opacity: number; dash?: strin
 }
 
 const TYPE_ICON: Record<string, string> = {
+  business_capability:  '🎯',
+  business_application: '💼',
   server:            '🖥',
   virtual_machine:   '☁',
   database:          '🗄',

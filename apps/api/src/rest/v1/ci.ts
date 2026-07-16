@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { requirePermission } from '../../middleware/apiKeyAuth.js'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { ciLabelPredicate, TYPE_TO_LABEL } from '../../lib/ciLabels.js'
 
 const router: ExpressRouter = Router()
 
@@ -15,17 +16,23 @@ router.get('/', requirePermission('ci:read'), async (req: Request, res: Response
   try {
     const filters: string[] = []
     const params: Record<string, unknown> = { tenantId: req.apiKey!.tenantId, offset, limit }
-    if (ciType) { filters.push('ci.type = $ciType'); params['ciType'] = ciType }
+    // Filter by label, not by the `type` property (only discovery-created CIs
+    // carry it); the whitelist also prevents label injection.
+    if (ciType) {
+      const label = TYPE_TO_LABEL[ciType.toLowerCase()]
+      if (!label) { res.status(400).json({ error: `Unknown CI type: ${ciType}` }); return }
+      filters.push(`ci:${label}`)
+    }
     if (status) { filters.push('ci.status = $status'); params['status'] = status }
     const where = filters.length > 0 ? `AND ${filters.join(' AND ')}` : ''
 
     const countRow = await runQueryOne<{ total: number }>(session, `
-      MATCH (ci {tenant_id: $tenantId}) WHERE (ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate) ${where}
+      MATCH (ci {tenant_id: $tenantId}) WHERE ${ciLabelPredicate('ci')} ${where}
       RETURN count(ci) AS total
     `, params)
 
     const rows = await runQuery<{ props: Record<string, unknown> }>(session, `
-      MATCH (ci {tenant_id: $tenantId}) WHERE (ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate) ${where}
+      MATCH (ci {tenant_id: $tenantId}) WHERE ${ciLabelPredicate('ci')} ${where}
       RETURN properties(ci) AS props ORDER BY ci.name SKIP toInteger($offset) LIMIT toInteger($limit)
     `, params)
 
@@ -41,7 +48,7 @@ router.get('/:id', requirePermission('ci:read'), async (req: Request, res: Respo
   try {
     const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
       MATCH (ci {id: $id, tenant_id: $tenantId})
-      WHERE (ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate)
+      WHERE ${ciLabelPredicate('ci')}
       RETURN properties(ci) AS props
     `, { id: req.params['id'], tenantId: req.apiKey!.tenantId })
     if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'CI not found' } }); return }

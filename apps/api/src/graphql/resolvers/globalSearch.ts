@@ -5,6 +5,7 @@ import { mapProblem } from './problem.js'
 import { mapArticle, ARTICLE_RETURN_WITH_WI } from './knowledgeBase.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
+import { ALL_CI_LABELS } from '../../lib/ciLabels.js'
 
 // ── result shape ──────────────────────────────────────────────────────────────
 
@@ -33,14 +34,8 @@ function emptyResults(): GlobalSearchResults {
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-// CI labels covered by the `global_search` fulltext index (static base types).
-const CI_SEARCH_LABELS = [
-  'BusinessCapability', 'BusinessApplication', 'Application', 'Database', 'DatabaseInstance',
-  'Server', 'Certificate', 'SslCertificate', 'VirtualMachine',
-  'NetworkDevice', 'Storage', 'CloudService', 'ApiEndpoint', 'Microservice',
-] as const
-
-const CI_LABEL_UNION = CI_SEARCH_LABELS.map((l) => `ci:${l}`).join(' OR ')
+// CI labels covered by the `global_search` fulltext index — single source of truth
+const CI_LABEL_UNION = ALL_CI_LABELS.map((l) => `ci:${l}`).join(' OR ')
 
 // Task label → frontend `kind` convention (see apps/web/src/pages/tasks/).
 const TASK_KIND: Record<string, string> = {

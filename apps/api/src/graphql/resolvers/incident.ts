@@ -10,6 +10,7 @@ import type { GraphQLContext } from '../../context.js'
 import * as incidentService from '../../services/incidentService.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
+import { ciLabelPredicate } from '../../lib/ciLabels.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -208,7 +209,7 @@ async function addAffectedCI(
   const allowedTypes = await getAllowedCILabels(ctx.tenantId, 'incident')
   const ciWhereClause = allowedTypes.length > 0
     ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
-    : `(ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)`
+    : ciLabelPredicate('ci')
   const allowedLabels = allowedTypes.map((t) =>
     t.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(''),
   )

@@ -1,27 +1,8 @@
 import { withSession, mapCI, ciTypeFromLabels, runQuery, runQueryOne } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
+import { TYPE_TO_LABEL, ALL_CI_LABELS, IMPACT_REL_TYPES } from '../../lib/ciLabels.js'
 
-// Whitelist: type string → Neo4j label (prevents Cypher injection)
-const TYPE_TO_LABEL: Record<string, string> = {
-  business_application: 'BusinessApplication',
-  business_capability: 'BusinessCapability',
-  application:      'Application',
-  database:         'Database',
-  database_instance: 'DatabaseInstance',
-  db_instance:      'DatabaseInstance',
-  server:           'Server',
-  certificate:      'Certificate',
-  ssl_certificate:  'SslCertificate',
-  virtual_machine:  'VirtualMachine',
-  network_device:   'NetworkDevice',
-  storage:          'Storage',
-  cloud_service:    'CloudService',
-  api_endpoint:     'ApiEndpoint',
-  microservice:     'Microservice',
-}
-
-const ALL_CI_LABELS = Object.values(TYPE_TO_LABEL).filter((v, i, a) => a.indexOf(v) === i)
 
 async function allCIs(_: unknown, args: { limit?: number; offset?: number; type?: string; environment?: string; status?: string; search?: string; ciTypes?: string[] | null }, ctx: GraphQLContext) {
   const limit  = args.limit  ?? 50
@@ -127,7 +108,7 @@ async function blastRadius(_: unknown, args: { id: string }, ctx: GraphQLContext
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props; label: string; distance: unknown; parentProps: Props | null }>(session,
       `MATCH (root {id: $id, tenant_id: $tenantId})
-       MATCH path = (root)<-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|REALIZES|ENABLED_BY*1..5]-(impacted)
+       MATCH path = (root)<-[:${IMPACT_REL_TYPES}*1..5]-(impacted)
        WHERE impacted.tenant_id = $tenantId
        WITH impacted, labels(impacted)[0] AS label,
             min(length(path)) AS distance,

@@ -12,33 +12,14 @@ interface TopologyArgs {
   maxHops?:      number | null
 }
 
-// All known CI labels in Neo4j
-const CI_LABELS = [
-  'Application', 'Server', 'Database', 'DatabaseInstance',
-  'Certificate', 'SslCertificate', 'VirtualMachine', 'NetworkDevice',
-  'Storage', 'CloudService', 'ApiEndpoint', 'Microservice',
-]
+// All known CI labels in Neo4j — single source of truth
+import { ALL_CI_LABELS as CI_LABELS, TYPE_TO_LABEL } from '../../lib/ciLabels.js'
 
 const NODE_LIMIT = 2000
 const EDGE_LIMIT = 5000
 
 function labelFromType(t: string): string {
-  const map: Record<string, string> = {
-    application:        'Application',
-    server:             'Server',
-    database:           'Database',
-    database_instance:  'DatabaseInstance',
-    db_instance:        'DatabaseInstance',
-    certificate:        'Certificate',
-    ssl_certificate:    'SslCertificate',
-    virtual_machine:    'VirtualMachine',
-    network_device:     'NetworkDevice',
-    storage:            'Storage',
-    cloud_service:      'CloudService',
-    api_endpoint:       'ApiEndpoint',
-    microservice:       'Microservice',
-  }
-  return map[t.toLowerCase()] ?? t
+  return TYPE_TO_LABEL[t.toLowerCase()] ?? t
 }
 
 function toNum(v: unknown): number {
@@ -95,7 +76,7 @@ export const topologyResolvers = {
               AND ANY(lbl IN labels(origin) WHERE lbl IN $ciLabels)
             CALL apoc.path.subgraphNodes(origin, {
               relationshipFilter: null,
-              labelFilter:        '+Application|+Server|+Database|+DatabaseInstance|+Certificate|+SslCertificate|+VirtualMachine|+NetworkDevice|+Storage|+CloudService|+ApiEndpoint|+Microservice',
+              labelFilter:        '${CI_LABELS.map((l) => '+' + l).join('|')}',
               maxLevel:           $depth,
               limit:              ${NODE_LIMIT}
             }) YIELD node

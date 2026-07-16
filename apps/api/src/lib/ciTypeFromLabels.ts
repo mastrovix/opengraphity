@@ -1,5 +1,7 @@
 // Static map: built-in Neo4j CI label → normalized type string
 const STATIC_LABEL_TO_TYPE: Record<string, string> = {
+  BusinessCapability:  'business_capability',
+  BusinessApplication: 'business_application',
   Application:      'application',
   Server:           'server',
   Database:         'database',

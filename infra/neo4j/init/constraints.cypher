@@ -47,3 +47,21 @@ CREATE INDEX deploy_plan_task_code IF NOT EXISTS FOR (t:DeployPlanTask) ON (t.co
 CREATE INDEX validation_test_code  IF NOT EXISTS FOR (t:ValidationTest) ON (t.code);
 CREATE INDEX deployment_task_code  IF NOT EXISTS FOR (t:DeploymentTask) ON (t.code);
 CREATE INDEX review_task_code      IF NOT EXISTS FOR (t:ReviewTask)     ON (t.code);
+
+// ── Per-label unique id constraints for CI types ──────────────────────────────
+// CIs created via GraphQL carry only their type label (not :ConfigurationItem,
+// which only discovery-created CIs have), so uniqueness must be per label.
+CREATE CONSTRAINT unique_business_capability_id IF NOT EXISTS FOR (n:BusinessCapability) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_business_application_id IF NOT EXISTS FOR (n:BusinessApplication) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_application_id IF NOT EXISTS FOR (n:Application) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_database_id IF NOT EXISTS FOR (n:Database) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_database_instance_id IF NOT EXISTS FOR (n:DatabaseInstance) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_server_id IF NOT EXISTS FOR (n:Server) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_certificate_id IF NOT EXISTS FOR (n:Certificate) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_ssl_certificate_id IF NOT EXISTS FOR (n:SslCertificate) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_virtual_machine_id IF NOT EXISTS FOR (n:VirtualMachine) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_network_device_id IF NOT EXISTS FOR (n:NetworkDevice) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_storage_id IF NOT EXISTS FOR (n:Storage) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_cloud_service_id IF NOT EXISTS FOR (n:CloudService) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_api_endpoint_id IF NOT EXISTS FOR (n:ApiEndpoint) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_microservice_id IF NOT EXISTS FOR (n:Microservice) REQUIRE n.id IS UNIQUE;

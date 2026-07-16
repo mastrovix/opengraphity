@@ -17,6 +17,7 @@ const ENTITY_LABEL_MAP: Record<string, string> = {
   certificate:     'Certificate',
   network_device:  'NetworkDevice',
   vm:              'VirtualMachine',
+  business_application: 'BusinessApplication',
 }
 
 // Fields allowed for groupBy / filter (per entity type)
@@ -31,6 +32,7 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
   certificate:     ['status', 'environment'],
   network_device:  ['status', 'environment', 'type'],
   vm:              ['status', 'environment'],
+  business_application: ['status', 'environment', 'criticality', 'businessUnit'],
 }
 
 const ALLOWED_METRICS = ['count', 'count_by_field', 'avg_field', 'sum_field']

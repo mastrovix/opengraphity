@@ -7,6 +7,7 @@ import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
+import { ciLabelPredicate } from '../lib/ciLabels.js'
 
 export interface ProblemEventPayload {
   id: string; title: string; priority: string; status: string; assignedTo: string
@@ -89,7 +90,7 @@ export async function createProblem(
         await runQuery(session, `
           MATCH (p:Problem {id: $id, tenant_id: $tenantId})
           MATCH (ci {id: $ciId, tenant_id: $tenantId})
-          WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
+          WHERE ${ciLabelPredicate('ci')}
           MERGE (p)-[:AFFECTS]->(ci)
         `, { id, tenantId: ctx.tenantId, ciId })
       }

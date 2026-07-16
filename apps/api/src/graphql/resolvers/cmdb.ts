@@ -2,6 +2,7 @@ import { NotFoundError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
+import { ciLabelPredicate } from '../../lib/ciLabels.js'
 import { withSession } from './ci-utils.js'
 import * as cmdbService from '../../services/cmdbService.js'
 
@@ -257,7 +258,7 @@ async function updateCIFields(
   return withSession(async (session) => {
     const cypher = `
       MATCH (ci {id: $id, tenant_id: $tenantId})
-      WHERE ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate
+      WHERE ${ciLabelPredicate('ci')}
       SET ${setPairs}
       RETURN properties(ci) as props
     `

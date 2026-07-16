@@ -3,6 +3,7 @@ import { NotFoundError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
+import { ciLabelPredicate } from '../../lib/ciLabels.js'
 import type { GraphQLContext } from '../../context.js'
 import { mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
@@ -86,7 +87,7 @@ async function assignCIOwner(
   return withSession(async (session) => {
     const cypher = `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
+      WHERE ${ciLabelPredicate('ci')}
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       MERGE (ci)-[:OWNED_BY]->(t)
       RETURN properties(ci) as props, labels(ci)[0] AS label
@@ -109,7 +110,7 @@ async function assignCISupportGroup(
   return withSession(async (session) => {
     const cypher = `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
+      WHERE ${ciLabelPredicate('ci')}
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       MERGE (ci)-[:SUPPORTED_BY]->(t)
       RETURN properties(ci) as props, labels(ci)[0] AS label

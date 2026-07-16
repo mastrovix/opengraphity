@@ -2,6 +2,7 @@ import { withSession, getSession, ciTypeFromLabels } from './ci-utils.js'
 import { calculateRiskScore } from '../../lib/riskScore.js'
 import { getTerminalStepNames } from '../../lib/workflowHelpers.js'
 import type { GraphQLContext } from '../../context.js'
+import { ciLabelPredicate, IMPACT_REL_TYPES } from '../../lib/ciLabels.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -20,9 +21,9 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   const blastResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (ci {id: ciId, tenant_id: $tenantId})
-    WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
-    MATCH path = (ci)<-[:DEPENDS_ON|HOSTED_ON*1..5]-(impacted)
-    WHERE (impacted:Application OR impacted:Database OR impacted:DatabaseInstance OR impacted:Server OR impacted:Certificate)
+    WHERE ${ciLabelPredicate('ci')}
+    MATCH path = (ci)<-[:${IMPACT_REL_TYPES}*1..5]-(impacted)
+    WHERE ${ciLabelPredicate('impacted')}
     AND impacted.tenant_id = $tenantId
     AND NOT impacted.id IN $ciIds
     WITH impacted, labels(impacted)[0] AS lbl, min(length(path)) AS distance
@@ -119,7 +120,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   const ciResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (ci {id: ciId, tenant_id: $tenantId})
-    WHERE (ci:Application OR ci:Database OR ci:DatabaseInstance OR ci:Server OR ci:Certificate)
+    WHERE ${ciLabelPredicate('ci')}
     RETURN ci.environment AS env
   `, { ciIds, tenantId }))
 

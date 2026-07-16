@@ -1,4 +1,6 @@
 export type CIType =
+  | 'business_capability'
+  | 'business_application'
   | 'server'
   | 'virtual_machine'
   | 'database_instance'

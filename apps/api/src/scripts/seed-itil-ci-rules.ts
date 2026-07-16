@@ -24,14 +24,17 @@ interface RuleSpec {
 
 const RULES: RuleSpec[] = [
   // Incident
+  { itilType: 'incident', ciType: 'business_application', relationType: 'IMPACTS',   direction: 'outgoing', description: 'Business application impattate dall\'incident' },
   { itilType: 'incident', ciType: 'server',            relationType: 'IMPACTS',   direction: 'outgoing', description: 'Server impattati dall\'incident' },
   { itilType: 'incident', ciType: 'application',       relationType: 'IMPACTS',   direction: 'outgoing', description: 'Applicazioni impattate dall\'incident' },
   { itilType: 'incident', ciType: 'database',          relationType: 'IMPACTS',   direction: 'outgoing', description: 'Database impattati dall\'incident' },
   // Change
+  { itilType: 'change',   ciType: 'business_application', relationType: 'MODIFIES',  direction: 'outgoing', description: 'Business application modificate dalla change' },
   { itilType: 'change',   ciType: 'server',            relationType: 'MODIFIES',  direction: 'outgoing', description: 'Server modificati dalla change' },
   { itilType: 'change',   ciType: 'application',       relationType: 'MODIFIES',  direction: 'outgoing', description: 'Applicazioni modificate dalla change' },
   { itilType: 'change',   ciType: 'database',          relationType: 'MODIFIES',  direction: 'outgoing', description: 'Database modificati dalla change' },
   // Problem
+  { itilType: 'problem',  ciType: 'business_application', relationType: 'ROOT_CAUSE', direction: 'outgoing', description: 'Business application causa del problem' },
   { itilType: 'problem',  ciType: 'server',            relationType: 'ROOT_CAUSE', direction: 'outgoing', description: 'Server causa del problem' },
   { itilType: 'problem',  ciType: 'application',       relationType: 'ROOT_CAUSE', direction: 'outgoing', description: 'Applicazioni causa del problem' },
   { itilType: 'problem',  ciType: 'database',          relationType: 'ROOT_CAUSE', direction: 'outgoing', description: 'Database causa del problem' },

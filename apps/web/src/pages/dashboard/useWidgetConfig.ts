@@ -28,6 +28,7 @@ export const ENTITY_TYPES = [
   { value: 'certificate',     label: 'Certificate' },
   { value: 'network_device',  label: 'Network Device' },
   { value: 'vm',              label: 'Virtual Machine' },
+  { value: 'business_application', label: 'Business Application' },
 ]
 
 export const METRICS = [
@@ -48,6 +49,7 @@ export const ALLOWED_FIELDS: Record<string, string[]> = {
   certificate:     ['status', 'environment'],
   network_device:  ['status', 'environment'],
   vm:              ['status', 'environment'],
+  business_application: ['status', 'environment', 'criticality', 'businessUnit'],
 }
 
 export const TIME_RANGES = [

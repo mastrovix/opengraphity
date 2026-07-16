@@ -152,16 +152,7 @@ export function CMDBPage() {
         onSort={handleSort}
         sortField={sortField}
         sortDir={sortDir}
-        onRowClick={(row) => {
-          switch (row.type) {
-            case 'application':       navigate(`/applications/${row.id}`);       break
-            case 'database':          navigate(`/databases/${row.id}`);          break
-            case 'database_instance': navigate(`/database-instances/${row.id}`); break
-            case 'server':            navigate(`/servers/${row.id}`);            break
-            case 'certificate':       navigate(`/certificates/${row.id}`);       break
-            default:                  navigate(`/cmdb/${row.id}`)
-          }
-        }}
+        onRowClick={(row) => navigate(`/ci/${row.type}/${row.id}`)}
       />
 
       <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
