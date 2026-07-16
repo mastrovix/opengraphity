@@ -23,6 +23,7 @@ export const TYPE_TO_LABEL: Record<string, string> = {
   cloud_service:        'CloudService',
   api_endpoint:         'ApiEndpoint',
   microservice:         'Microservice',
+  dynamic_ci_group:     'DynamicCIGroup',
 }
 
 export const ALL_CI_LABELS: string[] = [...new Set(Object.values(TYPE_TO_LABEL))]

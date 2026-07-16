@@ -257,6 +257,33 @@ const CI_TYPES: CIType[] = [
       { name: 'supportGroup', label: 'Support Group', relationship_type: 'SUPPORTED_BY', target_entity: 'Team', required: false, order: 2 },
     ],
   },
+  {
+    // ServiceNow-style Dynamic CI Group: a CI that aggregates CIs of any type.
+    // membershipType 'manual' → members linked via HAS_MEMBER relationships;
+    // 'dynamic' → members computed live from the criteria* fields (see the
+    // ciGroupMembers GraphQL query). Groups of groups are not supported in v1.
+    name: 'dynamic_ci_group', label: 'Dynamic CI Group', icon: 'boxes', color: '#ea580c', neo4j_label: 'DynamicCIGroup',
+    chain_families: ['Application', 'Infrastructure'],
+    fields: [
+      { name: 'membershipType',      label: 'Membership Type',        field_type: 'enum',   order: 10,
+        enum_values: ['manual', 'dynamic'] },
+      { name: 'criteriaCiTypes',     label: 'Criteria: CI Types',     field_type: 'string', order: 11 },
+      { name: 'criteriaEnvironment', label: 'Criteria: Environment',  field_type: 'enum',   order: 12,
+        enum_values: ['production', 'staging', 'development'] },
+      { name: 'criteriaStatus',      label: 'Criteria: Status',       field_type: 'enum',   order: 13,
+        enum_values: ['active', 'inactive', 'maintenance'] },
+      { name: 'criteriaNameContains', label: 'Criteria: Name Contains', field_type: 'string', order: 14 },
+    ],
+    relations: [
+      { name: 'members',      label: 'Members',    relationship_type: 'HAS_MEMBER', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI membri del gruppo (membership manuale)' },
+      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 2, description: 'CI da cui questo gruppo dipende' },
+      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 3, description: 'CI che dipendono da questo gruppo' },
+    ],
+    systemRels: [
+      { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: false, order: 1 },
+      { name: 'supportGroup', label: 'Support Group', relationship_type: 'SUPPORTED_BY', target_entity: 'Team', required: false, order: 2 },
+    ],
+  },
 ]
 
 async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: CIType) {

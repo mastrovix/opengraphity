@@ -581,7 +581,13 @@
       "direction": "Direction",
       "dirOutgoing": "This CI → ...",
       "dirIncoming": "... → This CI",
-      "searchTarget": "Search CI..."
+      "searchTarget": "Search CI...",
+      "members": "Members",
+      "noMembers": "No members.",
+      "memberName": "Name",
+      "memberType": "Type",
+      "memberEnvironment": "Environment",
+      "memberStatus": "Status"
     },
     "tasks": {
       "reopen": {

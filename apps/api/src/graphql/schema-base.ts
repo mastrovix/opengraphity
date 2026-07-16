@@ -48,6 +48,8 @@ export function buildBaseSDL(): string {
     blastRadius(id: ID!): [BlastRadiusItem!]!
     ciIncidents(ciId: ID!): [Incident!]!
     ciChanges(ciId: ID!): [Change!]!
+    # Dynamic CI Group members: manual (HAS_MEMBER) or dynamic (live criteria)
+    ciGroupMembers(groupId: ID!): [CIBase!]!
     baseCIType: CITypeDefinition!
     ciTypes: [CITypeDefinition!]!
     itilTypes: [CITypeDefinition!]!

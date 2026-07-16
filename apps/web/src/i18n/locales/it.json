@@ -581,7 +581,13 @@
       "direction": "Direzione",
       "dirOutgoing": "Questo CI → ...",
       "dirIncoming": "... → Questo CI",
-      "searchTarget": "Cerca CI..."
+      "searchTarget": "Cerca CI...",
+      "members": "Membri",
+      "noMembers": "Nessun membro.",
+      "memberName": "Nome",
+      "memberType": "Tipo",
+      "memberEnvironment": "Ambiente",
+      "memberStatus": "Stato"
     },
     "tasks": {
       "reopen": {

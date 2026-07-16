@@ -14,6 +14,7 @@ const STATIC_LABEL_TO_TYPE: Record<string, string> = {
   CloudService:     'cloud_service',
   ApiEndpoint:      'api_endpoint',
   Microservice:     'microservice',
+  DynamicCIGroup:   'dynamic_ci_group',
 }
 
 // Dynamic map populated from CITypeDefinition nodes at schema load time

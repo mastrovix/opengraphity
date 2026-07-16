@@ -1,11 +1,12 @@
 import {
-  Box, Database, Server, Shield,
+  Box, Boxes, Database, Server, Shield,
   HardDrive, Cloud, Globe, Cpu, Network,
   Monitor, Lock, Briefcase, Target,
 } from 'lucide-react'
 
 const iconMap: Record<string, React.ComponentType<{ size?: number; color?: string; style?: React.CSSProperties }>> = {
   box:          Box,
+  boxes:        Boxes,
   database:     Database,
   server:       Server,
   shield:       Shield,

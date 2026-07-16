@@ -35,7 +35,7 @@ CREATE INDEX idx_dashboard_tenant  IF NOT EXISTS FOR (n:DashboardConfig)     ON 
 // CONTAINS on 278k+ nodes cannot use range indexes; the fulltext index gives
 // indexed prefix search across every searchable entity type.
 CREATE FULLTEXT INDEX global_search IF NOT EXISTS
-FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|BusinessCapability|BusinessApplication|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice)
+FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|BusinessCapability|BusinessApplication|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice|DynamicCIGroup)
 ON EACH [n.title, n.number, n.code, n.name];
 
 // ── Range indexes on change-task codes (global search: tasks group) ──────────
@@ -65,3 +65,4 @@ CREATE CONSTRAINT unique_storage_id IF NOT EXISTS FOR (n:Storage) REQUIRE n.id I
 CREATE CONSTRAINT unique_cloud_service_id IF NOT EXISTS FOR (n:CloudService) REQUIRE n.id IS UNIQUE;
 CREATE CONSTRAINT unique_api_endpoint_id IF NOT EXISTS FOR (n:ApiEndpoint) REQUIRE n.id IS UNIQUE;
 CREATE CONSTRAINT unique_microservice_id IF NOT EXISTS FOR (n:Microservice) REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT unique_dynamic_ci_group_id IF NOT EXISTS FOR (n:DynamicCIGroup) REQUIRE n.id IS UNIQUE;

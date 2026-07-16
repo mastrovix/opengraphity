@@ -13,6 +13,7 @@
     "seed:apps": "tsx src/scripts/seed-apps.ts",
     "seed:apps-with-teams": "tsx src/scripts/seed-apps-with-teams.ts",
     "seed:business-applications": "tsx src/scripts/seed-business-applications.ts",
+    "seed:dynamic-ci-groups": "tsx src/scripts/seed-dynamic-ci-groups.ts",
     "seed:business-capabilities": "tsx src/scripts/seed-business-capabilities.ts",
     "seed:databases": "tsx src/scripts/seed-databases.ts",
     "seed:databases-with-teams": "tsx src/scripts/seed-databases-with-teams.ts",

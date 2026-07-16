@@ -13,6 +13,7 @@ import { notificationChannelResolvers } from './notificationChannel.js'
 import { reportResolvers } from './report.js'
 import { customReportResolvers } from './customReports.js'
 import { ciResolvers } from './ci.js'
+import { ciGroupResolvers } from './ciGroup.js'
 import { logsResolvers } from './logs.js'
 import { dashboardResolvers } from './dashboard.js'
 import { buildDynamicCIResolvers } from './dynamic-ci.js'
@@ -285,6 +286,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
+      ciGroupMembers: ciGroupResolvers.Query.ciGroupMembers,
       ...meStub,
       user: userById,
     },

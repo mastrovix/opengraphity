@@ -12,6 +12,8 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DetailField } from '@/components/ui/DetailField'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { SimpleTable } from '@/components/ui/SimpleTable'
+import { Pagination } from '@/components/ui/Pagination'
 import { Input, Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
@@ -102,6 +104,61 @@ function RelationList({
         </CollapsibleGroup>
       ))}
     </>
+  )
+}
+
+// ── Dynamic CI Group members ──────────────────────────────────────────────
+
+const CI_GROUP_MEMBERS = gql`
+  query CiGroupMembers($groupId: ID!) {
+    ciGroupMembers(groupId: $groupId) {
+      id name type environment status
+    }
+  }
+`
+
+interface GroupMember {
+  id: string; name: string; type: string
+  environment: string | null; status: string | null
+}
+
+const MEMBERS_PAGE_SIZE = 25
+
+function CIGroupMembersCard({ groupId }: { groupId: string }) {
+  const navigate = useNavigate()
+  const { t } = useTranslation()
+  const [membersPage, setMembersPage] = useState(0)
+  const { data, loading } = useQuery<{ ciGroupMembers: GroupMember[] }>(
+    CI_GROUP_MEMBERS,
+    { variables: { groupId } },
+  )
+  const members = data?.ciGroupMembers ?? []
+  const pageMembers = members.slice(membersPage * MEMBERS_PAGE_SIZE, (membersPage + 1) * MEMBERS_PAGE_SIZE)
+  const totalPages = Math.ceil(members.length / MEMBERS_PAGE_SIZE)
+
+  return (
+    <SectionCard title={`${t('pages.ci.members')} (${members.length})`} defaultOpen={true}>
+      {loading ? (
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>…</p>
+      ) : (
+        <SimpleTable<GroupMember>
+          columns={[
+            { key: 'name',        label: t('pages.ci.memberName') },
+            { key: 'type',        label: t('pages.ci.memberType'),
+              render: v => <span style={{ textTransform: 'capitalize' }}>{String(v ?? '').replace(/_/g, ' ')}</span> },
+            { key: 'environment', label: t('pages.ci.memberEnvironment') },
+            { key: 'status',      label: t('pages.ci.memberStatus'),
+              render: v => v ? <StatusBadge value={String(v)} /> : '—' },
+          ]}
+          rows={pageMembers}
+          onRowClick={row => navigate(ciPath(row))}
+          empty={<p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>{t('pages.ci.noMembers')}</p>}
+        />
+      )}
+      {totalPages > 1 && (
+        <Pagination currentPage={membersPage + 1} totalPages={totalPages} onPrev={() => setMembersPage(p => p - 1)} onNext={() => setMembersPage(p => p + 1)} />
+      )}
+    </SectionCard>
   )
 }
 
@@ -423,6 +480,8 @@ export function CIDetailPage() {
               </>
             )}
           </SectionCard>
+
+          {ci.type === 'dynamic_ci_group' && <CIGroupMembersCard groupId={ci.id} />}
 
           <SectionCard title="Mappa Dipendenze">
             <Suspense fallback={<div style={{ height: 260 }} />}>
