@@ -1,5 +1,6 @@
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
+import type { Session as NeoSession } from 'neo4j-driver'
 import { runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
@@ -8,7 +9,9 @@ import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../../../lib/task
 type Session2 = Parameters<typeof runQuery>[0]
 export type AfterEnterStep = (session: Session2, changeId: string, tenantId: string, stepName: string) => Promise<void>
 
-type Session = Parameters<typeof runQuery>[0]
+// Strict driver Session: evaluateAutoTransitions apre transazioni proprie
+// (workflowEngine.transition) e non può girare dentro una tx esterna.
+type Session = NeoSession
 
 // Mapping condition → async evaluator returning true when condition holds.
 // Every condition inspects DB state for the given Change.
@@ -93,6 +96,13 @@ export async function evaluateAutoTransitions(
     let fired = false
     for (const tr of transitions) {
       const evaluator = tr.condition ? CONDITIONS[tr.condition] : null
+      if (tr.condition && !evaluator) {
+        // Misconfigured workflow: unknown condition name. Never crash the
+        // mutation — skip the transition and leave a trace for ops.
+        logger.error({ changeId, condition: tr.condition, toStep: tr.toStep },
+          '[auto-transition] condition sconosciuta — transizione saltata')
+        continue
+      }
       const ok = evaluator ? await evaluator(session, changeId, ctx.tenantId) : (tr.condition === null)
       if (!ok) continue
 
