@@ -132,8 +132,8 @@ export function buildBaseSDL(): string {
     # Attachments
     attachments(entityType: String!, entityId: String!): [Attachment!]!
 
-    # Global search (command palette)
-    globalSearch(query: String!, limitPerType: Int): [SearchHit!]!
+    # Global search (topbar search box) — \`limit\` = max results per category
+    globalSearch(query: String!, limit: Int): GlobalSearchResults!
 
     # Comments
     comments(entityType: String!, entityId: String!, includeInternal: Boolean): [EntityComment!]!
@@ -405,14 +405,23 @@ export function buildBaseSDL(): string {
   ${attachmentsSDL()}
   ${commentsSDL()}
 
-  type SearchHit {
-    entityType: String!
+  type GlobalSearchResults {
+    cis:        [CIBase!]!
+    changes:    [Change!]!
+    incidents:  [Incident!]!
+    problems:   [Problem!]!
+    tasks:      [SearchTaskResult!]!
+    kbArticles: [KBArticle!]!
+  }
+
+  type SearchTaskResult {
     id:         ID!
-    number:     String
-    title:      String!
-    status:     String
-    ciType:     String
-    slug:       String
+    code:       String!
+    taskType:   String!
+    status:     String!
+    changeCode: String!
+    changeId:   ID!
+    ciName:     String!
   }
   ${knowledgeBaseSDL()}
   ${portalSDL()}

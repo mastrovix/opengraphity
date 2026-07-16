@@ -797,17 +797,15 @@
     "backToList": "Torna alla lista"
   },
   "search": {
-    "placeholder": "Cerca incident, change, CI…",
-    "hint": "Cerca",
-    "noResults": "Nessun risultato trovato",
-    "typeToSearch": "Digita almeno 2 caratteri per cercare",
+    "placeholder": "Cerca ovunque... (Ctrl+K)",
+    "noResults": "Nessun risultato per '{{query}}'",
     "groups": {
-      "incident": "Incident",
-      "change": "Change",
-      "problem": "Problem",
-      "service_request": "Richieste di servizio",
-      "ci": "Configuration Item",
-      "kb_article": "Knowledge Base"
+      "cis": "Configuration Item",
+      "changes": "Change",
+      "incidents": "Incident",
+      "problems": "Problem",
+      "tasks": "Task",
+      "kbArticles": "Knowledge Base"
     }
   },
   "sla": {

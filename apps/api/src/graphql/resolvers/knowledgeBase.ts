@@ -39,7 +39,7 @@ function toInt(v: unknown): number {
   return Number(v)
 }
 
-function mapArticle(r: { get: (k: string) => unknown }): KBArticle {
+export function mapArticle(r: { get: (k: string) => unknown }): KBArticle {
   return {
     id:                 r.get('id')                 as string,
     title:              r.get('title')              as string,
@@ -83,7 +83,7 @@ const ARTICLE_RETURN = `
 `
 
 // Full RETURN including the OPTIONAL MATCH for WorkflowInstance
-const ARTICLE_RETURN_WITH_WI = `
+export const ARTICLE_RETURN_WITH_WI = `
   OPTIONAL MATCH (a)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
   ${ARTICLE_RETURN}
 `

@@ -797,17 +797,15 @@
     "backToList": "Back to list"
   },
   "search": {
-    "placeholder": "Search incidents, changes, CIs…",
-    "hint": "Search",
-    "noResults": "No results found",
-    "typeToSearch": "Type at least 2 characters to search",
+    "placeholder": "Search everywhere... (Ctrl+K)",
+    "noResults": "No results for '{{query}}'",
     "groups": {
-      "incident": "Incidents",
-      "change": "Changes",
-      "problem": "Problems",
-      "service_request": "Service Requests",
-      "ci": "Configuration Items",
-      "kb_article": "Knowledge Base"
+      "cis": "Configuration Items",
+      "changes": "Changes",
+      "incidents": "Incidents",
+      "problems": "Problems",
+      "tasks": "Tasks",
+      "kbArticles": "Knowledge Base"
     }
   },
   "sla": {

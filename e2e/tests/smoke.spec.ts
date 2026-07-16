@@ -7,9 +7,9 @@ import { test, expect } from '@playwright/test'
 
 test('dashboard shell loads after login', async ({ page }) => {
   await page.goto('/')
-  // Authenticated shell: dashboard heading + topbar search button
+  // Authenticated shell: dashboard heading + topbar inline search box
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByRole('button', { name: /search|cerca/i }).first()).toBeVisible()
+  await expect(page.getByPlaceholder(/cerca ovunque|search everywhere/i)).toBeVisible()
 })
 
 test('incident list renders with SLA column', async ({ page }) => {
@@ -57,15 +57,21 @@ test('command palette finds incidents', async ({ page }) => {
   await page.goto('/incidents')
   await expect(page.getByRole('table')).toBeVisible({ timeout: 20_000 })
 
-  // Open via the topbar button (more robust than the OS-dependent shortcut in headless)
-  await page.getByRole('button', { name: /search|cerca/i }).first().click()
-  const input = page.getByPlaceholder(/cerca|search/i)
+  // Inline topbar search box (Ctrl+K focuses it; clicking works cross-OS in headless)
+  const input = page.getByPlaceholder(/cerca ovunque|search everywhere/i)
   await expect(input).toBeVisible({ timeout: 5_000 })
+  await input.click()
 
   await input.fill('E2E-smoke')
-  // Grouped results appear with at least one hit (created by the e2e test above)
-  await expect(page.getByText(/E2E-smoke/).first()).toBeVisible({ timeout: 10_000 })
+  // Grouped dropdown appears with the Incidents group and at least one hit
+  // (created by the e2e test above)
+  const dropdown = page.getByRole('listbox')
+  await expect(dropdown).toBeVisible({ timeout: 10_000 })
+  await expect(dropdown.getByText(/^incidents?$/i).first()).toBeVisible({ timeout: 10_000 })
+  await expect(dropdown.getByText(/E2E-smoke/).first()).toBeVisible()
 
+  // Esc closes the dropdown (the box stays in the topbar)
   await page.keyboard.press('Escape')
-  await expect(input).not.toBeVisible()
+  await expect(dropdown).not.toBeVisible()
+  await expect(input).toBeVisible()
 })

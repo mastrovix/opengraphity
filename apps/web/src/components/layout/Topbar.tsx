@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Bell, Search } from 'lucide-react'
+import { Bell } from 'lucide-react'
+import { GlobalSearch } from './GlobalSearch'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -117,17 +118,12 @@ function getUserInfo() {
   return { email, display, initials }
 }
 
-interface TopbarProps {
-  onOpenSearch?: () => void
-}
-
-export function Topbar({ onOpenSearch }: TopbarProps) {
+export function Topbar() {
   const { t } = useTranslation()
   const { logout } = useAuth()
   const { display, initials } = getUserInfo()
   const { unreadCount } = useNotificationContext()
   const [panelOpen, setPanelOpen] = useState(false)
-  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
 
   return (
     <header
@@ -149,43 +145,7 @@ export function Topbar({ onOpenSearch }: TopbarProps) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {/* Global search */}
-        {onOpenSearch && (
-          <button
-            onClick={onOpenSearch}
-            aria-label={t('search.placeholder')}
-            title={t('search.hint')}
-            className="hover-bg"
-            style={{
-              display:         'flex',
-              alignItems:      'center',
-              gap:             8,
-              height:          32,
-              padding:         '0 10px',
-              borderRadius:    6,
-              border:          `1px solid ${C.border}`,
-              color:           C.textMuted,
-              fontSize:        11,
-              cursor:          'pointer',
-              ['--hover-bg' as string]: C.hoverBg,
-            }}
-          >
-            <Search size={14} />
-            <span>{t('search.hint')}</span>
-            <kbd
-              style={{
-                fontSize:     10,
-                border:       `1px solid ${C.border}`,
-                borderRadius: 4,
-                padding:      '1px 5px',
-                lineHeight:   1.4,
-                color:        C.textMuted,
-                fontFamily:   'inherit',
-              }}
-            >
-              {isMac ? '⌘K' : 'Ctrl+K'}
-            </kbd>
-          </button>
-        )}
+        <GlobalSearch />
 
         {/* Bell */}
         <div style={{ position: 'relative' }}>

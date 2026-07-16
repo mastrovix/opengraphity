@@ -37,3 +37,13 @@ CREATE INDEX idx_dashboard_tenant  IF NOT EXISTS FOR (n:DashboardConfig)     ON 
 CREATE FULLTEXT INDEX global_search IF NOT EXISTS
 FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice)
 ON EACH [n.title, n.number, n.code, n.name];
+
+// ── Range indexes on change-task codes (global search: tasks group) ──────────
+// Honest note: range indexes do NOT accelerate the CONTAINS predicate used by
+// the task search; they only help STARTS WITH / equality lookups on codes
+// (e.g. pasting a full "TASK00000042"). Added per spec anyway.
+CREATE INDEX assessment_task_code  IF NOT EXISTS FOR (t:AssessmentTask) ON (t.code);
+CREATE INDEX deploy_plan_task_code IF NOT EXISTS FOR (t:DeployPlanTask) ON (t.code);
+CREATE INDEX validation_test_code  IF NOT EXISTS FOR (t:ValidationTest) ON (t.code);
+CREATE INDEX deployment_task_code  IF NOT EXISTS FOR (t:DeploymentTask) ON (t.code);
+CREATE INDEX review_task_code      IF NOT EXISTS FOR (t:ReviewTask)     ON (t.code);
