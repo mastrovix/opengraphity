@@ -130,3 +130,9 @@ The apps read their env vars from `apps/api/.env` — copy from `infra/.env.exam
 ```
 
 Stack: Neo4j 5, Redis 7, Keycloak 24, Node 20, React 19, Vite 7, Apollo GraphQL, pnpm workspaces.
+
+## Testing
+
+- `pnpm test` — unit tests across the workspace (vitest, fully mocked)
+- `pnpm test:e2e` — Playwright smoke tests against the local Docker stack (requires `docker compose -f infra/docker-compose.yml up -d`)
+- `pnpm lint && pnpm typecheck` — static checks, same gates as CI
