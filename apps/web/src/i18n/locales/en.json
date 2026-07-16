@@ -587,7 +587,14 @@
       "memberName": "Name",
       "memberType": "Type",
       "memberEnvironment": "Environment",
-      "memberStatus": "Status"
+      "memberStatus": "Status",
+      "criteriaTitle": "Membership criteria",
+      "criteriaTypes": "CI types",
+      "criteriaAllTypes": "No type selected: all types match",
+      "criteriaNTypes": "{{count}} types selected",
+      "criteriaNameContains": "Name contains",
+      "criteriaPreview": "→ {{count}} matching CIs",
+      "criteriaSaved": "Criteria saved"
     },
     "tasks": {
       "reopen": {

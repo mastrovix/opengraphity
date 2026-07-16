@@ -587,7 +587,14 @@
       "memberName": "Nome",
       "memberType": "Tipo",
       "memberEnvironment": "Ambiente",
-      "memberStatus": "Stato"
+      "memberStatus": "Stato",
+      "criteriaTitle": "Criteri di appartenenza",
+      "criteriaTypes": "Tipi di CI",
+      "criteriaAllTypes": "Nessun tipo selezionato: tutti i tipi corrispondono",
+      "criteriaNTypes": "{{count}} tipi selezionati",
+      "criteriaNameContains": "Nome contiene",
+      "criteriaPreview": "→ {{count}} CI corrispondenti",
+      "criteriaSaved": "Criteri salvati"
     },
     "tasks": {
       "reopen": {

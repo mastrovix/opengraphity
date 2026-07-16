@@ -23,6 +23,7 @@ import { CIChangeList } from '@/components/CIChangeList'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
+import { GroupCriteriaBuilder } from './GroupCriteriaBuilder'
 import { GET_BLAST_RADIUS, GET_ALL_CIS } from '@/graphql/queries'
 import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI } from '@/graphql/mutations'
 import { X, Plus, Pencil } from 'lucide-react'
@@ -200,6 +201,7 @@ export function CIDetailPage() {
 
   // ── Edit mode state ──────────────────────────────────────────────────────
   const [editMode, setEditMode] = useState(false)
+  const [membersRefreshKey, setMembersRefreshKey] = useState(0)
   const [editDraft, setEditDraft] = useState<Record<string, string>>({})
 
   // ── Relation management state ────────────────────────────────────────────
@@ -481,7 +483,19 @@ export function CIDetailPage() {
             )}
           </SectionCard>
 
-          {ci.type === 'dynamic_ci_group' && <CIGroupMembersCard groupId={ci.id} />}
+          {ci.type === 'dynamic_ci_group' && String(ci['membershipType'] ?? '') === 'dynamic' && (
+            <GroupCriteriaBuilder
+              groupId={ci.id}
+              criteria={{
+                ciTypes:      String(ci['criteriaCiTypes'] ?? ''),
+                environment:  String(ci['criteriaEnvironment'] ?? ''),
+                status:       String(ci['criteriaStatus'] ?? ''),
+                nameContains: String(ci['criteriaNameContains'] ?? ''),
+              }}
+              onSaved={() => { refetch(); setMembersRefreshKey((k) => k + 1) }}
+            />
+          )}
+          {ci.type === 'dynamic_ci_group' && <CIGroupMembersCard key={membersRefreshKey} groupId={ci.id} />}
 
           <SectionCard title="Mappa Dipendenze">
             <Suspense fallback={<div style={{ height: 260 }} />}>
