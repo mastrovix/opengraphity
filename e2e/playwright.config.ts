@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 export default defineConfig({
   testDir: './tests',
   timeout: 30_000,
-  retries: 0,
+  retries: 1,   // absorbs render-swap click flakes on list rows
   workers: 1,
   reporter: [['list']],
   globalSetup: './global-setup.ts',

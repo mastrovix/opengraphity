@@ -46,7 +46,11 @@ test('create incident end-to-end', async ({ page }) => {
 test('incident detail shows attachments and comments cards', async ({ page }) => {
   await page.goto('/incidents')
   await expect(page.getByRole('table')).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('table').locator('tbody tr').first().click()
+  // Let cache-and-network settle: clicking while rows swap detaches the target
+  const firstRow = page.getByRole('table').locator('tbody tr').first()
+  await expect(firstRow).toBeVisible()
+  await page.waitForTimeout(600)
+  await firstRow.click()
   await page.waitForURL(/\/incidents\/[0-9a-f-]+/, { timeout: 15_000 })
   // Cards shipped with the attachments work (i18n: Allegati/Attachments)
   await expect(page.getByText(/allegati|attachments/i).first()).toBeVisible({ timeout: 15_000 })
