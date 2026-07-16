@@ -10,12 +10,14 @@ import { withSession, runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { mapAssessmentTask, toInt } from './mappers.js'
+import { calculateTaskScore } from './scoring.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
 import {
   writeAudit,
   getCIName,
   getQuestionText,
   getAnswerLabel,
+  getCurrentStep,
   assertUserInCITeam,
   recomputeCIRiskIfReady,
   computeAggregateRisk,
@@ -79,6 +81,8 @@ export async function submitAssessmentResponse(
 
 // ── completeAssessmentTask ────────────────────────────────────────────────────
 
+// TRANSACTIONAL: all writes in single tx (update task + score + risk CI + aggregate);
+// l'auto-transition successiva è deliberatamente una seconda tx (vedi sotto).
 export async function completeAssessmentTask(_: unknown, args: { taskId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const ctx1 = await runQueryOne<{
@@ -133,50 +137,52 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       throw new GraphQLError(`Risposte mancanti: ${missing.length} domande da completare prima di chiudere la task`, { extensions: { code: 'CONFLICT' } })
     }
 
-    let num = 0, den = 0
-    for (const q of questions) {
-      const w = toInt(q.weight, 1)
-      const max = toInt(q.maxScore, 0)
-      const ans = answered.get(q.questionId) ?? 0
-      num += w * ans
-      den += w * max
-    }
-
-    // Automatic environment factor (replaces the removed
-    // "Is the production environment affected?" question):
-    //   production → score 3 (max)
-    //   staging    → score 1
-    //   altro      → score 0
-    const ENV_WEIGHT = 5
-    const ENV_MAX    = 3
-    const envScore =
-      ctx1.ciEnv === 'production' ? 3 :
-      ctx1.ciEnv === 'staging'    ? 1 :
-                                    0
-    num += ENV_WEIGHT * envScore
-    den += ENV_WEIGHT * ENV_MAX
-
-    const score = den > 0 ? Math.round((num / den) * 100) : 0
+    // Weighted score + automatic environment factor: pure logic in scoring.ts.
+    const score = calculateTaskScore(
+      questions.map((q) => ({
+        weight:   toInt(q.weight, 1),
+        score:    answered.get(q.questionId) ?? 0,
+        maxScore: toInt(q.maxScore, 0),
+      })),
+      ctx1.ciEnv,
+    )
 
     const now = new Date().toISOString()
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
-      SET t.status = '${TASK_STATUS.COMPLETED}', t.score = $score, t.completed_at = $now
-      WITH t
-      OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
-        CREATE (t)-[:COMPLETED_BY]->(u)
-      )
-    `, { taskId: args.taskId, tenantId: ctx.tenantId, score, now, userId: ctx.userId }))
-
     const ciName1 = await getCIName(session, ctx1.ciId, ctx.tenantId)
     const role1   = ctx1.taskProps['responder_role'] as string
-    await writeAudit(session, ctx1.changeId, ctx.tenantId, 'assessment_task_completed', ctx.userId,
-      `${ROLE_LABEL[role1]} · ${ciName1}: score ${score}`)
 
-    await recomputeCIRiskIfReady(session, ctx1.changeId, ctx1.ciId, ctx.tenantId, ctx.userId)
-    await computeAggregateRisk(session, ctx1.changeId, ctx.tenantId)
-    await evaluateAutoTransitions(session, ctx1.changeId, ctx, afterEnterStep)
+    // TRANSACTIONAL: all writes in single tx — completamento task (+ COMPLETED_BY),
+    // audit, eventuale risk_score del CI (recomputeCIRiskIfReady legge lo stato
+    // DENTRO la tx, quindi vede il completamento appena scritto) e aggregate risk:
+    // se un punto fallisce, rollback totale e il task resta non completato.
+    await session.executeWrite(async (tx) => {
+      await tx.run(`
+        MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
+        SET t.status = '${TASK_STATUS.COMPLETED}', t.score = $score, t.completed_at = $now
+        WITH t
+        OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
+        FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
+          CREATE (t)-[:COMPLETED_BY]->(u)
+        )
+      `, { taskId: args.taskId, tenantId: ctx.tenantId, score, now, userId: ctx.userId })
+
+      await writeAudit(tx, ctx1.changeId, ctx.tenantId, 'assessment_task_completed', ctx.userId,
+        `${ROLE_LABEL[role1]} · ${ciName1}: score ${score}`)
+
+      await recomputeCIRiskIfReady(tx, ctx1.changeId, ctx1.ciId, ctx.tenantId, ctx.userId)
+      await computeAggregateRisk(tx, ctx1.changeId, ctx.tenantId)
+    })
+
+    // Auto-transition DELIBERATAMENTE fuori dalla tx (seconda transazione): se
+    // fallisce, il completamento sopra è già committato e coerente e la
+    // transizione resta ritentabile — non deve mai far fallire la mutation.
+    try {
+      await evaluateAutoTransitions(session, ctx1.changeId, ctx, afterEnterStep)
+    } catch (err) {
+      const step = await getCurrentStep(session, ctx1.changeId, ctx.tenantId).catch(() => null)
+      logger.error({ err, changeId: ctx1.changeId, step, taskId: args.taskId },
+        '[completeAssessmentTask] auto-transition fallita dopo il commit del task — stato coerente, transizione ritentabile')
+    }
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props

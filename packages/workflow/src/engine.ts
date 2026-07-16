@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import type { Session } from 'neo4j-driver'
+import type { Session, ManagedTransaction } from 'neo4j-driver'
 import pino from 'pino'
 import type {
   WorkflowInstance,
@@ -12,14 +12,23 @@ import { runAction } from './actions.js'
 
 const workflowLogger = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow' })
 
+/** A Session has executeWrite; a ManagedTransaction (tx inside executeWrite) does not. */
+function isSession(s: Session | ManagedTransaction): s is Session {
+  return typeof (s as Session).executeWrite === 'function'
+}
+
 export class WorkflowEngine {
 
   /**
    * Crea una nuova istanza workflow per un'entità.
    * Collega entity -[:HAS_WORKFLOW]-> WorkflowInstance -[:CURRENT_STEP]-> WorkflowStep(start)
+   *
+   * Accetta una Session (apre la propria executeWrite, comportamento storico)
+   * oppure una ManagedTransaction: in tal caso partecipa alla transazione
+   * esterna del chiamante — tutte le scritture committano/rollbackano insieme.
    */
   async createInstance(
-    session: Session,
+    session: Session | ManagedTransaction,
     tenantId: string,
     entityId: string,
     entityType: string,
@@ -30,7 +39,7 @@ export class WorkflowEngine {
     const execId     = uuidv4()
     const now        = new Date().toISOString()
 
-    return session.executeWrite(async (tx) => {
+    const work = async (tx: ManagedTransaction): Promise<WorkflowInstance> => {
       // If definitionId is provided, use it directly; otherwise use category-aware selection
       let defQuery: string
       let defParams: Record<string, unknown>
@@ -115,7 +124,10 @@ export class WorkflowEngine {
         createdAt:    now,
         updatedAt:    now,
       } satisfies WorkflowInstance
-    })
+    }
+
+    if (isSession(session)) return session.executeWrite(work)
+    return work(session)
   }
 
   /**

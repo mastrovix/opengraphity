@@ -1,4 +1,11 @@
-import { Session, Integer, isInt, isDate, isDateTime, isLocalDateTime, isLocalTime, isTime, isDuration } from 'neo4j-driver'
+import { Session, ManagedTransaction, Integer, isInt, isDate, isDateTime, isLocalDateTime, isLocalTime, isTime, isDuration } from 'neo4j-driver'
+
+/**
+ * Anything runQuery/runQueryOne can execute against: a plain Session
+ * (auto-commit query) or a ManagedTransaction (participates in the caller's
+ * open transaction, e.g. inside session.executeWrite). Both expose .run().
+ */
+export type Queryable = Session | ManagedTransaction
 
 function toNative(value: unknown): unknown {
   if (value === null || value === undefined) return value
@@ -25,7 +32,7 @@ function toNative(value: unknown): unknown {
 }
 
 export async function runQuery<T>(
-  session: Session,
+  session: Queryable,
   cypher: string,
   params: Record<string, unknown> = {},
 ): Promise<T[]> {
@@ -45,7 +52,7 @@ export async function runQuery<T>(
 }
 
 export async function runQueryOne<T>(
-  session: Session,
+  session: Queryable,
   cypher: string,
   params: Record<string, unknown> = {},
 ): Promise<T | null> {

@@ -40,13 +40,19 @@ export async function createChange(
 
 // ── addCIToChange / removeCIFromChange ────────────────────────────────────────
 
+// TRANSACTIONAL: all writes in single tx — relazione AFFECTS_CI + 2 AssessmentTask
+// + DeployPlanTask + ASSIGNED_TO_TEAM + audit entry committano o rollbackano insieme.
+// Le validazioni (step iniziale, owner/support del CI) e le letture (task codes,
+// nome CI) restano PRIMA della transazione.
 export async function addCIToChange(_: unknown, args: { changeId: string; ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     await assertInitialStep(session, args.changeId, ctx.tenantId)
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, [args.ciId])
     const [ownerCode, supportCode, planCode] = await getNextTaskCodes(session, ctx.tenantId, 3)
+    const ciName = await getCIName(session, args.ciId, ctx.tenantId)
     const now = new Date().toISOString()
-    await session.executeWrite((tx) => tx.run(`
+    await session.executeWrite(async (tx) => {
+      await tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
@@ -73,11 +79,11 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       MERGE (c)-[:HAS_DEPLOY_PLAN]->(dp)
       MERGE (dp)-[:ASSIGNED_TO_TEAM]->(supportTeam)
       SET c.updated_at = $now
-    `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now,
-         ownerCode, supportCode, planCode }))
+      `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now,
+           ownerCode, supportCode, planCode })
 
-    const ciName = await getCIName(session, args.ciId, ctx.tenantId)
-    await writeAudit(session, args.changeId, ctx.tenantId, 'ci_added', ctx.userId, `CI ${ciName} aggiunto`)
+      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_added', ctx.userId, `CI ${ciName} aggiunto`)
+    })
 
     const row = await runQueryOne<{ ciProps: Props; ciLabel: string }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci {id: $ciId})
@@ -99,22 +105,28 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
   }, true)
 }
 
+// TRANSACTIONAL: all writes in single tx — DELETE della relazione AFFECTS_CI,
+// DETACH DELETE dei task collegati (assessment + risposte + deploy plan) e
+// audit entry committano o rollbackano insieme. Le letture (step iniziale,
+// nome CI) restano PRIMA della transazione.
 export async function removeCIFromChange(_: unknown, args: { changeId: string; ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     await assertInitialStep(session, args.changeId, ctx.tenantId)
     const ciName = await getCIName(session, args.ciId, ctx.tenantId)
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci {id: $ciId})
-      DELETE r
-      WITH c
-      OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(t:AssessmentTask {ci_id: $ciId})
-      OPTIONAL MATCH (t)-[:HAS_RESPONSE]->(resp:AssessmentResponse)
-      OPTIONAL MATCH (c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {ci_id: $ciId})
-      DETACH DELETE resp, t, dp
-      SET c.updated_at = $now
-    `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
+    await session.executeWrite(async (tx) => {
+      await tx.run(`
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci {id: $ciId})
+        DELETE r
+        WITH c
+        OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(t:AssessmentTask {ci_id: $ciId})
+        OPTIONAL MATCH (t)-[:HAS_RESPONSE]->(resp:AssessmentResponse)
+        OPTIONAL MATCH (c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {ci_id: $ciId})
+        DETACH DELETE resp, t, dp
+        SET c.updated_at = $now
+      `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() })
 
-    await writeAudit(session, args.changeId, ctx.tenantId, 'ci_removed', ctx.userId, `CI ${ciName} rimosso`)
+      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_removed', ctx.userId, `CI ${ciName} rimosso`)
+    })
     return true
   }, true)
 }

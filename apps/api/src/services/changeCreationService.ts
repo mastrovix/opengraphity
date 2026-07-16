@@ -42,6 +42,7 @@ export interface CreatedChange {
   code: string
 }
 
+// TRANSACTIONAL: all writes in single tx (vedi executeWrite unico più sotto).
 export async function createChangeRFC(
   input: ChangeCreationInput,
   ctx: ChangeCreationCtx,
@@ -54,6 +55,7 @@ export async function createChangeRFC(
     throw new ValidationError('title è obbligatorio')
   }
   return withSession(async (session) => {
+    // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)
     const code = await nextChangeCode(session, ctx.tenantId)
     const taskCodes = await getNextTaskCodes(session, ctx.tenantId, affectedCIIds.length * 3)
@@ -66,7 +68,13 @@ export async function createChangeRFC(
     const id = uuidv4()
     const now = new Date().toISOString()
 
-    await session.executeWrite((tx) => tx.run(`
+    // TRANSACTIONAL: all writes in single tx — Change + AFFECTS_CI + 2 AssessmentTask
+    // e 1 DeployPlanTask per CI + ASSIGNED_TO_TEAM + WorkflowInstance + audit entry.
+    // workflowEngine.createInstance e writeAudit ricevono la ManagedTransaction e
+    // partecipano alla stessa tx: se un punto qualsiasi fallisce, rollback totale
+    // (nessun Change orfano senza workflow, nessun audit senza Change).
+    await session.executeWrite(async (tx) => {
+      await tx.run(`
       CREATE (c:Change {
         id: $id, tenant_id: $tenantId, code: $code,
         title: $title, description: $description,
@@ -109,20 +117,21 @@ export async function createChangeRFC(
       })
       CREATE (c)-[:HAS_DEPLOY_PLAN]->(dp)
       CREATE (dp)-[:ASSIGNED_TO_TEAM]->(supportTeam)
-    `, {
-      id, code, title,
-      description: description ?? null,
-      requesterId: ctx.userId,
-      ownerId: changeOwner ?? null,
-      ciTasks,
-      tenantId: ctx.tenantId,
-      now,
-    }))
+      `, {
+        id, code, title,
+        description: description ?? null,
+        requesterId: ctx.userId,
+        ownerId: changeOwner ?? null,
+        ciTasks,
+        tenantId: ctx.tenantId,
+        now,
+      })
 
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'change')
+      await workflowEngine.createInstance(tx, ctx.tenantId, id, 'change')
 
-    await writeAudit(session, id, ctx.tenantId, 'change_created', ctx.userId,
-      `Change ${code} creato con ${affectedCIIds.length} CI`)
+      await writeAudit(tx, id, ctx.tenantId, 'change_created', ctx.userId,
+        `Change ${code} creato con ${affectedCIIds.length} CI`)
+    })
 
     return { id, code }
   }, true)

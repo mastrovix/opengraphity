@@ -8,6 +8,7 @@
  */
 
 import { GraphQLError } from 'graphql'
+import type { ManagedTransaction } from 'neo4j-driver'
 import { ForbiddenError, ValidationError } from '../../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -17,14 +18,35 @@ import { runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { toInt } from './mappers.js'
+import { calculateCIRiskScore, determineApprovalRoute } from './scoring.js'
 import { getInitialStepName } from '../../../lib/workflowHelpers.js'
 
 export type Session = ReturnType<typeof getSession>
 
+/**
+ * Session (opens its own write tx) OR ManagedTransaction (participates in the
+ * caller's open transaction). Write helpers below accept either: passed a tx,
+ * their writes commit/rollback together with the caller's other writes.
+ */
+export type SessionOrTx = Session | ManagedTransaction
+
+function isSession(s: SessionOrTx): s is Session {
+  return typeof (s as Session).executeWrite === 'function'
+}
+
+/** Run a write statement: via tx.run inside an external tx, or in its own executeWrite. */
+async function runWrite(target: SessionOrTx, cypher: string, params: Record<string, unknown>): Promise<void> {
+  if (isSession(target)) {
+    await target.executeWrite((tx) => tx.run(cypher, params))
+  } else {
+    await target.run(cypher, params)
+  }
+}
+
 // ── audit ─────────────────────────────────────────────────────────────────────
 
 export async function writeAudit(
-  session: Session,
+  session: SessionOrTx,
   changeId: string,
   tenantId: string,
   action: string,
@@ -32,7 +54,7 @@ export async function writeAudit(
   detail: string | null,
 ) {
   const now = new Date().toISOString()
-  await session.executeWrite((tx) => tx.run(`
+  await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     CREATE (e:ChangeAuditEntry {
       id: $id, tenant_id: $tenantId, timestamp: $now,
@@ -44,7 +66,7 @@ export async function writeAudit(
     FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
       CREATE (e)-[:BY]->(u)
     )
-  `, { changeId, tenantId, id: uuidv4(), now, action, detail, actorId }))
+  `, { changeId, tenantId, id: uuidv4(), now, action, detail, actorId })
 }
 
 // ── code generators ───────────────────────────────────────────────────────────
@@ -60,7 +82,7 @@ export async function nextChangeCode(session: Session, tenantId: string): Promis
   return 'CHG' + String(maxNum + 1).padStart(8, '0')
 }
 
-export async function getNextTaskCodes(session: Session, tenantId: string, count: number): Promise<string[]> {
+export async function getNextTaskCodes(session: SessionOrTx, tenantId: string, count: number): Promise<string[]> {
   const rows = await runQuery<{ code: string }>(session, `
     MATCH (t)
     WHERE t.tenant_id = $tenantId AND t.code STARTS WITH 'TASK'
@@ -107,7 +129,7 @@ export async function loadChange(session: Session, changeId: string, tenantId: s
   return row?.props ?? null
 }
 
-export async function getCIName(session: Session, ciId: string, tenantId: string): Promise<string> {
+export async function getCIName(session: SessionOrTx, ciId: string, tenantId: string): Promise<string> {
   const row = await runQueryOne<{ name: string }>(session, `
     MATCH (ci {id: $ciId, tenant_id: $tenantId})
     RETURN coalesce(ci.name, ci.id) AS name
@@ -200,7 +222,7 @@ export function assertAdmin(ctx: GraphQLContext) {
 
 // ── risk + step side-effects ──────────────────────────────────────────────────
 
-export async function recomputeCIRiskIfReady(session: Session, changeId: string, ciId: string, tenantId: string, actorId: string | null) {
+export async function recomputeCIRiskIfReady(session: SessionOrTx, changeId: string, ciId: string, tenantId: string, actorId: string | null) {
   const row = await runQueryOne<{ ownerDone: boolean; supportDone: boolean; ownerScore: unknown; supportScore: unknown }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {ci_id: $ciId})
     WITH collect({role: t.responder_role, status: t.status, score: t.score}) AS tasks
@@ -214,36 +236,37 @@ export async function recomputeCIRiskIfReady(session: Session, changeId: string,
 
   const os = row.ownerScore != null ? toInt(row.ownerScore) : 0
   const ss = row.supportScore != null ? toInt(row.supportScore) : 0
-  const ciRisk = Math.round((os + ss) / 2)
+  const ciRisk = calculateCIRiskScore(os, ss)
 
-  await session.executeWrite((tx) => tx.run(`
+  await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci {id: $ciId})
     SET r.risk_score = $risk, r.ci_phase = 'assessed'
-  `, { changeId, ciId, tenantId, risk: ciRisk }))
+  `, { changeId, ciId, tenantId, risk: ciRisk })
 
   const ciName = await getCIName(session, ciId, tenantId)
   await writeAudit(session, changeId, tenantId, 'ci_risk_computed', actorId, `${ciName}: risk ${ciRisk}`)
 }
 
-export async function computeAggregateRisk(session: Session, changeId: string, tenantId: string) {
+export async function computeAggregateRisk(session: SessionOrTx, changeId: string, tenantId: string) {
   const row = await runQueryOne<{ maxRisk: unknown }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->()
     RETURN max(r.risk_score) AS maxRisk
   `, { changeId, tenantId })
   const maxRisk = row?.maxRisk != null ? toInt(row.maxRisk) : 0
-  const approvalRoute =
-    maxRisk <= 30 ? 'low' :
-    maxRisk <= 60 ? 'medium' :
-                    'high'
-  await session.executeWrite((tx) => tx.run(`
+  const approvalRoute = determineApprovalRoute(maxRisk)
+  await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     SET c.aggregate_risk_score = $maxRisk,
         c.approval_route       = $route,
         c.updated_at           = $now
-  `, { changeId, tenantId, maxRisk, route: approvalRoute, now: new Date().toISOString() }))
+  `, { changeId, tenantId, maxRisk, route: approvalRoute, now: new Date().toISOString() })
 }
 
-async function createValidationAndDeploymentTasks(session: Session, changeId: string, tenantId: string) {
+// TRANSACTIONAL: all writes in single tx — ValidationTest + DeploymentTask per
+// ogni CI (creazione + relazioni HAS_VALIDATION/HAS_DEPLOYMENT) vengono creati
+// in un'unica statement/tx: o tutti o nessuno. Le letture (CI, task codes)
+// restano prima della scrittura.
+async function createValidationAndDeploymentTasks(session: SessionOrTx, changeId: string, tenantId: string) {
   const ciRows = await runQuery<{ ciId: string }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
     RETURN ci.id AS ciId ORDER BY ci.name
@@ -252,7 +275,7 @@ async function createValidationAndDeploymentTasks(session: Session, changeId: st
   const codes = await getNextTaskCodes(session, tenantId, ciRows.length * 2)
   const ciCodes = ciRows.map((r, i) => ({ ciId: r.ciId, valCode: codes[i * 2]!, depCode: codes[i * 2 + 1]! }))
   const now = new Date().toISOString()
-  await session.executeWrite((tx) => tx.run(`
+  await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     UNWIND $ciCodes AS cc
     MATCH (c)-[:AFFECTS_CI]->(ci {id: cc.ciId})
@@ -267,10 +290,11 @@ async function createValidationAndDeploymentTasks(session: Session, changeId: st
         dt.ci_id = ci.id, dt.status = '${TASK_STATUS.PENDING}',
         dt.created_at = $now
     MERGE (c)-[:HAS_DEPLOYMENT]->(dt)
-  `, { changeId, tenantId, now, ciCodes }))
+  `, { changeId, tenantId, now, ciCodes })
 }
 
-async function createReviewTasks(session: Session, changeId: string, tenantId: string) {
+// TRANSACTIONAL: all writes in single tx — un ReviewTask per CI, o tutti o nessuno.
+async function createReviewTasks(session: SessionOrTx, changeId: string, tenantId: string) {
   const ciRows = await runQuery<{ ciId: string }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
     RETURN ci.id AS ciId ORDER BY ci.name
@@ -279,18 +303,18 @@ async function createReviewTasks(session: Session, changeId: string, tenantId: s
   const codes = await getNextTaskCodes(session, tenantId, ciRows.length)
   const ciCodes = ciRows.map((r, i) => ({ ciId: r.ciId, code: codes[i]! }))
   const now = new Date().toISOString()
-  await session.executeWrite((tx) => tx.run(`
+  await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     UNWIND $ciCodes AS cc
     MERGE (rv:ReviewTask {change_key: $changeId + '-' + cc.ciId + '-review'})
       ON CREATE SET rv.id = randomUUID(), rv.code = cc.code, rv.tenant_id = $tenantId,
         rv.ci_id = cc.ciId, rv.status = '${TASK_STATUS.PENDING}', rv.created_at = $now
     MERGE (c)-[:HAS_REVIEW]->(rv)
-  `, { changeId, tenantId, now, ciCodes }))
+  `, { changeId, tenantId, now, ciCodes })
 }
 
 // Dispatch table keyed by the step's `on_enter_create` metadata.
-const ON_ENTER_CREATORS: Record<string, (session: Session, changeId: string, tenantId: string) => Promise<void>> = {
+const ON_ENTER_CREATORS: Record<string, (session: SessionOrTx, changeId: string, tenantId: string) => Promise<void>> = {
   validation_and_deployment: createValidationAndDeploymentTasks,
   review:                    createReviewTasks,
 }
@@ -300,7 +324,7 @@ const ON_ENTER_CREATORS: Record<string, (session: Session, changeId: string, ten
  * Reads `on_enter_create` metadata from Neo4j and dispatches to the matching
  * creator. Steps without the metadata are no-ops.
  */
-export async function afterEnterStep(session: Session, changeId: string, tenantId: string, stepName: string) {
+export async function afterEnterStep(session: SessionOrTx, changeId: string, tenantId: string, stepName: string) {
   const row = await runQueryOne<{ hook: string | null }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     MATCH (wi)-[:CURRENT_STEP]->(step:WorkflowStep)
