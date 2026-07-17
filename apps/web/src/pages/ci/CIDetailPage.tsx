@@ -123,8 +123,9 @@ interface GroupMember {
   environment: string | null; status: string | null
 }
 
-/** Cap the members drawn in the graph — beyond this it's noise; the table shows all. */
-const GRAPH_MEMBER_CAP = 50
+/** Default members drawn in the graph; raisable from the map header. The table shows all. */
+const DEFAULT_GRAPH_MEMBER_CAP = 50
+const GRAPH_MEMBER_CAP_OPTIONS = [50, 100, 200, 500]
 
 const MEMBERS_PAGE_SIZE = 25
 
@@ -277,6 +278,7 @@ export function CIDetailPage() {
     { variables: { groupId: id }, skip: !id || !isGroup, fetchPolicy: 'cache-and-network' },
   )
   const groupMembers = groupMembersData?.ciGroupMembers ?? []
+  const [graphCap, setGraphCap] = useState(DEFAULT_GRAPH_MEMBER_CAP)
 
   const ci = typeName && data ? data[typeName] : undefined
 
@@ -511,7 +513,21 @@ export function CIDetailPage() {
           )}
           {ci.type === 'dynamic_ci_group' && <CIGroupMembersCard key={membersRefreshKey} groupId={ci.id} />}
 
-          <SectionCard title={isGroup ? 'Mappa Membri' : 'Mappa Dipendenze'} defaultOpen={isGroup}>
+          <SectionCard
+            title={isGroup ? 'Mappa Membri' : 'Mappa Dipendenze'}
+            defaultOpen={isGroup}
+            headerRight={isGroup && groupMembers.length > DEFAULT_GRAPH_MEMBER_CAP ? (
+              <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--text-muted)' }}>Nodi:</span>
+                <Select value={String(graphCap)} onChange={(e) => setGraphCap(Number(e.target.value))} style={{ width: 'auto', padding: '3px 8px' }}>
+                  {GRAPH_MEMBER_CAP_OPTIONS.filter((n, i) => n < groupMembers.length || GRAPH_MEMBER_CAP_OPTIONS[i - 1] === undefined || GRAPH_MEMBER_CAP_OPTIONS[i - 1] < groupMembers.length).map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                  <option value={groupMembers.length}>Tutti ({groupMembers.length})</option>
+                </Select>
+              </span>
+            ) : undefined}
+          >
             <Suspense fallback={<div style={{ height: 260 }} />}>
             {isGroup ? (
               <CIGraph
@@ -519,7 +535,7 @@ export function CIDetailPage() {
                   id: ci.id, name: ci.name, type: ci.type,
                   status: ci.status ?? 'unknown', environment: ci.environment ?? undefined,
                 }}
-                dependencies={groupMembers.slice(0, GRAPH_MEMBER_CAP).map(m => ({
+                dependencies={groupMembers.slice(0, graphCap).map(m => ({
                   relationType: 'HAS_MEMBER',
                   ci: { id: m.id, name: m.name, type: m.type, status: m.status ?? 'unknown', environment: m.environment ?? undefined },
                 }))}
@@ -548,9 +564,9 @@ export function CIDetailPage() {
                 }))}
               />
             )}
-            {isGroup && groupMembers.length > GRAPH_MEMBER_CAP && (
+            {isGroup && groupMembers.length > graphCap && (
               <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--text-muted)', margin: '8px 0 0' }}>
-                Mostra i primi {GRAPH_MEMBER_CAP} di {groupMembers.length} membri — la lista completa è nella tabella sopra.
+                Mostra i primi {graphCap} di {groupMembers.length} membri — la lista completa è nella tabella sopra.
               </p>
             )}
             </Suspense>
