@@ -361,6 +361,24 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       nodeEl.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`)
     })
 
+    // Zoom-to-fit once the layout settles, so every node is visible without
+    // manual pan/zoom — matters for large groups where the members would
+    // otherwise overflow the fixed-height canvas.
+    simulation.on('end', () => {
+      const xs = nodes.map((n) => n.x ?? 0)
+      const ys = nodes.map((n) => n.y ?? 0)
+      const minX = Math.min(...xs), maxX = Math.max(...xs)
+      const minY = Math.min(...ys), maxY = Math.max(...ys)
+      const pad = 60
+      const bw = (maxX - minX) + pad * 2
+      const bh = (maxY - minY) + pad * 2
+      if (bw <= 0 || bh <= 0) return
+      const scale = Math.max(0.3, Math.min(1, Math.min(width / bw, height / bh)))
+      const tx = width  / 2 - scale * (minX + maxX) / 2
+      const ty = height / 2 - scale * (minY + maxY) / 2
+      root.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+    })
+
     return () => { simulation.stop() }
   }, [centerCI.id, dependencies, dependents, blastRadius, showBlastRadius, maxDepth, nodeSpread, navigate])
 
