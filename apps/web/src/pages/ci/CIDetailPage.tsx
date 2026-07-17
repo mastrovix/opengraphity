@@ -123,6 +123,9 @@ interface GroupMember {
   environment: string | null; status: string | null
 }
 
+/** Cap the members drawn in the graph — beyond this it's noise; the table shows all. */
+const GRAPH_MEMBER_CAP = 50
+
 const MEMBERS_PAGE_SIZE = 25
 
 function CIGroupMembersCard({ groupId }: { groupId: string }) {
@@ -264,6 +267,17 @@ export function CIDetailPage() {
   }>(GET_BLAST_RADIUS, { variables: { id }, skip: !id })
 
   const blastRadius = brData?.blastRadius ?? []
+
+  // Dynamic CI groups have no DEPENDS_ON edges to their members (manual ones use
+  // HAS_MEMBER, dynamic ones resolve by criteria), so the map is driven by the
+  // group members instead — capped for renderability; the members table shows all.
+  const isGroup = typeName === 'dynamic_ci_group'
+  const { data: groupMembersData, refetch: refetchGroupMembers } = useQuery<{ ciGroupMembers: GroupMember[] }>(
+    CI_GROUP_MEMBERS,
+    { variables: { groupId: id }, skip: !id || !isGroup, fetchPolicy: 'cache-and-network' },
+  )
+  const groupMembers = groupMembersData?.ciGroupMembers ?? []
+
   const ci = typeName && data ? data[typeName] : undefined
 
   // ── Edit mode handlers ─────────────────────────────────────────────────
@@ -492,33 +506,53 @@ export function CIDetailPage() {
                 status:       String(ci['criteriaStatus'] ?? ''),
                 nameContains: String(ci['criteriaNameContains'] ?? ''),
               }}
-              onSaved={() => { refetch(); setMembersRefreshKey((k) => k + 1) }}
+              onSaved={() => { refetch(); setMembersRefreshKey((k) => k + 1); void refetchGroupMembers() }}
             />
           )}
           {ci.type === 'dynamic_ci_group' && <CIGroupMembersCard key={membersRefreshKey} groupId={ci.id} />}
 
-          <SectionCard title="Mappa Dipendenze">
+          <SectionCard title={isGroup ? 'Mappa Membri' : 'Mappa Dipendenze'} defaultOpen={isGroup}>
             <Suspense fallback={<div style={{ height: 260 }} />}>
-            <CIGraph
-              centerCI={{
-                id: ci.id, name: ci.name, type: ci.type,
-                status: ci.status ?? 'unknown', environment: ci.environment ?? undefined,
-              }}
-              dependencies={(ci.dependencies as CIRelation[]).map(r => ({
-                relationType: r.relation,
-                ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined },
-              }))}
-              dependents={(ci.dependents as CIRelation[]).map(r => ({
-                relationType: r.relation,
-                ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined },
-              }))}
-              blastRadius={blastRadius.map(b => ({
-                ...b.ci,
-                status: b.ci.status ?? 'unknown',
-                environment: b.ci.environment ?? undefined,
-                distance: b.distance, parentId: b.parentId,
-              }))}
-            />
+            {isGroup ? (
+              <CIGraph
+                centerCI={{
+                  id: ci.id, name: ci.name, type: ci.type,
+                  status: ci.status ?? 'unknown', environment: ci.environment ?? undefined,
+                }}
+                dependencies={groupMembers.slice(0, GRAPH_MEMBER_CAP).map(m => ({
+                  relationType: 'HAS_MEMBER',
+                  ci: { id: m.id, name: m.name, type: m.type, status: m.status ?? 'unknown', environment: m.environment ?? undefined },
+                }))}
+                dependents={[]}
+                blastRadius={[]}
+              />
+            ) : (
+              <CIGraph
+                centerCI={{
+                  id: ci.id, name: ci.name, type: ci.type,
+                  status: ci.status ?? 'unknown', environment: ci.environment ?? undefined,
+                }}
+                dependencies={(ci.dependencies as CIRelation[]).map(r => ({
+                  relationType: r.relation,
+                  ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined },
+                }))}
+                dependents={(ci.dependents as CIRelation[]).map(r => ({
+                  relationType: r.relation,
+                  ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined },
+                }))}
+                blastRadius={blastRadius.map(b => ({
+                  ...b.ci,
+                  status: b.ci.status ?? 'unknown',
+                  environment: b.ci.environment ?? undefined,
+                  distance: b.distance, parentId: b.parentId,
+                }))}
+              />
+            )}
+            {isGroup && groupMembers.length > GRAPH_MEMBER_CAP && (
+              <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--text-muted)', margin: '8px 0 0' }}>
+                Mostra i primi {GRAPH_MEMBER_CAP} di {groupMembers.length} membri — la lista completa è nella tabella sopra.
+              </p>
+            )}
             </Suspense>
           </SectionCard>
 
