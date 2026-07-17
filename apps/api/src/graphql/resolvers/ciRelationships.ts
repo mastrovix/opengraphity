@@ -1,12 +1,39 @@
 import { GraphQLError } from 'graphql'
-import { getSession, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { cache } from '../../lib/cache.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
 import { logger } from '../../lib/logger.js'
 
-const ALLOWED_REL_TYPES = new Set(['DEPENDS_ON', 'HOSTED_ON', 'USES_CERTIFICATE', 'INSTALLED_ON'])
+// Structural relation types always available regardless of the metamodel.
+const CORE_REL_TYPES = ['DEPENDS_ON', 'HOSTED_ON', 'USES_CERTIFICATE', 'INSTALLED_ON']
+
+/**
+ * Relation types that can be created: the core set plus every relationship_type
+ * declared in the metamodel (CIRelationDefinition), so custom/base relations
+ * like HAS_MEMBER, REALIZES, ENABLED_BY, PARENT_OF are accepted. Cached per tenant.
+ */
+async function allowedRelTypes(tenantId: string): Promise<Set<string>> {
+  const key = `allowed_rel_types:${tenantId}`
+  const cached = cache.get<string[]>(key)
+  if (cached) return new Set(cached)
+  // Own read session — must not share the write session that the caller opens.
+  const session = getSession(undefined, 'READ')
+  try {
+    const rows = await runQuery<{ t: string }>(session, `
+      MATCH (r:CIRelationDefinition)
+      WHERE r.tenant_id = 'system' OR r.tenant_id = $tenantId
+      RETURN DISTINCT r.relationship_type AS t
+    `, { tenantId })
+    const set = new Set<string>(CORE_REL_TYPES)
+    for (const row of rows) row.t?.split('|').forEach((x) => x.trim() && set.add(x.trim()))
+    cache.set(key, [...set], 300)
+    return set
+  } finally {
+    await session.close()
+  }
+}
 
 const TYPE_CONSTRAINTS: Record<string, { source: string[]; target: string[] }> = {
   HOSTED_ON:        { source: ['DatabaseInstance'], target: ['Server'] },
@@ -25,37 +52,33 @@ async function addCIRelationship(
   const { sourceId, targetId, relationType } = args
   const tenantId = ctx.tenantId
 
-  // 1. Validate relationType
-  if (!ALLOWED_REL_TYPES.has(relationType)) {
-    throw new GraphQLError(`Invalid relation type: ${relationType}`)
-  }
+  // 1. Validate relationType format (cheap, no DB)
   if (!/^[A-Z][A-Z0-9_]*$/.test(relationType)) {
     throw new GraphQLError(`Invalid relation type format: ${relationType}`)
   }
 
   const session = getSession(undefined, 'WRITE')
   try {
-    // 2. Load source and target CIs — verify they exist and belong to tenant
-    type CIRow = { id: string; labels: string[] }
-    const [sourceRow, targetRow] = await Promise.all([
-      runQueryOne<CIRow>(session, `
-        MATCH (ci {id: $id, tenant_id: $tenantId})
-        RETURN ci.id AS id, labels(ci) AS labels
-      `, { id: sourceId, tenantId }),
-      runQueryOne<CIRow>(session, `
-        MATCH (ci {id: $id, tenant_id: $tenantId})
-        RETURN ci.id AS id, labels(ci) AS labels
-      `, { id: targetId, tenantId }),
-    ])
+    // Validate against the metamodel-declared relation types (+ core set)
+    if (!(await allowedRelTypes(tenantId)).has(relationType)) {
+      throw new GraphQLError(`Invalid relation type: ${relationType}`)
+    }
+    // 2. Load source and target CIs in a single query — verify they exist and
+    //    belong to the tenant. (One query, not two concurrent session.run() —
+    //    a Neo4j session can't run queries in parallel.)
+    const endpoints = await runQueryOne<{ sLabels: string[]; tLabels: string[] }>(session, `
+      MATCH (s {id: $sourceId, tenant_id: $tenantId})
+      MATCH (t {id: $targetId, tenant_id: $tenantId})
+      RETURN labels(s) AS sLabels, labels(t) AS tLabels
+    `, { sourceId, targetId, tenantId })
 
-    if (!sourceRow) throw new GraphQLError(`Source CI not found: ${sourceId}`)
-    if (!targetRow) throw new GraphQLError(`Target CI not found: ${targetId}`)
+    if (!endpoints) throw new GraphQLError(`Source or target CI not found (source: ${sourceId}, target: ${targetId})`)
 
     // 3. Type constraint validation
     const constraint = TYPE_CONSTRAINTS[relationType]
     if (constraint) {
-      const sourceLabels = sourceRow.labels as string[]
-      const targetLabels = targetRow.labels as string[]
+      const sourceLabels = endpoints.sLabels
+      const targetLabels = endpoints.tLabels
       const sourceMatch = constraint.source.some(l => sourceLabels.includes(l))
       const targetMatch = constraint.target.some(l => targetLabels.includes(l))
       if (!sourceMatch) {
@@ -119,13 +142,15 @@ async function removeCIRelationship(
   const { sourceId, targetId, relationType } = args
   const tenantId = ctx.tenantId
 
-  // 1. Validate relationType
-  if (!ALLOWED_REL_TYPES.has(relationType)) {
-    throw new GraphQLError(`Invalid relation type: ${relationType}`)
+  if (!/^[A-Z][A-Z0-9_]*$/.test(relationType)) {
+    throw new GraphQLError(`Invalid relation type format: ${relationType}`)
   }
 
   const session = getSession(undefined, 'WRITE')
   try {
+    if (!(await allowedRelTypes(tenantId)).has(relationType)) {
+      throw new GraphQLError(`Invalid relation type: ${relationType}`)
+    }
     // 2. Delete the relationship
     const row = await runQueryOne<{ deleted: boolean }>(session, `
       MATCH (a {id: $sourceId, tenant_id: $tenantId})-[r]->(b {id: $targetId, tenant_id: $tenantId})

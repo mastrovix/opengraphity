@@ -239,6 +239,13 @@ export function CIDetailPage() {
     [ciType],
   )
 
+  // Relation types offered when adding a relation — driven by this CI type's
+  // metamodel relations (e.g. HAS_MEMBER for groups), not a fixed list.
+  const relationTypeOptions = useMemo(() => {
+    const fromMeta = [...new Set((ciType?.relations ?? []).map(r => r.relationshipType))]
+    return fromMeta.length > 0 ? fromMeta : ['DEPENDS_ON', 'HOSTED_ON', 'USES_CERTIFICATE']
+  }, [ciType])
+
   const detailQuery = useMemo(() => {
     if (!typeName || !ciType) return null
     const pascal = toPascalCase(typeName)
@@ -681,9 +688,7 @@ export function CIDetailPage() {
                         onChange={e => setAddRelForm(prev => ({ ...prev, relationType: e.target.value, targetCI: null, search: '' }))}
                         style={{ padding: '8px 10px', outline: undefined }}
                       >
-                        <option value="DEPENDS_ON">DEPENDS_ON</option>
-                        <option value="HOSTED_ON">HOSTED_ON</option>
-                        <option value="USES_CERTIFICATE">USES_CERTIFICATE</option>
+                        {relationTypeOptions.map(rt => <option key={rt} value={rt}>{rt.replace(/_/g, ' ')}</option>)}
                       </Select>
                     </div>
 
