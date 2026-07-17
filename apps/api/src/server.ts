@@ -17,6 +17,9 @@ import { reportStreamRouter } from './rest/report-stream.js'
 import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { attachmentRouter } from './rest/attachments.js'
+import { incidentPdfRouter } from './rest/incident-pdf.js'
+import { changePdfRouter } from './rest/change-pdf.js'
+import { problemPdfRouter } from './rest/problem-pdf.js'
 import { reportsRouter } from './rest/reports.js'
 import { webhookInboundRouter } from './rest/webhooks-inbound.js'
 import { v1Router } from './rest/v1/index.js'
@@ -188,6 +191,9 @@ app.use('/api', sseRouter)
 app.use('/api', reportStreamRouter)
 app.use('/api', clientLogRouter)
 app.use('/api', attachmentRouter)
+app.use('/api', incidentPdfRouter)
+app.use('/api', changePdfRouter)
+app.use('/api', problemPdfRouter)
 app.use('/api', reportsRouter)
 
 // ── startServer ───────────────────────────────────────────────────────────────

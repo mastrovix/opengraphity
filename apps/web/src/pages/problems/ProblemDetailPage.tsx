@@ -31,6 +31,8 @@ import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
+import { downloadPdf } from '@/lib/downloadPdf'
+import { FileDown, Loader2 } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
@@ -98,6 +100,7 @@ interface ProblemComment {
 
 interface Problem {
   id:                   string
+  number:               string
   title:                string
   description:          string | null
   priority:             string
@@ -157,6 +160,8 @@ export function ProblemDetailPage() {
   const [incidentsOpen,  setIncidentsOpen]  = useState(true)
   const [changesOpen,    setChangesOpen]    = useState(true)
   const [timelineOpen,   setTimelineOpen]   = useState(true)
+
+  const [exportingPdf, setExportingPdf] = useState(false)
 
   const { data, loading, refetch } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
   const { data: usersData }        = useQuery<{ users: User[] }>(GET_USERS)
@@ -255,6 +260,18 @@ export function ProblemDetailPage() {
     }
   }
 
+  async function handleExportPdf() {
+    if (!problem) return
+    setExportingPdf(true)
+    try {
+      await downloadPdf(`/api/problems/${problem.id}/pdf`, `${problem.number || problem.id}.pdf`)
+    } catch {
+      toast.error(t('detail.exportPdfFailed'))
+    } finally {
+      setExportingPdf(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
@@ -292,7 +309,15 @@ export function ProblemDetailPage() {
         onTransitionClick={handleTransitionClick}
       />
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Button
+          variant="secondary"
+          disabled={exportingPdf}
+          icon={exportingPdf ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+          onClick={() => void handleExportPdf()}
+        >
+          {t('detail.exportPdf')}
+        </Button>
         <WatcherBar entityType="problem" entityId={problem.id} />
       </div>
 

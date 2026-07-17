@@ -847,7 +847,9 @@
     "assign": "Assign",
     "assigning": "Assigning…",
     "takeOwnership": "Take ownership",
-    "backToList": "Back to list"
+    "backToList": "Back to list",
+    "exportPdf": "Export PDF",
+    "exportPdfFailed": "PDF export failed"
   },
   "search": {
     "placeholder": "Search everywhere... (Ctrl+K)",

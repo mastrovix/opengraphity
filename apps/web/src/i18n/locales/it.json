@@ -847,7 +847,9 @@
     "assign": "Assegna",
     "assigning": "Assegnazione…",
     "takeOwnership": "Prendi in carico",
-    "backToList": "Torna alla lista"
+    "backToList": "Torna alla lista",
+    "exportPdf": "Esporta PDF",
+    "exportPdfFailed": "Esportazione PDF fallita"
   },
   "search": {
     "placeholder": "Cerca ovunque... (Ctrl+K)",

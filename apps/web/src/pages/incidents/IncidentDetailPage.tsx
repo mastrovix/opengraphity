@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { FileDown, Loader2 } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
@@ -22,6 +23,8 @@ import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
+import { downloadPdf } from '@/lib/downloadPdf'
+import { Button } from '@/components/Button'
 import { DetailField } from '@/components/ui/DetailField'
 import { Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
@@ -113,6 +116,7 @@ export function IncidentDetailPage() {
   const [awaitingUserAssign, setAwaitingUserAssign]  = useState(false)
 
   const [commentText, setCommentText] = useState('')
+  const [exportingPdf, setExportingPdf] = useState(false)
 
   const [ciSearch,      setCiSearch]      = useState('')
   const [showCISearch,  setShowCISearch]  = useState(false)
@@ -249,6 +253,18 @@ export function IncidentDetailPage() {
     }
   }
 
+  async function handleExportPdf() {
+    if (!incident) return
+    setExportingPdf(true)
+    try {
+      await downloadPdf(`/api/incidents/${incident.id}/pdf`, `${incident.number || incident.id}.pdf`)
+    } catch {
+      toast.error(t('detail.exportPdfFailed'))
+    } finally {
+      setExportingPdf(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
@@ -298,8 +314,16 @@ export function IncidentDetailPage() {
         onTransitionClick={handleTransitionClick}
       />
 
-      {/* Watchers bar */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+      {/* Watchers bar + PDF export */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Button
+          variant="secondary"
+          disabled={exportingPdf}
+          icon={exportingPdf ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+          onClick={() => void handleExportPdf()}
+        >
+          {t('detail.exportPdf')}
+        </Button>
         <WatcherBar entityType="incident" entityId={incident.id} />
       </div>
 

@@ -11,7 +11,9 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
-import { ChevronRight, Plus, PlusCircle, X } from 'lucide-react'
+import { ChevronRight, FileDown, Loader2, Plus, PlusCircle, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { downloadPdf } from '@/lib/downloadPdf'
 import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
@@ -49,6 +51,7 @@ interface ImpactedCIRow {
 }
 
 export function ChangeDetailPage() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const changeId = id ?? ''
@@ -90,6 +93,19 @@ export function ChangeDetailPage() {
   const [expandedImpactId, setExpandedImpactId] = useState<string | null>(null)
   const [showAddCI, setShowAddCI] = useState(false)
   const [confirmRemoveCI, setConfirmRemoveCI] = useState<{ id: string; name: string } | null>(null)
+  const [exportingPdf, setExportingPdf] = useState(false)
+
+  const handleExportPdf = async () => {
+    if (!change) return
+    setExportingPdf(true)
+    try {
+      await downloadPdf(`/api/changes/${change.id}/pdf`, `${change.code || change.id}.pdf`)
+    } catch {
+      toast.error(t('detail.exportPdfFailed'))
+    } finally {
+      setExportingPdf(false)
+    }
+  }
   const [removeCI] = useMutation(REMOVE_CI_FROM_CHANGE, {
     onCompleted: () => {
       void refetchImpacted()
@@ -138,7 +154,17 @@ export function ChangeDetailPage() {
   return (
     <PageContainer style={{ padding: '16px 24px' }}>
       <button onClick={() => navigate('/changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 12, padding: 0 }}>← Changes</button>
-      <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 12px' }}>{change.code}</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{change.code}</h1>
+        <Button
+          variant="secondary"
+          disabled={exportingPdf}
+          icon={exportingPdf ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+          onClick={() => void handleExportPdf()}
+        >
+          {t('detail.exportPdf')}
+        </Button>
+      </div>
       <PhaseChipBar current={currentStep} steps={wfSteps} />
 
       <ChangeInfoCard
