@@ -10,6 +10,7 @@ import { changesRouter } from './changes.js'
 import { problemsRouter } from './problems.js'
 import { ciRouter } from './ci.js'
 import { kbRouter } from './kb.js'
+import { importRouter } from './import.js'
 import { logger } from '../../lib/logger.js'
 
 const router: ExpressRouter = Router()
@@ -31,6 +32,7 @@ router.use('/changes',   changesRouter)
 router.use('/problems',  problemsRouter)
 router.use('/ci',        ciRouter)
 router.use('/kb',        kbRouter)
+router.use('/import',    importRouter)
 
 // Global error handler for v1 routes — catches unhandled errors and returns JSON
 router.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

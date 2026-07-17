@@ -1,0 +1,9 @@
+external_id,title,description,severity,status,number,created_at,updated_at,resolved_at,assignee_email,team_name,comments
+LEGACY-1001,"Portale ordini irraggiungibile","Timeout su login, gli utenti non riescono ad accedere al portale ordini.",P1,resolved,INC90000001,2024-03-12T08:15:00Z,2024-03-12T11:40:00Z,2024-03-12T11:40:00Z,mario.rossi@acme.it,Platform,"[{""author_email"":""mario.rossi@acme.it"",""text"":""Riavviato il pool di connessioni"",""created_at"":""2024-03-12T09:00:00Z""},{""author_email"":""anna.bianchi@acme.it"",""text"":""Confermata risoluzione lato utenti"",""created_at"":""2024-03-12T11:35:00Z""}]"
+LEGACY-1002,"Lentezza batch fatturazione notturna","Il batch di fatturazione impiega piu di 4 ore invece delle consuete 2.",major,in_progress,,2024-05-02T06:30:00Z,2024-05-03T10:00:00Z,,anna.bianchi@acme.it,Billing,
+LEGACY-1003,"Errore certificato SSL su api.acme.it","Certificato scaduto segnalato dai client esterni.",urgentissimo,new,,2024-06-18T14:05:00Z,,,mario.rossi@acme.it,,
+LEGACY-1004,"Stampante piano 3 offline",,low,pending_review,,2024-07-01T09:00:00Z,2024-07-01T09:30:00Z,,ghost.user@acme.it,Facilities,
+LEGACY-1005,"Job di sync CMDB in errore","Dettaglio errore:
+ERR_CONN_REFUSED verso neo4j:7687
+(retry falliti: 5)",medium,assigned,,2024-08-20T22:10:00Z,2024-08-21T08:00:00Z,,,Platform,"[{""author_email"":""ops@acme.it"",""text"":""Escalation al team infrastruttura"",""created_at"":""2024-08-21T07:45:00Z""}]"
+LEGACY-1006,"Accesso VPN negato a utente esterno","Fornitore esterno non riesce a collegarsi alla VPN, errore 809.",2,closed,,2024-09-10T10:20:00Z,2024-09-11T16:00:00Z,2024-09-11T15:55:00Z,anna.bianchi@acme.it,Network,

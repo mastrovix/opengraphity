@@ -33,6 +33,8 @@
     "seed:anomaly-scenarios": "tsx src/scripts/seed-anomaly-scenarios.ts",
     "scan:anomalies": "tsx src/scripts/run-anomaly-scan.ts",
     "onboard-tenant": "tsx src/scripts/onboard-tenant.ts",
+    "import:incidents": "tsx src/scripts/import-incidents.ts",
+    "import:kb": "tsx src/scripts/import-kb.ts",
     "add-user": "tsx src/scripts/add-user.ts",
     "test": "vitest run",
     "test:watch": "vitest",

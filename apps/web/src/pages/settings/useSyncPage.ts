@@ -130,7 +130,7 @@ export interface SyncStats {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
-export const TABS = ['Sources', 'History', 'Conflicts'] as const
+export const TABS = ['Sources', 'History', 'Conflicts', 'Import'] as const
 export type Tab = typeof TABS[number]
 
 // ── Hook return type ─────────────────────────────────────────────────────────

@@ -356,6 +356,59 @@ curl -s "http://c-one.localhost/api/v1/changes/<id>/status" -H "X-API-Key: $API_
 
 `deployApproved` is `true` when the current workflow step is at or past the deployment step (compared via `step_order` metadata on the workflow definition, not hardcoded step names).
 
+### Import (`/api/v1/import`)
+
+Historical data importer for migrations from other ITSM tools. Both endpoints accept `multipart/form-data` with a `file` field containing the CSV (max 20MB, header row required) and an optional `?dryRun=true` query parameter. In dry-run mode the whole file is validated but nothing is written. In execute mode rows with errors are skipped (and reported) while valid rows are imported.
+
+| Method | Path | Permission | Description |
+|--------|------|------------|-------------|
+| `POST` | `/api/v1/import/incidents` | `incidents:write` | Import incidents from CSV |
+| `POST` | `/api/v1/import/kb-articles` | `kb:write` | Import KB articles from CSV |
+
+Idempotency: each row's `external_id` is stored as `import_external_id` on the node; re-running the same CSV updates the existing records (`updated`) instead of duplicating them.
+
+**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (free values mapped case-insensitively to low/medium/high/critical; unknown → warning + `medium`), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; generated progressively as `INC…` when absent), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at}]`).
+
+**KB article CSV columns** — `external_id` (required), `title` (required), `body` (markdown), `category`, `tags` (separated by `;`), `status` (`published`/`draft`, default `draft`), `author_name`, `created_at`, `published_at`. The slug is generated from the title and deduplicated with `-2`, `-3`, … suffixes; on update the existing slug is kept.
+
+```bash
+# Dry-run: validate the file, nothing is written
+curl -s -X POST "http://c-one.localhost/api/v1/import/incidents?dryRun=true" \
+  -H "X-API-Key: $API_KEY" \
+  -F "file=@samples/import/incidents-sample.csv"
+
+# Execute
+curl -s -X POST "http://c-one.localhost/api/v1/import/incidents" \
+  -H "X-API-Key: $API_KEY" \
+  -F "file=@samples/import/incidents-sample.csv"
+
+# KB articles
+curl -s -X POST "http://c-one.localhost/api/v1/import/kb-articles?dryRun=true" \
+  -H "X-API-Key: $API_KEY" \
+  -F "file=@samples/import/kb-articles-sample.csv"
+```
+
+Response (`200`, same shape for both endpoints, top-level — not wrapped in `data`):
+
+```json
+{
+  "totalRows": 6,
+  "created": 4,
+  "updated": 1,
+  "errors":   [ { "row": 3, "externalId": "LEGACY-1003", "message": "created_at non è una data ISO valida: \"12/03/2024\"" } ],
+  "warnings": [ { "row": 4, "externalId": "LEGACY-1004", "message": "assignee_email \"ghost.user@acme.it\" non trovato — assegnazione saltata" } ]
+}
+```
+
+Request-level problems (missing/oversized file, malformed multipart, empty CSV) return `400` with `{ "error": { "code": "VALIDATION_ERROR", "message": "…" } }`.
+
+The same importer is available from the CLI:
+
+```bash
+pnpm --filter @opengraphity/api import:incidents -- --file samples/import/incidents-sample.csv --tenant-id c-one --dry-run
+pnpm --filter @opengraphity/api import:kb        -- --file samples/import/kb-articles-sample.csv --tenant-id c-one
+```
+
 ---
 
 ## Schema Reference

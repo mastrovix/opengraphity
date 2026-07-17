@@ -1,0 +1,10 @@
+external_id,title,body,category,tags,status,author_name,created_at,published_at
+KB-2001,"Come resettare la password del portale","## Reset password
+
+1. Vai su **Impostazioni > Sicurezza**
+2. Clicca su ""Reimposta password""
+3. Segui il link ricevuto via email",Account,password;portale;self-service,published,Mario Rossi,2024-01-15T09:00:00Z,2024-01-20T10:00:00Z
+KB-2002,"Configurare la VPN aziendale","Guida alla configurazione del client VPN su Windows e macOS, incluse le impostazioni proxy.",Rete,vpn;remote-working,published,Anna Bianchi,2024-02-10T11:30:00Z,
+KB-2003,"Troubleshooting stampanti di rete","Passi di diagnosi per stampanti offline: verifica coda, riavvio spooler, controllo IP.",Hardware,stampanti;troubleshooting,draft,Luca Verdi,2024-03-05T08:45:00Z,
+KB-2004,"Come resettare la password del portale","Versione estesa della guida al reset password, con screenshot e FAQ.",Account,password;faq,archived,Mario Rossi,2024-04-12T14:00:00Z,
+KB-2005,"Richiedere un nuovo certificato SSL","Procedura per richiedere l'emissione o il rinnovo di un certificato SSL: modulo, approvazioni, tempi.",Sicurezza,ssl;certificati,published,,2024-05-30T16:20:00Z,2024-06-02T09:00:00Z

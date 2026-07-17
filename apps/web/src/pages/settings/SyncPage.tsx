@@ -6,6 +6,7 @@ import { StatsBar } from './syncShared'
 import { SyncSourcesTab } from './SyncSourcesTab'
 import { SyncHistoryTab } from './SyncHistoryTab'
 import { SyncConflictsTab } from './SyncConflictsTab'
+import { ImportTab } from './ImportTab'
 
 export function SyncPage() {
   const hook = useSyncPage()
@@ -71,6 +72,8 @@ export function SyncPage() {
           onResolveConflict={hook.handleResolveConflict}
         />
       )}
+
+      {hook.tab === 'Import' && <ImportTab />}
     </PageContainer>
   )
 }
