@@ -9,6 +9,7 @@ import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { vectorIndexName } from '../../services/embeddings.js'
+import { suggestTriage } from '../../services/triageService.js'
 
 interface Neo4jInt { toNumber(): number }
 function num(v: unknown): number {
@@ -102,6 +103,19 @@ async function suggestedArticles(
   }
 }
 
+async function triageSuggestion(
+  _: unknown,
+  args: { title: string; description?: string | null; ciIds?: string[] | null },
+  ctx: GraphQLContext,
+) {
+  return suggestTriage({
+    tenantId:    ctx.tenantId,
+    title:       args.title,
+    description: args.description ?? null,
+    ciIds:       args.ciIds ?? [],
+  })
+}
+
 export const similarityResolvers = {
-  Query: { similarIncidents, suggestedArticles },
+  Query: { similarIncidents, suggestedArticles, triageSuggestion },
 }

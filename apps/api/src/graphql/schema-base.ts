@@ -166,6 +166,8 @@ export function buildBaseSDL(): string {
     # Semantic similarity (vector search)
     similarIncidents(incidentId: ID!, limit: Int): SimilarIncidentsResult!
     suggestedArticles(incidentId: ID!, limit: Int): SuggestedArticlesResult!
+    # AI triage suggestion for an incident draft (explicit, never auto-applied)
+    triageSuggestion(title: String!, description: String, ciIds: [ID!]): TriageSuggestion!
     whatIfCompare(scenarios: [WhatIfScenarioInput!]!): [WhatIfResult!]!
 
     # Discovery / Sync

@@ -9,6 +9,7 @@ import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } fro
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { FieldWrapper } from '@/components/FieldWrapper'
+import { TriageSuggestionCard } from '@/components/TriageSuggestionCard'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -213,6 +214,22 @@ export function CreateIncidentPage() {
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
           </FieldWrapper>
+
+          {/* SUGGERIMENTO TRIAGE AI — esplicito, mai auto-applicato */}
+          <TriageSuggestionCard
+            title={title}
+            description={description}
+            ciIds={selectedCIs.map(ci => ci.id)}
+            onApply={({ severity: sev, category: cat, teamName }) => {
+              setSeverity(sev)
+              setCategory(cat)
+              if (teamName) {
+                const team = teamsData?.teams.find(t => t.name === teamName)
+                if (team) { setSelectedTeam({ id: team.id, name: team.name }); setTeamSearch(team.name) }
+              }
+              setFieldErrors(p => { const n = { ...p }; delete n['category']; return n })
+            }}
+          />
 
           {/* CI IMPATTATI */}
           <div style={{ marginBottom: 20 }}>

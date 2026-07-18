@@ -33,4 +33,26 @@ export const similaritySDL = `
     ready: Boolean!
     items: [SuggestedArticle!]!
   }
+
+  """AI-assisted triage suggestion — explicit, motivated, never auto-applied."""
+  type SimilarForTriage {
+    id: ID!
+    number: String
+    title: String!
+    severity: String!
+    category: String
+    status: String!
+    teamName: String
+    score: Float!
+  }
+
+  type TriageSuggestion {
+    severity: String!
+    category: String!
+    teamName: String
+    confidence: String!
+    motivation: String!
+    riskFactors: [String!]!
+    similarUsed: [SimilarForTriage!]!
+  }
 `
