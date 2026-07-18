@@ -120,11 +120,15 @@ function createDriver(): Driver {
   // Fail-fast: a process that cannot reach Neo4j must not come up "healthy"
   // and then fail scattered across every later query. The container
   // orchestrator (healthcheck/depends_on/restart) handles the retry.
+  // Under a test runner the driver is created at module import with no DB
+  // available by design — exiting would kill the vitest worker, so the error
+  // is logged and each query fails loudly on its own instead.
+  const underTest = process.env['VITEST'] !== undefined || process.env['NODE_ENV'] === 'test'
   d.verifyConnectivity()
     .then(() => console.log(`[neo4j] Connected to ${NEO4J_URI}`))
     .catch((err: unknown) => {
       console.error(`[neo4j] FATAL: connection to ${NEO4J_URI} failed:`, err)
-      process.exit(1)
+      if (!underTest) process.exit(1)
     })
 
   return d
