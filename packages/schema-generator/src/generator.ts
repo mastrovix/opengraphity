@@ -66,7 +66,19 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
         active:           t['active'] as boolean,
         neo4jLabel:       t['neo4j_label'] as string,
         validationScript: (t['validation_script'] as string | null) ?? null,
-        chainFamilies:    (() => { const raw = t['chain_families']; return Array.isArray(raw) ? raw as string[] : typeof raw === 'string' ? (function() { try { return JSON.parse(raw) as string[] } catch { return ['Application', 'Infrastructure'] } })() : ['Application', 'Infrastructure'] })(),
+        // Missing chain_families → none; corrupt JSON → throw (an invented
+        // default would silently alter chain calculation for the whole type).
+        chainFamilies:    (() => {
+          const raw = t['chain_families']
+          if (raw == null) return []
+          if (Array.isArray(raw)) return raw as string[]
+          if (typeof raw === 'string') {
+            const parsed: unknown = JSON.parse(raw)  // throws on corrupt JSON
+            if (!Array.isArray(parsed)) throw new Error(`chain_families for type "${String(t['name'])}" is not an array`)
+            return parsed as string[]
+          }
+          throw new Error(`chain_families for type "${String(t['name'])}" has unexpected type ${typeof raw}`)
+        })(),
         fields,
         relations,
         systemRelations,

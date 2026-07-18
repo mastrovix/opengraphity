@@ -17,6 +17,7 @@ async function* parseCsvStream(
 ): AsyncIterable<DiscoveredCI> {
   const rl = createInterface({ input: readable, crlfDelay: Infinity })
   let headers: string[] | null = null
+  let rowNum = 0
 
   for await (const line of rl) {
     const trimmed = line.trim()
@@ -26,14 +27,18 @@ async function* parseCsvStream(
 
     if (!headers) {
       headers = cols.map(h => h.trim())
+      if (!headers.includes('name')) {
+        throw new Error('[csv] header row must include a "name" column')
+      }
       continue
     }
 
+    rowNum++
     const row: Record<string, string> = {}
     headers.forEach((h, i) => { row[h] = (cols[i] ?? '').trim() })
 
     const name = row['name']
-    if (!name) continue
+    if (!name) throw new Error(`[csv] row ${rowNum}: missing required "name" value`)
 
     const properties: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(row)) {

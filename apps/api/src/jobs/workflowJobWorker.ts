@@ -79,8 +79,9 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
           { userId: 'system', entityData: {} },
         )
         if (!result.success) {
-          logger.warn({ entityId, error: result.error }, '[workflow-jobs] auto_close transition failed — skipping event')
-          return
+          // Throw → the job fails and BullMQ retries; a silent return would
+          // mark it completed and the incident would never auto-close.
+          throw new Error(`[workflow-jobs] auto_close transition failed for ${entityId}: ${result.error ?? 'unknown error'}`)
         }
       } finally {
         await session.close()

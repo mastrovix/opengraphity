@@ -63,20 +63,43 @@ async function loadSectionsForTemplate(templateId: string, tenantId: string): Pr
   }
 }
 
-interface SectionData { title: string; chartType: string; rows: Array<{ name: string; value: number }> | null; kpiValue: number | null; tableRows: unknown[] | null }
+interface TableData { columns: string[]; rows: unknown[][] }
+interface SectionData {
+  title: string
+  chartType: string
+  rows: Array<{ name: string; value: number }> | null
+  kpiValue: number | null
+  tableRows: TableData | null
+  /** Execution error — rendered in the document, never silently dropped. */
+  error: string | null
+}
 
 async function fetchSectionData(sections: ReportSectionDef[], tenantId: string): Promise<SectionData[]> {
   const results = await Promise.all(sections.map(s => executeReportSection(s, tenantId)))
   return results.map(r => {
+    // A failed section must appear AS FAILED in the exported document — an
+    // empty page in a delivered audit PDF is a lie.
+    if (r.error) {
+      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: r.error }
+    }
     let parsed: unknown
-    try { parsed = JSON.parse(r.data) } catch { parsed = null }
+    try { parsed = JSON.parse(r.data) }
+    catch (e) {
+      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: `Dati sezione corrotti: ${e instanceof Error ? e.message : String(e)}` }
+    }
     if (r.chartType === 'kpi') {
-      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: (parsed as { value: number } | null)?.value ?? null, tableRows: null }
+      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: (parsed as { value: number } | null)?.value ?? null, tableRows: null, error: null }
     }
     if (r.chartType === 'table') {
-      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: Array.isArray(parsed) ? parsed as unknown[] : null }
+      // executeReportSection produces { columns, rows } for tables
+      const t = parsed as TableData | null
+      const tableRows = t && Array.isArray(t.columns) && Array.isArray(t.rows) ? t : null
+      return {
+        title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows,
+        error: tableRows ? null : 'Formato dati tabella inatteso',
+      }
     }
-    return { title: r.title, chartType: r.chartType, rows: Array.isArray(parsed) ? parsed as Array<{ name: string; value: number }> : null, kpiValue: null, tableRows: null }
+    return { title: r.title, chartType: r.chartType, rows: Array.isArray(parsed) ? parsed as Array<{ name: string; value: number }> : null, kpiValue: null, tableRows: null, error: null }
   })
 }
 
@@ -96,21 +119,21 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
     doc.fontSize(14).fillColor('#334155').text(sec.title, { underline: true })
     doc.moveDown(0.5)
 
-    if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
+    if (sec.error) {
+      doc.fontSize(10).fillColor('#dc2626').text(`ERRORE: ${sec.error}`)
+    } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
       doc.fontSize(28).fillColor('#0f172a').text(String(sec.kpiValue), { align: 'center' })
     } else if (sec.rows) {
       for (const row of sec.rows.slice(0, 50)) {
         doc.fontSize(10).fillColor('#334155').text(`${row.name}: ${row.value}`)
       }
     } else if (sec.tableRows) {
-      const rows = sec.tableRows.slice(0, 30) as Record<string, unknown>[]
-      if (rows.length > 0) {
-        const cols = Object.keys(rows[0]!).slice(0, 6)
-        doc.fontSize(9).fillColor('#475569').text(cols.join(' | '))
-        doc.moveDown(0.2)
-        for (const row of rows) {
-          doc.fontSize(9).fillColor('#334155').text(cols.map(c => String(row[c] ?? '')).join(' | '))
-        }
+      const cols = sec.tableRows.columns.slice(0, 6)
+      const colIdx = cols.map(c => sec.tableRows!.columns.indexOf(c))
+      doc.fontSize(9).fillColor('#475569').text(cols.join(' | '))
+      doc.moveDown(0.2)
+      for (const row of sec.tableRows.rows.slice(0, 30)) {
+        doc.fontSize(9).fillColor('#334155').text(colIdx.map(i => String((row as unknown[])[i] ?? '')).join(' | '))
       }
     }
     doc.moveDown(1)
@@ -145,7 +168,10 @@ async function generateExcel(templateName: string, data: SectionData[], filePath
     sheet.getCell('A1').font = { bold: true, size: 12 }
     sheet.getRow(1).height = 24
 
-    if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
+    if (sec.error) {
+      sheet.getCell('A2').value = `ERRORE: ${sec.error}`
+      sheet.getCell('A2').font = { color: { argb: 'FFDC2626' }, bold: true }
+    } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
       sheet.getCell('A2').value = 'Valore'
       sheet.getCell('B2').value = sec.kpiValue
       sheet.getCell('B2').font = { bold: true, size: 16 }
@@ -154,14 +180,14 @@ async function generateExcel(templateName: string, data: SectionData[], filePath
       sheet.getRow(2).font = { bold: true }
       sheet.columns = [{ key: 'name', width: 30 }, { key: 'value', width: 15 }]
       sec.rows.forEach((row, i) => { sheet.getRow(i + 3).values = [row.name, row.value] })
-    } else if (sec.tableRows && sec.tableRows.length > 0) {
-      const rows = sec.tableRows as Record<string, unknown>[]
-      const cols = Object.keys(rows[0]!).slice(0, 10)
+    } else if (sec.tableRows && sec.tableRows.rows.length > 0) {
+      const cols = sec.tableRows.columns.slice(0, 10)
+      const colIdx = cols.map(c => sec.tableRows!.columns.indexOf(c))
       sheet.getRow(2).values = cols
       sheet.getRow(2).font = { bold: true }
       sheet.columns = cols.map(c => ({ key: c, header: c, width: 20 }))
-      rows.forEach((row, i) => {
-        const vals = cols.map(c => row[c])
+      sec.tableRows.rows.forEach((row, i) => {
+        const vals = colIdx.map(idx => (row as unknown[])[idx])
         sheet.getRow(i + 3).values = vals as ExcelJS.CellValue[]
       })
     }

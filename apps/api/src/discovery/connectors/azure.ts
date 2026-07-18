@@ -89,7 +89,7 @@ export const azureConnector: Connector = {
           }
         }
       } catch (err) {
-        logger.warn({ err }, '[azure] VM scan error')
+        throw new Error(`[azure] VM scan failed (subscription ${subscriptionId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
       }
     }
 
@@ -130,7 +130,7 @@ export const azureConnector: Connector = {
           }
         }
       } catch (err) {
-        logger.warn({ err }, '[azure] SQL scan error')
+        throw new Error(`[azure] SQL scan failed (subscription ${subscriptionId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
       }
     }
 
@@ -168,7 +168,7 @@ export const azureConnector: Connector = {
           }
         }
       } catch (err) {
-        logger.warn({ err }, '[azure] AKS scan error')
+        throw new Error(`[azure] AKS scan failed (subscription ${subscriptionId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
       }
     }
 
@@ -209,7 +209,12 @@ export const azureConnector: Connector = {
                   })
                 }
               } catch (err) {
-                logger.debug({ err }, '[azure] LB NIC resolve skip')
+                // Legit skip: NIC deleted between LB listing and NIC lookup (404) — anything else must fail the run.
+                if ((err as { statusCode?: number }).statusCode === 404) {
+                  logger.debug({ err, nicId }, '[azure] LB backend NIC vanished mid-scan, skipping')
+                } else {
+                  throw new Error(`[azure] LB backend NIC resolve failed (${nicId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+                }
               }
             }
           }
@@ -231,7 +236,7 @@ export const azureConnector: Connector = {
           }
         }
       } catch (err) {
-        logger.warn({ err }, '[azure] LB scan error')
+        throw new Error(`[azure] LB scan failed (subscription ${subscriptionId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
       }
     }
   },

@@ -41,8 +41,9 @@ async function processDelivery(job: Job<DeliveryJobData>): Promise<void> {
   const t0 = Date.now()
 
   if (!isSafeUrl(url)) {
-    log.warn({ webhookId, url }, 'Outbound webhook URL blocked (SSRF)')
-    return
+    // Returning here would mark the BullMQ job COMPLETED: the webhook would
+    // look healthy while never delivering. Throw → job fails visibly.
+    throw new Error(`Outbound webhook URL blocked (SSRF/non-HTTPS): ${url} (webhook ${webhookId})`)
   }
 
   const finalHeaders: Record<string, string> = { 'Content-Type': 'application/json', ...headers }

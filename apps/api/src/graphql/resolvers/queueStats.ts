@@ -35,7 +35,7 @@ export const queueStatsResolvers = {
       if (!QUEUE_NAMES.includes(queueName)) {
         throw new GraphQLError(`Unknown queue: ${queueName}`)
       }
-      const types = lookupOrError(STATUS_TYPES, status, 'STATUS_TYPES', ['failed'] as JobType[])
+      const types = lookupOrError(STATUS_TYPES, status, 'STATUS_TYPES')
       const queue = new Queue(queueName, { connection: redisConn })
       try {
         const rawJobs = await queue.getJobs(types, 0, limit - 1)

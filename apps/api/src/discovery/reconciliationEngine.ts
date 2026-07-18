@@ -146,8 +146,11 @@ async function findExisting(
       props,
     }
   } catch (err) {
-    logger.warn({ err, externalId, label }, '[reconcile] findExisting error')
-    return null
+    // A DB error here must NOT look like "CI not found": returning null makes
+    // the engine CREATE a duplicate of an existing CI. Propagate — the sync
+    // run fails visibly instead of corrupting the CMDB.
+    logger.error({ err, externalId, label }, '[reconcile] findExisting failed — aborting reconcile for this CI')
+    throw err instanceof Error ? err : new Error(String(err))
   }
 }
 

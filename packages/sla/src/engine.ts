@@ -8,7 +8,8 @@ import type {
   ProblemCreatedPayload,
   ProblemResolvedPayload,
 } from '@opengraphity/types'
-import { DEFAULT_SLA_POLICIES } from './policy.js'
+import { DEFAULT_SLA_POLICIES, type SLAPolicy } from './policy.js'
+import { selectSLAForEntity } from './selector.js'
 import { createSLAStatus, getSLAStatus, markResolveMet } from './status.js'
 import {
   initScheduler,
@@ -18,8 +19,41 @@ import {
   cancelSLAJobs,
 } from './scheduler.js'
 
-function findPolicy(entityType: 'incident' | 'change' | 'service_request' | 'problem') {
+function findDefaultPolicy(entityType: 'incident' | 'change' | 'service_request' | 'problem') {
   return DEFAULT_SLA_POLICIES.find((p) => p.entity_type === entityType) ?? null
+}
+
+/**
+ * Resolves the SLA policy for an entity: tenant-configured policies from the
+ * DB take precedence; the hardcoded platform defaults are the DOCUMENTED
+ * fallback only when the tenant has configured nothing. A corrupt tenant
+ * policy throws (selector is fail-fast) and fails the job — it is never
+ * silently replaced by the defaults.
+ */
+async function resolvePolicy(
+  tenantId:   string,
+  entityType: 'incident' | 'change' | 'service_request' | 'problem',
+  severity:   string,
+): Promise<SLAPolicy | null> {
+  const tenantPolicy = await selectSLAForEntity(tenantId, entityType, severity, null, null)
+  if (tenantPolicy) {
+    // Adapt the flat per-priority record to the tiered SLAPolicy shape used
+    // by createSLAStatus: one tier matching the entity's severity.
+    return {
+      id:          tenantPolicy.id,
+      tenant_id:   tenantId,
+      name:        tenantPolicy.name,
+      entity_type: entityType,
+      timezone:    tenantPolicy.timezone,
+      tiers: [{
+        severity,
+        response_minutes: tenantPolicy.response_minutes,
+        resolve_minutes:  tenantPolicy.resolve_minutes,
+        business_hours:   tenantPolicy.business_hours,
+      }],
+    }
+  }
+  return findDefaultPolicy(entityType)
 }
 
 export class SLAEngine extends BaseConsumer<unknown> {
@@ -86,7 +120,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
   ): Promise<void> {
     const payload  = event.payload
     const severity = getSeverity(payload)
-    const policy   = findPolicy(entityType)
+    const policy   = await resolvePolicy(event.tenant_id, entityType, severity)
 
     if (!policy) {
       console.warn(`[sla:engine] No SLA policy for entity type "${entityType}"`)
@@ -95,8 +129,10 @@ export class SLAEngine extends BaseConsumer<unknown> {
 
     const tier = policy.tiers.find((t) => t.severity === severity)
     if (!tier) {
-      console.log(
-        `[sla:engine] No SLA tier for ${entityType} severity="${severity}" — skipping`,
+      // Loud: an entity whose severity has no tier gets NO SLA — that is a
+      // policy-coverage gap the admin must see, not an info line.
+      console.error(
+        `[sla:engine] No SLA tier for ${entityType} severity="${severity}" (policy "${policy.name}") — NO SLA CREATED for ${payload.id}`,
       )
       return
     }

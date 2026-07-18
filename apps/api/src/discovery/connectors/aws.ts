@@ -104,7 +104,7 @@ export const awsConnector: Connector = {
             nextToken = resp.NextToken
           } while (nextToken)
         } catch (err) {
-          logger.warn({ err, region }, '[aws] EC2 scan error')
+          throw new Error(`[aws] EC2 scan failed (region ${region}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -144,7 +144,7 @@ export const awsConnector: Connector = {
             marker = resp.Marker
           } while (marker)
         } catch (err) {
-          logger.warn({ err, region }, '[aws] RDS scan error')
+          throw new Error(`[aws] RDS scan failed (region ${region}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -191,7 +191,12 @@ export const awsConnector: Connector = {
                     }
                   }
                 } catch (err) {
-                  logger.debug({ err, arn: tg.TargetGroupArn }, '[aws] ELB target health skip')
+                  // Legit skip: target group deleted between DescribeTargetGroups and DescribeTargetHealth — anything else must fail the run.
+                  if (err instanceof Error && err.name === 'TargetGroupNotFoundException') {
+                    logger.debug({ err, arn: tg.TargetGroupArn }, '[aws] ELB target group vanished mid-scan, skipping')
+                  } else {
+                    throw new Error(`[aws] ELB target health lookup failed (region ${region}, target group ${tg.TargetGroupArn}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+                  }
                 }
               }
 
@@ -215,7 +220,7 @@ export const awsConnector: Connector = {
             lbMarker = lbResp.NextMarker
           } while (lbMarker)
         } catch (err) {
-          logger.warn({ err, region }, '[aws] ELB scan error')
+          throw new Error(`[aws] ELB scan failed (region ${region}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -263,13 +268,18 @@ export const awsConnector: Connector = {
                   relationships: [],
                 }
               } catch (err) {
-                logger.debug({ err, arn: cert.CertificateArn }, '[aws] ACM describe skip')
+                // Legit skip: certificate deleted between ListCertificates and DescribeCertificate — anything else must fail the run.
+                if (err instanceof Error && err.name === 'ResourceNotFoundException') {
+                  logger.debug({ err, arn: cert.CertificateArn }, '[aws] ACM certificate vanished mid-scan, skipping')
+                } else {
+                  throw new Error(`[aws] ACM certificate describe failed (region ${region}, arn ${cert.CertificateArn}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+                }
               }
             }
             nextToken = listResp.NextToken
           } while (nextToken)
         } catch (err) {
-          logger.warn({ err, region }, '[aws] ACM scan error')
+          throw new Error(`[aws] ACM scan failed (region ${region}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -317,7 +327,7 @@ export const awsConnector: Connector = {
             marker = resp.NextMarker
           } while (marker)
         } catch (err) {
-          logger.warn({ err, region }, '[aws] Lambda scan error')
+          throw new Error(`[aws] Lambda scan failed (region ${region}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -368,8 +378,13 @@ export const awsConnector: Connector = {
                         taskDefinition: svc.taskDefinition,
                       }))
                       image = tdResp.taskDefinition?.containerDefinitions?.[0]?.image
-                    } catch {
-                      image = svc.taskDefinition
+                    } catch (err) {
+                      // Legit fallback: services can reference deregistered/deleted task definitions (ClientException) — anything else must fail the run.
+                      if (err instanceof Error && err.name === 'ClientException') {
+                        image = svc.taskDefinition
+                      } else {
+                        throw new Error(`[aws] ECS task definition describe failed (region ${region}, ${svc.taskDefinition}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+                      }
                     }
                   }
 
@@ -397,7 +412,7 @@ export const awsConnector: Connector = {
             clusterToken = clusterResp.nextToken
           } while (clusterToken)
         } catch (err) {
-          logger.warn({ err, region }, '[aws] ECS scan error')
+          throw new Error(`[aws] ECS scan failed (region ${region}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
     }

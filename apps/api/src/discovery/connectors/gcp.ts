@@ -5,7 +5,6 @@ import type {
   DiscoveredCI,
   SyncSourceConfig,
 } from '@opengraphity/discovery'
-import { logger } from '../../lib/logger.js'
 
 // ── GCP Connector ─────────────────────────────────────────────────────────────
 // Discovers Compute Engine, Cloud SQL, GKE clusters, and forwarding rules (LBs).
@@ -99,11 +98,11 @@ export const gcpConnector: Connector = {
                 }
               }
             } catch (err) {
-              logger.debug({ err, zone, projectId }, '[gcp] Zone scan skip')
+              throw new Error(`[gcp] Compute instance list failed (project ${projectId}, zone ${zone}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
             }
           }
         } catch (err) {
-          logger.warn({ err, projectId }, '[gcp] Compute scan error')
+          throw new Error(`[gcp] Compute scan failed (project ${projectId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -144,7 +143,7 @@ export const gcpConnector: Connector = {
             }
           }
         } catch (err) {
-          logger.warn({ err, projectId }, '[gcp] Cloud SQL scan error')
+          throw new Error(`[gcp] Cloud SQL scan failed (project ${projectId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -183,7 +182,7 @@ export const gcpConnector: Connector = {
             }
           }
         } catch (err) {
-          logger.warn({ err, projectId }, '[gcp] GKE scan error')
+          throw new Error(`[gcp] GKE scan failed (project ${projectId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -246,12 +245,12 @@ export const gcpConnector: Connector = {
                   }
                 }
               } catch (err) {
-                logger.debug({ err, region }, '[gcp] Regional LB scan skip')
+                throw new Error(`[gcp] Regional LB scan failed (project ${projectId}, region ${region}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
               }
             }
           }
         } catch (err) {
-          logger.warn({ err, projectId }, '[gcp] LB scan error')
+          throw new Error(`[gcp] LB scan failed (project ${projectId}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
     }

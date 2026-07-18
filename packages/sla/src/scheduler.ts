@@ -146,12 +146,14 @@ async function scheduleJob(
 
 export async function scheduleWarning(status: SLAStatus): Promise<void> {
   const warningMs = new Date(status.resolve_deadline).getTime() - 30 * 60_000 - Date.now()
+  // Clamp like breach/response checks: an SLA shorter than the 30-minute
+  // warning window fires the warning immediately instead of silently never.
   await scheduleJob('sla.warning', `warning-${status.entity_id}`, {
     entityId:       status.entity_id,
     entityType:     status.entity_type,
     tenantId:       status.tenant_id,
     resolveDeadline: status.resolve_deadline,
-  }, warningMs)
+  }, Math.max(warningMs, 0))
 }
 
 export async function scheduleBreachCheck(status: SLAStatus): Promise<void> {

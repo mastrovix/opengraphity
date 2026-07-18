@@ -65,6 +65,22 @@ export async function selectSLAForEntity(
     }
 
     const props = result.records[0].get('p').properties as Record<string, unknown>
+
+    // Fail-loud on corrupt policy config: a policy without minutes would
+    // produce a 0-minute SLA (deadline = now → instant breach) and a missing
+    // timezone would silently shift every deadline.
+    const responseMinutes = Number(props['response_minutes'])
+    const resolveMinutes  = Number(props['resolve_minutes'])
+    if (!Number.isFinite(responseMinutes) || responseMinutes <= 0) {
+      throw new Error(`SLA policy "${String(props['name'])}" (${String(props['id'])}) has invalid response_minutes: ${String(props['response_minutes'])}`)
+    }
+    if (!Number.isFinite(resolveMinutes) || resolveMinutes <= 0) {
+      throw new Error(`SLA policy "${String(props['name'])}" (${String(props['id'])}) has invalid resolve_minutes: ${String(props['resolve_minutes'])}`)
+    }
+    if (!props['timezone']) {
+      throw new Error(`SLA policy "${String(props['name'])}" (${String(props['id'])}) has no timezone configured`)
+    }
+
     const policy: SLAPolicyRecord = {
       id:               props['id']               as string,
       name:             props['name']             as string,
@@ -72,9 +88,9 @@ export async function selectSLAForEntity(
       priority:         (props['priority']         ?? null) as string | null,
       category:         (props['category']         ?? null) as string | null,
       team_id:          (props['team_id']          ?? null) as string | null,
-      timezone:         (props['timezone']         ?? 'Europe/Rome') as string,
-      response_minutes: Number(props['response_minutes'] ?? 0),
-      resolve_minutes:  Number(props['resolve_minutes']  ?? 0),
+      timezone:         props['timezone']         as string,
+      response_minutes: responseMinutes,
+      resolve_minutes:  resolveMinutes,
       business_hours:   (props['business_hours']  ?? false) as boolean,
     }
 

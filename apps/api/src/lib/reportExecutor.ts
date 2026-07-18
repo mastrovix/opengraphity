@@ -37,7 +37,12 @@ export async function executeReportSection(
 
       switch (section.chartType) {
         case 'kpi': {
-          const v = result.records[0]?.get('value') ?? 0
+          // A Cypher aggregate always returns one row: zero records means the
+          // query shape is wrong — error, don't render a fabricated 0.
+          if (result.records.length === 0) {
+            throw new Error('KPI query returned no rows — check the section configuration')
+          }
+          const v = result.records[0]!.get('value')
           data = { value: toNumber(v), label: section.title }
           total = toNumber(v)
           break
@@ -71,20 +76,17 @@ export async function executeReportSection(
           const selectedFields = resultNodes.flatMap(n => (n.selectedFields ?? []).map(sf => `${n.label.replace(/\s+/g, '_')}_${sf}`))
 
           if (selectedFields.length > 0) {
+            // A column missing from the result is a config/query mismatch: let
+            // it throw into the section error instead of rendering null cells
+            // the user cannot distinguish from real empty values.
             const rows = result.records.map(r =>
-              selectedFields.map(col => {
-                try { return r.get(col) ?? null } catch { return null }
-              }),
+              selectedFields.map(col => r.get(col) ?? null),
             )
             data = { columns: selectedFields, rows }
           } else {
             const rows = result.records.map(r => {
-              try {
-                const node = r.get('row') as { properties?: Record<string, unknown> } | null
-                return flattenNode(node)
-              } catch {
-                return {}
-              }
+              const node = r.get('row') as { properties?: Record<string, unknown> } | null
+              return flattenNode(node)
             })
             const columns = rows.length > 0 ? Object.keys(rows[0]) : []
             data = { columns, rows: rows.map(row => columns.map(c => row[c] ?? null)) }

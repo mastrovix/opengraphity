@@ -17,9 +17,18 @@ function parseEnumValues(raw: string[] | string | null | undefined): string[] {
 // ── mapCITypeNode ─────────────────────────────────────────────────────────────
 
 function parseChainFamilies(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string') { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : ['Application', 'Infrastructure'] } catch { return ['Application', 'Infrastructure'] } }
-  return ['Application', 'Infrastructure']
+  // Missing → no families (legitimate). CORRUPT → throw: substituting an
+  // invented default silently alters chain calculation for the whole type.
+  if (raw == null) return []
+  if (Array.isArray(raw)) return raw as string[]
+  if (typeof raw === 'string') {
+    let parsed: unknown
+    try { parsed = JSON.parse(raw) }
+    catch (e) { throw new Error(`Corrupt chain_families JSON: ${e instanceof Error ? e.message : String(e)}`) }
+    if (!Array.isArray(parsed)) throw new Error(`chain_families is not an array (got ${typeof parsed})`)
+    return parsed as string[]
+  }
+  throw new Error(`chain_families has unexpected type ${typeof raw}`)
 }
 
 export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[], systemRels: Props[]) {

@@ -117,9 +117,15 @@ function createDriver(): Driver {
     },
   )
 
+  // Fail-fast: a process that cannot reach Neo4j must not come up "healthy"
+  // and then fail scattered across every later query. The container
+  // orchestrator (healthcheck/depends_on/restart) handles the retry.
   d.verifyConnectivity()
     .then(() => console.log(`[neo4j] Connected to ${NEO4J_URI}`))
-    .catch((err: unknown) => console.error('[neo4j] Connection failed:', err))
+    .catch((err: unknown) => {
+      console.error(`[neo4j] FATAL: connection to ${NEO4J_URI} failed:`, err)
+      process.exit(1)
+    })
 
   return d
 }

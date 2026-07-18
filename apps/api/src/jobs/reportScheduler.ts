@@ -25,16 +25,16 @@ const connection = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * True if the cron's previous tick was within the last 60 seconds.
+ * Throws on an invalid cron expression: returning false would disable the
+ * scheduled report FOREVER without any visible error.
+ */
 function cronMatchesNow(cron: string): boolean {
-  try {
-    const interval = CronExpressionParser.parse(cron)
-    const prev = interval.prev().toDate()
-    const now = new Date()
-    // Match if the previous tick was within the last 60 seconds
-    return Math.abs(now.getTime() - prev.getTime()) < 60_000
-  } catch {
-    return false
-  }
+  const interval = CronExpressionParser.parse(cron)  // throws on invalid cron
+  const prev = interval.prev().toDate()
+  const now = new Date()
+  return Math.abs(now.getTime() - prev.getTime()) < 60_000
 }
 
 type Props = Record<string, unknown>
@@ -60,7 +60,17 @@ async function loadDueTemplates(): Promise<TemplateRow[]> {
     )
     return result.records
       .map(rec => rec.get('props') as Props)
-      .filter(p => cronMatchesNow(p['schedule_cron'] as string))
+      .filter(p => {
+        try {
+          return cronMatchesNow(p['schedule_cron'] as string)
+        } catch (err) {
+          // One template's corrupt cron must not kill scheduling for every
+          // other template — but it must be LOUD, not a silent disable.
+          logger.error({ err, templateId: p['id'], name: p['name'], cron: p['schedule_cron'] },
+            '[reportScheduler] invalid schedule_cron — scheduled report will NEVER run until fixed')
+          return false
+        }
+      })
       .map(p => ({
         id:                 p['id']                    as string,
         tenantId:           p['tenant_id']             as string,

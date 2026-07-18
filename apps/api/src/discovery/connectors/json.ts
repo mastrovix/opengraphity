@@ -16,57 +16,65 @@ const VALID_RELATION_TYPES = new Set([
 function parseItems(raw: unknown): DiscoveredCI[] {
   if (!Array.isArray(raw)) throw new Error('JSON source must be an array of CI objects')
 
-  return raw
-    .filter((item): item is Record<string, unknown> =>
-      typeof item === 'object' && item !== null,
-    )
-    .flatMap((item): DiscoveredCI[] => {
-      const externalId = (item['external_id'] ?? item['id']) as string | undefined
-      const name       = item['name'] as string | undefined
-      if (!externalId || !name) return []
+  return raw.map((entry, idx): DiscoveredCI => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new Error(`[json] item ${idx}: must be an object`)
+    }
+    const item = entry as Record<string, unknown>
 
-      const properties: Record<string, unknown> = {}
-      for (const [k, v] of Object.entries(item)) {
-        if (['external_id', 'id', 'name', 'ci_type', 'relationships', 'tags'].includes(k)) continue
-        properties[k] = v
-      }
+    const externalId = (item['external_id'] ?? item['id']) as string | undefined
+    const name       = item['name'] as string | undefined
+    if (!externalId) throw new Error(`[json] item ${idx}: missing required "external_id" (or "id") field`)
+    if (!name)       throw new Error(`[json] item ${idx} (${externalId}): missing required "name" field`)
 
-      const rawRels = item['relationships']
-      const relationships: DiscoveredCI['relationships'] = Array.isArray(rawRels)
-        ? rawRels.flatMap((r: unknown) => {
-            if (typeof r !== 'object' || r === null) return []
-            const rel = r as Record<string, unknown>
-            const rt  = String(rel['relation_type'] ?? 'DEPENDS_ON')
-            if (!VALID_RELATION_TYPES.has(rt as never)) return []
-            const relType = rt as 'DEPENDS_ON' | 'HOSTED_ON' | 'USES_CERTIFICATE' | 'INSTALLED_ON' | 'MEMBER_OF'
-            const dir     = rel['direction'] === 'incoming' ? 'incoming' : 'outgoing'
-            const targetId = String(rel['target_external_id'] ?? rel['target_id'] ?? '')
-            if (!targetId) return []
-            return [{
-              target_external_id: targetId,
-              relation_type:      relType,
-              direction:          dir as 'outgoing' | 'incoming',
-              properties:         typeof rel['properties'] === 'object' && !Array.isArray(rel['properties'])
-                ? rel['properties'] as Record<string, unknown>
-                : undefined,
-            }]
-          })
-        : []
+    const properties: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(item)) {
+      if (['external_id', 'id', 'name', 'ci_type', 'relationships', 'tags'].includes(k)) continue
+      properties[k] = v
+    }
 
-      const tags = typeof item['tags'] === 'object' && !Array.isArray(item['tags']) && item['tags'] !== null
-        ? item['tags'] as Record<string, string>
-        : {}
+    const rawRels = item['relationships']
+    const relationships: DiscoveredCI['relationships'] = Array.isArray(rawRels)
+      ? rawRels.map((r: unknown, ri: number) => {
+          if (typeof r !== 'object' || r === null) {
+            throw new Error(`[json] item ${idx} (${externalId}): relationship ${ri} must be an object`)
+          }
+          const rel = r as Record<string, unknown>
+          const rt  = String(rel['relation_type'] ?? 'DEPENDS_ON')
+          if (!VALID_RELATION_TYPES.has(rt as never)) {
+            throw new Error(`[json] item ${idx} (${externalId}): relationship ${ri} has invalid relation_type "${rt}" (valid: ${[...VALID_RELATION_TYPES].join(', ')})`)
+          }
+          const relType = rt as 'DEPENDS_ON' | 'HOSTED_ON' | 'USES_CERTIFICATE' | 'INSTALLED_ON' | 'MEMBER_OF'
+          const dir     = rel['direction'] === 'incoming' ? 'incoming' : 'outgoing'
+          const targetId = String(rel['target_external_id'] ?? rel['target_id'] ?? '')
+          if (!targetId) {
+            throw new Error(`[json] item ${idx} (${externalId}): relationship ${ri} is missing "target_external_id" (or "target_id")`)
+          }
+          return {
+            target_external_id: targetId,
+            relation_type:      relType,
+            direction:          dir as 'outgoing' | 'incoming',
+            properties:         typeof rel['properties'] === 'object' && !Array.isArray(rel['properties'])
+              ? rel['properties'] as Record<string, unknown>
+              : undefined,
+          }
+        })
+      : []
 
-      return [{
-        external_id:   externalId,
-        source:        'json',
-        ci_type:       String(item['ci_type'] ?? 'server'),
-        name,
-        properties,
-        tags,
-        relationships,
-      }]
-    })
+    const tags = typeof item['tags'] === 'object' && !Array.isArray(item['tags']) && item['tags'] !== null
+      ? item['tags'] as Record<string, string>
+      : {}
+
+    return {
+      external_id:   externalId,
+      source:        'json',
+      ci_type:       String(item['ci_type'] ?? 'server'),
+      name,
+      properties,
+      tags,
+      relationships,
+    }
+  })
 }
 
 export const jsonConnector: Connector = {

@@ -6,7 +6,6 @@ import type {
   DiscoveredRelation,
   SyncSourceConfig,
 } from '@opengraphity/discovery'
-import { logger } from '../../lib/logger.js'
 
 // ── Kubernetes Connector ──────────────────────────────────────────────────────
 // Discovers Nodes, Deployments, StatefulSets, LoadBalancer/NodePort Services,
@@ -119,7 +118,7 @@ export const kubernetesConnector: Connector = {
           }
         }
       } catch (err) {
-        logger.warn({ err }, '[k8s] Node scan error')
+        throw new Error(`[k8s] Node scan failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
       }
     }
 
@@ -130,8 +129,7 @@ export const kubernetesConnector: Connector = {
         const nsList = await coreApi.listNamespace()
         nsNames = nsList.items.map((n: { metadata?: { name?: string | null } }) => n.metadata?.name ?? '').filter(Boolean)
       } catch (err) {
-        logger.warn({ err }, '[k8s] Namespace list error')
-        nsNames = ['default']
+        throw new Error(`[k8s] Namespace list failed — set the "namespaces" config field explicitly if the credential cannot list namespaces: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
       }
     }
 
@@ -162,7 +160,7 @@ export const kubernetesConnector: Connector = {
             }
           }
         } catch (err) {
-          logger.debug({ err, ns }, '[k8s] Deployment scan error')
+          throw new Error(`[k8s] Deployment scan failed (namespace ${ns}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -197,7 +195,7 @@ export const kubernetesConnector: Connector = {
             }
           }
         } catch (err) {
-          logger.debug({ err, ns }, '[k8s] StatefulSet scan error')
+          throw new Error(`[k8s] StatefulSet scan failed (namespace ${ns}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -266,7 +264,7 @@ export const kubernetesConnector: Connector = {
             }
           }
         } catch (err) {
-          logger.debug({ err, ns }, '[k8s] Service scan error')
+          throw new Error(`[k8s] Service scan failed (namespace ${ns}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
 
@@ -316,7 +314,7 @@ export const kubernetesConnector: Connector = {
             }
           }
         } catch (err) {
-          logger.debug({ err, ns }, '[k8s] Ingress scan error')
+          throw new Error(`[k8s] Ingress scan failed (namespace ${ns}): ${err instanceof Error ? err.message : String(err)}`, { cause: err })
         }
       }
     }
