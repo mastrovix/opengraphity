@@ -43,7 +43,11 @@ export function buildAdvancedWhere(
 ): string {
   let group: AdvFilterGroup
   try { group = JSON.parse(filtersJson) as AdvFilterGroup }
-  catch { return '' }
+  catch (e) {
+    // Corrupt filters must fail the query — returning '' would silently serve
+    // the FULL unfiltered list while the user believes it is filtered.
+    throw new Error(`Invalid filters JSON: ${e instanceof Error ? e.message : String(e)}`)
+  }
   if (!group.rules?.length) return ''
 
   const conditions: string[] = []
@@ -53,8 +57,15 @@ export function buildAdvancedWhere(
     const pk   = `af_${i}`
     const pk2  = `af_${i}_2`
 
-    if (!FIELD_NAME_RE.test(rule.field)) continue
-    if (!allowedFields.has(rule.field)) continue
+    // Unknown/invalid fields must fail loud, not silently drop the rule: a
+    // dropped rule widens the result set behind the user's back. (The whitelist
+    // stays as the injection guard — this just refuses instead of ignoring.)
+    if (!FIELD_NAME_RE.test(rule.field)) {
+      throw new Error(`Invalid filter field name: ${JSON.stringify(rule.field)}`)
+    }
+    if (!allowedFields.has(rule.field)) {
+      throw new Error(`Filter field not allowed for this entity: ${rule.field}`)
+    }
 
     // Relation field: generate EXISTS subquery
     const relDef = relationFields[rule.field]
@@ -72,6 +83,9 @@ export function buildAdvancedWhere(
           ? `toLower(${ta}.${relDef.searchProp}) CONTAINS $${pk}`
           : `${ta}.${relDef.searchProp} = $${pk}`
         conditions.push(`EXISTS { MATCH (${nodeAlias})-[:${relDef.relType}]->(${ta}:${relDef.targetLabel}) WHERE ${cond} }`)
+      } else {
+        // Unsupported operator on a relation field — refuse, don't silently drop.
+        throw new Error(`Operator ${JSON.stringify(rule.operator)} not supported on relation field ${rule.field}`)
       }
       continue
     }
@@ -135,6 +149,9 @@ export function buildAdvancedWhere(
         params[pk] = rule.value
         conditions.push(`NOT ${prop} IN $${pk}`)
         break
+      default:
+        // Unknown operator = corrupt filter — refuse, don't silently drop the rule.
+        throw new Error(`Unknown filter operator: ${JSON.stringify(rule.operator)}`)
     }
   }
 

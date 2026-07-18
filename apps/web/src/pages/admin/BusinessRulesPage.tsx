@@ -60,8 +60,17 @@ const EMPTY_ACTION: RuleAction   = { type: 'set_field', params: {} }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function safeParse<T>(json: string | null | undefined, fallback: T): T {
-  try { return json ? JSON.parse(json) : fallback } catch { return fallback }
+/**
+ * Parses stored rule JSON. Missing → fallback; CORRUPT → throws.
+ * Opening the editor with silently-emptied conditions/actions would let a
+ * save overwrite (destroy) the original data without the user ever knowing.
+ */
+function parseStored<T>(json: string | null | undefined, fallback: T, what: string): T {
+  if (!json) return fallback
+  try { return JSON.parse(json) as T }
+  catch (e) {
+    throw new Error(`JSON corrotto in "${what}": ${e instanceof Error ? e.message : String(e)}`)
+  }
 }
 
 /** Migrates old flat action format { type, value, field, ... } to { type, params } */
@@ -140,11 +149,22 @@ export function BusinessRulesPage() {
   function openCreate() { resetForm(); setModalOpen(true) }
 
   function openEdit(r: BusinessRule) {
+    // Refuse to open the editor on corrupt data: an editor silently opened
+    // empty would destroy the original conditions/actions at the next save.
+    let conds: Condition[]
+    let acts: RuleAction[]
+    try {
+      conds = parseStored(r.conditions, [{ ...EMPTY_CONDITION }], 'conditions')
+      acts  = migrateActions(parseStored(r.actions, [{ ...EMPTY_ACTION }], 'actions'))
+    } catch (e) {
+      toast.error(`Impossibile aprire "${r.name}": ${e instanceof Error ? e.message : String(e)}. Correggi il dato dal database prima di modificare.`)
+      return
+    }
     setEditId(r.id); setName(r.name); setDescription(r.description ?? '')
     setEntityType(r.entityType); setEventType(r.eventType)
     setConditionLogic(r.conditionLogic as 'AND' | 'OR')
-    setConditions(safeParse(r.conditions, [{ ...EMPTY_CONDITION }]))
-    setActions(migrateActions(safeParse(r.actions, [{ ...EMPTY_ACTION }])))
+    setConditions(conds)
+    setActions(acts)
     setPriority(r.priority); setStopOnMatch(r.stopOnMatch); setEnabled(r.enabled)
     setModalOpen(true)
   }

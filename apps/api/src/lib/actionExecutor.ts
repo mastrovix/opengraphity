@@ -45,16 +45,24 @@ export interface ActionResult {
 }
 
 /**
- * Parses a JSON string of actions, returns empty array on failure.
+ * Parses a JSON string of actions.
+ *
+ * Throws on malformed JSON or a non-array payload: returning [] would make a
+ * matched rule silently execute zero actions — the rule looks healthy while
+ * doing nothing. Callers surface the error and skip the rule.
  */
 export function parseActions(raw: string | null | undefined): Action[] {
   if (!raw) return []
+  let arr: unknown
   try {
-    const arr = JSON.parse(raw)
-    return Array.isArray(arr) ? arr : []
-  } catch {
-    return []
+    arr = JSON.parse(raw)
+  } catch (e) {
+    throw new Error(`Corrupt actions JSON: ${e instanceof Error ? e.message : String(e)}`)
   }
+  if (!Array.isArray(arr)) {
+    throw new Error(`Actions payload is not an array (got ${typeof arr})`)
+  }
+  return arr as Action[]
 }
 
 /**

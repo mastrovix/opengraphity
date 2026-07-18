@@ -80,9 +80,17 @@ const toggleKnob = (on: boolean): React.CSSProperties => ({
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function parseJSON<T>(s: string | null | undefined, fallback: T): T {
+/**
+ * Parses stored trigger JSON. Missing → fallback; CORRUPT → throws.
+ * Opening the editor with silently-emptied conditions/actions would let a
+ * save overwrite (destroy) the original data without the user ever knowing.
+ */
+function parseJSON<T>(s: string | null | undefined, fallback: T, what: string): T {
   if (!s) return fallback
-  try { return JSON.parse(s) } catch { return fallback }
+  try { return JSON.parse(s) as T }
+  catch (e) {
+    throw new Error(`JSON corrotto in "${what}": ${e instanceof Error ? e.message : String(e)}`)
+  }
 }
 
 // Preview text now handled by AutomationPreview component
@@ -133,9 +141,9 @@ export function AutoTriggersPage() {
   })
   const triggers: AutoTrigger[] = data?.autoTriggers ?? []
 
-  const [createTrigger] = useMutation(CREATE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger creato'); refetch(); closeModal() } })
-  const [updateTrigger] = useMutation(UPDATE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger aggiornato'); refetch(); closeModal() } })
-  const [deleteTrigger] = useMutation(DELETE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger eliminato'); refetch(); setDeleteId(null) } })
+  const [createTrigger] = useMutation(CREATE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger creato'); refetch(); closeModal() }, onError: (e) => toast.error(e.message) })
+  const [updateTrigger] = useMutation(UPDATE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger aggiornato'); refetch(); closeModal() }, onError: (e) => toast.error(e.message) })
+  const [deleteTrigger] = useMutation(DELETE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger eliminato'); refetch(); setDeleteId(null) }, onError: (e) => toast.error(e.message) })
 
   function closeModal() { setEditing(null); setCreating(false) }
 
@@ -144,11 +152,22 @@ export function AutoTriggersPage() {
     setCreating(true)
   }
   function openEdit(t: AutoTrigger) {
+    // Refuse to open the editor on corrupt data: an editor silently opened
+    // empty would destroy the original conditions/actions at the next save.
+    let conditions: Condition[]
+    let actions: TriggerAction[]
+    try {
+      conditions = parseJSON<Condition[]>(t.conditions, [], 'conditions')
+      actions    = parseJSON<TriggerAction[]>(t.actions, [], 'actions')
+    } catch (e) {
+      toast.error(`Impossibile aprire "${t.name}": ${e instanceof Error ? e.message : String(e)}. Correggi il dato dal database prima di modificare.`)
+      return
+    }
     setForm({
       name: t.name, entityType: t.entityType, eventType: t.eventType,
       timerDelayMinutes: t.timerDelayMinutes ?? 0,
-      conditions: parseJSON<Condition[]>(t.conditions, []),
-      actions: parseJSON<TriggerAction[]>(t.actions, []),
+      conditions,
+      actions,
       enabled: t.enabled,
     })
     setEditing(t)

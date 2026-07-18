@@ -63,35 +63,43 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
     const tokenHash = createHash('sha256').update(token).digest('hex')
     if (tokenHash !== secret) { res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid token' } }); return }
 
-    // 3. Optional transform script
+    // 3. Optional transform script. A configured transform that fails means we
+    // do NOT understand this payload — creating an entity from the raw payload
+    // (or from defaults) would fabricate data and answer 201. Fail instead.
     let payload = req.body as Record<string, unknown>
     const transformScript = wh['transform_script'] as string | null
     if (transformScript) {
-      try {
-        const { runScript } = await import('@opengraphity/scripting')
-        const result = await runScript(
-          { id: 'webhook-transform', tenant_id: tenantId, name: 'webhook-transform', trigger: 'webhook' as never, code: transformScript, enabled: true, created_at: '', updated_at: '' },
-          { entity: payload, tenantId, userId: 'webhook' },
-        )
-        if (result.success && result.output && typeof result.output === 'object') {
-          payload = result.output as Record<string, unknown>
-        }
-      } catch (err) {
-        log.error({ hookId, err }, 'Transform script failed')
+      const { runScript } = await import('@opengraphity/scripting')
+      const result = await runScript(
+        { id: 'webhook-transform', tenant_id: tenantId, name: 'webhook-transform', trigger: 'webhook' as never, code: transformScript, enabled: true, created_at: '', updated_at: '' },
+        { entity: payload, tenantId, userId: 'webhook' },
+      )
+      if (!result.success) {
+        throw new Error(`Transform script failed: ${result.error ?? 'unknown error'}`)
       }
+      if (!result.output || typeof result.output !== 'object') {
+        throw new Error(`Transform script returned ${result.output === null ? 'null' : typeof result.output}, expected an object`)
+      }
+      payload = result.output as Record<string, unknown>
     }
 
-    // 4. Apply field mapping
-    const fieldMapping = parseJSON<Record<string, string>>(wh['field_mapping'] as string, {})
+    // 4. Apply field mapping (corrupt mapping JSON must fail, not become {})
+    const fieldMapping = parseJSON<Record<string, string>>(wh['field_mapping'] as string, 'field_mapping')
     const mapped: Record<string, unknown> = {}
     for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
       if (payload[sourceField] !== undefined) mapped[targetField] = payload[sourceField]
     }
 
-    // 5. Apply default values
-    const defaults = parseJSON<Record<string, unknown>>(wh['default_values'] as string, {})
+    // 5. Apply default values (explicit webhook config — legitimate defaults)
+    const defaults = parseJSON<Record<string, unknown>>(wh['default_values'] as string, 'default_values')
     for (const [field, value] of Object.entries(defaults)) {
       if (mapped[field] === undefined || mapped[field] === null) mapped[field] = value
+    }
+
+    // A webhook that produces no title is misconfigured — refuse rather than
+    // fabricate a placeholder entity.
+    if (!mapped['title'] || !String(mapped['title']).trim()) {
+      throw new Error('Mapped payload has no title — check field_mapping/default_values configuration')
     }
 
     // 6. Create entity
@@ -100,20 +108,26 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
 
     switch (entityType) {
       case 'incident': {
+        if (!mapped['severity']) {
+          throw new Error('Mapped payload has no severity — set it via field_mapping or default_values')
+        }
         const result = await incidentService.createIncident({
-          title:       String(mapped['title'] ?? 'Webhook incident'),
+          title:       String(mapped['title']),
           description: mapped['description'] ? String(mapped['description']) : undefined,
-          severity:    String(mapped['severity'] ?? 'medium'),
+          severity:    String(mapped['severity']),
           category:    mapped['category'] ? String(mapped['category']) : undefined,
         }, ctx)
         entityId = result.id as string
         break
       }
       case 'problem': {
+        if (!mapped['priority']) {
+          throw new Error('Mapped payload has no priority — set it via field_mapping or default_values')
+        }
         const result = await problemService.createProblem({
-          title:       String(mapped['title'] ?? 'Webhook problem'),
+          title:       String(mapped['title']),
           description: mapped['description'] ? String(mapped['description']) : undefined,
-          priority:    String(mapped['priority'] ?? 'medium'),
+          priority:    String(mapped['priority']),
           category:    mapped['category'] ? String(mapped['category']) : undefined,
         }, ctx)
         entityId = (result as Record<string, unknown>)['id'] as string
@@ -143,9 +157,13 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
   }
 })
 
-function parseJSON<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback
-  try { return JSON.parse(raw) } catch { return fallback }
+/** Parses stored webhook config JSON. Missing → {}; corrupt → throws (fail-loud). */
+function parseJSON<T>(raw: string | null | undefined, what: string): T {
+  if (!raw) return {} as T
+  try { return JSON.parse(raw) as T }
+  catch (e) {
+    throw new Error(`Corrupt ${what} JSON in webhook config: ${e instanceof Error ? e.message : String(e)}`)
+  }
 }
 
 export { router as webhookInboundRouter }

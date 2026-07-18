@@ -61,7 +61,12 @@ function buildWhereClause(
 ): string {
   if (!filtersJson) return ''
   let clauses: FilterClause[]
-  try { clauses = JSON.parse(filtersJson) as FilterClause[] } catch { return '' }
+  try { clauses = JSON.parse(filtersJson) as FilterClause[] }
+  catch (e) {
+    // Corrupt section filters must fail the report — returning '' would render
+    // an UNFILTERED report the user believes is filtered.
+    throw new Error(`Invalid report section filters JSON: ${e instanceof Error ? e.message : String(e)}`)
+  }
   if (!clauses.length) return ''
 
   const parts: string[] = []
@@ -95,6 +100,9 @@ function buildWhereClause(
       case 'is_not_null':
         parts.push(`${nodeVar}.${field} IS NOT NULL`)
         break
+      default:
+        // Unknown operator = corrupt/stale section config — refuse, don't drop.
+        throw new Error(`Unknown report filter operator: ${JSON.stringify(f.operator)}`)
     }
   })
   return parts.length ? `WHERE ${parts.join(' AND ')}` : ''
@@ -163,10 +171,15 @@ export function buildReportQuery(
     }
   }
 
-  // 3. Determine group node
-  const groupNode = groupByNodeId
-    ? (nodes.find(n => n.id === groupByNodeId) ?? rootNode)
-    : rootNode
+  // 3. Determine group node. A groupByNodeId pointing at a node that no longer
+  // exists is stale config: grouping on the root instead would silently produce
+  // a DIFFERENT report than the one the user configured.
+  let groupNode = rootNode
+  if (groupByNodeId) {
+    const found = nodes.find(n => n.id === groupByNodeId)
+    if (!found) throw new Error(`groupByNodeId ${groupByNodeId} does not match any section node — stale report config`)
+    groupNode = found
+  }
   const groupVar   = varName(groupNode.id)
   const groupField = groupByField ? toSnakeCase(groupByField) : null
 

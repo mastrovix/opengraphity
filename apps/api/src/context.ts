@@ -96,9 +96,18 @@ export async function buildContext(req: express.Request): Promise<GraphQLContext
 
   const token = auth.slice(7)
 
-  // Try Keycloak token first
+  // Try Keycloak token first. Only the signature/format verification may fall
+  // back to the legacy JWT path: once the token IS a valid Keycloak token,
+  // every later failure (user not found, tenant mismatch, DB error) is a real
+  // rejection that must propagate — not be masked as "Invalid token".
+  let decoded: Awaited<ReturnType<typeof verifyKeycloakToken>> | null = null
   try {
-    const decoded = await verifyKeycloakToken(token)
+    decoded = await verifyKeycloakToken(token)
+  } catch (err) {
+    authLogger.warn({ err }, 'Keycloak token verification failed, trying legacy JWT')
+  }
+
+  if (decoded) {
     const user = await getUserByEmail(decoded.email)
 
     if (!user) {
@@ -125,8 +134,6 @@ export async function buildContext(req: express.Request): Promise<GraphQLContext
       userEmail: decoded.email ?? decoded.preferred_username,
       role:      (user.role ?? kcRole) as GraphQLContext['role'],
     }
-  } catch (err) {
-    authLogger.warn({ err }, 'Keycloak token invalid, trying JWT fallback')
   }
 
   // Fallback: legacy dev JWT

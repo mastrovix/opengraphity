@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { ForbiddenError } from '../../lib/errors.js'
 import type { GraphQLContext } from '../../context.js'
 import { getLogs, type LogEntry } from '../../lib/logBuffer.js'
@@ -48,16 +49,19 @@ async function logs(
 
   let entries = getLogs() // already newest-first
 
-  // Apply advanced filters
+  // Apply advanced filters. Malformed filters must error — silently ignoring
+  // them would show the admin ALL logs while they believe the list is filtered.
   if (filters) {
-    try {
-      const group = JSON.parse(filters) as FilterGroup
-      if (group.rules?.length) {
-        entries = entries.filter((e) =>
-          group.rules.every((r) => matchesFilter(e, r)),
-        )
-      }
-    } catch { /* ignore malformed filters */ }
+    let group: FilterGroup
+    try { group = JSON.parse(filters) as FilterGroup }
+    catch (e) {
+      throw new GraphQLError(`Invalid log filters JSON: ${e instanceof Error ? e.message : String(e)}`)
+    }
+    if (group.rules?.length) {
+      entries = entries.filter((e) =>
+        group.rules.every((r) => matchesFilter(e, r)),
+      )
+    }
   }
 
   // Sort

@@ -57,10 +57,25 @@ async function resolveAuth(
     return
   }
 
-  // Try Keycloak token first
+  // Try Keycloak token first. Only the signature/format verification may fall
+  // back to the legacy JWT path: once the token IS a valid Keycloak token,
+  // user-not-found and DB errors are real rejections, not fallback triggers.
+  let decoded: Awaited<ReturnType<typeof verifyKeycloakToken>> | null = null
   try {
-    const decoded = await verifyKeycloakToken(token)
-    const user = await getUserByEmail(decoded.email)
+    decoded = await verifyKeycloakToken(token)
+  } catch {
+    // Not a Keycloak token — fall through to legacy JWT
+  }
+
+  if (decoded) {
+    let user: Awaited<ReturnType<typeof getUserByEmail>>
+    try {
+      user = await getUserByEmail(decoded.email)
+    } catch (err) {
+      // DB outage is a server error, not an auth failure — surface it as such.
+      res.status(500).json({ error: `Auth lookup failed: ${err instanceof Error ? err.message : String(err)}` })
+      return
+    }
 
     if (!user) {
       res.status(401).json({ error: 'Unauthorized: user not found' })
@@ -79,8 +94,6 @@ async function resolveAuth(
     }
     next()
     return
-  } catch {
-    // Not a Keycloak token — fall through to legacy JWT
   }
 
   // Fallback: legacy dev JWT

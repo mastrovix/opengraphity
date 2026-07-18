@@ -101,15 +101,24 @@ export async function evaluateBusinessRules(
   const results: RuleResult[] = []
 
   for (const rule of rules) {
-    const conditions = parseConditions(rule.conditions)
-    const matched = evaluateConditions(conditions, entity, rule.condition_logic)
+    // Corrupt conditions must NOT run the rule (parseConditions would otherwise
+    // yield [] = "always matches"). Skip it and log loud.
+    let matched: boolean
+    try {
+      const conditions = parseConditions(rule.conditions)
+      matched = evaluateConditions(conditions, entity, rule.condition_logic)
+    } catch (err) {
+      log.error({ err, ruleId: rule.id, ruleName: rule.name, tenantId },
+        '[rulesEngine] rule has corrupt conditions — rule NOT executed, fix its configuration')
+      results.push({ ruleId: rule.id, ruleName: rule.name, matched: false, actionsRun: 0, stopped: false })
+      continue
+    }
 
     if (!matched) {
       results.push({ ruleId: rule.id, ruleName: rule.name, matched: false, actionsRun: 0, stopped: false })
       continue
     }
 
-    const actions = parseActions(rule.actions)
     const execCtx: ActionExecutionContext = {
       tenantId,
       userId,
@@ -121,6 +130,8 @@ export async function evaluateBusinessRules(
     }
 
     try {
+      // parseActions throws on corrupt JSON — handled below like any action failure
+      const actions = parseActions(rule.actions)
       const actionResults = await executeActions(actions, execCtx)
 
       void audit(

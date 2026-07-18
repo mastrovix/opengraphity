@@ -24,6 +24,20 @@ function toastOnce(key: string, message: string): void {
   toast.error(message)
 }
 
+// Debounce: N failing queries must trigger ONE re-login, not N.
+let reauthInFlight = false
+
+function forceReauth(): void {
+  if (reauthInFlight) return
+  reauthInFlight = true
+  toastOnce('unauthorized', 'Sessione scaduta — nuovo accesso necessario')
+  // Try a silent token refresh first; if that fails, full login redirect.
+  void keycloak.updateToken(30).then(
+    () => { reauthInFlight = false },
+    () => void keycloak.login(),
+  )
+}
+
 const errorLink = onError((errResponse) => {
   const { operation } = errResponse
   const graphQLErrors = (errResponse as { graphQLErrors?: Array<{ message: string; path?: unknown }> }).graphQLErrors
@@ -31,7 +45,12 @@ const errorLink = onError((errResponse) => {
 
   if (graphQLErrors) {
     graphQLErrors.forEach(({ message, path }) => {
-      if (!message.toLowerCase().includes('unauthorized')) {
+      if (message.toLowerCase().includes('unauthorized')) {
+        // Expired/invalid session: NEVER swallow silently — the app would keep
+        // rendering empty lists and "not found" pages. Surface + re-auth.
+        clientLogger.error(`Unauthorized: ${message}`, { operation: operation.operationName })
+        forceReauth()
+      } else {
         clientLogger.error(`GraphQL error: ${message}`, {
           path:      path as Record<string, unknown> | undefined,
           operation: operation.operationName,

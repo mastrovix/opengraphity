@@ -97,15 +97,24 @@ export async function evaluateTriggers(
   const results: TriggerResult[] = []
 
   for (const trigger of triggers) {
-    const conditions = parseConditions(trigger.conditions)
-    const matched = evaluateConditions(conditions, entity)
+    // Corrupt conditions must NOT fire the trigger (parseConditions would
+    // otherwise yield [] = "always matches"). Skip it and log loud.
+    let matched: boolean
+    try {
+      const conditions = parseConditions(trigger.conditions)
+      matched = evaluateConditions(conditions, entity)
+    } catch (err) {
+      log.error({ err, triggerId: trigger.id, triggerName: trigger.name, tenantId },
+        '[triggerEngine] trigger has corrupt conditions — trigger NOT fired, fix its configuration')
+      results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: false, actionsRun: 0 })
+      continue
+    }
 
     if (!matched) {
       results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: false, actionsRun: 0 })
       continue
     }
 
-    const actions = parseActions(trigger.actions)
     const execCtx: ActionExecutionContext = {
       tenantId,
       userId,
@@ -117,6 +126,8 @@ export async function evaluateTriggers(
     }
 
     try {
+      // parseActions throws on corrupt JSON — handled below like any action failure
+      const actions = parseActions(trigger.actions)
       const actionResults = await executeActions(actions, execCtx)
 
       // Update execution count
