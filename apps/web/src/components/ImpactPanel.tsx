@@ -102,7 +102,8 @@ export function ImpactPanel({ analysis, compact = false }: ImpactPanelProps) {
   const [showAllChanges,  setShowAllChanges]  = useState(false)
   const { isTerminal: isChangeTerminal } = useWorkflowSteps('change')
 
-  const palette     = lookupOrError(RISK_PALETTE, analysis.riskLevel, 'RISK_PALETTE', RISK_PALETTE['low']!)
+  // Unknown risk must LOOK broken (red), never green/low
+  const palette     = lookupOrError(RISK_PALETTE, analysis.riskLevel, 'RISK_PALETTE', { bg: 'var(--color-danger)', border: 'var(--color-danger)', color: '#fff' })
   const { breakdown } = analysis
 
   const openOnes     = analysis.openIncidents.filter((i) => i.isOpen)

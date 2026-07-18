@@ -122,7 +122,7 @@ export function Topbar() {
   const { t } = useTranslation()
   const { logout } = useAuth()
   const { display, initials } = getUserInfo()
-  const { unreadCount } = useNotificationContext()
+  const { unreadCount, connected: sseConnected } = useNotificationContext()
   const [panelOpen, setPanelOpen] = useState(false)
 
   return (
@@ -168,6 +168,23 @@ export function Topbar() {
             }}
           >
             <Bell size={16} />
+            {/* Realtime channel down: amber dot — the user must know
+                notifications are NOT arriving, not just see silence. */}
+            {!sseConnected && (
+              <span
+                title="Canale notifiche disconnesso — riconnessione in corso"
+                style={{
+                  position:        'absolute',
+                  bottom:          3,
+                  right:           3,
+                  width:           8,
+                  height:          8,
+                  borderRadius:    4,
+                  backgroundColor: '#f59e0b',
+                  border:          '1px solid #fff',
+                }}
+              />
+            )}
             {unreadCount > 0 && (
               <span
                 style={{

@@ -4,6 +4,8 @@ import { useNotifications, type InAppNotification } from '@/hooks/useNotificatio
 interface NotificationContextType {
   notifications: InAppNotification[]
   unreadCount:   number
+  /** False while the realtime SSE channel is down (reconnecting). */
+  connected:     boolean
   markAsRead:    (id: string) => void
   markAllAsRead: () => void
   clearAll:      () => void
@@ -12,6 +14,7 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType>({
   notifications: [],
   unreadCount:   0,
+  connected:     false,
   markAsRead:    () => {},
   markAllAsRead: () => {},
   clearAll:      () => {},

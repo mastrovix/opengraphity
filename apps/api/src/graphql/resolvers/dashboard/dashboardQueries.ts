@@ -209,19 +209,37 @@ export async function widgetReportSection(
   return loadReportSection(parent.reportSectionId, ctx.tenantId)
 }
 
+// Executes a widget's report section ONCE per request, memoized on the parent
+// object shared by the data/error field resolvers. Previously widgetData
+// swallowed result.error (empty widget with no explanation) and widgetError
+// RE-EXECUTED the whole query just to recover it.
+interface WidgetParent {
+  reportSectionId: string
+  __widgetResult?: Promise<{ data: string | null; error: string | null }>
+}
+
+function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext) {
+  parent.__widgetResult ??= (async () => {
+    try {
+      const section = await loadReportSection(parent.reportSectionId, ctx.tenantId)
+      if (!section) return { data: null, error: 'Sezione non trovata' }
+      const result = await executeReportSection(section, ctx.tenantId)
+      // Never discard the section error: an empty widget must say WHY.
+      return { data: result.error ? null : result.data, error: result.error }
+    } catch (err: unknown) {
+      return { data: null, error: err instanceof Error ? err.message : String(err) }
+    }
+  })()
+  return parent.__widgetResult
+}
+
 export async function widgetData(
   parent: { reportSectionId: string },
   _: unknown,
   ctx: GraphQLContext,
 ) {
-  try {
-    const section = await loadReportSection(parent.reportSectionId, ctx.tenantId)
-    if (!section) return null
-    const result = await executeReportSection(section, ctx.tenantId)
-    return result.data
-  } catch {
-    return null
-  }
+  if (!parent.reportSectionId) return null
+  return (await resolveWidgetResult(parent, ctx)).data
 }
 
 export async function widgetError(
@@ -229,12 +247,6 @@ export async function widgetError(
   _: unknown,
   ctx: GraphQLContext,
 ) {
-  try {
-    const section = await loadReportSection(parent.reportSectionId, ctx.tenantId)
-    if (!section) return 'Sezione non trovata'
-    await executeReportSection(section, ctx.tenantId)
-    return null
-  } catch (err: unknown) {
-    return err instanceof Error ? err.message : String(err)
-  }
+  if (!parent.reportSectionId) return null
+  return (await resolveWidgetResult(parent, ctx)).error
 }

@@ -68,7 +68,8 @@ function RiskBadge({ score }: { score: number | null }) {
     medium: { bg: '#fef3c7', color: '#b45309', label: 'MEDIUM' },
     high:   { bg: '#fee2e2', color: '#b91c1c', label: 'HIGH'   },
   }
-  const p = lookupOrError(palette, level, 'RISK_PALETTE', palette['low']!)
+  // Unknown risk must LOOK broken (red), never green/low
+  const p = lookupOrError(palette, level, 'RISK_PALETTE', { bg: 'var(--color-danger)', color: '#fff', label: '?' })
   return (
     <Pill bg={p.bg} color={p.color} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-label)' }}>
       {p.label} · {score}

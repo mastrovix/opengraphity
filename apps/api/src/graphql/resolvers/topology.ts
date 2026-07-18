@@ -86,31 +86,13 @@ export const topologyResolvers = {
             RETURN node.id AS id
           `, { ciId: args.selectedCiId, tenantId: ctx.tenantId, ciLabels: CI_LABELS, depth, environment, status }))
 
-          let nodeIds: string[]
-          let truncated = false
-
-          if (reachableResult.records.length > 0) {
-            nodeIds = reachableResult.records.map((r) => r.get('id') as string)
-            truncated = nodeIds.length >= NODE_LIMIT
-          } else {
-            // APOC not available — fallback with variable-length path
-            const fallbackResult = await session.executeRead((tx) => tx.run(`
-              MATCH (origin)
-              WHERE origin.id = $ciId AND origin.tenant_id = $tenantId
-              MATCH (origin)-[*1..${depth}]-(connected)
-              WHERE connected.tenant_id = $tenantId
-                AND ANY(lbl IN labels(connected) WHERE lbl IN $ciLabels)
-                AND ($environment IS NULL OR connected.environment = $environment)
-                AND ($status IS NULL OR connected.status = $status)
-              WITH collect(DISTINCT connected.id) + [origin.id] AS ids
-              UNWIND ids AS id
-              RETURN DISTINCT id
-              LIMIT ${NODE_LIMIT}
-            `, { ciId: args.selectedCiId, tenantId: ctx.tenantId, ciLabels: CI_LABELS, environment, status }))
-
-            nodeIds = fallbackResult.records.map((r) => r.get('id') as string)
-            truncated = nodeIds.length >= NODE_LIMIT
-          }
+          // No fallback branch here: if APOC were missing the query above
+          // would THROW (and must — it is a deployment requirement, the plugin
+          // is enabled in compose). Zero records simply means the origin CI
+          // was not found or did not match the label filter — an empty graph,
+          // not a cue to re-run a traversal with different semantics.
+          const nodeIds = reachableResult.records.map((r) => r.get('id') as string)
+          const truncated = nodeIds.length >= NODE_LIMIT
 
           if (nodeIds.length === 0) return { nodes: [], edges: [], truncated: false }
 

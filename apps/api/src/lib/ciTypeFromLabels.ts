@@ -36,17 +36,39 @@ export function registerCITypes(types: { neo4jLabel: string; name: string }[]) {
   }
 }
 
+// Unknown labels already reported — avoid flooding the logs on list queries.
+const reportedUnknownLabels = new Set<string>()
+
 /**
  * Derives the canonical CI type string from a Neo4j labels array.
  * Checks static base types first, then tenant-registered dynamic types.
  * The `type` property on CI nodes is null — labels are the only source of truth.
+ *
+ * A label missing from both maps means a metamodel inconsistency (stale CI of
+ * a deleted type, or a type not yet registered): it is reported as an ERROR
+ * (once per label) and the type is derived by convention (PascalCase →
+ * snake_case) so a single orphan CI does not 500 every list query. A node
+ * with no usable label at all throws — that CI is structurally broken.
  */
 export function ciTypeFromLabels(labels: string[]): string {
   for (const label of labels) {
     if (STATIC_LABEL_TO_TYPE[label]) return STATIC_LABEL_TO_TYPE[label]
     if (dynamicLabelToType[label])   return dynamicLabelToType[label]
   }
-  // Fallback: first non-ignored label, lowercased
   const relevant = labels.filter(l => !IGNORE_LABELS.has(l))
-  return relevant[0]?.toLowerCase() ?? 'unknown'
+  const first = relevant[0]
+  if (!first) {
+    throw new Error(`ciTypeFromLabels: CI has no usable label (labels: ${JSON.stringify(labels)})`)
+  }
+  if (!reportedUnknownLabels.has(first)) {
+    reportedUnknownLabels.add(first)
+    // Lazy import to avoid a cycle at module load
+    void import('./logger.js').then(({ logger }) =>
+      logger.error({ label: first, labels },
+        '[ciTypeFromLabels] label not registered in the metamodel — stale CI of a deleted type? Type derived by convention'),
+    )
+  }
+  // PascalCase → snake_case (the actual naming convention, unlike the previous
+  // plain lowercase which produced strings matching no metamodel type)
+  return first.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
 }

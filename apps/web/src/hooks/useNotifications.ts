@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { keycloak } from '@/lib/keycloak'
+import { clientLogger } from '@/lib/clientLogger'
 
 export interface InAppNotification {
   id: string
@@ -19,6 +20,10 @@ const RECONNECT_DELAY_MS = 5_000
 
 export function useNotifications() {
   const [notifications, setNotifications] = useState<InAppNotification[]>([])
+  // Truth-telling: the UI must be able to show that the realtime channel is
+  // down — previously the hook reconnected forever in silence and the user
+  // simply stopped receiving notifications with zero indication.
+  const [connected, setConnected] = useState(false)
   const abortRef       = useRef<AbortController | null>(null)
   const mountedRef     = useRef(true)
   const connectedRef   = useRef(false)
@@ -36,6 +41,15 @@ export function useNotifications() {
       signal:         controller.signal,
       openWhenHidden: true,
 
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async onopen(res) {
+        if (res.ok) {
+          if (mountedRef.current) setConnected(true)
+          return
+        }
+        throw new Error(`SSE connection refused: HTTP ${res.status}`)
+      },
+
       onmessage(ev) {
         if (!ev.data) return
         try {
@@ -50,8 +64,12 @@ export function useNotifications() {
             if (prev.some(n => n.id === notif.id)) return prev
             return [notif, ...prev].slice(0, MAX_NOTIFICATIONS)
           })
-        } catch {
-          // ignore malformed frames
+        } catch (err) {
+          // A malformed frame is a server bug — log it, don't drop it silently.
+          clientLogger.error('SSE notification frame malformed', {
+            error: err instanceof Error ? err.message : String(err),
+            frame: ev.data.slice(0, 200),
+          })
         }
       },
 
@@ -59,9 +77,13 @@ export function useNotifications() {
         // Throw to stop fetchEventSource internal retry — we handle it ourselves below
         throw new Error('sse-error')
       },
-    }).catch(() => {
-      // Schedule reconnect only if not intentionally aborted
+    }).catch((err: unknown) => {
+      if (mountedRef.current) setConnected(false)
+      // Schedule reconnect only if not intentionally aborted — and say so.
       if (mountedRef.current && !controller.signal.aborted) {
+        clientLogger.error('SSE notification channel down — reconnecting', {
+          error: err instanceof Error ? err.message : String(err),
+        })
         setTimeout(connect, RECONNECT_DELAY_MS)
       }
     })
@@ -93,5 +115,5 @@ export function useNotifications() {
 
   const unreadCount = notifications.filter(n => !n.read).length
 
-  return { notifications, unreadCount, markAsRead, markAllAsRead, clearAll }
+  return { notifications, unreadCount, connected, markAsRead, markAllAsRead, clearAll }
 }

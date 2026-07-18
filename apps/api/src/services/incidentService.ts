@@ -161,6 +161,13 @@ export async function createIncident(
   const entityData = { id, title: input.title, severity: input.severity, status: created.status, category: input.category ?? null, description: input.description ?? null }
   void evaluateTriggers(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId)
     .then(() => evaluateBusinessRules(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId))
+    .catch((err: unknown) => {
+      // Fire-and-forget by design, but a load failure (Redis/Neo4j) must be an
+      // ERROR in the logs, not an unhandled rejection that silently drops all
+      // automations for this incident.
+      logger.error({ err, incidentId: id, tenantId: ctx.tenantId },
+        '[incidentService] trigger/business-rule evaluation failed — automations NOT executed')
+    })
   scheduleTimerTriggers(ctx.tenantId, 'incident', id).catch((err: unknown) => {
     logger.error({ err: err instanceof Error ? err.message : err }, 'scheduleTimerTriggers failed')
   })

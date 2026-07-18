@@ -38,7 +38,8 @@ function RiskPill({ score }: { score: number | null }) {
     medium: { bg: '#fef3c7', color: '#b45309' },
     high:   { bg: '#fee2e2', color: '#b91c1c' },
   }
-  const p = lookupOrError(palette, level, 'RISK_PALETTE', palette['low']!)
+  // Unknown risk must LOOK broken (red), never green/low
+  const p = lookupOrError(palette, level, 'RISK_PALETTE', { bg: 'var(--color-danger)', color: '#fff' })
   return (
     <span style={{
       padding:         '1px 6px',

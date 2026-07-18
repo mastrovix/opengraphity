@@ -163,7 +163,7 @@ export async function enqueueOutboundWebhooks(
         tenantId,
         url:         w['url']    as string,
         method:      (w['method'] as string) ?? 'POST',
-        headers:     parseJSON<Record<string, string>>(w['headers'] as string, {}),
+        headers:     parseJSON<Record<string, string>>(w['headers'] as string, 'headers'),
         body,
         secret:      (w['secret'] as string) ?? null,
         retryOnFail: (w['retry_on_failure'] as boolean) ?? true,
@@ -174,14 +174,19 @@ export async function enqueueOutboundWebhooks(
 
     await queue.close()
     log.info({ tenantId, eventType, count: rows.length }, 'Outbound webhook jobs enqueued')
-  } catch (err) {
-    log.error({ tenantId, eventType, err }, 'Failed to enqueue outbound webhooks')
   } finally {
     await session.close()
   }
+  // No catch-all: a failure to enqueue means events are LOST for every
+  // subscriber — it must propagate to the caller (event consumer job), which
+  // fails visibly and retries, instead of dissolving into a log line.
 }
 
-function parseJSON<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback
-  try { return JSON.parse(raw) } catch { return fallback }
+/** Parses stored webhook headers. Missing → {}; corrupt → throws (fail-loud). */
+function parseJSON<T>(raw: string | null | undefined, what: string): T {
+  if (!raw) return {} as T
+  try { return JSON.parse(raw) as T }
+  catch (e) {
+    throw new Error(`Corrupt ${what} JSON in outbound webhook config: ${e instanceof Error ? e.message : String(e)}`)
+  }
 }

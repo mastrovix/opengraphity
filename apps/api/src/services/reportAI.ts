@@ -189,14 +189,23 @@ REGOLE:
       if (!line.startsWith('data: ')) return
       const data = line.slice(6)
       if (data === '[DONE]') return
+      // Only the frame PARSE is defensive (a malformed provider frame is
+      // logged and skipped). Errors in our own handling below propagate —
+      // swallowing them silently truncated the AI output with no trace.
+      let event: {
+        type: string
+        delta?: { type: string; text?: string; partial_json?: string }
+        content_block?: { type: string; id?: string; name?: string }
+        message?: { stop_reason: string }
+        index?: number
+      }
       try {
-        const event = JSON.parse(data) as {
-          type: string
-          delta?: { type: string; text?: string; partial_json?: string }
-          content_block?: { type: string; id?: string; name?: string }
-          message?: { stop_reason: string }
-          index?: number
-        }
+        event = JSON.parse(data) as typeof event
+      } catch (err) {
+        logger.error({ err, line: data.slice(0, 200) }, '[reportAI] malformed SSE frame from provider — skipped')
+        return
+      }
+      {
 
         if (event.type === 'message_delta' && event.delta) {
           if ('stop_reason' in event.delta) {
@@ -235,17 +244,22 @@ REGOLE:
 
         if (event.type === 'content_block_stop') {
           if (currentToolId) {
+            let parsed: { query: string; description: string }
             try {
-              const parsed = JSON.parse(currentToolInputJson) as { query: string; description: string }
-              const last = assistantContent[assistantContent.length - 1]
-              if (last?.type === 'tool_use') last.input = parsed
-            } catch { /* ignore */ }
+              parsed = JSON.parse(currentToolInputJson) as { query: string; description: string }
+            } catch (err) {
+              // Corrupt tool input must fail the turn — executing the tool
+              // with undefined input would produce a wrong-but-plausible answer.
+              throw new Error(`[reportAI] corrupt tool input JSON from model: ${err instanceof Error ? err.message : String(err)}`)
+            }
+            const last = assistantContent[assistantContent.length - 1]
+            if (last?.type === 'tool_use') last.input = parsed
             currentToolId = null
             currentToolName = null
             currentToolInputJson = ''
           }
         }
-      } catch { /* ignore parse errors */ }
+      }
     }
 
     while (true) {

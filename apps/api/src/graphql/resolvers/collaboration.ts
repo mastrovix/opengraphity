@@ -7,6 +7,7 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { parseMentions } from '../../lib/mentionParser.js'
 import { audit } from '../../lib/audit.js'
+import { logger } from '../../lib/logger.js'
 import { sseManager } from '@opengraphity/notifications'
 import { GraphQLError } from 'graphql'
 
@@ -55,9 +56,13 @@ async function notifyMentions(
       )
       if (userRow?.email && isRealEmail(userRow.email)) {
         const tpl = mentionNotification({ entityType, entityTitle, entityId, mentionerName: authorName, excerpt: excerpt ?? '' }, tenantId)
-        void sendEmail({ to: userRow.email, ...tpl })
+        await sendEmail({ to: userRow.email, ...tpl })
       }
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      // Non-fatal for the mutation, but a systematically broken mailer must be
+      // visible in the logs, not swallowed without a trace.
+      logger.error({ err, userId, entityId }, '[collaboration] mention email failed — notification NOT sent')
+    }
   }
 }
 
@@ -94,9 +99,12 @@ async function notifyWatchers(
       )
       if (userRow?.email && isRealEmail(userRow.email)) {
         const tpl = watcherNotification({ entityType, entityTitle: title, entityId, event: eventDescription }, tenantId)
-        void sendEmail({ to: userRow.email, ...tpl })
+        await sendEmail({ to: userRow.email, ...tpl })
       }
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      // Per-watcher batch: keep notifying the others, but log the failure loud.
+      logger.error({ err, userId, entityId }, '[collaboration] watcher email failed — notification NOT sent')
+    }
   }
 }
 

@@ -168,7 +168,7 @@ export function WhatIfPage() {
     { key: 'type', label: t('pages.whatIf.colType'), sortable: true, width: '120px', render: (v) => badge('#e0f2fe', '#0369a1', String(v)) },
     { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
     { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => {
-      const ic = lookupOrError(IMPACT_STYLES, String(v), 'IMPACT_STYLES', IMPACT_STYLES['low'])
+      const ic = lookupOrError(IMPACT_STYLES, String(v), 'IMPACT_STYLES', { bg: 'var(--color-danger)', fg: '#fff' })
       return badge(ic.bg, ic.fg, impactLabel(String(v)))
     }},
     { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => {
@@ -406,7 +406,7 @@ export function WhatIfPage() {
                     columns={[
                       { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
                       { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
-                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => { const ic = lookupOrError(IMPACT_STYLES, String(v), 'IMPACT_STYLES', IMPACT_STYLES['low']); return badge(ic.bg, ic.fg, impactLabel(String(v))) } },
+                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => { const ic = lookupOrError(IMPACT_STYLES, String(v), 'IMPACT_STYLES', { bg: 'var(--color-danger)', fg: '#fff' }); return badge(ic.bg, ic.fg, impactLabel(String(v))) } },
                       { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
                     ]}
                     data={paged}
