@@ -97,8 +97,11 @@ export async function isFieldVisible(
     })()`
     const result = vm.evalCode(script)
     if (result.error) {
+      const err = vm.dump(result.error)
       result.error.dispose()
-      return true  // default visibile se errore
+      throw new Error(
+        `visibility_script del campo "${fieldName}" ha fallito: ${typeof err === 'string' ? err : JSON.stringify(err)}`,
+      )
     }
     const val = vm.dump(result.value)
     result.value.dispose()
@@ -125,8 +128,11 @@ export async function getFieldDefault(
     })()`
     const result = vm.evalCode(script)
     if (result.error) {
+      const err = vm.dump(result.error)
       result.error.dispose()
-      return null
+      throw new Error(
+        `default_script del campo "${fieldName}" ha fallito: ${typeof err === 'string' ? err : JSON.stringify(err)}`,
+      )
     }
     const val = vm.dump(result.value)
     result.value.dispose()

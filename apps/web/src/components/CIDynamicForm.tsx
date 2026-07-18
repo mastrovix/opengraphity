@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react'
 import type { CITypeDef, CIFieldDef } from '@/contexts/MetamodelContext'
 import { validateCI, isFieldVisible, getFieldDefault } from '@/lib/ciValidator'
 
+// Base (__base__) fields every CI shares — the Create input requires `name`
+// and accepts status/environment/description. They aren't in a type's own
+// field list, so the form renders them explicitly.
+const BASE_STATUSES = ['active', 'inactive', 'maintenance']
+const BASE_ENVIRONMENTS = ['production', 'staging', 'development']
+
 // ── Style constants ────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
@@ -147,6 +153,10 @@ export function CIDynamicForm({
   const [formValues, setFormValues] = useState<Record<string, unknown>>(initialValues)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [globalError, setGlobalError] = useState<string | undefined>()
+  // Errore del sandbox di scripting del metamodello (WASM non compilabile o
+  // script visibility/default rotto). Fail-fast: nessun fallback — la form si
+  // blocca finché non è risolto, invece di indovinare uno stato.
+  const [scriptError, setScriptError] = useState<string | undefined>()
   const [visibilityMap, setVisibilityMap] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
 
@@ -155,17 +165,21 @@ export function CIDynamicForm({
     let cancelled = false
 
     async function applyDefaults() {
-      const updates: Record<string, unknown> = {}
-      for (const field of ciType.fields) {
-        if (!field.defaultScript) continue
-        const computed = await getFieldDefault(field.name, formValues, ciType)
-        const current = formValues[field.name]
-        if (computed !== null && computed !== undefined && computed !== current) {
-          updates[field.name] = computed
+      try {
+        const updates: Record<string, unknown> = {}
+        for (const field of ciType.fields) {
+          if (!field.defaultScript) continue
+          const computed = await getFieldDefault(field.name, formValues, ciType)
+          const current = formValues[field.name]
+          if (computed !== null && computed !== undefined && computed !== current) {
+            updates[field.name] = computed
+          }
         }
-      }
-      if (!cancelled && Object.keys(updates).length > 0) {
-        setFormValues(prev => ({ ...prev, ...updates }))
+        if (!cancelled && Object.keys(updates).length > 0) {
+          setFormValues(prev => ({ ...prev, ...updates }))
+        }
+      } catch (e) {
+        if (!cancelled) setScriptError(e instanceof Error ? e.message : String(e))
       }
     }
 
@@ -179,11 +193,18 @@ export function CIDynamicForm({
     let cancelled = false
 
     async function updateVisibility() {
-      const map: Record<string, boolean> = {}
-      for (const field of ciType.fields) {
-        map[field.name] = await isFieldVisible(field.name, formValues, ciType)
+      try {
+        const map: Record<string, boolean> = {}
+        for (const field of ciType.fields) {
+          map[field.name] = await isFieldVisible(field.name, formValues, ciType)
+        }
+        if (!cancelled) {
+          setVisibilityMap(map)
+          setScriptError(undefined)
+        }
+      } catch (e) {
+        if (!cancelled) setScriptError(e instanceof Error ? e.message : String(e))
       }
-      if (!cancelled) setVisibilityMap(map)
     }
 
     updateVisibility()
@@ -207,7 +228,22 @@ export function CIDynamicForm({
     setSubmitting(true)
     setGlobalError(undefined)
 
-    const result = await validateCI(formValues, ciType)
+    // Name is required by the Create input but isn't a type field
+    if (!String(formValues['name'] ?? '').trim()) {
+      setValidationErrors(prev => ({ ...prev, name: 'Il nome è obbligatorio' }))
+      setSubmitting(false)
+      return
+    }
+
+    let result
+    try {
+      result = await validateCI(formValues, ciType)
+    } catch (e) {
+      // Sandbox non disponibile o validation_script rotto: fail-fast, niente submit.
+      setScriptError(e instanceof Error ? e.message : String(e))
+      setSubmitting(false)
+      return
+    }
     if (!result.valid) {
       setValidationErrors(result.errors)
       setGlobalError(result.globalError)
@@ -228,6 +264,19 @@ export function CIDynamicForm({
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {scriptError && (
+        <div style={{
+          padding:      '10px 14px',
+          background:   'var(--color-danger-bg)',
+          border:       '1px solid #fecaca',
+          borderRadius: 6,
+          color:        'var(--color-trigger-sla-breach)',
+          fontSize:     14,
+        }}>
+          <strong>Errore sandbox scripting:</strong> {scriptError}
+        </div>
+      )}
+
       {globalError && (
         <div style={{
           padding:      '10px 14px',
@@ -241,9 +290,50 @@ export function CIDynamicForm({
         </div>
       )}
 
+      {/* Base fields (name required + common attributes) */}
+      <div>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>
+          Nome<span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 2 }}>*</span>
+        </label>
+        <input
+          type="text"
+          value={String(formValues['name'] ?? '')}
+          onChange={e => handleChange('name', e.target.value)}
+          style={inputBase}
+          autoFocus
+        />
+        {validationErrors['name'] && (
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+            {validationErrors['name']}
+          </p>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>Stato</label>
+          <select value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>
+            <option value="">—</option>
+            {BASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>Ambiente</label>
+          <select value={String(formValues['environment'] ?? '')} onChange={e => handleChange('environment', e.target.value)} style={inputBase}>
+            <option value="">—</option>
+            {BASE_ENVIRONMENTS.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>Descrizione</label>
+        <textarea value={String(formValues['description'] ?? '')} onChange={e => handleChange('description', e.target.value)} rows={2} style={{ ...inputBase, resize: 'vertical' }} />
+      </div>
+
       {sortedFields.map(field => {
-        // Hide fields whose visibilityScript evaluates to false (default visible while loading)
-        const visible = visibilityMap[field.name] !== false
+        // Render only when visibility is confirmed true. No fallback: a field
+        // is not shown on a guess while its visibility_script is still pending
+        // or has failed (in which case scriptError blocks the whole form).
+        const visible = visibilityMap[field.name] === true
         if (!visible) return null
 
         const isCheckbox = field.fieldType === 'boolean'
@@ -299,16 +389,16 @@ export function CIDynamicForm({
         </button>
         <button
           type="submit"
-          disabled={submitting || loading}
+          disabled={submitting || loading || Boolean(scriptError)}
           style={{
             padding:      '9px 20px',
             border:       'none',
             borderRadius: 6,
-            background:   submitting || loading ? '#67e8f9' : 'var(--color-brand)',
+            background:   submitting || loading || scriptError ? '#67e8f9' : 'var(--color-brand)',
             color:        '#ffffff',
             fontSize:     14,
             fontWeight:   500,
-            cursor:       submitting || loading ? 'not-allowed' : 'pointer',
+            cursor:       submitting || loading || scriptError ? 'not-allowed' : 'pointer',
             transition:   'background 150ms',
           }}
         >
