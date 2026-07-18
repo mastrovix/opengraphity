@@ -33,7 +33,7 @@ export function RequestListPage() {
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  const filterFields = useEntityFields('ServiceRequest')
+  const { fields: filterFields } = useEntityFields('ServiceRequest')
 
   const columns: ColumnDef<ServiceRequest>[] = [
     { key: 'number',   label: 'Number',                               width: '120px', sortable: true },

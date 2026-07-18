@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { Lock, SendHorizontal } from 'lucide-react'
+import { toast } from 'sonner'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 
@@ -62,6 +63,8 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
 
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
     onCompleted: () => { setBody(''); refetch() },
+    // Il testo NON viene svuotato su errore: l'utente può ritentare l'invio.
+    onError: (e) => toast.error(`Invio messaggio fallito: ${e.message}`),
   })
 
   const messages: Message[] = (data as { internalMessages?: Message[] } | undefined)?.internalMessages ?? []

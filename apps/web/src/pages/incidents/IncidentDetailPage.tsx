@@ -6,6 +6,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
+import { QueryError } from '@/components/QueryError'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -124,7 +125,7 @@ export function IncidentDetailPage() {
   const [ciOpen,       setCiOpen]       = useState(true)
   const [timelineOpen, setTimelineOpen] = useState(true)
 
-  const { data, loading, refetch } = useQuery<{ incident: Incident | null }>(
+  const { data, loading, error, refetch } = useQuery<{ incident: Incident | null }>(
     GET_INCIDENT,
     { variables: { id }, skip: !id },
   )
@@ -219,9 +220,15 @@ export function IncidentDetailPage() {
   const users     = usersData?.users ?? []
   const teams     = teamsData?.teams ?? []
   const ciResults = ciSearchData?.allCIs?.items ?? []
-  const { byName: incidentStepByName } = useWorkflowSteps('incident')
+  const { byName: incidentStepByName, error: workflowStepsError } = useWorkflowSteps('incident')
 
   function handleTransitionClick(tr: WorkflowTransition) {
+    // Guard rails come from the workflow definition: if it failed to load we
+    // cannot evaluate the gates, so refuse to proceed instead of skipping them.
+    if (workflowStepsError) {
+      toast.error('Regole di workflow non caricate: ' + workflowStepsError.message)
+      return
+    }
     // Assignment gates are no longer hardcoded per step name. If the target
     // of this transition is a non-terminal step whose category is 'active',
     // a team must be assigned — and if the user is moving past the first
@@ -282,6 +289,14 @@ export function IncidentDetailPage() {
           </div>
         </div>
       </div>
+    )
+  }
+
+  if (error && !data) {
+    return (
+      <PageContainer>
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      </PageContainer>
     )
   }
 

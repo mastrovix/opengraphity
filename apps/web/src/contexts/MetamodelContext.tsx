@@ -54,23 +54,26 @@ export interface CITypeDef {
 interface MetamodelContextType {
   ciTypes: CITypeDef[]
   loading: boolean
+  error: Error | null
   getCIType: (name: string) => CITypeDef | undefined
 }
 
 const MetamodelContext = createContext<MetamodelContextType>({
   ciTypes: [],
   loading: true,
+  error: null,
   getCIType: () => undefined,
 })
 
 export function MetamodelProvider({ children }: { children: ReactNode }) {
-  const { data, loading } = useQuery<{ ciTypes: CITypeDef[] }>(GET_CI_TYPES)
+  const { data, loading, error } = useQuery<{ ciTypes: CITypeDef[] }>(GET_CI_TYPES)
   const ciTypes: CITypeDef[] = data?.ciTypes ?? []
 
   return (
     <MetamodelContext.Provider value={{
       ciTypes,
       loading,
+      error: error ?? null,
       getCIType: (name) => ciTypes.find(t => t.name === name),
     }}>
       {children}

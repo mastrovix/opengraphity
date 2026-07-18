@@ -21,15 +21,15 @@ interface VisibilityRule {
 export function useFieldVisibility(
   entityType: string,
   formValues: Record<string, unknown>,
-): Record<string, boolean> {
-  const { data } = useQuery<{ fieldVisibilityRules: VisibilityRule[] }>(
+): { visibility: Record<string, boolean>; error: Error | null } {
+  const { data, error } = useQuery<{ fieldVisibilityRules: VisibilityRule[] }>(
     GET_FIELD_VISIBILITY_RULES,
     { variables: { entityType }, fetchPolicy: 'cache-first' },
   )
 
   const rules = data?.fieldVisibilityRules ?? []
 
-  return useMemo(() => {
+  const visibility = useMemo(() => {
     const visibility: Record<string, boolean> = {}
 
     // "show" rules default their target to hidden until condition is met
@@ -57,4 +57,6 @@ export function useFieldVisibility(
 
     return visibility
   }, [rules, formValues])
+
+  return { visibility, error: error ?? null }
 }

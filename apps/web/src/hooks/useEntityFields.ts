@@ -90,14 +90,14 @@ function resolveType(t: TypeRef): Resolved {
 
 // ── Main hook ─────────────────────────────────────────────────────────────────
 
-export function useEntityFields(typeName: string): FieldConfig[] {
-  const { data } = useQuery<{ __type: { fields: IntrospectionField[] } | null }>(
+export function useEntityFields(typeName: string): { fields: FieldConfig[]; error: Error | null } {
+  const { data, error } = useQuery<{ __type: { fields: IntrospectionField[] } | null }>(
     INTROSPECT_TYPE,
     { variables: { name: typeName }, fetchPolicy: 'cache-first' },
   )
 
   const rawFields = data?.__type?.fields
-  if (!rawFields) return []
+  if (!rawFields) return { fields: [], error: error ?? null }
 
   const result: FieldConfig[] = []
 
@@ -133,5 +133,5 @@ export function useEntityFields(typeName: string): FieldConfig[] {
     result.push({ key: f.name, label, type: 'text' })
   }
 
-  return result
+  return { fields: result, error: error ?? null }
 }

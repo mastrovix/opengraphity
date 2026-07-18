@@ -58,14 +58,30 @@ function EmptyChart() {
   )
 }
 
+function ChartError({ title, message }: { title: string; message: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', height: '100%', minHeight: 200, padding: '16px 20px', boxSizing: 'border-box' }}>
+      <div style={{ padding: '10px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6 }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-danger, #ef4444)', marginBottom: 4 }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger, #ef4444)', wordBreak: 'break-word' }}>
+          {message}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function ReportChartRenderer({ chartType, data, title, error }: Props) {
-  if (error || !data) return <EmptyChart />
+  if (error) return <ChartError title="Errore nel calcolo della sezione" message={error} />
+  if (!data) return <EmptyChart />
 
   let parsed: unknown
   try {
     parsed = JSON.parse(data)
-  } catch {
-    return <EmptyChart />
+  } catch (e) {
+    return <ChartError title="Dati sezione corrotti" message={e instanceof Error ? e.message : String(e)} />
   }
 
   const echartsProps = { style: { height: 320, width: '100%' }, opts: { renderer: 'svg' as const }, theme: 'light' }

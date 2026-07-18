@@ -8,6 +8,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Star, X, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { toast } from 'sonner'
 import { GET_NAVIGABLE_ENTITIES, GET_REACHABLE_ENTITIES, PREVIEW_REPORT_SECTION } from '@/graphql/queries'
 import {
   nodeTypes, edgeTypes,
@@ -204,10 +205,22 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   useEffect(() => {
     if (!initialValues?.nodes?.length || !entities.length || nodes.length > 0) return
+    // Se i filtri salvati di un nodo non sono JSON valido NON ricostruiamo il
+    // grafo senza filtri (un salvataggio li perderebbe in silenzio): blocchiamo
+    // l'apertura e rendiamo l'errore visibile.
+    for (const n of initialValues.nodes) {
+      if (!n.filters) continue
+      try {
+        JSON.parse(n.filters)
+      } catch (e) {
+        toast.error(`Filtri della sezione corrotti (nodo "${n.label}"): ${e instanceof Error ? e.message : String(e)}. Correggi il dato salvato prima di modificare la sezione.`)
+        return
+      }
+    }
     const newNodeDataMap: Record<string, NodeDataEntry> = {}
     const newNodes: Node[] = initialValues.nodes.map(n => {
       let filters: FilterState[] = []
-      try { if (n.filters) filters = JSON.parse(n.filters) } catch { /* ignore */ }
+      if (n.filters) filters = JSON.parse(n.filters) as FilterState[]
       const nd: NodeDataEntry = {
         entityType: n.entityType, neo4jLabel: n.neo4jLabel, label: n.label,
         isResult: n.isResult, isRoot: n.isRoot,

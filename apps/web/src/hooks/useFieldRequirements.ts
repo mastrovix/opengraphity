@@ -16,8 +16,8 @@ interface RequirementRule {
 export function useFieldRequirements(
   entityType: string,
   workflowStep?: string | null,
-): Record<string, boolean> {
-  const { data } = useQuery<{ fieldRequirementRules: RequirementRule[] }>(
+): { requirements: Record<string, boolean>; error: Error | null } {
+  const { data, error } = useQuery<{ fieldRequirementRules: RequirementRule[] }>(
     GET_FIELD_REQUIREMENT_RULES,
     {
       variables:   { entityType, workflowStep: workflowStep ?? null },
@@ -27,11 +27,13 @@ export function useFieldRequirements(
 
   const rules = data?.fieldRequirementRules ?? []
 
-  return useMemo(() => {
+  const requirements = useMemo(() => {
     const required: Record<string, boolean> = {}
     for (const rule of rules) {
       if (rule.required) required[rule.fieldName] = true
     }
     return required
   }, [rules])
+
+  return { requirements, error: error ?? null }
 }

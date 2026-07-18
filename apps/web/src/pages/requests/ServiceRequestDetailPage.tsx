@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
+import { QueryError } from '@/components/QueryError'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
@@ -43,10 +44,11 @@ export function ServiceRequestDetailPage() {
   const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { data, loading } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id })
+  const { data, loading, error, refetch } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id })
   const sr = data?.serviceRequest
 
   if (loading) return <PageContainer><Skeleton style={{ height: 300 }} /></PageContainer>
+  if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
   if (!sr) return (
     <PageContainer>
       <p style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('pages.requests.notFound')}</p>

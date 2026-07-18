@@ -100,17 +100,23 @@ export function useCustomReports() {
   const { data, refetch } = useQuery<{ reportTemplates: ReportTemplate[] }>(GET_REPORT_TEMPLATES, { fetchPolicy: 'network-only' })
   const { data: channelsData } = useQuery<{ notificationChannels: Channel[] }>(GET_CHANNELS_SLIM)
   const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS_SLIM)
-  const [runExecute, { loading: execLoading, data: executeData }] = useLazyQuery<{ executeReport: { sections: SectionResult[] } }>(
+  const [runExecute, { loading: execLoading, data: executeData, error: execError }] = useLazyQuery<{ executeReport: { sections: SectionResult[] } }>(
     EXECUTE_REPORT, { fetchPolicy: 'network-only' },
   )
 
   useEffect(() => {
     if (executeData?.executeReport) {
       const map: Record<string, SectionResult> = {}
-      executeData.executeReport.sections.forEach((s: SectionResult) => { map[s.sectionId] = s })
+      for (const s of executeData.executeReport.sections ?? []) {
+        if (s?.sectionId) map[s.sectionId] = s as SectionResult
+      }
       setSectionResults(map)
     }
   }, [executeData])
+
+  useEffect(() => {
+    if (execError) toast.error(execError.message)
+  }, [execError])
 
   const templates: ReportTemplate[]           = data?.reportTemplates ?? []
   const channels: Channel[]                   = channelsData?.notificationChannels?.filter((c: Channel) => c.platform === 'slack') ?? []
@@ -118,7 +124,9 @@ export function useCustomReports() {
   const selected: ReportTemplate | null       = templates.find((t: ReportTemplate) => t.id === selectedId) ?? null
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-  const [createTemplate, { loading: creating }] = useMutation(CREATE_REPORT_TEMPLATE)
+  const [createTemplate, { loading: creating }] = useMutation(CREATE_REPORT_TEMPLATE, {
+    onError: (e) => toast.error(e.message),
+  })
 
   const [updateTemplate, { loading: updating }] = useMutation(UPDATE_REPORT_TEMPLATE, {
     onCompleted: () => { refetch(); setView('detail') },
@@ -126,11 +134,12 @@ export function useCustomReports() {
 
   const [deleteTemplate] = useMutation(DELETE_REPORT_TEMPLATE, {
     onCompleted: () => { refetch(); setSelectedId(null); setView('list') },
+    onError: (e) => toast.error(e.message),
   })
 
-  const [addSection]    = useMutation(ADD_REPORT_SECTION,    { onCompleted: () => { refetch(); setView('detail') } })
-  const [updateSection] = useMutation(UPDATE_REPORT_SECTION, { onCompleted: () => { refetch(); setView('detail') } })
-  const [removeSection] = useMutation(REMOVE_REPORT_SECTION, { onCompleted: () => refetch() })
+  const [addSection]    = useMutation(ADD_REPORT_SECTION,    { onCompleted: () => { refetch(); setView('detail') }, onError: (e) => toast.error(e.message) })
+  const [updateSection] = useMutation(UPDATE_REPORT_SECTION, { onCompleted: () => { refetch(); setView('detail'); setEditSection(null) }, onError: (e) => toast.error(e.message) })
+  const [removeSection] = useMutation(REMOVE_REPORT_SECTION, { onCompleted: () => refetch(), onError: (e) => toast.error(e.message) })
 
   const [exportPDF,   { loading: exportingPDF }]   = useMutation<{ exportReportPDF: string }>(EXPORT_REPORT_PDF, {
     onError: (e: { message: string }) => toast.error(e.message),
@@ -226,8 +235,8 @@ export function useCustomReports() {
 
   const handleUpdateSection = (input: ReportSectionInput) => {
     if (!editSection) return
+    // editSection viene azzerato in onCompleted: su errore l'editor resta aperto.
     updateSection({ variables: { sectionId: editSection.id, input } })
-    setEditSection(null)
   }
 
   const handleSaveSettings = async () => {
@@ -265,8 +274,13 @@ export function useCustomReports() {
   async function handleCreateTemplate() {
     const result = await createTemplate({ variables: { input: { name: newName, description: newDesc || null, visibility: newVis, sharedWithTeamIds: newVis === 'groups' ? newTeamIds : [] } } }).catch(() => null)
     const id = (result?.data as { createReportTemplate: { id: string } } | undefined)?.createReportTemplate?.id
+    if (!id) {
+      // Mutation fallita (toast già mostrato da onError): il dialog resta
+      // aperto e il form non viene resettato — niente falso successo.
+      return
+    }
     await refetch()
-    if (id) { setSelectedId(id); setView('detail') }
+    setSelectedId(id); setView('detail')
     setShowNewDialog(false); resetNew()
   }
 

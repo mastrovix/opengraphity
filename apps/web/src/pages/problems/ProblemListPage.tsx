@@ -64,7 +64,7 @@ export function ProblemListPage() {
     },
   ]
 
-  const filterFields = useEntityFields('Problem')
+  const { fields: filterFields } = useEntityFields('Problem')
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const [sortField, setSortField] = useState<string | null>(null)

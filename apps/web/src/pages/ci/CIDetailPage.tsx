@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
+import { QueryError } from '@/components/QueryError'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { toPascalCase } from '@/lib/stringUtils'
@@ -265,7 +266,7 @@ export function CIDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeName, specificFields.map(f => f.name).join(',')])
 
-  const { data, loading, refetch } = useQuery<Record<string, CIDetail | null>>(
+  const { data, loading, error, refetch } = useQuery<Record<string, CIDetail | null>>(
     detailQuery ?? gql`query EmptyCIDetail { __typename }`,
     { variables: { id }, skip: !detailQuery || !id },
   )
@@ -376,6 +377,13 @@ export function CIDetailPage() {
   }
   if (!ciType) {
     return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>Tipo CI "{typeName}" non trovato.</div>
+  }
+  if (error && !data) {
+    return (
+      <div style={{ padding: 40 }}>
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      </div>
+    )
   }
   if (!ci) {
     return (

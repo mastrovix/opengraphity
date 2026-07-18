@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { Modal } from '@/components/Modal'
 import { Bell } from 'lucide-react'
@@ -121,10 +122,16 @@ export default function NotificationsPage() {
       channelId:  form.channelId  || null,
       eventTypes: form.eventTypes,
     }
-    if (editingId) {
-      await updateChannel({ variables: { id: editingId, input } })
-    } else {
-      await createChannel({ variables: { input } })
+    try {
+      if (editingId) {
+        await updateChannel({ variables: { id: editingId, input } })
+      } else {
+        await createChannel({ variables: { input } })
+      }
+    } catch (e) {
+      // Il dialog resta aperto: l'utente non perde i dati inseriti.
+      toast.error(e instanceof Error ? e.message : String(e))
+      return
     }
     setDialogOpen(false)
     void refetch()
@@ -132,14 +139,24 @@ export default function NotificationsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Eliminare questo canale?')) return
-    await deleteChannel({ variables: { id } })
+    try {
+      await deleteChannel({ variables: { id } })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+      return
+    }
     void refetch()
   }
 
   async function handleTest(id: string) {
     setTestResult((p) => ({ ...p, [id]: null }))
-    const res = await testChannel({ variables: { id } })
-    setTestResult((p) => ({ ...p, [id]: (res.data as { testNotificationChannel?: boolean } | null)?.testNotificationChannel ?? false }))
+    try {
+      const res = await testChannel({ variables: { id } })
+      setTestResult((p) => ({ ...p, [id]: (res.data as { testNotificationChannel?: boolean } | null)?.testNotificationChannel ?? false }))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+      setTestResult((p) => ({ ...p, [id]: false }))
+    }
   }
 
   function toggleEvent(val: string) {

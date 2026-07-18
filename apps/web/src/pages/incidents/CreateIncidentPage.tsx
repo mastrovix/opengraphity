@@ -53,7 +53,7 @@ export function CreateIncidentPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const formValues = { title, severity, category, description }
-  const fieldRules = useFormFieldRules('incident', null, formValues)
+  const { rules: fieldRules } = useFormFieldRules('incident', null, formValues)
   const { values: severityValues, loading: severityLoading } = useEnumValues('incident', 'severity')
   const { values: categoryValues, loading: categoryLoading } = useEnumValues('incident', 'category')
 

@@ -77,7 +77,7 @@ export function IncidentListPage() {
     },
   ]
 
-  const filterFields = useEntityFields('Incident')
+  const { fields: filterFields } = useEntityFields('Incident')
   const navigate = useNavigate()
   const location = useLocation()
   const [page, setPage] = useState(0)

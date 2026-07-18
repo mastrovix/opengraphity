@@ -28,10 +28,10 @@ export function WatcherBar({ entityType, entityId }: Props) {
   const watchersList = watchersData?.watchers ?? []
   const users = usersData?.users ?? []
 
-  const [watch]    = useMutation(WATCH_ENTITY,   { onCompleted: () => { refetchWatching(); refetchWatchers(); toast.success('Ora stai osservando') } })
-  const [unwatch]  = useMutation(UNWATCH_ENTITY, { onCompleted: () => { refetchWatching(); refetchWatchers(); toast.success('Non stai più osservando') } })
-  const [add]      = useMutation(ADD_WATCHER,    { onCompleted: () => { refetchWatchers(); toast.success('Osservatore aggiunto') } })
-  const [remove]   = useMutation(REMOVE_WATCHER, { onCompleted: () => { refetchWatchers(); toast.success('Osservatore rimosso') } })
+  const [watch]    = useMutation(WATCH_ENTITY,   { onCompleted: () => { refetchWatching(); refetchWatchers(); toast.success('Ora stai osservando') }, onError: (e) => toast.error(e.message) })
+  const [unwatch]  = useMutation(UNWATCH_ENTITY, { onCompleted: () => { refetchWatching(); refetchWatchers(); toast.success('Non stai più osservando') }, onError: (e) => toast.error(e.message) })
+  const [add]      = useMutation(ADD_WATCHER,    { onCompleted: () => { refetchWatchers(); toast.success('Osservatore aggiunto') }, onError: (e) => toast.error(e.message) })
+  const [remove]   = useMutation(REMOVE_WATCHER, { onCompleted: () => { refetchWatchers(); toast.success('Osservatore rimosso') }, onError: (e) => toast.error(e.message) })
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>

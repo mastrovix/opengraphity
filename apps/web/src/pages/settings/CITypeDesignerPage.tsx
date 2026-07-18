@@ -81,14 +81,14 @@ export function CITypeDesignerPage() {
     setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [] })
   }
 
-  const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success('Tipo creato') } })
-  const [updateType]    = useMutation(UPDATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success('Salvato') } })
-  const [deleteType]    = useMutation(DELETE_CI_TYPE,    { onCompleted: () => { void refetch(); setSelectedId(null); toast.success('Tipo eliminato') } })
-  const [addField]      = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetch();     setAddingField(false); setEditingFieldId(null); toast.success('Campo aggiunto') } })
-  const [addBaseField]  = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetchBase(); setShowBaseFieldModal(false); toast.success('Campo base aggiunto') } })
-  const [removeField]   = useMutation(REMOVE_CI_FIELD,   { onCompleted: () => { void refetch(); toast.success('Campo rimosso') } })
-  const [addRelation]   = useMutation(ADD_CI_RELATION,   { onCompleted: () => { void refetch(); setShowRelModal(false); toast.success('Relazione aggiunta') } })
-  const [removeRelation] = useMutation(REMOVE_CI_RELATION, { onCompleted: () => { void refetch(); toast.success('Relazione rimossa') } })
+  const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success('Tipo creato') }, onError: (e) => toast.error(e.message) })
+  const [updateType]    = useMutation(UPDATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success('Salvato') }, onError: (e) => toast.error(e.message) })
+  const [deleteType]    = useMutation(DELETE_CI_TYPE,    { onCompleted: () => { void refetch(); setSelectedId(null); toast.success('Tipo eliminato') }, onError: (e) => toast.error(e.message) })
+  const [addField]      = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetch();     setAddingField(false); setEditingFieldId(null); toast.success('Campo aggiunto') }, onError: (e) => toast.error(e.message) })
+  const [addBaseField]  = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetchBase(); setShowBaseFieldModal(false); toast.success('Campo base aggiunto') }, onError: (e) => toast.error(e.message) })
+  const [removeField]   = useMutation(REMOVE_CI_FIELD,   { onCompleted: () => { void refetch(); toast.success('Campo rimosso') }, onError: (e) => toast.error(e.message) })
+  const [addRelation]   = useMutation(ADD_CI_RELATION,   { onCompleted: () => { void refetch(); setShowRelModal(false); toast.success('Relazione aggiunta') }, onError: (e) => toast.error(e.message) })
+  const [removeRelation] = useMutation(REMOVE_CI_RELATION, { onCompleted: () => { void refetch(); toast.success('Relazione rimossa') }, onError: (e) => toast.error(e.message) })
 
   const handleSaveField = async (form: FieldForm) => {
     const targetId = selectedBase ? baseType?.id : selected?.id
@@ -435,7 +435,12 @@ export function CITypeDesignerPage() {
       <CreateTypeDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onSave={async (form) => { await createType({ variables: { input: form } }) }}
+        onSave={async (form) => {
+          const res = await createType({ variables: { input: form } })
+          // Con onError la promise si risolve anche in caso di fallimento:
+          // senza dati la creazione è fallita e il dialog non deve chiudersi.
+          if (!res.data) throw new Error('Creazione tipo fallita')
+        }}
       />
 
       {/* Modal only for base type fields */}

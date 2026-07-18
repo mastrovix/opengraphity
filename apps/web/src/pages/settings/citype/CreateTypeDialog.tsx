@@ -34,7 +34,8 @@ export function CreateTypeDialog({
             onClick={async () => {
               if (!form.name || !form.label) { toast.error('Nome e label obbligatori'); return }
               setSaving(true)
-              try { await onSave(form); onClose() } finally { setSaving(false) }
+              // onSave rigetta su errore (toast già mostrato): il dialog resta aperto.
+              try { await onSave(form); onClose() } catch { /* errore già notificato */ } finally { setSaving(false) }
             }}>
             {saving ? 'Creazione…' : 'Crea tipo'}
           </button>

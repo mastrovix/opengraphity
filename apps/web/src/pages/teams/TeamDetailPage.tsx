@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
+import { QueryError } from '@/components/QueryError'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { Users, UsersRound, X, Search } from 'lucide-react'
@@ -98,7 +99,7 @@ export function TeamDetailPage() {
   const [managerSearch, setManagerSearch] = useState('')
   const [pendingManagerUser, setPendingManagerUser] = useState<{ id: string; name: string } | null>(null)
 
-  const { data, loading, refetch } = useQuery<{ team: Team | null }>(GET_TEAM, {
+  const { data, loading, error, refetch } = useQuery<{ team: Team | null }>(GET_TEAM, {
     variables:   { id },
     fetchPolicy: 'cache-and-network',
     skip:        !id,
@@ -117,6 +118,14 @@ export function TeamDetailPage() {
 
   if (loading && !team) {
     return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+  }
+
+  if (error && !data) {
+    return (
+      <div style={{ padding: '32px 40px' }}>
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      </div>
+    )
   }
 
   if (!team) {

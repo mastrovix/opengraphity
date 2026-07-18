@@ -114,6 +114,7 @@ export function GlobalSearch() {
   const [results, setResults]         = useState<GlobalSearchResults>(EMPTY)
   const [loading, setLoading]         = useState(false)
   const [searched, setSearched]       = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [open, setOpen]               = useState(false)
   const [selectedIdx, setSelectedIdx] = useState(0)
 
@@ -146,6 +147,7 @@ export function GlobalSearch() {
       setResults(EMPTY)
       setLoading(false)
       setSearched(false)
+      setSearchError(null)
       return
     }
     setLoading(true)
@@ -162,11 +164,13 @@ export function GlobalSearch() {
           setResults(data?.globalSearch ?? EMPTY)
           setSelectedIdx(0)
           setSearched(true)
+          setSearchError(null)
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           if (cancelled) return
           setResults(EMPTY)
           setSearched(true)
+          setSearchError(err instanceof Error ? err.message : String(err))
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -284,7 +288,13 @@ export function GlobalSearch() {
           }}
           ref={listRef}
         >
-          {!loading && searched && flat.length === 0 && (
+          {!loading && searched && searchError && (
+            <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 12, color: 'var(--color-danger, #ef4444)' }}>
+              Errore di ricerca: {searchError}
+            </div>
+          )}
+
+          {!loading && searched && !searchError && flat.length === 0 && (
             <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 12, color: 'var(--color-slate-light)' }}>
               {t('search.noResults', { query: trimmed })}
             </div>

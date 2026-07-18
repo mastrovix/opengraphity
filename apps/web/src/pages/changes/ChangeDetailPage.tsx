@@ -21,6 +21,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { FieldLabel } from '@/components/ui/FormControls'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { EmptyState } from '@/components/EmptyState'
+import { QueryError } from '@/components/QueryError'
 import {
   GET_CHANGE,
   GET_CHANGE_AFFECTED_CIS,
@@ -56,7 +57,7 @@ export function ChangeDetailPage() {
   const navigate = useNavigate()
   const changeId = id ?? ''
 
-  const { data: changeData, loading, refetch: refetchChange } = useQuery<{ change: ChangeData | null }>(GET_CHANGE, { variables: { id: changeId }, fetchPolicy: 'cache-and-network' })
+  const { data: changeData, loading, error: changeError, refetch: refetchChange } = useQuery<{ change: ChangeData | null }>(GET_CHANGE, { variables: { id: changeId }, fetchPolicy: 'cache-and-network' })
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
   const { data: auditData, refetch: refetchAudit } = useQuery<{ changeAuditTrail: ChangeAuditEntryData[] }>(GET_CHANGE_AUDIT_TRAIL, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
   const { data: meData } = useQuery<{ me: MeData | null }>(GET_ME, { fetchPolicy: 'cache-first' })
@@ -86,7 +87,6 @@ export function ChangeDetailPage() {
   const { data: impactData, error: impactError, refetch: refetchImpacted } = useQuery<{ changeImpactedCIs: ImpactedCIRow[] }>(
     GET_CHANGE_IMPACTED_CIS, { variables: { changeId, depth: impactDepth }, fetchPolicy: 'cache-and-network' },
   )
-  if (impactError) console.error('[changeImpactedCIs] GraphQL error:', impactError.message)
   const impactedCIs = impactData?.changeImpactedCIs ?? []
 
   const [ciTab, setCITab] = useState<'affected' | 'impacted'>('affected')
@@ -127,6 +127,7 @@ export function ChangeDetailPage() {
   })
 
   if (loading && !change) return <PageContainer><p>Caricamento...</p></PageContainer>
+  if (changeError && !changeData) return <PageContainer><QueryError message={changeError.message} onRetry={() => void refetchChange()} /></PageContainer>
   if (!change) return <PageContainer><p>Change non trovato</p></PageContainer>
 
   const currentStep = change.workflowInstance?.currentStep ?? ''
@@ -272,7 +273,13 @@ export function ChangeDetailPage() {
                   {[1, 2, 3, 4, 5].map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
-              {impactedCIs.length === 0 && <EmptyState icon={<ChevronRight size={24} />} title="Nessun CI impattato" description={`Nessun CI impattato a profondità ${impactDepth}.`} />}
+              {impactError && (
+                <div style={{ padding: '10px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-danger, #ef4444)', marginBottom: 8 }}>
+                  Errore nel calcolo dei CI impattati: {impactError.message}{' '}
+                  <button onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger, #ef4444)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>Riprova</button>
+                </div>
+              )}
+              {!impactError && impactedCIs.length === 0 && <EmptyState icon={<ChevronRight size={24} />} title="Nessun CI impattato" description={`Nessun CI impattato a profondità ${impactDepth}.`} />}
               {impactedCIs.length > 0 && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>

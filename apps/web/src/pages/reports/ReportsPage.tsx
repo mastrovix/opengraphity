@@ -158,18 +158,25 @@ export default function ReportsPage() {
             lastEventWasError = currentEvent === 'error'
           } else if (line.startsWith('data: ')) {
             if (lastEventWasError) {
+              let errMsg = 'Errore durante la generazione della risposta'
               try {
                 const errorData = JSON.parse(line.slice(6)) as { message?: string }
-                errorOccurred = true
-                setIsStreaming(false)
-                setStreamingText('')
-                setLocalMessages((prev) => prev.filter((m) => !m.id.startsWith('tmp-')))
-                toast.error(
-                  errorData.message?.includes('overloaded')
-                    ? 'Servizio AI temporaneamente sovraccarico. Riprova tra qualche secondo.'
-                    : (errorData.message ?? 'Errore durante la generazione della risposta'),
-                )
-              } catch { /* ignore */ }
+                errMsg = errorData.message?.includes('overloaded')
+                  ? 'Servizio AI temporaneamente sovraccarico. Riprova tra qualche secondo.'
+                  : (errorData.message ?? errMsg)
+              } catch {
+                // Frame di errore malformato: mostriamo comunque un errore generico
+                // invece di ingoiarlo in silenzio.
+              }
+              errorOccurred = true
+              setIsStreaming(false)
+              setStreamingText('')
+              // Il messaggio utente resta visibile; l'errore compare in chat.
+              setLocalMessages((prev) => [
+                ...prev,
+                { id: `tmp-err-${Date.now()}`, role: 'assistant', content: `Errore: ${errMsg}`, createdAt: new Date().toISOString() },
+              ])
+              toast.error(errMsg)
               lastEventWasError = false
               currentEvent = ''
               return
@@ -239,7 +246,13 @@ export default function ReportsPage() {
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         if (import.meta.env.DEV) console.error('[reports] stream error:', err)
-        setLocalMessages((prev) => prev.filter((m) => !m.id.startsWith('tmp-')))
+        const errMsg = err instanceof Error ? err.message : String(err)
+        toast.error(errMsg)
+        // Il messaggio utente resta in chat, seguito da un errore visibile.
+        setLocalMessages((prev) => [
+          ...prev,
+          { id: `tmp-err-${Date.now()}`, role: 'assistant', content: `Errore: ${errMsg}`, createdAt: new Date().toISOString() },
+        ])
       }
     } finally {
       setIsStreaming(false)
@@ -266,7 +279,12 @@ export default function ReportsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    await deleteConv({ variables: { id } })
+    try {
+      await deleteConv({ variables: { id } })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+      return
+    }
     if (activeId === id) { setActiveId(null); setLocalMessages([]) }
     void refetch()
   }

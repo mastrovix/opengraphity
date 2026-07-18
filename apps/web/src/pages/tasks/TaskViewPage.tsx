@@ -13,6 +13,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { ChevronRight, RotateCcw } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
+import { QueryError } from '@/components/QueryError'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { TASK_STATUS, ASSESSMENT_ROLE, QUESTION_CATEGORY } from '@/lib/taskStatus'
 import {
@@ -62,7 +63,7 @@ export function TaskViewPage() {
   const navigate = useNavigate()
   const id = taskId ?? ''
 
-  const { data: taskData, loading: taskLoading } = useQuery<{ taskById: TaskDetail | null }>(GET_TASK_BY_ID, { variables: { id }, fetchPolicy: 'cache-and-network' })
+  const { data: taskData, loading: taskLoading, error: taskError, refetch: refetchTask } = useQuery<{ taskById: TaskDetail | null }>(GET_TASK_BY_ID, { variables: { id }, fetchPolicy: 'cache-and-network' })
   const task = taskData?.taskById
 
   const { data: changeData } = useQuery<{ change: ChangeData | null }>(GET_CHANGE, { variables: { id: task?.changeId ?? '' }, skip: !task, fetchPolicy: 'cache-and-network' })
@@ -129,6 +130,7 @@ export function TaskViewPage() {
   }
 
   if (taskLoading && !task) return <PageContainer><p>Caricamento...</p></PageContainer>
+  if (taskError && !taskData) return <PageContainer><QueryError message={taskError.message} onRetry={() => void refetchTask()} /></PageContainer>
   if (!task) return <PageContainer><p>Task non trovato</p></PageContainer>
 
   const assessTask = task.kind === 'assessment'

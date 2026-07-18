@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { ShieldAlert, ShieldCheck, Radar, RefreshCw } from 'lucide-react'
@@ -314,7 +315,12 @@ export function AnomalyPage() {
   }
 
   async function handleRunScanner() {
-    await runScanner()
+    try {
+      await runScanner()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+      return
+    }
     setPage(0)
     setTimeout(() => { void refetch(); void refetchStats(); void refetchScan() }, 2000)
   }

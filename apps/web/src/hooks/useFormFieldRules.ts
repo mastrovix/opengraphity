@@ -12,18 +12,18 @@ export interface FieldRules {
  *
  * A hidden field is never required (visibility takes precedence).
  *
- * Returns: Record<fieldName, { visible, required }>
+ * Returns: { rules: Record<fieldName, { visible, required }>, error }
  * Fields not mentioned by any rule default to { visible: true, required: false }.
  */
 export function useFormFieldRules(
   entityType:   string,
   workflowStep: string | null | undefined,
   formValues:   Record<string, unknown>,
-): Record<string, FieldRules> {
-  const visibility   = useFieldVisibility(entityType, formValues)
-  const requirements = useFieldRequirements(entityType, workflowStep)
+): { rules: Record<string, FieldRules>; error: Error | null } {
+  const { visibility, error: visibilityError }     = useFieldVisibility(entityType, formValues)
+  const { requirements, error: requirementsError } = useFieldRequirements(entityType, workflowStep)
 
-  return useMemo(() => {
+  const rules = useMemo(() => {
     const result: Record<string, FieldRules> = {}
     const allFields = new Set([...Object.keys(visibility), ...Object.keys(requirements)])
 
@@ -35,6 +35,8 @@ export function useFormFieldRules(
 
     return result
   }, [visibility, requirements])
+
+  return { rules, error: visibilityError ?? requirementsError ?? null }
 }
 
 /**

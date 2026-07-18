@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
+import { QueryError } from '@/components/QueryError'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -163,7 +164,7 @@ export function ProblemDetailPage() {
 
   const [exportingPdf, setExportingPdf] = useState(false)
 
-  const { data, loading, refetch } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
+  const { data, loading, error, refetch } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
   const { data: usersData }        = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData }        = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
@@ -281,6 +282,14 @@ export function ProblemDetailPage() {
           <div className="space-y-4"><Skeleton style={{ height: 200 }} /><Skeleton style={{ height: 240 }} /></div>
         </div>
       </div>
+    )
+  }
+
+  if (error && !data) {
+    return (
+      <PageContainer>
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      </PageContainer>
     )
   }
 

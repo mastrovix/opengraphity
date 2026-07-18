@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
+import { QueryError } from '@/components/QueryError'
 import { DetailField } from '@/components/ui/DetailField'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Users, User, Plus, X } from 'lucide-react'
@@ -65,7 +66,7 @@ export function UserDetailPage() {
   const navigate = useNavigate()
   const [showAddTeam, setShowAddTeam] = useState(false)
 
-  const { data, loading, refetch } = useQuery<{ user: UserData | null }>(GET_USER, {
+  const { data, loading, error, refetch } = useQuery<{ user: UserData | null }>(GET_USER, {
     variables:   { id },
     fetchPolicy: 'cache-and-network',
     skip:        !id,
@@ -84,6 +85,14 @@ export function UserDetailPage() {
 
   if (loading && !user) {
     return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento...</div>
+  }
+
+  if (error && !data) {
+    return (
+      <div style={{ padding: '32px 40px' }}>
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      </div>
+    )
   }
 
   if (!user) {

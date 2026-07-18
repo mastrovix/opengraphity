@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { UserCircle } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
@@ -33,9 +34,11 @@ export default function ProfilePage() {
 
   const [linkSlack, { loading: linking }] = useMutation(LINK_SLACK, {
     onCompleted: () => { setSaved(true); setInput(''); refetch() },
+    onError: (e) => toast.error(e.message),
   })
   const [unlinkSlack, { loading: unlinking }] = useMutation(UNLINK_SLACK, {
     onCompleted: () => { refetch() },
+    onError: (e) => toast.error(e.message),
   })
 
   const card: React.CSSProperties = {

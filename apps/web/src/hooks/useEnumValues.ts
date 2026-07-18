@@ -3,7 +3,7 @@
  * Uses the ITIL metamodel (GET_ITIL_TYPES) for ITIL entities (incident, problem, change,
  * service_request) and GET_CI_TYPES for CMDB entities (server, application, etc.).
  *
- * Returns { values, loading } — values is empty while loading.
+ * Returns { values, loading, error } — values is empty while loading.
  */
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
@@ -16,19 +16,20 @@ interface TypeDef {
   fields: { name: string; fieldType: string; enumValues?: string[] | null }[]
 }
 
-export function useEnumValues(entityType: string, fieldName: string): { values: string[]; loading: boolean } {
+export function useEnumValues(entityType: string, fieldName: string): { values: string[]; loading: boolean; error: Error | null } {
   const isITIL = ITIL_ENTITIES.has(entityType)
 
-  const { data: itilData, loading: itilLoading } = useQuery(GET_ITIL_TYPES, {
+  const { data: itilData, loading: itilLoading, error: itilError } = useQuery(GET_ITIL_TYPES, {
     skip: !isITIL,
     fetchPolicy: 'cache-first',
   })
-  const { data: ciData, loading: ciLoading } = useQuery(GET_CI_TYPES, {
+  const { data: ciData, loading: ciLoading, error: ciError } = useQuery(GET_CI_TYPES, {
     skip: isITIL,
     fetchPolicy: 'cache-first',
   })
 
   const loading = isITIL ? itilLoading : ciLoading
+  const error   = (isITIL ? itilError : ciError) ?? null
 
   const values = useMemo(() => {
     const types = isITIL
@@ -46,5 +47,5 @@ export function useEnumValues(entityType: string, fieldName: string): { values: 
     return field.enumValues ?? []
   }, [isITIL, entityType, fieldName, itilData, ciData])
 
-  return { values, loading }
+  return { values, loading, error }
 }
