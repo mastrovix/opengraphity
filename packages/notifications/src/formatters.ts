@@ -48,7 +48,7 @@ const STATUS_LABEL: Record<NotificationEvent, string> = {
   change_task_assigned: '🔵 Task assegnato',
 }
 
-const APP_URL = process.env['APP_URL'] ?? 'http://localhost:5173'
+import { APP_URL } from './appUrl.js'
 
 export function formatSlackIncident(event: NotificationEvent, incident: IncidentData): SlackBlock[] {
   const emoji      = SEV_EMOJI[incident.severity] ?? '⚪'

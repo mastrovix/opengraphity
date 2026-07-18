@@ -15,7 +15,15 @@ const SUCCESS   = '#10B981'
 
 const SEV_COLORS: Record<string, string> = { critical: DANGER, high: '#F97316', medium: WARNING, low: SUCCESS }
 
-function baseUrl(): string { return process.env['APP_URL'] ?? 'http://localhost:5173' }
+// Localhost default is dev-only: in production a missing APP_URL would put
+// localhost links in every email (same guard as @opengraphity/notifications).
+function baseUrl(): string {
+  const url = process.env['APP_URL']
+  if (!url && process.env['NODE_ENV'] === 'production') {
+    throw new Error('[emailTemplates] APP_URL is not set in production — email links would point to localhost')
+  }
+  return url ?? 'http://localhost:5173'
+}
 
 function layout(tenant: string, content: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>

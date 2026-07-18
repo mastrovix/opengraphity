@@ -6,6 +6,7 @@ import { sseManager, InAppNotification } from './sse.js'
 import { sendTeamsCard, TeamsCard } from './teams.js'
 import { dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
 import type { IncidentData, ChangeTaskPayload } from './formatters.js'
+import { APP_URL } from './appUrl.js'
 
 // ── Rule model ────────────────────────────────────────────────────────────────
 
@@ -315,7 +316,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         const html = `<div style="font-family:Arial,sans-serif;padding:16px;">
           <h2 style="color:#0F172A;margin:0 0 8px;">${notification.title}</h2>
           <p style="color:#64748B;margin:0 0 16px;">${notification.message}</p>
-          ${notification.entity_id ? `<a href="${process.env['APP_URL'] ?? 'http://localhost:5173'}/${notification.entity_type ?? 'incidents'}s/${notification.entity_id}" style="color:#0EA5E9;">Vedi dettagli</a>` : ''}
+          ${notification.entity_id ? `<a href="${APP_URL}/${notification.entity_type ?? 'incidents'}s/${notification.entity_id}" style="color:#0EA5E9;">Vedi dettagli</a>` : ''}
         </div>`
 
       // Batch emails (Resend limit: 50 per call)

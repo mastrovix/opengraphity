@@ -62,19 +62,22 @@ export async function createDashboard(
     )
     if (!created.records.length) throw new GraphQLError('Failed to create dashboard', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
 
-    // Create CREATED_BY rel (best-effort)
-    await session.executeWrite((tx) =>
+    // Create CREATED_BY rel — strict: the authenticated user must exist; a
+    // dashboard silently created without its author is a data-quality hole.
+    const relResult = await session.executeWrite((tx) =>
       tx.run(
         `
         MATCH (d:DashboardConfig {id: $dashId})
-        OPTIONAL MATCH (u:User {id: $userId})
-        FOREACH (_ IN CASE WHEN u IS NOT NULL THEN [1] ELSE [] END |
-          CREATE (d)-[:CREATED_BY]->(u)
-        )
+        MATCH (u:User {id: $userId})
+        CREATE (d)-[:CREATED_BY]->(u)
+        RETURN u.id AS uid
         `,
         { dashId: (created.records[0].get('props') as Props)['id'] as string, userId: ctx.userId },
       ),
     )
+    if (!relResult.records.length) {
+      throw new GraphQLError(`Authenticated user ${ctx.userId} not found — cannot attribute the dashboard`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+    }
     const props = created.records[0].get('props') as Props
     const dashId = props['id'] as string
     void audit(ctx, 'dashboard.created', 'DashboardConfig', dashId)

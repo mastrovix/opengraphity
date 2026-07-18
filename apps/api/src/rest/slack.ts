@@ -37,10 +37,20 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
   const parts = text.trim().split(/\s+/)
 
   if (parts[0] === 'incident' && parts[1] === 'apri') {
-    const severity = parts[parts.length - 1]
+    // Strict command parsing: no defaulted severity, no fabricated title —
+    // a malformed command gets the usage back, not a plausible incident.
+    const severity = parts[parts.length - 1] ?? ''
     const validSev = ['critical', 'high', 'medium', 'low']
-    const sev = validSev.includes(severity) ? severity : 'medium'
-    const title = parts.slice(2, validSev.includes(severity) ? -1 : undefined).join(' ') || 'Incident da Slack'
+    if (!validSev.includes(severity)) {
+      res.json({ response_type: 'ephemeral', text: `⚠️ Severity mancante o non valida. Usa: \`/og incident apri <titolo> <${validSev.join('|')}>\`` })
+      return
+    }
+    const sev = severity
+    const title = parts.slice(2, -1).join(' ')
+    if (!title) {
+      res.json({ response_type: 'ephemeral', text: '⚠️ Titolo mancante. Usa: `/og incident apri <titolo> <severity>`' })
+      return
+    }
 
     const session = getSession(undefined, 'WRITE')
     try {
