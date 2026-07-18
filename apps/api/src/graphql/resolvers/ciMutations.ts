@@ -68,8 +68,10 @@ export function buildCreateMutation(
         )
       }
 
-      // Calculate chain based on chain_families of CI type and upstream dependencies
-      await calculateChain(id, ctx.tenantId).catch(() => {})
+      // Calculate chain based on chain_families of CI type and upstream
+      // dependencies. A failure must surface: a CI with no chain silently
+      // breaks impact analysis for everything downstream.
+      await calculateChain(id, ctx.tenantId)
 
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)

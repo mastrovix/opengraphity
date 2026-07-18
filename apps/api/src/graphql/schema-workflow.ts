@@ -14,6 +14,9 @@ export function workflowSDL(): string {
     success:  Boolean!
     error:    String
     instance: WorkflowInstance
+    # Side-effect actions (SLA start, events, timers, …) that FAILED after the
+    # transition was persisted. Non-empty = the step is not fully applied.
+    actionErrors: [String!]
   }
 
   type WorkflowTransition {

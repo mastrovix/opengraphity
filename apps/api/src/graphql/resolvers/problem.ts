@@ -8,6 +8,7 @@ import { mapUser, mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import { audit } from '../../lib/audit.js'
+import { logger } from '../../lib/logger.js'
 import type { GraphQLContext } from '../../context.js'
 import { ciLabelPredicate } from '../../lib/ciLabels.js'
 import * as problemService from '../../services/problemService.js'
@@ -399,14 +400,20 @@ async function executeProblemTransition(
       { userId: ctx.userId, entityData: {} },
     )
 
-    if (result.success) {
-      // Emit a generic transition event named after the target step and audit
-      // the transition. Consumers that care about specific steps subscribe to
-      // "problem.<stepName>" — no step-name branching needed here.
-      const svcCtx = { tenantId: ctx.tenantId, userId: ctx.userId }
-      await problemService.publishProblemTransition(args.problemId, args.toStep, svcCtx)
-      void audit(ctx, `problem.${args.toStep}`, 'Problem', args.problemId)
+    if (!result.success) {
+      throw new GraphQLError(result.error ?? 'Transizione fallita')
     }
+    if (result.actionErrors?.length) {
+      logger.error({ problemId: args.problemId, actionErrors: result.actionErrors },
+        '[problem] transition persisted but step actions failed')
+    }
+
+    // Emit a generic transition event named after the target step and audit
+    // the transition. Consumers that care about specific steps subscribe to
+    // "problem.<stepName>" — no step-name branching needed here.
+    const svcCtx = { tenantId: ctx.tenantId, userId: ctx.userId }
+    await problemService.publishProblemTransition(args.problemId, args.toStep, svcCtx)
+    void audit(ctx, `problem.${args.toStep}`, 'Problem', args.problemId)
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props

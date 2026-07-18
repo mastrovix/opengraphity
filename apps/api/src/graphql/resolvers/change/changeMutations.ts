@@ -154,6 +154,10 @@ export async function executeChangeTransition(
       notes:       args.notes,
     }, actionCtx)
     if (!result.success) throw new GraphQLError(result.error ?? 'Transizione fallita', { extensions: { code: 'CONFLICT' } })
+    if (result.actionErrors?.length) {
+      logger.error({ changeId: args.changeId, actionErrors: result.actionErrors },
+        '[change] transition persisted but step actions failed')
+    }
 
     await afterEnterStep(session, args.changeId, ctx.tenantId, args.toStep)
     await writeAudit(session, args.changeId, ctx.tenantId,

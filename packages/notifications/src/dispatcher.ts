@@ -178,7 +178,15 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     if (nr.channels.includes('in_app')) {
       sseManager.sendToTenant(event.tenant_id, notification)
     }
-
+    if (nr.channels.includes('email')) {
+      await this.dispatchEmail(event, notification)
+    }
+    // Slack/Teams for workflow steps are not implemented: refuse loudly instead
+    // of silently dropping a channel the admin configured.
+    const unsupported = nr.channels.filter(c => !['in_app', 'email'].includes(c))
+    if (unsupported.length > 0) {
+      throw new Error(`workflow.step.entered notify_rule requests unsupported channels [${unsupported.join(', ')}] — only in_app and email are implemented`)
+    }
   }
 
   // ── Slack / Teams channel dispatch (driven by rule.channels) ────────────────
@@ -281,12 +289,14 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   }
 
   private async dispatchEmail(event: DomainEvent<unknown>, notification: InAppNotification): Promise<void> {
-    try {
-      const { sendEmail } = await import('./email.js')
+    // No silent catch here: a failure (DB lookup, Resend, import) propagates to
+    // the consumer, fails the BullMQ job and gets retried — a lost email must
+    // never be invisible.
+    const { sendEmail } = await import('./email.js')
 
-      // Only send to admin/operator users with real email addresses
-      const session = getSession()
-      try {
+    // Only send to admin/operator users with real email addresses
+    const session = getSession()
+    try {
         const result = await session.executeRead(tx => tx.run(
           `MATCH (u:User {tenant_id: $tenantId})
            WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR']
@@ -308,16 +318,13 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
           ${notification.entity_id ? `<a href="${process.env['APP_URL'] ?? 'http://localhost:5173'}/${notification.entity_type ?? 'incidents'}s/${notification.entity_id}" style="color:#0EA5E9;">Vedi dettagli</a>` : ''}
         </div>`
 
-        // Batch emails (Resend limit: 50 per call)
-        for (let i = 0; i < emails.length; i += 50) {
-          const batch = emails.slice(i, i + 50)
-          await sendEmail({ to: batch, subject, html })
-        }
-      } finally {
-        await session.close()
+      // Batch emails (Resend limit: 50 per call)
+      for (let i = 0; i < emails.length; i += 50) {
+        const batch = emails.slice(i, i + 50)
+        await sendEmail({ to: batch, subject, html })
       }
-    } catch {
-      // Email delivery failure is non-fatal
+    } finally {
+      await session.close()
     }
   }
 }

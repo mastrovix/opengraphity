@@ -171,4 +171,11 @@ export interface TransitionResult {
   execution:  WorkflowStepExecution
   actionsRun: WorkflowActionType[]
   error?:     string
+  /**
+   * Errors from step actions (sla_start, publish_event, timer scheduling, …)
+   * that failed AFTER the transition was persisted. The transition itself
+   * succeeded, but these side effects did NOT run — callers must surface them,
+   * never discard them.
+   */
+  actionErrors?: string[]
 }

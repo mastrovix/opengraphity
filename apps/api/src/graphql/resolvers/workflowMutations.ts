@@ -56,7 +56,12 @@ async function applyOnEnterFields(
   if (!label) return
 
   let parsed: Record<string, string>
-  try { parsed = JSON.parse(raw) as Record<string, string> } catch { return }
+  try { parsed = JSON.parse(raw) as Record<string, string> }
+  catch (e) {
+    // Corrupt on_enter_fields must fail the transition, not silently skip the
+    // step's side effects while reporting success.
+    throw new GraphQLError(`Corrupt on_enter_fields JSON on step "${stepName}": ${e instanceof Error ? e.message : String(e)}`)
+  }
   const keys = Object.keys(parsed)
   if (keys.length === 0) return
 
@@ -102,7 +107,12 @@ async function publishNotifyRuleActions(
   if (!raw) return
 
   let actions: Array<{ type: string; params?: Record<string, unknown> }>
-  try { actions = JSON.parse(raw) } catch { return }
+  try { actions = JSON.parse(raw) }
+  catch (e) {
+    // Corrupt enter_actions must fail the transition, not silently drop the
+    // step's notify rules.
+    throw new GraphQLError(`Corrupt enter_actions JSON on step "${stepName}": ${e instanceof Error ? e.message : String(e)}`)
+  }
 
   const notifyRules = actions.filter((a) => a.type === 'notify_rule')
   for (const action of notifyRules) {
@@ -534,10 +544,16 @@ export async function executeWorkflowTransition(
       }
     }
 
+    if (result.actionErrors?.length) {
+      workflowLogger.error({ instanceId, actionErrors: result.actionErrors },
+        '[workflow] transition persisted but step actions failed')
+    }
+
     return {
-      success:  result.success,
-      error:    result.error ?? null,
-      instance: result.instance ?? null,
+      success:      result.success,
+      error:        result.error ?? null,
+      instance:     result.instance ?? null,
+      actionErrors: result.actionErrors ?? null,
     }
   }, true)
 }

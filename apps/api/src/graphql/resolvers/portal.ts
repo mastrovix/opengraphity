@@ -266,14 +266,17 @@ async function createTicket(
     return mapTicket(props)
   }, true)
 
-  // Attach workflow instance
+  // Attach workflow instance. A ticket without its workflow instance is the
+  // known "workflowInstance: null" corruption — fail the mutation instead of
+  // returning a half-created ticket. (The Incident node stays but is visibly
+  // broken via the GraphQL error, not silently missing its workflow.)
   await withSession(async (session) => {
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident')
-  }, true).catch(() => { /* non-fatal if no default workflow */ })
+  }, true)
 
-  // Publish domain event + outbound webhooks
+  // Publish domain event + outbound webhooks — a failure here loses
+  // notifications/webhooks for the new ticket; surface it.
   await publishEvent('portal.ticket.created', ctx.tenantId, ctx.userId, { ticketId: id, title, category, priority, userId: ctx.userId }, now)
-    .catch(() => { /* non-fatal */ })
 
   void audit(ctx, 'portal.ticket.created', 'Incident', id)
 

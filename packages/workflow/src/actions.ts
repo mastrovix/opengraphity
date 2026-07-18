@@ -93,7 +93,10 @@ function evalCondition(c: ConditionDef, data: Record<string, unknown>): boolean 
     case 'contains':   return typeof actual === 'string' && typeof expected === 'string' && actual.includes(expected)
     case 'is_null':    return actual == null
     case 'is_not_null': return actual != null
-    default:           return true
+    default:
+      // Unknown operator = corrupt action config. Returning true would EXECUTE
+      // the action on an invalid condition — the inverse of what a guard is for.
+      throw new Error(`Unknown action condition operator: ${String(c.operator)} (field: ${c.field})`)
   }
 }
 
@@ -130,7 +133,8 @@ export async function runAction(
     // ── SLA ────────────────────────────────────────────────────────────────────
 
     case 'sla_start': {
-      const slaType = String(action.params['sla_type'] ?? 'resolve')
+      if (!action.params['sla_type']) throw new Error('sla_start: missing required param "sla_type"')
+      const slaType = String(action.params['sla_type'])
       const event: DomainEvent<{ entity_id: string; entity_type: string; sla_type: string }> = {
         id:             uuidv4(),
         type:           `sla.${slaType}.start`,
@@ -147,7 +151,8 @@ export async function runAction(
     case 'sla_stop':
     case 'sla_pause':
     case 'sla_resume': {
-      const slaType = String(action.params['sla_type'] ?? 'resolve')
+      if (!action.params['sla_type']) throw new Error(`${action.type}: missing required param "sla_type"`)
+      const slaType = String(action.params['sla_type'])
       const verb    = action.type.replace('sla_', '')
       const event: DomainEvent<{ entity_id: string; sla_type: string }> = {
         id:             uuidv4(),
@@ -166,7 +171,10 @@ export async function runAction(
 
     case 'notify':
     case 'publish_event': {
-      const eventType = String(action.params['event'] ?? 'incident.unknown')
+      // No fabricated "incident.unknown" fallback: an event action without an
+      // event name is broken config.
+      if (!action.params['event']) throw new Error(`${action.type}: missing required param "event"`)
+      const eventType = String(action.params['event'])
       const event: DomainEvent<{ entity_id: string; triggered_by: string; target?: string; notes?: string }> = {
         id:             uuidv4(),
         type:           eventType,
@@ -192,7 +200,8 @@ export async function runAction(
     // ── Scheduled jobs ─────────────────────────────────────────────────────────
 
     case 'schedule_job': {
-      const jobName = String(action.params['job'] ?? 'unknown')
+      if (!action.params['job']) throw new Error('schedule_job: missing required param "job"')
+      const jobName = String(action.params['job'])
       const delayMs = parseInt(String(action.params['delay_hours'] ?? '0'), 10) * 60 * 60 * 1000
       const queue   = new Queue('workflow-jobs', { connection: redisConnection })
       await queue.add(
@@ -205,7 +214,8 @@ export async function runAction(
     }
 
     case 'cancel_job': {
-      const jobName = String(action.params['job'] ?? 'unknown')
+      if (!action.params['job']) throw new Error('cancel_job: missing required param "job"')
+      const jobName = String(action.params['job'])
       const queue   = new Queue('workflow-jobs', { connection: redisConnection })
       const job     = await queue.getJob(`${jobName}:${instance.entityId}`)
       if (job) await job.remove()
@@ -216,20 +226,17 @@ export async function runAction(
     // ── New: create_entity ─────────────────────────────────────────────────────
 
     case 'create_entity': {
-      log.debug({ entityId: instance.entityId, createEntityAvailable: typeof ctx.createEntity }, 'workflow-action: create_entity executing')
+      // Fail-loud: a configured create_entity that cannot run means the derived
+      // incident/problem/change will NOT exist — that must never be a warn.
       if (!ctx.createEntity) {
-        log.warn({ entityId: instance.entityId }, 'create_entity: createEntity callback not provided — skipped')
-        break
+        throw new Error('create_entity: createEntity callback not provided by the calling context')
       }
       const p = action.params as unknown as CreateEntityParams
       const VALID_TYPES = new Set(['incident', 'problem', 'change'])
       if (!VALID_TYPES.has(p.entity_type)) {
-        log.warn({ entity_type: p.entity_type }, 'create_entity: unsupported entity_type — skipped')
-        break
+        throw new Error(`create_entity: unsupported entity_type "${p.entity_type}"`)
       }
-      log.debug({ entityData: ctx.entityData }, 'workflow-action: create_entity entityData')
       const title = resolveTemplate(p.title_template ?? '', ctx.entityData)
-      log.debug({ title }, 'workflow-action: create_entity resolved title')
       const data: Record<string, unknown> = { title, tenant_id: instance.tenantId }
       if (p.link_to_current) {
         data['parent_id']   = instance.entityId
@@ -240,13 +247,9 @@ export async function runAction(
           if (field in ctx.entityData) data[field] = ctx.entityData[field]
         }
       }
-      try {
-        const newId = await ctx.createEntity(p.entity_type, data)
-        log.info({ entityType: p.entity_type, newId }, 'workflow-action: create_entity succeeded')
-        await ctx.publishEvent?.(`${p.entity_type}.created`, { id: newId, tenant_id: instance.tenantId, created_by: ctx.userId })
-      } catch (err) {
-        log.error({ entityId: instance.entityId, err }, 'workflow-action: create_entity failed')
-      }
+      const newId = await ctx.createEntity(p.entity_type, data)
+      log.info({ entityType: p.entity_type, newId }, 'workflow-action: create_entity succeeded')
+      await ctx.publishEvent?.(`${p.entity_type}.created`, { id: newId, tenant_id: instance.tenantId, created_by: ctx.userId })
       break
     }
 
@@ -254,14 +257,12 @@ export async function runAction(
 
     case 'assign_to': {
       if (!ctx.assignTo) {
-        log.warn({ entityId: instance.entityId }, 'assign_to: assignTo callback not provided — skipped')
-        break
+        throw new Error('assign_to: assignTo callback not provided by the calling context')
       }
       const p          = action.params as unknown as AssignToParams
       const resolvedId = p.target_id ?? resolveTemplate(p.target_name ?? '', ctx.entityData)
       if (!resolvedId) {
-        log.warn({ entityId: instance.entityId }, 'assign_to: no target_id or target_name resolved — skipped')
-        break
+        throw new Error('assign_to: no target_id or target_name resolved — the entity was NOT assigned')
       }
       await ctx.assignTo(instance.entityId, p.target_type, resolvedId)
       await ctx.publishEvent?.(`${instance.entityType}.assigned`, {
@@ -277,14 +278,12 @@ export async function runAction(
 
     case 'update_field': {
       if (!ctx.updateField) {
-        log.warn({ entityId: instance.entityId }, 'update_field: updateField callback not provided — skipped')
-        break
+        throw new Error('update_field: updateField callback not provided by the calling context')
       }
       const p = action.params as unknown as UpdateFieldParams
       const ALLOWED_FIELDS = new Set(['severity', 'priority', 'status', 'description', 'category'])
       if (!ALLOWED_FIELDS.has(p.field)) {
-        log.warn({ field: p.field }, 'update_field: field not in allowed list — skipped')
-        break
+        throw new Error(`update_field: field "${p.field}" is not in the allowed list (${[...ALLOWED_FIELDS].join(', ')})`)
       }
       const resolved = typeof p.value === 'string' ? resolveTemplate(p.value, ctx.entityData) : p.value
       await ctx.updateField(instance.entityId, p.field, resolved)
@@ -300,24 +299,21 @@ export async function runAction(
     // ── New: create_approval_request ─────────────────────────────────────────
 
     case 'create_approval_request': {
+      // Fail-loud: a missing approval request leaves the workflow waiting for
+      // an approval that will never arrive.
       if (!ctx.createApprovalRequest) {
-        log.warn({ entityId: instance.entityId }, 'create_approval_request: callback not provided — skipped')
-        break
+        throw new Error('create_approval_request: callback not provided by the calling context')
       }
       const p     = action.params as unknown as CreateApprovalRequestParams
       const title = resolveTemplate(p.title_template ?? '', ctx.entityData)
-      try {
-        const approvalId = await ctx.createApprovalRequest({
-          entityId:     instance.entityId,
-          entityType:   instance.entityType,
-          title,
-          approverRole: p.approver_role,
-          approvalType: p.approval_type,
-        })
-        log.info({ approvalId, entityId: instance.entityId }, 'workflow-action: create_approval_request succeeded')
-      } catch (err) {
-        log.error({ entityId: instance.entityId, err }, 'workflow-action: create_approval_request failed')
-      }
+      const approvalId = await ctx.createApprovalRequest({
+        entityId:     instance.entityId,
+        entityType:   instance.entityType,
+        title,
+        approverRole: p.approver_role,
+        approvalType: p.approval_type,
+      })
+      log.info({ approvalId, entityId: instance.entityId }, 'workflow-action: create_approval_request succeeded')
       break
     }
 
@@ -326,60 +322,77 @@ export async function runAction(
     case 'call_webhook': {
       const p = action.params as unknown as CallWebhookParams
       if (!isSafeWebhookUrl(p.url ?? '')) {
-        log.warn({ url: p.url }, 'call_webhook: URL blocked (SSRF/non-HTTPS) — skipped')
-        break
+        // Misconfigured/blocked URL is a config error, not a silent skip.
+        throw new Error(`call_webhook: URL blocked (SSRF/non-HTTPS): ${p.url}`)
       }
       const rawPayload = resolveTemplate(p.payload_template ?? '', ctx.entityData)
       if (rawPayload.length > 1_000_000) {
-        log.warn({ url: p.url }, 'call_webhook: payload exceeds 1MB — skipped')
-        break
+        throw new Error(`call_webhook: payload exceeds 1MB (${rawPayload.length} bytes) — not sent`)
       }
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 10_000)
       const t0    = Date.now()
       try {
-        const res = await fetch(p.url, {
-          method:  p.method ?? 'POST',
-          headers: { 'Content-Type': 'application/json', ...(p.headers ?? {}) },
-          body:    p.method !== 'GET' ? rawPayload : undefined,
-          signal:  controller.signal,
-        })
-        log.info({ url: p.url, status: res.status, durationMs: Date.now() - t0 }, 'call_webhook completed')
-      } catch (err) {
-        log.error({ url: p.url, durationMs: Date.now() - t0, err }, 'call_webhook failed — scheduling retry')
-
-        // Solo se non è già un retry (evita loop)
-        if (!ctx.isWebhookRetry) {
-          try {
-            const retryQueue = new Queue('workflow-jobs', { connection: redisConnection })
-            await retryQueue.add(
-              'webhook_retry',
-              {
-                type:     'webhook_retry',
-                url:      p.url,
-                method:   p.method ?? 'POST',
-                headers:  p.headers ?? {},
-                payload:  rawPayload,
-                attempt:  1,
-                tenantId: instance.tenantId,
-                entityId: instance.entityId,
-              } satisfies WebhookRetryJobData,
-              {
-                attempts:  3,
-                backoff: { type: 'exponential', delay: 30_000 },
-                removeOnComplete: true,
-                removeOnFail:     false,
-              },
-            )
-            await retryQueue.close()
-          } catch (retryErr) {
-            log.error({ retryErr }, 'call_webhook: failed to schedule retry job')
+        let failure: string | null = null
+        try {
+          const res = await fetch(p.url, {
+            method:  p.method ?? 'POST',
+            headers: { 'Content-Type': 'application/json', ...(p.headers ?? {}) },
+            body:    p.method !== 'GET' ? rawPayload : undefined,
+            signal:  controller.signal,
+          })
+          if (res.ok) {
+            log.info({ url: p.url, status: res.status, durationMs: Date.now() - t0 }, 'call_webhook completed')
+          } else {
+            // A non-2xx response is a delivery failure — it must trigger the
+            // retry path and surface, not be logged as "completed".
+            failure = `HTTP ${res.status}`
           }
+        } catch (err) {
+          failure = err instanceof Error ? err.message : String(err)
+        }
+
+        if (failure !== null) {
+          log.error({ url: p.url, durationMs: Date.now() - t0, failure }, 'call_webhook failed — scheduling retry')
+
+          // Solo se non è già un retry (evita loop). Se anche lo scheduling del
+          // retry fallisce, l'errore propaga: il payload andrebbe perso per sempre.
+          if (!ctx.isWebhookRetry) {
+            const retryQueue = new Queue('workflow-jobs', { connection: redisConnection })
+            try {
+              await retryQueue.add(
+                'webhook_retry',
+                {
+                  type:     'webhook_retry',
+                  url:      p.url,
+                  method:   p.method ?? 'POST',
+                  headers:  p.headers ?? {},
+                  payload:  rawPayload,
+                  attempt:  1,
+                  tenantId: instance.tenantId,
+                  entityId: instance.entityId,
+                } satisfies WebhookRetryJobData,
+                {
+                  attempts:  3,
+                  backoff: { type: 'exponential', delay: 30_000 },
+                  removeOnComplete: true,
+                  removeOnFail:     false,
+                },
+              )
+            } finally {
+              await retryQueue.close()
+            }
+          }
+          throw new Error(`call_webhook failed (${failure}) — ${ctx.isWebhookRetry ? 'retry attempt failed' : 'retry scheduled'}`)
         }
       } finally {
         clearTimeout(timer)
       }
       break
     }
+
+    default:
+      // Unknown action type = corrupt/newer config this engine can't run.
+      throw new Error(`Unknown workflow action type: ${String((action as WorkflowActionConfig).type)}`)
   }
 }

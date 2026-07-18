@@ -137,7 +137,7 @@ describe('executeWorkflowTransition — tenant isolation guard', () => {
       },
       expect.any(Object),
     )
-    expect(result).toEqual({ success: true, error: null, instance: { id: 'wi-1' } })
+    expect(result).toEqual({ success: true, error: null, instance: { id: 'wi-1' }, actionErrors: null })
   })
 
   it('istanza valida → valida i required fields con il tenant del contesto', async () => {

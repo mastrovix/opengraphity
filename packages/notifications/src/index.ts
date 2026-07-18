@@ -27,56 +27,61 @@ export interface TeamsAdaptiveCard {
   actions?: unknown[]
 }
 
+/**
+ * Sends a Slack message. Returns true on success and THROWS on any failure
+ * (network error, non-2xx, Slack API ok:false, missing config) — a lost
+ * notification must fail the calling job, never dissolve into a `false`
+ * nobody reads.
+ */
 export async function sendSlackMessage(
   webhookUrl: string | null,
   channelId: string | null,
   blocks: SlackBlock[],
 ): Promise<boolean> {
-  try {
-    if (webhookUrl) {
-      const res = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blocks }),
-      })
-      return res.ok
-    }
-    if (channelId) {
-      const token = process.env['SLACK_BOT_TOKEN']
-      if (!token) throw new Error('SLACK_BOT_TOKEN non configurato')
-      const res = await fetch('https://slack.com/api/chat.postMessage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ channel: channelId, blocks }),
-      })
-      const data = (await res.json()) as { ok: boolean }
-      return data.ok
-    }
-    return false
-  } catch {
-    return false
+  if (webhookUrl) {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blocks }),
+    })
+    if (!res.ok) throw new Error(`Slack webhook rejected the message: HTTP ${res.status}`)
+    return true
   }
+  if (channelId) {
+    const token = process.env['SLACK_BOT_TOKEN']
+    if (!token) throw new Error('SLACK_BOT_TOKEN non configurato')
+    const res = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ channel: channelId, blocks }),
+    })
+    if (!res.ok) throw new Error(`Slack API error: HTTP ${res.status}`)
+    const data = (await res.json()) as { ok: boolean; error?: string }
+    if (!data.ok) throw new Error(`Slack API refused the message: ${data.error ?? 'unknown error'}`)
+    return true
+  }
+  throw new Error('sendSlackMessage: neither webhookUrl nor channelId configured')
 }
 
+/**
+ * Sends a Teams adaptive card. Returns true on success, THROWS on failure.
+ */
 export async function sendTeamsAdaptiveMessage(
   webhookUrl: string,
   card: TeamsAdaptiveCard,
 ): Promise<boolean> {
-  try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'message',
-        attachments: [
-          { contentType: 'application/vnd.microsoft.card.adaptive', content: card },
-        ],
-      }),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'message',
+      attachments: [
+        { contentType: 'application/vnd.microsoft.card.adaptive', content: card },
+      ],
+    }),
+  })
+  if (!res.ok) throw new Error(`Teams webhook rejected the message: HTTP ${res.status}`)
+  return true
 }
 
 export async function sendTestMessage(channel: NotificationChannelData): Promise<boolean> {
@@ -97,5 +102,5 @@ export async function sendTestMessage(channel: NotificationChannelData): Promise
     }
     return sendTeamsAdaptiveMessage(channel.webhookUrl!, card)
   }
-  return false
+  throw new Error(`sendTestMessage: unsupported platform "${channel.platform}"`)
 }

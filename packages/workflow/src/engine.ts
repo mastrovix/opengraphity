@@ -200,10 +200,26 @@ export class WorkflowEngine {
         ? Date.now() - new Date(enteredAt).getTime()
         : null
 
-      // 4. Transazione Neo4j: aggiorna istanza + storia
+      // Parse delle azioni PRIMA di qualsiasi write: una config corrotta deve
+      // far fallire la transizione senza toccare il DB, non dopo (stato misto).
+      let exitActions:  WorkflowActionConfig[]
+      let enterActions: WorkflowActionConfig[]
+      try {
+        exitActions  = JSON.parse(exitActionsRaw  ?? '[]') as WorkflowActionConfig[]
+        enterActions = JSON.parse(enterActionsRaw ?? '[]') as WorkflowActionConfig[]
+      } catch (e) {
+        return {
+          success: false,
+          error:   `Corrupt step actions JSON (step ${nextStepName}): ${e instanceof Error ? e.message : String(e)}`,
+        } as unknown as TransitionResult
+      }
+
+      // 4+5. Transazione Neo4j UNICA e atomica: avanzamento istanza + storia +
+      // sync dello status sull'entità. Due write separate lasciavano, in caso
+      // di errore sulla seconda, la WI avanzata e l'entità no.
       const execId = uuidv4()
-      await session.executeWrite((tx) =>
-        tx.run(`
+      await session.executeWrite(async (tx) => {
+        await tx.run(`
           // Chiudi StepExecution corrente
           MATCH (wi:WorkflowInstance {id: $instanceId})-[:STEP_HISTORY]->(exec:WorkflowStepExecution)
             WHERE exec.exited_at IS NULL
@@ -247,13 +263,11 @@ export class WorkflowEngine {
           triggeredBy:  input.triggeredBy,
           triggerType:  input.triggerType,
           notes:        input.notes ?? null,
-        }),
-      )
+        })
 
-      // 5. Sincronizza status sull'entità (Incident, ecc.)
-      await session.executeWrite((tx) => {
+        // Sync dello status sull'entità — stessa transazione dell'avanzamento WI
         if (nextStepName === 'resolved') {
-          return tx.run(`
+          await tx.run(`
             MATCH (entity {id: $entityId, tenant_id: $tenantId})
             SET entity.status      = 'resolved',
                 entity.root_cause  = $rootCause,
@@ -265,24 +279,25 @@ export class WorkflowEngine {
             rootCause: input.notes ?? null,
             now,
           })
+        } else {
+          await tx.run(`
+            MATCH (entity {id: $entityId, tenant_id: $tenantId})
+            SET entity.status     = $status,
+                entity.updated_at = $now
+          `, {
+            entityId: wi['entity_id'] as string,
+            tenantId: wi['tenant_id'] as string,
+            status:   nextStepName,
+            now,
+          })
         }
-        return tx.run(`
-          MATCH (entity {id: $entityId, tenant_id: $tenantId})
-          SET entity.status     = $status,
-              entity.updated_at = $now
-        `, {
-          entityId: wi['entity_id'] as string,
-          tenantId: wi['tenant_id'] as string,
-          status:   nextStepName,
-          now,
-        })
       })
 
-      // 6. Esegui exit actions dello step corrente + enter actions del prossimo
-      console.log('[workflow-engine] Entering step:', nextStepName, 'enter_actions:', enterActionsRaw)
-      const exitActions:  WorkflowActionConfig[] = JSON.parse(exitActionsRaw  ?? '[]')
-      const enterActions: WorkflowActionConfig[] = JSON.parse(enterActionsRaw ?? '[]')
-      const actionsRun:   string[]               = []
+      // 6. Esegui exit actions dello step corrente + enter actions del prossimo.
+      // La transizione è già persistita: un'azione fallita non è più annullabile,
+      // ma NON deve sparire — finisce in actionErrors e i chiamanti la mostrano.
+      const actionsRun:    string[] = []
+      const actionErrors:  string[] = []
 
       const instance: WorkflowInstance = {
         id:           wi['id']            as string,
@@ -301,12 +316,15 @@ export class WorkflowEngine {
           await runAction(action, instance, { ...context, notes: context.notes ?? input.notes })
           actionsRun.push(action.type)
         } catch (e) {
-          workflowLogger.error({ err: e, actionType: action.type }, 'Workflow action failed')
-          // Non bloccare la transizione se un'azione fallisce
+          const msg = `${action.type}: ${e instanceof Error ? e.message : String(e)}`
+          workflowLogger.error({ err: e, actionType: action.type, instanceId: input.instanceId }, 'Workflow action failed')
+          actionErrors.push(msg)
         }
       }
 
-      // Schedule timer job when entering timer_wait step
+      // Schedule timer job when entering timer_wait step. Failing to schedule
+      // (or a timer step with no automatic exit) leaves the workflow stuck
+      // forever — that is an actionError, not a log line.
       if (nextStepType === 'timer_wait' && timerDelayMinutes && timerDelayMinutes > 0) {
         try {
           const { Queue } = await import('bullmq')
@@ -327,10 +345,16 @@ export class WorkflowEngine {
               tenantId:   wi['tenant_id'] as string,
             }, { delay: timerDelayMinutes * 60 * 1000 })
             workflowLogger.info({ instanceId: input.instanceId, toStep, delayMinutes: timerDelayMinutes }, '[workflow-engine] timer_wait job scheduled')
+          } else {
+            const msg = `timer_wait: step "${nextStepName}" has no automatic transition — the workflow will never leave this step`
+            workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName }, `[workflow-engine] ${msg}`)
+            actionErrors.push(msg)
           }
           await queue.close()
         } catch (e) {
-          workflowLogger.error({ err: e }, '[workflow-engine] failed to schedule timer_wait job')
+          const msg = `timer_wait scheduling failed: ${e instanceof Error ? e.message : String(e)} — the workflow will never leave step "${nextStepName}"`
+          workflowLogger.error({ err: e, instanceId: input.instanceId }, `[workflow-engine] ${msg}`)
+          actionErrors.push(msg)
         }
       }
 
@@ -355,6 +379,7 @@ export class WorkflowEngine {
           notes:       input.notes ?? null,
         },
         actionsRun: actionsRun as WorkflowInstance['status'][],
+        ...(actionErrors.length > 0 ? { actionErrors } : {}),
       } as unknown as TransitionResult
 
     } catch (error: unknown) {

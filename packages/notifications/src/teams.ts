@@ -63,16 +63,15 @@ export async function sendTeamsCard(card: TeamsCard): Promise<void> {
       : {}),
   }
 
-  try {
-    const res = await fetch(TEAMS_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    console.log(`[teams] Card sent: "${card.title}" — HTTP ${res.status}`)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error(`[teams] Failed to send card "${card.title}": ${message}`)
+  // Fail-loud: a non-2xx or network error propagates — the calling job must
+  // fail (and retry), not log "sent" on an HTTP 400.
+  const res = await fetch(TEAMS_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw new Error(`[teams] Webhook rejected card "${card.title}": HTTP ${res.status}`)
   }
+  console.log(`[teams] Card sent: "${card.title}" — HTTP ${res.status}`)
 }
