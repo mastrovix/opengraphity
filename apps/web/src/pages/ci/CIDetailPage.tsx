@@ -650,8 +650,12 @@ export function CIDetailPage() {
               </div>
             )}
 
-            {/* Add relation modal */}
-            {showAddRel && ci && createPortal(
+          </SectionCard>
+
+          {/* Add relation modal — outside the collapsible SectionCard: its
+              children unmount when collapsed, which would keep this modal from
+              ever opening while the card is closed. */}
+          {showAddRel && ci && createPortal(
               <Modal
                 open
                 onClose={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
@@ -750,7 +754,6 @@ export function CIDetailPage() {
               </Modal>,
               document.body,
             )}
-          </SectionCard>
 
           <CIIncidentsCard ciId={ci.id} />
           <CIChangeList ciId={ci.id} />
