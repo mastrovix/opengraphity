@@ -22,8 +22,13 @@ export function registerAllConnectors(): void {
       registerConnector(connector)
       logger.debug({ type: connector.type }, '[connectors] Registered connector')
     } catch (err) {
-      // Already registered (e.g. hot reload) — safe to ignore
-      logger.debug({ type: connector.type }, '[connectors] Connector already registered, skipping')
+      // Only the documented duplicate-registration case (hot reload) may be
+      // skipped — any other failure must propagate, not be mislabeled.
+      if (err instanceof Error && /already registered/i.test(err.message)) {
+        logger.debug({ type: connector.type }, '[connectors] Connector already registered, skipping')
+      } else {
+        throw err
+      }
     }
   }
 

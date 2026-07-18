@@ -7,6 +7,12 @@ let _resend: Resend | null = null
 
 const isMock = !RESEND_API_KEY
 
+// Mock mode is a dev convenience only. In production a missing API key would
+// silently route every email to the console with a single startup warn —
+// that is a config error, not a mode.
+if (isMock && process.env['NODE_ENV'] === 'production') {
+  throw new Error('[email] RESEND_API_KEY is not set in production — emails would be silently discarded')
+}
 if (isMock) {
   console.warn('[email] RESEND_API_KEY not set — running in mock mode')
 }

@@ -92,8 +92,8 @@ async function sendDigestForTenant(tenantId: string): Promise<void> {
       if (!email) continue
       try {
         await sendEmail({ to: email, ...tpl })
-      } catch {
-        log.error({ email, tenantId }, 'Failed to send digest email')
+      } catch (err) {
+        log.error({ err, email, tenantId }, 'Failed to send digest email')
       }
     }
 

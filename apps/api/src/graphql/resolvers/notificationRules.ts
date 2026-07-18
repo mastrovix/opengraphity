@@ -229,9 +229,10 @@ async function deleteNotificationRule(
     if (!result.records.length) throw new GraphQLError('Regola non trovata o non eliminabile', { extensions: { code: 'NOT_FOUND' } })
     const eventType = result.records[0].get('eventType') as string
     invalidateRuleCache(ctx.tenantId, eventType)
-    // Remove digest job if any
+    // Remove digest job if any. A failure here leaves a ghost digest job
+    // firing for a deleted rule — the deletion must fail so the user retries.
     if (eventType === 'digest.daily') {
-      try { await getNotifQueue().removeJobScheduler(`digest-${id}`) } catch { /* ignore */ }
+      await getNotifQueue().removeJobScheduler(`digest-${id}`)
     }
     void audit(ctx, 'notification_rule.deleted', 'NotificationRule', id)
     return true

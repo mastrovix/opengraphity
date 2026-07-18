@@ -59,21 +59,38 @@ function isSafeWebhookUrl(raw: string): boolean {
 
 // ── Template resolver ─────────────────────────────────────────────────────────
 
+/**
+ * Resolves `{path.to.field}` placeholders against ctx.
+ *
+ * No guessing: an unresolved placeholder THROWS. The old behaviour left the
+ * literal `{incident.title}` in created entities/webhook payloads, and a
+ * "last segment as flat key" fallback could silently resolve a DIFFERENT
+ * field than the one the template named. Callers namespace the context
+ * (see buildTemplateCtx) so both `{title}` and `{incident.title}` resolve
+ * legitimately.
+ */
 export function resolveTemplate(template: string, ctx: Record<string, unknown>): string {
-  return template.replace(/\{([^}]+)\}/g, (match, path: string) => {
+  return template.replace(/\{([^}]+)\}/g, (_match, path: string) => {
     const parts = path.trim().split('.')
     let value: unknown = ctx
     for (const part of parts) {
-      if (value == null || typeof value !== 'object') { value = null; break }
+      if (value == null || typeof value !== 'object') { value = undefined; break }
       value = (value as Record<string, unknown>)[part]
     }
-    // Fallback: if dotted traversal failed (e.g. "{incident.title}" on a flat entityData),
-    // try the last segment as a flat key on ctx directly.
-    if (value == null && parts.length > 1) {
-      value = ctx[parts[parts.length - 1] ?? '']
+    if (value == null) {
+      throw new Error(`resolveTemplate: placeholder {${path.trim()}} did not resolve (available keys: ${Object.keys(ctx).join(', ')})`)
     }
-    return value != null ? String(value) : match
+    return String(value)
   })
+}
+
+/**
+ * Template context: the flat entity properties plus the same object namespaced
+ * under its entity type, so seeded templates written as `{incident.title}`
+ * and `{title}` both resolve without any flat-key guessing.
+ */
+function buildTemplateCtx(instance: WorkflowInstance, entityData: Record<string, unknown>): Record<string, unknown> {
+  return { ...entityData, [instance.entityType]: entityData }
 }
 
 // ── Condition evaluation ──────────────────────────────────────────────────────
@@ -236,7 +253,7 @@ export async function runAction(
       if (!VALID_TYPES.has(p.entity_type)) {
         throw new Error(`create_entity: unsupported entity_type "${p.entity_type}"`)
       }
-      const title = resolveTemplate(p.title_template ?? '', ctx.entityData)
+      const title = resolveTemplate(p.title_template ?? '', buildTemplateCtx(instance, ctx.entityData))
       const data: Record<string, unknown> = { title, tenant_id: instance.tenantId }
       if (p.link_to_current) {
         data['parent_id']   = instance.entityId
@@ -260,7 +277,7 @@ export async function runAction(
         throw new Error('assign_to: assignTo callback not provided by the calling context')
       }
       const p          = action.params as unknown as AssignToParams
-      const resolvedId = p.target_id ?? resolveTemplate(p.target_name ?? '', ctx.entityData)
+      const resolvedId = p.target_id ?? resolveTemplate(p.target_name ?? '', buildTemplateCtx(instance, ctx.entityData))
       if (!resolvedId) {
         throw new Error('assign_to: no target_id or target_name resolved — the entity was NOT assigned')
       }
@@ -285,7 +302,7 @@ export async function runAction(
       if (!ALLOWED_FIELDS.has(p.field)) {
         throw new Error(`update_field: field "${p.field}" is not in the allowed list (${[...ALLOWED_FIELDS].join(', ')})`)
       }
-      const resolved = typeof p.value === 'string' ? resolveTemplate(p.value, ctx.entityData) : p.value
+      const resolved = typeof p.value === 'string' ? resolveTemplate(p.value, buildTemplateCtx(instance, ctx.entityData)) : p.value
       await ctx.updateField(instance.entityId, p.field, resolved)
       await ctx.publishEvent?.(`${instance.entityType}.updated`, {
         entity_id:  instance.entityId,
@@ -305,7 +322,7 @@ export async function runAction(
         throw new Error('create_approval_request: callback not provided by the calling context')
       }
       const p     = action.params as unknown as CreateApprovalRequestParams
-      const title = resolveTemplate(p.title_template ?? '', ctx.entityData)
+      const title = resolveTemplate(p.title_template ?? '', buildTemplateCtx(instance, ctx.entityData))
       const approvalId = await ctx.createApprovalRequest({
         entityId:     instance.entityId,
         entityType:   instance.entityType,
@@ -325,7 +342,7 @@ export async function runAction(
         // Misconfigured/blocked URL is a config error, not a silent skip.
         throw new Error(`call_webhook: URL blocked (SSRF/non-HTTPS): ${p.url}`)
       }
-      const rawPayload = resolveTemplate(p.payload_template ?? '', ctx.entityData)
+      const rawPayload = resolveTemplate(p.payload_template ?? '', buildTemplateCtx(instance, ctx.entityData))
       if (rawPayload.length > 1_000_000) {
         throw new Error(`call_webhook: payload exceeds 1MB (${rawPayload.length} bytes) — not sent`)
       }

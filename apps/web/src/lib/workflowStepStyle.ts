@@ -27,7 +27,14 @@ const NEUTRAL_STYLE: CategoryStyle = { bg: '#f1f5f9', color: 'var(--color-slate)
 
 export function styleForCategory(category: string | null | undefined): CategoryStyle {
   if (!category) return NEUTRAL_STYLE
-  return CATEGORY_STYLE[category] ?? NEUTRAL_STYLE
+  const style = CATEGORY_STYLE[category]
+  if (!style) {
+    // Neutral styling is acceptable, silence is not: an unknown category means
+    // a workflow step this map does not know about.
+    console.error(`[workflowStepStyle] categoria sconosciuta: "${category}"`)
+    return NEUTRAL_STYLE
+  }
+  return style
 }
 
 /** Solid-background style for primary action buttons (e.g. "Resolve"). */

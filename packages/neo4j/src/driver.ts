@@ -43,6 +43,13 @@ const NEO4J_URI      = process.env['NEO4J_URI']      ?? 'neo4j://localhost:7687'
 const NEO4J_USER     = process.env['NEO4J_USER']     ?? 'neo4j'
 const NEO4J_PASSWORD = process.env['NEO4J_PASSWORD'] ?? 'opengraphity_local'
 
+// The local-dev default password in production means NEO4J_PASSWORD is simply
+// missing from the environment — refuse to mask a config error (and a
+// security hole) behind a working-by-accident connection.
+if (process.env['NODE_ENV'] === 'production' && !process.env['NEO4J_PASSWORD']) {
+  throw new Error('[neo4j] NEO4J_PASSWORD is not set in production — refusing to start with the local-dev default')
+}
+
 let _driver: Driver | null = null
 
 // ── Session tracker (optional instrumentation hook) ───────────────────────────

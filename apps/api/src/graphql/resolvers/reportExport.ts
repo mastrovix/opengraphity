@@ -23,7 +23,10 @@ setInterval(() => {
       const stat = fs.statSync(fp)
       if (stat.mtimeMs < threshold) fs.unlinkSync(fp)
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    // Best-effort cleanup, but disk-filling failures must be visible.
+    logger.warn({ err }, '[reportExport] cleanup of old report files failed')
+  }
 }, 30 * 60 * 1000)
 
 type Props = Record<string, unknown>

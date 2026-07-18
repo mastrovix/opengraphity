@@ -72,7 +72,9 @@ const TYPE_ICON: Record<string, string> = {
   storage:           '💾',
   cloud_service:     '☁',
   ssl_certificate:   '🔒',
+  certificate:       '🔒',
   api_endpoint:      '🔌',
+  dynamic_ci_group:  '🧩',
 }
 
 interface TooltipState {
