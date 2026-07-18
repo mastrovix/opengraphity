@@ -7,6 +7,7 @@ import { mapIncident } from '../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { validateStringLength } from '../lib/validation.js'
 import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
+import { enqueueEmbedding } from '../jobs/embeddingWorker.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
@@ -170,6 +171,9 @@ export async function createIncident(
     })
   scheduleTimerTriggers(ctx.tenantId, 'incident', id).catch((err: unknown) => {
     logger.error({ err: err instanceof Error ? err.message : err }, 'scheduleTimerTriggers failed')
+  })
+  enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId }).catch((err: unknown) => {
+    logger.error({ err, incidentId: id }, '[embeddings] enqueue failed — similarity will lag until backfill')
   })
 
   return created

@@ -25,6 +25,7 @@ import { automationSchema } from './schema-automation.js'
 import { integrationsSchema } from './schema-integrations.js'
 import { collaborationSchema } from './schema-collaboration.js'
 import { whatifSDL } from './schema-whatif.js'
+import { similaritySDL } from './schema-similarity.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -161,6 +162,10 @@ export function buildBaseSDL(): string {
 
     # What-if Planning
     whatIfAnalysis(ciId: ID!, action: String!, depth: Int): WhatIfResult!
+
+    # Semantic similarity (vector search)
+    similarIncidents(incidentId: ID!, limit: Int): SimilarIncidentsResult!
+    suggestedArticles(incidentId: ID!, limit: Int): SuggestedArticlesResult!
     whatIfCompare(scenarios: [WhatIfScenarioInput!]!): [WhatIfResult!]!
 
     # Discovery / Sync
@@ -433,5 +438,7 @@ export function buildBaseSDL(): string {
   ${collaborationSchema}
   ${impactSDL()}
   ${whatifSDL()}
+
+  ${similaritySDL}
   `
 }

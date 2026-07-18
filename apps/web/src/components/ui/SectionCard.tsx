@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from './CountBadge'
 
 interface SectionCardProps {
-  title:         string
+  title:         ReactNode
   collapsible?:  boolean
   defaultOpen?:  boolean
   /** Controlled open state. When provided, the card is controlled and ignores defaultOpen/internal state. */

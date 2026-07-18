@@ -30,6 +30,7 @@ import { DetailField } from '@/components/ui/DetailField'
 import { Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { formatDate, timeAgo } from './IncidentCard'
+import { SimilarIncidentsPanel } from '@/components/SimilarIncidentsPanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -563,6 +564,9 @@ export function IncidentDetailPage() {
             timelineOpen={timelineOpen}
             onToggle={() => setTimelineOpen((p) => !p)}
           />
+          <div style={{ marginTop: 16 }}>
+            <SimilarIncidentsPanel incidentId={incident.id} />
+          </div>
         </div>
       </div>
 

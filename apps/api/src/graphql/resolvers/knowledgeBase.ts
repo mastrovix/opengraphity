@@ -5,6 +5,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
+import { enqueueEmbedding } from '../../jobs/embeddingWorker.js'
 
 interface KBArticle {
   id:                 string
@@ -311,6 +312,10 @@ export async function createKBArticle(
     await wiSession.close()
   }
 
+  enqueueEmbedding({ entityType: 'kb_article', entityId: id, tenantId: ctx.tenantId }).catch((err: unknown) => {
+    logger.error({ err }, '[embeddings] KB enqueue failed — similarity will lag until backfill')
+  })
+
   return created
 }
 
@@ -352,6 +357,9 @@ export async function updateKBArticle(
 
     const updated = mapArticle(res.records[0])
     void audit(ctx, 'kb_article.updated', 'KBArticle', args.id)
+  enqueueEmbedding({ entityType: 'kb_article', entityId: args.id, tenantId: ctx.tenantId }).catch((err: unknown) => {
+    logger.error({ err }, '[embeddings] KB enqueue failed — similarity will lag until backfill')
+  })
     return updated
   } finally {
     await session.close()

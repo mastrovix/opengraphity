@@ -17,6 +17,7 @@ import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startWorkflowJobWorker, startNotificationJobWorker } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
+import { startEmbeddingWorker } from './jobs/embeddingWorker.js'
 import { startEmailDigestWorker } from './jobs/emailDigestWorker.js'
 import { registerAllConnectors } from './discovery/registerConnectors.js'
 import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
@@ -43,6 +44,8 @@ async function main() {
   // Start notification job worker (escalation_check, digest, timer_wait)
   const _notificationWorker = startNotificationJobWorker()
   const _webhookDeliveryWorker = startWebhookDeliveryWorker()
+  // Embedding worker (semantic similarity: incident simili + KB suggerita)
+  const _embeddingWorker = startEmbeddingWorker()
   const _emailDigestWorker = startEmailDigestWorker()
 
   // Register discovery connectors and start sync worker

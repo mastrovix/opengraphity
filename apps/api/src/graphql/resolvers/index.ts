@@ -39,6 +39,7 @@ import { automationResolvers } from './automation.js'
 import { integrationsResolvers } from './integrations.js'
 import { collaborationResolvers } from './collaboration.js'
 import { whatifResolvers } from './whatif.js'
+import { similarityResolvers } from './similarity.js'
 import { impactResolvers } from './impact.js'
 import { ciRelationshipResolvers } from './ciRelationships.js'
 import { cmdbResolvers } from './cmdb.js'
@@ -282,6 +283,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...integrationsResolvers.Query,
       ...collaborationResolvers.Query,
       ...whatifResolvers.Query,
+      ...similarityResolvers.Query,
       ...impactResolvers.Query,
       auditLog,
       ciIncidents: ciResolvers.Query.ciIncidents,
