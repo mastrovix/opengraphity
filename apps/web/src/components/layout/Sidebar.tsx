@@ -43,6 +43,7 @@ import {
   Clock,
   Plug,
   FlaskConical,
+  Sparkles,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -60,6 +61,7 @@ const NAV_ITEM_DEFS = [
   { to: '/dashboard',      labelKey: 'sidebar.dashboard',     icon: LayoutDashboard },
   { to: '/approvals',      labelKey: 'sidebar.approvals',     icon: CheckSquare },
   { to: '/knowledge-base', labelKey: 'sidebar.knowledgeBase', icon: BookOpen },
+  { to: '/assistant',      labelKey: 'sidebar.assistant',     icon: Sparkles },
 ]
 
 const ANALYSIS_ITEM_DEFS = [

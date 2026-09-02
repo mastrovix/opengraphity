@@ -53,6 +53,7 @@ import { AuditLogPage } from '@/pages/admin/AuditLogPage'
 const MonitoringPage = lazy(() => import('@/pages/admin/MonitoringPage').then(m => ({ default: m.MonitoringPage })))
 import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage'
 import { KnowledgeBasePage } from '@/pages/knowledge-base/KnowledgeBasePage'
+import { AssistantPage } from '@/pages/assistant/AssistantPage'
 import { KBArticlePage } from '@/pages/knowledge-base/KBArticlePage'
 import { KBAdminPage } from '@/pages/admin/KBAdminPage'
 import { AutoTriggersPage } from '@/pages/admin/AutoTriggersPage'
@@ -170,6 +171,7 @@ const router = createBrowserRouter([
       { path: 'admin/assessment-questions', element: <QuestionAdminPage />,      errorElement: <RouteError /> },
       { path: 'approvals',                element: <ApprovalsPage />,           errorElement: <RouteError /> },
       { path: 'knowledge-base',           element: <KnowledgeBasePage />,       errorElement: <RouteError /> },
+      { path: 'assistant',                element: <AssistantPage />,           errorElement: <RouteError /> },
       { path: 'knowledge-base/:slug',     element: <KBArticlePage />,           errorElement: <RouteError /> },
     ],
   },

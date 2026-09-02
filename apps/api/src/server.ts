@@ -14,6 +14,7 @@ import { getSchemaForTenant } from './lib/schemaCache.js'
 import { healthRouter } from './rest/health.js'
 import { sseRouter } from './rest/sse.js'
 import { reportStreamRouter } from './rest/report-stream.js'
+import { assistantRouter } from './rest/assistant.js'
 import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { attachmentRouter } from './rest/attachments.js'
@@ -189,6 +190,7 @@ app.use('/api', webhookInboundRouter)  // Webhook inbound uses own token auth
 app.use('/api/v1', v1Router)           // REST API v1 uses API key auth
 app.use('/api', sseRouter)
 app.use('/api', reportStreamRouter)
+app.use('/api', assistantRouter)
 app.use('/api', clientLogRouter)
 app.use('/api', attachmentRouter)
 app.use('/api', incidentPdfRouter)

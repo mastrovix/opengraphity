@@ -123,7 +123,7 @@ export default function ReportsPage() {
     const abort = new AbortController()
     abortRef.current = abort
 
-    const apiUrl = import.meta.env['VITE_API_BASE_URL'] ?? 'http://localhost:4000'
+    const apiUrl = import.meta.env['VITE_API_BASE_URL'] ?? ''
     const token = keycloak.token ?? ''
 
     try {
