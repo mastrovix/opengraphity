@@ -152,6 +152,47 @@ function buildTools(tenantId: string) {
     },
   })
 
+  const listaIncident = betaTool({
+    name: 'lista_incident',
+    description: 'Elenco e CONTEGGIO ESATTO degli incident, con filtri opzionali su stato, severity e categoria. Usa QUESTO (non cerca_incident) per domande tipo "quanti incident aperti abbiamo" o "elenca gli incident critical": il campo "totale" è il numero esatto nel database.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        stato:       { type: 'string', description: 'Filtro stato esatto (es. new, assigned, in_progress, resolved, closed)' },
+        solo_aperti: { type: 'boolean', description: 'true = escludi resolved e closed' },
+        severity:    { type: 'string', description: 'Filtro severity (low, medium, high, critical)' },
+        categoria:   { type: 'string', description: 'Filtro categoria' },
+        limit:       { type: 'number', description: 'Max incident elencati (default 15; il totale è comunque esatto)' },
+      },
+      required: [],
+    },
+    run: async (input) => {
+      const { stato, solo_aperti, severity, categoria, limit } = input as {
+        stato?: string; solo_aperti?: boolean; severity?: string; categoria?: string; limit?: number
+      }
+      const n = Math.min(Math.trunc(limit ?? 15), 50)
+      const rows = await readQuery<{ totale: unknown; incident: unknown[] }>(`
+        MATCH (i:Incident {tenant_id: $tenantId})
+        WHERE ($stato IS NULL OR i.status = $stato)
+          AND ($severity IS NULL OR i.severity = $severity)
+          AND ($categoria IS NULL OR i.category = $categoria)
+          AND ($soloAperti = false OR NOT i.status IN ['resolved', 'closed'])
+        WITH i ORDER BY i.created_at DESC
+        WITH collect({numero: i.number, titolo: i.title, stato: i.status,
+                      severity: i.severity, categoria: i.category, creato: i.created_at}) AS tutti
+        RETURN size(tutti) AS totale, tutti[..${n}] AS incident
+      `, {
+        tenantId,
+        stato: stato ?? null,
+        severity: severity ?? null,
+        categoria: categoria ?? null,
+        soloAperti: solo_aperti === true,
+      })
+      const r = rows[0] ?? { totale: 0, incident: [] }
+      return j({ totale: r.totale, elencati: Array.isArray(r.incident) ? r.incident.length : 0, incident: r.incident })
+    },
+  })
+
   const changeAperti = betaTool({
     name: 'change_aperti',
     description: 'Elenca i change non conclusi del tenant con stato, tipo, rischio e CI toccati. Usalo per domande su change in corso, pianificati o potenzialmente in conflitto.',
@@ -201,7 +242,7 @@ function buildTools(tenantId: string) {
     },
   })
 
-  return [cercaIncident, dettaglioIncident, cercaCI, analisiImpatto, changeAperti, cercaKB]
+  return [cercaIncident, dettaglioIncident, listaIncident, cercaCI, analisiImpatto, changeAperti, cercaKB]
 }
 
 // ── Streaming chat ───────────────────────────────────────────────────────────
@@ -210,6 +251,7 @@ const SYSTEM_PROMPT = `Sei l'assistente operativo di OpenGrafo, una piattaforma 
 
 Regole:
 - Usa i tool per fondare OGNI risposta sui dati reali del tenant. Non inventare mai numeri di ticket, nomi di CI o stati.
+- Per CONTEGGI o elenchi filtrati usa lista_incident (conteggio esatto); cerca_incident è solo ricerca semantica top-K e non è esaustiva.
 - Cita sempre i numeri delle entità (INC..., CHG...) e i nomi esatti dei CI che riporti.
 - Se un tool non trova nulla, dillo esplicitamente — non riempire il vuoto con supposizioni.
 - Hai SOLO strumenti di lettura: non puoi creare o modificare nulla. Se l'utente chiede un'azione, spiega dove farla nella UI.

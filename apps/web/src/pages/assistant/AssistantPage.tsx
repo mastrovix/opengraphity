@@ -18,6 +18,7 @@ interface ChatMessage {
 const TOOL_LABEL: Record<string, string> = {
   cerca_incident:     'Ricerca incident',
   dettaglio_incident: 'Dettaglio incident',
+  lista_incident:     'Elenco incident',
   cerca_ci:           'Ricerca CI',
   analisi_impatto:    'Analisi impatto',
   change_aperti:      'Change aperti',
