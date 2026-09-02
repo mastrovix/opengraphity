@@ -1,6 +1,6 @@
 import { keycloak } from './keycloak'
 
-const API_URL = import.meta.env['VITE_API_URL']?.replace('/graphql', '') ?? 'http://localhost:4000'
+const API_URL = import.meta.env['VITE_API_URL']?.replace('/graphql', '') ?? ''
 
 async function sendLog(
   level: 'error' | 'warn' | 'info',

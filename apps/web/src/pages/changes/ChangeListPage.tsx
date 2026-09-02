@@ -50,7 +50,7 @@ const CATEGORY_STYLE: Record<string, { bg: string; color: string }> = {
 const NEUTRAL_STYLE = { bg: '#f1f5f9', color: 'var(--color-slate)' }
 
 function PhaseBadge({ phase, label, category }: { phase: string; label?: string; category?: string | null }) {
-  const style = lookupOrError(CATEGORY_STYLE, category ?? '__miss__', 'CATEGORY_STYLE', NEUTRAL_STYLE)
+  const style = category ? lookupOrError(CATEGORY_STYLE, category, 'CATEGORY_STYLE', NEUTRAL_STYLE) : NEUTRAL_STYLE
   return (
     <Pill bg={style.bg} color={style.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'capitalize', whiteSpace: 'normal' }}>
       {label || phase}

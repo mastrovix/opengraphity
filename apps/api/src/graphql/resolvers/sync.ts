@@ -138,7 +138,7 @@ export const syncResolvers = {
            WITH count(n) AS total, collect(n) AS all
            UNWIND all AS n
            RETURN properties(n) AS p, total
-           ORDER BY ${orderBy} SKIP $offset LIMIT $limit`,
+           ORDER BY ${orderBy} SKIP toInteger($offset) LIMIT toInteger($limit)`,
           { sourceId: args.sourceId, tenantId: ctx.tenantId, offset, limit },
         )
         const total = rows[0] ? toNum(rows[0].total) : 0
@@ -165,7 +165,7 @@ export const syncResolvers = {
            WITH count(n) AS total, collect(n) AS all
            UNWIND all AS n
            RETURN properties(n) AS p, total
-           ORDER BY n.created_at DESC SKIP $offset LIMIT $limit`,
+           ORDER BY n.created_at DESC SKIP toInteger($offset) LIMIT toInteger($limit)`,
           params,
         )
         const total = rows[0] ? toNum(rows[0].total) : 0

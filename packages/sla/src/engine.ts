@@ -158,10 +158,16 @@ export class SLAEngine extends BaseConsumer<unknown> {
   }
 
   private async handleEntityResolved(
-    event: DomainEvent<{ id: string }>,
+    event: DomainEvent<{ id?: string; entity_id?: string }>,
     entityType: string,
   ): Promise<void> {
-    const { id } = event.payload
+    // Created events carry `id`; resolved events published by the services
+    // carry `entity_id`. Accept both documented shapes — anything else is a
+    // malformed event and must fail the job loudly.
+    const id = event.payload.id ?? event.payload.entity_id
+    if (!id) {
+      throw new Error(`[sla:engine] ${event.type} payload has neither id nor entity_id`)
+    }
     const existing = await getSLAStatus(event.tenant_id, id)
 
     if (existing) {
