@@ -55,4 +55,22 @@ export const similaritySDL = `
     riskFactors: [String!]!
     similarUsed: [SimilarForTriage!]!
   }
+  type ResolutionDraft {
+    draft: String!
+  }
+
+  type ProblemCandidateIncident {
+    id: ID!
+    number: String
+    title: String!
+    status: String!
+    severity: String!
+  }
+
+  """Candidato Problem da incident ricorrenti — suggerimento, mai auto-creato."""
+  type ProblemCandidate {
+    title: String!
+    motivation: String!
+    incidents: [ProblemCandidateIncident!]!
+  }
 `

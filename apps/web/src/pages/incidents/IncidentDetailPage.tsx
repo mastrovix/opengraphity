@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { FileDown, Loader2 } from 'lucide-react'
+import { FileDown, Loader2, Sparkles } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
+import { gql } from '@apollo/client'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { QueryError } from '@/components/QueryError'
@@ -31,6 +32,17 @@ import { Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { formatDate, timeAgo } from './IncidentCard'
 import { SimilarIncidentsPanel } from '@/components/SimilarIncidentsPanel'
+
+const RESOLUTION_DRAFT = gql`
+  query ResolutionDraft($incidentId: ID!) {
+    resolutionDraft(incidentId: $incidentId) { draft }
+  }
+`
+const CREATE_KB_DRAFT = gql`
+  mutation CreateKbDraftFromIncident($incidentId: ID!) {
+    createKbDraftFromIncident(incidentId: $incidentId) { id slug title }
+  }
+`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -119,6 +131,11 @@ export function IncidentDetailPage() {
 
   const [commentText, setCommentText] = useState('')
   const [exportingPdf, setExportingPdf] = useState(false)
+  const [genResolutionDraft, { loading: draftLoading }] = useLazyQuery<{ resolutionDraft: { draft: string } }>(RESOLUTION_DRAFT, { fetchPolicy: 'network-only' })
+  const [createKbDraft, { loading: kbDraftLoading }] = useMutation<{ createKbDraftFromIncident: { id: string; slug: string; title: string } }>(CREATE_KB_DRAFT, {
+    onCompleted: (d) => toast.success(`Bozza KB creata: "${d.createKbDraftFromIncident.title}" — la trovi in Knowledge Base Admin`),
+    onError: (err) => toast.error(`Bozza KB fallita: ${err.message}`),
+  })
 
   const [ciSearch,      setCiSearch]      = useState('')
   const [showCISearch,  setShowCISearch]  = useState(false)
@@ -332,6 +349,16 @@ export function IncidentDetailPage() {
 
       {/* Watchers bar + PDF export */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        {(incident.status === 'resolved' || incident.status === 'closed') && (
+          <Button
+            variant="secondary"
+            disabled={kbDraftLoading}
+            icon={kbDraftLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+            onClick={() => void createKbDraft({ variables: { incidentId: incident.id } })}
+          >
+            Bozza articolo KB
+          </Button>
+        )}
         <Button
           variant="secondary"
           disabled={exportingPdf}
@@ -627,6 +654,20 @@ export function IncidentDetailPage() {
                 ? 'Descrivi la causa radice prima di risolvere (minimo 10 caratteri).'
                 : 'Aggiungi una nota per questa transizione (minimo 10 caratteri).'}
             </p>
+            <button
+              type="button"
+              disabled={draftLoading}
+              onClick={() => {
+                void genResolutionDraft({ variables: { incidentId: incident.id } }).then((res) => {
+                  if (res.error) toast.error(`Bozza AI fallita: ${res.error.message}`)
+                  else if (res.data) setTransitionNotes(res.data.resolutionDraft.draft)
+                  else toast.error('Bozza AI fallita: nessuna risposta')
+                })
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: draftLoading ? 'wait' : 'pointer' }}
+            >
+              <Sparkles size={12} /> {draftLoading ? 'Genero bozza dalle attività…' : 'Bozza AI dalle attività'}
+            </button>
             <Textarea
               value={transitionNotes}
               onChange={(e) => { setTransitionNotes(e.target.value); setNotesError('') }}

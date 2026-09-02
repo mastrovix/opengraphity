@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useQuery } from '@apollo/client/react'
+import { useQuery, useLazyQuery } from '@apollo/client/react'
+import { gql } from '@apollo/client'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { Search } from 'lucide-react'
+import { Search, Sparkles } from 'lucide-react'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -18,6 +19,23 @@ import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
+import { Link } from 'react-router-dom'
+import { toast } from 'sonner'
+
+const PROBLEM_CANDIDATES = gql`
+  query ProblemCandidates {
+    problemCandidates {
+      title
+      motivation
+      incidents { id number title status severity }
+    }
+  }
+`
+interface Candidate {
+  title: string
+  motivation: string
+  incidents: { id: string; number: string | null; title: string; status: string; severity: string }[]
+}
 
 interface Problem {
   id:        string
@@ -67,6 +85,8 @@ export function ProblemListPage() {
   const { fields: filterFields } = useEntityFields('Problem')
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null)
+  const [runCandidates, { loading: candidatesLoading }] = useLazyQuery<{ problemCandidates: Candidate[] }>(PROBLEM_CANDIDATES, { fetchPolicy: 'network-only' })
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -95,11 +115,52 @@ export function ProblemListPage() {
           </p>
         }
         actions={
-          <Button onClick={() => navigate('/problems/new')}>
-            {t('pages.problems.new')}
-          </Button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button
+              variant="secondary"
+              disabled={candidatesLoading}
+              icon={<Sparkles size={13} />}
+              onClick={() => {
+                void runCandidates().then((res) => {
+                  if (res.error) toast.error(`Analisi fallita: ${res.error.message}`)
+                  else if (res.data) setCandidates(res.data.problemCandidates)
+                  else toast.error('Analisi fallita: nessuna risposta')
+                })
+              }}
+            >
+              {candidatesLoading ? 'Analisi in corso…' : 'Candidati Problem'}
+            </Button>
+            <Button onClick={() => navigate('/problems/new')}>
+              {t('pages.problems.new')}
+            </Button>
+          </div>
         }
       />
+
+      {candidates !== null && (
+        <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '14px 18px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)', marginBottom: 8 }}>
+            <Sparkles size={14} color="var(--color-brand)" /> Candidati Problem da incident ricorrenti
+          </div>
+          {candidates.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+              Nessun cluster di incident simili ricorrenti trovato (minimo 3 incident non chiusi con lo stesso pattern).
+            </p>
+          ) : candidates.map((c, i) => (
+            <div key={i} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginBottom: 4 }}>{c.title}</div>
+              <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.45 }}>{c.motivation}</p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {c.incidents.map((inc) => (
+                  <Link key={inc.id} to={`/incidents/${inc.id}`} style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 6, background: '#f1f5f9', color: 'var(--color-slate-dark)', textDecoration: 'none', border: '1px solid #e5e7eb' }}>
+                    {inc.number ?? inc.title.slice(0, 20)}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>

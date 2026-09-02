@@ -10,6 +10,8 @@ import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { vectorIndexName } from '../../services/embeddings.js'
 import { suggestTriage } from '../../services/triageService.js'
+import { draftResolutionNotes, problemCandidates as findProblemCandidates, draftKbContent } from '../../services/postIncidentService.js'
+import { createKBArticle } from './knowledgeBase.js'
 
 interface Neo4jInt { toNumber(): number }
 function num(v: unknown): number {
@@ -116,6 +118,29 @@ async function triageSuggestion(
   })
 }
 
+async function resolutionDraft(
+  _: unknown,
+  args: { incidentId: string },
+  ctx: GraphQLContext,
+) {
+  return { draft: await draftResolutionNotes(ctx.tenantId, args.incidentId) }
+}
+
+async function problemCandidates(_: unknown, __: unknown, ctx: GraphQLContext) {
+  return findProblemCandidates(ctx.tenantId)
+}
+
+async function createKbDraftFromIncident(
+  _: unknown,
+  args: { incidentId: string },
+  ctx: GraphQLContext,
+): Promise<unknown> {
+  const content = await draftKbContent(ctx.tenantId, args.incidentId)
+  // Reuses the standard KB creation path: slug, initial (draft) workflow step, audit.
+  return createKBArticle(null, { title: content.title, body: content.body, category: content.category, tags: content.tags }, ctx)
+}
+
 export const similarityResolvers = {
-  Query: { similarIncidents, suggestedArticles, triageSuggestion },
+  Query:    { similarIncidents, suggestedArticles, triageSuggestion, resolutionDraft, problemCandidates },
+  Mutation: { createKbDraftFromIncident },
 }

@@ -168,6 +168,9 @@ export function buildBaseSDL(): string {
     suggestedArticles(incidentId: ID!, limit: Int): SuggestedArticlesResult!
     # AI triage suggestion for an incident draft (explicit, never auto-applied)
     triageSuggestion(title: String!, description: String, ciIds: [ID!]): TriageSuggestion!
+    # Post-incident AI (explicit, drafts only)
+    resolutionDraft(incidentId: ID!): ResolutionDraft!
+    problemCandidates: [ProblemCandidate!]!
     whatIfCompare(scenarios: [WhatIfScenarioInput!]!): [WhatIfResult!]!
 
     # Discovery / Sync
@@ -360,6 +363,8 @@ export function buildBaseSDL(): string {
 
     # Knowledge Base
     createKBArticle(title: String!, body: String!, category: String!, tags: [String!], status: String): KBArticle!
+    # AI: bozza KB da incident risolto — crea un articolo in stato iniziale (draft)
+    createKbDraftFromIncident(incidentId: ID!): KBArticle!
     updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!]): KBArticle!
     deleteKBArticle(id: ID!): Boolean!
     rateKBArticle(id: ID!, helpful: Boolean!): KBArticle!

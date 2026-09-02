@@ -306,6 +306,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...customReportResolvers.Mutation,
       ...dashboardResolvers.Mutation,
       ...anomalyResolvers.Mutation,
+      ...similarityResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
       ...syncResolvers.Mutation,
       ...enumTypeResolvers.Mutation,

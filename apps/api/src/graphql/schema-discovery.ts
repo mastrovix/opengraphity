@@ -31,7 +31,7 @@ export function discoverySDL(): string {
     ciConflicts:     Int!
     relationsCreated: Int!
     relationsRemoved: Int!
-    durationMs:      Int
+    durationMs:      Float
     errorMessage:    String
     startedAt:       String!
     completedAt:     String

@@ -32,7 +32,7 @@ export function workflowSDL(): string {
     stepName:    String!
     enteredAt:   String!
     exitedAt:    String
-    durationMs:  Int
+    durationMs:  Float
     triggeredBy: String!
     triggerType: String!
     notes:       String
