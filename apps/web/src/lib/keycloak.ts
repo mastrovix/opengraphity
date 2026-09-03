@@ -10,6 +10,11 @@ import Keycloak from 'keycloak-js'
  * to prevent silent misconfiguration.
  */
 export function getTenantSlug(): string {
+  // Explicit override — used when the app is served on a host whose first
+  // label is not the tenant (e.g. Tailscale MagicDNS access).
+  const override = import.meta.env['VITE_TENANT_SLUG'] as string | undefined
+  if (override) return override
+
   const hostname = window.location.hostname  // "c-one.localhost" | "c-one.opengrafo.com"
   const first    = hostname.split('.')[0]!
 
