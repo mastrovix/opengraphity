@@ -309,7 +309,7 @@ REGOLE:
       if (toolResult.length > 8000) toolResult = toolResult.slice(0, 8000) + '\n... (truncated)'
     } catch (err: unknown) {
       toolResult = `Errore query: ${err instanceof Error ? err.message : String(err)}`
-      logger.warn({ toolResult }, 'streamReportAI Cypher error')
+      logger.error({ toolResult }, 'streamReportAI Cypher error')
     } finally {
       await querySession.close()
     }

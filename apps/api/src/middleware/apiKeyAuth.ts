@@ -52,7 +52,10 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
     }
 
     const p = row.props
-    const permissions = Array.isArray(p['permissions']) ? p['permissions'] as string[] : []
+    const rawPerms = p['permissions']
+    const permissions: string[] = Array.isArray(rawPerms)
+      ? rawPerms as string[]
+      : typeof rawPerms === 'string' ? (JSON.parse(rawPerms) as string[]) : []
 
     req.apiKey = {
       keyId:       p['id']        as string,

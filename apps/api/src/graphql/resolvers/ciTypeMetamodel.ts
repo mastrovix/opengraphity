@@ -10,7 +10,7 @@ export type CIFieldRow = { f: { properties: Props } | null; enumId: string | nul
 
 function parseEnumValues(raw: string[] | string | null | undefined): string[] {
   if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string') { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : [] } catch { return [] } }
+  if (typeof raw === 'string') { const parsed: unknown = JSON.parse(raw); if (!Array.isArray(parsed)) throw new Error(`enum_values non è un array JSON valido: ${raw.slice(0, 80)}`); return parsed as string[] }
   return []
 }
 

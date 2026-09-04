@@ -9,7 +9,9 @@ type Props = Record<string, unknown>
 
 function parseInlineEnumValues(raw: unknown): string[] {
   if (!raw || typeof raw !== 'string') return []
-  try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : [] } catch { return [] }
+  const arr: unknown = JSON.parse(raw)
+  if (!Array.isArray(arr)) throw new Error(`enum_values non è un array JSON valido: ${raw.slice(0, 80)}`)
+  return arr as string[]
 }
 
 export function mapITILField(f: Props, enumRef?: { id: string; name: string; label: string; values: string[] }) {

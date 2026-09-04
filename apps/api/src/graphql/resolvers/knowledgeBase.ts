@@ -307,7 +307,7 @@ export async function createKBArticle(
     created.workflowInstanceId = null  // will be populated on next fetch
     created.currentStep        = initialStep
   } catch (err) {
-    logger.warn({ err, tenantId: ctx.tenantId }, 'kb_article: workflow instance creation failed — skipping')
+    logger.error({ err, tenantId: ctx.tenantId, articleId: id }, 'kb_article: workflow instance creation failed — article created without workflow')
   } finally {
     await wiSession.close()
   }

@@ -1,4 +1,5 @@
 import type express from 'express'
+import { authLogger } from '../lib/logger.js'
 import { getSession } from '@opengraphity/neo4j'
 import { verifyKeycloakToken } from '../auth/keycloak.js'
 import { buildContext } from '../context.js'
@@ -63,8 +64,10 @@ async function resolveAuth(
   let decoded: Awaited<ReturnType<typeof verifyKeycloakToken>> | null = null
   try {
     decoded = await verifyKeycloakToken(token)
-  } catch {
-    // Not a Keycloak token — fall through to legacy JWT
+  } catch (err) {
+    // Could be a non-Keycloak (legacy) token, or a real verification failure
+    // (JWKS down, unknown kid, forged token). Log so the latter is not silent.
+    authLogger.warn({ err }, 'Keycloak token verification failed — trying legacy JWT')
   }
 
   if (decoded) {
