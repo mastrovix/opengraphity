@@ -29,11 +29,11 @@ async function main() {
   const httpServer = await startServer()
 
   // Start RabbitMQ consumers
-  await createNotificationDispatcher()
-  await createSLAEngine()
+  const notificationDispatcher = await createNotificationDispatcher()
+  const slaEngine = await createSLAEngine()
 
   // Start report scheduler (BullMQ, every 60s)
-  startReportScheduler()
+  const reportScheduler = startReportScheduler()
 
   // Start anomaly scanner (BullMQ, every 1h)
   const anomalyWorker = startAnomalyScanner()
@@ -42,11 +42,11 @@ async function main() {
   const workflowWorker = startWorkflowJobWorker()
 
   // Start notification job worker (escalation_check, digest, timer_wait)
-  const _notificationWorker = startNotificationJobWorker()
-  const _webhookDeliveryWorker = startWebhookDeliveryWorker()
+  const notificationWorker = startNotificationJobWorker()
+  const webhookDeliveryWorker = startWebhookDeliveryWorker()
   // Embedding worker (semantic similarity: incident simili + KB suggerita)
-  const _embeddingWorker = startEmbeddingWorker()
-  const _emailDigestWorker = startEmailDigestWorker()
+  const embeddingWorker = startEmbeddingWorker()
+  const emailDigestWorker = startEmailDigestWorker()
 
   // Register discovery connectors and start sync worker
   registerAllConnectors()
@@ -58,7 +58,15 @@ async function main() {
 
   logger.info('All consumers started')
 
-  const bullWorkers: Worker[] = [anomalyWorker, workflowWorker, syncWorker, maintenanceWorker]
+  // Every worker/consumer must be closed on shutdown; a job left in-flight is
+  // redelivered at-least-once on the next boot (idempotency in BaseConsumer and
+  // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
+  const bullWorkers: Worker[] = [
+    anomalyWorker, workflowWorker, syncWorker, maintenanceWorker,
+    notificationWorker, webhookDeliveryWorker, embeddingWorker,
+    emailDigestWorker, reportScheduler,
+  ]
+  const baseConsumers = [notificationDispatcher, slaEngine]
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
 
@@ -73,13 +81,16 @@ async function main() {
       logger.info('HTTP server closed')
     })
 
-    // Close BullMQ workers with a 30s timeout
-    const workerClosePromise = Promise.all(bullWorkers.map(w => w.close()))
-    await Promise.race([
-      workerClosePromise,
-      new Promise<void>(resolve => setTimeout(resolve, 30_000)),
+    // Close all BullMQ workers and BaseConsumers with a 30s timeout
+    const workerClosePromise = Promise.all([
+      ...bullWorkers.map(w => w.close()),
+      ...baseConsumers.map(c => c.stop()),
     ])
-    logger.info('BullMQ workers closed')
+    const timedOut = await Promise.race([
+      workerClosePromise.then(() => false),
+      new Promise<boolean>(resolve => setTimeout(() => resolve(true), 30_000)),
+    ])
+    logger.info(timedOut ? 'BullMQ workers close timed out after 30s' : 'BullMQ workers closed')
 
     // Close RabbitMQ/Redis event connection
     await closeConnection()

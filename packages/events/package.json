@@ -13,8 +13,9 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
+    "@opengraphity/types": "workspace:*",
     "bullmq": "^5.4.0",
-    "@opengraphity/types": "workspace:*"
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",

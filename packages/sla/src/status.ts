@@ -78,23 +78,23 @@ export async function createSLAStatus(params: {
   const cypher = `
     MATCH (e {id: $entityId, tenant_id: $tenantId})
     WHERE e:Incident OR e:Problem OR e:ServiceRequest
-    CREATE (s:SLAStatus {
-      id:                    $id,
-      tenant_id:             $tenantId,
-      entity_id:             $entityId,
-      entity_type:           $entityType,
-      started_at:            $startedAt,
-      response_deadline:     $responseDeadline,
-      resolve_deadline:      $resolveDeadline,
-      response_met:          false,
-      resolve_met:           false,
-      breached:              false,
-      tier_severity:         $tierSeverity,
-      tier_response_minutes: $tierResponseMinutes,
-      tier_resolve_minutes:  $tierResolveMinutes,
-      tier_business_hours:   $tierBusinessHours
-    })
-    CREATE (e)-[:HAS_SLA]->(s)
+    // MERGE (not CREATE): an at-least-once redelivery of entity.created must not
+    // create a second SLAStatus for the same entity. ON CREATE sets the fields
+    // once; a redelivery returns the existing status unchanged.
+    MERGE (e)-[:HAS_SLA]->(s:SLAStatus { tenant_id: $tenantId, entity_id: $entityId })
+    ON CREATE SET
+      s.id                    = $id,
+      s.entity_type           = $entityType,
+      s.started_at            = $startedAt,
+      s.response_deadline     = $responseDeadline,
+      s.resolve_deadline      = $resolveDeadline,
+      s.response_met          = false,
+      s.resolve_met           = false,
+      s.breached              = false,
+      s.tier_severity         = $tierSeverity,
+      s.tier_response_minutes = $tierResponseMinutes,
+      s.tier_resolve_minutes  = $tierResolveMinutes,
+      s.tier_business_hours   = $tierBusinessHours
     RETURN
       s.id as id, s.tenant_id as tenant_id, s.entity_id as entity_id,
       s.entity_type as entity_type, s.started_at as started_at,
