@@ -10,6 +10,7 @@ import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
+import { requireRole } from '../../../lib/requireRole.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
@@ -28,7 +29,7 @@ import {
 
 export async function createChange(
   _: unknown,
-  args: { input: { title: string; description?: string | null; changeOwner?: string | null; affectedCIIds: string[] } },
+  args: { input: { title: string; description?: string | null; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; rollbackPlan?: string | null } },
   ctx: GraphQLContext,
 ) {
   // Thin wrapper: the whole RFC bootstrap (validation, CHG code, tasks,
@@ -141,6 +142,33 @@ export async function executeChangeTransition(
   return withSession(async (session) => {
     const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
     const entityProps = await loadChange(session, args.changeId, ctx.tenantId) ?? {}
+
+    // ── Current step (for the approval gate) ──────────────────────────────────
+    const stepRow = await runQueryOne<{ step: string }>(session,
+      'MATCH (wi:WorkflowInstance {id: $instanceId})-[:CURRENT_STEP]->(s:WorkflowStep) RETURN s.name AS step',
+      { instanceId })
+    const currentStep = stepRow?.step ?? null
+    const changeType = (entityProps['change_type'] as string) ?? 'normal'
+
+    // ── CAB role gate: authorization rigor depends on the change type ─────────
+    // Leaving the `approval` step means the change is being approved.
+    if (currentStep === 'approval' && args.toStep !== 'approval') {
+      // standard = pre-approved (no gate); normal → Change Manager (admin);
+      // emergency → ECAB (admin). The token role model is admin/operator/
+      // viewer/end_user, so the CAB gate is the admin role.
+      if (changeType !== 'standard') {
+        requireRole(ctx, 'admin')
+      }
+    }
+
+    // ── Rollback plan required before deployment (except standard changes) ────
+    if (args.toStep === 'deployment' && changeType !== 'standard') {
+      const rb = entityProps['rollback_plan'] as string | null
+      if (!rb || rb.trim() === '') {
+        throw new GraphQLError('Un piano di rollback è obbligatorio prima del deploy per change normal/emergency', { extensions: { code: 'BAD_USER_INPUT' } })
+      }
+    }
+
     const actionCtx: ActionContext = {
       userId:     ctx.userId ?? 'system',
       notes:      args.notes,

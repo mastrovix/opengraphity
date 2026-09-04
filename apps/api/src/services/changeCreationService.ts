@@ -30,6 +30,8 @@ export interface ChangeCreationInput {
   description?:  string | null
   changeOwner?:  string | null
   affectedCIIds: string[]
+  changeType?:   string | null   // standard | normal | emergency (default normal)
+  rollbackPlan?: string | null
 }
 
 export interface ChangeCreationCtx {
@@ -48,6 +50,8 @@ export async function createChangeRFC(
   ctx: ChangeCreationCtx,
 ): Promise<CreatedChange> {
   const { title, description, changeOwner, affectedCIIds } = input
+  const changeType = ['standard', 'normal', 'emergency'].includes(input.changeType ?? '') ? input.changeType! : 'normal'
+  const rollbackPlan = input.rollbackPlan ?? null
   if (!affectedCIIds || affectedCIIds.length === 0) {
     throw new ValidationError('Un change deve avere almeno un CI impattato')
   }
@@ -78,6 +82,7 @@ export async function createChangeRFC(
       CREATE (c:Change {
         id: $id, tenant_id: $tenantId, code: $code,
         title: $title, description: $description,
+        change_type: $changeType, rollback_plan: $rollbackPlan,
         aggregate_risk_score: null,
         approval_route: null, approval_status: null,
         created_at: $now, updated_at: $now
@@ -120,6 +125,7 @@ export async function createChangeRFC(
       `, {
         id, code, title,
         description: description ?? null,
+        changeType, rollbackPlan,
         requesterId: ctx.userId,
         ownerId: changeOwner ?? null,
         ciTasks,

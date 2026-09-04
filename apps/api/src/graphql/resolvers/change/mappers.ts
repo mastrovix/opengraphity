@@ -22,6 +22,8 @@ export function mapChange(props: Props) {
     description:        (props['description']          ?? null) as string | null,
     aggregateRiskScore: props['aggregate_risk_score'] != null ? toInt(props['aggregate_risk_score']) : null,
     approvalRoute:      (props['approval_route']       ?? null) as string | null,
+    changeType:         (props['change_type']           ?? 'normal') as string,
+    rollbackPlan:       (props['rollback_plan']         ?? null) as string | null,
     approvalStatus:     (props['approval_status']      ?? null) as string | null,
     approvalAt:         (props['approval_at']          ?? null) as string | null,
     createdAt:          props['created_at']          as string,

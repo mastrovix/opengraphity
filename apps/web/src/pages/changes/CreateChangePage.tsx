@@ -39,6 +39,8 @@ export function CreateChangePage() {
 
   const [title, setTitle]             = useState('')
   const [description, setDescription] = useState('')
+  const [changeType, setChangeType]   = useState<'standard'|'normal'|'emergency'>('normal')
+  const [rollbackPlan, setRollbackPlan] = useState('')
   const [ownerId, setOwnerId]         = useState<string>('')
   const [ciSearch, setCiSearch]       = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
@@ -70,7 +72,7 @@ export function CreateChangePage() {
     },
   })
 
-  const canSubmit = title.trim() !== '' && selectedCIs.length > 0 && !loading
+  const canSubmit = title.trim() !== '' && selectedCIs.length > 0 && !loading && (changeType === 'standard' || rollbackPlan.trim() !== '')
 
   const handleSubmit = () => {
     if (!canSubmit) return
@@ -82,6 +84,8 @@ export function CreateChangePage() {
           description:   description.trim() || null,
           changeOwner:   ownerId || null,
           affectedCIIds: selectedCIs.map(ci => ci.id),
+          changeType,
+          rollbackPlan:  rollbackPlan.trim() || null,
         },
       },
     })
@@ -144,6 +148,39 @@ export function CreateChangePage() {
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
           </div>
+
+          {/* TIPO DI CHANGE */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>Tipo di change</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(['standard','normal','emergency'] as const).map(t => {
+                const sel = changeType === t
+                const labels = { standard: 'Standard (pre-approvato)', normal: 'Normal', emergency: 'Emergency' }
+                return (
+                  <button key={t} type="button" onClick={() => setChangeType(t)}
+                    style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
+                      border: `1.5px solid ${sel ? 'var(--color-brand)' : '#e5e7eb'}`,
+                      background: sel ? '#f0f9ff' : 'var(--color-slate-bg)',
+                      color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
+                    {labels[t]}
+                  </button>
+                )
+              })}
+            </div>
+            <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 6 }}>
+              Standard: nessuna approvazione. Normal/Emergency: approvazione richiesta (admin) e piano di rollback obbligatorio.
+            </p>
+          </div>
+
+          {/* PIANO DI ROLLBACK */}
+          {changeType !== 'standard' && (
+            <div style={{ marginBottom: 20 }}>
+              <label style={fieldLabel}>Piano di rollback / back-out <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+              <textarea value={rollbackPlan} onChange={e => setRollbackPlan(e.target.value)}
+                placeholder="Come si annulla il change se qualcosa va storto…" rows={3}
+                style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }} />
+            </div>
+          )}
 
           {/* DESCRIZIONE */}
           <div style={{ marginBottom: 20 }}>

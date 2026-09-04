@@ -12,7 +12,6 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "seed": "tsx src/seed.ts",
-    "seed:change": "tsx src/seed-change-runner.ts",
     "seed:kb": "tsx src/seed-kb-runner.ts",
     "seed:problem": "tsx src/seed-problem.ts",
     "test": "vitest run",
