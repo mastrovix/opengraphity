@@ -25,11 +25,24 @@ interface KBArticle {
   publishedAt:        string | null
   workflowInstanceId: string | null
   currentStep:        string | null
+  version:            number
+  lastEditedByName:   string | null
 }
 
 interface KBCategory {
   name:  string
   count: number
+}
+
+interface KBArticleVersion {
+  version:      number
+  title:        string
+  body:         string
+  category:     string
+  tags:         string[]
+  editedById:   string | null
+  editedByName: string | null
+  editedAt:     string
 }
 
 function toInt(v: unknown): number {
@@ -59,6 +72,8 @@ export function mapArticle(r: { get: (k: string) => unknown }): KBArticle {
     publishedAt:        r.get('publishedAt')        as string | null,
     workflowInstanceId: (r.get('workflowInstanceId') ?? null) as string | null,
     currentStep:        (r.get('currentStep')        ?? null) as string | null,
+    version:            toInt(r.get('version')) || 1,
+    lastEditedByName:   (r.get('lastEditedByName')   ?? null) as string | null,
   }
 }
 
@@ -80,7 +95,9 @@ const ARTICLE_RETURN = `
          a.updated_at        AS updatedAt,
          a.published_at      AS publishedAt,
          wi.id               AS workflowInstanceId,
-         wi.current_step     AS currentStep
+         wi.current_step     AS currentStep,
+         coalesce(a.version, 1)   AS version,
+         a.last_edited_by_name    AS lastEditedByName
 `
 
 // Full RETURN including the OPTIONAL MATCH for WorkflowInstance
@@ -258,6 +275,10 @@ export async function createKBArticle(
         views:             0,
         helpful_count:     0,
         not_helpful_count: 0,
+        version:           1,
+        last_edited_by:      $authorId,
+        last_edited_by_name: $authorName,
+        last_edited_at:      $now,
         created_at:        $now,
         updated_at:        $now,
         published_at:      $publishedAt
@@ -278,7 +299,9 @@ export async function createKBArticle(
              a.updated_at        AS updatedAt,
              a.published_at      AS publishedAt,
              null                AS workflowInstanceId,
-             null                AS currentStep
+             null                AS currentStep,
+             a.version           AS version,
+             a.last_edited_by_name AS lastEditedByName
     `, {
       id,
       tenantId:    ctx.tenantId,
@@ -340,17 +363,49 @@ export async function updateKBArticle(
     }
 
     const now     = new Date().toISOString()
-    const setters: string[] = ['a.updated_at = $now']
-    const params: Record<string, unknown> = { id: args.id, tenantId: ctx.tenantId, now }
+    const setters: string[] = []
+    const params: Record<string, unknown> = { id: args.id, tenantId: ctx.tenantId, now, editorId: ctx.userId, editorName: ctx.userEmail }
 
     if (args.title)    { setters.push('a.title = $title');       params['title']    = args.title }
     if (args.body)     { setters.push('a.body = $body');         params['body']     = args.body }
     if (args.category) { setters.push('a.category = $category'); params['category'] = args.category }
     if (args.tags)     { setters.push('a.tags = $tags');         params['tags']     = JSON.stringify(args.tags) }
 
+    // No content field provided → nothing to version. Return the article as-is
+    // rather than minting an empty version and bumping the counter.
+    if (setters.length === 0) {
+      const res = await session.executeRead((tx) => tx.run(`
+        MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
+        ${ARTICLE_RETURN_WITH_WI}
+      `, { id: args.id, tenantId: ctx.tenantId }))
+      return mapArticle(res.records[0])
+    }
+
+    // Snapshot the CURRENT content as an immutable version node BEFORE
+    // overwriting, then bump the article's version counter and record the
+    // editor. History holds versions 1..N-1; the live article is version N.
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
-      SET ${setters.join(', ')}
+      CREATE (v:KBArticleVersion {
+        id:             randomUUID(),
+        tenant_id:      $tenantId,
+        article_id:     $id,
+        version:        coalesce(a.version, 1),
+        title:          a.title,
+        body:           a.body,
+        category:       a.category,
+        tags:           a.tags,
+        edited_by:      a.last_edited_by,
+        edited_by_name: coalesce(a.last_edited_by_name, a.author_name),
+        edited_at:      coalesce(a.last_edited_at, a.updated_at, a.created_at)
+      })
+      CREATE (a)-[:HAS_VERSION]->(v)
+      SET ${setters.join(', ')},
+          a.version           = coalesce(a.version, 1) + 1,
+          a.last_edited_by    = $editorId,
+          a.last_edited_by_name = $editorName,
+          a.last_edited_at    = $now,
+          a.updated_at        = $now
       WITH a
       ${ARTICLE_RETURN_WITH_WI}
     `, params))
@@ -419,16 +474,86 @@ export async function rateKBArticle(
   }
 }
 
+export async function kbArticleVersions(
+  _: unknown,
+  args: { articleId: string },
+  ctx: GraphQLContext,
+): Promise<KBArticleVersion[]> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (a:KBArticle {id: $articleId, tenant_id: $tenantId})-[:HAS_VERSION]->(v:KBArticleVersion)
+      RETURN v.version        AS version,
+             v.title          AS title,
+             v.body           AS body,
+             v.category       AS category,
+             v.tags           AS tags,
+             v.edited_by      AS editedById,
+             v.edited_by_name AS editedByName,
+             v.edited_at      AS editedAt
+      ORDER BY v.version DESC
+    `, { articleId: args.articleId, tenantId: ctx.tenantId }))
+    return res.records.map((r) => ({
+      version:      toInt(r.get('version')),
+      title:        r.get('title')    as string,
+      body:         r.get('body')     as string,
+      category:     r.get('category') as string,
+      tags:         JSON.parse((r.get('tags') as string | null) ?? '[]') as string[],
+      editedById:   (r.get('editedById')   ?? null) as string | null,
+      editedByName: (r.get('editedByName') ?? null) as string | null,
+      editedAt:     r.get('editedAt') as string,
+    }))
+  } finally {
+    await session.close()
+  }
+}
+
+export async function restoreKBArticleVersion(
+  _: unknown,
+  args: { articleId: string; version: number },
+  ctx: GraphQLContext,
+): Promise<KBArticle> {
+  const session = getSession(undefined, 'WRITE')
+  try {
+    // Load the target snapshot's content, then route it through updateKBArticle
+    // so the CURRENT content is itself snapshotted and the version counter bumps.
+    const snapRes = await session.executeRead((tx) => tx.run(`
+      MATCH (a:KBArticle {id: $articleId, tenant_id: $tenantId})-[:HAS_VERSION]->(v:KBArticleVersion {version: $version})
+      RETURN v.title AS title, v.body AS body, v.category AS category, v.tags AS tags
+    `, { articleId: args.articleId, tenantId: ctx.tenantId, version: args.version }))
+
+    if (!snapRes.records.length) {
+      throw new GraphQLError(`Version ${args.version} not found for article`, { extensions: { code: 'NOT_FOUND' } })
+    }
+    const snap = snapRes.records[0]
+    const tags = JSON.parse((snap.get('tags') as string | null) ?? '[]') as string[]
+
+    const restored = await updateKBArticle(_, {
+      id:       args.articleId,
+      title:    snap.get('title')    as string,
+      body:     snap.get('body')     as string,
+      category: snap.get('category') as string,
+      tags,
+    }, ctx)
+    void audit(ctx, 'kb_article.version_restored', 'KBArticle', args.articleId)
+    return restored
+  } finally {
+    await session.close()
+  }
+}
+
 export const knowledgeBaseResolvers = {
   Query: {
     kbArticles,
     kbArticle,
     kbArticleBySlug,
     kbCategories,
+    kbArticleVersions,
   },
   Mutation: {
     createKBArticle,
     updateKBArticle,
+    restoreKBArticleVersion,
     deleteKBArticle,
     rateKBArticle,
   },

@@ -506,3 +506,41 @@ export const CHANGE_CALENDAR_SUGGESTED_SLOTS = gql`
     }
   }
 `
+
+// ── Service Catalog (admin) ──────────────────────────────────────────────────
+
+export const GET_SERVICE_CATALOG_ADMIN = gql`
+  query GetServiceCatalogAdmin {
+    serviceCatalogItems {
+      id name description category requiresApproval active createdAt
+    }
+  }
+`
+
+// ── OLA / UC + SLA report ─────────────────────────────────────────────────────
+
+export const GET_OLA_CONTRACTS = gql`
+  query GetOLAContracts($type: String) {
+    olaContracts(type: $type) {
+      id type name description entityType responseMinutes resolveMinutes
+      businessHours partyType partyName teamId teamName enabled createdAt
+    }
+  }
+`
+
+export const GET_SLA_REPORT = gql`
+  query GetSLAReport($windowDays: Int) {
+    slaReport(windowDays: $windowDays) {
+      generatedAt
+      windowDays
+      sla {
+        total met breached paused openOnTrack breachRate avgResolutionMinutes
+        byPriority { priority total met breached }
+      }
+      ola {
+        id type name entityType partyType partyName resolveMinutes
+        evaluated met breached attainmentPct
+      }
+    }
+  }
+`

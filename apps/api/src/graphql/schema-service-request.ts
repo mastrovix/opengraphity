@@ -39,6 +39,14 @@ export function serviceRequestSDL(): string {
     requiresApproval: Boolean
   }
 
+  input UpdateServiceCatalogItemInput {
+    name: String
+    description: String
+    category: String
+    requiresApproval: Boolean
+    active: Boolean
+  }
+
   input CreateServiceRequestInput {
     title: String!
     description: String

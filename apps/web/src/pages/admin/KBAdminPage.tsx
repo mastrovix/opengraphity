@@ -61,6 +61,76 @@ const EXECUTE_TRANSITION = gql`
 
 const GET_KB_CATEGORIES = gql`query KBAdminCategories { kbCategories { name } }`
 
+const GET_KB_VERSIONS = gql`
+  query KBArticleVersions($articleId: ID!) {
+    kbArticleVersions(articleId: $articleId) {
+      version title category tags editedByName editedAt
+    }
+  }
+`
+
+const RESTORE_KB_VERSION = gql`
+  mutation RestoreKBArticleVersion($articleId: ID!, $version: Int!) {
+    restoreKBArticleVersion(articleId: $articleId, version: $version) {
+      id title body category tags version
+    }
+  }
+`
+
+interface KBVersion { version: number; title: string; category: string; tags: string[]; editedByName: string | null; editedAt: string }
+
+interface RestoredArticle { title: string; body: string; category: string; tags: string[] }
+
+/** Collapsible version-history panel shown in the edit form. */
+function VersionHistory({ articleId, onRestored }: { articleId: string; onRestored: (a: RestoredArticle) => void }) {
+  const { data, loading, refetch } = useQuery<{ kbArticleVersions: KBVersion[] }>(GET_KB_VERSIONS, {
+    variables: { articleId }, fetchPolicy: 'cache-and-network',
+  })
+  const [restore, { loading: restoring }] = useMutation<{ restoreKBArticleVersion: RestoredArticle }>(RESTORE_KB_VERSION, {
+    onCompleted: (d) => { toast.success('Versione ripristinata'); void refetch(); onRestored(d.restoreKBArticleVersion) },
+    onError: (e: { message: string }) => toast.error(e.message),
+  })
+  const versions = data?.kbArticleVersions ?? []
+
+  if (loading && !data) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Caricamento cronologia…</p>
+  if (versions.length === 0) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Nessuna versione precedente. Le modifiche future creeranno lo storico.</p>
+
+  return (
+    <div style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
+        <thead>
+          <tr style={{ background: '#fff', textAlign: 'left', color: 'var(--color-slate-light)' }}>
+            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Ver.</th>
+            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Titolo</th>
+            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Modificato da</th>
+            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Data</th>
+            <th style={{ padding: '7px 12px', fontWeight: 600, textAlign: 'right' }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {versions.map((v) => (
+            <tr key={v.version} style={{ borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+              <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>v{v.version}</td>
+              <td style={{ padding: '7px 12px', color: 'var(--color-slate-dark)' }}>{v.title}</td>
+              <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>{v.editedByName ?? '—'}</td>
+              <td style={{ padding: '7px 12px', color: 'var(--color-slate-light)' }}>{new Date(v.editedAt).toLocaleString('it-IT')}</td>
+              <td style={{ padding: '7px 12px', textAlign: 'right' }}>
+                <button
+                  disabled={restoring}
+                  onClick={() => restore({ variables: { articleId, version: v.version } })}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-brand)', cursor: restoring ? 'default' : 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: restoring ? 0.6 : 1 }}
+                >
+                  Ripristina
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface KBArticle {
@@ -384,6 +454,19 @@ export function KBAdminPage() {
             <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
               "Salva" aggiorna il contenuto senza cambiare stato. "Invia per revisione" salva e avvia il processo di approvazione.
             </p>
+          )}
+
+          {/* Version history — only when editing an existing article */}
+          {editId && (
+            <div style={{ marginTop: 20, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+              <h4 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Clock size={14} /> Cronologia versioni
+              </h4>
+              <VersionHistory
+                articleId={editId}
+                onRestored={(a) => setForm({ title: a.title, body: a.body, category: a.category, tags: a.tags.join(', ') })}
+              />
+            </div>
           )}
         </div>
       )}

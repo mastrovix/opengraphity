@@ -1,4 +1,4 @@
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLResolveInfo } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
@@ -238,11 +238,41 @@ async function createServiceCatalogItem(_: unknown, args: { input: { name: strin
   }, true)
 }
 
+async function updateServiceCatalogItem(
+  _: unknown,
+  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; active?: boolean } },
+  ctx: GraphQLContext,
+) {
+  requireRole(ctx, 'admin')
+  const { input } = args
+  // Build a SET map with only the provided fields — undefined must not
+  // overwrite existing values with null.
+  const sets: Record<string, unknown> = {}
+  if (input.name !== undefined)             sets['name']              = input.name
+  if (input.description !== undefined)      sets['description']       = input.description
+  if (input.category !== undefined)         sets['category']          = input.category
+  if (input.requiresApproval !== undefined) sets['requires_approval'] = input.requiresApproval
+  if (input.active !== undefined)           sets['active']            = input.active
+  if (Object.keys(sets).length === 0) {
+    throw new ValidationError('updateServiceCatalogItem: nessun campo da aggiornare')
+  }
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session, `
+      MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId})
+      SET ci += $sets
+      RETURN properties(ci) AS props
+    `, { id: args.id, tenantId: ctx.tenantId, sets })
+    if (!rows[0]) throw new NotFoundError('ServiceCatalogItem', args.id)
+    void audit(ctx, 'service_catalog_item.updated', 'ServiceCatalogItem', args.id)
+    return mapCatalogItem(rows[0].props)
+  }, true)
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const serviceRequestResolvers = {
   Query:    { serviceRequests, serviceRequest, serviceCatalogItems },
-  Mutation: { createServiceRequest, updateServiceRequest, completeServiceRequest, createServiceCatalogItem },
+  Mutation: { createServiceRequest, updateServiceRequest, completeServiceRequest, createServiceCatalogItem, updateServiceCatalogItem },
   ServiceRequest: {
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,

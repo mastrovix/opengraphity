@@ -449,6 +449,7 @@ async function incidentSlaStatus(
       responseMet:      Boolean(s['response_met']),
       resolveMet:       Boolean(s['resolve_met']),
       breached:         Boolean(s['breached']),
+      pausedAt:         (s['paused_at'] ?? null) as string | null,
     }
   })
 }

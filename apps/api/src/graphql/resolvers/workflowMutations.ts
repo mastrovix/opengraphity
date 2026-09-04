@@ -524,6 +524,8 @@ export async function executeWorkflowTransition(
         await applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes)
 
         // Publish workflow.step.entered for any notify_rule enter_actions on this step
+        // (SLA pause/resume is driven by the step's own sla_pause/sla_resume
+        // enter/exit actions, consumed by the SLA engine — see packages/sla.)
         await publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'incident', incidentId)
       }
 

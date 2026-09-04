@@ -6,7 +6,7 @@ export const GET_INCIDENTS = gql`
       total
       items {
         id number title severity status createdAt
-        slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached }
+        slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
       }
     }
   }
@@ -44,7 +44,7 @@ export const GET_INCIDENT = gql`
         id text createdAt updatedAt
         author { id name email }
       }
-      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
     }
   }
 `
@@ -70,6 +70,8 @@ export const GET_SERVICE_REQUEST = gql`
       createdAt updatedAt completedAt
       requestedBy { id name email }
       assignee { id name email }
+      workflowInstance { id currentStep status }
+      availableTransitions { toStep label requiresInput inputField }
     }
   }
 `

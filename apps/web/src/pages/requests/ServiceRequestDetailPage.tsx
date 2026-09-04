@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@apollo/client/react'
+import { useQuery, useMutation } from '@apollo/client/react'
+import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { QueryError } from '@/components/QueryError'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -13,13 +15,17 @@ import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { keycloak } from '@/lib/keycloak'
 import { lookupOrError } from '@/lib/tokens'
 import { GET_SERVICE_REQUEST } from '@/graphql/queries'
+import { EXECUTE_WORKFLOW_TRANSITION } from '@/graphql/mutations'
 
+interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
   id: string; title: string; description: string | null
   status: string; priority: string; dueDate: string | null
   createdAt: string; updatedAt: string; completedAt: string | null
   requestedBy: { id: string; name: string; email: string } | null
   assignee: { id: string; name: string; email: string } | null
+  workflowInstance: { id: string; currentStep: string; status: string } | null
+  availableTransitions: WorkflowTransition[]
 }
 
 const PRIORITY_COLOR: Record<string, string> = { critical: 'var(--color-danger)', high: '#f97316', medium: '#eab308', low: '#22c55e' }
@@ -44,10 +50,28 @@ export function ServiceRequestDetailPage() {
   const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { data, loading, error, refetch } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id })
+  const { data, loading, error, refetch } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
 
-  if (loading) return <PageContainer><Skeleton style={{ height: 300 }} /></PageContainer>
+  const [transitionModal, setTransitionModal] = useState<{ toStep: string; label: string; inputField: string | null } | null>(null)
+  const [transitionNotes, setTransitionNotes] = useState('')
+  const [executeTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition?: { success: boolean; error: string | null } }>(EXECUTE_WORKFLOW_TRANSITION, {
+    onCompleted: async (res) => {
+      const r = res.executeWorkflowTransition
+      if (r && !r.success) { toast.error(r.error ?? 'Transizione non riuscita'); return }
+      setTransitionModal(null); setTransitionNotes('')
+      await refetch()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const runTransition = (instanceId: string, toStep: string, label: string, notes?: string) => {
+    void executeTransition({ variables: { instanceId, toStep, notes: notes?.trim() || null } })
+      .then(() => toast.success(label))
+      .catch(() => { /* onError handles toast */ })
+  }
+
+  if (loading && !data) return <PageContainer><Skeleton style={{ height: 300 }} /></PageContainer>
   if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
   if (!sr) return (
     <PageContainer>
@@ -99,14 +123,83 @@ export function ServiceRequestDetailPage() {
         </div>
 
         {/* Sidebar */}
-        <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
-          <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
-          <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
-          <DetailField label={t('detail.dueDate')} value={sr.dueDate ? new Date(sr.dueDate).toLocaleDateString('it-IT') : null} />
-          <DetailField label={t('detail.createdAt')} value={new Date(sr.createdAt).toLocaleDateString('it-IT')} />
-          {sr.completedAt && <DetailField label={t('detail.completedAt')} value={new Date(sr.completedAt).toLocaleDateString('it-IT')} />}
-        </SectionCard>
+        <div>
+          {/* Workflow transitions */}
+          <div style={{ marginBottom: 16 }}>
+            <SectionCard collapsible={false} defaultOpen title="Azioni">
+              {!sr.workflowInstance ? (
+                <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
+                  Nessun workflow associato a questa richiesta.
+                </p>
+              ) : sr.availableTransitions.length === 0 ? (
+                <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
+                  Nessuna azione disponibile nello stato attuale ({sr.workflowInstance.currentStep}).
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {sr.availableTransitions.map((tr) => (
+                    <button
+                      key={tr.toStep}
+                      disabled={transitioning}
+                      onClick={() => {
+                        if (tr.requiresInput) {
+                          setTransitionNotes('')
+                          setTransitionModal({ toStep: tr.toStep, label: tr.label, inputField: tr.inputField })
+                        } else {
+                          runTransition(sr.workflowInstance!.id, tr.toStep, tr.label)
+                        }
+                      }}
+                      style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-brand)', background: 'var(--color-brand)', color: '#fff', cursor: transitioning ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, opacity: transitioning ? 0.6 : 1, textAlign: 'left' }}
+                    >
+                      {tr.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          </div>
+
+          <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
+            <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
+            <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
+            <DetailField label={t('detail.dueDate')} value={sr.dueDate ? new Date(sr.dueDate).toLocaleDateString('it-IT') : null} />
+            <DetailField label={t('detail.createdAt')} value={new Date(sr.createdAt).toLocaleDateString('it-IT')} />
+            {sr.completedAt && <DetailField label={t('detail.completedAt')} value={new Date(sr.completedAt).toLocaleDateString('it-IT')} />}
+          </SectionCard>
+        </div>
       </div>
+
+      {/* Transition notes modal (for transitions requiring input, e.g. rejection reason) */}
+      {transitionModal && sr.workflowInstance && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          onClick={() => setTransitionModal(null)}
+        >
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontSize: 17, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 12px' }}>{transitionModal.label}</h3>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
+              {transitionModal.inputField === 'rejection_reason' ? 'Motivo del rifiuto' : 'Note'}
+            </label>
+            <textarea
+              value={transitionNotes}
+              onChange={(e) => setTransitionNotes(e.target.value)}
+              rows={4}
+              autoFocus
+              style={{ width: '100%', border: '1px solid var(--color-border-light)', borderRadius: 8, padding: 10, fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button onClick={() => setTransitionModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: '#fff', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+              <button
+                disabled={transitioning || transitionNotes.trim().length === 0}
+                onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionModal.label, transitionNotes)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
+              >
+                Conferma
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageContainer>
   )
 }

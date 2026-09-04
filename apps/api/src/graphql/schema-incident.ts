@@ -37,6 +37,7 @@ export function incidentSDL(): string {
     responseMet:      Boolean!
     resolveMet:       Boolean!
     breached:         Boolean!
+    pausedAt:         String
   }
 
   type Comment {

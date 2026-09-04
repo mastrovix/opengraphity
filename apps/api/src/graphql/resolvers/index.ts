@@ -12,6 +12,7 @@ import { teamResolvers } from './team.js'
 import { workflowResolvers } from './workflow.js'
 import { notificationChannelResolvers } from './notificationChannel.js'
 import { reportResolvers } from './report.js'
+import { olaResolvers } from './ola.js'
 import { customReportResolvers } from './customReports.js'
 import { ciResolvers } from './ci.js'
 import { ciGroupResolvers } from './ciGroup.js'
@@ -268,6 +269,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...workflowResolvers.Query,
       ...notificationChannelResolvers.Query,
       ...reportResolvers.Query,
+      ...olaResolvers.Query,
       ...customReportResolvers.Query,
       ...logsResolvers.Query,
       ...dashboardResolvers.Query,
@@ -310,6 +312,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...workflowResolvers.Mutation,
       ...notificationChannelResolvers.Mutation,
       ...reportResolvers.Mutation,
+      ...olaResolvers.Mutation,
       ...customReportResolvers.Mutation,
       ...dashboardResolvers.Mutation,
       ...anomalyResolvers.Mutation,

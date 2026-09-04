@@ -9,6 +9,7 @@ import { userTeamSDL } from './schema-user-team.js'
 import { workflowSDL } from './schema-workflow.js'
 import { notificationSDL } from './schema-notification.js'
 import { reportSDL } from './schema-report.js'
+import { olaSDL } from './schema-ola.js'
 import { dashboardSDL } from './schema-dashboard.js'
 import { anomalySDL } from './schema-anomaly.js'
 import { topologySDL } from './schema-topology.js'
@@ -148,6 +149,11 @@ export function buildBaseSDL(): string {
     kbArticle(id: ID!): KBArticle!
     kbArticleBySlug(slug: String!): KBArticle!
     kbCategories: [KBCategory!]!
+    kbArticleVersions(articleId: ID!): [KBArticleVersion!]!
+
+    # OLA / UC + SLA reporting
+    olaContracts(type: String): [OLAContract!]!
+    slaReport(windowDays: Int): SLAReport!
 
     # Portal (Self-Service)
     myTickets(status: String, page: Int, pageSize: Int): MyTicketsResult!
@@ -217,6 +223,7 @@ export function buildBaseSDL(): string {
     # Service Requests
     createServiceRequest(input: CreateServiceRequestInput!): ServiceRequest!
     createServiceCatalogItem(input: CreateServiceCatalogItemInput!): ServiceCatalogItem!
+    updateServiceCatalogItem(id: ID!, input: UpdateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
     completeServiceRequest(id: ID!): ServiceRequest!
 
@@ -364,6 +371,9 @@ export function buildBaseSDL(): string {
     # AI: bozza KB da incident risolto — crea un articolo in stato iniziale (draft)
     createKbDraftFromIncident(incidentId: ID!): KBArticle!
     updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!]): KBArticle!
+    restoreKBArticleVersion(articleId: ID!, version: Int!): KBArticle!
+    createOLAContract(input: CreateOLAContractInput!): OLAContract!
+    updateOLAContract(id: ID!, input: UpdateOLAContractInput!): OLAContract!
     deleteKBArticle(id: ID!): Boolean!
     rateKBArticle(id: ID!, helpful: Boolean!): KBArticle!
 
@@ -405,6 +415,7 @@ export function buildBaseSDL(): string {
   ${workflowSDL()}
   ${notificationSDL()}
   ${reportSDL()}
+  ${olaSDL()}
   ${dashboardSDL()}
   ${anomalySDL()}
   ${topologySDL()}

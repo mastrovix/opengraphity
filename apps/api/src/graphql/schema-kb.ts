@@ -19,6 +19,19 @@ export function knowledgeBaseSDL(): string {
     publishedAt:        String
     workflowInstanceId: ID
     currentStep:        String
+    version:            Int!
+    lastEditedByName:   String
+  }
+
+  type KBArticleVersion {
+    version:      Int!
+    title:        String!
+    body:         String!
+    category:     String!
+    tags:         [String!]!
+    editedById:   String
+    editedByName: String
+    editedAt:     String!
   }
 
   type KBArticlesResult {

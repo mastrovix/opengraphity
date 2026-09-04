@@ -44,6 +44,8 @@ import {
   Plug,
   FlaskConical,
   Sparkles,
+  ShoppingCart,
+  Gauge,
 } from 'lucide-react'
 import { keycloak } from '../../lib/keycloak'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -88,6 +90,7 @@ const ITSM_ITEM_DEFS = [
 
 const REPORTING_ITEM_DEFS = [
   { to: '/reports',        labelKey: 'sidebar.aiAnalysis',    icon: BrainCircuit },
+  { to: '/reports/sla',    labelKey: 'sidebar.slaReport',     icon: Gauge        },
   { to: '/custom-reports', labelKey: 'sidebar.reportBuilder', icon: LayoutGrid   },
 ]
 
@@ -99,6 +102,7 @@ const ADMIN_NAV_ITEM_DEFS = [
   { to: '/admin/triggers',         labelKey: 'sidebar.autoTriggers',   icon: Zap         },
   { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
   { to: '/admin/sla-policies',     labelKey: 'sidebar.slaPolicies',    icon: Clock       },
+  { to: '/admin/service-catalog',  labelKey: 'sidebar.serviceCatalog', icon: ShoppingCart},
   { to: '/admin/integrations',         labelKey: 'sidebar.integrations',        icon: Plug        },
   { to: '/admin/assessment-questions', labelKey: 'sidebar.assessmentQuestions', icon: HelpCircle  },
 ]

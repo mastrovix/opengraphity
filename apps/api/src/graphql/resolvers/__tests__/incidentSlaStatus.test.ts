@@ -94,6 +94,7 @@ describe('Incident.slaStatus', () => {
       responseMet:      true,
       resolveMet:       false,
       breached:         false,
+      pausedAt:         null,
     })
   })
 

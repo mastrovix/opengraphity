@@ -58,6 +58,7 @@
     "requests": "Requests",
     "reporting": "Reporting",
     "aiAnalysis": "AI Analysis",
+    "slaReport": "SLA Report",
     "reportBuilder": "Report Builder",
     "analysis": "Analysis",
     "anomalies": "Anomalies",
@@ -87,6 +88,7 @@
     "autoTriggers": "Auto Triggers",
     "businessRules": "Business Rules",
     "slaPolicies": "SLA Policies",
+    "serviceCatalog": "Service Catalog",
     "integrations": "Integrations",
     "assessmentQuestions": "Assessment Questions",
     "whatIf": "What-if Planning",
@@ -872,6 +874,7 @@
     "remaining": "{{time}} left",
     "response": "Response",
     "resolve": "Resolution",
+    "paused": "SLA paused",
     "none": "No SLA"
   }
 }

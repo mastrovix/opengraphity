@@ -529,3 +529,39 @@ export const CREATE_CHANGE_FROM_CATALOG = gql`
     createChangeFromCatalog(catalogEntryId: $catalogEntryId, title: $title, description: $description, ciIds: $ciIds) { id title status type }
   }
 `
+
+// ── Service Catalog (admin) ──────────────────────────────────────────────────
+
+export const CREATE_SERVICE_CATALOG_ITEM = gql`
+  mutation CreateServiceCatalogItem($input: CreateServiceCatalogItemInput!) {
+    createServiceCatalogItem(input: $input) {
+      id name description category requiresApproval active createdAt
+    }
+  }
+`
+
+export const UPDATE_SERVICE_CATALOG_ITEM = gql`
+  mutation UpdateServiceCatalogItem($id: ID!, $input: UpdateServiceCatalogItemInput!) {
+    updateServiceCatalogItem(id: $id, input: $input) {
+      id name description category requiresApproval active createdAt
+    }
+  }
+`
+
+// ── OLA / UC ──────────────────────────────────────────────────────────────────
+
+export const CREATE_OLA_CONTRACT = gql`
+  mutation CreateOLAContract($input: CreateOLAContractInput!) {
+    createOLAContract(input: $input) {
+      id type name entityType responseMinutes resolveMinutes partyType partyName teamName enabled createdAt
+    }
+  }
+`
+
+export const UPDATE_OLA_CONTRACT = gql`
+  mutation UpdateOLAContract($id: ID!, $input: UpdateOLAContractInput!) {
+    updateOLAContract(id: $id, input: $input) {
+      id type name entityType responseMinutes resolveMinutes partyType partyName teamName enabled createdAt
+    }
+  }
+`

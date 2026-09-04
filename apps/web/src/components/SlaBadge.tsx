@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Timer, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Timer, CheckCircle2, AlertTriangle, PauseCircle } from 'lucide-react'
 
 export interface SlaStatusInfo {
   startedAt:        string
@@ -9,6 +9,7 @@ export interface SlaStatusInfo {
   responseMet:      boolean
   resolveMet:       boolean
   breached:         boolean
+  pausedAt?:        string | null
 }
 
 function formatDuration(ms: number): string {
@@ -20,7 +21,7 @@ function formatDuration(ms: number): string {
   return `${Math.floor(hrs / 24)}g ${hrs % 24}h`
 }
 
-type SlaState = 'met' | 'breached' | 'overdue' | 'warning' | 'ontrack'
+type SlaState = 'met' | 'breached' | 'overdue' | 'warning' | 'ontrack' | 'paused'
 
 const STATE_STYLE: Record<SlaState, { bg: string; fg: string }> = {
   met:      { bg: '#dcfce7', fg: '#15803d' },
@@ -28,6 +29,7 @@ const STATE_STYLE: Record<SlaState, { bg: string; fg: string }> = {
   overdue:  { bg: '#fee2e2', fg: '#b91c1c' },
   warning:  { bg: '#fef3c7', fg: '#b45309' },
   ontrack:  { bg: '#f1f5f9', fg: '#475569' },
+  paused:   { bg: '#e0e7ff', fg: '#4338ca' },
 }
 
 /**
@@ -57,6 +59,9 @@ export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null |
   if (sla.resolveMet) {
     state = 'met'
     label = t('sla.met')
+  } else if (sla.pausedAt) {
+    state = 'paused'
+    label = t('sla.paused')
   } else if (sla.breached) {
     state = 'breached'
     label = t('sla.breached')
@@ -76,7 +81,10 @@ export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null |
   }
 
   const { bg, fg } = STATE_STYLE[state]
-  const Icon = state === 'met' ? CheckCircle2 : state === 'ontrack' || state === 'warning' ? Timer : AlertTriangle
+  const Icon = state === 'met' ? CheckCircle2
+    : state === 'paused' ? PauseCircle
+    : state === 'ontrack' || state === 'warning' ? Timer
+    : AlertTriangle
 
   return (
     <span

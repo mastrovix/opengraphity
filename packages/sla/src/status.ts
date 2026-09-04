@@ -187,6 +187,63 @@ export async function markResolveMet(tenantId: string, entityId: string): Promis
   }
 }
 
+/**
+ * Stops the SLA clock. Sets `paused_at` to now, unless the SLA is already
+ * paused or already resolved (nothing to pause). Returns the updated status,
+ * or null if there was nothing to pause. The caller cancels the pending
+ * warning/breach/response jobs — a paused SLA must not fire timers.
+ */
+export async function pauseSLA(tenantId: string, entityId: string): Promise<SLAStatus | null> {
+  const current = await getSLAStatus(tenantId, entityId)
+  if (!current || current.paused_at || current.resolve_met) return null
+
+  const now = new Date().toISOString()
+  const cypher = `
+    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    SET s.paused_at = $now
+  `
+  const session = writeSession()
+  try {
+    await runQuery(session, cypher, { tenantId, entityId, now })
+  } finally {
+    await session.close()
+  }
+  return { ...current, paused_at: now }
+}
+
+/**
+ * Restarts the SLA clock. Extends both deadlines by the elapsed pause duration
+ * so the remaining time is preserved, clears `paused_at`, and returns the
+ * updated status. Returns null if the SLA was not paused (nothing to resume).
+ * The caller re-schedules the timers against the new deadlines.
+ */
+export async function resumeSLA(tenantId: string, entityId: string): Promise<SLAStatus | null> {
+  const current = await getSLAStatus(tenantId, entityId)
+  if (!current || !current.paused_at) return null
+
+  const pausedMs = Date.now() - new Date(current.paused_at).getTime()
+  // Guard against a corrupt/future paused_at producing a negative shift.
+  const shiftMs = Math.max(0, pausedMs)
+  const newResponse = new Date(new Date(current.response_deadline).getTime() + shiftMs).toISOString()
+  const newResolve  = new Date(new Date(current.resolve_deadline).getTime()  + shiftMs).toISOString()
+
+  const cypher = `
+    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    SET s.response_deadline = $newResponse,
+        s.resolve_deadline  = $newResolve,
+        s.paused_at         = null
+  `
+  const session = writeSession()
+  try {
+    await runQuery(session, cypher, { tenantId, entityId, newResponse, newResolve })
+  } finally {
+    await session.close()
+  }
+  return { ...current, response_deadline: newResponse, resolve_deadline: newResolve, paused_at: undefined }
+}
+
 export async function markBreached(tenantId: string, entityId: string): Promise<void> {
   const cypher = `
     MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
