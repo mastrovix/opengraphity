@@ -23,14 +23,28 @@ async function teams(_: unknown, args: { filters?: string; sortField?: string; s
     const sortMap: Record<string, string> = { name: 't.name', type: 't.type', createdAt: 't.created_at' }
     const orderBy = sortMap[args.sortField ?? ''] ?? 't.name'
     const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
+    // Prefetch members / owned+supported CIs / manager with pattern
+    // comprehensions: one query, no per-team N+1 and no cartesian blow-up
+    // (each comprehension returns an independent list).
     const cypher = `
       MATCH (t:Team {tenant_id: $tenantId})
       ${advWhere ? `WHERE ${advWhere}` : ''}
-      RETURN properties(t) as props
+      RETURN properties(t) as props,
+        [ (t)<-[:MEMBER_OF]-(m:User) | properties(m) ] as members,
+        [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: labels(oci)[0] } ] as ownedCIs,
+        [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: labels(sci)[0] } ] as supportedCIs,
+        [ (t)-[:MANAGED_BY]->(mgr:User) | properties(mgr) ] as managers
       ORDER BY ${orderBy} ${orderDir}
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, params)
-    return rows.map((r) => mapTeam(r.props))
+    const rows = await runQuery<{ props: Props; members: Props[]; ownedCIs: { props: Props; label: string }[]; supportedCIs: { props: Props; label: string }[]; managers: Props[] }>(session, cypher, params)
+    const mapCIRow = (c: { props: Props; label: string }) => { c.props['type'] = ciTypeFromLabels([c.label]); return mapCI(c.props) }
+    return rows.map((r) => ({
+      ...mapTeam(r.props),
+      _members:       r.members,
+      _ownedCIs:      r.ownedCIs.map(mapCIRow),
+      _supportedCIs:  r.supportedCIs.map(mapCIRow),
+      _manager:       r.managers[0] ?? null,
+    }))
   })
 }
 
@@ -127,7 +141,8 @@ async function assignCISupportGroup(
 
 // ── Field resolvers ──────────────────────────────────────────────────────────
 
-async function teamMembers(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+async function teamMembers(parent: { id: string; _members?: Props[] }, _: unknown, ctx: GraphQLContext) {
+  if (parent._members) return parent._members
   return withSession(async (session) => {
     const cypher = `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:MEMBER_OF]-(u:User)
@@ -139,7 +154,8 @@ async function teamMembers(parent: { id: string }, _: unknown, ctx: GraphQLConte
   })
 }
 
-async function teamOwnedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+async function teamOwnedCIs(parent: { id: string; _ownedCIs?: unknown[] }, _: unknown, ctx: GraphQLContext) {
+  if (parent._ownedCIs) return parent._ownedCIs
   return withSession(async (session) => {
     const cypher = `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:OWNED_BY]-(n)
@@ -155,10 +171,11 @@ async function teamOwnedCIs(parent: { id: string }, _: unknown, ctx: GraphQLCont
   })
 }
 
-async function teamSupportedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+async function teamSupportedCIs(parent: { id: string; _supportedCIs?: unknown[] }, _: unknown, ctx: GraphQLContext) {
+  if (parent._supportedCIs) return parent._supportedCIs
   return withSession(async (session) => {
     const cypher = `
-      MATCH (t:Team {id: $id})<-[:SUPPORTED_BY]-(n)
+      MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:SUPPORTED_BY]-(n)
       WHERE n.tenant_id = $tenantId
       RETURN properties(n) as props, labels(n)[0] AS label
       ORDER BY n.name
@@ -171,7 +188,8 @@ async function teamSupportedCIs(parent: { id: string }, _: unknown, ctx: GraphQL
   })
 }
 
-async function teamManager(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+async function teamManager(parent: { id: string; _manager?: Props | null }, _: unknown, ctx: GraphQLContext) {
+  if (parent._manager !== undefined) return parent._manager
   return withSession(async (session) => {
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})-[:MANAGED_BY]->(u:User)
