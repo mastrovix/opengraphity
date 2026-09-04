@@ -47,14 +47,25 @@ function getJwksClient(issuer: string): ReturnType<typeof jwksClient> {
  * Validates that the issuer looks like a Keycloak realm URL.
  * Prevents tokens with arbitrary issuers from being accepted.
  */
+// Only these origins may issue tokens. Without this anchor an attacker could
+// set `iss` to their own domain, host a matching JWKS, and have the server
+// fetch it and accept a forged token (account takeover + SSRF).
+const ALLOWED_ISSUER_ORIGINS = new Set(
+  [KEYCLOAK_PUBLIC_URL, KEYCLOAK_INTERNAL_URL].map((u) => new URL(u).origin),
+)
+
 function validateIssuer(iss: string): void {
   if (!iss.includes('/realms/')) {
     throw new Error(`Invalid issuer — not a Keycloak realm URL: ${iss}`)
   }
+  let origin: string
   try {
-    new URL(iss)
+    origin = new URL(iss).origin
   } catch {
     throw new Error(`Invalid issuer — not a valid URL: ${iss}`)
+  }
+  if (!ALLOWED_ISSUER_ORIGINS.has(origin)) {
+    throw new Error(`Untrusted token issuer origin: ${origin}`)
   }
 }
 

@@ -83,14 +83,6 @@ export async function buildContext(req: express.Request): Promise<GraphQLContext
   const auth = req.headers.authorization
 
   if (!auth?.startsWith('Bearer ')) {
-    // Allow unauthenticated access for the login mutation
-    const body = req.body as { query?: string; operationName?: string }
-    const isLogin =
-      body?.operationName === 'Login' ||
-      (typeof body?.query === 'string' && /\blogin\s*\(/.test(body.query))
-    if (isLogin) {
-      return { tenantId: '', userId: '', userEmail: '', role: 'viewer' }
-    }
     throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHORIZED' } })
   }
 
@@ -136,7 +128,12 @@ export async function buildContext(req: express.Request): Promise<GraphQLContext
     }
   }
 
-  // Fallback: legacy dev JWT
+  // Legacy dev JWT — trusts tenant_id/role straight from the payload with no
+  // DB lookup or host/tenant cross-check. Only for local dev, never production:
+  // gated behind an explicit opt-in so a leaked JWT_SECRET can't impersonate.
+  if (process.env['ALLOW_LEGACY_JWT'] !== 'true') {
+    throw new GraphQLError('Invalid token', { extensions: { code: 'UNAUTHORIZED' } })
+  }
   try {
     const payload = jwt.verify(token, JWT_SECRET) as JWTPayload
     return {

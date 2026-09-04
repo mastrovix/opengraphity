@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { requireRole } from '../../lib/requireRole.js'
 import { requireEnv, envOrThrowInProd } from '../../lib/env.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { mergeResolvers } from '@graphql-tools/merge'
@@ -132,7 +133,11 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
 // ── createUser mutation ──────────────────────────────────────────────────────
 
 async function createUser(_: unknown, args: { input: { email: string; name: string; password: string; role: string; teamIds?: string[] } }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
   const { email, name, password, role, teamIds } = args.input
+  if (!['admin', 'operator', 'viewer', 'end_user'].includes(role)) {
+    throw new GraphQLError(`Ruolo non valido: ${role}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  }
   const tenantId = ctx.tenantId
   const KEYCLOAK_URL  = envOrThrowInProd('KEYCLOAK_URL', 'http://localhost:8080')
   const KEYCLOAK_ADMIN_USER = process.env['KEYCLOAK_ADMIN_USER'] ?? 'admin'
