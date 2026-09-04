@@ -12,6 +12,7 @@ export function incidentSDL(): string {
     impact: String
     urgency: String
     priority: String!
+    major: Boolean
     category: String
     status: String!
     createdAt: String!

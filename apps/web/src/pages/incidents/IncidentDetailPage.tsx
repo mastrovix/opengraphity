@@ -14,7 +14,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { priorityCode } from '@/lib/priority'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
-import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI } from '@/graphql/mutations'
+import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR } from '@/graphql/mutations'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { IncidentHeader } from './IncidentHeader'
 import { IncidentTimeline } from './IncidentTimeline'
@@ -91,6 +91,7 @@ interface Incident {
   impact:               string | null
   urgency:              string | null
   priority:             string
+  major:                boolean
   status:               string
   rootCause:            string | null
   createdAt:            string
@@ -184,6 +185,8 @@ export function IncidentDetailPage() {
     },
     onError: (err) => toast.error(err.message),
   })
+
+  const [setMajor, { loading: settingMajor }] = useMutation(SET_INCIDENT_MAJOR, { refetchQueries: ['GetIncident'] })
 
   const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
     onCompleted: (_data, opts) => {
@@ -342,6 +345,12 @@ export function IncidentDetailPage() {
   return (
     <PageContainer>
 
+      {incident.major && (
+        <div role="alert" style={{ background: 'var(--color-danger)', color: '#fff', padding: '10px 16px', borderRadius: 8, marginBottom: 12, fontWeight: 700, letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: 8 }}>
+          ⚠ MAJOR INCIDENT
+        </div>
+      )}
+
       {/* Header + action buttons */}
       <IncidentHeader
         incident={incident}
@@ -353,6 +362,14 @@ export function IncidentDetailPage() {
 
       {/* Watchers bar + PDF export */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Button
+          variant="secondary"
+          disabled={settingMajor}
+          onClick={() => void setMajor({ variables: { id: incident.id, major: !incident.major } })}
+          style={incident.major ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
+        >
+          {incident.major ? 'Revoca Major' : 'Dichiara Major Incident'}
+        </Button>
         {(incident.status === 'resolved' || incident.status === 'closed') && (
           <Button
             variant="secondary"

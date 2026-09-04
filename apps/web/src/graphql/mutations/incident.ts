@@ -69,3 +69,9 @@ export const REMOVE_AFFECTED_CI = gql`
     }
   }
 `
+
+export const SET_INCIDENT_MAJOR = gql`
+  mutation SetIncidentMajor($id: ID!, $major: Boolean!) {
+    setIncidentMajor(id: $id, major: $major) { id major }
+  }
+`

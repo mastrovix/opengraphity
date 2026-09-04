@@ -11,6 +11,7 @@ export const PROBLEM_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   steps: [
     { id: 'step-prb-new',                name: 'new',                label: 'Nuovo',                  type: 'start',    enterActions: [], exitActions: [] },
     { id: 'step-prb-under_investigation', name: 'under_investigation', label: 'In Analisi',            type: 'standard', enterActions: [], exitActions: [] },
+    { id: 'step-prb-known_error',        name: 'known_error',        label: 'Errore Noto (KEDB)',     type: 'standard', enterActions: [], exitActions: [] },
     { id: 'step-prb-change_requested',   name: 'change_requested',   label: 'Change Richiesta',       type: 'standard', enterActions: [], exitActions: [] },
     { id: 'step-prb-change_in_progress', name: 'change_in_progress', label: 'Change in Esecuzione',   type: 'standard', enterActions: [], exitActions: [] },
     { id: 'step-prb-resolved',           name: 'resolved',           label: 'Risolto',                type: 'standard', enterActions: [], exitActions: [] },
@@ -24,10 +25,14 @@ export const PROBLEM_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
     { id: 'tr-prb-investigation-rejected',     fromStepName: 'under_investigation', toStepName: 'rejected',           trigger: 'manual',    label: 'Rigetta',                      condition: null,               requiresInput: true,  inputField: 'rejection_reason' },
     { id: 'tr-prb-investigation-deferred',     fromStepName: 'under_investigation', toStepName: 'deferred',           trigger: 'manual',    label: 'Posponi',                      condition: null,               requiresInput: true,  inputField: 'defer_reason' },
     { id: 'tr-prb-deferred-investigation',     fromStepName: 'deferred',           toStepName: 'under_investigation', trigger: 'manual',    label: 'Riprendi analisi',             condition: null,               requiresInput: false, inputField: null },
+    { id: 'tr-prb-investigation-known_error',  fromStepName: 'under_investigation', toStepName: 'known_error',        trigger: 'manual',    label: 'Documenta come Errore Noto',   condition: null,               requiresInput: false, inputField: null },
+    { id: 'tr-prb-known_error-change',         fromStepName: 'known_error',        toStepName: 'change_requested',   trigger: 'manual',    label: 'Richiedi Change risolutiva',   condition: 'has_linked_change', requiresInput: false, inputField: null },
+    { id: 'tr-prb-known_error-resolved',       fromStepName: 'known_error',        toStepName: 'resolved',           trigger: 'manual',    label: 'Segna come risolto',           condition: null,               requiresInput: false, inputField: null },
     { id: 'tr-prb-change-in_progress',         fromStepName: 'change_requested',   toStepName: 'change_in_progress', trigger: 'automatic', label: 'Change in esecuzione',         condition: null,               requiresInput: false, inputField: null },
     { id: 'tr-prb-in_progress-resolved',       fromStepName: 'change_in_progress', toStepName: 'resolved',           trigger: 'automatic', label: 'Change completata',            condition: null,               requiresInput: false, inputField: null },
     { id: 'tr-prb-in_progress-investigation',  fromStepName: 'change_in_progress', toStepName: 'under_investigation', trigger: 'automatic', label: 'Change fallita - rianalisi',  condition: null,               requiresInput: false, inputField: null },
-    { id: 'tr-prb-resolved-closed',            fromStepName: 'resolved',           toStepName: 'closed',             trigger: 'timer',     label: 'Chiudi',                       condition: null,               requiresInput: false, inputField: null },
+    { id: 'tr-prb-resolved-closed',            fromStepName: 'resolved',           toStepName: 'closed',             trigger: 'manual',    label: 'Verifica soluzione e chiudi',  condition: null,               requiresInput: false, inputField: null },
+    { id: 'tr-prb-resolved-investigation',     fromStepName: 'resolved',           toStepName: 'under_investigation', trigger: 'manual',    label: 'Soluzione non efficace - riapri', condition: null,            requiresInput: true,  inputField: 'reopen_reason' },
   ],
 }
 

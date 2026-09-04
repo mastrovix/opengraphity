@@ -671,8 +671,20 @@ async function problemCreatedBy(
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
+async function knownErrors(_: unknown, args: { search?: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const search = (args.search ?? '').trim()
+    const rows = await runQuery<{ props: Props }>(session, `
+      MATCH (p:Problem {tenant_id: $tenantId, status: 'known_error'})
+      ${search ? "WHERE toLower(p.title) CONTAINS toLower($search) OR toLower(coalesce(p.workaround,'')) CONTAINS toLower($search) OR toLower(coalesce(p.root_cause,'')) CONTAINS toLower($search)" : ''}
+      RETURN properties(p) AS props ORDER BY p.updated_at DESC
+    `, { tenantId: ctx.tenantId, search })
+    return rows.map((r) => mapProblem(r.props))
+  })
+}
+
 export const problemResolvers = {
-  Query: { problems, problem },
+  Query: { problems, problem, knownErrors },
   Mutation: {
     createProblem,
     updateProblem,

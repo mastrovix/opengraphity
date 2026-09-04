@@ -10,7 +10,7 @@ import type {
 } from '@opengraphity/types'
 import { DEFAULT_SLA_POLICIES, type SLAPolicy } from './policy.js'
 import { selectSLAForEntity } from './selector.js'
-import { createSLAStatus, getSLAStatus, markResolveMet } from './status.js'
+import { createSLAStatus, markResponseMet, getSLAStatus, markResolveMet } from './status.js'
 import {
   initScheduler,
   scheduleWarning,
@@ -76,6 +76,11 @@ export class SLAEngine extends BaseConsumer<unknown> {
           event as DomainEvent<IncidentResolvedPayload>,
           'incident',
         )
+        break
+
+      // First assignment = first response → satisfies the SLA response target.
+      case 'incident.assigned':
+        await this.handleEntityResponded(event, 'incident')
         break
 
       case 'request.created':
@@ -155,6 +160,13 @@ export class SLAEngine extends BaseConsumer<unknown> {
       `[sla:engine] SLA started for ${entityType} ${payload.id}: ` +
         `response by ${status.response_deadline}, resolve by ${status.resolve_deadline}`,
     )
+  }
+
+  private async handleEntityResponded(event: DomainEvent<unknown>, entityType: string): Promise<void> {
+    const entityId = (event.payload as { id?: string; entity_id?: string }).id
+      ?? (event.payload as { entity_id?: string }).entity_id
+    if (!entityId) throw new Error(`${entityType}.assigned event missing entity id`)
+    await markResponseMet(event.tenant_id, entityId)
   }
 
   private async handleEntityResolved(

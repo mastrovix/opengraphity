@@ -38,6 +38,7 @@ export function buildBaseSDL(): string {
     # Problems
     problems(limit: Int, offset: Int, status: String, priority: String, search: String, filters: String, sortField: String, sortDirection: String): ProblemsResult!
     problem(id: ID!): Problem
+    knownErrors(search: String): [Problem!]!
 
     # Service Requests
     serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): [ServiceRequest!]!
@@ -190,6 +191,7 @@ export function buildBaseSDL(): string {
 
     # Incidents
     createIncident(input: CreateIncidentInput!): Incident!
+    setIncidentMajor(id: ID!, major: Boolean!): Incident!
     updateIncident(id: ID!, input: UpdateIncidentInput!): Incident!
     resolveIncident(id: ID!, rootCause: String): Incident!
     assignIncidentToTeam(id: ID!, teamId: ID!): Incident!

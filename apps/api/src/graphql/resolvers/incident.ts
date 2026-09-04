@@ -1,5 +1,6 @@
 import type { GraphQLResolveInfo } from 'graphql'
 import { derivePriority, isImpactUrgency } from '../../lib/priority.js'
+import { requireRole } from '../../lib/requireRole.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
@@ -454,9 +455,24 @@ async function incidentSlaStatus(
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
+async function setIncidentMajor(_: unknown, args: { id: string; major: boolean }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin', 'operator')
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      SET i.major = $major, i.updated_at = $now
+      RETURN properties(i) as props
+    `, { id: args.id, tenantId: ctx.tenantId, major: args.major, now: new Date().toISOString() })
+    if (!rows[0]) throw new NotFoundError('Incident', args.id)
+    void audit(ctx, args.major ? 'incident.major_declared' : 'incident.major_cleared', 'Incident', args.id)
+    return mapIncident(rows[0].props)
+  }, true)
+}
+
 export const incidentResolvers = {
   Query: { incidents, incident },
-  Mutation: { createIncident, updateIncident, resolveIncident, assignIncidentToTeam, assignIncidentToUser, addIncidentComment, addAffectedCI, removeAffectedCI },
+
+  Mutation: { createIncident, updateIncident, resolveIncident, assignIncidentToTeam, assignIncidentToUser, addIncidentComment, addAffectedCI, removeAffectedCI, setIncidentMajor },
   Incident: {
     assignee:        incidentAssignee,
     assignedTeam:    incidentAssignedTeam,

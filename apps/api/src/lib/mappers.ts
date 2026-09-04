@@ -42,6 +42,7 @@ export function mapIncident(props: Props) {
     impact:       (props['impact']     ?? null) as string | null,
     urgency:      (props['urgency']    ?? null) as string | null,
     priority:     props['severity']    as string,
+    major:        (props['major']       ?? false) as boolean,
     category:     (props['category']   ?? null) as string | null,
     status:       props['status']      as string,
     createdAt:    props['created_at']  as string,

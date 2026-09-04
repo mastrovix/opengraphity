@@ -23,6 +23,7 @@ export const GET_INCIDENT = gql`
       impact
       urgency
       priority
+      major
       status
       rootCause
       createdAt
@@ -55,6 +56,7 @@ export const GET_SERVICE_REQUESTS = gql`
       number
       title
       priority
+      major
       status
       createdAt
     }
