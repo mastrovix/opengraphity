@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockSession = {
   executeRead:  vi.fn().mockResolvedValue({ records: [] }),
-  executeWrite: vi.fn().mockResolvedValue({ records: [] }),
+  executeWrite: vi.fn().mockResolvedValue({ records: [{ get: () => 1 }] }),  // atomic counter returns a value
   close:        vi.fn().mockResolvedValue(undefined),
 }
 

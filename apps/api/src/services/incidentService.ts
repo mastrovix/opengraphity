@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { nextSequenceValue } from '../lib/sequence.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
@@ -102,13 +103,8 @@ export async function createIncident(
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
-    const countResult = await runQueryOne<{ cnt: unknown }>(session,
-      'MATCH (i:Incident {tenant_id: $tenantId}) RETURN count(i) AS cnt',
-      { tenantId: ctx.tenantId },
-    )
-    const rawCnt = countResult?.cnt
-    const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as { toNumber?: unknown } | null)?.toNumber === 'function' ? (rawCnt as { toNumber(): number }).toNumber() : Number(rawCnt ?? 0)
-    const number = 'INC' + String(count + 1).padStart(8, '0')
+    const seq = await nextSequenceValue(session, ctx.tenantId, 'incident')
+    const number = 'INC' + String(seq).padStart(8, '0')
 
     const initialStatus = await getInitialStepName(session, ctx.tenantId, 'incident')
     const rows = await runQuery<{ props: Props }>(session, `

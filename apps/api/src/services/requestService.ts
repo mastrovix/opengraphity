@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
-import { runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { nextSequenceValue } from '../lib/sequence.js'
+import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { publishEvent } from '../lib/publishEvent.js'
@@ -32,13 +33,8 @@ export async function createRequest(
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
-    const countResult = await runQueryOne<{ cnt: unknown }>(session,
-      'MATCH (sr:ServiceRequest {tenant_id: $tenantId}) RETURN count(sr) AS cnt',
-      { tenantId: ctx.tenantId },
-    )
-    const rawCnt = countResult?.cnt
-    const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as { toNumber?: unknown } | null)?.toNumber === 'function' ? (rawCnt as { toNumber(): number }).toNumber() : Number(rawCnt ?? 0)
-    const number = 'REQ' + String(count + 1).padStart(8, '0')
+    const seq = await nextSequenceValue(session, ctx.tenantId, 'service_request')
+    const number = 'REQ' + String(seq).padStart(8, '0')
 
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (r:ServiceRequest {

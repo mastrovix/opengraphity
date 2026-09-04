@@ -60,6 +60,30 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'SyncConflict.id',
     cypher: 'CREATE CONSTRAINT sync_conflict_id_unique IF NOT EXISTS FOR (n:SyncConflict) REQUIRE n.id IS UNIQUE',
   },
+  // Human-facing number/code uniqueness per tenant — the safety net behind the
+  // atomic Counter (apps/api/src/lib/sequence.ts). Previously only some existed
+  // ad-hoc in the DB and were missing from source (Change had none effective:
+  // its constraint was on the always-null `number`, the real key is `code`).
+  {
+    label: 'Incident(tenant_id, number)',
+    cypher: 'CREATE CONSTRAINT incident_number_unique IF NOT EXISTS FOR (n:Incident) REQUIRE (n.tenant_id, n.number) IS UNIQUE',
+  },
+  {
+    label: 'Problem(tenant_id, number)',
+    cypher: 'CREATE CONSTRAINT problem_number_unique IF NOT EXISTS FOR (n:Problem) REQUIRE (n.tenant_id, n.number) IS UNIQUE',
+  },
+  {
+    label: 'ServiceRequest(tenant_id, number)',
+    cypher: 'CREATE CONSTRAINT service_request_number_unique IF NOT EXISTS FOR (n:ServiceRequest) REQUIRE (n.tenant_id, n.number) IS UNIQUE',
+  },
+  {
+    label: 'Change(tenant_id, code)',
+    cypher: 'CREATE CONSTRAINT change_code_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.code) IS UNIQUE',
+  },
+  {
+    label: 'Counter(tenant_id, kind)',
+    cypher: 'CREATE CONSTRAINT counter_key_unique IF NOT EXISTS FOR (n:Counter) REQUIRE (n.tenant_id, n.kind) IS UNIQUE',
+  },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -169,6 +193,40 @@ const INDEXES: SchemaStatement[] = [
   { label: 'SyncConflict(tenant_id)',                   cypher: 'CREATE INDEX sync_conflict_tenant IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id)' },
   { label: 'SyncConflict(source_id)',                   cypher: 'CREATE INDEX sync_conflict_source IF NOT EXISTS FOR (n:SyncConflict) ON (n.source_id)' },
   { label: 'SyncConflict(tenant_id, status)',           cypher: 'CREATE INDEX sync_conflict_status IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id, n.status)' },
+  // Discovery reconciliation looks up CIs by (tenant_id, source, external_id) on
+  // every batch and every relationship — without this it label-scans the tenant.
+  { label: 'ConfigurationItem(tenant_id, discovery_source_id, discovery_external_id)', cypher: 'CREATE INDEX ci_discovery_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.discovery_source_id, n.discovery_external_id)' },
+]
+
+// Raise-only seeding of the atomic counters to the current max number/code, so
+// introducing the Counter on an existing dataset continues numbering instead of
+// restarting from 1. Runs after constraints/indexes. Never lowers a counter.
+const COUNTER_SEEDS: SchemaStatement[] = [
+  { label: 'seed incident counter', cypher: `
+    MATCH (i:Incident) WHERE i.tenant_id IS NOT NULL AND i.number IS NOT NULL
+    WITH i.tenant_id AS t, max(toInteger(substring(i.number, 3))) AS mx
+    MERGE (c:Counter {tenant_id: t, kind: 'incident'})
+    SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
+  { label: 'seed problem counter', cypher: `
+    MATCH (p:Problem) WHERE p.tenant_id IS NOT NULL AND p.number IS NOT NULL
+    WITH p.tenant_id AS t, max(toInteger(substring(p.number, 3))) AS mx
+    MERGE (c:Counter {tenant_id: t, kind: 'problem'})
+    SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
+  { label: 'seed service_request counter', cypher: `
+    MATCH (sr:ServiceRequest) WHERE sr.tenant_id IS NOT NULL AND sr.number IS NOT NULL
+    WITH sr.tenant_id AS t, max(toInteger(substring(sr.number, 3))) AS mx
+    MERGE (c:Counter {tenant_id: t, kind: 'service_request'})
+    SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
+  { label: 'seed change counter', cypher: `
+    MATCH (ch:Change) WHERE ch.tenant_id IS NOT NULL AND ch.code STARTS WITH 'CHG'
+    WITH ch.tenant_id AS t, max(toInteger(substring(ch.code, 3))) AS mx
+    MERGE (c:Counter {tenant_id: t, kind: 'change'})
+    SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
+  { label: 'seed task counter', cypher: `
+    MATCH (tk:ChangeTask) WHERE tk.tenant_id IS NOT NULL AND tk.code STARTS WITH 'TASK'
+    WITH tk.tenant_id AS t, max(toInteger(substring(tk.code, 4))) AS mx
+    MERGE (c:Counter {tenant_id: t, kind: 'task'})
+    SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
 ]
 
 async function runStatements(statements: SchemaStatement[], kind: string): Promise<void> {
@@ -191,6 +249,7 @@ async function main(): Promise<void> {
   try {
     await runStatements(CONSTRAINTS, 'Constraint')
     await runStatements(INDEXES, 'Index')
+    await runStatements(COUNTER_SEEDS, 'CounterSeed')
     console.log('[neo4j:init] Schema initialisation complete.')
   } catch (err) {
     console.error('[neo4j:init] Error during initialisation:', err)
