@@ -177,6 +177,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
 
     case 'create_notification': {
       const message = String(p['message'] ?? '')
+      if (!message.trim()) throw new Error('create_notification action requires a non-empty message')
       const channel = String(p['channel'] ?? 'in_app')
       const event: DomainEvent<{ entity_id: string; entity_type: string; message: string; channel: string }> = {
         id:             uuidv4(),

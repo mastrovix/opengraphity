@@ -55,8 +55,9 @@ router.post('/', requirePermission('incidents:write'), async (req: Request, res:
   try {
     const { title, description, severity, category } = req.body as Record<string, string>
     if (!title) { res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'title is required' } }); return }
+    if (!severity) { res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'severity is required' } }); return }
     const result = await incidentService.createIncident(
-      { title, description, severity: severity ?? 'medium', category },
+      { title, description, severity, category },
       { tenantId: req.apiKey!.tenantId, userId: req.apiKey!.keyId },
     )
     res.status(201).json({ data: result })

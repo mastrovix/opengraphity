@@ -43,8 +43,9 @@ router.post('/', requirePermission('problems:write'), async (req: Request, res: 
   try {
     const { title, description, priority, category, workaround } = req.body as Record<string, string>
     if (!title) { res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'title is required' } }); return }
+    if (!priority) { res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'priority is required' } }); return }
     const result = await problemService.createProblem(
-      { title, description, priority: priority ?? 'medium', category, workaround },
+      { title, description, priority, category, workaround },
       { tenantId: req.apiKey!.tenantId, userId: req.apiKey!.keyId },
     )
     res.status(201).json({ data: result })
