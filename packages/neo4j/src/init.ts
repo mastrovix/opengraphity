@@ -80,6 +80,7 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'Change(tenant_id, code)',
     cypher: 'CREATE CONSTRAINT change_code_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.code) IS UNIQUE',
   },
+  { label: 'ServiceCatalogItem.id', cypher: 'CREATE CONSTRAINT service_catalog_item_id_unique IF NOT EXISTS FOR (n:ServiceCatalogItem) REQUIRE n.id IS UNIQUE' },
   {
     label: 'Counter(tenant_id, kind)',
     cypher: 'CREATE CONSTRAINT counter_key_unique IF NOT EXISTS FOR (n:Counter) REQUIRE (n.tenant_id, n.kind) IS UNIQUE',
@@ -212,6 +213,7 @@ const INDEXES: SchemaStatement[] = [
   { label: 'SyncConflict(tenant_id, status)',           cypher: 'CREATE INDEX sync_conflict_status IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id, n.status)' },
   // Discovery reconciliation looks up CIs by (tenant_id, source, external_id) on
   // every batch and every relationship — without this it label-scans the tenant.
+  { label: 'ServiceCatalogItem(tenant_id)', cypher: 'CREATE INDEX service_catalog_tenant IF NOT EXISTS FOR (n:ServiceCatalogItem) ON (n.tenant_id)' },
   { label: 'ConfigurationItem(tenant_id, discovery_source_id, discovery_external_id)', cypher: 'CREATE INDEX ci_discovery_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.discovery_source_id, n.discovery_external_id)' },
   // Fulltext for the command-palette global search (CONTAINS cannot use range indexes)
   { label: 'global_search (fulltext)', cypher: 'CREATE FULLTEXT INDEX global_search IF NOT EXISTS FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|BusinessCapability|BusinessApplication|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice|DynamicCIGroup) ON EACH [n.title, n.number, n.code, n.name]' },

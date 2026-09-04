@@ -38,7 +38,8 @@
     "add-user": "tsx src/scripts/add-user.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "seed:sr-workflow": "tsx src/scripts/seed-service-request-workflow.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

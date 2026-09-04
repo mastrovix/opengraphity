@@ -14,8 +14,29 @@ export function serviceRequestSDL(): string {
     createdAt: String!
     updatedAt: String!
     completedAt: String
+    catalogItemId: String
+    requiresApproval: Boolean
+    workflowInstance: WorkflowInstance
+    availableTransitions: [WorkflowTransition!]!
     requestedBy: User
     assignee: User
+  }
+
+  type ServiceCatalogItem {
+    id: ID!
+    name: String!
+    description: String
+    category: String
+    requiresApproval: Boolean!
+    active: Boolean!
+    createdAt: String!
+  }
+
+  input CreateServiceCatalogItemInput {
+    name: String!
+    description: String
+    category: String
+    requiresApproval: Boolean
   }
 
   input CreateServiceRequestInput {
@@ -23,6 +44,7 @@ export function serviceRequestSDL(): string {
     description: String
     priority: String!
     dueDate: String
+    catalogItemId: ID
   }
 
   input UpdateServiceRequestInput {

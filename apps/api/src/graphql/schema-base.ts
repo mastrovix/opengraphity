@@ -42,6 +42,7 @@ export function buildBaseSDL(): string {
     # Service Requests
     serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): [ServiceRequest!]!
     serviceRequest(id: ID!): ServiceRequest
+    serviceCatalogItems(activeOnly: Boolean): [ServiceCatalogItem!]!
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
     allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, ciTypes: [String], filters: String, sortField: String, sortDirection: String): AllCIsResult!
@@ -213,6 +214,7 @@ export function buildBaseSDL(): string {
 
     # Service Requests
     createServiceRequest(input: CreateServiceRequestInput!): ServiceRequest!
+    createServiceCatalogItem(input: CreateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
     completeServiceRequest(id: ID!): ServiceRequest!
 

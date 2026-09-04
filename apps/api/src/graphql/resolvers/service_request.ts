@@ -9,6 +9,8 @@ import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
+import { requireRole } from '../../lib/requireRole.js'
+import { v4 as uuidv4 } from 'uuid'
 
 type Props = Record<string, unknown>
 
@@ -88,7 +90,7 @@ async function serviceRequest(
 
 async function createServiceRequest(
   _: unknown,
-  args: { input: { title: string; description?: string; priority: string; dueDate?: string } },
+  args: { input: { title: string; description?: string; priority: string; dueDate?: string; catalogItemId?: string } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -97,7 +99,16 @@ async function createServiceRequest(
       fieldValues: args.input as Record<string, unknown>,
       tenantId:    ctx.tenantId,
     })
-    const result = await requestService.createRequest(args.input, ctx)
+    // A request opened from a catalog item inherits its approval requirement.
+    let requiresApproval = false
+    if (args.input.catalogItemId) {
+      const item = await runQueryOne<{ requiresApproval: boolean }>(session,
+        'MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId}) RETURN ci.requires_approval AS requiresApproval',
+        { id: args.input.catalogItemId, tenantId: ctx.tenantId })
+      if (!item) throw new NotFoundError('ServiceCatalogItem', args.input.catalogItemId)
+      requiresApproval = item.requiresApproval ?? false
+    }
+    const result = await requestService.createRequest({ ...args.input, requiresApproval }, ctx)
     void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
     return result
   })
@@ -185,11 +196,53 @@ async function requestAssignee(
   })
 }
 
+// ── Service Catalog ───────────────────────────────────────────────────────────
+
+function mapCatalogItem(props: Props) {
+  return {
+    id:               props['id'] as string,
+    name:             props['name'] as string,
+    description:      (props['description'] ?? null) as string | null,
+    category:         (props['category'] ?? null) as string | null,
+    requiresApproval: (props['requires_approval'] ?? false) as boolean,
+    active:           (props['active'] ?? true) as boolean,
+    createdAt:        props['created_at'] as string,
+  }
+}
+
+async function serviceCatalogItems(_: unknown, args: { activeOnly?: boolean }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session, `
+      MATCH (ci:ServiceCatalogItem {tenant_id: $tenantId})
+      ${args.activeOnly ? 'WHERE ci.active = true' : ''}
+      RETURN properties(ci) AS props ORDER BY ci.category, ci.name
+    `, { tenantId: ctx.tenantId })
+    return rows.map((r) => mapCatalogItem(r.props))
+  })
+}
+
+async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean } }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const id = uuidv4(); const now = new Date().toISOString()
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session, `
+      CREATE (ci:ServiceCatalogItem {
+        id: $id, tenant_id: $tenantId, name: $name, description: $description,
+        category: $category, requires_approval: $requiresApproval, active: true, created_at: $now
+      })
+      RETURN properties(ci) AS props
+    `, { id, tenantId: ctx.tenantId, name: args.input.name, description: args.input.description ?? null,
+         category: args.input.category ?? null, requiresApproval: args.input.requiresApproval ?? false, now })
+    void audit(ctx, 'service_catalog_item.created', 'ServiceCatalogItem', id)
+    return mapCatalogItem(rows[0]!.props)
+  }, true)
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const serviceRequestResolvers = {
-  Query:    { serviceRequests, serviceRequest },
-  Mutation: { createServiceRequest, updateServiceRequest, completeServiceRequest },
+  Query:    { serviceRequests, serviceRequest, serviceCatalogItems },
+  Mutation: { createServiceRequest, updateServiceRequest, completeServiceRequest, createServiceCatalogItem },
   ServiceRequest: {
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,

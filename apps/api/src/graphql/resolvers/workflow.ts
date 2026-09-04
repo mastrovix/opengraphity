@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import {
+  serviceRequestWorkflowInstance,
+  serviceRequestAvailableTransitionsField,
   incidentWorkflow,
   incidentAvailableTransitions,
   incidentWorkflowHistory,
@@ -149,6 +151,10 @@ export const workflowResolvers = {
   Change: {
     workflowInstance:     changeWorkflowInstance,
     availableTransitions: changeAvailableTransitionsField,
+  },
+  ServiceRequest: {
+    workflowInstance:     serviceRequestWorkflowInstance,
+    availableTransitions: serviceRequestAvailableTransitionsField,
     workflowHistory:      changeWorkflowHistoryField,
   },
 }

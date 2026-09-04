@@ -414,3 +414,40 @@ export async function changeWorkflowHistoryField(
     )
   })
 }
+
+// ── Field resolvers on ServiceRequest ─────────────────────────────────────────
+
+export async function serviceRequestWorkflowInstance(
+  sr: { id: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const result = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        RETURN wi
+      `, { id: sr.id, tenantId: ctx.tenantId }),
+    )
+    if (!result.records.length) return null
+    return mapWI(result.records[0].get('wi').properties as Record<string, unknown>)
+  })
+}
+
+export async function serviceRequestAvailableTransitionsField(
+  sr: { id: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const wiResult = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        RETURN wi.id AS instanceId
+      `, { id: sr.id, tenantId: ctx.tenantId }),
+    )
+    if (!wiResult.records.length) return []
+    const instanceId = wiResult.records[0].get('instanceId') as string
+    return workflowEngine.getAvailableTransitions(session, instanceId)
+  })
+}
