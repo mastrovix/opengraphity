@@ -1,11 +1,11 @@
 import { useState } from 'react'
+import { derivePriority, priorityCode, IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, type ImpactUrgency } from '@/lib/priority'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
-import { useEnumValues } from '@/hooks/useEnumValues'
 import { gql } from '@apollo/client'
 
 const CREATE_PROBLEM = gql`
@@ -47,14 +47,15 @@ export function CreateProblemPage() {
   const navigate = useNavigate()
 
   const [title,       setTitle]       = useState('')
-  const [priority,    setPriority]    = useState('medium')
+  const [impact,      setImpact]      = useState<ImpactUrgency>('medium')
+  const [urgency,     setUrgency]     = useState<ImpactUrgency>('medium')
+  const priority = derivePriority(impact, urgency)
   const [description, setDescription] = useState('')
   const [selectedTeam,     setSelectedTeam]     = useState<Team | null>(null)
   const [teamSearch,       setTeamSearch]       = useState('')
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
-  const { values: priorityValues, loading: priorityLoading } = useEnumValues('problem', 'priority')
 
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
     GET_ITIL_CI_RELATION_RULES,
@@ -77,7 +78,7 @@ export function CreateProblemPage() {
     .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
-  const canSubmit     = title.trim().length > 0 && description.trim().length > 0 && priority !== ''
+  const canSubmit     = title.trim().length > 0 && description.trim().length > 0
 
   const [assignToTeam] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
     onError: (err) => toast.error(`Team assignment: ${err.message}`),
@@ -101,7 +102,8 @@ export function CreateProblemPage() {
       variables: {
         input: {
           title:           title.trim(),
-          priority,
+          impact,
+          urgency,
           description:     description.trim() || undefined,
           affectedCIs:     selectedCIs.map(ci => ci.id),
         },
@@ -150,35 +152,35 @@ export function CreateProblemPage() {
             />
           </div>
 
-          {/* PRIORITY */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
-              Priority <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
-            </label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {priorityLoading ? (
-                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
-              ) : priorityValues.map(p => {
-                const sel = priority === p
-                const c   = PRIORITY_STYLES[p]
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setPriority(p)}
-                    style={{
-                      padding: '7px 16px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                      border: `1.5px solid ${sel ? (c?.border ?? 'var(--color-brand)') : '#e5e7eb'}`,
-                      background: sel ? (c?.bg ?? '#f0f9ff') : 'var(--color-slate-bg)',
-                      color: sel ? (c?.color ?? 'var(--color-brand)') : 'var(--color-slate)',
-                      fontWeight: sel ? 600 : 400,
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </button>
-                )
-              })}
+          {/* IMPATTO × URGENZA → PRIORITÀ */}
+          <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            {([['Impatto', impact, setImpact], ['Urgenza', urgency, setUrgency]] as const).map(([label, val, setVal]) => (
+              <div key={label}>
+                <label style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {IMPACT_URGENCY_OPTIONS.map(o => {
+                    const sel = val === o
+                    return (
+                      <button key={o} type="button" onClick={() => setVal(o)}
+                        style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
+                          border: `1.5px solid ${sel ? 'var(--color-brand)' : '#e5e7eb'}`,
+                          background: sel ? '#f0f9ff' : 'var(--color-slate-bg)',
+                          color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
+                        {IMPACT_URGENCY_LABEL[o]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+            <div>
+              <label style={fieldLabel}>Priorità (calcolata)</label>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
+                border: `1.5px solid ${(PRIORITY_STYLES[priority]?.border ?? '#e5e7eb')}`,
+                background: PRIORITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
+                color: PRIORITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
+                <span>{priorityCode(priority)}</span><span style={{ textTransform: 'capitalize' }}>{priority}</span>
+              </div>
             </div>
           </div>
 

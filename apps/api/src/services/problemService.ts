@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { nextSequenceValue } from '../lib/sequence.js'
+import { derivePriority, impactUrgencyFromPriority, isImpactUrgency } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
@@ -52,9 +53,18 @@ function requireProblemPayload<T>(payload: T | null, id: string): T {
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createProblem(
-  input: { title: string; description?: string; priority: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string },
+  input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string },
   ctx: ServiceCtx,
 ) {
+  // ITIL: Priority = f(Impact, Urgency). Impact+urgency take precedence.
+  let impact = input.impact, urgency = input.urgency, priority = input.priority
+  if (isImpactUrgency(impact) && isImpactUrgency(urgency)) {
+    priority = derivePriority(impact, urgency)
+  } else if (priority) {
+    const iu = impactUrgencyFromPriority(priority); impact = impact ?? iu.impact; urgency = urgency ?? iu.urgency
+  } else {
+    throw new Error('Fornire impact+urgency oppure priority')
+  }
   const id  = uuidv4()
   const now = new Date().toISOString()
 
@@ -71,6 +81,8 @@ export async function createProblem(
         title:       $title,
         description: $description,
         priority:    $priority,
+        impact:      $impact,
+        urgency:     $urgency,
         status:      $status,
         workaround:  $workaround,
         created_at:  $now,
@@ -80,7 +92,8 @@ export async function createProblem(
     `, {
       id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
-      priority: input.priority, workaround: input.workaround ?? null,
+      priority, impact: impact ?? null, urgency: urgency ?? null,
+      workaround: input.workaround ?? null,
       status: initialStatus, now,
     })
     if (!rows[0]) throw new Error('Failed to create problem')
@@ -120,12 +133,12 @@ export async function createProblem(
   await publishEvent('problem.created', ctx.tenantId, ctx.userId, {
     id,
     title:      input.title,
-    priority:   input.priority,
+    priority,
     status:     initialStatus,
     assignedTo: '—',
   } satisfies ProblemEventPayload)
 
-  const entityData = { id, title: input.title, priority: input.priority, status: initialStatus, category: input.category ?? null }
+  const entityData = { id, title: input.title, priority, status: initialStatus, category: input.category ?? null }
   void evaluateTriggers(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId)
     .then(() => evaluateBusinessRules(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId))
     .catch((err: unknown) => {

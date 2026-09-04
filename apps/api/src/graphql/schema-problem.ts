@@ -8,6 +8,8 @@ export function problemSDL(): string {
     title: String!
     description: String
     priority: String!
+    impact: String
+    urgency: String
     status: String!
     rootCause: String
     workaround: String
@@ -45,7 +47,9 @@ export function problemSDL(): string {
   input CreateProblemInput {
     title: String!
     description: String
-    priority: String!
+    priority: String
+    impact: String
+    urgency: String
     affectedCIs: [ID!]
     relatedIncidents: [ID!]
     workaround: String

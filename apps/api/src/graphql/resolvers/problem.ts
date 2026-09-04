@@ -23,6 +23,8 @@ export function mapProblem(props: Props) {
     title:         props['title']         as string,
     description:   (props['description']  ?? null) as string | null,
     priority:      (props['priority']     ?? 'medium') as string,
+    impact:        (props['impact']       ?? null) as string | null,
+    urgency:       (props['urgency']      ?? null) as string | null,
     status:        props['status']        as string,
     rootCause:     (props['root_cause']   ?? null) as string | null,
     workaround:    (props['workaround']   ?? null) as string | null,
@@ -153,7 +155,7 @@ async function problem(
 
 async function createProblem(
   _: unknown,
-  args: { input: { title: string; description?: string; priority: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string } },
+  args: { input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
