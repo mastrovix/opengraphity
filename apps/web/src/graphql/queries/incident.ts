@@ -56,7 +56,6 @@ export const GET_SERVICE_REQUESTS = gql`
       number
       title
       priority
-      major
       status
       createdAt
     }

@@ -10,14 +10,16 @@ import type {
 } from '@opengraphity/types'
 import { DEFAULT_SLA_POLICIES, type SLAPolicy } from './policy.js'
 import { selectSLAForEntity } from './selector.js'
-import { createSLAStatus, markResponseMet, getSLAStatus, markResolveMet, pauseSLA, resumeSLA } from './status.js'
+import { createSLAStatus, markResponseMet, getSLAStatus, markResolveMet, pauseSLA, resumeSLA, type SLAPauseType } from './status.js'
 import {
   initScheduler,
   scheduleWarning,
   scheduleBreachCheck,
   scheduleResponseCheck,
+  scheduleOLABreaches,
   cancelSLAJobs,
 } from './scheduler.js'
+import { getActiveOLAContractsFor } from './olaBreach.js'
 
 function findDefaultPolicy(entityType: 'incident' | 'change' | 'service_request' | 'problem') {
   return DEFAULT_SLA_POLICIES.find((p) => p.entity_type === entityType) ?? null
@@ -90,8 +92,10 @@ export class SLAEngine extends BaseConsumer<unknown> {
       // stopped. sla_stop is treated as a pause (freeze) here.
       case 'sla.resolve.pause':
       case 'sla.resolve.stop':
+        await this.handleSLAPause(event, 'resolve')
+        break
       case 'sla.response.pause':
-        await this.handleSLAPause(event)
+        await this.handleSLAPause(event, 'response')
         break
 
       case 'sla.resolve.resume':
@@ -172,9 +176,23 @@ export class SLAEngine extends BaseConsumer<unknown> {
       scheduleResponseCheck(status),
     ])
 
+    // Schedule OLA/UC breach checks for every contract covering this entity type
+    // (proactive: fires at created_at + the contract's resolve target).
+    const olaContracts = await getActiveOLAContractsFor(event.tenant_id, entityType)
+    if (olaContracts.length > 0) {
+      await scheduleOLABreaches({
+        entityId:   payload.id,
+        entityType,
+        tenantId:   event.tenant_id,
+        timezone:   policy.timezone,
+        contracts:  olaContracts,
+      })
+    }
+
     console.log(
       `[sla:engine] SLA started for ${entityType} ${payload.id}: ` +
-        `response by ${status.response_deadline}, resolve by ${status.resolve_deadline}`,
+        `response by ${status.response_deadline}, resolve by ${status.resolve_deadline}` +
+        (olaContracts.length ? ` (+${olaContracts.length} OLA/UC checks)` : ''),
     )
   }
 
@@ -185,13 +203,13 @@ export class SLAEngine extends BaseConsumer<unknown> {
     return id
   }
 
-  private async handleSLAPause(event: DomainEvent<unknown>): Promise<void> {
+  private async handleSLAPause(event: DomainEvent<unknown>, slaType: SLAPauseType): Promise<void> {
     const entityId = this.eventEntityId(event)
-    const paused = await pauseSLA(event.tenant_id, entityId)
+    const paused = await pauseSLA(event.tenant_id, entityId, slaType)
     if (paused) {
-      // Stop the timers while paused — they will be re-created on resume.
-      await cancelSLAJobs(entityId)
-      console.log(`[sla:engine] SLA paused for ${entityId}`)
+      // Stop only the paused clock's timers — they are re-created on resume.
+      await cancelSLAJobs(entityId, slaType)
+      console.log(`[sla:engine] SLA paused (${slaType}) for ${entityId}`)
     }
   }
 
@@ -199,14 +217,17 @@ export class SLAEngine extends BaseConsumer<unknown> {
     const entityId = this.eventEntityId(event)
     const resumed = await resumeSLA(event.tenant_id, entityId)
     if (!resumed) return
-    // Re-schedule against the extended deadlines. Skip targets already met.
-    if (!resumed.response_met) await scheduleResponseCheck(resumed)
-    if (!resumed.resolve_met) {
+    const pausedType = (resumed.paused_type ?? 'both') as SLAPauseType
+    // Re-schedule only the clock(s) that were paused, skipping met targets.
+    if ((pausedType === 'response' || pausedType === 'both') && !resumed.response_met) {
+      await scheduleResponseCheck(resumed)
+    }
+    if ((pausedType === 'resolve' || pausedType === 'both') && !resumed.resolve_met) {
       await scheduleWarning(resumed)
       await scheduleBreachCheck(resumed)
     }
     console.log(
-      `[sla:engine] SLA resumed for ${entityId}: ` +
+      `[sla:engine] SLA resumed (${pausedType}) for ${entityId}: ` +
         `response by ${resumed.response_deadline}, resolve by ${resumed.resolve_deadline}`,
     )
   }

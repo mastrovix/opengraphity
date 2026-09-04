@@ -4,6 +4,8 @@ import { publish } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
 import { markBreached } from './status.js'
 import type { SLAStatus } from './status.js'
+import { calculateDeadline } from './policy.js'
+import { isEntityResolved, type OLAContractLite } from './olaBreach.js'
 
 const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
 
@@ -42,6 +44,10 @@ interface SLAJobData {
   entityType:     string
   tenantId:       string
   resolveDeadline: string
+  // Present only on 'ola.breach' jobs.
+  contractId?:    string
+  contractName?:  string
+  contractType?:  string
 }
 
 // ── Worker processor ──────────────────────────────────────────────────────────
@@ -94,6 +100,32 @@ async function processJob(job: Job<SLAJobData>): Promise<void> {
       }
       await publish(event)
       console.log(`[sla:scheduler] Response breach fired for ${entityType} ${entityId}`)
+      break
+    }
+
+    case 'ola.breach': {
+      // OLA/UC target elapsed. Alert only if the entity is still open — a
+      // resolved entity met (or already reported) its outcome; no false alarm.
+      const stillOpen = !(await isEntityResolved(job.data.tenantId, entityType, entityId))
+      if (!stillOpen) {
+        console.log(`[sla:scheduler] OLA "${job.data.contractName}" check skipped for ${entityType} ${entityId} — already resolved`)
+        break
+      }
+      const event: DomainEvent<Record<string, unknown>> = {
+        ...baseEvent,
+        id:      randomUUID(),
+        type:    'ola.breached',
+        payload: {
+          entity_id:     entityId,
+          entity_type:   entityType,
+          contract_id:   job.data.contractId ?? null,
+          contract_name: job.data.contractName ?? null,
+          contract_type: job.data.contractType ?? null,
+          breached_at:   new Date().toISOString(),
+        },
+      }
+      await publish(event)
+      console.log(`[sla:scheduler] OLA/UC breach fired: "${job.data.contractName}" on ${entityType} ${entityId}`)
       break
     }
 
@@ -176,14 +208,46 @@ export async function scheduleResponseCheck(status: SLAStatus): Promise<void> {
   }, Math.max(delayMs, 0))
 }
 
-export async function cancelSLAJobs(entityId: string): Promise<void> {
+/**
+ * Cancels the SLA timers for an entity. `which` selects the target: 'resolve'
+ * cancels the warning + breach timers (both keyed to the resolve deadline),
+ * 'response' cancels the response timer, 'both' cancels all three. Used both
+ * on resolution ('both') and on a per-type pause.
+ */
+/**
+ * Schedules one breach-check timer per OLA/UC contract covering the entity.
+ * Each fires at created_at + the contract's resolve target; the processor
+ * alerts only if the entity is still open at that point. Fire-time is the
+ * guard — no cancellation on resolve is needed.
+ */
+export async function scheduleOLABreaches(
+  params: { entityId: string; entityType: string; tenantId: string; timezone: string; contracts: OLAContractLite[] },
+): Promise<void> {
+  const { entityId, entityType, tenantId, timezone, contracts } = params
+  const now = new Date()
+  for (const c of contracts) {
+    const deadline = calculateDeadline(now, c.resolve_minutes, c.business_hours, timezone)
+    const delayMs = deadline.getTime() - now.getTime()
+    await scheduleJob('ola.breach', `ola-${c.id}-${entityId}`, {
+      entityId,
+      entityType,
+      tenantId,
+      resolveDeadline: deadline.toISOString(),
+      contractId:      c.id,
+      contractName:    c.name,
+      contractType:    c.type,
+    }, Math.max(delayMs, 0))
+  }
+}
+
+export async function cancelSLAJobs(entityId: string, which: 'resolve' | 'response' | 'both' = 'both'): Promise<void> {
   const queue = getQueue()
 
-  for (const jobId of [
-    `warning-${entityId}`,
-    `breach-${entityId}`,
-    `response-${entityId}`,
-  ]) {
+  const ids: string[] = []
+  if (which === 'resolve' || which === 'both') ids.push(`warning-${entityId}`, `breach-${entityId}`)
+  if (which === 'response' || which === 'both') ids.push(`response-${entityId}`)
+
+  for (const jobId of ids) {
     const job = await queue.getJob(jobId)
     if (job) {
       await job.remove()

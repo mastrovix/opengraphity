@@ -866,6 +866,13 @@
       "kbArticles": "Knowledge Base"
     }
   },
+  "notification": {
+    "ola": {
+      "breached": {
+        "title": "OLA/UC violato"
+      }
+    }
+  },
   "sla": {
     "title": "SLA",
     "met": "SLA rispettato",

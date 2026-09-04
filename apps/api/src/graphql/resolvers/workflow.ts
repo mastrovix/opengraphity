@@ -16,7 +16,6 @@ import {
   incidentWorkflowHistoryField,
   changeWorkflowInstance,
   changeAvailableTransitionsField,
-  changeWorkflowHistoryField,
 } from './workflowQueries.js'
 import {
   updateWorkflowStep,
@@ -155,6 +154,7 @@ export const workflowResolvers = {
   ServiceRequest: {
     workflowInstance:     serviceRequestWorkflowInstance,
     availableTransitions: serviceRequestAvailableTransitionsField,
-    workflowHistory:      changeWorkflowHistoryField,
+    // NB: no workflowHistory — the ServiceRequest schema type doesn't declare
+    // it, and makeExecutableSchema rejects resolvers for undeclared fields.
   },
 }

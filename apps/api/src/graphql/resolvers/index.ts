@@ -348,7 +348,10 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     User:               { teams: userTeams },
     Problem:            { ...problemResolvers.Problem },
     ProblemComment:     {},
-    ServiceRequest:     serviceRequestResolvers.ServiceRequest,
+    ServiceRequest:     {
+      ...serviceRequestResolvers.ServiceRequest,
+      ...workflowResolvers.ServiceRequest,
+    },
     ReportConversation: reportResolvers.ReportConversation,
     DashboardConfig:    { ...dashboardResolvers.DashboardConfig },
     DashboardWidget:    { ...dashboardResolvers.DashboardWidget },

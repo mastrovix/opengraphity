@@ -14,8 +14,11 @@ export interface SLAStatus {
   resolve_met: boolean
   breached: boolean
   paused_at?: string
+  paused_type?: string   // 'resolve' | 'response' | 'both' — which clock is paused
   tier: SLATier
 }
+
+export type SLAPauseType = 'resolve' | 'response' | 'both'
 
 // ── Session helpers ──────────────────────────────────────────────────────────
 
@@ -42,6 +45,7 @@ function mapToSLAStatus(props: Record<string, unknown>): SLAStatus {
     resolve_met:       props['resolve_met']       as boolean,
     breached:          props['breached']          as boolean,
     paused_at:         props['paused_at']         as string | undefined,
+    paused_type:       props['paused_type']       as string | undefined,
     tier: {
       severity:         props['tier_severity']         as string,
       response_minutes: props['tier_response_minutes'] as number,
@@ -100,7 +104,7 @@ export async function createSLAStatus(params: {
       s.entity_type as entity_type, s.started_at as started_at,
       s.response_deadline as response_deadline, s.resolve_deadline as resolve_deadline,
       s.response_met as response_met, s.resolve_met as resolve_met,
-      s.breached as breached, s.paused_at as paused_at,
+      s.breached as breached, s.paused_at as paused_at, s.paused_type as paused_type,
       s.tier_severity as tier_severity,
       s.tier_response_minutes as tier_response_minutes,
       s.tier_resolve_minutes as tier_resolve_minutes,
@@ -143,7 +147,7 @@ export async function getSLAStatus(
       s.entity_type as entity_type, s.started_at as started_at,
       s.response_deadline as response_deadline, s.resolve_deadline as resolve_deadline,
       s.response_met as response_met, s.resolve_met as resolve_met,
-      s.breached as breached, s.paused_at as paused_at,
+      s.breached as breached, s.paused_at as paused_at, s.paused_type as paused_type,
       s.tier_severity as tier_severity,
       s.tier_response_minutes as tier_response_minutes,
       s.tier_resolve_minutes as tier_resolve_minutes,
@@ -188,12 +192,18 @@ export async function markResolveMet(tenantId: string, entityId: string): Promis
 }
 
 /**
- * Stops the SLA clock. Sets `paused_at` to now, unless the SLA is already
- * paused or already resolved (nothing to pause). Returns the updated status,
- * or null if there was nothing to pause. The caller cancels the pending
- * warning/breach/response jobs — a paused SLA must not fire timers.
+ * Stops the SLA clock for the given target(s). Sets `paused_at`/`paused_type`,
+ * unless the SLA is already paused or already resolved (nothing to pause).
+ * `slaType` picks which clock stops: 'resolve' (warning+breach timers),
+ * 'response' (response timer), or 'both'. Returns the updated status (carrying
+ * `paused_type`), or null if there was nothing to pause. The caller cancels the
+ * corresponding jobs — a paused clock must not fire timers.
  */
-export async function pauseSLA(tenantId: string, entityId: string): Promise<SLAStatus | null> {
+export async function pauseSLA(
+  tenantId: string,
+  entityId: string,
+  slaType: SLAPauseType = 'both',
+): Promise<SLAStatus | null> {
   const current = await getSLAStatus(tenantId, entityId)
   if (!current || current.paused_at || current.resolve_met) return null
 
@@ -201,39 +211,48 @@ export async function pauseSLA(tenantId: string, entityId: string): Promise<SLAS
   const cypher = `
     MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     WHERE e:Incident OR e:Problem OR e:ServiceRequest
-    SET s.paused_at = $now
+    SET s.paused_at = $now, s.paused_type = $slaType
   `
   const session = writeSession()
   try {
-    await runQuery(session, cypher, { tenantId, entityId, now })
+    await runQuery(session, cypher, { tenantId, entityId, now, slaType })
   } finally {
     await session.close()
   }
-  return { ...current, paused_at: now }
+  return { ...current, paused_at: now, paused_type: slaType }
 }
 
 /**
- * Restarts the SLA clock. Extends both deadlines by the elapsed pause duration
- * so the remaining time is preserved, clears `paused_at`, and returns the
- * updated status. Returns null if the SLA was not paused (nothing to resume).
+ * Restarts the SLA clock. Extends the paused deadline(s) by the elapsed pause
+ * duration so the remaining time is preserved, clears `paused_at`/`paused_type`,
+ * and returns the updated status. Which deadline shifts depends on the
+ * `paused_type` recorded at pause time. Returns null if the SLA was not paused.
  * The caller re-schedules the timers against the new deadlines.
  */
 export async function resumeSLA(tenantId: string, entityId: string): Promise<SLAStatus | null> {
   const current = await getSLAStatus(tenantId, entityId)
   if (!current || !current.paused_at) return null
 
+  const pausedType = (current.paused_type ?? 'both') as SLAPauseType
   const pausedMs = Date.now() - new Date(current.paused_at).getTime()
   // Guard against a corrupt/future paused_at producing a negative shift.
   const shiftMs = Math.max(0, pausedMs)
-  const newResponse = new Date(new Date(current.response_deadline).getTime() + shiftMs).toISOString()
-  const newResolve  = new Date(new Date(current.resolve_deadline).getTime()  + shiftMs).toISOString()
+  const shiftResponse = pausedType === 'response' || pausedType === 'both'
+  const shiftResolve  = pausedType === 'resolve'  || pausedType === 'both'
+  const newResponse = shiftResponse
+    ? new Date(new Date(current.response_deadline).getTime() + shiftMs).toISOString()
+    : current.response_deadline
+  const newResolve = shiftResolve
+    ? new Date(new Date(current.resolve_deadline).getTime() + shiftMs).toISOString()
+    : current.resolve_deadline
 
   const cypher = `
     MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     WHERE e:Incident OR e:Problem OR e:ServiceRequest
     SET s.response_deadline = $newResponse,
         s.resolve_deadline  = $newResolve,
-        s.paused_at         = null
+        s.paused_at         = null,
+        s.paused_type       = null
   `
   const session = writeSession()
   try {
@@ -241,7 +260,13 @@ export async function resumeSLA(tenantId: string, entityId: string): Promise<SLA
   } finally {
     await session.close()
   }
-  return { ...current, response_deadline: newResponse, resolve_deadline: newResolve, paused_at: undefined }
+  return {
+    ...current,
+    response_deadline: newResponse,
+    resolve_deadline:  newResolve,
+    paused_at:         undefined,
+    paused_type:       pausedType,   // report which clock resumed so the caller reschedules
+  }
 }
 
 export async function markBreached(tenantId: string, entityId: string): Promise<void> {

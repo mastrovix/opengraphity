@@ -28,6 +28,7 @@ const RESOLVED_FIELD: Record<string, { label: string; resolvedField: string }> =
   incident:        { label: 'Incident',        resolvedField: 'resolved_at' },
   problem:         { label: 'Problem',         resolvedField: 'resolved_at' },
   service_request: { label: 'ServiceRequest',  resolvedField: 'completed_at' },
+  change:          { label: 'Change',          resolvedField: 'completed_at' },
 }
 
 function mapOLA(p: Props, teamName: string | null) {
