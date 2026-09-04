@@ -11,6 +11,7 @@ import { TicketNewPage }   from '@/pages/TicketNewPage'
 import { TicketDetailPage } from '@/pages/TicketDetailPage'
 import { KBListPage }      from '@/pages/KBListPage'
 import { KBArticlePage }   from '@/pages/KBArticlePage'
+import { ServiceCatalogPage } from '@/pages/ServiceCatalogPage'
 import '@/index.css'
 import '@/i18n/i18n'
 
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
       { path: 'tickets',         element: <TicketListPage /> },
       { path: 'tickets/new',     element: <TicketNewPage /> },
       { path: 'tickets/:id',     element: <TicketDetailPage /> },
+      { path: 'catalog',         element: <ServiceCatalogPage /> },
       { path: 'kb',              element: <KBListPage /> },
       { path: 'kb/:slug',        element: <KBArticlePage /> },
     ],

@@ -67,6 +67,7 @@ export function PortalHeader({ userName }: Props) {
           {[
             { to: '/',        label: t('nav.home') },
             { to: '/tickets', label: t('nav.tickets') },
+            { to: '/catalog', label: 'Catalogo' },
             { to: '/kb',      label: t('nav.kb') },
           ].map(({ to, label }) => (
             <NavLink
@@ -188,6 +189,7 @@ export function PortalHeader({ userName }: Props) {
           {[
             { to: '/',        label: t('nav.home') },
             { to: '/tickets', label: t('nav.tickets') },
+            { to: '/catalog', label: 'Catalogo' },
             { to: '/kb',      label: t('nav.kb') },
           ].map(({ to, label }) => (
             <NavLink

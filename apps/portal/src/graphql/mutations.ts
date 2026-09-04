@@ -31,3 +31,9 @@ export const RATE_KB_ARTICLE = gql`
     }
   }
 `
+
+export const CREATE_SERVICE_REQUEST = gql`
+  mutation CreateServiceRequest($input: CreateServiceRequestInput!) {
+    createServiceRequest(input: $input) { id number status }
+  }
+`

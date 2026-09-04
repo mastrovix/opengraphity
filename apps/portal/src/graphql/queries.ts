@@ -95,3 +95,11 @@ export const GET_FIELD_REQUIREMENT_RULES = gql`
     }
   }
 `
+
+export const GET_SERVICE_CATALOG = gql`
+  query ServiceCatalog {
+    serviceCatalogItems(activeOnly: true) {
+      id name description category requiresApproval
+    }
+  }
+`
