@@ -84,6 +84,23 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'Counter(tenant_id, kind)',
     cypher: 'CREATE CONSTRAINT counter_key_unique IF NOT EXISTS FOR (n:Counter) REQUIRE (n.tenant_id, n.kind) IS UNIQUE',
   },
+  // Consolidated from the former infra/neo4j/init/constraints.cypher — per-label
+  // CI id uniqueness (GraphQL CIs carry only their type label, not :ConfigurationItem)
+  { label: 'BusinessCapability.id', cypher: 'CREATE CONSTRAINT unique_business_capability_id IF NOT EXISTS FOR (n:BusinessCapability) REQUIRE n.id IS UNIQUE' },
+  { label: 'BusinessApplication.id', cypher: 'CREATE CONSTRAINT unique_business_application_id IF NOT EXISTS FOR (n:BusinessApplication) REQUIRE n.id IS UNIQUE' },
+  { label: 'Application.id', cypher: 'CREATE CONSTRAINT unique_application_id IF NOT EXISTS FOR (n:Application) REQUIRE n.id IS UNIQUE' },
+  { label: 'Database.id', cypher: 'CREATE CONSTRAINT unique_database_id IF NOT EXISTS FOR (n:Database) REQUIRE n.id IS UNIQUE' },
+  { label: 'DatabaseInstance.id', cypher: 'CREATE CONSTRAINT unique_database_instance_id IF NOT EXISTS FOR (n:DatabaseInstance) REQUIRE n.id IS UNIQUE' },
+  { label: 'Server.id', cypher: 'CREATE CONSTRAINT unique_server_id IF NOT EXISTS FOR (n:Server) REQUIRE n.id IS UNIQUE' },
+  { label: 'Certificate.id', cypher: 'CREATE CONSTRAINT unique_certificate_id IF NOT EXISTS FOR (n:Certificate) REQUIRE n.id IS UNIQUE' },
+  { label: 'SslCertificate.id', cypher: 'CREATE CONSTRAINT unique_ssl_certificate_id IF NOT EXISTS FOR (n:SslCertificate) REQUIRE n.id IS UNIQUE' },
+  { label: 'VirtualMachine.id', cypher: 'CREATE CONSTRAINT unique_virtual_machine_id IF NOT EXISTS FOR (n:VirtualMachine) REQUIRE n.id IS UNIQUE' },
+  { label: 'NetworkDevice.id', cypher: 'CREATE CONSTRAINT unique_network_device_id IF NOT EXISTS FOR (n:NetworkDevice) REQUIRE n.id IS UNIQUE' },
+  { label: 'Storage.id', cypher: 'CREATE CONSTRAINT unique_storage_id IF NOT EXISTS FOR (n:Storage) REQUIRE n.id IS UNIQUE' },
+  { label: 'CloudService.id', cypher: 'CREATE CONSTRAINT unique_cloud_service_id IF NOT EXISTS FOR (n:CloudService) REQUIRE n.id IS UNIQUE' },
+  { label: 'ApiEndpoint.id', cypher: 'CREATE CONSTRAINT unique_api_endpoint_id IF NOT EXISTS FOR (n:ApiEndpoint) REQUIRE n.id IS UNIQUE' },
+  { label: 'Microservice.id', cypher: 'CREATE CONSTRAINT unique_microservice_id IF NOT EXISTS FOR (n:Microservice) REQUIRE n.id IS UNIQUE' },
+  { label: 'DynamicCIGroup.id', cypher: 'CREATE CONSTRAINT unique_dynamic_c_i_group_id IF NOT EXISTS FOR (n:DynamicCIGroup) REQUIRE n.id IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -196,6 +213,13 @@ const INDEXES: SchemaStatement[] = [
   // Discovery reconciliation looks up CIs by (tenant_id, source, external_id) on
   // every batch and every relationship — without this it label-scans the tenant.
   { label: 'ConfigurationItem(tenant_id, discovery_source_id, discovery_external_id)', cypher: 'CREATE INDEX ci_discovery_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.discovery_source_id, n.discovery_external_id)' },
+  // Fulltext for the command-palette global search (CONTAINS cannot use range indexes)
+  { label: 'global_search (fulltext)', cypher: 'CREATE FULLTEXT INDEX global_search IF NOT EXISTS FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|BusinessCapability|BusinessApplication|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice|DynamicCIGroup) ON EACH [n.title, n.number, n.code, n.name]' },
+  { label: 'AssessmentTask(code)', cypher: 'CREATE INDEX assessment_task_code IF NOT EXISTS FOR (t:AssessmentTask) ON (t.code)' },
+  { label: 'DeployPlanTask(code)', cypher: 'CREATE INDEX deploy_plan_task_code IF NOT EXISTS FOR (t:DeployPlanTask) ON (t.code)' },
+  { label: 'ValidationTest(code)', cypher: 'CREATE INDEX validation_test_code IF NOT EXISTS FOR (t:ValidationTest) ON (t.code)' },
+  { label: 'DeploymentTask(code)', cypher: 'CREATE INDEX deployment_task_code IF NOT EXISTS FOR (t:DeploymentTask) ON (t.code)' },
+  { label: 'ReviewTask(code)', cypher: 'CREATE INDEX review_task_code IF NOT EXISTS FOR (t:ReviewTask) ON (t.code)' },
 ]
 
 // Raise-only seeding of the atomic counters to the current max number/code, so

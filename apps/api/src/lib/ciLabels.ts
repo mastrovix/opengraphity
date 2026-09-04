@@ -2,7 +2,7 @@
  * Single source of truth for the static CI type ↔ Neo4j label mapping.
  * Every hardcoded label list in resolvers must derive from here — adding a
  * new CI type means touching THIS file (plus the global_search fulltext
- * index in infra/neo4j/init/constraints.cypher, which cannot be dynamic).
+ * index in packages/neo4j/src/init.ts, which cannot be dynamic).
  * Dynamic tenant-defined types are handled separately via ciTypeFromLabels.
  */
 

@@ -62,7 +62,7 @@ function toLucene(raw: string): string {
  * Tenant-scoped grouped search across the main ITSM entities.
  *
  * - Textual entities (Incident/Change/Problem/KBArticle/CI names) go through
- *   the `global_search` fulltext index (see infra/neo4j/init/constraints.cypher):
+ *   the `global_search` fulltext index (see packages/neo4j/src/init.ts):
  *   indexed prefix search instead of unindexed CONTAINS scans.
  * - CIs additionally match on `id STARTS WITH $query` for direct UUID lookup
  *   (union with the fulltext hits, no duplicates).
