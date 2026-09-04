@@ -166,7 +166,7 @@ async function blastRadius(
       environment: r.environment ?? null,
       status:      r.status ?? null,
       distance:    typeof r.distance === 'object'
-        ? (r.distance as any).toNumber()
+        ? (r.distance as { toNumber(): number }).toNumber()
         : Number(r.distance),
     }))
   })

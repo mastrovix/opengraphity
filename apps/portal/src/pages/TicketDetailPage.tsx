@@ -61,9 +61,11 @@ export function TicketDetailPage() {
   const ticket   = data?.myTicket
   const myUserId = meData?.me?.id ?? ''
 
+  const ticketLoaded = !!ticket
+  const commentCount = ticket?.comments?.length ?? 0
   useEffect(() => {
-    if (ticket) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [ticket?.comments?.length])
+    if (ticketLoaded) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [ticketLoaded, commentCount])
 
   const [addComment, { loading: commenting }] = useMutation(ADD_TICKET_COMMENT, {
     onCompleted: () => { setReply(''); void refetch() },

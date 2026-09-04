@@ -88,12 +88,18 @@ export default function ReportsPage() {
 
   const conversations = data?.reportConversations ?? []
   const active = conversations.find((c) => c.id === activeId) ?? null
+  const activeRef = useRef(active)
+  activeRef.current = active
+  const activeMessageCount = active?.messages.length ?? 0
 
-  // Sync local messages when user switches conversation — suppressed during/after streaming
+  // Sync local messages when user switches conversation or the server-side
+  // message count changes — suppressed during/after streaming. Read through a
+  // ref so a refetch that returns the same messages does not re-sync.
   useEffect(() => {
     if (suppressSyncRef.current) return
-    if (active) setLocalMessages(active.messages)
-  }, [activeId, active?.messages.length])
+    const current = activeRef.current
+    if (current) setLocalMessages(current.messages)
+  }, [activeId, activeMessageCount])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

@@ -27,7 +27,7 @@ export function useFieldVisibility(
     { variables: { entityType }, fetchPolicy: 'cache-first' },
   )
 
-  const rules = data?.fieldVisibilityRules ?? []
+  const rules = useMemo(() => data?.fieldVisibilityRules ?? [], [data])
 
   const visibility = useMemo(() => {
     const visibility: Record<string, boolean> = {}

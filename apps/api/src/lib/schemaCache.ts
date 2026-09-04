@@ -43,12 +43,11 @@ export async function regenerateSchema(tenantId: string): Promise<GraphQLSchema>
   const baseSDL       = buildBaseSDL()
   const resolvers     = buildResolvers(ciTypes)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const schema = makeExecutableSchema({
     typeDefs: itilEnumsSDL
       ? [baseSDL, dynamicSDL, itilEnumsSDL]
       : [baseSDL, dynamicSDL],
-    resolvers: resolvers as any,
+    resolvers,
   })
 
   cache.set(tenantId, { schema, generatedAt: Date.now(), tenantId })

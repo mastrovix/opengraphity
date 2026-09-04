@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import {
   ReactFlow, Background, Controls,
@@ -90,7 +90,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null)
 
   const { data: entitiesData } = useQuery<{ navigableEntities: NavigableEntity[] }>(GET_NAVIGABLE_ENTITIES)
-  const entities: NavigableEntity[] = entitiesData?.navigableEntities ?? []
+  const entities: NavigableEntity[] = useMemo(() => entitiesData?.navigableEntities ?? [], [entitiesData])
 
   const [fetchReachable, { data: reachableData, loading: reachableLoading }] = useLazyQuery<
     { reachableEntities: ReachableEntity[] }

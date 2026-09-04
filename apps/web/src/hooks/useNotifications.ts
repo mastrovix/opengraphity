@@ -99,7 +99,7 @@ export function useNotifications() {
       connectedRef.current = false
       abortRef.current?.abort()
     }
-  }, [])
+  }, [connect])
 
   const markAsRead = useCallback((id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))

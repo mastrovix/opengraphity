@@ -168,15 +168,6 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         // 3. Evaluate conditions — they might no longer be true
         const conditions = parseConditions(trigger['conditions'] as string | null)
 
-        // DEBUG: log every condition evaluation
-        logger.info({ entityKeys: Object.keys(entity), assigned_to: entity['assigned_to'], assigned_to_type: typeof entity['assigned_to'], status: entity['status'], status_type: typeof entity['status'] }, '[trigger_timer] DEBUG entity fields')
-        logger.info({ rawConditions: trigger['conditions'], parsedConditions: conditions }, '[trigger_timer] DEBUG conditions')
-        for (const c of conditions) {
-          const actual = entity[c.field]
-          const isNull = actual == null || actual === ''
-          logger.info({ field: c.field, operator: c.operator, expected: c.value ?? '(none)', actual, actualType: typeof actual, actualIsNull: actual === null, actualIsUndefined: actual === undefined, actualIsEmpty: actual === '', isNullResult: isNull }, '[trigger_timer] DEBUG condition eval')
-        }
-
         if (!evaluateConditions(conditions, entity)) {
           logger.info({ triggerId, entityId, triggerName: trigger['name'] }, '[trigger_timer] conditions no longer met — skipped')
           break

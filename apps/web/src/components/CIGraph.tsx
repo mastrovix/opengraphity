@@ -92,7 +92,12 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
   const [nodeSpread, setNodeSpread] = useState(1)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  const centerCIRef = useRef(centerCI)
+  centerCIRef.current = centerCI
+  const centerCIId = centerCI.id
+
   useEffect(() => {
+    const centerCI = centerCIRef.current
     const svg = d3.select(svgRef.current!)
     svg.selectAll('*').remove()
 
@@ -382,7 +387,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
     })
 
     return () => { simulation.stop() }
-  }, [centerCI.id, dependencies, dependents, blastRadius, showBlastRadius, maxDepth, nodeSpread, navigate])
+  }, [centerCIId, dependencies, dependents, blastRadius, showBlastRadius, maxDepth, nodeSpread, navigate])
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>

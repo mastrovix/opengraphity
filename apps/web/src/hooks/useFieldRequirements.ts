@@ -25,7 +25,7 @@ export function useFieldRequirements(
     },
   )
 
-  const rules = data?.fieldRequirementRules ?? []
+  const rules = useMemo(() => data?.fieldRequirementRules ?? [], [data])
 
   const requirements = useMemo(() => {
     const required: Record<string, boolean> = {}

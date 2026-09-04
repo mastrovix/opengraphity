@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import type { DragEndEvent } from '@dnd-kit/core'
@@ -112,7 +112,7 @@ export function useDashboard() {
   const { data: templatesData } = useQuery<{ reportTemplates: ReportTemplate[] }>(GET_REPORT_TEMPLATES)
   const { data: teamsData }     = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
-  const dashboards = listData?.myDashboards ?? []
+  const dashboards = useMemo(() => listData?.myDashboards ?? [], [listData])
   const activeDash = dashData?.dashboard ?? null
   const templates  = templatesData?.reportTemplates ?? []
   const teams      = teamsData?.teams ?? []

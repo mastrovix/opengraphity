@@ -162,7 +162,7 @@ export function CIListPage() {
           : undefined,
       } as FieldConfig))
     return [...base, ...custom]
-  }, [ciType])
+  }, [ciType, t])
 
   const COLUMNS: ColumnDef<CIItem>[] = [
     { key: 'name', label: t('pages.cmdb.name'), sortable: true },

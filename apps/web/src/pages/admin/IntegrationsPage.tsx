@@ -20,6 +20,11 @@ const GET_INBOUND_WEBHOOKS = gql`query($filters: String, $sortField: String, $so
 const GET_OUTBOUND_WEBHOOKS = gql`query($filters: String, $sortField: String, $sortDirection: String) { outboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name url method headers events payloadTemplate enabled lastSentAt lastStatusCode sendCount errorCount lastError retryOnFailure } }`
 const GET_API_KEYS = gql`query($filters: String, $sortField: String, $sortDirection: String) { apiKeys(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name keyPrefix permissions rateLimit enabled lastUsedAt requestCount createdBy expiresAt createdAt } }`
 
+// ── Row types (mirror of the GraphQL selections above) ─────────────────────
+interface InboundWebhook  { id: string; name: string; entityType: string; fieldMapping: string; defaultValues: string; transformScript: string | null; enabled: boolean; lastReceivedAt: string | null; receiveCount: number; createdAt: string }
+interface OutboundWebhook { id: string; name: string; url: string; method: string; headers: string; events: string[] | string; payloadTemplate: string | null; enabled: boolean; lastSentAt: string | null; lastStatusCode: number | null; sendCount: number; errorCount: number; lastError: string | null; retryOnFailure: boolean }
+interface ApiKeyRow       { id: string; name: string; keyPrefix: string; permissions: string[] | string; rateLimit: number; enabled: boolean; lastUsedAt: string | null; requestCount: number; createdBy: string | null; expiresAt: string | null; createdAt: string }
+
 const CREATE_INBOUND = gql`mutation($input: CreateInboundWebhookInput!) { createInboundWebhook(input: $input) { id token } }`
 const UPDATE_INBOUND = gql`mutation($id: ID!, $input: UpdateInboundWebhookInput!) { updateInboundWebhook(id: $id, input: $input) { id } }`
 const DELETE_INBOUND = gql`mutation($id: ID!) { deleteInboundWebhook(id: $id) }`
@@ -101,12 +106,9 @@ export function IntegrationsPage() {
   ]
 
   // Queries
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const inQ = useQuery<any>(GET_INBOUND_WEBHOOKS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const outQ = useQuery<any>(GET_OUTBOUND_WEBHOOKS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const keyQ = useQuery<any>(GET_API_KEYS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
+  const inQ = useQuery<{ inboundWebhooks: InboundWebhook[] }>(GET_INBOUND_WEBHOOKS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
+  const outQ = useQuery<{ outboundWebhooks: OutboundWebhook[] }>(GET_OUTBOUND_WEBHOOKS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
+  const keyQ = useQuery<{ apiKeys: ApiKeyRow[] }>(GET_API_KEYS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
 
   // Inbound mutations
   const [createIn] = useMutation(CREATE_INBOUND, { refetchQueries: [{ query: GET_INBOUND_WEBHOOKS }] })
@@ -142,7 +144,9 @@ export function IntegrationsPage() {
     try {
       const res = await createIn({ variables: { input: { ...inForm } } })
       setModal(null); resetInForm()
-      setSecret((res.data as any)?.createInboundWebhook.token); setModal('secret')
+      const token = (res.data as { createInboundWebhook?: { token: string } } | undefined)?.createInboundWebhook?.token
+      if (!token) throw new Error('token mancante nella risposta')
+      setSecret(token); setModal('secret')
     } catch { toast.error('Errore creazione webhook') }
   }
 
@@ -157,7 +161,9 @@ export function IntegrationsPage() {
     try {
       const res = await createKey({ variables: { input: { ...keyForm, rateLimit: Number(keyForm.rateLimit) } } })
       setModal(null); resetKeyForm()
-      setSecret((res.data as any)?.createApiKey.key); setModal('secret')
+      const key = (res.data as { createApiKey?: { key: string } } | undefined)?.createApiKey?.key
+      if (!key) throw new Error('chiave mancante nella risposta')
+      setSecret(key); setModal('secret')
     } catch { toast.error('Errore creazione API key') }
   }
 
@@ -174,7 +180,8 @@ export function IntegrationsPage() {
   async function handleTestOutbound(id: string) {
     try {
       const res = await testOut({ variables: { id } })
-      const r = (res.data as any)?.testOutboundWebhook
+      const r = (res.data as { testOutboundWebhook?: { success: boolean; statusCode: number | null; error: string | null } } | undefined)?.testOutboundWebhook
+      if (!r) throw new Error('risposta vuota')
       r.success ? toast.success(`Test OK — status ${r.statusCode}`) : toast.error(`Test fallito: ${r.error}`)
     } catch { toast.error('Errore test webhook') }
   }
@@ -182,29 +189,32 @@ export function IntegrationsPage() {
   async function handleRegenToken(id: string) {
     try {
       const res = await regenToken({ variables: { id } })
-      setSecret((res.data as any)?.regenerateWebhookToken.token); setModal('secret')
+      const token = (res.data as { regenerateWebhookToken?: { token: string } } | undefined)?.regenerateWebhookToken?.token
+      if (!token) throw new Error('token mancante nella risposta')
+      setSecret(token); setModal('secret')
     } catch { toast.error('Errore rigenerazione token') }
   }
 
   async function handleRegenApiKey(id: string) {
     try {
       const res = await regenKey({ variables: { id } })
-      setSecret((res.data as any)?.regenerateApiKey.key); setModal('secret')
+      const key = (res.data as { regenerateApiKey?: { key: string } } | undefined)?.regenerateApiKey?.key
+      if (!key) throw new Error('chiave mancante nella risposta')
+      setSecret(key); setModal('secret')
     } catch { toast.error('Errore rigenerazione chiave') }
   }
 
   // ── Render helpers ──────────────────────────────────────────────────────────
 
-  const inbounds: any[] = inQ.data?.inboundWebhooks ?? []
-  const outbounds: any[] = outQ.data?.outboundWebhooks ?? []
-  const apiKeys: any[] = keyQ.data?.apiKeys ?? []
+  const inbounds: InboundWebhook[]   = inQ.data?.inboundWebhooks ?? []
+  const outbounds: OutboundWebhook[] = outQ.data?.outboundWebhooks ?? []
+  const apiKeys: ApiKeyRow[]         = keyQ.data?.apiKeys ?? []
 
   // Toggle and ModalPortal are defined outside the component to prevent remount on re-render
 
   // ── Column definitions ─────────────────────────────────────────────────────
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const inboundColumns: ColumnDef<any>[] = [
+  const inboundColumns: ColumnDef<InboundWebhook>[] = [
     { key: 'name', label: 'Nome', sortable: true },
     { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <Pill bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
     { key: 'id', label: 'Endpoint URL', sortable: true, render: (v) => (
@@ -224,8 +234,7 @@ export function IntegrationsPage() {
     ) },
   ]
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const outboundColumns: ColumnDef<any>[] = [
+  const outboundColumns: ColumnDef<OutboundWebhook>[] = [
     { key: 'name', label: 'Nome', sortable: true },
     { key: 'url', label: 'URL', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
     { key: 'events', label: 'Events', sortable: true, render: (v) => {
@@ -248,8 +257,7 @@ export function IntegrationsPage() {
     ) },
   ]
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const apiKeyColumns: ColumnDef<any>[] = [
+  const apiKeyColumns: ColumnDef<ApiKeyRow>[] = [
     { key: 'name', label: 'Nome', sortable: true },
     { key: 'keyPrefix', label: 'Prefisso', sortable: true, render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
     { key: 'permissions', label: 'Permessi', sortable: true, render: (v) => {
@@ -294,7 +302,7 @@ export function IntegrationsPage() {
           <button style={btnPrimary} onClick={() => { resetInForm(); setModal('inbound') }}><Plus size={14} /> Nuovo Webhook In</button>
         </div>
         <FilterBuilder fields={INBOUND_FILTERS} onApply={g => setFilterGroup(g)} />
-        <SortableFilterTable<any> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+        <SortableFilterTable<InboundWebhook> onSort={handleSort} sortField={sortField} sortDir={sortDir}
           columns={inboundColumns}
           data={inbounds}
           loading={inQ.loading}
@@ -329,7 +337,7 @@ export function IntegrationsPage() {
           <button style={btnPrimary} onClick={() => { resetOutForm(); setModal('outbound') }}><Plus size={14} /> Nuovo Webhook Out</button>
         </div>
         <FilterBuilder fields={OUTBOUND_FILTERS} onApply={g => setFilterGroup(g)} />
-        <SortableFilterTable<any> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+        <SortableFilterTable<OutboundWebhook> onSort={handleSort} sortField={sortField} sortDir={sortDir}
           columns={outboundColumns}
           data={outbounds}
           loading={outQ.loading}
@@ -380,7 +388,7 @@ export function IntegrationsPage() {
           <button style={btnPrimary} onClick={() => { resetKeyForm(); setModal('apikey') }}><Plus size={14} /> Nuova API Key</button>
         </div>
         <FilterBuilder fields={APIKEY_FILTERS} onApply={g => setFilterGroup(g)} />
-        <SortableFilterTable<any> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+        <SortableFilterTable<ApiKeyRow> onSort={handleSort} sortField={sortField} sortDir={sortDir}
           columns={apiKeyColumns}
           data={apiKeys}
           loading={keyQ.loading}

@@ -57,7 +57,7 @@ export async function createProblem(
       { tenantId: ctx.tenantId },
     )
     const rawCnt = countResult?.cnt
-    const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as any)?.toNumber === 'function' ? (rawCnt as any).toNumber() : Number(rawCnt ?? 0)
+    const count = typeof rawCnt === 'number' ? rawCnt : typeof (rawCnt as { toNumber?: unknown } | null)?.toNumber === 'function' ? (rawCnt as { toNumber(): number }).toNumber() : Number(rawCnt ?? 0)
     const number = 'PRB' + String(count + 1).padStart(8, '0')
 
     const initialStatus = await getInitialStepName(session, ctx.tenantId, 'problem')

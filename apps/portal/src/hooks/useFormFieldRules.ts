@@ -50,8 +50,8 @@ export function useFormFieldRules(
     { variables: { entityType, workflowStep: workflowStep ?? null }, fetchPolicy: 'cache-first' },
   )
 
-  const visRules = visData?.fieldVisibilityRules ?? []
-  const reqRules = reqData?.fieldRequirementRules ?? []
+  const visRules = useMemo(() => visData?.fieldVisibilityRules ?? [], [visData])
+  const reqRules = useMemo(() => reqData?.fieldRequirementRules ?? [], [reqData])
 
   return useMemo(() => {
     const visibility = evalVisibility(visRules, formValues)
