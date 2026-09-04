@@ -302,13 +302,11 @@ export async function executeWorkflowTransition(
         const now = new Date().toISOString()
         // Look up the initial workflow step name for this entity type; fall
         // back to 'open' only if the entity has no workflow defined.
+        // No silent 'open' fallback: an entity type without a defined initial
+        // step is a misconfiguration and must fail loudly, not be created in a
+        // phantom status the workflow doesn't recognise.
         const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
-        let initialStatus: string
-        try {
-          initialStatus = await getInitialStepName(session, ctx.tenantId, type)
-        } catch {
-          initialStatus = 'open'
-        }
+        const initialStatus = await getInitialStepName(session, ctx.tenantId, type)
         await session.executeWrite((tx) =>
           tx.run(
             `CREATE (e:${label} $props) RETURN e.id AS id`,
@@ -387,7 +385,10 @@ export async function executeWorkflowTransition(
           ),
         )
         const approverIds = adminsRes.records.map((r) => r.get('id') as string)
-        const finalApprovers = approverIds.length > 0 ? approverIds : [ctx.userId]
+        if (approverIds.length === 0) {
+          throw new GraphQLError(`Nessun utente con ruolo "${approverRole ?? 'admin'}" configurato per approvare`, { extensions: { code: 'NO_APPROVER' } })
+        }
+        const finalApprovers = approverIds
 
         const approvalId = uuidv4()
         await session.executeWrite((tx) =>

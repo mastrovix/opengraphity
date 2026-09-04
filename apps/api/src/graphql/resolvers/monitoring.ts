@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { envOrThrowInProd } from '../../lib/env.js'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import {
@@ -46,7 +47,7 @@ async function checkRedis(): Promise<{ status: string; latencyMs: number | null;
 }
 
 async function checkKeycloak(): Promise<{ status: string; latencyMs: number | null; error: string | null }> {
-  const kcUrl = process.env['KEYCLOAK_URL'] ?? 'http://localhost:8080'
+  const kcUrl = envOrThrowInProd('KEYCLOAK_URL', 'http://localhost:8080')
   const start  = Date.now()
   try {
     const res = await fetch(`${kcUrl}/health/ready`, { signal: AbortSignal.timeout(3000) })

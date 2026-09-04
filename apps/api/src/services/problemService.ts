@@ -42,6 +42,12 @@ async function loadProblemPayload(
 
 // buildEvent removed — using shared publishEvent
 
+
+function requireProblemPayload<T>(payload: T | null, id: string): T {
+  if (!payload) throw new Error(`Problem ${id} not found while building event payload`)
+  return payload
+}
+
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createProblem(
@@ -141,6 +147,6 @@ export async function createProblem(
 export async function publishProblemTransition(id: string, stepName: string, ctx: ServiceCtx) {
   const payload = await loadProblemPayload(id, ctx.tenantId)
   await publishEvent(`problem.${stepName}`, ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Problem ${id}`, priority: 'medium', status: stepName, assignedTo: '—' },
+    requireProblemPayload(payload, id),
   )
 }

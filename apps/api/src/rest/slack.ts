@@ -4,7 +4,11 @@ import { getSession } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
 
 function verifySlackSignature(req: Request): boolean {
-  const signingSecret = process.env['SLACK_SIGNING_SECRET'] ?? ''
+  const signingSecret = process.env['SLACK_SIGNING_SECRET']
+  if (!signingSecret) {
+    logger.error('[slack] SLACK_SIGNING_SECRET not configured — rejecting request')
+    return false
+  }
   const timestamp     = req.headers['x-slack-request-timestamp'] as string
   const slackSig      = req.headers['x-slack-signature'] as string
 

@@ -81,6 +81,14 @@ async function createTransitionComment(
 
 // buildEvent removed — using shared publishEvent from lib/publishEvent.ts
 
+
+/** A resolved/assigned incident must always reload; a null payload after a
+ *  successful write is a real error, not a reason to publish a fabricated event. */
+function requirePayload(payload: IncidentEventPayload | null, id: string): IncidentEventPayload {
+  if (!payload) throw new Error(`Incident ${id} not found while building event payload`)
+  return payload
+}
+
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createIncident(
@@ -224,7 +232,7 @@ export async function resolveIncident(
 
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.resolved', ctx.tenantId, ctx.userId, {
-    ...(payload ?? { id, title: `Incident ${id}`, severity: 'low', status: '', ciName: '—', assignedTo: '—' }),
+    ...requirePayload(payload, id),
     resolved_at: now,
   } satisfies IncidentEventPayload, now)
 
@@ -406,7 +414,7 @@ export async function assignIncidentToUser(
     const assigned = mapIncident(r.records[0].get('props') as Props)
     const assignedPayload = await loadIncidentPayload(session, id, ctx.tenantId)
     await publishEvent('incident.assigned', ctx.tenantId, ctx.userId,
-      assignedPayload ?? { id, title: assigned.title, severity: assigned.severity, status: assigned.status, ciName: '—', assignedTo: '—' },
+      requirePayload(assignedPayload, id),
       now,
     )
     return assigned
@@ -420,7 +428,7 @@ export async function inProgressIncident(
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.in_progress', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: '', ciName: '—', assignedTo: '—' },
+    requirePayload(payload, id),
     now,
   )
 }
@@ -434,7 +442,7 @@ export async function publishIncidentTransition(
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent(`incident.${stepName}`, ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: stepName, ciName: '—', assignedTo: '—' },
+    requirePayload(payload, id),
     now,
   )
 }
@@ -446,7 +454,7 @@ export async function onHoldIncident(
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.on_hold', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: 'pending', ciName: '—', assignedTo: '—' },
+    requirePayload(payload, id),
     now,
   )
 }
@@ -458,7 +466,7 @@ export async function closeIncident(
   const now = new Date().toISOString()
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.closed', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Incident ${id}`, severity: 'low', status: '', ciName: '—', assignedTo: '—' },
+    requirePayload(payload, id),
     now,
   )
 }
@@ -473,10 +481,10 @@ export async function escalateIncident(
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       RETURN wi.id AS instanceId
     `, { id, tenantId: ctx.tenantId })
-    if (!instanceRow) return
+    if (!instanceRow) throw new Error(`Incident ${id}: no workflow instance to escalate`)
     const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
     const target = steps.find((s) => s.category === 'escalated')
-    if (!target) return
+    if (!target) throw new Error(`Incident ${id}: workflow has no 'escalated' step`)
     await workflowEngine.transition(
       session,
       { instanceId: instanceRow.instanceId, toStepName: target.name,
@@ -487,7 +495,7 @@ export async function escalateIncident(
 
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.escalated', ctx.tenantId, ctx.userId,
-    payload ?? { id, title: `Incident ${id}`, severity: 'high', status: '', ciName: '—', assignedTo: '—' },
+    requirePayload(payload, id),
     now,
   )
 }

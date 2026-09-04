@@ -16,8 +16,11 @@ const connection = {
   port: parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
 }
 
-const ENCRYPTION_KEY = process.env['DISCOVERY_ENCRYPTION_KEY'] ?? ''
-if (!ENCRYPTION_KEY) logger.warn('[syncWorker] DISCOVERY_ENCRYPTION_KEY is not set — credential decryption will fail')
+function encryptionKey(): string {
+  const k = process.env['DISCOVERY_ENCRYPTION_KEY']
+  if (!k) throw new Error('DISCOVERY_ENCRYPTION_KEY is not set — cannot process discovery credentials')
+  return k
+}
 const BATCH_SIZE     = 50
 
 // ── Job payload ───────────────────────────────────────────────────────────────
@@ -90,8 +93,11 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
   // ── Decrypt credentials ───────────────────────────────────────────────────
   let creds: Record<string, string>
   try {
-    creds = decryptCredentials(encryptedCreds, ENCRYPTION_KEY)
+    creds = decryptCredentials(encryptedCreds, encryptionKey())
   } catch (err) {
+    // Permanent config error (bad key): record and stop — retrying won't help,
+    // but it must be loud.
+    logger.error({ err, runId, sourceId }, '[sync] Credential decryption failed')
     await updateRunStatus(runId, tenantId, 'failed', 0, `Failed to decrypt credentials: ${String(err)}`)
     return
   }
@@ -134,7 +140,8 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
     await updateRunStatus(runId, tenantId, 'failed', Date.now() - startedAt, msg, stats)
     await updateSourceMeta(sourceId, tenantId, 'failed')
     await publishSyncEvent('sync.failed', { runId, sourceId, tenantId, error: msg, stats })
-    return
+    // Transient provider/network errors must let BullMQ retry.
+    throw err
   }
 
   const durationMs = Date.now() - startedAt

@@ -1,8 +1,8 @@
 import { GraphQLError } from 'graphql'
+import { requireEnv, envOrThrowInProd } from '../../lib/env.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { mergeResolvers } from '@graphql-tools/merge'
 import type { IResolvers } from '@graphql-tools/utils'
-import { authResolvers } from './auth.js'
 import { incidentResolvers } from './incident.js'
 import { problemResolvers } from './problem.js'
 import { changeResolvers } from './change/index.js'
@@ -134,9 +134,9 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
 async function createUser(_: unknown, args: { input: { email: string; name: string; password: string; role: string; teamIds?: string[] } }, ctx: GraphQLContext) {
   const { email, name, password, role, teamIds } = args.input
   const tenantId = ctx.tenantId
-  const KEYCLOAK_URL  = process.env['KEYCLOAK_URL'] ?? 'http://localhost:8080'
+  const KEYCLOAK_URL  = envOrThrowInProd('KEYCLOAK_URL', 'http://localhost:8080')
   const KEYCLOAK_ADMIN_USER = process.env['KEYCLOAK_ADMIN_USER'] ?? 'admin'
-  const KEYCLOAK_ADMIN_PASS = process.env['KEYCLOAK_ADMIN_PASSWORD'] ?? 'opengrafo_local'
+  const KEYCLOAK_ADMIN_PASS = requireEnv('KEYCLOAK_ADMIN_PASSWORD')
 
   // 1. Get Keycloak admin token
   const tokenRes = await fetch(`${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token`, {
@@ -165,29 +165,32 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
   if (!kcUserId) throw new GraphQLError('User not found in Keycloak after creation', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
 
   // Set password
-  await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/reset-password`, {
+  const pwRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/reset-password`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
     body: JSON.stringify({ type: 'password', value: password, temporary: false }),
   })
+  if (!pwRes.ok) throw new GraphQLError(`Keycloak set-password failed: ${pwRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
 
   // Assign role
   const rolesRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, { headers: { Authorization: `Bearer ${adminToken}` } })
+  if (!rolesRes.ok) throw new GraphQLError(`Keycloak roles fetch failed: ${rolesRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
   const allRoles = await rolesRes.json() as { id: string; name: string }[]
   let targetRole = allRoles.find(r => r.name === role)
   if (!targetRole) {
-    await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, {
+    const createRoleRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
       body: JSON.stringify({ name: role }),
     })
+    if (!createRoleRes.ok && createRoleRes.status !== 409) throw new GraphQLError(`Keycloak role creation failed: ${createRoleRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     const refreshed = await (await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, { headers: { Authorization: `Bearer ${adminToken}` } })).json() as { id: string; name: string }[]
     targetRole = refreshed.find(r => r.name === role)
   }
-  if (targetRole) {
-    await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/role-mappings/realm`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify([{ id: targetRole.id, name: targetRole.name }]),
-    })
-  }
+  if (!targetRole) throw new GraphQLError(`Keycloak role "${role}" not found after creation`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+  const mapRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/role-mappings/realm`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify([{ id: targetRole.id, name: targetRole.name }]),
+  })
+  if (!mapRes.ok) throw new GraphQLError(`Keycloak role mapping failed: ${mapRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
 
   // 3. Create in Neo4j
   const { v4: uuidv4 } = await import('uuid')
@@ -293,7 +296,6 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       user: userById,
     },
     Mutation: {
-      ...authResolvers.Mutation,
       ...incidentResolvers.Mutation,
       ...problemResolvers.Mutation,
       ...changeResolvers.Mutation,

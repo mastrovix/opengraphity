@@ -12,10 +12,12 @@ import { withSession } from './ci-utils.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { validateStringLength, validateCronExpression } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
-import { logger } from '../../lib/logger.js'
 
-const ENCRYPTION_KEY = process.env['DISCOVERY_ENCRYPTION_KEY'] ?? ''
-if (!ENCRYPTION_KEY) logger.warn('[sync] DISCOVERY_ENCRYPTION_KEY is not set — credential operations will fail')
+function encryptionKey(): string {
+  const k = process.env['DISCOVERY_ENCRYPTION_KEY']
+  if (!k) throw new Error('DISCOVERY_ENCRYPTION_KEY is not set — cannot process discovery credentials')
+  return k
+}
 
 type Props = Record<string, unknown>
 
@@ -288,7 +290,7 @@ export const syncResolvers = {
       validateStringLength(input.name, 'name', 1, 200)
       validateCronExpression(input.scheduleCron)
       const creds = JSON.parse(input.credentials) as Record<string, string>
-      const encryptedCreds = encryptCredentials(creds, ENCRYPTION_KEY)
+      const encryptedCreds = encryptCredentials(creds, encryptionKey())
 
       const id  = randomUUID()
       const now = new Date().toISOString()
@@ -338,7 +340,7 @@ export const syncResolvers = {
       if (input.enabled      != null) { sets.push('n.enabled = $enabled');               params['enabled']      = input.enabled }
       if (input.credentials  != null) {
         const creds = JSON.parse(input.credentials) as Record<string, string>
-        const enc   = encryptCredentials(creds, ENCRYPTION_KEY)
+        const enc   = encryptCredentials(creds, encryptionKey())
         sets.push('n.encrypted_credentials = $encryptedCreds')
         params['encryptedCreds'] = enc
       }
@@ -563,7 +565,7 @@ export const syncResolvers = {
           `MATCH (n:SyncSource {id: $id}) RETURN n.encrypted_credentials AS enc`,
           { id: args.sourceId },
         )
-        const creds = decryptCredentials(encRow!.enc, ENCRYPTION_KEY)
+        const creds = decryptCredentials(encRow!.enc, encryptionKey())
         const syncConfig: import('@opengraphity/discovery').SyncSourceConfig = {
           id:                    source.id,
           tenant_id:             source.tenantId,

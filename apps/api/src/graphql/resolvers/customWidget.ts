@@ -143,7 +143,8 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
       resultData = { value: Number(res.records[0]?.get('value') ?? 0), label: cfg.title ?? '', series: [] }
 
     } else if (cfg.metric === 'count_by_field') {
-      const field = cfg.groupByField ?? 'status'
+      if (!cfg.groupByField) throw new GraphQLError("groupByField è obbligatorio per la metrica 'count_by_field'", { extensions: { code: 'BAD_USER_INPUT' } })
+      const field = cfg.groupByField
       cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN n.${field} AS label, count(n) AS value ORDER BY value DESC LIMIT 20`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
       const series = res.records.map((r) => ({
@@ -153,14 +154,16 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
       resultData = { value: series.reduce((a, s) => a + s.value, 0), label: cfg.title ?? '', series }
 
     } else if (cfg.metric === 'avg_field') {
-      const field = cfg.groupByField ?? 'affected_users'
+      if (!cfg.groupByField) throw new GraphQLError("groupByField è obbligatorio per la metrica 'avg_field'", { extensions: { code: 'BAD_USER_INPUT' } })
+      const field = cfg.groupByField
       cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN avg(n.${field}) AS value`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
       const val = Number(res.records[0]?.get('value') ?? 0)
       resultData = { value: Math.round(val * 100) / 100, label: cfg.title ?? '', series: [] }
 
     } else {
-      const field = cfg.groupByField ?? 'affected_users'
+      if (!cfg.groupByField) throw new GraphQLError("groupByField è obbligatorio per la metrica 'sum_field'", { extensions: { code: 'BAD_USER_INPUT' } })
+      const field = cfg.groupByField
       cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN sum(n.${field}) AS value`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
       resultData = { value: Number(res.records[0]?.get('value') ?? 0), label: cfg.title ?? '', series: [] }

@@ -183,15 +183,9 @@ export function buildBaseSDL(): string {
     syncChangeHistory(ciId: ID!, limit: Int, offset: Int): SyncChangeRecordsResult!
   }
 
-  type AuthPayload {
-    token:     String!
-    expiresAt: String!
-    user:      User!
-  }
 
   type Mutation {
     # Auth
-    login(email: String!, password: String!): AuthPayload!
 
     # Incidents
     createIncident(input: CreateIncidentInput!): Incident!

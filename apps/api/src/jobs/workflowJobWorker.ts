@@ -240,10 +240,10 @@ async function processNotificationJob(job: Job): Promise<void> {
           { userId: 'system', entityData: {} },
         )
         if (!result.success) {
-          logger.warn({ instanceId, toStep, error: result.error }, '[notification-jobs] timer_wait transition failed')
-        } else {
-          logger.info({ instanceId, toStep }, '[notification-jobs] timer_wait transition completed')
+          logger.error({ instanceId, toStep, error: result.error }, '[notification-jobs] timer_wait transition failed')
+          throw new Error(`timer_wait transition failed for instance ${instanceId} → ${toStep}: ${result.error ?? 'unknown'}`)
         }
+        logger.info({ instanceId, toStep }, '[notification-jobs] timer_wait transition completed')
       } finally {
         await session.close()
       }

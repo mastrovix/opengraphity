@@ -134,7 +134,9 @@ describe('resolveIncident', () => {
     ])
     // workflow-instance lookup
     vi.mocked(runQueryOne).mockResolvedValue({ instanceId: 'wi-1' })
-    mockSession.executeRead.mockResolvedValue({ records: [] })
+    // loadIncidentPayload reloads the incident after the write — return a real row
+    const payloadRow = { get: (k: string) => (({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'resolved', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }
+    mockSession.executeRead.mockResolvedValue({ records: [payloadRow] })
   })
 
   it('chiama publish con type incident.resolved', async () => {
@@ -158,7 +160,9 @@ describe('escalateIncident', () => {
     vi.clearAllMocks()
     // workflow-instance lookup
     vi.mocked(runQueryOne).mockResolvedValue({ instanceId: 'wi-1' })
-    mockSession.executeRead.mockResolvedValue({ records: [] })
+    // loadIncidentPayload reloads the incident after the write — return a real row
+    const payloadRow = { get: (k: string) => (({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'resolved', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }
+    mockSession.executeRead.mockResolvedValue({ records: [payloadRow] })
   })
 
   it('chiama publish con type incident.escalated', async () => {

@@ -57,8 +57,10 @@ async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> 
       severity:      r.get('severity')      as string,
     }))
   } catch (err) {
-    logger.warn({ err, ruleKey: rule.key, tenantId }, 'anomaly-engine: rule skipped (query error)')
-    return []
+    // Fail loud: returning [] here would feed autoResolveStale an empty
+    // "current" set and mark every open anomaly of this rule resolved.
+    logger.error({ err, ruleKey: rule.key, tenantId }, 'anomaly-engine: rule query failed')
+    throw err
   } finally {
     await session.close()
   }
