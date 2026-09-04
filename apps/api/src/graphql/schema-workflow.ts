@@ -64,6 +64,8 @@ export function workflowSDL(): string {
     inputField:    String
     condition:     String
     timerHours:    Int
+    sourceHandle:  String
+    targetHandle:  String
   }
 
   type WorkflowDefinition {

@@ -256,6 +256,81 @@ export async function updateWorkflowTransition(
   }, true)
 }
 
+/**
+ * Creates a new transition (arrow) between two steps of a definition — the
+ * write path the Workflow Designer's onConnect calls. Persists the drawn
+ * handles so the edge re-renders where the user placed it. Trigger defaults to
+ * 'manual'; the user then edits it (e.g. to 'sla_breach') via the transition
+ * panel + saveWorkflowChanges.
+ */
+export async function addWorkflowTransition(
+  _: unknown,
+  { definitionId, fromStepName, toStepName, trigger, label, sourceHandle, targetHandle }: {
+    definitionId: string; fromStepName: string; toStepName: string
+    trigger?: string | null; label?: string | null
+    sourceHandle?: string | null; targetHandle?: string | null
+  },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const id = uuidv4()
+    const result = await session.executeWrite((tx) =>
+      tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        MATCH (from:WorkflowStep {definition_id: $definitionId, name: $fromStepName})
+        MATCH (to:WorkflowStep   {definition_id: $definitionId, name: $toStepName})
+        CREATE (from)-[tr:TRANSITIONS_TO {
+          id: $id, trigger: $trigger, label: $label,
+          requires_input: false, input_field: null, condition: null, timer_hours: null,
+          source_handle: $sourceHandle, target_handle: $targetHandle
+        }]->(to)
+        RETURN tr, from.name AS fromStep, to.name AS toStep
+      `, {
+        definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, id,
+        trigger: trigger ?? 'manual', label: label ?? 'Nuova transizione',
+        sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null,
+      }),
+    )
+    if (!result.records.length) {
+      throw new GraphQLError('Step non trovati o non appartenenti a questa definizione', { extensions: { code: 'NOT_FOUND' } })
+    }
+    const tr = result.records[0].get('tr').properties as Record<string, unknown>
+    return {
+      id,
+      fromStepName:  result.records[0].get('fromStep') as string,
+      toStepName:    result.records[0].get('toStep')   as string,
+      trigger:       tr['trigger']        as string,
+      label:         tr['label']          as string,
+      requiresInput: false,
+      inputField:    null,
+      condition:     null,
+      timerHours:    null,
+      sourceHandle:  (tr['source_handle'] ?? null) as string | null,
+      targetHandle:  (tr['target_handle'] ?? null) as string | null,
+    }
+  }, true)
+}
+
+/** Deletes a transition by id (Workflow Designer edge removal). */
+export async function removeWorkflowTransition(
+  _: unknown,
+  { definitionId, transitionId }: { definitionId: string; transitionId: string },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const result = await session.executeWrite((tx) =>
+      tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        MATCH (:WorkflowStep {definition_id: $definitionId})-[tr:TRANSITIONS_TO {id: $transitionId}]->()
+        WITH tr, tr.id AS deletedId
+        DELETE tr
+        RETURN deletedId
+      `, { definitionId, tenantId: ctx.tenantId, transitionId }),
+    )
+    return result.records.length > 0
+  }, true)
+}
+
 export async function executeWorkflowTransition(
   _: unknown,
   { instanceId, toStep, notes }: { instanceId: string; toStep: string; notes?: string },

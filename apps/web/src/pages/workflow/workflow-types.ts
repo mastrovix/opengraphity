@@ -27,6 +27,8 @@ export interface WFTransition {
   inputField:    string | null
   condition:     string | null
   timerHours:    number | null
+  sourceHandle?: string | null
+  targetHandle?: string | null
 }
 
 export interface PendingTransitionChange {

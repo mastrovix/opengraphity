@@ -15,7 +15,7 @@ export const GET_WORKFLOW_DEFINITION_BY_ID = gql`
       id name entityType category version active changeSubtype
       steps { id name label type enterActions exitActions isInitial isTerminal isOpen category order }
       transitions {
-        id fromStepName toStepName trigger label requiresInput inputField condition timerHours
+        id fromStepName toStepName trigger label requiresInput inputField condition timerHours sourceHandle targetHandle
       }
     }
   }

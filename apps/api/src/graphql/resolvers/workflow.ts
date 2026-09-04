@@ -20,6 +20,8 @@ import {
 import {
   updateWorkflowStep,
   updateWorkflowTransition,
+  addWorkflowTransition,
+  removeWorkflowTransition,
   executeWorkflowTransition,
   saveWorkflowChanges,
 } from './workflowMutations.js'
@@ -138,6 +140,8 @@ export const workflowResolvers = {
     removeWorkflowStep,
     updateWorkflowStep,
     updateWorkflowTransition,
+    addWorkflowTransition,
+    removeWorkflowTransition,
     executeWorkflowTransition,
     saveWorkflowLayout,
     saveWorkflowChanges,

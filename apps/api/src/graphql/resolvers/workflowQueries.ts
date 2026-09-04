@@ -115,7 +115,9 @@ export async function workflowDefinition(
                tr.requires_input AS requiresInput,
                tr.input_field AS inputField,
                tr.condition AS condition,
-               tr.timer_hours AS timerHours
+               tr.timer_hours AS timerHours,
+               tr.source_handle AS sourceHandle,
+               tr.target_handle AS targetHandle
       `, { defId: wd['id'] }),
     )
 
@@ -152,6 +154,8 @@ export async function workflowDefinition(
         inputField:    (r.get('inputField')   ?? null) as string | null,
         condition:     (r.get('condition')    ?? null) as string | null,
         timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
+        sourceHandle:  (r.get('sourceHandle') ?? null) as string | null,
+        targetHandle:  (r.get('targetHandle') ?? null) as string | null,
       })),
     }
   })
@@ -184,7 +188,9 @@ export async function workflowDefinitionById(
                tr.requires_input AS requiresInput,
                tr.input_field AS inputField,
                tr.condition AS condition,
-               tr.timer_hours AS timerHours
+               tr.timer_hours AS timerHours,
+               tr.source_handle AS sourceHandle,
+               tr.target_handle AS targetHandle
       `, { defId: id }),
     )
 
@@ -221,6 +227,8 @@ export async function workflowDefinitionById(
         inputField:    (r.get('inputField')   ?? null) as string | null,
         condition:     (r.get('condition')    ?? null) as string | null,
         timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
+        sourceHandle:  (r.get('sourceHandle') ?? null) as string | null,
+        targetHandle:  (r.get('targetHandle') ?? null) as string | null,
       })),
     }
   })

@@ -287,6 +287,7 @@ interface WorkflowCanvasProps {
   onEdgeClick:    (e: React.MouseEvent, edge: Edge) => void
   onPaneClick:    () => void
   onReconnect:    (oldEdge: Edge, newConnection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => void
+  onConnect?:     (connection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => void
   loading:        boolean
   def:            WorkflowDefinition | null
   children?:      React.ReactNode
@@ -301,6 +302,7 @@ export function WorkflowCanvas({
   onEdgeClick,
   onPaneClick,
   onReconnect,
+  onConnect,
   loading,
   def,
   children,
@@ -339,6 +341,7 @@ export function WorkflowCanvas({
           isValidConnection={() => true}
           connectionMode={ConnectionMode.Loose}
           onReconnect={onReconnect}
+          onConnect={onConnect}
         >
           <Background color="#e2e6f0" gap={20} size={1} />
           <Controls position="bottom-left" style={{ marginBottom: 80 }} />

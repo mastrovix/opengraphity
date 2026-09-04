@@ -260,6 +260,21 @@ export function buildBaseSDL(): string {
       exitActions:  String
     ): WorkflowStep!
 
+    addWorkflowTransition(
+      definitionId: ID!
+      fromStepName: String!
+      toStepName:   String!
+      trigger:      String
+      label:        String
+      sourceHandle: String
+      targetHandle: String
+    ): WorkflowTransitionDef!
+
+    removeWorkflowTransition(
+      definitionId: ID!
+      transitionId: ID!
+    ): Boolean!
+
     updateWorkflowTransition(
       definitionId: ID!
       transitionId: ID!

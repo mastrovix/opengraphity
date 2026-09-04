@@ -11,9 +11,10 @@ interface EdgePanelProps {
   onClose:       () => void
   onSaved:       (updated: Partial<WFTransition>) => void
   onSaveLocally: (change: PendingTransitionChange) => void
+  onDelete?:     (transitionId: string) => void
 }
 
-export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLocally }: EdgePanelProps) {
+export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLocally, onDelete }: EdgePanelProps) {
   const [label,         setLabel]         = useState(transition.label)
   const [trigger,       setTrigger]       = useState(transition.trigger)
   const [requiresInput, setRequiresInput] = useState(transition.requiresInput)
@@ -115,6 +116,23 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
       >
         Salva
       </button>
+
+      {onDelete && (
+        <button
+          onClick={() => {
+            if (confirm(`Eliminare la transizione ${transition.fromStepName} → ${transition.toStepName}?`)) {
+              onDelete(transition.id)
+            }
+          }}
+          style={{
+            marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
+            border: '1px solid var(--color-danger)', background: '#fff',
+            color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
+          }}
+        >
+          Elimina transizione
+        </button>
+      )}
     </div>
   )
 }

@@ -91,7 +91,12 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
       const baseKey    = `${tr.fromStepName}→${tr.toStepName}`
       const triggerKey = `${tr.fromStepName}→${tr.toStepName}→${tr.trigger}`
       const isBack     = backTransitions.has(baseKey)
-      const handles    = edgeHandles[triggerKey] ?? edgeHandles[baseKey] ?? { sourceHandle: 'src-right', targetHandle: 'tgt-left' }
+      // Prefer handles stored on the transition (user-drawn edges); fall back to
+      // the curated layout tables for the seed workflows, then a default.
+      const stored     = (tr.sourceHandle && tr.targetHandle)
+        ? { sourceHandle: tr.sourceHandle, targetHandle: tr.targetHandle }
+        : null
+      const handles    = stored ?? edgeHandles[triggerKey] ?? edgeHandles[baseKey] ?? { sourceHandle: 'src-right', targetHandle: 'tgt-left' }
 
       if (isBack) {
         return {
