@@ -3,7 +3,7 @@ import type { DomainEvent } from '@opengraphity/types'
 import { getRedisOptions } from './connection.js'
 
 /** One queue per consumer — fan-out by publishing to all */
-const CONSUMER_QUEUES = ['notification-service', 'sla-engine'] as const
+const CONSUMER_QUEUES = ['notification-service', 'sla-engine', 'escalation-consumer'] as const
 
 const JOB_OPTIONS = {
   attempts:         4,   // 1 initial + 3 retries (5s / 30s / 5min via backoffStrategy)

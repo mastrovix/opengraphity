@@ -4,6 +4,7 @@ initTelemetry()
 import { startServer } from './server.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine } from '@opengraphity/sla'
+import { EscalationConsumer } from './consumers/escalationConsumer.js'
 import { closeConnection } from '@opengraphity/events'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
 import { neo4jQueryDurationSeconds, recordSlowQuery } from './middleware/metrics.js'
@@ -31,6 +32,11 @@ async function main() {
   // Start RabbitMQ consumers
   const notificationDispatcher = await createNotificationDispatcher()
   const slaEngine = await createSLAEngine()
+
+  // Auto-escalation on SLA / OLA-UC breach (executes the 'sla_breach'-triggered
+  // workflow transition, e.g. incident in_progress → escalated).
+  const escalationConsumer = new EscalationConsumer()
+  await escalationConsumer.start()
 
   // Start report scheduler (BullMQ, every 60s)
   const reportScheduler = startReportScheduler()
@@ -71,7 +77,7 @@ async function main() {
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),
   ]
-  const baseConsumers = [notificationDispatcher, slaEngine]
+  const baseConsumers = [notificationDispatcher, slaEngine, escalationConsumer]
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
 

@@ -14,6 +14,7 @@ const OLA_RESOLVED_FIELD: Record<string, { label: string; field: string }> = {
   incident:        { label: 'Incident',       field: 'resolved_at' },
   problem:         { label: 'Problem',        field: 'resolved_at' },
   service_request: { label: 'ServiceRequest', field: 'completed_at' },
+  change:          { label: 'Change',         field: 'completed_at' },
 }
 
 function toInt(v: unknown): number {

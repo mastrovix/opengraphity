@@ -15,7 +15,9 @@
  */
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
+import { getActiveOLAContractsFor, scheduleOLABreaches } from '@opengraphity/sla'
 import { ValidationError } from '../lib/errors.js'
+import { logger } from '../lib/logger.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import {
@@ -138,6 +140,25 @@ export async function createChangeRFC(
       await writeAudit(tx, id, ctx.tenantId, 'change_created', ctx.userId,
         `Change ${code} creato con ${affectedCIIds.length} CI`)
     })
+
+    // Schedule OLA/UC breach checks for this change. Changes don't get an
+    // SLAStatus (their SLA is window-based), so — unlike incident/problem/SR,
+    // which the SLA engine schedules on entity.created — we schedule here.
+    // Best-effort: a scheduling failure must not fail the RFC creation.
+    try {
+      const contracts = await getActiveOLAContractsFor(ctx.tenantId, 'change')
+      if (contracts.length > 0) {
+        await scheduleOLABreaches({
+          entityId:   id,
+          entityType: 'change',
+          tenantId:   ctx.tenantId,
+          timezone:   'Europe/Rome',
+          contracts,
+        })
+      }
+    } catch (err) {
+      logger.error({ err, changeId: id, code }, '[changeCreationService] OLA breach scheduling failed')
+    }
 
     return { id, code }
   }, true)
