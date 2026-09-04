@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { nextSequenceValue } from '../lib/sequence.js'
+import { derivePriority, impactUrgencyFromPriority, isImpactUrgency } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
@@ -93,11 +94,25 @@ function requirePayload(payload: IncidentEventPayload | null, id: string): Incid
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createIncident(
-  input: { title: string; description?: string; severity: string; category?: string; affectedCIIds?: string[] },
+  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[] },
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
   validateStringLength(input.description, 'description', 0, 10000)
+
+  // ITIL: Priority = f(Impact, Urgency). The derived priority is stored in the
+  // `severity` field (SLA/badges/filters read it). Impact+urgency take
+  // precedence; a bare `severity` is still accepted for API clients.
+  let impact = input.impact, urgency = input.urgency
+  let severity = input.severity
+  if (isImpactUrgency(impact) && isImpactUrgency(urgency)) {
+    severity = derivePriority(impact, urgency)
+  } else if (severity) {
+    const iu = impactUrgencyFromPriority(severity)
+    impact = impact ?? iu.impact; urgency = urgency ?? iu.urgency
+  } else {
+    throw new ValidationError('Fornire impact+urgency oppure severity')
+  }
 
   const id  = uuidv4()
   const now = new Date().toISOString()
@@ -115,6 +130,8 @@ export async function createIncident(
         title:        $title,
         description:  $description,
         severity:     $severity,
+        impact:       $impact,
+        urgency:      $urgency,
         category:     $category,
         status:       $status,
         created_at:   $now,
@@ -124,7 +141,8 @@ export async function createIncident(
     `, {
       id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
-      severity: input.severity, category: input.category ?? null,
+      severity, impact: impact ?? null, urgency: urgency ?? null,
+      category: input.category ?? null,
       status: initialStatus, now,
     })
     if (!rows[0]) throw new ValidationError('Failed to create incident')
@@ -158,12 +176,12 @@ export async function createIncident(
   }, true)
 
   await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
-    id, title: input.title, severity: input.severity, status: created.status,
+    id, title: input.title, severity: created.severity, status: created.status,
     ciName: '—', assignedTo: '—', affected_ci_ids: input.affectedCIIds ?? [],
   } satisfies IncidentEventPayload, now)
 
   // Evaluate auto triggers, then business rules
-  const entityData = { id, title: input.title, severity: input.severity, status: created.status, category: input.category ?? null, description: input.description ?? null }
+  const entityData = { id, title: input.title, severity: created.severity, status: created.status, category: input.category ?? null, description: input.description ?? null }
   void evaluateTriggers(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId)
     .then(() => evaluateBusinessRules(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId))
     .catch((err: unknown) => {

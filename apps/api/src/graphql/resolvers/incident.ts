@@ -1,4 +1,5 @@
 import type { GraphQLResolveInfo } from 'graphql'
+import { derivePriority, isImpactUrgency } from '../../lib/priority.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
@@ -117,7 +118,7 @@ async function incident(
 
 async function createIncident(
   _: unknown,
-  args: { input: { title: string; description?: string; severity: string; category?: string; affectedCIIds?: string[] } },
+  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[] } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -134,7 +135,7 @@ async function createIncident(
 
 async function updateIncident(
   _: unknown,
-  args: { id: string; input: { title?: string; description?: string; severity?: string; status?: string } },
+  args: { id: string; input: { title?: string; description?: string; severity?: string; impact?: string; urgency?: string; status?: string } },
   ctx: GraphQLContext,
 ) {
   const { id, input } = args
@@ -146,12 +147,33 @@ async function updateIncident(
       fieldValues: input as Record<string, unknown>,
       tenantId:    ctx.tenantId,
     })
+
+    // If impact or urgency changes, recompute the derived priority (severity)
+    // by merging with the incident's current impact/urgency.
+    let severity = input.severity ?? null
+    let impact   = input.impact ?? null
+    let urgency  = input.urgency ?? null
+    if (input.impact != null || input.urgency != null) {
+      const cur = await runQuery<{ impact: string | null; urgency: string | null }>(
+        session, 'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN i.impact AS impact, i.urgency AS urgency',
+        { id, tenantId: ctx.tenantId },
+      )
+      const mImpact  = (input.impact  ?? cur[0]?.impact)  as string | undefined
+      const mUrgency = (input.urgency ?? cur[0]?.urgency) as string | undefined
+      if (isImpactUrgency(mImpact) && isImpactUrgency(mUrgency)) {
+        severity = derivePriority(mImpact, mUrgency)
+        impact = mImpact; urgency = mUrgency
+      }
+    }
+
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
       SET i += {
         title:       coalesce($title, i.title),
         description: coalesce($description, i.description),
         severity:    coalesce($severity, i.severity),
+        impact:      coalesce($impact, i.impact),
+        urgency:     coalesce($urgency, i.urgency),
         status:      coalesce($status, i.status),
         updated_at:  $now
       }
@@ -162,7 +184,9 @@ async function updateIncident(
       tenantId:    ctx.tenantId,
       title:       input.title       ?? null,
       description: input.description ?? null,
-      severity:    input.severity    ?? null,
+      severity,
+      impact,
+      urgency,
       status:      input.status      ?? null,
       now,
     })

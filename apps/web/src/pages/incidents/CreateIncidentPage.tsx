@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
+import { derivePriority, priorityCode, impactUrgencyFromPriority, IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, type ImpactUrgency } from '@/lib/priority'
 import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
@@ -44,7 +45,9 @@ export function CreateIncidentPage() {
 
   const [title,       setTitle]       = useState('')
   const [category,    setCategory]    = useState('')
-  const [severity,    setSeverity]    = useState('medium')
+  const [impact,      setImpact]      = useState<ImpactUrgency>('medium')
+  const [urgency,     setUrgency]     = useState<ImpactUrgency>('medium')
+  const priority = derivePriority(impact, urgency)
   const [description, setDescription] = useState('')
   const [selectedTeam,      setSelectedTeam]      = useState<{ id: string; name: string } | null>(null)
   const [teamSearch,        setTeamSearch]        = useState('')
@@ -53,9 +56,8 @@ export function CreateIncidentPage() {
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const formValues = { title, severity, category, description }
+  const formValues = { title, severity: priority, category, description }
   const { rules: fieldRules, error: fieldRulesError } = useFormFieldRules('incident', null, formValues)
-  const { values: severityValues, loading: severityLoading } = useEnumValues('incident', 'severity')
   const { values: categoryValues, loading: categoryLoading } = useEnumValues('incident', 'category')
 
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
@@ -83,7 +85,7 @@ export function CreateIncidentPage() {
     onError: (err) => toast.error(`Team assignment: ${err.message}`),
   })
 
-  const canSubmit = title.trim() !== '' && description.trim() !== '' && severity !== '' && category !== ''
+  const canSubmit = title.trim() !== '' && description.trim() !== '' && category !== ''
 
   const [createIncident, { loading }] = useMutation<{ createIncident: { id: string } }>(CREATE_INCIDENT, {
     refetchQueries: [{ query: GET_INCIDENTS }],
@@ -164,35 +166,36 @@ export function CreateIncidentPage() {
             {fieldErrors['category'] && <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{fieldErrors['category']}</p>}
           </div>
 
-          {/* SEVERITY */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
-              Severity <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
-            </label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {severityLoading ? (
-                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
-              ) : severityValues.map(s => {
-                const sel = severity === s
-                const c   = SEVERITY_STYLES[s]
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSeverity(s)}
-                    style={{
-                      padding: '7px 16px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                      border: `1.5px solid ${sel ? (c?.border ?? 'var(--color-brand)') : '#e5e7eb'}`,
-                      background: sel ? (c?.bg ?? '#f0f9ff') : 'var(--color-slate-bg)',
-                      color: sel ? (c?.color ?? 'var(--color-brand)') : 'var(--color-slate)',
-                      fontWeight: sel ? 600 : 400,
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                  </button>
-                )
-              })}
+          {/* IMPATTO × URGENZA → PRIORITÀ (ITIL) */}
+          <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            {([['Impatto', impact, setImpact], ['Urgenza', urgency, setUrgency]] as const).map(([label, val, setVal]) => (
+              <div key={label}>
+                <label style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {IMPACT_URGENCY_OPTIONS.map(o => {
+                    const sel = val === o
+                    return (
+                      <button key={o} type="button" onClick={() => setVal(o)}
+                        style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
+                          border: `1.5px solid ${sel ? 'var(--color-brand)' : '#e5e7eb'}`,
+                          background: sel ? '#f0f9ff' : 'var(--color-slate-bg)',
+                          color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
+                        {IMPACT_URGENCY_LABEL[o]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+            <div>
+              <label style={fieldLabel}>Priorità (calcolata)</label>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
+                border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? '#e5e7eb')}`,
+                background: SEVERITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
+                color: SEVERITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
+                <span>{priorityCode(priority)}</span>
+                <span style={{ textTransform: 'capitalize' }}>{priority}</span>
+              </div>
             </div>
           </div>
 
@@ -221,7 +224,9 @@ export function CreateIncidentPage() {
             description={description}
             ciIds={selectedCIs.map(ci => ci.id)}
             onApply={({ severity: sev, category: cat, teamName }) => {
-              setSeverity(sev)
+              // AI suggests a severity → map back to impact/urgency
+              const iu = impactUrgencyFromPriority(sev)
+              setImpact(iu.impact); setUrgency(iu.urgency)
               setCategory(cat)
               if (teamName) {
                 const team = teamsData?.teams.find(t => t.name === teamName)
@@ -388,7 +393,8 @@ export function CreateIncidentPage() {
                   variables: {
                     input: {
                       title: title.trim(),
-                      severity,
+                      impact,
+                      urgency,
                       category: category || undefined,
                       description: description.trim() || undefined,
                       affectedCIIds: selectedCIs.map(ci => ci.id),

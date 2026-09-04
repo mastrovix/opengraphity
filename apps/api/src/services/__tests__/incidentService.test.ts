@@ -115,6 +115,11 @@ describe('createIncident', () => {
   })
 
   it('include tenantId e severity nell\'evento', async () => {
+    // The event carries the created incident's severity (derived priority) —
+    // make the CREATE mock echo it.
+    vi.mocked(runQuery).mockResolvedValue([
+      { props: { id: 'inc-1', title: 'Alert critico', severity: 'critical', status: 'open' } },
+    ])
     await createIncident(
       { title: 'Alert critico', severity: 'critical' },
       ctx,

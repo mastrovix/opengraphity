@@ -9,6 +9,9 @@ export function incidentSDL(): string {
     title: String!
     description: String
     severity: String!
+    impact: String
+    urgency: String
+    priority: String!
     category: String
     status: String!
     createdAt: String!
@@ -51,7 +54,9 @@ export function incidentSDL(): string {
   input CreateIncidentInput {
     title: String!
     description: String
-    severity: String!
+    severity: String
+    impact: String
+    urgency: String
     category: String
     affectedCIIds: [ID!]
   }
@@ -60,6 +65,8 @@ export function incidentSDL(): string {
     title: String
     description: String
     severity: String
+    impact: String
+    urgency: String
     status: String
   }
   `

@@ -20,6 +20,9 @@ export const GET_INCIDENT = gql`
       title
       description
       severity
+      impact
+      urgency
+      priority
       status
       rootCause
       createdAt

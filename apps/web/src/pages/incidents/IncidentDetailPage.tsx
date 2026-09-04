@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
+import { priorityCode } from '@/lib/priority'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI } from '@/graphql/mutations'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
@@ -87,6 +88,9 @@ interface Incident {
   title:                string
   description:          string | null
   severity:             string
+  impact:               string | null
+  urgency:              string | null
+  priority:             string
   status:               string
   rootCause:            string | null
   createdAt:            string
@@ -389,7 +393,8 @@ export function IncidentDetailPage() {
           <SectionCard title={t('detail.sections.details')} defaultOpen>
             <div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <DetailField label={t('pages.incidents.severity')} value={<SeverityBadge value={incident.severity} />} />
+                  <DetailField label="Priorità" value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
+                  {incident.impact && incident.urgency && <DetailField label="Impatto / Urgenza" value={`${incident.impact} / ${incident.urgency}`} />}
                   <DetailField label={t('sla.title')} value={
                     incident.slaStatus
                       ? <SlaBadge sla={incident.slaStatus} />
