@@ -98,7 +98,7 @@ async function processJob(job: Job<SLAJobData>): Promise<void> {
     }
 
     default:
-      console.warn(`[sla:scheduler] Unknown job type: ${job.name}`)
+      throw new Error(`[sla:scheduler] Unknown job type: ${job.name}`)
   }
 }
 

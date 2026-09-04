@@ -187,12 +187,16 @@ export class WorkflowEngine {
       const exitActionsRaw    = rec.get('exitActions')        as string | null
       const enterActionsRaw   = rec.get('nextEnterActions')   as string | null
 
-      // 2. Verifica condizione
-      if (condition === 'rootCause != null' && !input.notes) {
-        return {
-          success: false,
-          error:   'Root cause obbligatoria per questa transizione',
-        } as unknown as TransitionResult
+      // 2. Verifica condizione — una condizione non riconosciuta NON deve
+      // passare silenziosamente (guardia mai applicata = transizione sempre ok).
+      if (condition) {
+        if (condition === 'rootCause != null') {
+          if (!input.notes) {
+            return { success: false, error: 'Root cause obbligatoria per questa transizione' } as unknown as TransitionResult
+          }
+        } else {
+          return { success: false, error: `Condizione di transizione sconosciuta: "${condition}"` } as unknown as TransitionResult
+        }
       }
 
       // 3. Calcola durata step corrente
@@ -325,7 +329,11 @@ export class WorkflowEngine {
       // Schedule timer job when entering timer_wait step. Failing to schedule
       // (or a timer step with no automatic exit) leaves the workflow stuck
       // forever — that is an actionError, not a log line.
-      if (nextStepType === 'timer_wait' && timerDelayMinutes && timerDelayMinutes > 0) {
+      if (nextStepType === 'timer_wait' && (!timerDelayMinutes || timerDelayMinutes <= 0)) {
+        const msg = `timer_wait: step "${nextStepName}" has no valid timer_delay_minutes — the workflow will never leave this step`
+        workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName, timerDelayMinutes }, `[workflow-engine] ${msg}`)
+        actionErrors.push(msg)
+      } else if (nextStepType === 'timer_wait' && timerDelayMinutes && timerDelayMinutes > 0) {
         try {
           const { Queue } = await import('bullmq')
           const { getRedisOptions } = await import('@opengraphity/events')
@@ -359,8 +367,10 @@ export class WorkflowEngine {
       }
 
       // Schedule sub_workflow creation when entering sub_workflow step
-      if (nextStepType === 'sub_workflow' && subWorkflowId) {
-        workflowLogger.info({ instanceId: input.instanceId, subWorkflowId }, '[workflow-engine] sub_workflow step entered — sub-workflow definitionId stored')
+      if (nextStepType === 'sub_workflow') {
+        const msg = `sub_workflow step "${nextStepName}" is not implemented — no sub-workflow was created${subWorkflowId ? ` (definitionId ${subWorkflowId})` : ' and no subWorkflowId is configured'}`
+        workflowLogger.error({ instanceId: input.instanceId, subWorkflowId }, `[workflow-engine] ${msg}`)
+        actionErrors.push(msg)
       }
 
       return {

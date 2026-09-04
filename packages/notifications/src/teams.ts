@@ -34,8 +34,7 @@ interface MessageCard {
 
 export async function sendTeamsCard(card: TeamsCard): Promise<void> {
   if (!TEAMS_WEBHOOK_URL) {
-    console.warn(`[teams] Skipping card "${card.title}" — webhook URL not configured`)
-    return
+    throw new Error(`[teams] TEAMS_WEBHOOK_URL not configured — cannot send card "${card.title}"`)
   }
 
   const body: MessageCard = {

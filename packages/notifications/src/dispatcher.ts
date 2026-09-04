@@ -162,7 +162,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       notifyRule: { title_key: string; severity: string; channels: string[]; target: string }
     }
     const nr = p.notifyRule
-    if (!nr) return
+    if (!nr) throw new Error('workflow.step.entered event without notifyRule payload')
 
     const notification: InAppNotification = {
       id:          randomUUID(),
@@ -275,7 +275,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     if (!notifType) return
 
     const p = event.payload as Record<string, unknown>
-    if (!p['id'] || !p['title']) return
+    if (!p['id'] || !p['title']) throw new Error(`incident notification event missing id/title: ${event.type}`)
 
     const incident: IncidentData = {
       id:           p['id']         as string,

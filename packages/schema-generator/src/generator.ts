@@ -382,6 +382,9 @@ function graphqlFieldType(fieldType: string): string {
     case 'number':  return 'Float'
     case 'boolean': return 'Boolean'
     case 'date':    return 'String'
-    default:        return 'String'
+    case 'string':  return 'String'
+    case 'enum':    return 'String'
+    default:
+      throw new Error(`graphqlFieldType: unknown fieldType "${fieldType}"`)
   }
 }
