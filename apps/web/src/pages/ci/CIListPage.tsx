@@ -49,7 +49,7 @@ export function CIListPage() {
   const { t, i18n } = useTranslation()
   const { typeName } = useParams<{ typeName: string }>()
   const navigate = useNavigate()
-  const { getCIType, loading: metamodelLoading } = useMetamodel()
+  const { getCIType, loading: metamodelLoading, error: metamodelError } = useMetamodel()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -186,6 +186,9 @@ export function CIListPage() {
 
   if (metamodelLoading) {
     return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+  }
+  if (metamodelError) {
+    return <div style={{ padding: 40 }}><QueryError message={metamodelError.message} /></div>
   }
   if (!ciType) {
     return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>{t('pages.cmdb.notFound', { type: typeName })}</div>

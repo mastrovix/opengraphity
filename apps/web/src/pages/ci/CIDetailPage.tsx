@@ -200,7 +200,7 @@ export function CIDetailPage() {
   const { typeName, id } = useParams<{ typeName: string; id: string }>()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { getCIType, loading: metamodelLoading } = useMetamodel()
+  const { getCIType, loading: metamodelLoading, error: metamodelError } = useMetamodel()
 
   const ciType = typeName ? getCIType(typeName) : undefined
 
@@ -374,6 +374,9 @@ export function CIDetailPage() {
 
   if (metamodelLoading || loading) {
     return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento…</div>
+  }
+  if (metamodelError) {
+    return <div style={{ padding: 40 }}><QueryError message={metamodelError.message} /></div>
   }
   if (!ciType) {
     return <div style={{ padding: 40, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>Tipo CI "{typeName}" non trovato.</div>

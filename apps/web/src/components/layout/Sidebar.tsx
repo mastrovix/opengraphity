@@ -138,7 +138,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const settingsActive = pathname.startsWith('/settings')
   const { ciTypes } = useMetamodel()
 
-  const { data: anomalyStatsData } = useQuery<{ anomalyStats: { critical: number; open: number } }>(
+  const { data: anomalyStatsData, error: anomalyError } = useQuery<{ anomalyStats: { critical: number; open: number } }>(
     GET_ANOMALY_STATS,
     { pollInterval: 60_000, fetchPolicy: 'cache-and-network' },
   )
@@ -352,16 +352,17 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                       <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                       {t(labelKey)}
                     </span>
-                    {to === '/anomalies' && anomalyCritical > 0 && (
+                    {to === '/anomalies' && (anomalyCritical > 0 || anomalyError) && (
                       <span
-                        aria-label={`${anomalyCritical} anomalie critiche`}
+                        aria-label={anomalyError ? 'errore caricamento anomalie' : `${anomalyCritical} anomalie critiche`}
+                        title={anomalyError ? anomalyError.message : undefined}
                         style={{
                           fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
                           padding: '2px 5px', borderRadius: 8,
                           background: 'var(--danger)', color: '#fff',
                         }}
                       >
-                        {anomalyCritical}
+                        {anomalyError ? '!' : anomalyCritical}
                       </span>
                     )}
                   </NavLink>
