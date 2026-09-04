@@ -6,6 +6,7 @@ import { Monitor, Code, Key, Wifi, HelpCircle, Paperclip } from 'lucide-react'
 import { CREATE_TICKET } from '@/graphql/mutations'
 import { GET_KB_ARTICLES } from '@/graphql/queries'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
+import { notifyError } from '@/lib/notify'
 import { uploadAttachment } from '@/lib/attachments'
 
 const CATEGORIES = [
@@ -35,10 +36,10 @@ export function TicketNewPage() {
   const [isDragging,  setIsDragging]  = useState(false)
   const fileInputRef                  = useRef<HTMLInputElement>(null)
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [_fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const ticketFormValues = { title, description, priority, category }
-  const ticketFieldRules = useFormFieldRules('service_request', null, ticketFormValues)
+  const { rules: ticketFieldRules, error: rulesError } = useFormFieldRules('service_request', null, ticketFormValues)
 
   const [createTicket, { loading }] = useMutation<{ createTicket: { id: string } }>(CREATE_TICKET, {
     onCompleted: (data) => {
@@ -96,6 +97,11 @@ export function TicketNewPage() {
 
   function handleSubmit() {
     if (!canSubmit) return
+    // Rules failed to load: do not silently treat required fields as optional.
+    if (rulesError) {
+      notifyError(`Impossibile validare i campi obbligatori: ${rulesError.message}`)
+      return
+    }
     const missing = validateFormFields(ticketFieldRules, ticketFormValues)
     if (missing.length > 0) {
       const errs: Record<string, string> = {}
@@ -112,6 +118,11 @@ export function TicketNewPage() {
       <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A', marginBottom: 28 }}>
         {t('ticket.new')}
       </h1>
+      {Object.keys(fieldErrors).length > 0 && (
+        <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+          {t('common.required')}: {Object.keys(fieldErrors).join(', ')}
+        </div>
+      )}
 
       {/* Category selection */}
       <div style={{ marginBottom: 24 }}>

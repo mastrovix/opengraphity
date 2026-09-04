@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { lookupOrError } from '@/lib/tokens'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { gql } from '@apollo/client'
@@ -42,7 +43,7 @@ interface LogEntry {
 }
 
 function LevelBadge({ level }: { level: string }) {
-  const style = LEVEL_STYLES[level] ?? LEVEL_STYLES['info']!
+  const style = lookupOrError(LEVEL_STYLES, level, 'LEVEL_STYLES', { backgroundColor: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' })
   return (
     <Pill bg={style.backgroundColor} color={style.color} radius={4} style={{ fontSize: 11, minWidth: 46, textAlign: 'center' }}>
       {level.toUpperCase()}

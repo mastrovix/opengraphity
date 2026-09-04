@@ -40,12 +40,12 @@ export function useFormFieldRules(
   entityType:   string,
   workflowStep: string | null | undefined,
   formValues:   Record<string, unknown>,
-): Record<string, FieldRules> {
-  const { data: visData } = useQuery<{ fieldVisibilityRules: VisibilityRule[] }>(
+): { rules: Record<string, FieldRules>; error: Error | null } {
+  const { data: visData, error: visError } = useQuery<{ fieldVisibilityRules: VisibilityRule[] }>(
     GET_FIELD_VISIBILITY_RULES,
     { variables: { entityType }, fetchPolicy: 'cache-first' },
   )
-  const { data: reqData } = useQuery<{ fieldRequirementRules: RequirementRule[] }>(
+  const { data: reqData, error: reqError } = useQuery<{ fieldRequirementRules: RequirementRule[] }>(
     GET_FIELD_REQUIREMENT_RULES,
     { variables: { entityType, workflowStep: workflowStep ?? null }, fetchPolicy: 'cache-first' },
   )
@@ -53,7 +53,7 @@ export function useFormFieldRules(
   const visRules = useMemo(() => visData?.fieldVisibilityRules ?? [], [visData])
   const reqRules = useMemo(() => reqData?.fieldRequirementRules ?? [], [reqData])
 
-  return useMemo(() => {
+  const rules = useMemo(() => {
     const visibility = evalVisibility(visRules, formValues)
     const required: Record<string, boolean> = {}
     for (const r of reqRules) {
@@ -68,6 +68,8 @@ export function useFormFieldRules(
     }
     return result
   }, [visRules, reqRules, formValues])
+
+  return { rules, error: visError ?? reqError ?? null }
 }
 
 export function validateFormFields(

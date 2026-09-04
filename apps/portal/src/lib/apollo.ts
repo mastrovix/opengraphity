@@ -2,6 +2,7 @@ import { ApolloClient, InMemoryCache, createHttpLink, from } from '@apollo/clien
 import { setContext } from '@apollo/client/link/context'
 import { onError } from '@apollo/client/link/error'
 import { keycloak } from './keycloak'
+import { notifyError } from './notify'
 
 const httpLink = createHttpLink({
   uri: (import.meta.env['VITE_API_URL'] as string | undefined) ?? '/graphql',
@@ -9,12 +10,22 @@ const httpLink = createHttpLink({
 
 const errorLink = onError((errResponse) => {
   const graphQLErrors = (errResponse as { graphQLErrors?: Array<{ message: string }> }).graphQLErrors
+  const networkError  = (errResponse as { networkError?: { message: string } }).networkError
   if (graphQLErrors) {
     for (const { message } of graphQLErrors) {
       if (message.toLowerCase().includes('unauthorized')) {
         keycloak.login()
+      } else {
+        // Never swallow: the portal has no per-page error handling, so an
+        // ignored error would just render "no tickets / not found".
+        console.error('[portal] GraphQL error:', message)
+        notifyError(message)
       }
     }
+  }
+  if (networkError) {
+    console.error('[portal] Network error:', networkError.message)
+    notifyError('Errore di connessione al server')
   }
 })
 

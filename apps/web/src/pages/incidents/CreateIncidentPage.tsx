@@ -54,7 +54,7 @@ export function CreateIncidentPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const formValues = { title, severity, category, description }
-  const { rules: fieldRules } = useFormFieldRules('incident', null, formValues)
+  const { rules: fieldRules, error: fieldRulesError } = useFormFieldRules('incident', null, formValues)
   const { values: severityValues, loading: severityLoading } = useEnumValues('incident', 'severity')
   const { values: categoryValues, loading: categoryLoading } = useEnumValues('incident', 'category')
 
@@ -369,6 +369,10 @@ export function CreateIncidentPage() {
               disabled={!canSubmit || loading}
               onClick={() => {
                 if (!canSubmit || loading) return
+                if (fieldRulesError) {
+                  toast.error(`Impossibile validare i campi obbligatori: ${fieldRulesError.message}`)
+                  return
+                }
                 const errs: Record<string, string> = {}
                 if (!title.trim()) errs['title'] = 'Campo obbligatorio'
                 if (!category) errs['category'] = 'Seleziona una categoria'

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { lookupOrError } from '@/lib/tokens'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, GitPullRequest, Shield, Clock, Bell, CheckCheck } from 'lucide-react'
@@ -38,7 +39,7 @@ const SEVERITY_ICON: Record<string, { icon: React.FC<{ size: number; color: stri
 
 function entityIcon(notif: InAppNotification) {
   if (notif.entity_type === 'change') return { icon: GitPullRequest, color: '#7c3aed' }
-  return SEVERITY_ICON[notif.severity ?? 'info'] ?? SEVERITY_ICON['info']!
+  return lookupOrError(SEVERITY_ICON, notif.severity ?? 'info', 'SEVERITY_ICON', SEVERITY_ICON['error']!)
 }
 
 // ── NotificationItem ──────────────────────────────────────────────────────────

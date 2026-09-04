@@ -89,7 +89,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string; label: string }
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = lookupOrError(STATUS_COLORS, status, 'STATUS_COLORS', STATUS_COLORS['pending'])
+  const s = lookupOrError(STATUS_COLORS, status, 'STATUS_COLORS', { bg: 'var(--color-danger)', color: '#fff', label: status })
   return (
     <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', fontWeight: 600, background: s.bg, color: s.color }}>
       {s.label}

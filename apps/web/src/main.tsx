@@ -204,4 +204,11 @@ initKeycloak().then((authenticated) => {
       </ErrorBoundary>
     </StrictMode>,
   )
+}).catch((err: Error) => {
+  // initKeycloak throws for: no tenant in subdomain, missing VITE_KEYCLOAK_URL,
+  // unknown realm, Keycloak unreachable. Without this the user sees a blank page.
+  root.innerHTML = `<div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui">
+    <div style="font-size:20px;font-weight:600;color:#EF4444">Errore di autenticazione</div>
+    <div style="color:#64748B;font-size:14px">${err.message}</div>
+  </div>`
 })
