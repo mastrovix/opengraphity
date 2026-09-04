@@ -44,8 +44,12 @@ async function main() {
   // Start notification job worker (escalation_check, digest, timer_wait)
   const notificationWorker = startNotificationJobWorker()
   const webhookDeliveryWorker = startWebhookDeliveryWorker()
-  // Embedding worker (semantic similarity: incident simili + KB suggerita)
-  const embeddingWorker = startEmbeddingWorker()
+  // Embedding worker (semantic similarity). CPU-bound: when a dedicated worker
+  // container runs it (EMBEDDING_WORKER_EXTERNAL=true) the API skips it so the
+  // ONNX inference does not block the request event loop.
+  const embeddingExternal = process.env['EMBEDDING_WORKER_EXTERNAL'] === 'true'
+  const embeddingWorker = embeddingExternal ? null : startEmbeddingWorker()
+  if (embeddingExternal) logger.info('Embedding worker delegated to external worker process')
   const emailDigestWorker = startEmailDigestWorker()
 
   // Register discovery connectors and start sync worker
@@ -63,8 +67,9 @@ async function main() {
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Worker[] = [
     anomalyWorker, workflowWorker, syncWorker, maintenanceWorker,
-    notificationWorker, webhookDeliveryWorker, embeddingWorker,
+    notificationWorker, webhookDeliveryWorker,
     emailDigestWorker, reportScheduler,
+    ...(embeddingWorker ? [embeddingWorker] : []),
   ]
   const baseConsumers = [notificationDispatcher, slaEngine]
 

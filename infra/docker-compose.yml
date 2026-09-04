@@ -189,10 +189,14 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
+    image: opengrafo-api:local
     ports:
       - "4000:4000"
     environment:
       NODE_ENV: production
+      # Embedding inference runs in the dedicated `worker` service (below), so
+      # the API event loop stays free for requests.
+      EMBEDDING_WORKER_EXTERNAL: "true"
       # Local stack runs with NODE_ENV=production — keep Apollo Sandbox usable
       GRAPHQL_INTROSPECTION: "true"
       PORT: "4000"
@@ -272,6 +276,34 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    restart: unless-stopped
+
+  # Dedicated worker process: runs the CPU-bound embedding worker off the API
+  # event loop. Same image as api, different entrypoint.
+  worker:
+    image: opengrafo-api:local
+    command: ["node", "apps/api/dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-opengraphity_local}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_URL: redis://redis:6379
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-local}
+      TRANSFORMERS_CACHE: /data/models
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+    volumes:
+      - api_data:/data
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opengrafo-network
     restart: unless-stopped
 
   web:

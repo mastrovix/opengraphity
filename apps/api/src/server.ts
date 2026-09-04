@@ -66,6 +66,38 @@ function depthLimit(maxDepth: number): ValidationRule {
   })
 }
 
+// Total field count across the whole operation (aliases included). Depth alone
+// does not stop breadth amplification — the same expensive field aliased N
+// times stays shallow but multiplies the work. This caps that.
+function countFields(node: FieldLikeNode): number {
+  if (!node.selectionSet) return 0
+  let total = 0
+  for (const sel of node.selectionSet.selections) {
+    total += 1 + countFields(sel as FieldLikeNode)
+  }
+  return total
+}
+
+function fieldCountLimit(maxFields: number): ValidationRule {
+  return (context) => ({
+    Document(node) {
+      for (const def of node.definitions) {
+        if (def.kind === 'OperationDefinition') {
+          const count = countFields(def as unknown as FieldLikeNode)
+          if (count > maxFields) {
+            context.reportError(
+              new GraphQLError(
+                `Query selects ${count} fields, exceeding the maximum of ${maxFields}`,
+                { nodes: [def] },
+              ),
+            )
+          }
+        }
+      }
+    },
+  })
+}
+
 // ── Express app ──────────────────────────────────────────────────────────────
 
 export const app: Application = express()
@@ -209,7 +241,7 @@ export async function startServer(): Promise<http.Server> {
     // Off in production unless explicitly re-enabled (local compose sets
     // NODE_ENV=production, so the flag keeps Apollo Sandbox usable in dev)
     introspection: process.env['GRAPHQL_INTROSPECTION'] === 'true' || process.env['NODE_ENV'] !== 'production',
-    validationRules: [depthLimit(10)],
+    validationRules: [depthLimit(10), fieldCountLimit(2000)],
     formatError: (formattedError, error) => {
       if (formattedError.extensions?.['code'] !== 'UNAUTHORIZED') {
         graphqlLogger.error({
