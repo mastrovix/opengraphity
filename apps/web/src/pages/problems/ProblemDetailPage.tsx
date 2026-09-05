@@ -84,12 +84,23 @@ interface IncidentRef {
   createdAt: string
 }
 
+// Raw shape returned by the Change type (changeType + workflow step); mapped to
+// the {type,status} display shape ProblemChangeList expects via mapChangeRef.
 interface ChangeRef {
-  id:             string
-  title:          string
-  type:           string
-  status:         string
-  scheduledStart: string | null
+  id:               string
+  title:            string
+  changeType:       string | null
+  workflowInstance: { currentStep: string } | null
+}
+
+function mapChangeRef(c: ChangeRef) {
+  return {
+    id:             c.id,
+    title:          c.title,
+    type:           c.changeType ?? 'normal',
+    status:         c.workflowInstance?.currentStep ?? '—',
+    scheduledStart: null,
+  }
 }
 
 interface ProblemComment {
@@ -430,11 +441,11 @@ export function ProblemDetailPage() {
 
           <ProblemChangeList
             problemId={problem.id}
-            relatedChanges={problem.relatedChanges}
+            relatedChanges={problem.relatedChanges.map(mapChangeRef)}
             changesOpen={changesOpen}
             showChangeSearch={showChangeSearch}
             changeSearch={changeSearch}
-            changeResults={changeResults}
+            changeResults={changeResults.map(mapChangeRef)}
             onToggle={() => setChangesOpen((p) => !p)}
             onToggleSearch={(e) => { e.stopPropagation(); setShowChangeSearch((s) => !s); if (!changesOpen) setChangesOpen(true) }}
             onSearchChange={setChangeSearch}

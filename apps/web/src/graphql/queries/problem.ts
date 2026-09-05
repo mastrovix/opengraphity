@@ -27,7 +27,7 @@ export const GET_PROBLEM = gql`
       assignedTeam { id name }
       affectedCIs { id name type status environment }
       relatedIncidents { id title status severity createdAt }
-      relatedChanges { id title type status scheduledStart }
+      relatedChanges { id title changeType workflowInstance { currentStep } }
       workflowInstance { id currentStep status }
       availableTransitions { toStep label requiresInput inputField condition }
       workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
