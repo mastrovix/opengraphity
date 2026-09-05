@@ -85,7 +85,7 @@ export function CreateIncidentPage() {
     onError: (err) => toast.error(`Team assignment: ${err.message}`),
   })
 
-  const canSubmit = title.trim() !== '' && description.trim() !== '' && category !== ''
+  const canSubmit = title.trim() !== '' && description.trim() !== '' && category !== '' && selectedCIs.length > 0
 
   const [createIncident, { loading }] = useMutation<{ createIncident: { id: string } }>(CREATE_INCIDENT, {
     refetchQueries: [{ query: GET_INCIDENTS }],
@@ -239,8 +239,7 @@ export function CreateIncidentPage() {
           {/* CI IMPATTATI */}
           <div style={{ marginBottom: 20 }}>
             <label style={fieldLabel}>
-              CI Impattati{' '}
-              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
+              CI Impattati <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
 
             {/* Search input with icon */}

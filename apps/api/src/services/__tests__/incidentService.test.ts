@@ -86,9 +86,19 @@ describe('createIncident', () => {
     vi.mocked(runQueryOne).mockResolvedValue({ cnt: 0 })
   })
 
+  it('rifiuta la creazione senza CI impattato', async () => {
+    await expect(
+      createIncident({ title: 'Senza CI', severity: 'high' }, ctx),
+    ).rejects.toThrow(/almeno un CI/)
+    await expect(
+      createIncident({ title: 'CI vuoto', severity: 'high', affectedCIIds: [] }, ctx),
+    ).rejects.toThrow(/almeno un CI/)
+    expect(publish).not.toHaveBeenCalled()
+  })
+
   it('chiama publish con type incident.created', async () => {
     await createIncident(
-      { title: 'Test incident', severity: 'high' },
+      { title: 'Test incident', severity: 'high', affectedCIIds: ['ci-1'] },
       ctx,
     )
 
@@ -99,7 +109,7 @@ describe('createIncident', () => {
 
   it('chiama workflowEngine.createInstance', async () => {
     await createIncident(
-      { title: 'Test incident', severity: 'high' },
+      { title: 'Test incident', severity: 'high', affectedCIIds: ['ci-1'] },
       ctx,
     )
 
@@ -121,7 +131,7 @@ describe('createIncident', () => {
       { props: { id: 'inc-1', title: 'Alert critico', severity: 'critical', status: 'open' } },
     ])
     await createIncident(
-      { title: 'Alert critico', severity: 'critical' },
+      { title: 'Alert critico', severity: 'critical', affectedCIIds: ['ci-1'] },
       ctx,
     )
 

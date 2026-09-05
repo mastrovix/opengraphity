@@ -100,6 +100,11 @@ export async function createIncident(
   validateStringLength(input.title, 'title', 1, 500)
   validateStringLength(input.description, 'description', 0, 10000)
 
+  // ITIL: an incident must record the impacted CI(s) — required, not optional.
+  if (!input.affectedCIIds || input.affectedCIIds.length === 0) {
+    throw new ValidationError('Un incident deve avere almeno un CI impattato')
+  }
+
   // ITIL: Priority = f(Impact, Urgency). The derived priority is stored in the
   // `severity` field (SLA/badges/filters read it). Impact+urgency take
   // precedence; a bare `severity` is still accepted for API clients.

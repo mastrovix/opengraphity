@@ -32,6 +32,12 @@ test('create incident end-to-end', async ({ page }) => {
   await expect(categoria.locator('option').nth(1)).toBeAttached({ timeout: 15_000 })
   await categoria.selectOption({ index: 1 })
 
+  // CI impattato è obbligatorio: cerca e seleziona un CI dal dropdown
+  await page.getByPlaceholder('Cerca per nome...').fill('SRV')
+  const ciOption = page.getByText('SRV-001', { exact: true }).first()
+  await ciOption.waitFor({ timeout: 15_000 })
+  await ciOption.click()
+
   // Severity is a preselected button group (Medium) — nothing to do
   const submit = page.getByRole('button', { name: /crea|create/i }).last()
   await expect(submit).toBeEnabled({ timeout: 10_000 })
