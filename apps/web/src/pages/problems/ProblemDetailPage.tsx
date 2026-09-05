@@ -22,6 +22,7 @@ import {
   ASSIGN_PROBLEM_TO_USER,
   EXECUTE_PROBLEM_TRANSITION,
   ADD_PROBLEM_COMMENT,
+  DELETE_PROBLEM,
 } from '@/graphql/mutations'
 import { ProblemHeader } from './ProblemHeader'
 import { ProblemTimeline } from './ProblemTimeline'
@@ -33,7 +34,7 @@ import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
 import { downloadPdf } from '@/lib/downloadPdf'
-import { FileDown, Loader2 } from 'lucide-react'
+import { FileDown, Loader2, Trash2 } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
@@ -242,6 +243,11 @@ export function ProblemDetailPage() {
     onError: (err) => toast.error(err.message),
   })
 
+  const [deleteProblem, { loading: deleting }] = useMutation(DELETE_PROBLEM, {
+    onCompleted: () => { toast.success('Problem eliminato'); navigate('/problems') },
+    onError: (err) => toast.error(err.message),
+  })
+
   const problem         = data?.problem
   const users           = usersData?.users ?? []
   const teams           = teamsData?.teams ?? []
@@ -326,6 +332,18 @@ export function ProblemDetailPage() {
           onClick={() => void handleExportPdf()}
         >
           {t('detail.exportPdf')}
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={deleting}
+          icon={<Trash2 size={13} />}
+          onClick={() => {
+            if (confirm(`Eliminare definitivamente il problem ${problem.number || ''}? L'operazione non è reversibile.`)) {
+              void deleteProblem({ variables: { id: problem.id } })
+            }
+          }}
+        >
+          Elimina
         </Button>
         <WatcherBar entityType="problem" entityId={problem.id} />
       </div>

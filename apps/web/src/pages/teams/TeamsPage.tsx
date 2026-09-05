@@ -1,11 +1,15 @@
 import { useState } from 'react'
-import { useQuery } from '@apollo/client/react'
+import { useQuery, useMutation } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { UsersRound } from 'lucide-react'
+import { UsersRound, Plus } from 'lucide-react'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
+import { Input, Textarea, FieldLabel } from '@/components/ui/FormControls'
+import { CREATE_TEAM } from '@/graphql/mutations'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_TEAMS } from '@/graphql/queries'
@@ -82,6 +86,17 @@ export function TeamsPage() {
     fetchPolicy: 'cache-and-network',
   })
 
+  const [createOpen, setCreateOpen] = useState(false)
+  const [form, setForm] = useState({ name: '', description: '' })
+  const [createTeam, { loading: creating }] = useMutation(CREATE_TEAM, {
+    onCompleted: async () => { setCreateOpen(false); setForm({ name: '', description: '' }); await refetch(); toast.success('Team creato') },
+    onError: (e) => toast.error(e.message),
+  })
+  const submitTeam = (e: React.FormEvent) => {
+    e.preventDefault()
+    void createTeam({ variables: { input: { name: form.name.trim(), description: form.description.trim() || null } } })
+  }
+
   function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction); setPage(0) }
 
   const teams      = data?.teams ?? []
@@ -100,11 +115,34 @@ export function TeamsPage() {
           </p>
         }
         actions={
-          <Button disabled style={{ fontSize: 14 }}>
-            {t('pages.teams.new')}
+          <Button onClick={() => setCreateOpen(true)} style={{ fontSize: 14 }}>
+            <Plus size={15} style={{ marginRight: 6 }} />{t('pages.teams.new')}
           </Button>
         }
       />
+
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title={t('pages.teams.new')}
+        as="form"
+        onSubmit={submitTeam}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Annulla</Button>
+            <Button type="submit" disabled={creating || form.name.trim().length === 0}>{creating ? 'Creazione…' : 'Crea'}</Button>
+          </>
+        }
+      >
+        <div style={{ marginBottom: 14 }}>
+          <FieldLabel>Nome *</FieldLabel>
+          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus placeholder="Es. Network Operations" />
+        </div>
+        <div>
+          <FieldLabel>Descrizione</FieldLabel>
+          <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} />
+        </div>
+      </Modal>
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
-import { SAVE_WORKFLOW_CHANGES, ADD_WORKFLOW_TRANSITION, REMOVE_WORKFLOW_TRANSITION } from '@/graphql/mutations'
+import { SAVE_WORKFLOW_CHANGES, ADD_WORKFLOW_TRANSITION, REMOVE_WORKFLOW_TRANSITION, REMOVE_WORKFLOW_STEP } from '@/graphql/mutations'
 import type { WorkflowDefinition } from './workflow-types'
 import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowToolbar } from './WorkflowToolbar'
@@ -89,6 +89,17 @@ export function WorkflowDesignerPage() {
     } catch { /* onError handles toast */ }
   }, [def, removeTransition, refetch, setSelectedEdgeId])
 
+  const [removeStep] = useMutation(REMOVE_WORKFLOW_STEP, { onError: (e) => toast.error(e.message) })
+  const handleDeleteStep = useCallback(async (stepName: string) => {
+    if (!def) return
+    try {
+      await removeStep({ variables: { definitionId: def.id, stepName } })
+      setSelectedNodeId(null)
+      toast.success('Step eliminato')
+      await refetch()
+    } catch { /* onError handles toast */ }
+  }, [def, removeStep, refetch, setSelectedNodeId])
+
   const handleSave = async () => {
     if (!def) return
     const positions = nodes.map((n) => ({
@@ -158,6 +169,7 @@ export function WorkflowDesignerPage() {
                 onClose={() => setSelectedNodeId(null)}
                 onSaved={(u) => onStepSaved(u)}
                 onSaveLocally={handleSaveStepLocally}
+                onDelete={handleDeleteStep}
               />
             )}
             {selectedTr && def && (

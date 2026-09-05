@@ -43,6 +43,12 @@ const APPROVE = gql`
   }
 `
 
+const CANCEL = gql`
+  mutation CancelApprovalRequest($id: ID!) {
+    cancelApprovalRequest(id: $id) { id status }
+  }
+`
+
 const REJECT = gql`
   mutation RejectRequest($id: ID!, $note: String!) {
     rejectRequest(id: $id, note: $note) { id status rejectedBy resolvedAt }
@@ -227,11 +233,13 @@ function ApprovalCard({
   req,
   onApprove,
   onReject,
+  onCancel,
   showActions,
 }: {
   req: ApprovalRequest
   onApprove: (id: string, note: string) => void
   onReject:  (id: string, note: string) => void
+  onCancel?: (id: string) => void
   showActions: boolean
 }) {
   const [noteOpen, setNoteOpen] = useState<'approve' | 'reject' | null>(null)
@@ -293,6 +301,15 @@ function ApprovalCard({
               <XCircle size={14} /> Rifiuta
             </button>
           </div>
+        )}
+
+        {!showActions && req.status === 'pending' && onCancel && (
+          <button
+            onClick={() => { if (confirm(`Annullare la richiesta di approvazione "${req.title}"?`)) onCancel(req.id) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--color-danger)', background: '#fff', color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500, flexShrink: 0, alignSelf: 'flex-start' }}
+          >
+            <XCircle size={14} /> Annulla richiesta
+          </button>
         )}
       </div>
 
@@ -371,9 +388,14 @@ export function ApprovalsPage() {
     onCompleted: () => { toast.success('Richiesta rifiutata'); void refetchMine(); void refetchAll() },
     onError: (e: { message: string }) => toast.error(e.message),
   })
+  const [cancel] = useMutation(CANCEL, {
+    onCompleted: () => { toast.success('Richiesta annullata'); void refetchMine(); void refetchAll() },
+    onError: (e: { message: string }) => toast.error(e.message),
+  })
 
   const handleApprove = (id: string, note: string) => void approve({ variables: { id, note: note || undefined } })
   const handleReject  = (id: string, note: string) => void reject({ variables: { id, note } })
+  const handleCancel  = (id: string) => void cancel({ variables: { id } })
 
   const myItems  = myData?.myPendingApprovals ?? []
   const allItems = allData?.approvalRequests?.items ?? []
@@ -446,7 +468,7 @@ export function ApprovalsPage() {
             />
           ) : (
             allItems.map((req) => (
-              <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} showActions={false} />
+              <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} onCancel={handleCancel} showActions={false} />
             ))
           )}
           <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />

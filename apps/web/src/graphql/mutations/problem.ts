@@ -78,3 +78,7 @@ export const ADD_PROBLEM_COMMENT = gql`
     }
   }
 `
+
+export const DELETE_PROBLEM = gql`
+  mutation DeleteProblem($id: ID!) { deleteProblem(id: $id) }
+`

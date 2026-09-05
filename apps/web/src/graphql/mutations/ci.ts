@@ -88,3 +88,15 @@ export const REMOVE_CI_RELATIONSHIP = gql`
     removeCIRelationship(sourceId: $sourceId, targetId: $targetId, relationType: $relationType)
   }
 `
+
+export const ASSIGN_CI_OWNER = gql`
+  mutation AssignCIOwner($ciId: ID!, $teamId: ID!) {
+    assignCIOwner(ciId: $ciId, teamId: $teamId) { id }
+  }
+`
+
+export const ASSIGN_CI_SUPPORT_GROUP = gql`
+  mutation AssignCISupportGroup($ciId: ID!, $teamId: ID!) {
+    assignCISupportGroup(ciId: $ciId, teamId: $teamId) { id }
+  }
+`

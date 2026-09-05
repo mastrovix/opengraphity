@@ -103,6 +103,12 @@ async function assignCIOwner(
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciLabelPredicate('ci')}
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      // Owner is single-valued: drop any existing OWNED_BY before setting the new
+      // one, otherwise re-assigning would leave the CI with multiple owners
+      // (breaks change creation, which assumes exactly one owner team).
+      WITH ci, t
+      OPTIONAL MATCH (ci)-[old:OWNED_BY]->(:Team)
+      DELETE old
       MERGE (ci)-[:OWNED_BY]->(t)
       RETURN properties(ci) as props, labels(ci)[0] AS label
     `
@@ -126,6 +132,10 @@ async function assignCISupportGroup(
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciLabelPredicate('ci')}
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      // Support group is single-valued — see assignCIOwner.
+      WITH ci, t
+      OPTIONAL MATCH (ci)-[old:SUPPORTED_BY]->(:Team)
+      DELETE old
       MERGE (ci)-[:SUPPORTED_BY]->(t)
       RETURN properties(ci) as props, labels(ci)[0] AS label
     `

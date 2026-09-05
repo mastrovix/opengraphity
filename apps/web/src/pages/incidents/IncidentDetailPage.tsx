@@ -14,7 +14,10 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { priorityCode } from '@/lib/priority'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
-import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR } from '@/graphql/mutations'
+import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT } from '@/graphql/mutations'
+import { Input, FieldLabel } from '@/components/ui/FormControls'
+import { IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, derivePriority, priorityCode as prioCode } from '@/lib/priority'
+import { Pencil } from 'lucide-react'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { IncidentHeader } from './IncidentHeader'
 import { IncidentTimeline } from './IncidentTimeline'
@@ -187,6 +190,14 @@ export function IncidentDetailPage() {
   })
 
   const [setMajor, { loading: settingMajor }] = useMutation(SET_INCIDENT_MAJOR, { refetchQueries: ['GetIncident'] })
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState({ title: '', description: '', impact: 'medium', urgency: 'medium' })
+  const [updateIncident, { loading: savingEdit }] = useMutation(UPDATE_INCIDENT, {
+    onCompleted: () => { setEditOpen(false); toast.success('Incident aggiornato') },
+    onError: (e) => toast.error(e.message),
+    refetchQueries: ['GetIncident'],
+  })
 
   const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
     onCompleted: (_data, opts) => {
@@ -364,6 +375,19 @@ export function IncidentDetailPage() {
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <Button
           variant="secondary"
+          icon={<Pencil size={13} />}
+          onClick={() => {
+            setEditForm({
+              title: incident.title, description: incident.description ?? '',
+              impact: incident.impact ?? 'medium', urgency: incident.urgency ?? 'medium',
+            })
+            setEditOpen(true)
+          }}
+        >
+          Modifica
+        </Button>
+        <Button
+          variant="secondary"
           disabled={settingMajor}
           onClick={() => void setMajor({ variables: { id: incident.id, major: !incident.major } })}
           style={incident.major ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
@@ -390,6 +414,55 @@ export function IncidentDetailPage() {
         </Button>
         <WatcherBar entityType="incident" entityId={incident.id} />
       </div>
+
+      {/* Edit fields modal (status resta guidato dal workflow) */}
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Modifica incident"
+        as="form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void updateIncident({ variables: { id: incident.id, input: {
+            title: editForm.title.trim(),
+            description: editForm.description.trim() || null,
+            impact: editForm.impact,
+            urgency: editForm.urgency,
+          } } })
+        }}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>Annulla</Button>
+            <Button type="submit" disabled={savingEdit || editForm.title.trim().length === 0}>{savingEdit ? 'Salvataggio…' : 'Salva'}</Button>
+          </>
+        }
+      >
+        <div style={{ marginBottom: 14 }}>
+          <FieldLabel>Titolo *</FieldLabel>
+          <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required autoFocus />
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <FieldLabel>Descrizione</FieldLabel>
+          <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
+          <div>
+            <FieldLabel>Impatto</FieldLabel>
+            <Select value={editForm.impact} onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}>
+              {IMPACT_URGENCY_OPTIONS.map((o) => <option key={o} value={o}>{IMPACT_URGENCY_LABEL[o]}</option>)}
+            </Select>
+          </div>
+          <div>
+            <FieldLabel>Urgenza</FieldLabel>
+            <Select value={editForm.urgency} onChange={(e) => setEditForm({ ...editForm, urgency: e.target.value })}>
+              {IMPACT_URGENCY_OPTIONS.map((o) => <option key={o} value={o}>{IMPACT_URGENCY_LABEL[o]}</option>)}
+            </Select>
+          </div>
+        </div>
+        <p style={{ marginTop: 10, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+          Priorità risultante: <strong>{prioCode(derivePriority(editForm.impact as 'high'|'medium'|'low', editForm.urgency as 'high'|'medium'|'low'))} — {derivePriority(editForm.impact as 'high'|'medium'|'low', editForm.urgency as 'high'|'medium'|'low')}</strong>
+        </p>
+      </Modal>
 
       {/* Body grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>

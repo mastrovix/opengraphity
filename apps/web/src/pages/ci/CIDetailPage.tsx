@@ -16,7 +16,6 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SimpleTable } from '@/components/ui/SimpleTable'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input, Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
-import { Pill } from '@/components/ui/Pill'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 const CIGraph = lazy(() => import('@/components/CIGraph').then(m => ({ default: m.CIGraph })))
 import { CIIncidentsCard } from '@/components/CIIncidentsCard'
@@ -25,8 +24,8 @@ import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
 import { GroupCriteriaBuilder } from './GroupCriteriaBuilder'
-import { GET_BLAST_RADIUS, GET_ALL_CIS } from '@/graphql/queries'
-import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI } from '@/graphql/mutations'
+import { GET_BLAST_RADIUS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI, ASSIGN_CI_OWNER, ASSIGN_CI_SUPPORT_GROUP } from '@/graphql/mutations'
 import { X, Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -271,6 +270,17 @@ export function CIDetailPage() {
     { variables: { id }, skip: !detailQuery || !id },
   )
 
+  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
+  const allTeams = teamsData?.teams ?? []
+  const [assignOwner] = useMutation(ASSIGN_CI_OWNER, {
+    onCompleted: () => { toast.success('Owner group aggiornato'); void refetch() },
+    onError: (e) => toast.error(e.message),
+  })
+  const [assignSupport] = useMutation(ASSIGN_CI_SUPPORT_GROUP, {
+    onCompleted: () => { toast.success('Support group aggiornato'); void refetch() },
+    onError: (e) => toast.error(e.message),
+  })
+
   const { data: brData } = useQuery<{
     blastRadius: { distance: number; parentId: string | null; ci: { id: string; name: string; type: string; environment: string | null; status: string | null } }[]
   }>(GET_BLAST_RADIUS, { variables: { id }, skip: !id })
@@ -489,20 +499,26 @@ export function CIDetailPage() {
                   <DetailField label="Environment" value={ci.environment ?? null} />
                   <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
                   <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
-                  {ci.ownerGroup && (
-                    <DetailField label="Owner Group" value={
-                      <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-                        {(ci.ownerGroup as Team).name}
-                      </Pill>
-                    } />
-                  )}
-                  {ci.supportGroup && (
-                    <DetailField label="Support Group" value={
-                      <Pill bg="var(--color-success-bg)" color="var(--color-trigger-automatic)" radius={100} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-                        {(ci.supportGroup as Team).name}
-                      </Pill>
-                    } />
-                  )}
+                  <DetailField label="Owner Group" value={
+                    <Select
+                      value={(ci.ownerGroup as Team | null)?.id ?? ''}
+                      onChange={(e) => { if (e.target.value) void assignOwner({ variables: { ciId: ci.id, teamId: e.target.value } }) }}
+                      style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220 }}
+                    >
+                      <option value="">— non assegnato —</option>
+                      {allTeams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+                    </Select>
+                  } />
+                  <DetailField label="Support Group" value={
+                    <Select
+                      value={(ci.supportGroup as Team | null)?.id ?? ''}
+                      onChange={(e) => { if (e.target.value) void assignSupport({ variables: { ciId: ci.id, teamId: e.target.value } }) }}
+                      style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220 }}
+                    >
+                      <option value="">— non assegnato —</option>
+                      {allTeams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+                    </Select>
+                  } />
                   {specificFields.map(f => (
                     <DetailField
                       key={f.name}

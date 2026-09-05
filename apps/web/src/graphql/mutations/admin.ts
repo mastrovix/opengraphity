@@ -565,3 +565,9 @@ export const UPDATE_OLA_CONTRACT = gql`
     }
   }
 `
+
+export const CREATE_TEAM = gql`
+  mutation CreateTeam($input: CreateTeamInput!) {
+    createTeam(input: $input) { id name description }
+  }
+`

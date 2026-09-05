@@ -57,3 +57,9 @@ export const ADD_WORKFLOW_STEP = gql`
     }
   }
 `
+
+export const REMOVE_WORKFLOW_STEP = gql`
+  mutation RemoveWorkflowStep($definitionId: ID!, $stepName: String!) {
+    removeWorkflowStep(definitionId: $definitionId, stepName: $stepName) { id name version }
+  }
+`

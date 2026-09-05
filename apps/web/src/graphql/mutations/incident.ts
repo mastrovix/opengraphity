@@ -75,3 +75,25 @@ export const SET_INCIDENT_MAJOR = gql`
     setIncidentMajor(id: $id, major: $major) { id major }
   }
 `
+
+export const UPDATE_INCIDENT = gql`
+  mutation UpdateIncident($id: ID!, $input: UpdateIncidentInput!) {
+    updateIncident(id: $id, input: $input) {
+      id title description severity impact urgency priority status
+    }
+  }
+`
+
+export const UPDATE_SERVICE_REQUEST = gql`
+  mutation UpdateServiceRequest($id: ID!, $input: UpdateServiceRequestInput!) {
+    updateServiceRequest(id: $id, input: $input) {
+      id title description status priority dueDate
+    }
+  }
+`
+
+export const COMPLETE_SERVICE_REQUEST = gql`
+  mutation CompleteServiceRequest($id: ID!) {
+    completeServiceRequest(id: $id) { id status completedAt }
+  }
+`

@@ -12,10 +12,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
+import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
+import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControls'
+import { Pencil } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
 import { lookupOrError } from '@/lib/tokens'
 import { GET_SERVICE_REQUEST } from '@/graphql/queries'
-import { EXECUTE_WORKFLOW_TRANSITION } from '@/graphql/mutations'
+import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST } from '@/graphql/mutations'
 
 interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
@@ -65,6 +69,31 @@ export function ServiceRequestDetailPage() {
     onError: (e) => toast.error(e.message),
   })
 
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '' })
+  const [updateRequest, { loading: savingEdit }] = useMutation(UPDATE_SERVICE_REQUEST, {
+    onCompleted: async () => { setEditOpen(false); await refetch(); toast.success('Richiesta aggiornata') },
+    onError: (e) => toast.error(e.message),
+  })
+  const openEdit = () => {
+    if (!sr) return
+    setEditForm({
+      title: sr.title, description: sr.description ?? '', priority: sr.priority,
+      dueDate: sr.dueDate ? sr.dueDate.slice(0, 10) : '',
+    })
+    setEditOpen(true)
+  }
+  const submitEdit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!sr) return
+    void updateRequest({ variables: { id: sr.id, input: {
+      title: editForm.title.trim(),
+      description: editForm.description.trim() || null,
+      priority: editForm.priority,
+      dueDate: editForm.dueDate || null,
+    } } })
+  }
+
   const runTransition = (instanceId: string, toStep: string, label: string, notes?: string) => {
     void executeTransition({ variables: { instanceId, toStep, notes: notes?.trim() || null } })
       .then(() => toast.success(label))
@@ -102,7 +131,10 @@ export function ServiceRequestDetailPage() {
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
           </div>
         </div>
-        <WatcherBar entityType="service_request" entityId={sr.id} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Button variant="secondary" onClick={openEdit}><Pencil size={13} style={{ marginRight: 6 }} />Modifica</Button>
+          <WatcherBar entityType="service_request" entityId={sr.id} />
+        </div>
       </div>
 
       {/* Body */}
@@ -168,6 +200,45 @@ export function ServiceRequestDetailPage() {
           </SectionCard>
         </div>
       </div>
+
+      {/* Edit fields modal */}
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Modifica richiesta"
+        as="form"
+        onSubmit={submitEdit}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>Annulla</Button>
+            <Button type="submit" disabled={savingEdit || editForm.title.trim().length === 0}>{savingEdit ? 'Salvataggio…' : 'Salva'}</Button>
+          </>
+        }
+      >
+        <div style={{ marginBottom: 14 }}>
+          <FieldLabel>Titolo *</FieldLabel>
+          <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required autoFocus />
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <FieldLabel>Descrizione</FieldLabel>
+          <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={3} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <FieldLabel>Priorità</FieldLabel>
+            <Select value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>
+              <option value="critical">critical</option>
+              <option value="high">high</option>
+              <option value="medium">medium</option>
+              <option value="low">low</option>
+            </Select>
+          </div>
+          <div>
+            <FieldLabel>Scadenza</FieldLabel>
+            <Input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} />
+          </div>
+        </div>
+      </Modal>
 
       {/* Transition notes modal (for transitions requiring input, e.g. rejection reason) */}
       {transitionModal && sr.workflowInstance && (

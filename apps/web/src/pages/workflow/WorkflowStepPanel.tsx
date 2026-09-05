@@ -48,6 +48,7 @@ interface StepPanelProps {
   definitionId: string
   onClose:      () => void
   onSaved:      (updated: Partial<WFStep>) => void
+  onDelete?:    (stepName: string) => void
   onSaveLocally?: (change: {
     stepName:     string
     label:        string
@@ -60,7 +61,7 @@ interface StepPanelProps {
   }) => void
 }
 
-export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved, onSaveLocally }: StepPanelProps) {
+export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved, onSaveLocally, onDelete }: StepPanelProps) {
   const { t } = useTranslation()
   const { values: SEVERITY_VALUES } = useEnumValues('incident', 'severity')
   const { values: PRIORITY_VALUES } = useEnumValues('incident', 'priority')
@@ -728,6 +729,23 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
       >
         {loading ? 'Salvataggio…' : 'Salva'}
       </button>
+
+      {onDelete && !isInitial && (
+        <button
+          onClick={() => {
+            if (confirm(`Eliminare lo step "${step.label || step.name}"? Verranno rimosse anche le transizioni collegate.`)) {
+              onDelete(step.name)
+            }
+          }}
+          style={{
+            marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
+            border: '1px solid var(--color-danger)', background: '#fff',
+            color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
+          }}
+        >
+          Elimina step
+        </button>
+      )}
     </div>
   )
 }

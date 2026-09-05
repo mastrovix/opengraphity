@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
-import { Lock, SendHorizontal } from 'lucide-react'
+import { Lock, SendHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
+import { EDIT_INTERNAL_MESSAGE, DELETE_INTERNAL_MESSAGE } from '@/graphql/mutations'
 
 const GET_MESSAGES = gql`
   query InternalMessages($entityType: String!, $entityId: ID!, $limit: Int) {
@@ -67,6 +68,17 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
     onError: (e) => toast.error(`Invio messaggio fallito: ${e.message}`),
   })
 
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editBody, setEditBody]   = useState('')
+  const [editMessage, { loading: editing }] = useMutation(EDIT_INTERNAL_MESSAGE, {
+    onCompleted: () => { setEditingId(null); setEditBody(''); refetch() },
+    onError: (e) => toast.error(`Modifica fallita: ${e.message}`),
+  })
+  const [deleteMessage] = useMutation(DELETE_INTERNAL_MESSAGE, {
+    onCompleted: () => refetch(),
+    onError: (e) => toast.error(`Eliminazione fallita: ${e.message}`),
+  })
+
   const messages: Message[] = (data as { internalMessages?: Message[] } | undefined)?.internalMessages ?? []
 
   useEffect(() => {
@@ -125,8 +137,33 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
                     <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)' }}>{msg.authorName}</span>
                     <span style={{ fontSize: 'var(--font-size-table)', color: '#9ca3af' }}>{relativeTime(msg.createdAt)}</span>
                     {msg.editedAt && <span style={{ fontSize: 'var(--font-size-label)', color: '#9ca3af', fontStyle: 'italic' }}>(modificato)</span>}
+                    {own && editingId !== msg.id && (
+                      <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+                        <button title="Modifica" onClick={() => { setEditingId(msg.id); setEditBody(msg.body) }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: 0, display: 'inline-flex' }}>
+                          <Pencil size={12} />
+                        </button>
+                        <button title="Elimina" onClick={() => { if (confirm('Eliminare il messaggio?')) void deleteMessage({ variables: { messageId: msg.id } }) }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: 0, display: 'inline-flex' }}>
+                          <Trash2 size={12} />
+                        </button>
+                      </span>
+                    )}
                   </div>
-                  <MentionText text={msg.body} />
+                  {editingId === msg.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={2}
+                        style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 6, padding: 6, fontSize: 'var(--font-size-body)', resize: 'vertical', boxSizing: 'border-box' }} />
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button onClick={() => { setEditingId(null); setEditBody('') }}
+                          style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)' }}>Annulla</button>
+                        <button disabled={editing || !editBody.trim()} onClick={() => void editMessage({ variables: { messageId: msg.id, body: editBody.trim() } })}
+                          style={{ background: '#0369a1', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: (editing || !editBody.trim()) ? 0.6 : 1 }}>Salva</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <MentionText text={msg.body} />
+                  )}
                 </div>
               </div>
             </div>
