@@ -136,7 +136,7 @@ async function createIncident(
 
 async function updateIncident(
   _: unknown,
-  args: { id: string; input: { title?: string; description?: string; severity?: string; impact?: string; urgency?: string; status?: string } },
+  args: { id: string; input: { title?: string; description?: string; severity?: string; impact?: string; urgency?: string } },
   ctx: GraphQLContext,
 ) {
   const { id, input } = args
@@ -175,11 +175,13 @@ async function updateIncident(
         severity:    coalesce($severity, i.severity),
         impact:      coalesce($impact, i.impact),
         urgency:     coalesce($urgency, i.urgency),
-        status:      coalesce($status, i.status),
         updated_at:  $now
       }
       RETURN properties(i) as props
     `
+    // NB: status is intentionally NOT settable here — an incident's status is
+    // the workflow current step and must only change via executeWorkflowTransition
+    // (which keeps WorkflowInstance.current_step and the entity status in sync).
     const rows = await runQuery<{ props: Props }>(session, cypher, {
       id,
       tenantId:    ctx.tenantId,
@@ -188,7 +190,6 @@ async function updateIncident(
       severity,
       impact,
       urgency,
-      status:      input.status      ?? null,
       now,
     })
     const row = rows[0]

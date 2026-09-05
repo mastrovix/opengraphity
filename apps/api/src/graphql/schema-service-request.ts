@@ -58,9 +58,10 @@ export function serviceRequestSDL(): string {
   input UpdateServiceRequestInput {
     title: String
     description: String
-    status: String
     priority: String
     dueDate: String
+    # No status: a request's status is its workflow step — change it only via
+    # executeWorkflowTransition (the transition buttons), never by direct edit.
   }
   `
 }

@@ -69,7 +69,8 @@ export function incidentSDL(): string {
     severity: String
     impact: String
     urgency: String
-    status: String
+    # No status: an incident's status is its workflow step — change it only via
+    # executeWorkflowTransition (the transition buttons), never by direct edit.
   }
   `
 }
