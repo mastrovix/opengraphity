@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation } from '@apollo/client/react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
-import { GET_SERVICE_REQUESTS } from '@/graphql/queries'
+import { GET_SERVICE_REQUESTS, GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { lookupOrError } from '@/lib/tokens'
 
@@ -63,8 +63,23 @@ export function CreateServiceRequestPage() {
   const [priority, setPriority]     = useState('medium')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate]       = useState('')
+  const [catalogItemId, setCatalogItemId] = useState('')
   const { values: priorityValues, loading: priorityLoading } = useEnumValues('service_request', 'priority')
   const [submitted, setSubmitted]   = useState(false)
+
+  interface CatalogItem { id: string; name: string; description: string | null; category: string | null; requiresApproval: boolean; active: boolean }
+  const { data: catalogData } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG_ADMIN, { fetchPolicy: 'cache-and-network' })
+  const catalogItems = (catalogData?.serviceCatalogItems ?? []).filter((i) => i.active)
+  const selectedItem = catalogItems.find((i) => i.id === catalogItemId) ?? null
+
+  const onSelectCatalogItem = (id: string) => {
+    setCatalogItemId(id)
+    const item = catalogItems.find((i) => i.id === id)
+    if (item) {
+      setTitle(item.name)
+      if (item.description && !description.trim()) setDescription(item.description)
+    }
+  }
 
   const titleError = submitted && !title.trim() ? 'This field is required' : ''
 
@@ -84,6 +99,7 @@ export function CreateServiceRequestPage() {
           title:       title.trim(),
           priority,
           description: description || undefined,
+          catalogItemId: catalogItemId || undefined,
         },
       },
     })
@@ -116,6 +132,29 @@ export function CreateServiceRequestPage() {
       {/* Form card */}
       <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 12, padding: 32 }}>
         <form onSubmit={handleSubmit} noValidate>
+
+          {/* Catalog item (consigliato, ma la richiesta generica resta possibile) */}
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
+              Voce di catalogo <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>(consigliata)</span>
+            </label>
+            <select
+              value={catalogItemId}
+              onChange={(e) => onSelectCatalogItem(e.target.value)}
+              style={selectBase}
+              {...focusHandlers(false)}
+            >
+              <option value="">— Richiesta generica (nessuna voce) —</option>
+              {catalogItems.map((it) => (
+                <option key={it.id} value={it.id}>{it.category ? `${it.category} · ` : ''}{it.name}</option>
+              ))}
+            </select>
+            {selectedItem?.requiresApproval && (
+              <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-body)', color: '#b45309' }}>
+                Questa voce richiede approvazione: la richiesta passerà dal flusso di approvazione.
+              </p>
+            )}
+          </div>
 
           {/* Title */}
           <div style={{ marginBottom: 24 }}>
