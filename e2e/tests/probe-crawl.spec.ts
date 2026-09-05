@@ -2,6 +2,7 @@ import { test } from '@playwright/test'
 
 const IDS = {
   incident: 'a7b59911-a04d-4b21-9386-f3139aef0428',
+  problem:  '0cd43e75-1587-4476-89d2-a7d8381464a9',
   change:   'c9c15da7-31dc-4d58-8780-b7aa9fdd2c82',
   server:   '1f9b0c2f-5ec4-4aa9-a768-264880dc4c98',
   app:      '4f50da03-1f68-4138-b208-4c53554a85e5',
@@ -16,7 +17,7 @@ const IDS = {
 const ROUTES = [
   '/dashboard', '/approvals', '/knowledge-base', `/knowledge-base/${IDS.kbSlug}`, '/assistant',
   '/incidents', `/incidents/${IDS.incident}`, '/incidents/new',
-  '/problems', '/problems/new',
+  '/problems', `/problems/${IDS.problem}`, '/problems/new',
   '/changes', `/changes/${IDS.change}`, '/changes/new',
   '/requests', `/requests/${IDS.request}`, '/requests/new',
   '/my-tasks', '/cmdb',
