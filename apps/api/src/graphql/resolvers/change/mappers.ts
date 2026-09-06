@@ -19,7 +19,6 @@ export function mapChange(props: Props) {
     tenantId:           props['tenant_id']           as string,
     code:               props['code']                as string,
     title:              props['title']               as string,
-    description:        (props['description']          ?? null) as string | null,
     why:                (props['why']                  ?? null) as string | null,
     what:               (props['what']                 ?? null) as string | null,
     aggregateRiskScore: props['aggregate_risk_score'] != null ? toInt(props['aggregate_risk_score']) : null,

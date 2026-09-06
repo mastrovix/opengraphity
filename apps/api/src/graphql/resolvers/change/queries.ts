@@ -611,7 +611,8 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
         MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
         RETURN coalesce(t.code, '') AS taskCode,
                c.id AS changeId, c.code AS changeCode, c.title AS changeTitle,
-               wi.current_step AS changePhase, c.description AS changeDesc,
+               wi.current_step AS changePhase,
+               ('Perché: ' + coalesce(c.why, '—') + ' · Cosa: ' + coalesce(c.what, '—')) AS changeDesc,
                ci.id AS ciId, ci.name AS ciName,
                coalesce(ci.type, toLower(labels(ci)[0])) AS ciType,
                ci.environment AS ciEnv

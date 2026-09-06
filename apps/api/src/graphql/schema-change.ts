@@ -7,7 +7,6 @@ export function changeSDL(): string {
     tenantId:             String!
     code:                 String!
     title:                String!
-    description:          String
     why:                  String
     what:                 String
     requester:            User

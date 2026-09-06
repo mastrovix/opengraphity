@@ -31,7 +31,6 @@ export const GET_CHANGE = gql`
       tenantId
       code
       title
-      description
       why
       what
       aggregateRiskScore

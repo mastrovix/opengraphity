@@ -102,9 +102,9 @@ export function ChangeOverviewSidebar({
               <Pill bg={liveRoute.bg} color={liveRoute.color} style={{ fontSize: 'var(--font-size-label)' }}>{liveRoute.label}</Pill>
             </div>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '0 0 8px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{change.title}</p>
-            {change.description && (
+            {(change.why || change.what) && (
               <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', margin: '0 0 8px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {change.description}
+                {[change.why && `Perché: ${change.why}`, change.what && `Cosa: ${change.what}`].filter(Boolean).join(' · ')}
               </p>
             )}
             <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>

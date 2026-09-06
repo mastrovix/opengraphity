@@ -65,9 +65,6 @@ export async function createChangeRFC(
   }
   if (!why)  throw new ValidationError('Il campo "Perché" (WHY) è obbligatorio')
   if (!what) throw new ValidationError('Il campo "Cosa" (WHAT) è obbligatorio')
-  // description resta popolata (composta da why+what) per i lettori legacy:
-  // PDF, ricerca, API REST. L'utente vede/inserisce solo WHY e WHAT.
-  const description = `**Perché:**\n${why}\n\n**Cosa:**\n${what}`
   return withSession(async (session) => {
     // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)
@@ -91,7 +88,7 @@ export async function createChangeRFC(
       await tx.run(`
       CREATE (c:Change {
         id: $id, tenant_id: $tenantId, code: $code,
-        title: $title, description: $description, why: $why, what: $what,
+        title: $title, why: $why, what: $what,
         change_type: $changeType, rollback_plan: $rollbackPlan,
         aggregate_risk_score: null,
         approval_route: null, approval_status: null,
@@ -133,8 +130,7 @@ export async function createChangeRFC(
       CREATE (c)-[:HAS_DEPLOY_PLAN]->(dp)
       CREATE (dp)-[:ASSIGNED_TO_TEAM]->(supportTeam)
       `, {
-        id, code, title,
-        description, why, what,
+        id, code, title, why, what,
         changeType, rollbackPlan,
         requesterId: ctx.userId,
         ownerId: changeOwner ?? null,

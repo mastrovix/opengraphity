@@ -48,7 +48,8 @@ export interface ChangeDossier {
     id:                 string
     code:               string
     title:              string
-    description:        string | null
+    why:                string | null
+    what:               string | null
     aggregateRiskScore: number | null
     approvalRoute:      string | null
     approvalStatus:     string | null
@@ -184,7 +185,8 @@ export async function loadChangeDossier(
       id:                 p['id']           as string,
       code:               (p['code']  ?? '') as string,
       title:              (p['title'] ?? '') as string,
-      description:        (p['description'] ?? null) as string | null,
+      why:                (p['why']  ?? null) as string | null,
+      what:               (p['what'] ?? null) as string | null,
       aggregateRiskScore: p['aggregate_risk_score'] == null ? null : Number(p['aggregate_risk_score']),
       approvalRoute:      (p['approval_route']  ?? null) as string | null,
       approvalStatus:     (p['approval_status'] ?? null) as string | null,
@@ -268,7 +270,8 @@ function renderDossier(doc: Doc, data: ChangeDossier): void {
 
   // ── Dettagli ──
   sectionHeading(doc, 'Dettagli')
-  keyValue(doc, 'Descrizione', orDash(ch.description))
+  keyValue(doc, 'Perché', orDash(ch.why))
+  keyValue(doc, 'Cosa', orDash(ch.what))
   keyValue(doc, 'Richiedente', data.requester
     ? `${data.requester.name} <${data.requester.email}>`
     : DASH)
