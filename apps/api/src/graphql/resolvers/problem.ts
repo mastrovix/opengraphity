@@ -366,6 +366,18 @@ async function assignProblemToUser(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
+    // Regola ITSM: si assegna a un utente solo dopo aver assegnato il gruppo, e
+    // l'utente deve appartenere a quel gruppo. Validato lato server, non solo UI.
+    const check = await runQueryOne<{ teamId: string | null; teamName: string | null; isMember: boolean }>(session, `
+      MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
+      OPTIONAL MATCH (p)-[:ASSIGNED_TO_TEAM]->(team:Team)
+      RETURN team.id AS teamId, team.name AS teamName,
+             exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)) AS isMember
+    `, { problemId: args.problemId, userId: args.userId, tenantId: ctx.tenantId })
+    if (!check) throw new GraphQLError('Problem non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (!check.teamId) throw new GraphQLError('Assegna prima un gruppo al problem, poi un utente di quel gruppo', { extensions: { code: 'BAD_USER_INPUT' } })
+    if (!check.isMember) throw new GraphQLError(`L'utente selezionato non appartiene al gruppo assegnatario${check.teamName ? ` (${check.teamName})` : ''}`, { extensions: { code: 'BAD_USER_INPUT' } })
+
     await session.executeWrite((tx) => tx.run(`
       MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
       OPTIONAL MATCH (p)-[old:ASSIGNED_TO]->()

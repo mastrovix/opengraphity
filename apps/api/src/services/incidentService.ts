@@ -369,6 +369,18 @@ export async function assignIncidentToUser(
       return mapIncident(r.records[0].get('props') as Props)
     }
 
+    // Regola ITSM: si assegna a un utente solo dopo aver assegnato il gruppo, e
+    // l'utente deve appartenere a quel gruppo. Validato lato server, non solo UI.
+    const check = await runQueryOne<{ teamId: string | null; teamName: string | null; isMember: boolean }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(team:Team)
+      RETURN team.id AS teamId, team.name AS teamName,
+             exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)) AS isMember
+    `, { id, userId, tenantId: ctx.tenantId })
+    if (!check) throw new NotFoundError('Incident', id)
+    if (!check.teamId) throw new ValidationError('Assegna prima un gruppo all\'incident, poi un utente di quel gruppo')
+    if (!check.isMember) throw new ValidationError(`L'utente selezionato non appartiene al gruppo assegnatario${check.teamName ? ` (${check.teamName})` : ''}`)
+
     await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
       OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()

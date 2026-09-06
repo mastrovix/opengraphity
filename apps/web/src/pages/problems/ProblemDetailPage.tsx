@@ -365,6 +365,107 @@ export function ProblemDetailPage() {
         {/* Left column */}
         <div>
 
+          {/* Dettagli */}
+          <Card style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('detail.sections.details')}</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <DetailField label={t('detail.priority')} value={
+                <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
+              } />
+              <DetailField label={t('detail.workflowStep')} value={
+                <Pill bg={lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', 'var(--color-border-light)')} color={lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)')} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+                  {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
+                </Pill>
+              } />
+
+              {/* Team assignment */}
+              <DetailField label={t('detail.assignedTeam')} value={
+                problem.assignedTeam && !showReassign ? (
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</div>
+                    <button onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>{t('detail.reassign')}</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <Select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
+                      <option value="">{t('detail.selectTeam')}</option>
+                      {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </Select>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {showReassign && (
+                        <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
+                      )}
+                      <button disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
+                        {assigningTeam ? t('detail.assigning') : t('detail.assign')}
+                      </button>
+                    </div>
+                  </div>
+                )
+              } />
+
+              {/* User assignment */}
+              <DetailField label={t('detail.assignedTo')} value={
+                problem.assignee ? (
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{problem.assignee.name}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
+                  </div>
+                ) : !problem.assignedTeam ? (
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Assegna prima un gruppo per poter scegliere un utente.
+                  </span>
+                ) : (() => {
+                  const teamUsers = users.filter((u) => u.teams?.some((tm) => tm.id === problem.assignedTeam!.id))
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <Select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
+                        <option value="">{t('detail.selectUser')}</option>
+                        {teamUsers.map((u) => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                      </Select>
+                      {teamUsers.length === 0 && (
+                        <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          Nessun utente nel gruppo {problem.assignedTeam.name}.
+                        </span>
+                      )}
+                      <button disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
+                        {assigningUser ? t('detail.assigning') : t('detail.assign')}
+                      </button>
+                    </div>
+                  )
+                })()
+              } />
+
+              {/* Affected users */}
+              <DetailField label={t('detail.affectedUsers')} value={
+                <Input
+                  type="number"
+                  value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
+                  onChange={(e) => setEditAffectedUsers(e.target.value)}
+                  onBlur={() => {
+                    const val = editAffectedUsers
+                    const num = val !== null ? parseInt(val, 10) : null
+                    if (val !== null && num !== problem.affectedUsers) {
+                      void updateProblem({ variables: { id: problem.id, input: { affectedUsers: num ?? undefined } } })
+                    }
+                    setEditAffectedUsers(null)
+                  }}
+                  placeholder="0"
+                  min={0}
+                  style={{ padding: '5px 8px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
+                />
+              } />
+
+              {problem.createdBy && (
+                <DetailField label={t('detail.createdBy')} value={<span style={{ fontWeight: 500 }}>{problem.createdBy.name}</span>} />
+              )}
+              <DetailField label={t('detail.createdAt')} value={formatDate(problem.createdAt)} />
+              {problem.updatedAt && <DetailField label={t('detail.updatedAt')} value={timeAgo(problem.updatedAt)} />}
+              {problem.resolvedAt && <DetailField label={t('detail.resolvedAt')} value={formatDate(problem.resolvedAt)} />}
+            </div>
+          </Card>
+
           {/* Descrizione */}
           <SectionCard title={t('detail.sections.description')} defaultOpen>
             {problem.description ? (
@@ -452,12 +553,6 @@ export function ProblemDetailPage() {
             onLink={(changeId) => void linkChange({ variables: { problemId: problem.id, changeId } })}
           />
 
-          <ProblemTimeline
-            historyDesc={historyDesc}
-            timelineOpen={timelineOpen}
-            onToggle={() => setTimelineOpen((p) => !p)}
-          />
-
           {/* Allegati */}
           <AttachmentsSection entityType="problem" entityId={problem.id} />
 
@@ -514,94 +609,12 @@ export function ProblemDetailPage() {
         {/* Right column */}
         <div>
 
-          {/* Dettagli */}
-          <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('detail.sections.details')}</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <DetailField label={t('detail.priority')} value={
-                <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
-              } />
-              <DetailField label={t('detail.workflowStep')} value={
-                <Pill bg={lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', 'var(--color-border-light)')} color={lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)')} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-                  {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
-                </Pill>
-              } />
-
-              {/* Team assignment */}
-              <DetailField label={t('detail.assignedTeam')} value={
-                problem.assignedTeam && !showReassign ? (
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</div>
-                    <button onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>{t('detail.reassign')}</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <Select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
-                      <option value="">{t('detail.selectTeam')}</option>
-                      {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </Select>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {showReassign && (
-                        <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
-                      )}
-                      <button disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
-                        {assigningTeam ? t('detail.assigning') : t('detail.assign')}
-                      </button>
-                    </div>
-                  </div>
-                )
-              } />
-
-              {/* User assignment */}
-              <DetailField label={t('detail.assignedTo')} value={
-                problem.assignee ? (
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{problem.assignee.name}</div>
-                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <Select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
-                      <option value="">{t('detail.selectUser')}</option>
-                      {(problem.assignedTeam ? users.filter((u) => u.teams?.some((t) => t.id === problem.assignedTeam!.id)) : users).map((u) => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
-                      ))}
-                    </Select>
-                    <button disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
-                      {assigningUser ? t('detail.assigning') : t('detail.assign')}
-                    </button>
-                  </div>
-                )
-              } />
-
-              {/* Affected users */}
-              <DetailField label={t('detail.affectedUsers')} value={
-                <Input
-                  type="number"
-                  value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
-                  onChange={(e) => setEditAffectedUsers(e.target.value)}
-                  onBlur={() => {
-                    const val = editAffectedUsers
-                    const num = val !== null ? parseInt(val, 10) : null
-                    if (val !== null && num !== problem.affectedUsers) {
-                      void updateProblem({ variables: { id: problem.id, input: { affectedUsers: num ?? undefined } } })
-                    }
-                    setEditAffectedUsers(null)
-                  }}
-                  placeholder="0"
-                  min={0}
-                  style={{ padding: '5px 8px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
-                />
-              } />
-
-              {problem.createdBy && (
-                <DetailField label={t('detail.createdBy')} value={<span style={{ fontWeight: 500 }}>{problem.createdBy.name}</span>} />
-              )}
-              <DetailField label={t('detail.createdAt')} value={formatDate(problem.createdAt)} />
-              {problem.updatedAt && <DetailField label={t('detail.updatedAt')} value={timeAgo(problem.updatedAt)} />}
-              {problem.resolvedAt && <DetailField label={t('detail.resolvedAt')} value={formatDate(problem.resolvedAt)} />}
-            </div>
-          </Card>
+          {/* Timeline workflow (come nell'incident) */}
+          <ProblemTimeline
+            historyDesc={historyDesc}
+            timelineOpen={timelineOpen}
+            onToggle={() => setTimelineOpen((p) => !p)}
+          />
 
         </div>
       </div>
