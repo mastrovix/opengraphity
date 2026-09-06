@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { FileDown, Loader2, Sparkles } from 'lucide-react'
+import { FileDown, Loader2, Sparkles, Network } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -83,6 +83,9 @@ interface CIRef {
   environment: string
 }
 
+interface ImpactPathNode { id: string; name: string; type: string | null }
+interface ImpactedApp { distance: number; via: string | null; ci: CIRef; path: ImpactPathNode[] }
+
 interface Team { id: string; name: string }
 
 interface Incident {
@@ -103,6 +106,7 @@ interface Incident {
   assignee:             { id: string; name: string; email: string } | null
   assignedTeam:         Team | null
   affectedCIs:          CIRef[]
+  impactedApplications: ImpactedApp[]
   workflowInstance:     WorkflowInstance | null
   availableTransitions: WorkflowTransition[]
   workflowHistory:      WorkflowStepExecution[]
@@ -192,6 +196,7 @@ export function IncidentDetailPage() {
   const [setMajor, { loading: settingMajor }] = useMutation(SET_INCIDENT_MAJOR, { refetchQueries: ['GetIncident'] })
 
   const [editOpen, setEditOpen] = useState(false)
+  const [pathModal, setPathModal] = useState<ImpactedApp | null>(null)
   const [editForm, setEditForm] = useState({ title: '', description: '', impact: 'medium', urgency: 'medium' })
   const [updateIncident, { loading: savingEdit }] = useMutation(UPDATE_INCIDENT, {
     onCompleted: () => { setEditOpen(false); toast.success('Incident aggiornato') },
@@ -623,6 +628,42 @@ export function IncidentDetailPage() {
             onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
           />
 
+          {/* Applicazioni impattate (dal grafo delle dipendenze) */}
+          <SectionCard title="Applicazioni impattate" count={incident.impactedApplications.length} defaultOpen>
+            {incident.impactedApplications.length === 0 ? (
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>
+                Nessuna applicazione dipende dai CI colpiti da questo incident.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {incident.impactedApplications.map((a) => (
+                  <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <Link to={`/ci/${(a.ci.type || 'application').toLowerCase()}/${a.ci.id}`} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none' }}>
+                        {a.ci.name}
+                      </Link>
+                      <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
+                        {a.distance === 0 ? 'Colpita direttamente' : `Dipende da ${a.via ?? '—'} · ${a.distance} hop`}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                      {a.ci.environment && <Pill bg="var(--surface-2)" color="var(--text-muted)" radius={100} style={{ fontSize: 'var(--font-size-caption)', textTransform: 'capitalize' }}>{a.ci.environment}</Pill>}
+                      {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)', textTransform: 'capitalize' }}>{a.ci.status}</Pill>}
+                      <button
+                        type="button"
+                        onClick={() => setPathModal(a)}
+                        title="Mostra il percorso dal CI colpito all'applicazione"
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-1)', color: 'var(--accent)', fontSize: 'var(--font-size-caption)', fontWeight: 500, cursor: 'pointer' }}
+                      >
+                        <Network size={13} /> Percorso
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
           {/* Allegati */}
           <AttachmentsSection entityType="incident" entityId={incident.id} />
 
@@ -775,6 +816,48 @@ export function IncidentDetailPage() {
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', margin: '6px 0 0 0' }}>{notesError}</p>
             )}
           </>
+        )}
+      </Modal>
+
+      {/* Percorso d'impatto: dal CI colpito → … → applicazione */}
+      <Modal
+        open={!!pathModal}
+        onClose={() => setPathModal(null)}
+        title={pathModal ? `Percorso d'impatto → ${pathModal.ci.name}` : 'Percorso d\'impatto'}
+        width={640}
+      >
+        {pathModal && (
+          <div>
+            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
+              L'impatto si propaga dal CI colpito fino all'applicazione seguendo le dipendenze del CMDB
+              {pathModal.distance > 0 ? ` (${pathModal.distance} hop).` : ' (colpita direttamente).'}
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, overflowX: 'auto', padding: '4px 0' }}>
+              {pathModal.path.map((n, idx) => {
+                const isRoot = idx === 0
+                const isApp  = idx === pathModal.path.length - 1
+                const border = isApp ? 'var(--accent)' : isRoot ? 'var(--color-trigger-sla-breach)' : 'var(--border)'
+                const label  = isApp ? 'Applicazione' : isRoot ? 'CI colpito' : (n.type ?? 'CI')
+                return (
+                  <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Link
+                      to={`/ci/${(n.type || 'application').toLowerCase()}/${n.id}`}
+                      style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, minWidth: 96, padding: '8px 10px', border: `1.5px solid ${border}`, borderRadius: 8, background: 'var(--surface-1)', textDecoration: 'none', textAlign: 'center' }}
+                    >
+                      <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{n.name}</span>
+                      <span style={{ fontSize: 'var(--font-size-caption)', color: isApp ? 'var(--accent)' : isRoot ? 'var(--color-trigger-sla-breach)' : 'var(--text-muted)', textTransform: 'capitalize' }}>{label}</span>
+                    </Link>
+                    {idx < pathModal.path.length - 1 && (
+                      <span style={{ color: 'var(--text-muted)', fontSize: 18, padding: '0 2px' }}>→</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <p style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', margin: '14px 0 0 0' }}>
+              Le frecce indicano la propagazione dell'impatto; le dipendenze reali vanno in senso opposto (l'applicazione dipende dal CI a monte).
+            </p>
+          </div>
         )}
       </Modal>
     </PageContainer>

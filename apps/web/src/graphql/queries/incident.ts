@@ -32,6 +32,12 @@ export const GET_INCIDENT = gql`
       assignee { id name email }
       assignedTeam { id name }
       affectedCIs { id name type status environment }
+      impactedApplications {
+        distance
+        via
+        ci { id name type status environment }
+        path { id name type }
+      }
       workflowInstance { id currentStep status }
       availableTransitions {
         toStep label requiresInput inputField condition

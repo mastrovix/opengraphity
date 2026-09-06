@@ -22,12 +22,30 @@ export function incidentSDL(): string {
     assignee: User
     assignedTeam: Team
     affectedCIs: [CIBase!]!
+    impactedApplications: [ImpactedApplication!]!
     causedByProblem: Problem
     workflowInstance:     WorkflowInstance
     workflowHistory:      [WorkflowStepExecution!]!
     availableTransitions: [WorkflowTransition!]!
     comments:             [Comment!]!
     slaStatus:            SLAStatusInfo
+  }
+
+  # Applicazione impattata dall'incident: o direttamente colpita (distance 0),
+  # o che dipende — anche transitivamente — dal CI colpito. \`via\` è il nome del
+  # CI colpito da cui l'applicazione dipende.
+  type ImpactPathNode {
+    id:   ID!
+    name: String!
+    type: String
+  }
+
+  type ImpactedApplication {
+    ci:       CIBase!
+    distance: Int!
+    via:      String
+    # Catena di CI dal CI colpito → … → applicazione (propagazione dell'impatto).
+    path:     [ImpactPathNode!]!
   }
 
   type SLAStatusInfo {

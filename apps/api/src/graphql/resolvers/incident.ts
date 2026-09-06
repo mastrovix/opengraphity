@@ -381,6 +381,50 @@ async function incidentAffectedCIs(
   })
 }
 
+async function incidentImpactedApplications(
+  parent: { id: string; tenantId: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    // Applicazioni impattate = quelle che dipendono (DEPENDS_ON/HOSTED_ON, anche
+    // transitivamente fino a 5 hop) dal CI colpito dall'incident. La lunghezza 0
+    // include l'app eventualmente colpita in modo diretto. Per ogni app teniamo
+    // il percorso più breve verso un CI colpito; `path` è la catena di CI
+    // ORDINATA dal CI colpito → … → applicazione (direzione di propagazione
+    // dell'impatto), pronta da disegnare come grafo lato UI.
+    const cypher = `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(affected)
+      WHERE affected.tenant_id = $tenantId
+      MATCH (app) WHERE app.tenant_id = $tenantId AND 'Application' IN labels(app)
+      MATCH p = shortestPath( (app)-[:DEPENDS_ON|HOSTED_ON*0..5]->(affected) )
+      WITH app, affected, p
+      ORDER BY length(p) ASC
+      WITH app, head(collect({affected: affected, p: p})) AS best
+      RETURN properties(app) AS props, labels(app)[0] AS label,
+             length(best.p) AS distance, best.affected.name AS via,
+             [n IN reverse(nodes(best.p)) | {id: n.id, name: n.name, type: labels(n)[0]}] AS path
+      ORDER BY distance ASC, props.name ASC
+    `
+    const rows = await runQuery<{ props: Props; label: string; distance: number; via: string | null; path: Array<{ id: string; name: string; type: string }> }>(
+      session, cypher, { id: parent.id, tenantId: ctx.tenantId },
+    )
+    return rows.map((r) => {
+      const t = ciTypeFromLabels([r.label])
+      r.props['type'] = t
+      const ci = mapCI(r.props) as Record<string, unknown>
+      ci['ciType']     = t
+      ci['__typename'] = r.label || 'Application'
+      return {
+        ci,
+        distance: Number(r.distance),
+        via: r.via,
+        path: r.path.map((n) => ({ id: n.id, name: n.name, type: ciTypeFromLabels([n.type]) })),
+      }
+    })
+  })
+}
+
 async function incidentComments(
   parent: { id: string; tenantId: string },
   _: unknown,
@@ -479,6 +523,7 @@ export const incidentResolvers = {
     assignee:        incidentAssignee,
     assignedTeam:    incidentAssignedTeam,
     affectedCIs:     incidentAffectedCIs,
+    impactedApplications: incidentImpactedApplications,
     causedByProblem: incidentCausedByProblem,
     comments:        incidentComments,
     slaStatus:       incidentSlaStatus,
