@@ -13,6 +13,14 @@ import { requireAdmin, buildCITypesResolver, buildBaseCITypeResolver, buildMetam
 
 type Props = Record<string, unknown>
 
+// Neo4j count() arriva qui come number nativo (il wrapper getSession converte gli
+// Integer) ma può anche essere un Integer con toNumber(): gestiamo entrambi. Senza
+// il ramo Number() il totale cadeva sempre a 0 (bug conteggio liste CI).
+function toInt(v: unknown): number {
+  const n = (v as { toNumber?: () => number })?.toNumber?.()
+  return typeof n === 'number' ? n : Number(v ?? 0)
+}
+
 // ── mapCI ────────────────────────────────────────────────────────────────────
 
 function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unknown> {
@@ -101,7 +109,7 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
           const t = types.find(t => t.neo4jLabel === label)
           return t ? mapCI(props, t) : null
         }).filter(Boolean),
-        total: (countResult.records[0]?.get('total') as { toNumber(): number })?.toNumber?.() ?? 0,
+        total: toInt(countResult.records[0]?.get('total')),
       }
     } catch (err) {
       await Promise.allSettled([s1.close(), s2.close()])
@@ -227,7 +235,7 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
             ci['_prefetched']   = true
             return ci
           }),
-          total: (count.records[0]?.get('total') as { toNumber(): number })?.toNumber?.() ?? 0,
+          total: toInt(count.records[0]?.get('total')),
         }
         cache.set(cacheKey, result, 30)
         return result
