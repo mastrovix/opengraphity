@@ -14,7 +14,6 @@ export function changeSDL(): string {
     aggregateRiskScore:   Int
     approvalRoute:        String
     changeType:           String
-    rollbackPlan:         String
     approvalStatus:       String
     approvalBy:           User
     approvalAt:           String
@@ -176,7 +175,6 @@ export function changeSDL(): string {
     changeOwner:   ID
     affectedCIIds: [ID!]!
     changeType:    String
-    rollbackPlan:  String
   }
 
   input AnswerOptionInput {

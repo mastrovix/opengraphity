@@ -40,8 +40,9 @@ export function CreateChangePage() {
   const [title, setTitle]             = useState('')
   const [why, setWhy]                 = useState('')
   const [what, setWhat]               = useState('')
+  // NB: nessun campo rollback qui — il rollback è una domanda scored
+  // dell'assessment tecnico ("Is a tested rollback plan available?").
   const [changeType, setChangeType]   = useState<'standard'|'normal'|'emergency'>('normal')
-  const [rollbackPlan, setRollbackPlan] = useState('')
   const [ownerId, setOwnerId]         = useState<string>('')
   const [ciSearch, setCiSearch]       = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
@@ -73,7 +74,7 @@ export function CreateChangePage() {
     },
   })
 
-  const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && selectedCIs.length > 0 && !loading && (changeType === 'standard' || rollbackPlan.trim() !== '')
+  const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && selectedCIs.length > 0 && !loading
 
   const handleSubmit = () => {
     if (!canSubmit) return
@@ -87,7 +88,6 @@ export function CreateChangePage() {
           changeOwner:   ownerId || null,
           affectedCIIds: selectedCIs.map(ci => ci.id),
           changeType,
-          rollbackPlan:  rollbackPlan.trim() || null,
         },
       },
     })
@@ -170,19 +170,9 @@ export function CreateChangePage() {
               })}
             </div>
             <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 6 }}>
-              Standard: nessuna approvazione. Normal/Emergency: approvazione richiesta (admin) e piano di rollback obbligatorio.
+              Standard: nessuna approvazione. Normal/Emergency: approvazione richiesta (admin). Il rollback si valuta nell'assessment tecnico.
             </p>
           </div>
-
-          {/* PIANO DI ROLLBACK */}
-          {changeType !== 'standard' && (
-            <div style={{ marginBottom: 20 }}>
-              <label style={fieldLabel}>Piano di rollback / back-out <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
-              <textarea value={rollbackPlan} onChange={e => setRollbackPlan(e.target.value)}
-                placeholder="Come si annulla il change se qualcosa va storto…" rows={3}
-                style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }} />
-            </div>
-          )}
 
           {/* WHY (Perché) */}
           <div style={{ marginBottom: 20 }}>

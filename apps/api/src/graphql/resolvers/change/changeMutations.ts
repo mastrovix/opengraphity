@@ -29,7 +29,7 @@ import {
 
 export async function createChange(
   _: unknown,
-  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; rollbackPlan?: string | null } },
+  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null } },
   ctx: GraphQLContext,
 ) {
   // Thin wrapper: the whole RFC bootstrap (validation, CHG code, tasks,
@@ -161,13 +161,9 @@ export async function executeChangeTransition(
       }
     }
 
-    // ── Rollback plan required before deployment (except standard changes) ────
-    if (args.toStep === 'deployment' && changeType !== 'standard') {
-      const rb = entityProps['rollback_plan'] as string | null
-      if (!rb || rb.trim() === '') {
-        throw new GraphQLError('Un piano di rollback è obbligatorio prima del deploy per change normal/emergency', { extensions: { code: 'BAD_USER_INPUT' } })
-      }
-    }
+    // Il rollback non è più un campo del change: è valutato (con punteggio)
+    // nell'assessment tecnico ("Is a tested rollback plan available?"), che si
+    // completa prima del deploy. Nessun gate sul testo qui.
 
     const actionCtx: ActionContext = {
       userId:     ctx.userId ?? 'system',

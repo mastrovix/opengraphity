@@ -10,8 +10,6 @@ export const GET_CHANGES = gql`
         title
         aggregateRiskScore
         approvalRoute
-      changeType
-      rollbackPlan
         changeType
         approvalStatus
         createdAt
@@ -36,7 +34,6 @@ export const GET_CHANGE = gql`
       aggregateRiskScore
       approvalRoute
       changeType
-      rollbackPlan
       approvalStatus
       approvalAt
       createdAt
