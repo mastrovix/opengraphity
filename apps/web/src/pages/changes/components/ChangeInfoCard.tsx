@@ -34,7 +34,12 @@ export function ChangeInfoCard({
     <SectionCard title="Change Information" collapsible defaultOpen>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
         <DetailField label="Titolo" value={change.title} />
-        {change.description && <DescriptionField value={change.description} />}
+        {(change.why || change.what)
+          ? <>
+              {change.why  && <DescriptionField label="Perché" value={change.why} />}
+              {change.what && <DescriptionField label="Cosa"   value={change.what} />}
+            </>
+          : change.description && <DescriptionField value={change.description} />}
         {change.changeOwner && <DetailField label="Change Owner" value={change.changeOwner.name} />}
         {change.requester && <DetailField label="Requester" value={change.requester.name} />}
         <DetailField label="Creato il" value={fmtDate(change.createdAt)} />

@@ -20,6 +20,8 @@ export function mapChange(props: Props) {
     code:               props['code']                as string,
     title:              props['title']               as string,
     description:        (props['description']          ?? null) as string | null,
+    why:                (props['why']                  ?? null) as string | null,
+    what:               (props['what']                 ?? null) as string | null,
     aggregateRiskScore: props['aggregate_risk_score'] != null ? toInt(props['aggregate_risk_score']) : null,
     approvalRoute:      (props['approval_route']       ?? null) as string | null,
     changeType:         (props['change_type']           ?? 'normal') as string,

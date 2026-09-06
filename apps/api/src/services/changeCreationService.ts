@@ -29,7 +29,8 @@ import {
 
 export interface ChangeCreationInput {
   title:         string
-  description?:  string | null
+  why:           string          // motivazione (WHY) — obbligatorio
+  what:          string          // cosa si cambia (WHAT) — obbligatorio
   changeOwner?:  string | null
   affectedCIIds: string[]
   changeType?:   string | null   // standard | normal | emergency (default normal)
@@ -51,7 +52,9 @@ export async function createChangeRFC(
   input: ChangeCreationInput,
   ctx: ChangeCreationCtx,
 ): Promise<CreatedChange> {
-  const { title, description, changeOwner, affectedCIIds } = input
+  const { title, changeOwner, affectedCIIds } = input
+  const why  = input.why?.trim()  ?? ''
+  const what = input.what?.trim() ?? ''
   const changeType = ['standard', 'normal', 'emergency'].includes(input.changeType ?? '') ? input.changeType! : 'normal'
   const rollbackPlan = input.rollbackPlan ?? null
   if (!affectedCIIds || affectedCIIds.length === 0) {
@@ -60,6 +63,11 @@ export async function createChangeRFC(
   if (!title || title.trim().length === 0) {
     throw new ValidationError('title è obbligatorio')
   }
+  if (!why)  throw new ValidationError('Il campo "Perché" (WHY) è obbligatorio')
+  if (!what) throw new ValidationError('Il campo "Cosa" (WHAT) è obbligatorio')
+  // description resta popolata (composta da why+what) per i lettori legacy:
+  // PDF, ricerca, API REST. L'utente vede/inserisce solo WHY e WHAT.
+  const description = `**Perché:**\n${why}\n\n**Cosa:**\n${what}`
   return withSession(async (session) => {
     // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)
@@ -83,7 +91,7 @@ export async function createChangeRFC(
       await tx.run(`
       CREATE (c:Change {
         id: $id, tenant_id: $tenantId, code: $code,
-        title: $title, description: $description,
+        title: $title, description: $description, why: $why, what: $what,
         change_type: $changeType, rollback_plan: $rollbackPlan,
         aggregate_risk_score: null,
         approval_route: null, approval_status: null,
@@ -126,7 +134,7 @@ export async function createChangeRFC(
       CREATE (dp)-[:ASSIGNED_TO_TEAM]->(supportTeam)
       `, {
         id, code, title,
-        description: description ?? null,
+        description, why, what,
         changeType, rollbackPlan,
         requesterId: ctx.userId,
         ownerId: changeOwner ?? null,

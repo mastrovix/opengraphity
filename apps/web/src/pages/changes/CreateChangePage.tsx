@@ -38,7 +38,8 @@ export function CreateChangePage() {
   const navigate = useNavigate()
 
   const [title, setTitle]             = useState('')
-  const [description, setDescription] = useState('')
+  const [why, setWhy]                 = useState('')
+  const [what, setWhat]               = useState('')
   const [changeType, setChangeType]   = useState<'standard'|'normal'|'emergency'>('normal')
   const [rollbackPlan, setRollbackPlan] = useState('')
   const [ownerId, setOwnerId]         = useState<string>('')
@@ -72,7 +73,7 @@ export function CreateChangePage() {
     },
   })
 
-  const canSubmit = title.trim() !== '' && selectedCIs.length > 0 && !loading && (changeType === 'standard' || rollbackPlan.trim() !== '')
+  const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && selectedCIs.length > 0 && !loading && (changeType === 'standard' || rollbackPlan.trim() !== '')
 
   const handleSubmit = () => {
     if (!canSubmit) return
@@ -81,7 +82,8 @@ export function CreateChangePage() {
       variables: {
         input: {
           title:         title.trim(),
-          description:   description.trim() || null,
+          why:           why.trim(),
+          what:          what.trim(),
           changeOwner:   ownerId || null,
           affectedCIIds: selectedCIs.map(ci => ci.id),
           changeType,
@@ -182,14 +184,28 @@ export function CreateChangePage() {
             </div>
           )}
 
-          {/* DESCRIZIONE */}
+          {/* WHY (Perché) */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>Descrizione</label>
+            <label style={fieldLabel}>Perché <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
             <textarea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Cosa stai cambiando, perché, e come lo verifichi…"
-              rows={4}
+              value={why}
+              onChange={e => setWhy(e.target.value)}
+              placeholder="Perché serve questo change? (motivazione, problema o obiettivo)"
+              rows={3}
+              style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
+              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+            />
+          </div>
+
+          {/* WHAT (Cosa) */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabel}>Cosa <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+            <textarea
+              value={what}
+              onChange={e => setWhat(e.target.value)}
+              placeholder="Cosa verrà cambiato, nel dettaglio?"
+              rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}

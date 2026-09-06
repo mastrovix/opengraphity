@@ -155,11 +155,11 @@ export function DetailField({ label, value }: { label: string; value: string }) 
   )
 }
 
-export function DescriptionField({ value }: { value: string }) {
+export function DescriptionField({ value, label = 'Descrizione' }: { value: string; label?: string }) {
   const [showFull, setShowFull] = useState(false)
   return (
     <div>
-      <div style={fieldLabelStyle}>Descrizione</div>
+      <div style={fieldLabelStyle}>{label}</div>
       <div style={{ ...fieldValueStyle, ...(showFull ? {} : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }) }}>
         {value}
       </div>

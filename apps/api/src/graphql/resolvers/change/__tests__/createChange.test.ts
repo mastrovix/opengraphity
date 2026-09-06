@@ -58,7 +58,7 @@ describe('createChange (resolver wrapper)', () => {
   })
 
   it('delega a createChangeRFC con input e {tenantId, userId} e ritorna il change riletto', async () => {
-    const input = { title: 'Upgrade DB', description: 'desc', changeOwner: 'user-9', affectedCIIds: ['ci-1'] }
+    const input = { title: 'Upgrade DB', why: 'perché', what: 'cosa', changeOwner: 'user-9', affectedCIIds: ['ci-1'] }
     const mapped = { id: 'chg-1', code: 'CHG00000042', title: 'Upgrade DB' }
     vi.mocked(createChangeRFC).mockResolvedValue({ id: 'chg-1', code: 'CHG00000042' })
     vi.mocked(getChange).mockResolvedValue(mapped as never)

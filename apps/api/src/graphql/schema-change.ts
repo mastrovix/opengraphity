@@ -8,6 +8,8 @@ export function changeSDL(): string {
     code:                 String!
     title:                String!
     description:          String
+    why:                  String
+    what:                 String
     requester:            User
     changeOwner:          User
     aggregateRiskScore:   Int
@@ -170,7 +172,8 @@ export function changeSDL(): string {
 
   input CreateChangeInput {
     title:         String!
-    description:   String
+    why:           String!
+    what:          String!
     changeOwner:   ID
     affectedCIIds: [ID!]!
     changeType:    String

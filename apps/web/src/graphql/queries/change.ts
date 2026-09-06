@@ -32,6 +32,8 @@ export const GET_CHANGE = gql`
       code
       title
       description
+      why
+      what
       aggregateRiskScore
       approvalRoute
       changeType

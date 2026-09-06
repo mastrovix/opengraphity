@@ -35,6 +35,8 @@ export interface WorkflowInstanceData {
 export interface ChangeData {
   id: string; tenantId?: string; code: string; title: string
   description:        string | null
+  why?:               string | null
+  what?:              string | null
   aggregateRiskScore: number | null
   approvalRoute:      string | null
   approvalStatus:     string | null

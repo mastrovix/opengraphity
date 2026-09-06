@@ -203,11 +203,17 @@ router.get('/:id', requirePermission('changes:read'), async (req: Request, res: 
 // ── POST /api/v1/changes ──────────────────────────────────────────────────────
 
 router.post('/', requirePermission('changes:write'), async (req: Request, res: Response) => {
-  const { title, description, changeOwner, affectedCIIds } = req.body as {
-    title?: string; description?: string; changeOwner?: string; affectedCIIds?: unknown
+  const { title, why, what, changeOwner, affectedCIIds } = req.body as {
+    title?: string; why?: string; what?: string; changeOwner?: string; affectedCIIds?: unknown
   }
   if (!title?.trim()) {
     res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'title is required' } }); return
+  }
+  if (!why?.trim()) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'why is required' } }); return
+  }
+  if (!what?.trim()) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'what is required' } }); return
   }
   if (!changeOwner?.trim()) {
     res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'changeOwner is required' } }); return
@@ -219,7 +225,7 @@ router.post('/', requirePermission('changes:write'), async (req: Request, res: R
   const ctx = apiCtx(req)
   try {
     const { id, code } = await createChangeRFC(
-      { title, description: description ?? null, changeOwner, affectedCIIds: affectedCIIds as string[] },
+      { title, why, what, changeOwner, affectedCIIds: affectedCIIds as string[] },
       { tenantId: ctx.tenantId, userId: ctx.userId },
     )
     await audit(ctx, 'change_created', 'change', id, { code, title, affectedCIIds })

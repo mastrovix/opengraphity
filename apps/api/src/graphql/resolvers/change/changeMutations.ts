@@ -29,7 +29,7 @@ import {
 
 export async function createChange(
   _: unknown,
-  args: { input: { title: string; description?: string | null; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; rollbackPlan?: string | null } },
+  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; rollbackPlan?: string | null } },
   ctx: GraphQLContext,
 ) {
   // Thin wrapper: the whole RFC bootstrap (validation, CHG code, tasks,
