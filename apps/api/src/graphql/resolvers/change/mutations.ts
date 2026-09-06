@@ -25,6 +25,7 @@ export {
   completeAssessmentTask,
   assignAssessmentTaskToTeam,
   assignAssessmentTaskToUser,
+  assignDeployPlanTaskToUser,
 } from './assessmentMutations.js'
 
 export {

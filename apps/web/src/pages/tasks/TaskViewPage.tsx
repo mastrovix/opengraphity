@@ -28,6 +28,7 @@ import {
   SUBMIT_ASSESSMENT_RESPONSE,
   COMPLETE_ASSESSMENT_TASK,
   ASSIGN_ASSESSMENT_TASK_TO_USER,
+  ASSIGN_DEPLOY_PLAN_TASK_TO_USER,
   SAVE_DEPLOY_PLAN,
   COMPLETE_DEPLOY_PLAN_TASK,
   COMPLETE_VALIDATION_TEST,
@@ -95,6 +96,7 @@ export function TaskViewPage() {
   const [submitAnswer]     = useMutation(SUBMIT_ASSESSMENT_RESPONSE,   { onCompleted: refetchAll, onError: (e) => toast.error(e.message) })
   const [completeAssess]   = useMutation(COMPLETE_ASSESSMENT_TASK,     { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
   const [assignUser]       = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, { onCompleted: async () => { toast.success('Assegnazione aggiornata'); await refetchAll() }, onError: (e) => toast.error(e.message) })
+  const [assignPlanUser]   = useMutation(ASSIGN_DEPLOY_PLAN_TASK_TO_USER, { onCompleted: async () => { toast.success('Assegnazione aggiornata'); await refetchAll() }, onError: (e) => toast.error(e.message) })
   const [savePlan]         = useMutation(SAVE_DEPLOY_PLAN,             { onCompleted: async () => { toast.success('Piano salvato'); await refetchAll() }, onError: (e) => toast.error(e.message) })
   const [completePlan]     = useMutation(COMPLETE_DEPLOY_PLAN_TASK,    { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
   const [completeVal]      = useMutation(COMPLETE_VALIDATION_TEST,     { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
@@ -205,7 +207,10 @@ export function TaskViewPage() {
           disabled={!canAssign}
           value={t.assignee?.id ?? ''}
           onChange={(e) => {
-            if (e.target.value && currentUserId) void assignUser({ variables: { taskId: t.id, userId: e.target.value } })
+            if (e.target.value && currentUserId) {
+              const assign = task.kind === 'deploy-plan' ? assignPlanUser : assignUser
+              void assign({ variables: { taskId: t.id, userId: e.target.value } })
+            }
           }}
           style={{ ...inputStyle, flex: 1, maxWidth: 250 }}
         >

@@ -94,14 +94,19 @@ async function loadAssignmentsForTasks(session: Session, taskIds: string[]): Pro
   users: Record<string, ReturnType<typeof mapUser>>
 }> {
   if (taskIds.length === 0) return { teams: {}, users: {} }
+  // Match both task types: this loader is called with assessment AND deploy-plan
+  // ids. Filtering to AssessmentTask only left DeployPlanTask.assignedTeam null,
+  // so the planning task showed no team and could not be assigned.
   const teamRows = await runQuery<{ taskId: string; teamProps: Props }>(session, `
     UNWIND $taskIds AS tid
-    MATCH (t:AssessmentTask {id: tid})-[:ASSIGNED_TO_TEAM]->(tm:Team)
+    MATCH (t {id: tid})-[:ASSIGNED_TO_TEAM]->(tm:Team)
+    WHERE t:AssessmentTask OR t:DeployPlanTask
     RETURN tid AS taskId, properties(tm) AS teamProps
   `, { taskIds })
   const userRows = await runQuery<{ taskId: string; userProps: Props }>(session, `
     UNWIND $taskIds AS tid
-    MATCH (t:AssessmentTask {id: tid})-[:ASSIGNED_TO]->(u:User)
+    MATCH (t {id: tid})-[:ASSIGNED_TO]->(u:User)
+    WHERE t:AssessmentTask OR t:DeployPlanTask
     RETURN tid AS taskId, properties(u) AS userProps
   `, { taskIds })
   const teams: Record<string, ReturnType<typeof mapTeam>> = {}

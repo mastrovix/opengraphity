@@ -252,6 +252,7 @@ export function changeSDL(): string {
     completeAssessmentTask(taskId: ID!): AssessmentTask!
     assignAssessmentTaskToTeam(taskId: ID!, teamId: ID!): AssessmentTask!
     assignAssessmentTaskToUser(taskId: ID!, userId: ID!): AssessmentTask!
+    assignDeployPlanTaskToUser(taskId: ID!, userId: ID!): DeployPlanTask!
     saveDeployPlan(taskId: ID!, steps: [DeployStepInput!]!): DeployPlanTask!
     completeDeployPlanTask(taskId: ID!): DeployPlanTask!
     executeChangeTransition(changeId: ID!, toStep: String!, notes: String): Change!

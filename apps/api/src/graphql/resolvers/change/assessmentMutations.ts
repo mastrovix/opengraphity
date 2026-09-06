@@ -9,7 +9,7 @@ import {
 import { withSession, runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
-import { mapAssessmentTask, toInt } from './mappers.js'
+import { mapAssessmentTask, mapDeployPlanTask, toInt } from './mappers.js'
 import { calculateTaskScore } from './scoring.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
 import {
@@ -280,5 +280,57 @@ export async function assignAssessmentTaskToUser(
       MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props
     `, { taskId: args.taskId })
     return updated ? mapAssessmentTask(updated.props) : null
+  }, true)
+}
+
+/**
+ * Assign a user to a DeployPlanTask (the "Planning" task). Mirrors
+ * assignAssessmentTaskToUser but for the deploy-plan task, whose responsible
+ * team is the CI's SUPPORT group. The UI used the assessment mutation for both,
+ * which failed on deploy-plan ids ("AssessmentTask non trovata").
+ */
+export async function assignDeployPlanTaskToUser(
+  _: unknown,
+  args: { taskId: string; userId: string },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const tctx = await runQueryOne<{ changeId: string; ciId: string }>(session, `
+      MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(t:DeployPlanTask {id: $taskId})
+      RETURN c.id AS changeId, t.ci_id AS ciId
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
+    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
+
+    const check = await runQueryOne<{ isMember: boolean }>(session, `
+      MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(tm:Team)
+      OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(tm)
+      RETURN u IS NOT NULL AS isMember
+    `, { taskId: args.taskId, userId: args.userId, tenantId: ctx.tenantId })
+    if (!check || !check.isMember) {
+      logger.error({ taskId: args.taskId, userId: args.userId }, '[assignDeployPlanTaskToUser] utente non appartiene al team assegnato')
+      throw new ForbiddenError('L\'utente non appartiene al team assegnato')
+    }
+
+    await session.executeWrite((tx) => tx.run(`
+      MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId})
+      OPTIONAL MATCH (t)-[old:ASSIGNED_TO]->(:User)
+      DELETE old
+      WITH t
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      CREATE (t)-[:ASSIGNED_TO]->(u)
+    `, { taskId: args.taskId, userId: args.userId, tenantId: ctx.tenantId }))
+
+    const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
+    const userRow = await runQueryOne<{ name: string }>(session, `
+      MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name
+    `, { id: args.userId, tenantId: ctx.tenantId })
+    await writeAudit(session, tctx.changeId, ctx.tenantId, 'deploy_plan_user_assigned', ctx.userId,
+      `Planning · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
+
+    const updated = await runQueryOne<{ props: Props }>(session, `
+      MATCH (t:DeployPlanTask {id: $taskId}) RETURN properties(t) AS props
+    `, { taskId: args.taskId })
+    return updated ? mapDeployPlanTask(updated.props) : null
   }, true)
 }

@@ -68,6 +68,15 @@ export const ASSIGN_ASSESSMENT_TASK_TO_USER = gql`
   }
 `
 
+export const ASSIGN_DEPLOY_PLAN_TASK_TO_USER = gql`
+  mutation AssignDeployPlanTaskToUser($taskId: ID!, $userId: ID!) {
+    assignDeployPlanTaskToUser(taskId: $taskId, userId: $userId) {
+      id
+      assignee { id name }
+    }
+  }
+`
+
 export const EXECUTE_CHANGE_TRANSITION = gql`
   mutation ExecuteChangeTransition($changeId: ID!, $toStep: String!, $notes: String) {
     executeChangeTransition(changeId: $changeId, toStep: $toStep, notes: $notes) {
