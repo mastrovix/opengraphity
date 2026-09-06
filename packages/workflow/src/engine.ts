@@ -224,8 +224,12 @@ export class WorkflowEngine {
       const execId = uuidv4()
       await session.executeWrite(async (tx) => {
         await tx.run(`
-          // Chiudi StepExecution corrente
-          MATCH (wi:WorkflowInstance {id: $instanceId})-[:STEP_HISTORY]->(exec:WorkflowStepExecution)
+          // Chiudi StepExecution corrente (se presente).
+          // OPTIONAL: un'istanza senza execution aperta (dati importati/seed,
+          // storia potata) NON deve far fallire silenziosamente l'avanzamento —
+          // wi va sempre legato, l'avanzamento di CURRENT_STEP procede comunque.
+          MATCH (wi:WorkflowInstance {id: $instanceId})
+          OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(exec:WorkflowStepExecution)
             WHERE exec.exited_at IS NULL
           SET exec.exited_at   = $now,
               exec.duration_ms = $durationMs
