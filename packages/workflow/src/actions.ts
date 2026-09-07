@@ -224,7 +224,7 @@ export async function runAction(
       await queue.add(
         jobName,
         { instanceId: instance.id, entityId: instance.entityId, tenantId: instance.tenantId, job: jobName },
-        { delay: delayMs, jobId: `${jobName}:${instance.entityId}`, removeOnComplete: true },
+        { delay: delayMs, jobId: `${jobName}_${instance.entityId}`, removeOnComplete: true },
       )
       await queue.close()
       break
@@ -234,7 +234,7 @@ export async function runAction(
       if (!action.params['job']) throw new Error('cancel_job: missing required param "job"')
       const jobName = String(action.params['job'])
       const queue   = new Queue('workflow-jobs', { connection: redisConnection })
-      const job     = await queue.getJob(`${jobName}:${instance.entityId}`)
+      const job     = await queue.getJob(`${jobName}_${instance.entityId}`)
       if (job) await job.remove()
       await queue.close()
       break

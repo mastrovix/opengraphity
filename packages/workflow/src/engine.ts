@@ -187,12 +187,32 @@ export class WorkflowEngine {
       const exitActionsRaw    = rec.get('exitActions')        as string | null
       const enterActionsRaw   = rec.get('nextEnterActions')   as string | null
 
-      // 2. Verifica condizione — una condizione non riconosciuta NON deve
-      // passare silenziosamente (guardia mai applicata = transizione sempre ok).
-      if (condition) {
+      // 2. Verifica condizione. Le guardie sulle transizioni MANUALI le valuta
+      // il motore (rootCause, has_linked_change). Quelle sulle transizioni
+      // AUTOMATICHE (es. all_assessments_complete della change) sono valutate dal
+      // livello che le innesca (evaluateAutoTransitions), che conosce il modello
+      // dei task e fail-safe salta le condizioni sconosciute: qui non le
+      // rivalutiamo, altrimenti verrebbero rifiutate come "sconosciute".
+      if (condition && input.triggerType !== 'automatic') {
         if (condition === 'rootCause != null') {
           if (!input.notes) {
             return { success: false, error: 'Root cause obbligatoria per questa transizione' } as unknown as TransitionResult
+          }
+        } else if (condition === 'has_linked_change') {
+          // La guardia richiede che l'entità (es. Problem) abbia una change
+          // collegata prima di passare allo step "change requested".
+          const linkRes = await session.executeRead((tx) =>
+            tx.run(`
+              MATCH (e {id: $entityId, tenant_id: $tenantId})--(c:Change)
+              RETURN count(c) AS n
+            `, { entityId: wi['entity_id'], tenantId: wi['tenant_id'] }),
+          )
+          const raw = linkRes.records[0]?.get('n') as { toNumber?: () => number } | number | null
+          const n = typeof (raw as { toNumber?: () => number })?.toNumber === 'function'
+            ? (raw as { toNumber(): number }).toNumber()
+            : Number(raw ?? 0)
+          if (n === 0) {
+            return { success: false, error: 'Collega prima una change, poi richiedi la change' } as unknown as TransitionResult
           }
         } else {
           return { success: false, error: `Condizione di transizione sconosciuta: "${condition}"` } as unknown as TransitionResult
