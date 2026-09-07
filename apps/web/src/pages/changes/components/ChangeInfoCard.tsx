@@ -61,7 +61,7 @@ export function ChangeInfoCard({
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', flexShrink: 0 }}>{completedTasks}/{totalTasks} task completati</span>
           </div>
         )}
-        {isAdmin && transitions.map((tr) => (
+        {isAdmin && currentStep !== 'approval' && transitions.map((tr) => (
           <button
             key={tr.toStep}
             type="button"

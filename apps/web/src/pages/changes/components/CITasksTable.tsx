@@ -113,12 +113,24 @@ function CIExpandedRow({ a }: { a: AffectedCI }) {
   )
 }
 
-export function CITasksTable({ affected, isAdmin, userTeamIds }: {
+/** Un CI è "completo" quando tutti i suoi task lo sono (validation=pass, review=confirmed). */
+function isCIDone(a: AffectedCI): boolean {
+  const taskDone = (t: { status?: string } | null | undefined) => !t || t.status === TASK_STATUS.COMPLETED
+  const validationDone = !a.validation || (a.validation.status === TASK_STATUS.COMPLETED && a.validation.result === VALIDATION_RESULT.PASS)
+  const reviewDone     = !a.review     || (a.review.status     === TASK_STATUS.COMPLETED && a.review.result     === REVIEW_RESULT.CONFIRMED)
+  return taskDone(a.assessmentOwner) && taskDone(a.assessmentSupport) && taskDone(a.deployPlan)
+    && validationDone && taskDone(a.deployment) && reviewDone
+}
+
+export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = true }: {
   affected: AffectedCI[]
   isAdmin: boolean
   userTeamIds: Set<string>
+  defaultOpen?: boolean
 }) {
   const [expandedCIId, setExpandedCIId] = useState<string | null>(null)
+  // Conteggio = CI con task ancora attivi (non completati), non il totale dei CI.
+  const activeCount = affected.filter(a => !isCIDone(a)).length
 
   const findPendingTaskId = (a: AffectedCI): string | null => {
     const inTeam = (tid: string | null) => isAdmin || (!!tid && userTeamIds.has(tid))
@@ -134,7 +146,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds }: {
   }
 
   return (
-    <SectionCard title="Active Tasks" count={affected.length} collapsible defaultOpen>
+    <SectionCard title="Active Tasks" count={activeCount} collapsible defaultOpen={defaultOpen}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
         <span style={{ width: 24, flexShrink: 0 }} />
         <span style={{ flex: 1 }}>Nome</span>
@@ -147,16 +159,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds }: {
       {affected.map((a) => {
         const isOpen = expandedCIId === a.ci.id
         const tid = findPendingTaskId(a)
-        const taskDone = (t: { status?: string } | null | undefined) => !t || t.status === TASK_STATUS.COMPLETED
-        const validationDone = !a.validation || (a.validation.status === TASK_STATUS.COMPLETED && a.validation.result === VALIDATION_RESULT.PASS)
-        const reviewDone     = !a.review     || (a.review.status     === TASK_STATUS.COMPLETED && a.review.result     === REVIEW_RESULT.CONFIRMED)
-        const done =
-          taskDone(a.assessmentOwner) &&
-          taskDone(a.assessmentSupport) &&
-          taskDone(a.deployPlan) &&
-          validationDone &&
-          taskDone(a.deployment) &&
-          reviewDone
+        const done = isCIDone(a)
         return (
           <div key={a.ci.id} style={{ borderLeft: isOpen ? '3px solid var(--color-brand)' : '3px solid transparent', marginBottom: 2, transition: 'border-color 0.15s' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 8px 4px', borderBottom: '1px solid #f3f4f6' }}>

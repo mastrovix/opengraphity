@@ -53,6 +53,8 @@ function authHeader(): Record<string, string> {
 interface Props {
   entityType: string
   entityId:   string
+  /** Se la card è aperta di default (true per retrocompatibilità). */
+  defaultOpen?: boolean
 }
 
 /**
@@ -60,7 +62,7 @@ interface Props {
  * Upload goes through REST POST /api/attachments (multipart); the download
  * needs the Bearer header, so it fetches a blob instead of a plain <a href>.
  */
-export function AttachmentsSection({ entityType, entityId }: Props) {
+export function AttachmentsSection({ entityType, entityId, defaultOpen = true }: Props) {
   const { t } = useTranslation()
   const [uploading, setUploading] = useState(false)
   const fileInputRef              = useRef<HTMLInputElement>(null)
@@ -121,7 +123,7 @@ export function AttachmentsSection({ entityType, entityId }: Props) {
   }
 
   return (
-    <SectionCard title={t('attachments.title')} count={attachments.length} defaultOpen>
+    <SectionCard title={t('attachments.title')} count={attachments.length} defaultOpen={defaultOpen}>
         <div>
           {attachments.length === 0 && (
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 12px' }}>{t('attachments.empty')}</p>

@@ -39,20 +39,49 @@ function simpleDotState(t: { status: string; result?: string | null } | null): D
   return 'not_started'
 }
 
+// Ordine dei 6 pallini di stato per CI (deve combaciare con CIDots).
+const CI_PHASE_LABELS = ['Functional', 'Technical', 'Piano', 'Validation', 'Deploy', 'Review'] as const
+
 function CIDots({ a }: { a: AffectedCI }) {
-  const dots: Array<{ label: string; state: DotState }> = [
-    { label: 'Functional',  state: assessDotState(a.assessmentOwner) },
-    { label: 'Technical',   state: assessDotState(a.assessmentSupport) },
-    { label: 'Piano',       state: planDotState(a.deployPlan) },
-    { label: 'Validation',  state: simpleDotState(a.validation) },
-    { label: 'Deploy',      state: simpleDotState(a.deployment) },
-    { label: 'Review',      state: simpleDotState(a.review) },
+  const states: DotState[] = [
+    assessDotState(a.assessmentOwner),
+    assessDotState(a.assessmentSupport),
+    planDotState(a.deployPlan),
+    simpleDotState(a.validation),
+    simpleDotState(a.deployment),
+    simpleDotState(a.review),
   ]
   return (
     <div style={{ display: 'flex', gap: 3 }}>
-      {dots.map((d, i) => (
-        <span key={i} title={d.label} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[d.state], display: 'inline-block' }} />
+      {states.map((state, i) => (
+        <span key={i} title={CI_PHASE_LABELS[i]} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[state], display: 'inline-block' }} />
       ))}
+    </div>
+  )
+}
+
+// Legenda dei pallini: ordine delle fasi + significato dei colori.
+// Utile su touch (iPad) dove il tooltip degli 8px non è raggiungibile.
+function CIDotsLegend() {
+  const colorItems: Array<{ state: DotState; label: string }> = [
+    { state: 'not_started', label: 'non iniziato' },
+    { state: 'in_progress', label: 'in corso' },
+    { state: 'completed',   label: 'completato' },
+    { state: 'failed',      label: 'fallito' },
+  ]
+  return (
+    <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12, lineHeight: 1.6 }}>
+      <div style={{ marginBottom: 4 }}>
+        Pallini (in ordine): {CI_PHASE_LABELS.map((l, i) => `${i + 1} ${l}`).join(' · ')}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', alignItems: 'center' }}>
+        {colorItems.map((c) => (
+          <span key={c.state} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[c.state], display: 'inline-block' }} />
+            {c.label}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -132,6 +161,7 @@ export function ChangeOverviewSidebar({
                   </div>
                 )
               })}
+              <CIDotsLegend />
             </div>
 
             {ciAffected && ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED && (
