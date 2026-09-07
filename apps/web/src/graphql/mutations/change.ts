@@ -87,6 +87,24 @@ export const EXECUTE_CHANGE_TRANSITION = gql`
   }
 `
 
+export const APPROVE_CHANGE_APPROVAL = gql`
+  mutation ApproveChangeApproval($changeId: ID!, $teamId: ID!, $note: String) {
+    approveChangeApproval(changeId: $changeId, teamId: $teamId, note: $note) {
+      id
+      workflowInstance { id currentStep status }
+    }
+  }
+`
+
+export const REJECT_CHANGE_APPROVAL = gql`
+  mutation RejectChangeApproval($changeId: ID!, $teamId: ID!, $note: String!, $reopenAll: Boolean, $reopenTaskIds: [ID!]) {
+    rejectChangeApproval(changeId: $changeId, teamId: $teamId, note: $note, reopenAll: $reopenAll, reopenTaskIds: $reopenTaskIds) {
+      id
+      workflowInstance { id currentStep status }
+    }
+  }
+`
+
 export const COMPLETE_VALIDATION_TEST = gql`
   mutation CompleteValidationTest($changeId: ID!, $ciId: ID!, $result: String!) {
     completeValidationTest(changeId: $changeId, ciId: $ciId, result: $result) {

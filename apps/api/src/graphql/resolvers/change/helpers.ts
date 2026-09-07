@@ -335,6 +335,19 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
     WHERE step.name = $stepName
     RETURN step.on_enter_create AS hook
   `, { changeId, tenantId, stepName })
+  // Entrando in "approval": crea i requisiti di approvazione (CM + owner group).
+  if (stepName === 'approval') {
+    const { createChangeApprovals } = await import('./approvalCreation.js')
+    await createChangeApprovals(session, changeId, tenantId)
+    // Standard = pre-approvata: nessun requisito, avanza subito a scheduled.
+    const ct = await runQueryOne<{ t: string }>(session, `MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS t`, { changeId, tenantId })
+    if (ct?.t === 'standard') {
+      const { workflowEngine } = await import('@opengraphity/workflow')
+      const instanceId = await getInstanceId(session as Session, changeId, tenantId)
+      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: 'scheduled', triggeredBy: 'system', triggerType: 'automatic', notes: 'Standard: pre-approvata' }, { userId: 'system', entityData: {} })
+      if (res.success) await afterEnterStep(session, changeId, tenantId, 'scheduled')
+    }
+  }
   const hook = row?.hook
   if (!hook) return
   const creator = ON_ENTER_CREATORS[hook]

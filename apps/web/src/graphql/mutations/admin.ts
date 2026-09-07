@@ -28,6 +28,12 @@ export const REMOVE_TEAM_MANAGER = gql`
   }
 `
 
+export const SET_CHANGE_MANAGER_TEAM = gql`
+  mutation SetChangeManagerTeam($teamId: ID!, $value: Boolean!) {
+    setChangeManagerTeam(teamId: $teamId, value: $value) { id isChangeManager }
+  }
+`
+
 // ── Reports ──────────────────────────────────────────────────────────────────
 
 export const CREATE_REPORT_TEMPLATE = gql`

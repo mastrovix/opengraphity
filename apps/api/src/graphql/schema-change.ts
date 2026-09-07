@@ -28,6 +28,19 @@ export function changeSDL(): string {
     # tipicamente creati via "Richiedi Change".
     resolvesIncidents:    [LinkedTicketRef!]!
     resolvesProblems:     [LinkedTicketRef!]!
+    # Requisiti di approvazione (Change Manager + un owner group per CI affected).
+    approvals:            [ChangeApproval!]!
+  }
+
+  # Un requisito di approvazione della change.
+  type ChangeApproval {
+    kind:           String!   # change_manager | owner_group
+    teamId:         ID
+    teamName:       String
+    status:         String!   # pending | approved
+    approvedByName: String
+    approvedAt:     String
+    canApprove:     Boolean!  # l'utente corrente può approvare questo requisito
   }
 
   # Riferimento leggero a un ticket collegato alla change.
@@ -279,6 +292,11 @@ export function changeSDL(): string {
     saveDeployPlan(taskId: ID!, steps: [DeployStepInput!]!): DeployPlanTask!
     completeDeployPlanTask(taskId: ID!): DeployPlanTask!
     executeChangeTransition(changeId: ID!, toStep: String!, notes: String): Change!
+    # Approvazione multi-parte: approva/rigetta il requisito di un team.
+    approveChangeApproval(changeId: ID!, teamId: ID!, note: String): Change!
+    # Rigetta: riporta la change ad assessment riaprendo i task scelti
+    # (reopenAll=true → tutti; altrimenti quelli in reopenTaskIds).
+    rejectChangeApproval(changeId: ID!, teamId: ID!, note: String!, reopenAll: Boolean, reopenTaskIds: [ID!]): Change!
     completeValidationTest(changeId: ID!, ciId: ID!, result: String!): ValidationTest!
     completeDeployment(changeId: ID!, ciId: ID!): DeploymentTask!
     completeReview(changeId: ID!, ciId: ID!, result: String!): ReviewTask!

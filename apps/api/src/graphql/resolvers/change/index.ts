@@ -42,6 +42,11 @@ import {
   removeQuestionFromCIType,
   setQuestionCore,
 } from './questionAdmin.js'
+import {
+  approveChangeApproval,
+  rejectChangeApproval,
+  changeApprovals,
+} from './approvalGate.js'
 
 export const changeResolvers = {
   Query: {
@@ -83,9 +88,12 @@ export const changeResolvers = {
     reopenDeploymentTask,
     reopenReviewTask,
     sendTaskReminder,
+    approveChangeApproval,
+    rejectChangeApproval,
   },
   Change: {
     resolvesIncidents: changeResolvesIncidents,
     resolvesProblems:  changeResolvesProblems,
+    approvals:         changeApprovals,
   },
 }

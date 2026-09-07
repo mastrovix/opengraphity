@@ -50,6 +50,17 @@ export interface ChangeData {
   availableTransitions: AvailableTransition[]
   resolvesIncidents?:   LinkedTicketRef[]
   resolvesProblems?:    LinkedTicketRef[]
+  approvals?:           ChangeApproval[]
+}
+
+export interface ChangeApproval {
+  kind: string
+  teamId: string | null
+  teamName: string | null
+  status: string
+  approvedByName: string | null
+  approvedAt: string | null
+  canApprove: boolean
 }
 
 export interface LinkedTicketRef {

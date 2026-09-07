@@ -243,11 +243,31 @@ async function removeTeamManager(_: unknown, args: { teamId: string }, ctx: Grap
   }, true)
 }
 
+async function setChangeManagerTeam(_: unknown, args: { teamId: string; value: boolean }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    // Uno solo per tenant: azzera gli altri quando si designa.
+    if (args.value) {
+      await session.executeWrite(tx => tx.run(`
+        MATCH (t:Team {tenant_id: $tenantId}) WHERE t.id <> $teamId AND t.is_change_manager = true
+        SET t.is_change_manager = false
+      `, { teamId: args.teamId, tenantId: ctx.tenantId }))
+    }
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      SET t.is_change_manager = $value
+      RETURN properties(t) AS props
+    `, { teamId: args.teamId, tenantId: ctx.tenantId, value: args.value })
+    if (!row) throw new NotFoundError('Team', args.teamId)
+    void audit(ctx, 'team.change_manager_set', 'Team', args.teamId)
+    return mapTeam(row.props)
+  }, true)
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const teamResolvers = {
   Query:    { teams, team },
-  Mutation: { createTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager },
+  Mutation: { createTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager, setChangeManagerTeam },
   Team: {
     manager:      teamManager,
     members:      teamMembers,

@@ -51,7 +51,7 @@ export const GET_TEAMS = gql`
 export const GET_TEAM = gql`
   query GetTeam($id: ID!) {
     team(id: $id) {
-      id tenantId name description type createdAt
+      id tenantId name description type createdAt isChangeManager
       manager { id name email }
       members { id name email role }
       ownedCIs { id name type environment status }

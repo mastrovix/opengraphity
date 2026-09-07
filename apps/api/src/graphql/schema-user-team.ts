@@ -27,6 +27,8 @@ export function userTeamSDL(): string {
     members: [User!]!
     ownedCIs: [CIBase!]!
     supportedCIs: [CIBase!]!
+    # True se questo è il team "Change Manager" (approva le change normal/emergency).
+    isChangeManager: Boolean
   }
 
   input CreateUserInput {
@@ -42,6 +44,8 @@ export function userTeamSDL(): string {
     updateUserTeams(userId: ID!, teamIds: [ID!]!): User!
     setTeamManager(teamId: ID!, userId: ID!): Team!
     removeTeamManager(teamId: ID!): Team!
+    # Designa (o rimuove) il team come "Change Manager". Uno solo per tenant.
+    setChangeManagerTeam(teamId: ID!, value: Boolean!): Team!
   }
   `
 }

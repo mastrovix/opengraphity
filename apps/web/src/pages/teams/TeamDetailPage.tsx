@@ -15,7 +15,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { GET_TEAM } from '@/graphql/queries'
-import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER } from '@/graphql/mutations'
+import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER, SET_CHANGE_MANAGER_TEAM } from '@/graphql/mutations'
 import { ciPath } from '@/lib/ciPath'
 import { toast } from 'sonner'
 import { lookupStyle } from '@/lib/tokens'
@@ -49,6 +49,7 @@ interface Team {
   description:  string | null
   type:         string | null
   createdAt:    string
+  isChangeManager: boolean | null
   manager:      ManagerRef | null
   members:      Member[]
   ownedCIs:     CIRef[]
@@ -110,6 +111,10 @@ export function TeamDetailPage() {
   })
   const [removeManager] = useMutation(REMOVE_TEAM_MANAGER, {
     onCompleted: () => { toast.success('Manager rimosso'); refetch() },
+    onError: (err) => toast.error(err.message),
+  })
+  const [setChangeManager, { loading: settingCM }] = useMutation(SET_CHANGE_MANAGER_TEAM, {
+    onCompleted: () => { toast.success('Team Change Manager aggiornato'); refetch() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -177,6 +182,19 @@ export function TeamDetailPage() {
             } />
             <DetailField label={t('pages.teams.description')} value={team.description} />
             <DetailField label={t('detail.createdAt')} value={new Date(team.createdAt).toLocaleDateString('it-IT')} />
+            <DetailField label="Change Manager" value={
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: settingCM ? 'wait' : 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!!team.isChangeManager}
+                  disabled={settingCM}
+                  onChange={(e) => void setChangeManager({ variables: { teamId: team.id, value: e.target.checked } })}
+                />
+                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+                  {team.isChangeManager ? 'Questo team approva le change (normal/emergency)' : 'Designa come team Change Manager'}
+                </span>
+              </label>
+            } />
           </div>
         </SectionCard>
 

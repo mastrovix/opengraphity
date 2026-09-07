@@ -11,7 +11,7 @@ import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
-import { ChevronRight, FileDown, Loader2, Plus, PlusCircle, X } from 'lucide-react'
+import { ChevronRight, FileDown, Loader2, Plus, PlusCircle, X, CheckCircle, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { downloadPdf } from '@/lib/downloadPdf'
 import { PageContainer } from '@/components/PageContainer'
@@ -33,6 +33,8 @@ import {
   EXECUTE_CHANGE_TRANSITION,
   ADD_CI_TO_CHANGE,
   REMOVE_CI_FROM_CHANGE,
+  APPROVE_CHANGE_APPROVAL,
+  REJECT_CHANGE_APPROVAL,
 } from '@/graphql/mutations'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { TASK_STATUS } from '@/lib/taskStatus'
@@ -42,7 +44,7 @@ import { ChangeInfoCard } from './components/ChangeInfoCard'
 import { CITasksTable } from './components/CITasksTable'
 import { AuditTimeline } from './components/AuditTimeline'
 import { AddCIModal } from './components/AddCIModal'
-import { fmtShort } from './components/shared'
+import { fmtShort, fmtDate } from './components/shared'
 
 interface ImpactedCIRow {
   ci: { id: string; name: string; type: string | null; environment: string | null }
@@ -76,6 +78,19 @@ export function ChangeDetailPage() {
       toast.success(label)
     } catch { /* onError handles toast */ }
   }
+
+  const [approveApproval, { loading: approving }] = useMutation(APPROVE_CHANGE_APPROVAL, {
+    onCompleted: async () => { toast.success('Approvazione registrata'); await refetchAll() },
+    onError: (e) => toast.error(e.message),
+  })
+  const [rejectApproval] = useMutation(REJECT_CHANGE_APPROVAL, {
+    onCompleted: async () => { toast.success('Approvazione rifiutata'); await refetchAll() },
+    onError: (e) => toast.error(e.message),
+  })
+  const [rejectModal, setRejectModal] = useState<{ teamId: string; teamName: string } | null>(null)
+  const [rejectNote, setRejectNote] = useState('')
+  const [reopenMode, setReopenMode] = useState<'all' | 'some'>('all')
+  const [reopenIds, setReopenIds] = useState<Set<string>>(new Set())
 
   const change = changeData?.change
   const affected = Array.from(new Map((affectedData?.changeAffectedCIs ?? []).map(a => [a.ci.id, a])).values())
@@ -152,6 +167,26 @@ export function ChangeDetailPage() {
         return { label: `${route}${suffix}`, color: c, bg }
       })()
 
+  // Click su una transizione: apre la modale note se richiede input, altrimenti
+  // esegue subito. Condiviso da ChangeInfoCard e dal box Approvazione.
+  const handleTransitionClick = (tr: { toStep: string; label: string; requiresInput?: boolean; inputField?: string | null }) => {
+    if (tr.requiresInput) {
+      setTransitionNotes('')
+      setTransitionModal({ toStep: tr.toStep, label: tr.label, inputField: tr.inputField ?? null })
+    } else {
+      void runTransition(tr.toStep, tr.label)
+    }
+  }
+
+  // Posizione rispetto allo step di approvazione: il box Approvazione è aperto
+  // e azionabile DURANTE approval, poi resta visibile ma collassato (esito).
+  const stepNames    = wfSteps.map(s => s.name)
+  const approvalIdx  = stepNames.indexOf('approval')
+  const currentIdx   = stepNames.indexOf(currentStep)
+  const atApproval   = currentStep === 'approval'
+  const pastApproval = approvalIdx >= 0 && currentIdx > approvalIdx
+  const showApproval = atApproval || pastApproval
+
   return (
     <PageContainer style={{ padding: '16px 24px' }}>
       <button onClick={() => navigate('/changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 12, padding: 0 }}>← Changes</button>
@@ -180,41 +215,100 @@ export function ChangeDetailPage() {
         completedTasks={completedTasks}
         transitions={transitions}
         stepLabel={wfByName.get(currentStep)?.label ?? currentStep}
-        onTransitionClick={(tr) => {
-          if (tr.requiresInput) {
-            setTransitionNotes('')
-            setTransitionModal({ toStep: tr.toStep, label: tr.label, inputField: tr.inputField })
-          } else {
-            void runTransition(tr.toStep, tr.label)
-          }
-        }}
+        onTransitionClick={handleTransitionClick}
       />
 
-      {((change.resolvesIncidents?.length ?? 0) > 0 || (change.resolvesProblems?.length ?? 0) > 0) && (
-        <SectionCard title="Ticket collegati" collapsible defaultOpen>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(change.resolvesProblems ?? []).map((p) => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: '#fff', background: 'var(--color-slate)', borderRadius: 4, padding: '2px 6px', flexShrink: 0 }}>PROBLEM</span>
-                <Link to={`/problems/${p.id}`} style={{ fontWeight: 600, color: 'var(--accent)', textDecoration: 'none', flexShrink: 0 }}>{p.number}</Link>
-                <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', textTransform: 'capitalize', flexShrink: 0 }}>{p.status.replace(/_/g, ' ')}</span>
+      {/* Approvazione multi-parte: Change Manager + un owner group per CI affected.
+          Tabellare; aperto durante approval, collassato dopo. */}
+      {showApproval && (() => {
+        const approvals = change.approvals ?? []
+        const approvedN = approvals.filter(a => a.status === 'approved').length
+        return (
+          <SectionCard
+            key={`approval-${currentStep}`}
+            title="Approvazione"
+            count={approvals.length}
+            collapsible
+            defaultOpen={atApproval}
+            headerRight={<span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{approvedN}/{approvals.length} approvate</span>}
+          >
+            {approvals.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+                Nessun requisito di approvazione. Verifica che sia designato un team <strong>Change Manager</strong> (Team e Utenti) e che i CI affected abbiano un owner group.
+              </p>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
+                  <span style={{ width: 150 }}>Requisito</span>
+                  <span style={{ flex: 1 }}>Team</span>
+                  <span style={{ width: 110 }}>Stato</span>
+                  <span style={{ flex: 1 }}>Approvato da</span>
+                  <span style={{ width: 200 }}>Azioni</span>
+                </div>
+                {approvals.map((a) => (
+                  <div key={`${a.kind}-${a.teamId}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}>
+                    <span style={{ width: 150, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.kind === 'change_manager' ? 'Change Manager' : 'Owner Group'}</span>
+                    <span style={{ flex: 1, color: 'var(--color-slate)' }}>{a.teamName ?? '—'}</span>
+                    <span style={{ width: 110 }}>
+                      {a.status === 'approved'
+                        ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: '#166534', background: '#DCFCE7', padding: '2px 8px', borderRadius: 12 }}>Approvato</span>
+                        : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: '#854D0E', background: '#FEF9C3', padding: '2px 8px', borderRadius: 12 }}>In attesa</span>}
+                    </span>
+                    <span style={{ flex: 1, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+                      {a.approvedByName ? `${a.approvedByName}${a.approvedAt ? ` · ${fmtDate(a.approvedAt)}` : ''}` : '—'}
+                    </span>
+                    <span style={{ width: 200, display: 'flex', gap: 8 }}>
+                      {a.canApprove && a.teamId && (
+                        <>
+                          <button type="button" disabled={approving} onClick={() => void approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
+                            <CheckCircle size={14} /> Approva
+                          </button>
+                          <button type="button" onClick={() => { setRejectNote(''); setReopenMode('all'); setReopenIds(new Set()); setRejectModal({ teamId: a.teamId!, teamName: a.teamName ?? '' }) }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-danger)', background: '#fff', color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: 'pointer' }}>
+                            <XCircle size={14} /> Rigetta
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
+          </SectionCard>
+        )
+      })()}
+
+      {(() => {
+        const linked = [
+          ...(change.resolvesProblems ?? []).map((p) => ({ kind: 'PROBLEM' as const, to: `/problems/${p.id}`, ...p })),
+          ...(change.resolvesIncidents ?? []).map((i) => ({ kind: 'INCIDENT' as const, to: `/incidents/${i.id}`, ...i })),
+        ]
+        if (linked.length === 0) return null
+        return (
+          <SectionCard title="Ticket collegati" count={linked.length} collapsible>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
+              <span style={{ width: 90 }}>Tipo</span>
+              <span style={{ width: 130 }}>Numero</span>
+              <span style={{ flex: 1 }}>Titolo</span>
+              <span style={{ width: 140 }}>Stato</span>
+            </div>
+            {linked.map((r) => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}>
+                <span style={{ width: 90 }}>
+                  <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: '#fff', background: r.kind === 'PROBLEM' ? 'var(--color-slate)' : 'var(--color-trigger-sla-breach)', borderRadius: 4, padding: '2px 6px' }}>{r.kind}</span>
+                </span>
+                <span style={{ width: 130 }}><Link to={r.to} style={{ fontWeight: 600, color: 'var(--color-brand)', textDecoration: 'none' }}>{r.number}</Link></span>
+                <span style={{ flex: 1, color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
+                <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{r.status.replace(/_/g, ' ')}</span>
               </div>
             ))}
-            {(change.resolvesIncidents ?? []).map((i) => (
-              <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: '#fff', background: 'var(--color-trigger-sla-breach)', borderRadius: 4, padding: '2px 6px', flexShrink: 0 }}>INCIDENT</span>
-                <Link to={`/incidents/${i.id}`} style={{ fontWeight: 600, color: 'var(--accent)', textDecoration: 'none', flexShrink: 0 }}>{i.number}</Link>
-                <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', textTransform: 'capitalize', flexShrink: 0 }}>{i.status.replace(/_/g, ' ')}</span>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
+          </SectionCard>
+        )
+      })()}
 
       {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
-        <SectionCard title="Prossimi Step" collapsible={false}>
+        <SectionCard title="Prossimi Step" collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>
           {affected.map((a) => {
             const steps = a.deployPlan?.steps ?? []
             if (steps.length === 0) return null
@@ -231,9 +325,9 @@ export function ChangeDetailPage() {
         </SectionCard>
       )}
 
-      <CITasksTable affected={affected} isAdmin={isAdmin} userTeamIds={userTeamIds} />
+      <CITasksTable key={`tasks-${currentStep}`} affected={affected} isAdmin={isAdmin} userTeamIds={userTeamIds} defaultOpen={currentStep !== 'approval'} />
 
-      <SectionCard title="CIs Involved" collapsible defaultOpen>
+      <SectionCard title="CIs Involved" collapsible count={affected.length}>
         <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
           {(['affected', 'impacted'] as const).map(tab => {
             const active = ciTab === tab
@@ -396,6 +490,95 @@ export function ChangeDetailPage() {
         )}
       </SectionCard>
 
+      {rejectModal && (() => {
+        const taskGroups = affected.map((a) => ({
+          ciName: a.ci.name,
+          tasks: [
+            a.assessmentOwner   ? { id: a.assessmentOwner.id,   label: 'Functional', code: a.assessmentOwner.code,   status: a.assessmentOwner.status } : null,
+            a.assessmentSupport ? { id: a.assessmentSupport.id, label: 'Technical',  code: a.assessmentSupport.code, status: a.assessmentSupport.status } : null,
+            a.deployPlan        ? { id: a.deployPlan.id,        label: 'Planning',   code: a.deployPlan.code,        status: a.deployPlan.status } : null,
+          ].filter((x): x is { id: string; label: string; code: string; status: string } => !!x),
+        })).filter((g) => g.tasks.length > 0)
+        const canConfirm = rejectNote.trim() !== '' && (reopenMode === 'all' || reopenIds.size > 0)
+        return (
+        <Modal
+          open
+          onClose={() => setRejectModal(null)}
+          title={`Rigetta approvazione — ${rejectModal.teamName}`}
+          width={520}
+          footer={
+            <>
+              <Button variant="secondary" size="xs" onClick={() => setRejectModal(null)}>Annulla</Button>
+              <Button
+                size="xs"
+                disabled={!canConfirm}
+                onClick={async () => {
+                  const m = rejectModal
+                  setRejectModal(null)
+                  await rejectApproval({ variables: {
+                    changeId, teamId: m.teamId, note: rejectNote.trim(),
+                    reopenAll: reopenMode === 'all',
+                    reopenTaskIds: reopenMode === 'some' ? [...reopenIds] : null,
+                  } })
+                }}
+                style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600, opacity: canConfirm ? 1 : 0.6 }}
+              >
+                Rigetta
+              </Button>
+            </>
+          }
+        >
+          <p style={{ margin: '0 0 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+            Il rigetto riporta la change in <strong>assessment</strong> riaprendo i task selezionati e azzera le approvazioni.
+          </p>
+
+          <label style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Motivo <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+          <textarea
+            value={rejectNote}
+            onChange={(e) => setRejectNote(e.target.value)}
+            rows={3}
+            style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 14 }}
+            autoFocus
+          />
+
+          <label style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Assessment da riaprire</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+              <input type="radio" name="reopenMode" checked={reopenMode === 'all'} onChange={() => setReopenMode('all')} />
+              Riapri <strong>tutti</strong> gli assessment
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+              <input type="radio" name="reopenMode" checked={reopenMode === 'some'} onChange={() => setReopenMode('some')} />
+              Riapri <strong>alcuni specifici</strong>
+            </label>
+          </div>
+
+          {reopenMode === 'some' && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', maxHeight: 240, overflowY: 'auto' }}>
+              {taskGroups.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>Nessun task disponibile.</p>
+              ) : taskGroups.map((g) => (
+                <div key={g.ciName} style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.03em', padding: '4px 0' }}>{g.ciName}</div>
+                  {g.tasks.map((t) => (
+                    <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0 3px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+                      <input
+                        type="checkbox"
+                        checked={reopenIds.has(t.id)}
+                        onChange={(e) => setReopenIds((prev) => { const n = new Set(prev); if (e.target.checked) n.add(t.id); else n.delete(t.id); return n })}
+                      />
+                      <span style={{ flex: 1 }}>{t.label}{t.code && <span style={{ marginLeft: 6, fontSize: 'var(--font-size-caption)', color: 'var(--color-slate-light)', fontWeight: 600 }}>{t.code}</span>}</span>
+                      <span style={{ fontSize: 'var(--font-size-caption)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{(t.status ?? '').replace(/_/g, ' ')}</span>
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
+        )
+      })()}
+
       {transitionModal && (
         <Modal
           open
@@ -432,7 +615,7 @@ export function ChangeDetailPage() {
         </Modal>
       )}
 
-      <AttachmentsSection entityType="change" entityId={change.id} />
+      <AttachmentsSection entityType="change" entityId={change.id} defaultOpen={false} />
 
       <AuditTimeline audit={audit} />
     </PageContainer>

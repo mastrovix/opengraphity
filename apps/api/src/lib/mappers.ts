@@ -64,6 +64,7 @@ export function mapTeam(props: Props) {
     name:        props['name']       as string,
     description: (props['description'] ?? null) as string | null,
     type:        (props['type']        ?? null) as string | null,
+    isChangeManager: (props['is_change_manager'] ?? false) as boolean,
     createdAt:   neo4jDateToISO(props['created_at']),
   }
 }
