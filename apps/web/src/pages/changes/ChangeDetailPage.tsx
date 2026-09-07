@@ -183,19 +183,6 @@ export function ChangeDetailPage() {
     + (a.assessmentSupport?.status === TASK_STATUS.COMPLETED ? 1 : 0)
     + (a.deployPlan?.status === TASK_STATUS.COMPLETED ? 1 : 0), 0)
 
-  const allScores = affected.filter(a => a.riskScore != null).map(a => a.riskScore!)
-  const allAssessmentsDone = affected.length > 0 && affected.every(a => a.assessmentOwner?.status === TASK_STATUS.COMPLETED && a.assessmentSupport?.status === TASK_STATUS.COMPLETED)
-  const liveRoute = allScores.length === 0
-    ? { label: '— da calcolare —', color: 'var(--color-slate-light)', bg: '#f1f5f9' }
-    : (() => {
-        const max = Math.max(...allScores)
-        const route = max <= 30 ? 'Auto' : max <= 60 ? 'Change Manager' : 'CAB'
-        const suffix = allAssessmentsDone ? '' : ' (stima)'
-        const c = allAssessmentsDone ? (max <= 30 ? '#15803d' : max <= 60 ? '#b45309' : '#b91c1c') : 'var(--color-slate)'
-        const bg = allAssessmentsDone ? (max <= 30 ? '#dcfce7' : max <= 60 ? '#fef3c7' : '#fee2e2') : '#f1f5f9'
-        return { label: `${route}${suffix}`, color: c, bg }
-      })()
-
   // Click su una transizione: apre la modale note se richiede input, altrimenti
   // esegue subito. Condiviso da ChangeInfoCard e dal box Approvazione.
   const handleTransitionClick = (tr: { toStep: string; label: string; requiresInput?: boolean; inputField?: string | null }) => {
@@ -249,7 +236,6 @@ export function ChangeDetailPage() {
         isTerminal={wfIsTerminal(currentStep)}
         isAdmin={isAdmin}
         transitioning={transitioning}
-        liveRoute={liveRoute}
         totalTasks={totalTasks}
         completedTasks={completedTasks}
         transitions={transitions}

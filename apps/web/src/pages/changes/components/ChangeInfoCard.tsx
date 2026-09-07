@@ -8,14 +8,13 @@
  * parent can open the notes modal or execute the transition directly.
  */
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Pill } from '@/components/ui/Pill'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import type { AvailableTransition, ChangeData } from '@/types/change'
 import { DescriptionField, DetailField, RiskBadge, fmtDate } from './shared'
 
 export function ChangeInfoCard({
   change, currentStep, initialStepName, isTerminal, isAdmin,
-  transitioning, liveRoute, totalTasks, completedTasks, transitions,
+  transitioning, totalTasks, completedTasks, transitions,
   onTransitionClick, stepLabel,
 }: {
   change: ChangeData
@@ -24,7 +23,6 @@ export function ChangeInfoCard({
   isTerminal: boolean
   isAdmin: boolean
   transitioning: boolean
-  liveRoute: { label: string; color: string; bg: string }
   totalTasks: number
   completedTasks: number
   transitions: AvailableTransition[]
@@ -44,15 +42,12 @@ export function ChangeInfoCard({
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         {change.priority && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, lineHeight: 1 }}>
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Priorità</span>
             <SeverityBadge value={change.priority} />
           </span>
         )}
         {change.aggregateRiskScore != null && <RiskBadge score={change.aggregateRiskScore} />}
-        {liveRoute.label !== '— da calcolare —' && (
-          <Pill bg={liveRoute.bg} color={liveRoute.color} style={{ padding: '3px 10px', fontSize: 'var(--font-size-label)' }}>{liveRoute.label}</Pill>
-        )}
         {currentStep === initialStepName && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 180 }}>
             <div style={{ height: 6, borderRadius: 3, backgroundColor: '#e5e7eb', overflow: 'hidden', flex: 1 }}>
@@ -78,7 +73,7 @@ export function ChangeInfoCard({
         ))}
         {isTerminal && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-success)', fontWeight: 600 }}>✓ Completato</span>}
         {transitions.length === 0 && currentStep && !isTerminal && (
-          <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{stepLabel} in corso</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', lineHeight: 1, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{stepLabel} in corso</span>
         )}
       </div>
     </SectionCard>

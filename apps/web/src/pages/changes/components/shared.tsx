@@ -41,7 +41,8 @@ export function RiskBadge({ score }: { score: number | null | undefined }) {
       : { bg: '#fee2e2', color: '#b91c1c', label: 'HIGH' }
   return (
     <span title={`${p.label} · score ${score}`} style={{
-      padding: '2px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)',
+      display: 'inline-flex', alignItems: 'center', lineHeight: 1,
+      padding: '3px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)',
       fontWeight: 600, backgroundColor: p.bg, color: p.color,
     }}>{p.label} · {score}</span>
   )

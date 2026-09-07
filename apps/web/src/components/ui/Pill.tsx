@@ -14,7 +14,7 @@ export function Pill({ bg, color, radius = 6, style, children }: {
   children: ReactNode
 }) {
   return (
-    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: radius, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color, whiteSpace: 'nowrap', ...style }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', lineHeight: 1, padding: '3px 8px', borderRadius: radius, fontSize: 'var(--font-size-table)', fontWeight: 600, background: bg, color, whiteSpace: 'nowrap', ...style }}>
       {children}
     </span>
   )

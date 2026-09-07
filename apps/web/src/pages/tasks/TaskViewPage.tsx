@@ -173,18 +173,6 @@ export function TaskViewPage() {
     return ciOwnerTeamId // validation, review
   })()
 
-  const allScores = allAffected.filter(a => a.riskScore != null).map(a => a.riskScore!)
-  const allAssessmentsDone = allAffected.length > 0 && allAffected.every(a => a.assessmentOwner?.status === TASK_STATUS.COMPLETED && a.assessmentSupport?.status === TASK_STATUS.COMPLETED)
-  const liveRoute = allScores.length === 0
-    ? { label: 'Da calcolare', color: 'var(--color-slate-light)', bg: '#f1f5f9' }
-    : (() => {
-        const max = Math.max(...allScores)
-        const route = max <= 30 ? 'Auto-approvato' : max <= 60 ? 'Change Manager' : 'CAB'
-        const suffix = allAssessmentsDone ? '' : ' (stima)'
-        const color = allAssessmentsDone ? (max <= 30 ? '#15803d' : max <= 60 ? '#b45309' : '#b91c1c') : 'var(--color-slate)'
-        const bg = allAssessmentsDone ? (max <= 30 ? '#dcfce7' : max <= 60 ? '#fef3c7' : '#fee2e2') : '#f1f5f9'
-        return { label: `${route}${suffix}`, color, bg }
-      })()
 
   const currentStep = change?.workflowInstance?.currentStep ?? ''
   const currentStepMeta = changeStepByName.get(currentStep)
@@ -332,7 +320,6 @@ export function TaskViewPage() {
           changeId={task.changeId}
           stepLabel={currentStepMeta?.label ?? null}
           stepCategory={currentStepMeta?.category ?? null}
-          liveRoute={liveRoute}
           onRowClick={() => navigate(`/changes/${task.changeId}`)}
         />
       </div>

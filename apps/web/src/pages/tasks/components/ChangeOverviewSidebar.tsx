@@ -103,7 +103,7 @@ function RiskBadge({ score }: { score: number | null | undefined }) {
 
 export function ChangeOverviewSidebar({
   change, allAffected, ciAffected, currentCIId, changeId, currentCIName,
-  stepLabel, stepCategory, liveRoute, onRowClick,
+  stepLabel, stepCategory, onRowClick,
 }: {
   change: ChangeData | null
   allAffected: AffectedCI[]
@@ -113,7 +113,6 @@ export function ChangeOverviewSidebar({
   changeId: string
   stepLabel: string | null
   stepCategory: string | null
-  liveRoute: { label: string; color: string; bg: string }
   onRowClick: () => void
 }) {
   return (
@@ -128,7 +127,6 @@ export function ChangeOverviewSidebar({
                 label={stepLabel ?? undefined}
                 category={stepCategory}
               />
-              <Pill bg={liveRoute.bg} color={liveRoute.color} style={{ fontSize: 'var(--font-size-label)' }}>{liveRoute.label}</Pill>
             </div>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '0 0 8px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{change.title}</p>
             {(change.why || change.what) && (
