@@ -153,7 +153,7 @@ export function ChangeOverviewSidebar({
             )}
             {ciAffected && !(ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED) && (
               <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
-                Owner: {ciAffected.assessmentOwner?.status ?? '—'} · Support: {ciAffected.assessmentSupport?.status ?? '—'}
+                Functional: {ciAffected.assessmentOwner?.status ?? '—'} · Technical: {ciAffected.assessmentSupport?.status ?? '—'}
               </div>
             )}
 
