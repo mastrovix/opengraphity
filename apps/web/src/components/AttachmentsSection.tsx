@@ -123,7 +123,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
   }
 
   return (
-    <SectionCard title={t('attachments.title')} count={attachments.length} defaultOpen={defaultOpen}>
+    <SectionCard title={t('attachments.title')} count={attachments.length} collapsible defaultOpen={defaultOpen}>
         <div>
           {attachments.length === 0 && (
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 12px' }}>{t('attachments.empty')}</p>

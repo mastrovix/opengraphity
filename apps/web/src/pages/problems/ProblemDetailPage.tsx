@@ -30,7 +30,8 @@ import {
 import { ProblemHeader } from './ProblemHeader'
 import { ProblemTimeline } from './ProblemTimeline'
 import { ProblemCIList } from './ProblemLinkedEntities'
-import { LinkedTicketSection, type LinkedTicketItem } from '@/components/LinkedTicketSection'
+import { type LinkedTicketItem } from '@/components/LinkedTicketSection'
+import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 import { WatcherBar } from '@/components/WatcherBar'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
@@ -514,27 +515,32 @@ export function ProblemDetailPage() {
             onRemoveCI={(ciId) => void removeCI({ variables: { problemId: problem.id, ciId } })}
           />
 
-          {/* Ticket collegati (per tipo) */}
-          <LinkedTicketSection
-            title="Incident collegati" kind="INCIDENT" routeBase="/incidents"
-            items={problem.linkedIncidents ?? []}
-            searchResults={relIncResults} searchTerm={incidentSearch} onSearchTerm={setIncidentSearch}
-            onLink={(incidentId) => void linkIncident({ variables: { problemId: problem.id, incidentId } })}
-            onUnlink={(incidentId) => void unlinkIncident({ variables: { problemId: problem.id, incidentId } })}
-          />
-          <LinkedTicketSection
-            title="Problem collegati" kind="PROBLEM" routeBase="/problems"
-            items={problem.linkedProblems ?? []}
-            searchResults={relProbResults} searchTerm={relProbSearch} onSearchTerm={setRelProbSearch}
-            onLink={(otherId) => void linkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } })}
-            onUnlink={(otherId) => void unlinkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } })}
-          />
-          <LinkedTicketSection
-            title="Change collegate" kind="CHANGE" routeBase="/changes"
-            items={problem.linkedChanges ?? []}
-            searchResults={relChgResults} searchTerm={changeSearch} onSearchTerm={setChangeSearch}
-            onLink={(changeId) => void linkChange({ variables: { problemId: problem.id, changeId } })}
-            onUnlink={(changeId) => void unlinkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } })}
+          {/* Ticket collegati (sezione unica, stile change) */}
+          <UnifiedLinkedTickets
+            title="Ticket collegati"
+            types={[
+              {
+                kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
+                items: problem.linkedIncidents ?? [],
+                searchResults: relIncResults, searchTerm: incidentSearch, onSearchTerm: setIncidentSearch,
+                onLink: (incidentId) => void linkIncident({ variables: { problemId: problem.id, incidentId } }),
+                onUnlink: (incidentId) => void unlinkIncident({ variables: { problemId: problem.id, incidentId } }),
+              },
+              {
+                kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
+                items: problem.linkedProblems ?? [],
+                searchResults: relProbResults, searchTerm: relProbSearch, onSearchTerm: setRelProbSearch,
+                onLink: (otherId) => void linkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
+                onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
+              },
+              {
+                kind: 'CHANGE', label: 'Change', routeBase: '/changes',
+                items: problem.linkedChanges ?? [],
+                searchResults: relChgResults, searchTerm: changeSearch, onSearchTerm: setChangeSearch,
+                onLink: (changeId) => void linkChange({ variables: { problemId: problem.id, changeId } }),
+                onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
+              },
+            ]}
           />
 
           {/* Allegati */}

@@ -15,7 +15,8 @@ import { SeverityBadge } from '@/components/SeverityBadge'
 import { priorityCode } from '@/lib/priority'
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES, GET_INCIDENTS, GET_PROBLEMS, GET_CHANGES } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT, LINK_RELATED_TICKET, UNLINK_RELATED_TICKET, LINK_INCIDENT_TO_PROBLEM, UNLINK_INCIDENT_FROM_PROBLEM, LINK_RESOLVED_TICKET, UNLINK_RESOLVED_TICKET } from '@/graphql/mutations'
-import { LinkedTicketSection, type LinkedTicketItem } from '@/components/LinkedTicketSection'
+import { type LinkedTicketItem } from '@/components/LinkedTicketSection'
+import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
 import { IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, derivePriority, priorityCode as prioCode } from '@/lib/priority'
 import { Pencil } from 'lucide-react'
@@ -156,7 +157,7 @@ export function IncidentDetailPage() {
   const [ciSearch,      setCiSearch]      = useState('')
   const [showCISearch,  setShowCISearch]  = useState(false)
 
-  const [ciOpen,       setCiOpen]       = useState(true)
+  const [ciOpen,       setCiOpen]       = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(true)
 
   const { data, loading, error, refetch } = useQuery<{ incident: Incident | null }>(
@@ -651,31 +652,36 @@ export function IncidentDetailPage() {
             onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
           />
 
-          {/* Ticket collegati (per tipo) */}
-          <LinkedTicketSection
-            title="Incident collegati" kind="INCIDENT" routeBase="/incidents"
-            items={incident.linkedIncidents ?? []}
-            searchResults={relIncResults} searchTerm={relIncSearch} onSearchTerm={setRelIncSearch}
-            onLink={(otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } })}
-            onUnlink={(otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } })}
-          />
-          <LinkedTicketSection
-            title="Problem collegati" kind="PROBLEM" routeBase="/problems"
-            items={incident.linkedProblems ?? []}
-            searchResults={relProbResults} searchTerm={relProbSearch} onSearchTerm={setRelProbSearch}
-            onLink={(problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } })}
-            onUnlink={(problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } })}
-          />
-          <LinkedTicketSection
-            title="Change collegate" kind="CHANGE" routeBase="/changes"
-            items={incident.linkedChanges ?? []}
-            searchResults={relChgResults} searchTerm={relChgSearch} onSearchTerm={setRelChgSearch}
-            onLink={(changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } })}
-            onUnlink={(changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } })}
+          {/* Ticket collegati (sezione unica, stile change) */}
+          <UnifiedLinkedTickets
+            title="Ticket collegati"
+            types={[
+              {
+                kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
+                items: incident.linkedIncidents ?? [],
+                searchResults: relIncResults, searchTerm: relIncSearch, onSearchTerm: setRelIncSearch,
+                onLink: (otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
+                onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
+              },
+              {
+                kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
+                items: incident.linkedProblems ?? [],
+                searchResults: relProbResults, searchTerm: relProbSearch, onSearchTerm: setRelProbSearch,
+                onLink: (problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } }),
+                onUnlink: (problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } }),
+              },
+              {
+                kind: 'CHANGE', label: 'Change', routeBase: '/changes',
+                items: incident.linkedChanges ?? [],
+                searchResults: relChgResults, searchTerm: relChgSearch, onSearchTerm: setRelChgSearch,
+                onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
+                onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
+              },
+            ]}
           />
 
           {/* Applicazioni impattate (dal grafo delle dipendenze) */}
-          <SectionCard title="Applicazioni impattate" count={incident.impactedApplications.length} defaultOpen>
+          <SectionCard title="Applicazioni impattate" count={incident.impactedApplications.length} collapsible>
             {incident.impactedApplications.length === 0 ? (
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>
                 Nessuna applicazione dipende dai CI colpiti da questo incident.
@@ -711,10 +717,10 @@ export function IncidentDetailPage() {
           </SectionCard>
 
           {/* Allegati */}
-          <AttachmentsSection entityType="incident" entityId={incident.id} />
+          <AttachmentsSection entityType="incident" entityId={incident.id} defaultOpen={false} />
 
           {/* Commenti */}
-          <SectionCard title={t('detail.sections.comments')} count={incident.comments.length} defaultOpen>
+          <SectionCard title={t('detail.sections.comments')} count={incident.comments.length} collapsible>
             <div>
                 {incident.comments.length === 0 ? (
                   <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>{t('detail.noCommentsYet')}</p>
