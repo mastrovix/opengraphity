@@ -185,12 +185,14 @@ describe('evaluateAutoTransitions', () => {
     expect(logger.error).toHaveBeenCalledOnce()
   })
 
-  it('change senza WorkflowInstance → ritorna senza fare nulla', async () => {
+  it('change senza WorkflowInstance → nessuna transition', async () => {
+    // walk: nessuna WorkflowInstance → esce subito.
     vi.mocked(runQueryOne).mockResolvedValue(null)
+    // sync entità collegate (problem/incident): nessun collegamento → no-op.
+    vi.mocked(runQuery).mockResolvedValue([] as never)
 
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
-    expect(runQuery).not.toHaveBeenCalled()
     expect(workflowEngine.transition).not.toHaveBeenCalled()
   })
 })
