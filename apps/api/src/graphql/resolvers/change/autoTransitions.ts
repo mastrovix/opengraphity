@@ -161,6 +161,32 @@ async function syncLinkedProblems(
   }
 }
 
+/**
+ * Retrocede un problem a "under_investigation" quando la change risolutiva viene
+ * scollegata o eliminata: se il problem era avanzato SOLO grazie alla change
+ * (change_requested / change_in_progress) non ha più nulla che lo risolva, quindi
+ * torna in analisi. Idempotente e silenzioso se il problem è in un altro step.
+ */
+export async function revertProblemAfterChangeDetached(
+  session: Session,
+  problemId: string,
+  ctx: GraphQLContext,
+): Promise<void> {
+  const row = await runQueryOne<{ instanceId: string; step: string }>(session, `
+    MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(pw:WorkflowInstance)
+    RETURN pw.id AS instanceId, pw.current_step AS step
+  `, { problemId, tenantId: ctx.tenantId })
+  if (!row) return
+  if (row.step !== 'change_requested' && row.step !== 'change_in_progress') return
+
+  const res = await workflowEngine.transition(
+    session,
+    { instanceId: row.instanceId, toStepName: 'under_investigation', triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata' },
+    { userId: ctx.userId ?? 'system', entityData: {} },
+  )
+  if (!res.success) logger.warn({ problemId, from: row.step, error: res.error }, '[revertProblemAfterChangeDetached] transizione non riuscita')
+}
+
 async function walkAutoTransitions(
   session: Session,
   changeId: string,

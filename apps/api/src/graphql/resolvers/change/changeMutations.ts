@@ -7,13 +7,13 @@ import { GraphQLError } from 'graphql'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
-import { withSession, runQueryOne, type Props } from '../ci-utils.js'
+import { withSession, runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { requireRole } from '../../../lib/requireRole.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
-import { evaluateAutoTransitions } from './autoTransitions.js'
+import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
 import {
   writeAudit,
   getNextTaskCodes,
@@ -54,15 +54,28 @@ export async function createChange(
 // È l'unico modo per rimuovere i collegamenti RESOLVED_BY creati automaticamente.
 export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   const now = new Date().toISOString()
-  return withSession(async (session) => {
+  await withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $id, tenant_id: $tenantId})
       SET c.deleted = true, c.deleted_at = $now, c.updated_at = $now
       RETURN c.id AS id
     `, { id: args.id, tenantId: ctx.tenantId, now }))
     if (r.records.length === 0) throw new GraphQLError('Change non trovata', { extensions: { code: 'NOT_FOUND' } })
-    return true
   }, true)
+  // I problem che dipendevano da questa change tornano in analisi.
+  const problemIds = await withSession((session) => runQuery<{ id: string }>(session, `
+    MATCH (p:Problem {tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
+    RETURN p.id AS id
+  `, { id: args.id, tenantId: ctx.tenantId }))
+  if (problemIds.length > 0) {
+    const session = getSession(undefined, 'WRITE')
+    try {
+      for (const { id } of problemIds) await revertProblemAfterChangeDetached(session, id, ctx)
+    } finally {
+      await session.close()
+    }
+  }
+  return true
 }
 
 /** Collega/scollega un ticket (incident|problem) alla change (RESOLVED_BY). */
@@ -99,6 +112,15 @@ export async function unlinkResolvedTicket(_: unknown, args: { changeId: string;
       DELETE r
     `, { changeId: args.changeId, entityId: args.entityId, tenantId: ctx.tenantId }))
   }, true)
+  // Se il ticket è un problem che era avanzato grazie a questa change, torna in analisi.
+  if (label === 'Problem') {
+    const session = getSession(undefined, 'WRITE')
+    try {
+      await revertProblemAfterChangeDetached(session, args.entityId, ctx)
+    } finally {
+      await session.close()
+    }
+  }
   return getChange(null, { id: args.changeId }, ctx)
 }
 
