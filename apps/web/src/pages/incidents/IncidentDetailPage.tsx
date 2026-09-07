@@ -374,6 +374,7 @@ export function IncidentDetailPage() {
         transitioning={transitioning}
         onBack={() => navigate(-1)}
         onTransitionClick={handleTransitionClick}
+        onRequestChange={() => navigate(`/changes/new?incidentId=${incident.id}`)}
       />
 
       {/* Watchers bar + PDF export */}

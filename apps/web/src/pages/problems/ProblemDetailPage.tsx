@@ -268,6 +268,14 @@ export function ProblemDetailPage() {
   const changeResults   = changeSearchData?.changes?.items   ?? []
 
   function handleTransitionClick(tr: WorkflowTransition) {
+    // "Richiedi Change": non è una semplice transizione — apre la creazione di
+    // una RFC risolutiva. Alla creazione la change viene collegata al problem e
+    // il workflow avanza a change_requested (lato backend).
+    if (tr.toStep === 'change_requested') {
+      if (!problem) return
+      navigate(`/changes/new?problemId=${problem.id}`)
+      return
+    }
     if (tr.requiresInput) {
       setPendingTransition(tr)
       setTransitionNotes('')

@@ -47,6 +47,14 @@ export interface ChangeData {
   approvalBy:         UserRef | null
   workflowInstance:     WorkflowInstanceData | null
   availableTransitions: AvailableTransition[]
+  resolvesIncidents?:   LinkedTicketRef[]
+  resolvesProblems?:    LinkedTicketRef[]
+}
+
+export interface LinkedTicketRef {
+  id: string; number: string; title: string; status: string
+  severity?: string | null
+  priority?: string | null
 }
 
 // ── Task detail fields ─────────────────────────────────────────────────────────

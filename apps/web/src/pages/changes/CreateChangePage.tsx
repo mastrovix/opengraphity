@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_CHANGES, GET_ALL_CIS, GET_USERS } from '@/graphql/queries'
+import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT } from '@/graphql/queries'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface UserRef { id: string; name: string; email: string }
@@ -36,6 +36,24 @@ const inputBase: React.CSSProperties = {
 
 export function CreateChangePage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const problemId  = searchParams.get('problemId')
+  const incidentId = searchParams.get('incidentId')
+
+  // RFC richiesta da un problem o da un incident: precarica CI e titolo.
+  const { data: problemData } = useQuery<{ problem: { id: string; number: string; title: string; affectedCIs: CIRef[] } | null }>(
+    GET_PROBLEM, { variables: { id: problemId }, skip: !problemId },
+  )
+  const { data: incidentData } = useQuery<{ incident: { id: string; number: string; title: string; affectedCIs: CIRef[] } | null }>(
+    GET_INCIDENT, { variables: { id: incidentId }, skip: !incidentId },
+  )
+  // Sorgente unificata della richiesta (problem oppure incident).
+  const requestSource = problemData?.problem
+    ? { kind: 'problem' as const, ...problemData.problem }
+    : incidentData?.incident
+    ? { kind: 'incident' as const, ...incidentData.incident }
+    : null
+  const [prefilled, setPrefilled] = useState(false)
 
   const [title, setTitle]             = useState('')
   const [why, setWhy]                 = useState('')
@@ -47,6 +65,16 @@ export function CreateChangePage() {
   const [ciSearch, setCiSearch]       = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [backendError, setBackendError] = useState<string | null>(null)
+
+  // Precompila una volta con i dati dell'entità richiedente.
+  useEffect(() => {
+    if (requestSource && !prefilled) {
+      setSelectedCIs((requestSource.affectedCIs ?? []).map((ci) => ({ id: ci.id, name: ci.name, type: ci.type, environment: ci.environment })))
+      const label = requestSource.kind === 'problem' ? 'problem' : 'incident'
+      setTitle(`Risoluzione ${label} ${requestSource.number}: ${requestSource.title}`)
+      setPrefilled(true)
+    }
+  }, [requestSource, prefilled])
 
   const { data: usersData } = useQuery<{ users: UserRef[] }>(GET_USERS, {
     variables: { sortField: 'name', sortDirection: 'asc' },
@@ -88,6 +116,8 @@ export function CreateChangePage() {
           changeOwner:   ownerId || null,
           affectedCIIds: selectedCIs.map(ci => ci.id),
           changeType,
+          ...(problemId ? { problemId } : {}),
+          ...(incidentId ? { incidentId } : {}),
         },
       },
     })
@@ -126,6 +156,16 @@ export function CreateChangePage() {
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
           Apri un RFC per introdurre una modifica controllata ai sistemi
         </p>
+
+        {requestSource && (
+          <div style={{ background: 'var(--color-brand-light)', border: '1px solid var(--color-brand)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
+            RFC risolutiva per {requestSource.kind === 'problem' ? 'il problem' : "l'incident"} <strong>{requestSource.number}</strong> — <em>{requestSource.title}</em>.
+            {requestSource.kind === 'problem'
+              ? ' Alla creazione la change verrà collegata e il problem passerà a change requested.'
+              : " Alla creazione la change verrà collegata all'incident, che si risolverà automaticamente quando la change sarà completata."}
+            {' '}I CI impattati sono stati precaricati.
+          </div>
+        )}
 
         <div style={{
           background:    '#fff',

@@ -22,6 +22,20 @@ export function changeSDL(): string {
     workflowInstance:     WorkflowInstance
     availableTransitions: [WorkflowTransition!]!
     workflowHistory:      [WorkflowStepExecution!]!
+    # Incident e Problem che questa change risolve (relazione RESOLVED_BY),
+    # tipicamente creati via "Richiedi Change".
+    resolvesIncidents:    [LinkedTicketRef!]!
+    resolvesProblems:     [LinkedTicketRef!]!
+  }
+
+  # Riferimento leggero a un ticket collegato alla change.
+  type LinkedTicketRef {
+    id:       ID!
+    number:   String!
+    title:    String!
+    status:   String!
+    severity: String
+    priority: String
   }
 
   type ChangeAffectedCI {
@@ -175,6 +189,13 @@ export function changeSDL(): string {
     changeOwner:   ID
     affectedCIIds: [ID!]!
     changeType:    String
+    # Se valorizzato, la change nasce come RFC risolutiva di quel problem:
+    # viene collegata (RESOLVED_BY) e il problem avanza a "change_requested".
+    problemId:     ID
+    # Come sopra ma per un incident: la change viene collegata (RESOLVED_BY);
+    # l'incident non ha uno step "change_requested", quindi resta dov'è e si
+    # risolve automaticamente quando la change arriva a "closed".
+    incidentId:    ID
   }
 
   input AnswerOptionInput {

@@ -9,6 +9,8 @@ import {
   assessmentQuestionsAdmin,
   questionCITypeAssignments,
   myTasks,
+  changeResolvesIncidents,
+  changeResolvesProblems,
 } from './queries.js'
 import {
   createChange,
@@ -81,5 +83,9 @@ export const changeResolvers = {
     reopenDeploymentTask,
     reopenReviewTask,
     sendTaskReminder,
+  },
+  Change: {
+    resolvesIncidents: changeResolvesIncidents,
+    resolvesProblems:  changeResolvesProblems,
   },
 }

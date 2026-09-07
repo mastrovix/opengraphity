@@ -48,6 +48,7 @@ interface IncidentHeaderProps {
   transitioning:         boolean
   onBack:                () => void
   onTransitionClick:     (tr: WorkflowTransition) => void
+  onRequestChange:       () => void
 }
 
 export function IncidentHeader({
@@ -56,8 +57,12 @@ export function IncidentHeader({
   transitioning,
   onBack,
   onTransitionClick,
+  onRequestChange,
 }: IncidentHeaderProps) {
   const { byName: stepByName } = useWorkflowSteps('incident')
+  // "Richiedi Change" è un'azione opzionale (non uno step del workflow):
+  // disponibile finché l'incident è aperto.
+  const canRequestChange = !['resolved', 'closed'].includes(incident.status)
   return (
     <div style={{ marginBottom: 24 }}>
       {/* Row 1 — back */}
@@ -94,8 +99,8 @@ export function IncidentHeader({
         {incident.title}
       </div>
 
-      {/* Workflow action buttons */}
-      {manualTransitions.length > 0 && (
+      {/* Workflow action buttons + azione opzionale "Richiedi Change" */}
+      {(manualTransitions.length > 0 || canRequestChange) && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
           {manualTransitions.map((tr) => (
             <button
@@ -107,6 +112,14 @@ export function IncidentHeader({
               {tr.label}
             </button>
           ))}
+          {canRequestChange && (
+            <button
+              onClick={onRequestChange}
+              style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
+            >
+              Richiedi Change
+            </button>
+          )}
         </div>
       )}
     </div>

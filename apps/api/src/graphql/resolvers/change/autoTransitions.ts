@@ -77,6 +77,96 @@ export async function evaluateAutoTransitions(
   ctx: GraphQLContext,
   afterEnterStep?: AfterEnterStep,
 ): Promise<void> {
+  await walkAutoTransitions(session, changeId, ctx, afterEnterStep)
+  // Dopo aver fatto avanzare la change, allinea le entità che essa risolve.
+  await syncLinkedProblems(session, changeId, ctx)
+  await syncLinkedIncidents(session, changeId, ctx)
+}
+
+/**
+ * Risolve gli Incident collegati (RESOLVED_BY) quando la change arriva a
+ * "closed". L'incident non ha step "change_requested"/"change_in_progress":
+ * resta dov'è mentre la change gira, poi si risolve. La transizione a resolved
+ * esiste solo da in_progress/escalated; da altri step non viene forzata (l'op.
+ * risolverà a mano). root_cause valorizzata dalla change.
+ */
+async function syncLinkedIncidents(
+  session: Session,
+  changeId: string,
+  ctx: GraphQLContext,
+): Promise<void> {
+  const rows = await runQuery<{ changeStep: string; code: string; instanceId: string; incidentStep: string }>(session, `
+    MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(cw:WorkflowInstance)
+    MATCH (i:Incident {tenant_id: $tenantId})-[:RESOLVED_BY]->(c)
+    MATCH (i)-[:HAS_WORKFLOW]->(iw:WorkflowInstance)
+    RETURN cw.current_step AS changeStep, c.code AS code, iw.id AS instanceId, iw.current_step AS incidentStep
+  `, { changeId, tenantId: ctx.tenantId })
+
+  for (const r of rows) {
+    if (r.changeStep !== 'closed') continue
+    if (r.incidentStep !== 'in_progress' && r.incidentStep !== 'escalated') {
+      logger.info({ changeId, instanceId: r.instanceId, incidentStep: r.incidentStep },
+        '[syncLinkedIncidents] change chiusa ma incident non in uno step risolvibile — nessun auto-resolve')
+      continue
+    }
+    const res = await workflowEngine.transition(
+      session,
+      { instanceId: r.instanceId, toStepName: 'resolved', triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: `Risolto dalla change ${r.code}` },
+      { userId: ctx.userId ?? 'system', entityData: {} },
+    )
+    if (!res.success) logger.warn({ changeId, instanceId: r.instanceId, error: res.error }, '[syncLinkedIncidents] auto-resolve incident non riuscito')
+  }
+}
+
+/**
+ * Fa avanzare i Problem collegati (RESOLVED_BY) in base allo step attuale della
+ * change: deployment/review → change_in_progress, closed → resolved. Le loro
+ * transizioni sono automatiche e nessun altro le innescherebbe (il problem
+ * resterebbe bloccato su change_requested, non chiudibile). Da "resolved" il
+ * problem si chiude poi manualmente ("Verifica soluzione e chiudi").
+ */
+async function syncLinkedProblems(
+  session: Session,
+  changeId: string,
+  ctx: GraphQLContext,
+): Promise<void> {
+  const rows = await runQuery<{ changeStep: string; instanceId: string; problemStep: string }>(session, `
+    MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(cw:WorkflowInstance)
+    MATCH (p:Problem {tenant_id: $tenantId})-[:RESOLVED_BY]->(c)
+    MATCH (p)-[:HAS_WORKFLOW]->(pw:WorkflowInstance)
+    RETURN cw.current_step AS changeStep, pw.id AS instanceId, pw.current_step AS problemStep
+  `, { changeId, tenantId: ctx.tenantId })
+
+  for (const r of rows) {
+    const changeStep = r.changeStep
+    const instanceId = r.instanceId
+    let problemStep  = r.problemStep
+
+    const drive = async (toStep: string): Promise<void> => {
+      const res = await workflowEngine.transition(
+        session,
+        { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: `Change in stato "${changeStep}"` },
+        { userId: ctx.userId ?? 'system', entityData: {} },
+      )
+      if (res.success) problemStep = toStep
+      else logger.warn({ changeId, instanceId, toStep, error: res.error }, '[syncLinkedProblems] transizione problem non riuscita')
+    }
+
+    if (changeStep === 'deployment' || changeStep === 'review') {
+      if (problemStep === 'change_requested') await drive('change_in_progress')
+    } else if (changeStep === 'closed') {
+      if (problemStep === 'change_requested') await drive('change_in_progress')
+      if (problemStep === 'change_in_progress') await drive('resolved')
+    }
+  }
+}
+
+async function walkAutoTransitions(
+  session: Session,
+  changeId: string,
+  ctx: GraphQLContext,
+  afterEnterStep?: AfterEnterStep,
+): Promise<void> {
   // Max 10 hops to defend against misconfigured cycles.
   for (let i = 0; i < 10; i++) {
     const wi = await runQueryOne<{ instanceId: string; step: string; tenantId: string; entityProps: Props }>(session, `

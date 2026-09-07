@@ -343,6 +343,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     },
     Change: {
       ...workflowResolvers.Change,
+      ...changeResolvers.Change,
     },
     Team:               teamResolvers.Team,
     User:               { teams: userTeams },

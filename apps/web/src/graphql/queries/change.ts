@@ -43,6 +43,8 @@ export const GET_CHANGE = gql`
       approvalBy { id name email }
       workflowInstance { id currentStep status }
       availableTransitions { toStep label requiresInput inputField condition }
+      resolvesIncidents { id number title status severity }
+      resolvesProblems { id number title status priority }
     }
   }
 `

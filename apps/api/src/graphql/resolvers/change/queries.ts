@@ -654,3 +654,36 @@ export async function questionCITypeAssignments(_: unknown, args: { questionId: 
     }))
   })
 }
+
+// ── Change.resolvesIncidents / resolvesProblems ──────────────────────────────
+// Ticket collegati alla change via (ticket)-[:RESOLVED_BY]->(change).
+
+export async function changeResolvesIncidents(
+  parent: { id: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ id: string; number: string; title: string; status: string; severity: string | null }>(session, `
+      MATCH (i:Incident {tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
+      RETURN i.id AS id, i.number AS number, i.title AS title, i.status AS status, i.severity AS severity
+      ORDER BY i.created_at DESC
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => ({ ...r, priority: null }))
+  })
+}
+
+export async function changeResolvesProblems(
+  parent: { id: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ id: string; number: string; title: string; status: string; priority: string | null }>(session, `
+      MATCH (p:Problem {tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
+      RETURN p.id AS id, p.number AS number, p.title AS title, p.status AS status, p.priority AS priority
+      ORDER BY p.created_at DESC
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => ({ ...r, severity: null }))
+  })
+}

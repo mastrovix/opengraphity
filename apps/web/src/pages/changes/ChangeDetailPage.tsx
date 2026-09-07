@@ -8,7 +8,7 @@
  * (e.g. which modal is open inside a row).
  */
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { ChevronRight, FileDown, Loader2, Plus, PlusCircle, X } from 'lucide-react'
@@ -189,6 +189,29 @@ export function ChangeDetailPage() {
           }
         }}
       />
+
+      {((change.resolvesIncidents?.length ?? 0) > 0 || (change.resolvesProblems?.length ?? 0) > 0) && (
+        <SectionCard title="Ticket collegati" collapsible defaultOpen>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(change.resolvesProblems ?? []).map((p) => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: '#fff', background: 'var(--color-slate)', borderRadius: 4, padding: '2px 6px', flexShrink: 0 }}>PROBLEM</span>
+                <Link to={`/problems/${p.id}`} style={{ fontWeight: 600, color: 'var(--accent)', textDecoration: 'none', flexShrink: 0 }}>{p.number}</Link>
+                <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', textTransform: 'capitalize', flexShrink: 0 }}>{p.status.replace(/_/g, ' ')}</span>
+              </div>
+            ))}
+            {(change.resolvesIncidents ?? []).map((i) => (
+              <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: '#fff', background: 'var(--color-trigger-sla-breach)', borderRadius: 4, padding: '2px 6px', flexShrink: 0 }}>INCIDENT</span>
+                <Link to={`/incidents/${i.id}`} style={{ fontWeight: 600, color: 'var(--accent)', textDecoration: 'none', flexShrink: 0 }}>{i.number}</Link>
+                <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', textTransform: 'capitalize', flexShrink: 0 }}>{i.status.replace(/_/g, ' ')}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
         <SectionCard title="Prossimi Step" collapsible={false}>

@@ -29,14 +29,89 @@ import {
 
 export async function createChange(
   _: unknown,
-  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null } },
+  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; problemId?: string | null; incidentId?: string | null } },
   ctx: GraphQLContext,
 ) {
   // Thin wrapper: the whole RFC bootstrap (validation, CHG code, tasks,
   // workflow instance, audit) lives in the shared changeCreationService,
   // reused by the REST v1 route.
-  const { id } = await createChangeRFC(args.input, { tenantId: ctx.tenantId, userId: ctx.userId })
+  const { id, code } = await createChangeRFC(args.input, { tenantId: ctx.tenantId, userId: ctx.userId })
+  // RFC risolutiva di un problem: collega la change e fa avanzare il problem a
+  // "change_requested" (la guardia has_linked_change è ora soddisfatta).
+  if (args.input.problemId) {
+    await linkChangeToRequestingProblem(args.input.problemId, id, code, ctx)
+  }
+  // RFC risolutiva di un incident: solo collegamento (l'incident non ha uno step
+  // "change_requested"). Si risolverà quando la change arriva a "closed".
+  if (args.input.incidentId) {
+    await linkChangeToRequestingIncident(args.input.incidentId, id, ctx)
+  }
   return getChange(null, { id }, ctx)
+}
+
+/** Collega la nuova change all'incident richiedente (nessuna transizione). */
+async function linkChangeToRequestingIncident(
+  incidentId: string,
+  changeId: string,
+  ctx: GraphQLContext,
+) {
+  await withSession(async (session) => {
+    const linked = await session.executeWrite((tx) =>
+      tx.run(`
+        MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+        MATCH (c:Change   {id: $changeId,   tenant_id: $tenantId})
+        MERGE (i)-[:RESOLVED_BY]->(c)
+        SET i.updated_at = $now
+        RETURN i.id AS id
+      `, { incidentId, changeId, tenantId: ctx.tenantId, now: new Date().toISOString() }),
+    )
+    if (linked.records.length === 0) {
+      throw new GraphQLError('Incident non trovato per il collegamento della change', { extensions: { code: 'NOT_FOUND' } })
+    }
+  }, true)
+}
+
+/** Collega la nuova change al problem richiedente e ne avanza il workflow. */
+async function linkChangeToRequestingProblem(
+  problemId: string,
+  changeId: string,
+  changeCode: string,
+  ctx: GraphQLContext,
+) {
+  await withSession(async (session) => {
+    const now = new Date().toISOString()
+    // 1. Collega: (problem)-[:RESOLVED_BY]->(change). Fallisce se il problem non
+    // esiste (nessun collegamento silenzioso a un id inesistente).
+    const linked = await session.executeWrite((tx) =>
+      tx.run(`
+        MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
+        MATCH (c:Change  {id: $changeId,  tenant_id: $tenantId})
+        MERGE (p)-[:RESOLVED_BY]->(c)
+        SET p.updated_at = $now
+        RETURN p.id AS id
+      `, { problemId, changeId, tenantId: ctx.tenantId, now }),
+    )
+    if (linked.records.length === 0) {
+      throw new GraphQLError('Problem non trovato per il collegamento della change', { extensions: { code: 'NOT_FOUND' } })
+    }
+    // 2. Avanza il problem a change_requested, se la transizione è disponibile
+    // dallo step corrente (lo è da under_investigation e known_error).
+    const wi = await session.executeRead((tx) =>
+      tx.run(`MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(w:WorkflowInstance) RETURN w.id AS id`, { problemId, tenantId: ctx.tenantId }),
+    )
+    const instanceId = wi.records[0]?.get('id') as string | undefined
+    if (!instanceId) return
+    const avail = await workflowEngine.getAvailableTransitions(session, instanceId)
+    if (!avail.some((t) => t.toStep === 'change_requested')) return
+    const res = await workflowEngine.transition(
+      session,
+      { instanceId, toStepName: 'change_requested', triggeredBy: ctx.userId, triggerType: 'manual', notes: `RFC ${changeCode} creata` },
+      { userId: ctx.userId, entityData: {} } as ActionContext,
+    )
+    if (!res.success) {
+      logger.warn({ problemId, changeId, error: res.error }, '[createChange] problem collegato ma transizione a change_requested non riuscita')
+    }
+  }, true)
 }
 
 // ── addCIToChange / removeCIFromChange ────────────────────────────────────────
