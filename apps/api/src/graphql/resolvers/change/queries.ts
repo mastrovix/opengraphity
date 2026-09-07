@@ -116,13 +116,14 @@ async function loadAssignmentsForTasks(session: Session, taskIds: string[]): Pro
   return { teams, users }
 }
 
-export async function changes(_: unknown, args: { currentStep?: string; limit?: number; offset?: number }, ctx: GraphQLContext) {
+export async function changes(_: unknown, args: { currentStep?: string; priority?: string; limit?: number; offset?: number }, ctx: GraphQLContext) {
   const limit  = args.limit  ?? 50
   const offset = args.offset ?? 0
   return withSession(async (session) => {
     const joinWF = args.currentStep
       ? 'MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {current_step: $currentStep})'
       : ''
+    const priorityWhere = args.priority ? 'WHERE c.priority = $priority' : ''
     const items = await runQuery<{
       props: Props
       reqUser: Props | null
@@ -131,6 +132,7 @@ export async function changes(_: unknown, args: { currentStep?: string; limit?: 
     }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
       ${joinWF}
+      ${priorityWhere}
       OPTIONAL MATCH (c)-[:REQUESTED_BY]->(req:User)
       OPTIONAL MATCH (c)-[:OWNED_BY]->(owner:User)
       OPTIONAL MATCH (c)-[:APPROVED_BY]->(app:User)
@@ -140,13 +142,14 @@ export async function changes(_: unknown, args: { currentStep?: string; limit?: 
              properties(app)   AS appUser
       ORDER BY c.created_at DESC
       SKIP toInteger($offset) LIMIT toInteger($limit)
-    `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, limit, offset })
+    `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null, limit, offset })
 
     const countRows = await runQuery<{ total: unknown }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
       ${joinWF}
+      ${priorityWhere}
       RETURN count(c) AS total
-    `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null })
+    `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null })
 
     return {
       items: items.map((r) => ({

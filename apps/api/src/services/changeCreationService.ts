@@ -19,6 +19,7 @@ import { getActiveOLAContractsFor, scheduleOLABreaches } from '@opengraphity/sla
 import { ValidationError } from '../lib/errors.js'
 import { logger } from '../lib/logger.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
+import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import {
   writeAudit,
@@ -89,6 +90,7 @@ export async function createChangeRFC(
         title: $title, why: $why, what: $what,
         change_type: $changeType,
         aggregate_risk_score: null,
+        priority: $priority,
         approval_route: null, approval_status: null,
         created_at: $now, updated_at: $now
       })
@@ -130,6 +132,7 @@ export async function createChangeRFC(
       `, {
         id, code, title, why, what,
         changeType,
+        priority: deriveChangePriority(changeType, null),
         requesterId: ctx.userId,
         ownerId: changeOwner ?? null,
         ciTasks,

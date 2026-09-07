@@ -18,7 +18,7 @@ import { runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { toInt } from './mappers.js'
-import { calculateCIRiskScore, determineApprovalRoute } from './scoring.js'
+import { calculateCIRiskScore, determineApprovalRoute, deriveChangePriority } from './scoring.js'
 import { getInitialStepName } from '../../../lib/workflowHelpers.js'
 
 export type Session = ReturnType<typeof getSession>
@@ -248,18 +248,22 @@ export async function recomputeCIRiskIfReady(session: SessionOrTx, changeId: str
 }
 
 export async function computeAggregateRisk(session: SessionOrTx, changeId: string, tenantId: string) {
-  const row = await runQueryOne<{ maxRisk: unknown }>(session, `
+  const row = await runQueryOne<{ maxRisk: unknown; changeType: string | null }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->()
-    RETURN max(r.risk_score) AS maxRisk
+    RETURN max(r.risk_score) AS maxRisk, c.change_type AS changeType
   `, { changeId, tenantId })
   const maxRisk = row?.maxRisk != null ? toInt(row.maxRisk) : 0
   const approvalRoute = determineApprovalRoute(maxRisk)
+  // Priorità (ITIL) = tipo × rischio, ricalcolata e MEMORIZZATA quando il
+  // rischio aggregato cambia.
+  const priority = deriveChangePriority(row?.changeType ?? 'normal', maxRisk)
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     SET c.aggregate_risk_score = $maxRisk,
         c.approval_route       = $route,
+        c.priority             = $priority,
         c.updated_at           = $now
-  `, { changeId, tenantId, maxRisk, route: approvalRoute, now: new Date().toISOString() })
+  `, { changeId, tenantId, maxRisk, route: approvalRoute, priority, now: new Date().toISOString() })
 }
 
 // TRANSACTIONAL: all writes in single tx — ValidationTest + DeploymentTask per

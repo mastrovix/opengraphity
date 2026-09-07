@@ -1,14 +1,15 @@
 import { gql } from '@apollo/client'
 
 export const GET_CHANGES = gql`
-  query GetChanges($currentStep: String, $limit: Int, $offset: Int) {
-    changes(currentStep: $currentStep, limit: $limit, offset: $offset) {
+  query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int) {
+    changes(currentStep: $currentStep, priority: $priority, limit: $limit, offset: $offset) {
       total
       items {
         id
         code
         title
         aggregateRiskScore
+        priority
         approvalRoute
         changeType
         approvalStatus
@@ -32,6 +33,7 @@ export const GET_CHANGE = gql`
       why
       what
       aggregateRiskScore
+      priority
       approvalRoute
       changeType
       approvalStatus

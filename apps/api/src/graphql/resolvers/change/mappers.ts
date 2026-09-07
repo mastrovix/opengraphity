@@ -1,5 +1,6 @@
 import { mapCI } from '../ci-utils.js'
 import { mapUser, mapTeam } from '../../../lib/mappers.js'
+import { deriveChangePriority } from './scoring.js'
 
 export type Props = Record<string, unknown>
 
@@ -14,6 +15,8 @@ export function toInt(v: unknown, fallback = 0): number {
 }
 
 export function mapChange(props: Props) {
+  const aggregateRiskScore = props['aggregate_risk_score'] != null ? toInt(props['aggregate_risk_score']) : null
+  const changeType = (props['change_type'] ?? 'normal') as string
   return {
     id:                 props['id']                  as string,
     tenantId:           props['tenant_id']           as string,
@@ -21,9 +24,13 @@ export function mapChange(props: Props) {
     title:              props['title']               as string,
     why:                (props['why']                  ?? null) as string | null,
     what:               (props['what']                 ?? null) as string | null,
-    aggregateRiskScore: props['aggregate_risk_score'] != null ? toInt(props['aggregate_risk_score']) : null,
+    aggregateRiskScore,
+    // Priorità (ITIL): tipo × rischio. Memorizzata sul nodo (aggiornata a
+    // creazione e ad ogni ricalcolo del rischio); fallback derivato per i
+    // change creati prima dell'introduzione del campo.
+    priority:           (props['priority'] ?? deriveChangePriority(changeType, aggregateRiskScore)) as string,
     approvalRoute:      (props['approval_route']       ?? null) as string | null,
-    changeType:         (props['change_type']           ?? 'normal') as string,
+    changeType,
     approvalStatus:     (props['approval_status']      ?? null) as string | null,
     approvalAt:         (props['approval_at']          ?? null) as string | null,
     createdAt:          props['created_at']          as string,

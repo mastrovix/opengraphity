@@ -11,6 +11,7 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
 import { Pill } from '@/components/ui/Pill'
+import { SeverityBadge } from '@/components/SeverityBadge'
 import { GET_CHANGES } from '@/graphql/queries'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
@@ -25,6 +26,7 @@ interface ChangeRow {
   title:              string
   workflowInstance:   { id: string; currentStep: string; status: string } | null
   aggregateRiskScore: number | null
+  priority:           string | null
   approvalRoute:      string | null
   approvalStatus:     string | null
   createdAt:          string
@@ -86,6 +88,15 @@ function extractStepFromFilter(group: FilterGroup | null): string | null {
   return null
 }
 
+function extractFieldFromFilter(group: FilterGroup | null, field: string): string | null {
+  if (!group || group.rules.length === 0) return null
+  const rule = group.rules.find(r => r.field === field && (r.operator === 'equals' || r.operator === 'in'))
+  if (!rule) return null
+  if (typeof rule.value === 'string') return rule.value
+  if (Array.isArray(rule.value) && rule.value.length > 0) return rule.value[0] ?? null
+  return null
+}
+
 export function ChangeListPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -94,15 +105,23 @@ export function ChangeListPage() {
   const [page, setPage]             = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const currentStep = extractStepFromFilter(filterGroup)
+  const priorityFilter = extractFieldFromFilter(filterGroup, 'priority')
 
   const { steps: wfSteps, byName: stepByName } = useWorkflowSteps('change')
   const filterFields: FieldConfig[] = [
     { key: 'currentStep', label: 'Step', type: 'enum',
       options: wfSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
+    { key: 'priority', label: 'Priorità', type: 'enum',
+      options: [
+        { value: 'critical', label: 'Critical' },
+        { value: 'high',     label: 'High'     },
+        { value: 'medium',   label: 'Medium'   },
+        { value: 'low',      label: 'Low'      },
+      ] },
   ]
 
   const { data, loading, error, refetch } = useQuery<{ changes: { items: ChangeRow[]; total: number } }>(GET_CHANGES, {
-    variables: { currentStep, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+    variables: { currentStep, priority: priorityFilter, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
     fetchPolicy: 'cache-and-network',
     pollInterval: 30_000,   // keep the list fresh without manual reload
   })
@@ -149,6 +168,12 @@ export function ChangeListPage() {
           {row.requester?.name ?? '—'}
         </span>
       ),
+    },
+    {
+      key:    'priority',
+      label:  'Priorità',
+      width:  '120px',
+      render: (v) => v ? <SeverityBadge value={v as string} /> : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
     },
     {
       key:    'aggregateRiskScore',

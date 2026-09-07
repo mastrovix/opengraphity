@@ -37,6 +37,7 @@ export interface ChangeData {
   why?:               string | null
   what?:              string | null
   aggregateRiskScore: number | null
+  priority?:          string | null
   approvalRoute:      string | null
   approvalStatus:     string | null
   approvalAt:         string | null

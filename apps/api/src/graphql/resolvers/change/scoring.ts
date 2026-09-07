@@ -77,3 +77,37 @@ export function determineApprovalRoute(aggregateScore: number): 'low' | 'medium'
          aggregateScore <= 60 ? 'medium' :
                                 'high'
 }
+
+export type ChangePriority = 'critical' | 'high' | 'medium' | 'low'
+
+/**
+ * Priorità della Change = tipo × rischio (pratica ITIL — non Impatto×Urgenza).
+ * Il livello di rischio usa le stesse soglie di determineApprovalRoute
+ * (≤30 basso, ≤60 medio, >60 alto). Prima dell'assessment (risk null) la
+ * priorità è data dal solo tipo.
+ *
+ *              risk: low     medium    high        (null = non valutato)
+ *   standard        low      low       medium      → low
+ *   normal          low      medium    high        → medium
+ *   emergency       high     high      critical    → high
+ */
+export function deriveChangePriority(
+  changeType: string | null | undefined,
+  aggregateRiskScore: number | null | undefined,
+): ChangePriority {
+  const type = changeType ?? 'normal'
+  const riskLevel: 'low' | 'medium' | 'high' | null =
+    aggregateRiskScore == null ? null :
+    aggregateRiskScore <= 30 ? 'low' :
+    aggregateRiskScore <= 60 ? 'medium' : 'high'
+
+  if (type === 'emergency') {
+    return riskLevel === 'high' ? 'critical' : 'high'
+  }
+  if (type === 'standard') {
+    return riskLevel === 'high' ? 'medium' : 'low'
+  }
+  // normal
+  if (riskLevel === null) return 'medium'
+  return riskLevel // low | medium | high
+}

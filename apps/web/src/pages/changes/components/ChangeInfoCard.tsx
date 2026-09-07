@@ -9,6 +9,7 @@
  */
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Pill } from '@/components/ui/Pill'
+import { SeverityBadge } from '@/components/SeverityBadge'
 import type { AvailableTransition, ChangeData } from '@/types/change'
 import { DescriptionField, DetailField, RiskBadge, fmtDate } from './shared'
 
@@ -42,6 +43,12 @@ export function ChangeInfoCard({
         <DetailField label="Aggiornato il" value={fmtDate(change.updatedAt)} />
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        {change.priority && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Priorità</span>
+            <SeverityBadge value={change.priority} />
+          </span>
+        )}
         {change.aggregateRiskScore != null && <RiskBadge score={change.aggregateRiskScore} />}
         {liveRoute.label !== '— da calcolare —' && (
           <Pill bg={liveRoute.bg} color={liveRoute.color} style={{ padding: '3px 10px', fontSize: 'var(--font-size-label)' }}>{liveRoute.label}</Pill>

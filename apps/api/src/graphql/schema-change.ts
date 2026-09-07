@@ -12,6 +12,8 @@ export function changeSDL(): string {
     requester:            User
     changeOwner:          User
     aggregateRiskScore:   Int
+    # Priorità ITIL derivata e memorizzata: tipo × rischio.
+    priority:             String
     approvalRoute:        String
     changeType:           String
     approvalStatus:       String
@@ -253,7 +255,7 @@ export function changeSDL(): string {
   }
 
   extend type Query {
-    changes(currentStep: String, limit: Int, offset: Int): ChangeList!
+    changes(currentStep: String, priority: String, limit: Int, offset: Int): ChangeList!
     change(id: ID!): Change
     changeAffectedCIs(changeId: ID!): [ChangeAffectedCI!]!
     changeAuditTrail(changeId: ID!): [ChangeAuditEntry!]!
