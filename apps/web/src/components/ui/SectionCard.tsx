@@ -14,6 +14,9 @@ interface SectionCardProps {
   headerRight?:  ReactNode
   /** Optional style merged onto the header wrapper. If `color` is set, it also applies to title, chevron and CountBadge. */
   headerStyle?:  CSSProperties
+  /** Colore dell'intestazione quando la scheda è aperta (attiva). Default: turchese logo. */
+  activeColor?:     string
+  activeTextColor?: string
   children:      ReactNode
 }
 
@@ -21,6 +24,8 @@ export function SectionCard({
   title,
   collapsible = true,
   defaultOpen = false,
+  activeColor = '#0ea5e9',
+  activeTextColor = '#fff',
   open: controlledOpen,
   onToggle,
   count,
@@ -37,8 +42,8 @@ export function SectionCard({
     else              setInternalOpen(p => !p)
   }
 
-  const headerColor    = (headerStyle?.color as string | undefined) ?? 'var(--color-slate-dark)'
-  const chevronColor   = (headerStyle?.color as string | undefined) ?? 'var(--color-slate-light)'
+  const headerColor    = (headerStyle?.color as string | undefined) ?? (open ? activeTextColor : 'var(--color-slate-dark)')
+  const chevronColor   = (headerStyle?.color as string | undefined) ?? (open ? activeTextColor : 'var(--color-slate-light)')
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
@@ -52,6 +57,8 @@ export function SectionCard({
           padding:        '14px 20px',
           borderBottom:   open ? '1px solid #e5e7eb' : 'none',
           transition:     'background-color 150ms, color 150ms',
+          // Scheda aperta (attiva): intestazione colorata (default turchese logo).
+          background:     open ? activeColor : undefined,
           ...headerStyle,
         }}
       >

@@ -122,11 +122,13 @@ function isCIDone(a: AffectedCI): boolean {
     && validationDone && taskDone(a.deployment) && reviewDone
 }
 
-export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = true }: {
+export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = true, activeColor, activeTextColor }: {
   affected: AffectedCI[]
   isAdmin: boolean
   userTeamIds: Set<string>
   defaultOpen?: boolean
+  activeColor?: string
+  activeTextColor?: string
 }) {
   const [expandedCIId, setExpandedCIId] = useState<string | null>(null)
   // Conteggio = CI con task ancora attivi (non completati), non il totale dei CI.
@@ -146,7 +148,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
   }
 
   return (
-    <SectionCard title="Active Tasks" count={activeCount} collapsible defaultOpen={defaultOpen}>
+    <SectionCard title="Active Tasks" count={activeCount} collapsible defaultOpen={defaultOpen} activeColor={activeColor} activeTextColor={activeTextColor}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
         <span style={{ width: 24, flexShrink: 0 }} />
         <span style={{ flex: 1 }}>Nome</span>

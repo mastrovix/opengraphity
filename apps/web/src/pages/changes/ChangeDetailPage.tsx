@@ -230,6 +230,8 @@ export function ChangeDetailPage() {
             count={approvals.length}
             collapsible
             defaultOpen={atApproval}
+            activeColor="#FEF9C3"
+            activeTextColor="var(--color-slate-dark)"
             headerRight={<span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{approvedN}/{approvals.length} approvate</span>}
           >
             {approvals.length === 0 ? (
@@ -284,9 +286,11 @@ export function ChangeDetailPage() {
           ...(change.resolvesProblems ?? []).map((p) => ({ kind: 'PROBLEM' as const, to: `/problems/${p.id}`, ...p })),
           ...(change.resolvesIncidents ?? []).map((i) => ({ kind: 'INCIDENT' as const, to: `/incidents/${i.id}`, ...i })),
         ]
-        if (linked.length === 0) return null
         return (
           <SectionCard title="Ticket collegati" count={linked.length} collapsible>
+            {linked.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun ticket collegato.</p>
+            ) : (<>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
               <span style={{ width: 90 }}>Tipo</span>
               <span style={{ width: 130 }}>Numero</span>
@@ -303,6 +307,7 @@ export function ChangeDetailPage() {
                 <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{r.status.replace(/_/g, ' ')}</span>
               </div>
             ))}
+            </>)}
           </SectionCard>
         )
       })()}
@@ -325,7 +330,15 @@ export function ChangeDetailPage() {
         </SectionCard>
       )}
 
-      <CITasksTable key={`tasks-${currentStep}`} affected={affected} isAdmin={isAdmin} userTeamIds={userTeamIds} defaultOpen={currentStep !== 'approval'} />
+      <CITasksTable
+        key={`tasks-${currentStep}`}
+        affected={affected}
+        isAdmin={isAdmin}
+        userTeamIds={userTeamIds}
+        defaultOpen={currentStep !== 'approval'}
+        activeColor={currentStep === 'approval' ? undefined : '#FEF9C3'}
+        activeTextColor={currentStep === 'approval' ? undefined : 'var(--color-slate-dark)'}
+      />
 
       <SectionCard title="CIs Involved" collapsible count={affected.length}>
         <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
