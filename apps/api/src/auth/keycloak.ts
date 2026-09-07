@@ -9,11 +9,17 @@ import { authLogger as logger } from '../lib/logger.js'
 const KEYCLOAK_INTERNAL_URL = process.env['KEYCLOAK_URL']        ?? 'http://localhost:8080'
 
 /**
- * Public Keycloak URL that browsers use.  Tokens issued to browsers carry this
- * as their `iss` claim.  We must NOT use it for server-side JWKS fetch inside
- * Docker because `localhost` inside a container resolves to the container itself.
+ * Public Keycloak URL(s) that browsers use.  Tokens issued to browsers carry the
+ * matching origin as their `iss` claim.  Supports a comma-separated list so the
+ * same API can serve multiple front-door hosts (e.g. http://localhost:8080 for
+ * `c-one.localhost` AND the Tailscale HTTPS host for remote/iPad access).
+ * We must NOT use these for server-side JWKS fetch inside Docker because
+ * `localhost` inside a container resolves to the container itself.
  */
-const KEYCLOAK_PUBLIC_URL   = process.env['KEYCLOAK_PUBLIC_URL'] ?? KEYCLOAK_INTERNAL_URL
+const KEYCLOAK_PUBLIC_URLS = (process.env['KEYCLOAK_PUBLIC_URL'] ?? KEYCLOAK_INTERNAL_URL)
+  .split(',')
+  .map((u) => u.trim())
+  .filter((u) => u.length > 0)
 
 /** Per-issuer JWKS client cache — one entry per tenant */
 const clientCache = new Map<string, ReturnType<typeof jwksClient>>()
@@ -21,17 +27,17 @@ const clientCache = new Map<string, ReturnType<typeof jwksClient>>()
 /**
  * Returns a JWKS client for the given token issuer.
  *
- * The issuer in the token is the PUBLIC URL (browser-visible).  To fetch JWKS
- * inside Docker we replace the public origin with the internal one so the HTTP
- * request stays inside the Docker network.
+ * The issuer in the token is a PUBLIC URL (browser-visible).  To fetch JWKS
+ * inside Docker we rebuild the URL on the internal origin so the HTTP request
+ * stays inside the Docker network, keeping the realm path from the issuer.
  */
 function getJwksClient(issuer: string): ReturnType<typeof jwksClient> {
   const cached = clientCache.get(issuer)
   if (cached) return cached
 
-  // Swap public origin → internal origin for the JWKS HTTP request.
+  // Rebuild on internal origin, keep realm path from the issuer.
   // e.g. "http://localhost:8080/realms/c-one" → "http://keycloak:8080/realms/c-one"
-  const fetchBase = issuer.replace(KEYCLOAK_PUBLIC_URL, KEYCLOAK_INTERNAL_URL)
+  const fetchBase = `${KEYCLOAK_INTERNAL_URL.replace(/\/$/, '')}${new URL(issuer).pathname}`
 
   const client = jwksClient({
     jwksUri:         `${fetchBase}/protocol/openid-connect/certs`,
@@ -51,7 +57,7 @@ function getJwksClient(issuer: string): ReturnType<typeof jwksClient> {
 // set `iss` to their own domain, host a matching JWKS, and have the server
 // fetch it and accept a forged token (account takeover + SSRF).
 const ALLOWED_ISSUER_ORIGINS = new Set(
-  [KEYCLOAK_PUBLIC_URL, KEYCLOAK_INTERNAL_URL].map((u) => new URL(u).origin),
+  [...KEYCLOAK_PUBLIC_URLS, KEYCLOAK_INTERNAL_URL].map((u) => new URL(u).origin),
 )
 
 function validateIssuer(iss: string): void {
