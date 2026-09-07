@@ -29,6 +29,9 @@ export const GET_PROBLEM = gql`
       relatedIncidents { id title status severity createdAt }
       relatedChanges { id title changeType workflowInstance { currentStep } }
       workflowInstance { id currentStep status }
+      linkedIncidents { id number title status removable }
+      linkedProblems { id number title status removable }
+      linkedChanges { id number title status removable }
       availableTransitions { toStep label requiresInput inputField condition }
       workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
       comments { id text type createdAt author { id name } }

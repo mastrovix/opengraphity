@@ -67,6 +67,7 @@ export interface LinkedTicketRef {
   id: string; number: string; title: string; status: string
   severity?: string | null
   priority?: string | null
+  removable?: boolean | null
 }
 
 // ── Task detail fields ─────────────────────────────────────────────────────────

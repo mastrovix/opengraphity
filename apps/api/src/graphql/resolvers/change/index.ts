@@ -14,6 +14,7 @@ import {
 } from './queries.js'
 import {
   createChange,
+  deleteChange,
   addCIToChange,
   removeCIFromChange,
   submitAssessmentResponse,
@@ -24,6 +25,8 @@ import {
   saveDeployPlan,
   completeDeployPlanTask,
   executeChangeTransition,
+  linkResolvedTicket,
+  unlinkResolvedTicket,
   completeValidationTest,
   completeDeployment,
   completeReview,
@@ -63,6 +66,7 @@ export const changeResolvers = {
   },
   Mutation: {
     createChange,
+    deleteChange,
     addCIToChange,
     removeCIFromChange,
     submitAssessmentResponse,
@@ -73,6 +77,8 @@ export const changeResolvers = {
     saveDeployPlan,
     completeDeployPlanTask,
     executeChangeTransition,
+    linkResolvedTicket,
+    unlinkResolvedTicket,
     completeValidationTest,
     completeDeployment,
     completeReview,

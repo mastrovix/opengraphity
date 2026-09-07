@@ -13,8 +13,9 @@ import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { priorityCode } from '@/lib/priority'
-import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
-import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT } from '@/graphql/mutations'
+import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES, GET_INCIDENTS, GET_PROBLEMS, GET_CHANGES } from '@/graphql/queries'
+import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT, LINK_RELATED_TICKET, UNLINK_RELATED_TICKET, LINK_INCIDENT_TO_PROBLEM, UNLINK_INCIDENT_FROM_PROBLEM, LINK_RESOLVED_TICKET, UNLINK_RESOLVED_TICKET } from '@/graphql/mutations'
+import { LinkedTicketSection, type LinkedTicketItem } from '@/components/LinkedTicketSection'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
 import { IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, derivePriority, priorityCode as prioCode } from '@/lib/priority'
 import { Pencil } from 'lucide-react'
@@ -106,6 +107,9 @@ interface Incident {
   assignee:             { id: string; name: string; email: string } | null
   assignedTeam:         Team | null
   affectedCIs:          CIRef[]
+  linkedIncidents?:     LinkedTicketItem[]
+  linkedProblems?:      LinkedTicketItem[]
+  linkedChanges?:       LinkedTicketItem[]
   impactedApplications: ImpactedApp[]
   workflowInstance:     WorkflowInstance | null
   availableTransitions: WorkflowTransition[]
@@ -159,6 +163,24 @@ export function IncidentDetailPage() {
     GET_INCIDENT,
     { variables: { id }, skip: !id },
   )
+  // ── Ticket collegati (incident / problem / change) ─────────────────────────
+  const [relIncSearch, setRelIncSearch] = useState('')
+  const [relProbSearch, setRelProbSearch] = useState('')
+  const [relChgSearch, setRelChgSearch] = useState('')
+  const { data: relIncData } = useQuery<{ incidents: { items: LinkedTicketItem[] } }>(GET_INCIDENTS, { variables: { limit: 50 } })
+  const { data: relProbData } = useQuery<{ problems: { items: LinkedTicketItem[] } }>(GET_PROBLEMS, { variables: { search: relProbSearch || undefined, limit: 20 } })
+  const { data: relChgData } = useQuery<{ changes: { items: { id: string; code: string; title: string; approvalStatus?: string | null }[] } }>(GET_CHANGES, { variables: { search: relChgSearch || undefined, limit: 20 } })
+  const relIncResults = (relIncData?.incidents?.items ?? []).filter((r) => r.id !== id && (relIncSearch.trim() === '' || `${r.number} ${r.title}`.toLowerCase().includes(relIncSearch.toLowerCase())))
+  const relProbResults = relProbData?.problems?.items ?? []
+  const relChgResults = (relChgData?.changes?.items ?? []).map((c) => ({ id: c.id, number: c.code, title: c.title, status: c.approvalStatus ?? '' }))
+  const linkOpts = { onError: (e: { message: string }) => toast.error(e.message), onCompleted: () => { void refetch() } }
+  const [linkRelated]    = useMutation(LINK_RELATED_TICKET, linkOpts)
+  const [unlinkRelated]  = useMutation(UNLINK_RELATED_TICKET, linkOpts)
+  const [linkIncProblem] = useMutation(LINK_INCIDENT_TO_PROBLEM, linkOpts)
+  const [unlinkIncProblem] = useMutation(UNLINK_INCIDENT_FROM_PROBLEM, linkOpts)
+  const [linkResolved]   = useMutation(LINK_RESOLVED_TICKET, linkOpts)
+  const [unlinkResolved] = useMutation(UNLINK_RESOLVED_TICKET, linkOpts)
+
   const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
@@ -627,6 +649,29 @@ export function IncidentDetailPage() {
             onSearchChange={setCiSearch}
             onAddCI={(ciId, relationType) => void addCI({ variables: { incidentId: incident.id, ciId, relationType } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
+          />
+
+          {/* Ticket collegati (per tipo) */}
+          <LinkedTicketSection
+            title="Incident collegati" kind="INCIDENT" routeBase="/incidents"
+            items={incident.linkedIncidents ?? []}
+            searchResults={relIncResults} searchTerm={relIncSearch} onSearchTerm={setRelIncSearch}
+            onLink={(otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } })}
+            onUnlink={(otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } })}
+          />
+          <LinkedTicketSection
+            title="Problem collegati" kind="PROBLEM" routeBase="/problems"
+            items={incident.linkedProblems ?? []}
+            searchResults={relProbResults} searchTerm={relProbSearch} onSearchTerm={setRelProbSearch}
+            onLink={(problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } })}
+            onUnlink={(problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } })}
+          />
+          <LinkedTicketSection
+            title="Change collegate" kind="CHANGE" routeBase="/changes"
+            items={incident.linkedChanges ?? []}
+            searchResults={relChgResults} searchTerm={relChgSearch} onSearchTerm={setRelChgSearch}
+            onLink={(changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } })}
+            onUnlink={(changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } })}
           />
 
           {/* Applicazioni impattate (dal grafo delle dipendenze) */}

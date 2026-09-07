@@ -123,7 +123,9 @@ export async function changes(_: unknown, args: { currentStep?: string; priority
     const joinWF = args.currentStep
       ? 'MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {current_step: $currentStep})'
       : ''
-    const priorityWhere = args.priority ? 'WHERE c.priority = $priority' : ''
+    const conds = ['coalesce(c.deleted, false) = false']
+    if (args.priority) conds.push('c.priority = $priority')
+    const priorityWhere = `WHERE ${conds.join(' AND ')}`
     const items = await runQuery<{
       props: Props
       reqUser: Props | null
@@ -667,9 +669,9 @@ export async function changeResolvesIncidents(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    const rows = await runQuery<{ id: string; number: string; title: string; status: string; severity: string | null }>(session, `
-      MATCH (i:Incident {tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
-      RETURN i.id AS id, i.number AS number, i.title AS title, i.status AS status, i.severity AS severity
+    const rows = await runQuery<{ id: string; number: string; title: string; status: string; severity: string | null; removable: boolean }>(session, `
+      MATCH (i:Incident {tenant_id: $tenantId})-[rel:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
+      RETURN i.id AS id, i.number AS number, i.title AS title, i.status AS status, i.severity AS severity, (NOT coalesce(rel.auto, false)) AS removable
       ORDER BY i.created_at DESC
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => ({ ...r, priority: null }))
@@ -682,9 +684,9 @@ export async function changeResolvesProblems(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    const rows = await runQuery<{ id: string; number: string; title: string; status: string; priority: string | null }>(session, `
-      MATCH (p:Problem {tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
-      RETURN p.id AS id, p.number AS number, p.title AS title, p.status AS status, p.priority AS priority
+    const rows = await runQuery<{ id: string; number: string; title: string; status: string; priority: string | null; removable: boolean }>(session, `
+      MATCH (p:Problem {tenant_id: $tenantId})-[rel:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
+      RETURN p.id AS id, p.number AS number, p.title AS title, p.status AS status, p.priority AS priority, (NOT coalesce(rel.auto, false)) AS removable
       ORDER BY p.created_at DESC
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => ({ ...r, severity: null }))

@@ -51,6 +51,9 @@ export function changeSDL(): string {
     status:   String!
     severity: String
     priority: String
+    # false quando il link è stato creato automaticamente (RESOLVED_BY auto):
+    # non può essere scollegato, la sola rimozione è eliminare la change.
+    removable: Boolean
   }
 
   type ChangeAffectedCI {
@@ -282,6 +285,9 @@ export function changeSDL(): string {
 
   extend type Mutation {
     createChange(input: CreateChangeInput!): Change!
+    # Eliminazione logica della change: la marca come deleted, sparisce dagli
+    # elenchi e i suoi collegamenti (RESOLVED_BY) non sono più mostrati.
+    deleteChange(id: ID!): Boolean!
     addCIToChange(changeId: ID!, ciId: ID!): ChangeAffectedCI!
     removeCIFromChange(changeId: ID!, ciId: ID!): Boolean!
     submitAssessmentResponse(taskId: ID!, questionId: ID!, optionId: ID!): AssessmentTask!
@@ -292,6 +298,9 @@ export function changeSDL(): string {
     saveDeployPlan(taskId: ID!, steps: [DeployStepInput!]!): DeployPlanTask!
     completeDeployPlanTask(taskId: ID!): DeployPlanTask!
     executeChangeTransition(changeId: ID!, toStep: String!, notes: String): Change!
+    # Collega/scollega un ticket (entityType: incident|problem) alla change.
+    linkResolvedTicket(changeId: ID!, entityType: String!, entityId: ID!): Change!
+    unlinkResolvedTicket(changeId: ID!, entityType: String!, entityId: ID!): Change!
     # Approvazione multi-parte: approva/rigetta il requisito di un team.
     approveChangeApproval(changeId: ID!, teamId: ID!, note: String): Change!
     # Rigetta: riporta la change ad assessment riaprendo i task scelti

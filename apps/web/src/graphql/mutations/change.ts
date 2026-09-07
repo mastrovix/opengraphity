@@ -12,6 +12,12 @@ export const CREATE_CHANGE = gql`
   }
 `
 
+export const DELETE_CHANGE = gql`
+  mutation DeleteChange($id: ID!) {
+    deleteChange(id: $id)
+  }
+`
+
 export const ADD_CI_TO_CHANGE = gql`
   mutation AddCIToChange($changeId: ID!, $ciId: ID!) {
     addCIToChange(changeId: $changeId, ciId: $ciId) {
@@ -84,6 +90,18 @@ export const EXECUTE_CHANGE_TRANSITION = gql`
       workflowInstance { id currentStep status }
       availableTransitions { toStep label requiresInput inputField condition }
     }
+  }
+`
+
+export const LINK_RESOLVED_TICKET = gql`
+  mutation LinkResolvedTicket($changeId: ID!, $entityType: String!, $entityId: ID!) {
+    linkResolvedTicket(changeId: $changeId, entityType: $entityType, entityId: $entityId) { id }
+  }
+`
+
+export const UNLINK_RESOLVED_TICKET = gql`
+  mutation UnlinkResolvedTicket($changeId: ID!, $entityType: String!, $entityId: ID!) {
+    unlinkResolvedTicket(changeId: $changeId, entityType: $entityType, entityId: $entityId) { id }
   }
 `
 

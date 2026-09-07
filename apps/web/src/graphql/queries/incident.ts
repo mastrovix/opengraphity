@@ -39,6 +39,9 @@ export const GET_INCIDENT = gql`
         path { id name type }
       }
       workflowInstance { id currentStep status }
+      linkedIncidents { id number title status removable }
+      linkedProblems { id number title status removable }
+      linkedChanges { id number title status removable }
       availableTransitions {
         toStep label requiresInput inputField condition
       }

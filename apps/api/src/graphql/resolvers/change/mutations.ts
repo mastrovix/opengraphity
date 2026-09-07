@@ -14,10 +14,13 @@
  */
 export {
   createChange,
+  deleteChange,
   addCIToChange,
   removeCIFromChange,
   executeChangeTransition,
   sendTaskReminder,
+  linkResolvedTicket,
+  unlinkResolvedTicket,
 } from './changeMutations.js'
 
 export {

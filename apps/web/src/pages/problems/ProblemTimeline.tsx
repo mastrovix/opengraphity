@@ -40,9 +40,9 @@ interface ProblemTimelineProps {
 export function ProblemTimeline({ historyDesc, timelineOpen, onToggle }: ProblemTimelineProps) {
   return (
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}>
-        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline workflow</span>
-        {timelineOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
+      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none', background: timelineOpen ? '#0ea5e9' : undefined }}>
+        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: timelineOpen ? '#fff' : 'var(--color-slate-dark)' }}>Timeline workflow</span>
+        {timelineOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
       </div>
       {timelineOpen && (
         <div style={{ padding: '16px 20px 20px' }}>

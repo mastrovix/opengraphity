@@ -24,6 +24,11 @@ export function incidentSDL(): string {
     affectedCIs: [CIBase!]!
     impactedApplications: [ImpactedApplication!]!
     causedByProblem: Problem
+    # Ticket collegati (per tipo): altri incident (RELATED_TO), problem (CAUSED_BY),
+    # change che lo risolvono (RESOLVED_BY).
+    linkedIncidents: [LinkedTicketRef!]!
+    linkedProblems:  [LinkedTicketRef!]!
+    linkedChanges:   [LinkedTicketRef!]!
     workflowInstance:     WorkflowInstance
     workflowHistory:      [WorkflowStepExecution!]!
     availableTransitions: [WorkflowTransition!]!

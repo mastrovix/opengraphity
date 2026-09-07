@@ -49,12 +49,12 @@ export function IncidentTimeline({ historyDesc, timelineOpen, onToggle }: Incide
     }}>
       <div
         onClick={onToggle}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: timelineOpen ? '1px solid #e5e7eb' : 'none', background: timelineOpen ? '#0ea5e9' : undefined }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Timeline workflow</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: timelineOpen ? '#fff' : 'var(--color-slate-dark)' }}>Timeline workflow</span>
         </div>
-        {timelineOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
+        {timelineOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
       </div>
       {timelineOpen && (
         <div style={{ padding: '16px 20px 20px' }}>

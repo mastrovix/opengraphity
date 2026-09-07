@@ -6,6 +6,11 @@ import { mergeResolvers } from '@graphql-tools/merge'
 import type { IResolvers } from '@graphql-tools/utils'
 import { incidentResolvers } from './incident.js'
 import { problemResolvers } from './problem.js'
+import {
+  linkRelatedTicket, unlinkRelatedTicket,
+  incidentRelatedIncidents, incidentRelatedProblems, incidentRelatedChanges,
+  problemLinkedIncidents, problemRelatedProblems, problemLinkedChanges,
+} from './relatedTickets.js'
 import { changeResolvers } from './change/index.js'
 import { serviceRequestResolvers } from './service_request.js'
 import { teamResolvers } from './team.js'
@@ -306,6 +311,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...incidentResolvers.Mutation,
       ...problemResolvers.Mutation,
       ...changeResolvers.Mutation,
+      linkRelatedTicket,
+      unlinkRelatedTicket,
       ...serviceRequestResolvers.Mutation,
       updateCIFields: updateCIFieldsMutation,
       ...teamResolvers.Mutation,
@@ -340,6 +347,9 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     Incident: {
       ...incidentResolvers.Incident,
       ...workflowResolvers.Incident,
+      linkedIncidents: incidentRelatedIncidents,
+      linkedProblems:  incidentRelatedProblems,
+      linkedChanges:   incidentRelatedChanges,
     },
     Change: {
       ...workflowResolvers.Change,
@@ -347,7 +357,12 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     },
     Team:               teamResolvers.Team,
     User:               { teams: userTeams },
-    Problem:            { ...problemResolvers.Problem },
+    Problem:            {
+      ...problemResolvers.Problem,
+      linkedIncidents: problemLinkedIncidents,
+      linkedProblems:  problemRelatedProblems,
+      linkedChanges:   problemLinkedChanges,
+    },
     ProblemComment:     {},
     ServiceRequest:     {
       ...serviceRequestResolvers.ServiceRequest,

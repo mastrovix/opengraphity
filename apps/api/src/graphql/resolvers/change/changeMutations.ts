@@ -49,6 +49,59 @@ export async function createChange(
   return getChange(null, { id }, ctx)
 }
 
+// ── deleteChange (cancellazione logica) ─────────────────────────────────────────
+// Marca la change come deleted: sparisce dagli elenchi e dai ticket collegati.
+// È l'unico modo per rimuovere i collegamenti RESOLVED_BY creati automaticamente.
+export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  const now = new Date().toISOString()
+  return withSession(async (session) => {
+    const r = await session.executeWrite((tx) => tx.run(`
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})
+      SET c.deleted = true, c.deleted_at = $now, c.updated_at = $now
+      RETURN c.id AS id
+    `, { id: args.id, tenantId: ctx.tenantId, now }))
+    if (r.records.length === 0) throw new GraphQLError('Change non trovata', { extensions: { code: 'NOT_FOUND' } })
+    return true
+  }, true)
+}
+
+/** Collega/scollega un ticket (incident|problem) alla change (RESOLVED_BY). */
+export async function linkResolvedTicket(_: unknown, args: { changeId: string; entityType: string; entityId: string }, ctx: GraphQLContext) {
+  const label = args.entityType === 'incident' ? 'Incident' : args.entityType === 'problem' ? 'Problem' : null
+  if (!label) throw new GraphQLError(`Tipo ticket non valido: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  await withSession(async (session) => {
+    const r = await session.executeWrite((tx) => tx.run(`
+      MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+      MERGE (e)-[:RESOLVED_BY]->(c)
+      SET e.updated_at = $now
+      RETURN c.id AS id
+    `, { changeId: args.changeId, entityId: args.entityId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
+    if (r.records.length === 0) throw new GraphQLError('Change o ticket non trovato', { extensions: { code: 'NOT_FOUND' } })
+  }, true)
+  return getChange(null, { id: args.changeId }, ctx)
+}
+
+export async function unlinkResolvedTicket(_: unknown, args: { changeId: string; entityType: string; entityId: string }, ctx: GraphQLContext) {
+  const label = args.entityType === 'incident' ? 'Incident' : args.entityType === 'problem' ? 'Problem' : null
+  if (!label) throw new GraphQLError(`Tipo ticket non valido: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  await withSession(async (session) => {
+    const r = await session.executeWrite((tx) => tx.run(`
+      MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})-[r:RESOLVED_BY]->(c:Change {id: $changeId, tenant_id: $tenantId})
+      RETURN coalesce(r.auto, false) AS auto
+    `, { changeId: args.changeId, entityId: args.entityId, tenantId: ctx.tenantId }))
+    if (r.records.length === 0) throw new GraphQLError('Change o ticket non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (r.records[0].get('auto') === true) {
+      throw new GraphQLError('Questo collegamento è stato creato automaticamente e non può essere rimosso. Elimina la change per rimuoverlo.', { extensions: { code: 'FORBIDDEN' } })
+    }
+    await session.executeWrite((tx) => tx.run(`
+      MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})-[r:RESOLVED_BY]->(c:Change {id: $changeId, tenant_id: $tenantId})
+      DELETE r
+    `, { changeId: args.changeId, entityId: args.entityId, tenantId: ctx.tenantId }))
+  }, true)
+  return getChange(null, { id: args.changeId }, ctx)
+}
+
 /** Collega la nuova change all'incident richiedente (nessuna transizione). */
 async function linkChangeToRequestingIncident(
   incidentId: string,
@@ -60,8 +113,8 @@ async function linkChangeToRequestingIncident(
       tx.run(`
         MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
         MATCH (c:Change   {id: $changeId,   tenant_id: $tenantId})
-        MERGE (i)-[:RESOLVED_BY]->(c)
-        SET i.updated_at = $now
+        MERGE (i)-[rel:RESOLVED_BY]->(c)
+        SET rel.auto = true, i.updated_at = $now
         RETURN i.id AS id
       `, { incidentId, changeId, tenantId: ctx.tenantId, now: new Date().toISOString() }),
     )
@@ -86,8 +139,8 @@ async function linkChangeToRequestingProblem(
       tx.run(`
         MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
         MATCH (c:Change  {id: $changeId,  tenant_id: $tenantId})
-        MERGE (p)-[:RESOLVED_BY]->(c)
-        SET p.updated_at = $now
+        MERGE (p)-[rel:RESOLVED_BY]->(c)
+        SET rel.auto = true, p.updated_at = $now
         RETURN p.id AS id
       `, { problemId, changeId, tenantId: ctx.tenantId, now }),
     )

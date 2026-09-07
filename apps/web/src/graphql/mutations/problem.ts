@@ -6,6 +6,18 @@ export const UPDATE_PROBLEM = gql`
   }
 `
 
+export const LINK_RELATED_TICKET = gql`
+  mutation LinkRelatedTicket($entityType: String!, $entityId: ID!, $otherId: ID!) {
+    linkRelatedTicket(entityType: $entityType, entityId: $entityId, otherId: $otherId)
+  }
+`
+
+export const UNLINK_RELATED_TICKET = gql`
+  mutation UnlinkRelatedTicket($entityType: String!, $entityId: ID!, $otherId: ID!) {
+    unlinkRelatedTicket(entityType: $entityType, entityId: $entityId, otherId: $otherId)
+  }
+`
+
 export const LINK_INCIDENT_TO_PROBLEM = gql`
   mutation LinkIncidentToProblem($problemId: ID!, $incidentId: ID!) {
     linkIncidentToProblem(problemId: $problemId, incidentId: $incidentId) {

@@ -103,16 +103,16 @@ export function ProblemCIList({
 
   return (
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}>
+      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none', background: ciOpen ? '#0ea5e9' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: ciOpen ? '#fff' : 'var(--color-slate-dark)' }}>CI Impattati</span>
           <CountBadge count={affectedCIs.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
             {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
           </button>
-          {ciOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
+          {ciOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
       </div>
       {ciOpen && (
@@ -215,16 +215,16 @@ export function ProblemIncidentList({
 
   return (
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none' }}>
+      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none', background: incidentsOpen ? '#0ea5e9' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Incident Correlati</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: incidentsOpen ? '#fff' : 'var(--color-slate-dark)' }}>Incident Correlati</span>
           <CountBadge count={relatedIncidents.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
             {showIncidentSearch ? 'Chiudi' : '+ Collega Incident'}
           </button>
-          {incidentsOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
+          {incidentsOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
       </div>
       {incidentsOpen && (
@@ -300,16 +300,16 @@ export function ProblemChangeList({
 
   return (
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: changesOpen ? '1px solid #e5e7eb' : 'none' }}>
+      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: changesOpen ? '1px solid #e5e7eb' : 'none', background: changesOpen ? '#0ea5e9' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Change Correlate</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: changesOpen ? '#fff' : 'var(--color-slate-dark)' }}>Change Correlate</span>
           <CountBadge count={relatedChanges.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
             {showChangeSearch ? 'Chiudi' : '+ Collega Change'}
           </button>
-          {changesOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
+          {changesOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
       </div>
       {changesOpen && (

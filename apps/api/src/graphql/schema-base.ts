@@ -213,6 +213,9 @@ export function buildBaseSDL(): string {
     linkIncidentToProblem(problemId: ID!, incidentId: ID!): Problem!
     unlinkIncidentFromProblem(problemId: ID!, incidentId: ID!): Problem!
     linkChangeToProblem(problemId: ID!, changeId: ID!): Problem!
+    # Collega/scollega ticket dello stesso tipo (RELATED_TO). entityType: incident|problem.
+    linkRelatedTicket(entityType: String!, entityId: ID!, otherId: ID!): Boolean!
+    unlinkRelatedTicket(entityType: String!, entityId: ID!, otherId: ID!): Boolean!
     addCIToProblem(problemId: ID!, ciId: ID!, relationType: String): Problem!
     removeCIFromProblem(problemId: ID!, ciId: ID!): Problem!
     assignProblemToTeam(problemId: ID!, teamId: ID!): Problem!

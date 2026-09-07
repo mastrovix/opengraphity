@@ -107,20 +107,20 @@ export function IncidentCIList({
     }}>
       <div
         onClick={onToggle}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none', background: ciOpen ? '#0ea5e9' : undefined }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>CI Impattati</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: ciOpen ? '#fff' : 'var(--color-slate-dark)' }}>CI Impattati</span>
           <CountBadge count={affectedCIs.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={onToggleSearch}
-            style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}
+            style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: `1px solid ${ciOpen ? '#fff' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', color: ciOpen ? '#fff' : 'var(--accent)' }}
           >
             {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
           </button>
-          {ciOpen ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
+          {ciOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
       </div>
       {ciOpen && (
