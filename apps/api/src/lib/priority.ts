@@ -56,3 +56,44 @@ export function priorityCode(priority: string): string {
     default:         return 'P?'
   }
 }
+
+// ── Patch coerente priorità / impatto / urgenza ───────────────────────────────
+
+import { ValidationError } from './errors.js'
+
+const PRIORITIES: ReadonlySet<string> = new Set(['critical', 'high', 'medium', 'low'])
+
+/**
+ * Calcola la patch di (priority, impact, urgency) mantenendo l'invariante
+ * ITIL "priorità = impatto × urgenza" su update parziali di incident/problem:
+ *  - impact e/o urgency nella patch → merge col corrente e priorità ricalcolata;
+ *  - solo priority nella patch → impact/urgency riallineati alla priorità;
+ *  - valori non validi → ValidationError (niente scritture silenziosamente
+ *    incoerenti).
+ * Ritorna null per i campi da non toccare (il chiamante usa coalesce).
+ */
+export function resolvePriorityPatch(
+  current: { impact: string | null | undefined; urgency: string | null | undefined },
+  patch: { priority?: string | null; impact?: string | null; urgency?: string | null },
+): { severity: string | null; impact: string | null; urgency: string | null } {
+  const hasIU = patch.impact != null || patch.urgency != null
+  if (hasIU) {
+    for (const [k, v] of [['impact', patch.impact], ['urgency', patch.urgency]] as const) {
+      if (v != null && !isImpactUrgency(v)) throw new ValidationError(`${k} non valido: "${v}" (high | medium | low)`)
+    }
+    const mImpact  = patch.impact  ?? current.impact
+    const mUrgency = patch.urgency ?? current.urgency
+    if (isImpactUrgency(mImpact) && isImpactUrgency(mUrgency)) {
+      return { severity: derivePriority(mImpact, mUrgency), impact: mImpact, urgency: mUrgency }
+    }
+    // Manca la controparte (dato storico incompleto): si salva il valore dato,
+    // la priorità resta quella corrente.
+    return { severity: null, impact: patch.impact ?? null, urgency: patch.urgency ?? null }
+  }
+  if (patch.priority != null) {
+    if (!PRIORITIES.has(patch.priority)) throw new ValidationError(`priority non valida: "${patch.priority}" (critical | high | medium | low)`)
+    const iu = impactUrgencyFromPriority(patch.priority)
+    return { severity: patch.priority, impact: iu.impact, urgency: iu.urgency }
+  }
+  return { severity: null, impact: null, urgency: null }
+}

@@ -4,12 +4,13 @@ import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { publishEvent } from '../lib/publishEvent.js'
-import { getInitialStepName } from '../lib/workflowHelpers.js'
+import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { workflowEngine } from '@opengraphity/workflow'
 
 type Props = Record<string, unknown>
 
-function mapRequest(props: Props) {
+/** Unico mapper ServiceRequest (il resolver ne aveva una copia che perdeva catalogItemId/requiresApproval). */
+export function mapRequest(props: Props) {
   return {
     id:          props['id']           as string,
     number:      (props['number'] ?? '') as string,
@@ -89,12 +90,31 @@ export async function createRequest(
 export async function completeRequest(id: string, ctx: ServiceCtx) {
   const now = new Date().toISOString()
 
+  // Lo status di una SR È il suo step di workflow: si evade con una
+  // transizione dell'engine (storia, azioni di step, status sincronizzato),
+  // non scrivendo r.status a mano — che lasciava l'istanza di workflow indietro
+  // per sempre.
   const completed = await withSession(async (session) => {
+    const wi = await runQuery<{ instanceId: string; step: string }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      RETURN wi.id AS instanceId, wi.current_step AS step
+    `, { id, tenantId: ctx.tenantId })
+    if (!wi[0]) throw new Error('ServiceRequest not found (or without workflow instance)')
+
+    const steps = await getWorkflowSteps(session, ctx.tenantId, 'service_request')
+    const target = steps.find((s) => s.name === 'fulfilled') ?? steps.find((s) => s.isTerminal && s.category === 'closed')
+    if (!target) throw new Error('Workflow service_request: nessuno step "fulfilled" o terminale di chiusura definito')
+
+    const res = await workflowEngine.transition(session, {
+      instanceId: wi[0].instanceId, toStepName: target.name,
+      triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId,
+      notes: 'Richiesta evasa',
+    }, { userId: ctx.userId, entityData: {} })
+    if (!res.success) throw new Error(`Impossibile evadere la richiesta dallo step "${wi[0].step}": ${res.error ?? 'transizione non valida'}`)
+
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
-      SET r.status       = 'completed',
-          r.completed_at = $now,
-          r.updated_at   = $now
+      SET r.completed_at = $now, r.updated_at = $now
       RETURN properties(r) as props
     `, { id, tenantId: ctx.tenantId, now })
     if (!rows[0]) throw new Error('ServiceRequest not found')

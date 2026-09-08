@@ -14,23 +14,9 @@ import { v4 as uuidv4 } from 'uuid'
 
 type Props = Record<string, unknown>
 
-function mapRequest(props: Props) {
-  return {
-    id:          props['id']           as string,
-    number:      (props['number'] ?? '') as string,
-    tenantId:    props['tenant_id']    as string,
-    title:       props['title']        as string,
-    description: props['description']  as string | undefined,
-    status:      props['status']       as string,
-    priority:    props['priority']     as string,
-    dueDate:     props['due_date']     as string | undefined,
-    completedAt: props['completed_at'] as string | undefined,
-    createdAt:   props['created_at']   as string,
-    updatedAt:   props['updated_at']   as string,
-    requestedBy: null,
-    assignee:    null,
-  }
-}
+// Mapper unico in requestService (la copia locale perdeva catalogItemId e
+// requiresApproval: dichiarati nello schema ma sempre null in lettura).
+import { mapRequest } from '../../services/requestService.js'
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────

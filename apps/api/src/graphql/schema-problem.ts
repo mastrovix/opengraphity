@@ -22,8 +22,6 @@ export function problemSDL(): string {
     assignee: User
     assignedTeam: Team
     affectedCIs: [CIBase!]!
-    relatedIncidents: [Incident!]!
-    relatedChanges: [Change!]!
     # Ticket collegati (per tipo, shape uniforme): incident (CAUSED_BY), altri
     # problem (RELATED_TO), change che lo risolvono (RESOLVED_BY).
     linkedIncidents: [LinkedTicketRef!]!
@@ -66,7 +64,11 @@ export function problemSDL(): string {
   input UpdateProblemInput {
     title: String
     description: String
+    # Priorità = Impatto × Urgenza (ITIL). Se passi impact/urgency la priorità è
+    # ricalcolata; se passi solo priority, impact/urgency vengono riallineati.
     priority: String
+    impact: String
+    urgency: String
     rootCause: String
     workaround: String
     affectedUsers: Int

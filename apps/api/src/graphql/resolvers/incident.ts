@@ -1,5 +1,6 @@
 import type { GraphQLResolveInfo } from 'graphql'
-import { derivePriority, isImpactUrgency } from '../../lib/priority.js'
+import { resolvePriorityPatch } from '../../lib/priority.js'
+import { propsToFieldValues as mergedFieldValues } from '../../lib/validateRequiredFields.js'
 import { requireRole } from '../../lib/requireRole.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
@@ -143,29 +144,26 @@ async function updateIncident(
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
+    // Le regole "campo obbligatorio" si valutano sullo stato RISULTANTE
+    // (persistito + patch), non sulla sola patch: altrimenti un update parziale
+    // fallirebbe sui campi obbligatori non toccati.
+    const current = await runQueryOne<{ props: Props }>(session,
+      'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props',
+      { id, tenantId: ctx.tenantId })
+    if (!current) throw new NotFoundError('Incident', id)
     await validateRequiredFields(session, {
       entityType:  'incident',
-      fieldValues: input as Record<string, unknown>,
+      fieldValues: { ...mergedFieldValues(current.props), ...(input as Record<string, unknown>) },
       tenantId:    ctx.tenantId,
     })
 
-    // If impact or urgency changes, recompute the derived priority (severity)
-    // by merging with the incident's current impact/urgency.
-    let severity = input.severity ?? null
-    let impact   = input.impact ?? null
-    let urgency  = input.urgency ?? null
-    if (input.impact != null || input.urgency != null) {
-      const cur = await runQuery<{ impact: string | null; urgency: string | null }>(
-        session, 'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN i.impact AS impact, i.urgency AS urgency',
-        { id, tenantId: ctx.tenantId },
-      )
-      const mImpact  = (input.impact  ?? cur[0]?.impact)  as string | undefined
-      const mUrgency = (input.urgency ?? cur[0]?.urgency) as string | undefined
-      if (isImpactUrgency(mImpact) && isImpactUrgency(mUrgency)) {
-        severity = derivePriority(mImpact, mUrgency)
-        impact = mImpact; urgency = mUrgency
-      }
-    }
+    // Priorità (severity) = Impatto × Urgenza, sempre coerenti tra loro:
+    //  - impact/urgency nella patch → severity ricalcolata (merge col corrente);
+    //  - solo severity nella patch → impact/urgency riallineati alla severity.
+    const { severity, impact, urgency } = resolvePriorityPatch(
+      { impact: current.props['impact'] as string | null, urgency: current.props['urgency'] as string | null },
+      { priority: input.severity, impact: input.impact, urgency: input.urgency },
+    )
 
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
@@ -450,31 +448,6 @@ async function incidentComments(
   })
 }
 
-async function incidentCausedByProblem(
-  parent: { id: string; tenantId: string },
-  _: unknown,
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const cypher = `
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:CAUSED_BY]->(p:Problem)
-      RETURN properties(p) as props
-    `
-    const row = await runQueryOne<{ props: Props }>(session, cypher, {
-      id: parent.id, tenantId: ctx.tenantId,
-    })
-    if (!row) return null
-    const p = row.props
-    return {
-      id: p['id'], tenantId: p['tenant_id'], title: p['title'],
-      description: p['description'], status: p['status'], impact: p['impact'],
-      rootCause: p['root_cause'], workaround: p['workaround'],
-      createdAt: p['created_at'], updatedAt: p['updated_at'], resolvedAt: p['resolved_at'],
-      relatedIncidents: [], resolvedByChange: null,
-    }
-  })
-}
-
 async function incidentSlaStatus(
   parent: { id: string; tenantId: string },
   _: unknown,
@@ -524,7 +497,6 @@ export const incidentResolvers = {
     assignedTeam:    incidentAssignedTeam,
     affectedCIs:     incidentAffectedCIs,
     impactedApplications: incidentImpactedApplications,
-    causedByProblem: incidentCausedByProblem,
     comments:        incidentComments,
     slaStatus:       incidentSlaStatus,
   },

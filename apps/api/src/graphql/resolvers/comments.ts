@@ -8,6 +8,15 @@ import { logger } from '../../lib/logger.js'
 import { parseMentions } from '../../lib/mentionParser.js'
 import { notifyMentions, notifyWatchers, autoWatch } from './collaboration.js'
 
+/** Entità commentabili: entity_type → label Neo4j (allowlist, la label finisce nel Cypher). */
+const COMMENTABLE_LABELS: Record<string, string> = {
+  incident:        'Incident',
+  problem:         'Problem',
+  change:          'Change',
+  service_request: 'ServiceRequest',
+  kb_article:      'KBArticle',
+}
+
 interface EntityComment {
   id:          string
   body:        string
@@ -83,7 +92,13 @@ export async function addComment(
 
   const session = getSession(undefined, 'WRITE')
   try {
+    // L'entità commentata deve esistere ed essere del tenant: prima un
+    // entityId qualunque (anche di un altro tenant) creava un commento orfano
+    // che l'autore credeva pubblicato.
+    const label = COMMENTABLE_LABELS[args.entityType]
+    if (!label) throw new GraphQLError(`Tipo entità non commentabile: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
     const res = await session.executeWrite((tx) => tx.run(`
+      MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
       CREATE (c:EntityComment {
         id:           $id,
         tenant_id:    $tenantId,
@@ -112,6 +127,9 @@ export async function addComment(
       updatedAt:   now,
     }))
 
+    if (res.records.length === 0) {
+      throw new GraphQLError(`${label} ${args.entityId} non trovato`, { extensions: { code: 'NOT_FOUND' } })
+    }
     const created = mapComment(res.records[0])
     void audit(ctx, 'comment.added', args.entityType, args.entityId, { commentId: id, isInternal })
 

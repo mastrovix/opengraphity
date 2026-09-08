@@ -43,14 +43,14 @@ export interface TriageSuggestion {
 
 // ── Context gathering ────────────────────────────────────────────────────────
 
-async function loadEnumValues(field: 'severity' | 'category'): Promise<string[]> {
+async function loadEnumValues(field: 'severity' | 'category', tenantId: string): Promise<string[]> {
   const session = getSession(undefined, 'READ')
   try {
     const rows = await runQuery<{ values: string[] | null }>(session, `
-      MATCH (t:CITypeDefinition {name: 'incident'})-[:HAS_FIELD]->(f:CIFieldDefinition {name: $field})
+      MATCH (t:CITypeDefinition {name: 'incident', tenant_id: $tenantId})-[:HAS_FIELD]->(f:CIFieldDefinition {name: $field})
       OPTIONAL MATCH (f)-[:USES_ENUM]->(e:EnumTypeDefinition)
       RETURN coalesce(e.values, f.enum_values) AS values
-    `, { field })
+    `, { field, tenantId })
     const values = rows[0]?.values
     if (!values?.length) throw new Error(`[triage] enum values for incident.${field} not found in the metamodel`)
     return values
@@ -161,8 +161,8 @@ export async function suggestTriage(input: TriageInput): Promise<TriageSuggestio
   const [similar, impact, severities, categories] = await Promise.all([
     findSimilar(input.tenantId, embedding),
     loadCIImpact(input.tenantId, input.ciIds),
-    loadEnumValues('severity'),
-    loadEnumValues('category'),
+    loadEnumValues('severity', input.tenantId),
+    loadEnumValues('category', input.tenantId),
   ])
 
   const context = {

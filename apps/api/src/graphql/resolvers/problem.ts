@@ -12,7 +12,8 @@ import { logger } from '../../lib/logger.js'
 import type { GraphQLContext } from '../../context.js'
 import { ciLabelPredicate } from '../../lib/ciLabels.js'
 import * as problemService from '../../services/problemService.js'
-import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
+import { validateRequiredFields, propsToFieldValues } from '../../lib/validateRequiredFields.js'
+import { resolvePriorityPatch } from '../../lib/priority.js'
 
 type Props = Record<string, unknown>
 
@@ -172,24 +173,37 @@ async function createProblem(
 
 async function updateProblem(
   _: unknown,
-  args: { id: string; input: { title?: string; description?: string; priority?: string; rootCause?: string; workaround?: string; affectedUsers?: number } },
+  args: { id: string; input: { title?: string; description?: string; priority?: string; impact?: string; urgency?: string; rootCause?: string; workaround?: string; affectedUsers?: number } },
   ctx: GraphQLContext,
 ) {
   const { id, input } = args
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
+    // Validazione sullo stato risultante (persistito + patch), non sulla sola
+    // patch; e priorità = impatto × urgenza mantenuta coerente (vedi
+    // resolvePriorityPatch), come per l'incident.
+    const current = await runQueryOne<{ props: Props }>(session,
+      'MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) AS props',
+      { id, tenantId: ctx.tenantId })
+    if (!current) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     await validateRequiredFields(session, {
       entityType:  'problem',
-      fieldValues: input as Record<string, unknown>,
+      fieldValues: { ...propsToFieldValues(current.props), ...(input as Record<string, unknown>) },
       tenantId:    ctx.tenantId,
     })
+    const prio = resolvePriorityPatch(
+      { impact: current.props['impact'] as string | null, urgency: current.props['urgency'] as string | null },
+      { priority: input.priority, impact: input.impact, urgency: input.urgency },
+    )
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})
       SET p += {
         title:          coalesce($title,        p.title),
         description:    coalesce($description,  p.description),
         priority:       coalesce($priority,     p.priority),
+        impact:         coalesce($impact,       p.impact),
+        urgency:        coalesce($urgency,      p.urgency),
         root_cause:     coalesce($rootCause,    p.root_cause),
         workaround:     coalesce($workaround,   p.workaround),
         affected_users: coalesce($affectedUsers, p.affected_users),
@@ -201,14 +215,16 @@ async function updateProblem(
       tenantId:      ctx.tenantId,
       title:         input.title         ?? null,
       description:   input.description   ?? null,
-      priority:      input.priority      ?? null,
+      priority:      prio.severity,
+      impact:        prio.impact,
+      urgency:       prio.urgency,
       rootCause:     input.rootCause     ?? null,
       workaround:    input.workaround    ?? null,
       affectedUsers: input.affectedUsers ?? null,
       now,
     })
     const row = rows[0]
-    if (!row) throw new GraphQLError('Problem not found')
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     void audit(ctx, 'problem.updated', 'Problem', id)
     return mapProblem(row.props)
   }, true)
@@ -220,10 +236,22 @@ async function deleteProblem(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
+    // Cascata: istanza di workflow, storia degli step e commenti non devono
+    // restare orfani. Row-count: un id inesistente (o di un altro tenant) è
+    // NOT_FOUND, non "true".
+    const res = await session.executeWrite((tx) => tx.run(`
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})
+      OPTIONAL MATCH (p)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(e:WorkflowStepExecution)
+      OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c:ProblemComment)
+      WITH p, collect(DISTINCT wi) AS wis, collect(DISTINCT e) AS execs, collect(DISTINCT c) AS comments
+      FOREACH (x IN execs    | DETACH DELETE x)
+      FOREACH (x IN wis      | DETACH DELETE x)
+      FOREACH (x IN comments | DETACH DELETE x)
       DETACH DELETE p
+      RETURN 1 AS deleted
     `, { id: args.id, tenantId: ctx.tenantId }))
+    if (res.records.length === 0) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     void audit(ctx, 'problem.deleted', 'Problem', args.id)
     return true
   }, true)
@@ -244,7 +272,7 @@ async function linkIncidentToProblem(
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Problem not found')
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     return mapProblem(row.props)
   }, true)
 }
@@ -255,36 +283,17 @@ async function unlinkIncidentFromProblem(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[r:CAUSED_BY]->(i:Incident {id: $incidentId})
+    const res = await session.executeWrite((tx) => tx.run(`
+      MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[r:CAUSED_BY]->(i:Incident {id: $incidentId, tenant_id: $tenantId})
       DELETE r
       SET p.updated_at = $now
+      RETURN 1 AS n
     `, { problemId: args.problemId, incidentId: args.incidentId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
+    if (res.records.length === 0) throw new GraphQLError('Collegamento problem–incident non trovato', { extensions: { code: 'NOT_FOUND' } })
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Problem not found')
-    return mapProblem(row.props)
-  }, true)
-}
-
-async function linkChangeToProblem(
-  _: unknown,
-  args: { problemId: string; changeId: string },
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-      WHERE coalesce(c.deleted, false) = false
-      MERGE (p)-[:RESOLVED_BY]->(c)
-      SET p.updated_at = $now
-    `, { problemId: args.problemId, changeId: args.changeId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
-    const row = await runQueryOne<{ props: Props }>(session, `
-      MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
-    `, { id: args.problemId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Problem not found')
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     return mapProblem(row.props)
   }, true)
 }
@@ -314,7 +323,7 @@ async function addCIToProblem(
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Problem not found')
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     return mapProblem(row.props)
   }, true)
 }
@@ -326,14 +335,14 @@ async function removeCIFromProblem(
 ) {
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
-      MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[r:AFFECTS]->(ci {id: $ciId})
+      MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[r:AFFECTS]->(ci {id: $ciId, tenant_id: $tenantId})
       DELETE r
       SET p.updated_at = $now
     `, { problemId: args.problemId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Problem not found')
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     return mapProblem(row.props)
   }, true)
 }
@@ -356,7 +365,7 @@ async function assignProblemToTeam(
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Problem not found')
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     return mapProblem(row.props)
   }, true)
 }
@@ -391,7 +400,7 @@ async function assignProblemToUser(
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Problem not found')
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     return mapProblem(row.props)
   }, true)
 }
@@ -465,7 +474,7 @@ async function addProblemComment(
       RETURN properties(c) AS cProps, properties(u) AS uProps
     `, { problemId: args.problemId, tenantId: ctx.tenantId, commentId, text: args.text, userId: ctx.userId, now })
     const row = rows[0]
-    if (!row) throw new GraphQLError('Problem not found')
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     return mapProblemComment(row.cProps, row.uProps)
   }, true)
 }
@@ -492,67 +501,6 @@ async function problemAffectedCIs(
       ci['__typename'] = r.label || 'Application'
       return ci
     })
-  })
-}
-
-async function problemRelatedIncidents(
-  parent: { id: string },
-  _: unknown,
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:CAUSED_BY]->(i:Incident)
-      RETURN properties(i) as props
-    `, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => ({
-      id:              r.props['id']          as string,
-      tenantId:        r.props['tenant_id']   as string,
-      title:           r.props['title']       as string,
-      description:     (r.props['description'] ?? null) as string | null,
-      severity:        r.props['severity']    as string,
-      status:          r.props['status']      as string,
-      createdAt:       r.props['created_at']  as string,
-      updatedAt:       r.props['updated_at']  as string,
-      resolvedAt:      (r.props['resolved_at'] ?? null) as string | null,
-      rootCause:       (r.props['root_cause'] ?? null) as string | null,
-      assignee:        null,
-      assignedTeam:    null,
-      affectedCIs:     [],
-      causedByProblem: null,
-      comments:        [],
-    }))
-  })
-}
-
-async function problemRelatedChanges(
-  parent: { id: string },
-  _: unknown,
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {tenant_id: $tenantId})
-      WHERE coalesce(c.deleted, false) = false
-      RETURN properties(c) as props
-    `, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => ({
-      id:             r.props['id']              as string,
-      tenantId:       r.props['tenant_id']       as string,
-      title:          r.props['title']           as string,
-      type:           r.props['type']            as string,
-      status:         r.props['status']          as string,
-      priority:       (r.props['priority']       ?? 'medium') as string,
-      scheduledStart: (r.props['scheduled_start'] ?? null) as string | null,
-      scheduledEnd:   (r.props['scheduled_end']   ?? null) as string | null,
-      implementedAt:  (r.props['implemented_at']  ?? null) as string | null,
-      description:    (r.props['description']    ?? null) as string | null,
-      createdAt:      r.props['created_at']       as string,
-      updatedAt:      r.props['updated_at']       as string,
-      assignedTeam:    null, assignee: null,
-      affectedCIs:     [], relatedIncidents: [],
-      changeTasks:     [], createdBy: null, comments: [],
-    }))
   })
 }
 
@@ -630,7 +578,7 @@ async function problemComments(
   return withSession(async (session) => {
     const rows = await runQuery<{ cProps: Props; uProps: Props | null }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:HAS_COMMENT]->(c:ProblemComment)
-      OPTIONAL MATCH (u:User {id: c.created_by})
+      OPTIONAL MATCH (u:User {id: c.created_by, tenant_id: $tenantId})
       RETURN properties(c) AS cProps, properties(u) AS uProps
       ORDER BY c.created_at ASC
     `, { id: parent.id, tenantId: ctx.tenantId })
@@ -706,7 +654,6 @@ export const problemResolvers = {
     deleteProblem,
     linkIncidentToProblem,
     unlinkIncidentFromProblem,
-    linkChangeToProblem,
     addCIToProblem,
     removeCIFromProblem,
     assignProblemToTeam,
@@ -716,8 +663,6 @@ export const problemResolvers = {
   },
   Problem: {
     affectedCIs:          problemAffectedCIs,
-    relatedIncidents:     problemRelatedIncidents,
-    relatedChanges:       problemRelatedChanges,
     workflowInstance:     problemWorkflowInstance,
     availableTransitions: problemAvailableTransitions,
     workflowHistory:      problemWorkflowHistory,

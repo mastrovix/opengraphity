@@ -13,10 +13,9 @@ import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { priorityCode } from '@/lib/priority'
-import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES, GET_INCIDENTS, GET_PROBLEMS, GET_CHANGES } from '@/graphql/queries'
+import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT, LINK_RELATED_TICKET, UNLINK_RELATED_TICKET, LINK_INCIDENT_TO_PROBLEM, UNLINK_INCIDENT_FROM_PROBLEM, LINK_RESOLVED_TICKET, UNLINK_RESOLVED_TICKET } from '@/graphql/mutations'
-import { type LinkedTicketItem } from '@/components/LinkedTicketSection'
-import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
+import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
 import { IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, derivePriority, priorityCode as prioCode } from '@/lib/priority'
 import { Pencil } from 'lucide-react'
@@ -164,16 +163,8 @@ export function IncidentDetailPage() {
     GET_INCIDENT,
     { variables: { id }, skip: !id },
   )
-  // ── Ticket collegati (incident / problem / change) ─────────────────────────
-  const [relIncSearch, setRelIncSearch] = useState('')
-  const [relProbSearch, setRelProbSearch] = useState('')
-  const [relChgSearch, setRelChgSearch] = useState('')
-  const { data: relIncData } = useQuery<{ incidents: { items: LinkedTicketItem[] } }>(GET_INCIDENTS, { variables: { limit: 50 } })
-  const { data: relProbData } = useQuery<{ problems: { items: LinkedTicketItem[] } }>(GET_PROBLEMS, { variables: { search: relProbSearch || undefined, limit: 20 } })
-  const { data: relChgData } = useQuery<{ changes: { items: { id: string; code: string; title: string; approvalStatus?: string | null }[] } }>(GET_CHANGES, { variables: { search: relChgSearch || undefined, limit: 20 } })
-  const relIncResults = (relIncData?.incidents?.items ?? []).filter((r) => r.id !== id && (relIncSearch.trim() === '' || `${r.number} ${r.title}`.toLowerCase().includes(relIncSearch.toLowerCase())))
-  const relProbResults = relProbData?.problems?.items ?? []
-  const relChgResults = (relChgData?.changes?.items ?? []).map((c) => ({ id: c.id, number: c.code, title: c.title, status: c.approvalStatus ?? '' }))
+  // ── Ticket collegati (incident / problem / change): la ricerca vive in
+  //    UnifiedLinkedTickets (query lazy per tab) ────────────────────────────
   const linkOpts = { onError: (e: { message: string }) => toast.error(e.message), onCompleted: () => { void refetch() } }
   const [linkRelated]    = useMutation(LINK_RELATED_TICKET, linkOpts)
   const [unlinkRelated]  = useMutation(UNLINK_RELATED_TICKET, linkOpts)
@@ -216,7 +207,11 @@ export function IncidentDetailPage() {
     onError: (err) => toast.error(err.message),
   })
 
-  const [setMajor, { loading: settingMajor }] = useMutation(SET_INCIDENT_MAJOR, { refetchQueries: ['GetIncident'] })
+  const [setMajor, { loading: settingMajor }] = useMutation(SET_INCIDENT_MAJOR, {
+    refetchQueries: ['GetIncident'],
+    onCompleted: () => toast.success('Stato Major Incident aggiornato'),
+    onError: (e) => toast.error(e.message),
+  })
 
   const [editOpen, setEditOpen] = useState(false)
   const [pathModal, setPathModal] = useState<ImpactedApp | null>(null)
@@ -237,7 +232,8 @@ export function IncidentDetailPage() {
       if (incidentId) {
         void assignToUser({ variables: { id: incidentId, userId: null } })
           .then(() => { setAwaitingUserAssign(true); void refetch() })
-          .catch(() => { setAwaitingUserAssign(true); void refetch() })
+          // Un un-assign fallito NON è "in attesa di utente": va detto.
+          .catch((e: { message?: string }) => { toast.error(e.message ?? 'Rimozione assegnatario non riuscita'); void refetch() })
       } else {
         setAwaitingUserAssign(true)
         void refetch()
@@ -655,25 +651,23 @@ export function IncidentDetailPage() {
           {/* Ticket collegati (sezione unica, stile change) */}
           <UnifiedLinkedTickets
             title="Ticket collegati"
+            excludeId={incident.id}
             types={[
               {
                 kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
                 items: incident.linkedIncidents ?? [],
-                searchResults: relIncResults, searchTerm: relIncSearch, onSearchTerm: setRelIncSearch,
                 onLink: (otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
                 onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
               },
               {
                 kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
                 items: incident.linkedProblems ?? [],
-                searchResults: relProbResults, searchTerm: relProbSearch, onSearchTerm: setRelProbSearch,
                 onLink: (problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } }),
                 onUnlink: (problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } }),
               },
               {
                 kind: 'CHANGE', label: 'Change', routeBase: '/changes',
                 items: incident.linkedChanges ?? [],
-                searchResults: relChgResults, searchTerm: relChgSearch, onSearchTerm: setRelChgSearch,
                 onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
                 onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
               },
@@ -804,8 +798,10 @@ export function IncidentDetailPage() {
               Annulla
             </button>
             <button
+              type="button"
+              disabled={transitioning || transitionNotes.trim().length < 10}
               onClick={() => {
-                if (transitionNotes.trim().length < 10) return
+                if (transitionNotes.trim().length < 10) { setNotesError('Minimo 10 caratteri'); return }
                 if (!incident?.workflowInstance?.id) { toast.error('WorkflowInstance non trovato'); return }
                 if (!pendingTransition?.toStep) { toast.error('Transizione non selezionata'); return }
                 void execTransition({

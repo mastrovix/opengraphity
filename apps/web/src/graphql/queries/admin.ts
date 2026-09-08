@@ -479,34 +479,6 @@ export const WHAT_IF_ANALYSIS = gql`
   }
 `
 
-// ── Change Calendar ────────────────────────────────────────────────────────
-
-export const CHANGE_CALENDAR_EVENTS = gql`
-  query ChangeCalendarEvents($from: String!, $to: String!) {
-    changeCalendarEvents(from: $from, to: $to) {
-      id title changeType status riskLevel scheduledStart scheduledEnd duration ciNames teamName requiresDowntime color
-    }
-  }
-`
-
-export const CHANGE_CALENDAR_CONFLICTS = gql`
-  query ChangeCalendarConflicts($from: String!, $to: String!) {
-    changeCalendarConflicts(from: $from, to: $to) {
-      changeA { id title changeType scheduledStart scheduledEnd }
-      changeB { id title changeType scheduledStart scheduledEnd }
-      sharedCIs overlapStart overlapEnd
-    }
-  }
-`
-
-export const CHANGE_CALENDAR_SUGGESTED_SLOTS = gql`
-  query ChangeCalendarSuggestedSlots($duration: Int!, $ciIds: [ID!], $from: String!, $to: String!) {
-    changeCalendarSuggestedSlots(duration: $duration, ciIds: $ciIds, from: $from, to: $to) {
-      start end score reason
-    }
-  }
-`
-
 // ── Service Catalog (admin) ──────────────────────────────────────────────────
 
 export const GET_SERVICE_CATALOG_ADMIN = gql`

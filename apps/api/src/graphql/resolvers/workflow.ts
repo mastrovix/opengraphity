@@ -16,6 +16,7 @@ import {
   incidentWorkflowHistoryField,
   changeWorkflowInstance,
   changeAvailableTransitionsField,
+  changeWorkflowHistoryField,
 } from './workflowQueries.js'
 import {
   updateWorkflowStep,
@@ -154,6 +155,9 @@ export const workflowResolvers = {
   Change: {
     workflowInstance:     changeWorkflowInstance,
     availableTransitions: changeAvailableTransitionsField,
+    // Dichiarato nello SDL ma mai registrato: qualunque query lo chiedesse
+    // falliva con "Cannot return null for non-nullable field".
+    workflowHistory:      changeWorkflowHistoryField,
   },
   ServiceRequest: {
     workflowInstance:     serviceRequestWorkflowInstance,

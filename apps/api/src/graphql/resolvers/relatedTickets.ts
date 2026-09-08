@@ -40,10 +40,14 @@ export async function linkRelatedTicket(_: unknown, args: { entityType: string; 
 export async function unlinkRelatedTicket(_: unknown, args: { entityType: string; entityId: string; otherId: string }, ctx: GraphQLContext) {
   const label = labelOf(args.entityType)
   await withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
+    const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:${label} {id: $entityId, tenant_id: $tenantId})-[r:RELATED_TO]-(b:${label} {id: $otherId, tenant_id: $tenantId})
       DELETE r
+      RETURN count(r) AS n
     `, { entityId: args.entityId, otherId: args.otherId, tenantId: ctx.tenantId }))
+    const n = Number(res.records[0]?.get('n') ?? 0)
+    // Fail-loud: un id sbagliato o un link già rimosso non è "successo".
+    if (n === 0) throw new GraphQLError('Collegamento non trovato', { extensions: { code: 'NOT_FOUND' } })
   }, true)
   return true
 }
@@ -63,7 +67,7 @@ async function query(cypher: string, params: Record<string, unknown>): Promise<R
 // (CAUSED_BY entrante), change che lo risolvono (RESOLVED_BY).
 export function incidentRelatedIncidents(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return query(`
-    MATCH (i:Incident {id: $id, tenant_id: $t})-[:RELATED_TO]-(o:Incident)
+    MATCH (i:Incident {id: $id, tenant_id: $t})-[:RELATED_TO]-(o:Incident {tenant_id: $t})
     RETURN o.id AS id, o.number AS number, o.title AS title, o.status AS status, o.severity AS severity
     ORDER BY o.created_at DESC
   `, { id: parent.id, t: ctx.tenantId })
@@ -77,7 +81,7 @@ export function incidentRelatedProblems(parent: { id: string }, _: unknown, ctx:
 }
 export function incidentRelatedChanges(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return query(`
-    MATCH (i:Incident {id: $id, tenant_id: $t})-[rel:RESOLVED_BY]->(c:Change)
+    MATCH (i:Incident {id: $id, tenant_id: $t})-[rel:RESOLVED_BY]->(c:Change {tenant_id: $t})
     WHERE coalesce(c.deleted, false) = false
     RETURN c.id AS id, c.code AS number, c.title AS title, coalesce(c.approval_status,'') AS status, (NOT coalesce(rel.auto, false)) AS removable
     ORDER BY c.created_at DESC
@@ -88,21 +92,21 @@ export function incidentRelatedChanges(parent: { id: string }, _: unknown, ctx: 
 // change che lo risolvono (RESOLVED_BY). Shape uniforme LinkedTicketRef.
 export function problemLinkedIncidents(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return query(`
-    MATCH (p:Problem {id: $id, tenant_id: $t})-[:CAUSED_BY]->(i:Incident)
+    MATCH (p:Problem {id: $id, tenant_id: $t})-[:CAUSED_BY]->(i:Incident {tenant_id: $t})
     RETURN i.id AS id, i.number AS number, i.title AS title, i.status AS status, i.severity AS severity
     ORDER BY i.created_at DESC
   `, { id: parent.id, t: ctx.tenantId })
 }
 export function problemRelatedProblems(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return query(`
-    MATCH (p:Problem {id: $id, tenant_id: $t})-[:RELATED_TO]-(o:Problem)
+    MATCH (p:Problem {id: $id, tenant_id: $t})-[:RELATED_TO]-(o:Problem {tenant_id: $t})
     RETURN o.id AS id, o.number AS number, o.title AS title, o.status AS status, o.priority AS priority
     ORDER BY o.created_at DESC
   `, { id: parent.id, t: ctx.tenantId })
 }
 export function problemLinkedChanges(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   return query(`
-    MATCH (p:Problem {id: $id, tenant_id: $t})-[rel:RESOLVED_BY]->(c:Change)
+    MATCH (p:Problem {id: $id, tenant_id: $t})-[rel:RESOLVED_BY]->(c:Change {tenant_id: $t})
     WHERE coalesce(c.deleted, false) = false
     RETURN c.id AS id, c.code AS number, c.title AS title, coalesce(c.approval_status,'') AS status, (NOT coalesce(rel.auto, false)) AS removable
     ORDER BY c.created_at DESC

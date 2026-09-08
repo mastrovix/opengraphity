@@ -21,7 +21,7 @@ export const UNLINK_RELATED_TICKET = gql`
 export const LINK_INCIDENT_TO_PROBLEM = gql`
   mutation LinkIncidentToProblem($problemId: ID!, $incidentId: ID!) {
     linkIncidentToProblem(problemId: $problemId, incidentId: $incidentId) {
-      id relatedIncidents { id title status severity }
+      id linkedIncidents { id number title status removable }
     }
   }
 `
@@ -29,16 +29,14 @@ export const LINK_INCIDENT_TO_PROBLEM = gql`
 export const UNLINK_INCIDENT_FROM_PROBLEM = gql`
   mutation UnlinkIncidentFromProblem($problemId: ID!, $incidentId: ID!) {
     unlinkIncidentFromProblem(problemId: $problemId, incidentId: $incidentId) {
-      id relatedIncidents { id title status severity }
+      id linkedIncidents { id number title status removable }
     }
   }
 `
 
-export const LINK_CHANGE_TO_PROBLEM = gql`
-  mutation LinkChangeToProblem($problemId: ID!, $changeId: ID!) {
-    linkChangeToProblem(problemId: $problemId, changeId: $changeId) {
-      id relatedChanges { id title type status }
-    }
+export const CREATE_PROBLEM = gql`
+  mutation CreateProblem($input: CreateProblemInput!) {
+    createProblem(input: $input) { id title }
   }
 `
 

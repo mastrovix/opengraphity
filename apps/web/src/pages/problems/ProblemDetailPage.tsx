@@ -10,12 +10,12 @@ import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_INCIDENTS, GET_CHANGES, GET_PROBLEMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import {
   UPDATE_PROBLEM,
   LINK_INCIDENT_TO_PROBLEM,
   UNLINK_INCIDENT_FROM_PROBLEM,
-  LINK_CHANGE_TO_PROBLEM,
+  LINK_RESOLVED_TICKET,
   LINK_RELATED_TICKET,
   UNLINK_RELATED_TICKET,
   UNLINK_RESOLVED_TICKET,
@@ -30,8 +30,7 @@ import {
 import { ProblemHeader } from './ProblemHeader'
 import { ProblemTimeline } from './ProblemTimeline'
 import { ProblemCIList } from './ProblemLinkedEntities'
-import { type LinkedTicketItem } from '@/components/LinkedTicketSection'
-import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
+import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
 import { WatcherBar } from '@/components/WatcherBar'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
@@ -138,10 +137,6 @@ export function ProblemDetailPage() {
 
   const [ciSearch,      setCiSearch]      = useState('')
   const [showCISearch,  setShowCISearch]  = useState(false)
-  const [relProbSearch, setRelProbSearch] = useState('')
-
-  const [incidentSearch,     setIncidentSearch]     = useState('')
-  const [changeSearch,     setChangeSearch]     = useState('')
 
   const [editRootCause,     setEditRootCause]     = useState<string | null>(null)
   const [editWorkaround,    setEditWorkaround]    = useState<string | null>(null)
@@ -168,16 +163,6 @@ export function ProblemDetailPage() {
   const { data: ciSearchData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
     variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
     skip: ciSearch.length < 2 || ciRulesData === undefined,
-  })
-
-  const { data: relIncData } = useQuery<{ incidents: { items: LinkedTicketItem[] } }>(GET_INCIDENTS, {
-    variables: { limit: 50 },
-  })
-  const { data: relProbData } = useQuery<{ problems: { items: LinkedTicketItem[] } }>(GET_PROBLEMS, {
-    variables: { search: relProbSearch || undefined, limit: 20 },
-  })
-  const { data: relChgData } = useQuery<{ changes: { items: { id: string; code: string; title: string; approvalStatus?: string | null }[] } }>(GET_CHANGES, {
-    variables: { search: changeSearch || undefined, limit: 20 },
   })
 
   const [updateProblem] = useMutation(UPDATE_PROBLEM, {
@@ -216,7 +201,7 @@ export function ProblemDetailPage() {
   })
 
   const [linkIncident] = useMutation(LINK_INCIDENT_TO_PROBLEM, {
-    onCompleted: () => { toast.success('Incident collegato'); setIncidentSearch(''); void refetch() },
+    onCompleted: () => { toast.success('Incident collegato'); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -225,8 +210,11 @@ export function ProblemDetailPage() {
     onError: (err) => toast.error(err.message),
   })
 
-  const [linkChange] = useMutation(LINK_CHANGE_TO_PROBLEM, {
-    onCompleted: () => { toast.success('Change collegata'); setChangeSearch(''); void refetch() },
+  // Collegamento change: stesso percorso dell'incident (linkResolvedTicket),
+  // niente più linkChangeToProblem (doppione che non marcava auto e non
+  // filtrava le change eliminate).
+  const [linkResolved] = useMutation(LINK_RESOLVED_TICKET, {
+    onCompleted: () => { toast.success('Change collegata'); void refetch() },
     onError: (err) => toast.error(err.message),
   })
   const relLinkOpts = { onError: (e: { message: string }) => toast.error(e.message), onCompleted: () => { void refetch() } }
@@ -249,9 +237,6 @@ export function ProblemDetailPage() {
   const teams           = teamsData?.teams ?? []
   const ciRules         = ciRulesData?.itilCIRelationRules ?? []
   const ciResults       = ciSearchData?.allCIs?.items ?? []
-  const relIncResults = (relIncData?.incidents?.items ?? []).filter((r) => r.id !== id && (incidentSearch.trim() === '' || `${r.number} ${r.title}`.toLowerCase().includes(incidentSearch.toLowerCase())))
-  const relProbResults = relProbData?.problems?.items ?? []
-  const relChgResults = (relChgData?.changes?.items ?? []).map((c) => ({ id: c.id, number: c.code, title: c.title, status: c.approvalStatus ?? '' }))
 
   function handleTransitionClick(tr: WorkflowTransition) {
     // "Richiedi Change": non è una semplice transizione — apre la creazione di
@@ -523,26 +508,24 @@ export function ProblemDetailPage() {
           {/* Ticket collegati (sezione unica, stile change) */}
           <UnifiedLinkedTickets
             title="Ticket collegati"
+            excludeId={problem.id}
             types={[
               {
                 kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
                 items: problem.linkedIncidents ?? [],
-                searchResults: relIncResults, searchTerm: incidentSearch, onSearchTerm: setIncidentSearch,
                 onLink: (incidentId) => void linkIncident({ variables: { problemId: problem.id, incidentId } }),
                 onUnlink: (incidentId) => void unlinkIncident({ variables: { problemId: problem.id, incidentId } }),
               },
               {
                 kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
                 items: problem.linkedProblems ?? [],
-                searchResults: relProbResults, searchTerm: relProbSearch, onSearchTerm: setRelProbSearch,
                 onLink: (otherId) => void linkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
                 onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
               },
               {
                 kind: 'CHANGE', label: 'Change', routeBase: '/changes',
                 items: problem.linkedChanges ?? [],
-                searchResults: relChgResults, searchTerm: changeSearch, onSearchTerm: setChangeSearch,
-                onLink: (changeId) => void linkChange({ variables: { problemId: problem.id, changeId } }),
+                onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
                 onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
               },
             ]}
@@ -630,6 +613,7 @@ export function ProblemDetailPage() {
                 Annulla
               </Button>
               <Button
+                disabled={transitioning || transitionNotes.trim().length < 10}
                 onClick={() => {
                   if (transitionNotes.trim().length < 10) { toast.error('Note troppo brevi (minimo 10 caratteri)'); return }
                   void execTransition({ variables: { problemId: problem.id, toStep: pendingTransition.toStep, notes: transitionNotes.trim() } })

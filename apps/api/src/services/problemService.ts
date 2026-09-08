@@ -97,6 +97,13 @@ export async function createProblem(
       status: initialStatus, now,
     })
     if (!rows[0]) throw new Error('Failed to create problem')
+    // Autore (Problem.createdBy): prima nessuno scriveva CREATED_BY e il campo
+    // era sempre null.
+    await runQuery(session, `
+      MATCH (p:Problem {id: $id, tenant_id: $tenantId})
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      MERGE (p)-[:CREATED_BY]->(u)
+    `, { id, tenantId: ctx.tenantId, userId: ctx.userId })
     return rows[0].props
   }, true)
 

@@ -8,17 +8,17 @@
  * (e.g. which modal is open inside a row).
  */
 import { useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
-import { ChevronRight, FileDown, Loader2, Plus, PlusCircle, X, CheckCircle, XCircle, Lock, Trash2 } from 'lucide-react'
+import { ChevronRight, FileDown, Loader2, Plus, PlusCircle, X, CheckCircle, XCircle, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { downloadPdf } from '@/lib/downloadPdf'
 import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { FieldLabel, Input } from '@/components/ui/FormControls'
+import { FieldLabel } from '@/components/ui/FormControls'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
@@ -28,8 +28,6 @@ import {
   GET_CHANGE_AUDIT_TRAIL,
   GET_CHANGE_IMPACTED_CIS,
   GET_ME,
-  GET_INCIDENTS,
-  GET_PROBLEMS,
 } from '@/graphql/queries'
 import {
   EXECUTE_CHANGE_TRANSITION,
@@ -50,6 +48,7 @@ import { CITasksTable } from './components/CITasksTable'
 import { AuditTimeline } from './components/AuditTimeline'
 import { AddCIModal } from './components/AddCIModal'
 import { fmtShort, fmtDate } from './components/shared'
+import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 
 interface ImpactedCIRow {
   ci: { id: string; name: string; type: string | null; environment: string | null }
@@ -103,23 +102,16 @@ export function ChangeDetailPage() {
   const [reopenMode, setReopenMode] = useState<'all' | 'some'>('all')
   const [reopenIds, setReopenIds] = useState<Set<string>>(new Set())
 
-  // ── Collegamento ticket (Ticket collegati) ─────────────────────────────────
-  const [showLinkTicket, setShowLinkTicket] = useState(false)
-  const [linkType, setLinkType] = useState<'incident' | 'problem'>('incident')
-  const [ticketSearch, setTicketSearch] = useState('')
+  // ── Ticket collegati: UnifiedLinkedTickets (stessa sezione di incident e
+  //    problem; la ricerca vive nel componente). Link/unlink aggiornano anche
+  //    l'audit trail.
   const [linkTicket] = useMutation(LINK_RESOLVED_TICKET, {
-    onCompleted: async () => { toast.success('Ticket collegato'); await refetchChange() },
+    onCompleted: async () => { toast.success('Ticket collegato'); await refetchAll() },
     onError: (e) => toast.error(e.message),
   })
   const [unlinkTicket] = useMutation(UNLINK_RESOLVED_TICKET, {
-    onCompleted: async () => { toast.success('Ticket scollegato'); await refetchChange() },
+    onCompleted: async () => { toast.success('Ticket scollegato'); await refetchAll() },
     onError: (e) => toast.error(e.message),
-  })
-  const { data: incSearchData } = useQuery<{ incidents: { items: { id: string; number: string; title: string }[] } }>(GET_INCIDENTS, {
-    variables: { limit: 50 }, skip: !showLinkTicket || linkType !== 'incident',
-  })
-  const { data: probSearchData } = useQuery<{ problems: { items: { id: string; number: string; title: string }[] } }>(GET_PROBLEMS, {
-    variables: { search: ticketSearch || undefined, limit: 20 }, skip: !showLinkTicket || linkType !== 'problem',
   })
 
   const change = changeData?.change
@@ -314,89 +306,23 @@ export function ChangeDetailPage() {
         )
       })()}
 
-      {(() => {
-        const linked = [
-          ...(change.resolvesProblems ?? []).map((p) => ({ kind: 'PROBLEM' as const, to: `/problems/${p.id}`, entityType: 'problem' as const, ...p })),
-          ...(change.resolvesIncidents ?? []).map((i) => ({ kind: 'INCIDENT' as const, to: `/incidents/${i.id}`, entityType: 'incident' as const, ...i })),
-        ]
-        const linkedIds = new Set(linked.map((l) => l.id))
-        const rawResults = linkType === 'incident' ? (incSearchData?.incidents?.items ?? []) : (probSearchData?.problems?.items ?? [])
-        const results = rawResults
-          .filter((r) => !linkedIds.has(r.id))
-          .filter((r) => ticketSearch.trim() === '' || `${r.number} ${r.title}`.toLowerCase().includes(ticketSearch.toLowerCase()))
-          .slice(0, 10)
-        return (
-          <SectionCard title="Ticket collegati" count={linked.length} collapsible>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-              <button type="button" onClick={() => { setShowLinkTicket((s) => !s); setTicketSearch('') }}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)', color: 'var(--color-brand)', background: 'transparent', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer' }}>
-                <Plus size={12} /> {showLinkTicket ? 'Chiudi' : 'Collega ticket'}
-              </button>
-            </div>
-
-            {showLinkTicket && (
-              <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  {(['incident', 'problem'] as const).map((tp) => (
-                    <button key={tp} type="button" onClick={() => { setLinkType(tp); setTicketSearch('') }}
-                      style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'capitalize', background: linkType === tp ? 'var(--color-brand)' : 'transparent', color: linkType === tp ? '#fff' : 'var(--color-slate)' }}>
-                      {tp === 'incident' ? 'Incident' : 'Problem'}
-                    </button>
-                  ))}
-                </div>
-                <Input type="text" value={ticketSearch} onChange={(e) => setTicketSearch(e.target.value)} placeholder={`Cerca ${linkType === 'incident' ? 'incident' : 'problem'} per numero o titolo...`} autoFocus
-                  style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', width: '100%', boxSizing: 'border-box' }} />
-                <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
-                  {results.length === 0 ? (
-                    <p style={{ margin: '4px 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>Nessun risultato.</p>
-                  ) : results.map((r) => (
-                    <div key={r.id} onClick={() => void linkTicket({ variables: { changeId, entityType: linkType, entityId: r.id } })}
-                      className="hover-bg" style={{ padding: '8px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--border)', fontSize: 'var(--font-size-body)', ['--hover-bg' as string]: 'var(--surface-2)' }}>
-                      <span style={{ fontWeight: 600, color: 'var(--color-brand)' }}>{r.number}</span>
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
-                      <Plus size={14} color="var(--color-brand)" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {linked.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun ticket collegato.</p>
-            ) : (<>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
-              <span style={{ width: 90 }}>Tipo</span>
-              <span style={{ width: 130 }}>Numero</span>
-              <span style={{ flex: 1 }}>Titolo</span>
-              <span style={{ width: 120 }}>Stato</span>
-              <span style={{ width: 30 }} />
-            </div>
-            {linked.map((r) => (
-              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}>
-                <span style={{ width: 90 }}>
-                  <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: '#fff', background: r.kind === 'PROBLEM' ? 'var(--color-slate)' : 'var(--color-trigger-sla-breach)', borderRadius: 4, padding: '2px 6px' }}>{r.kind}</span>
-                </span>
-                <span style={{ width: 130 }}><Link to={r.to} style={{ fontWeight: 600, color: 'var(--color-brand)', textDecoration: 'none' }}>{r.number}</Link></span>
-                <span style={{ flex: 1, color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
-                <span style={{ width: 120, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{r.status.replace(/_/g, ' ')}</span>
-                <span style={{ width: 30, display: 'flex', justifyContent: 'flex-end' }}>
-                  {r.removable === false ? (
-                    <span title="Collegamento automatico: si rimuove solo eliminando la change" style={{ padding: 2, color: 'var(--color-slate-light)', display: 'inline-flex' }}>
-                      <Lock size={12} />
-                    </span>
-                  ) : (
-                    <button type="button" title="Scollega" onClick={() => void unlinkTicket({ variables: { changeId, entityType: r.entityType, entityId: r.id } })}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--color-slate-light)' }}>
-                      <X size={14} />
-                    </button>
-                  )}
-                </span>
-              </div>
-            ))}
-            </>)}
-          </SectionCard>
-        )
-      })()}
+      <UnifiedLinkedTickets
+        title="Ticket collegati"
+        types={[
+          {
+            kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
+            items: change.resolvesProblems ?? [],
+            onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
+            onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
+          },
+          {
+            kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
+            items: change.resolvesIncidents ?? [],
+            onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
+            onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
+          },
+        ]}
+      />
 
       {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
         <SectionCard title="Prossimi Step" collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>

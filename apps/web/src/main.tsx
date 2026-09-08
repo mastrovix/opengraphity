@@ -105,6 +105,14 @@ function RouteError() {
   )
 }
 
+// Le pagine di dettaglio sono keyate su :id: navigando ticket → ticket (link
+// "Ticket collegati") il componente viene rimontato, così stato locale (commento
+// a metà, form di riassegnazione aperto) non migra su un altro ticket.
+function Keyed({ Page }: { Page: React.ComponentType }) {
+  const { id } = useParams()
+  return <Page key={id} />
+}
+
 const router = createBrowserRouter([
   {
     path:         '/',
@@ -115,13 +123,13 @@ const router = createBrowserRouter([
       { path: 'dashboard',         element: <DashboardPage />,           errorElement: <RouteError /> },
       { path: 'incidents',         element: <IncidentListPage />,        errorElement: <RouteError /> },
       { path: 'incidents/new',     element: <CreateIncidentPage />,      errorElement: <RouteError /> },
-      { path: 'incidents/:id',     element: <IncidentDetailPage />,      errorElement: <RouteError /> },
+      { path: 'incidents/:id',     element: <Keyed Page={IncidentDetailPage} />,      errorElement: <RouteError /> },
       { path: 'problems',          element: <ProblemListPage />,         errorElement: <RouteError /> },
       { path: 'problems/new',      element: <CreateProblemPage />,       errorElement: <RouteError /> },
-      { path: 'problems/:id',      element: <ProblemDetailPage />,       errorElement: <RouteError /> },
+      { path: 'problems/:id',      element: <Keyed Page={ProblemDetailPage} />,       errorElement: <RouteError /> },
       { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
       { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },
-      { path: 'changes/:id',       element: <ChangeDetailPage />,        errorElement: <RouteError /> },
+      { path: 'changes/:id',       element: <Keyed Page={ChangeDetailPage} />,        errorElement: <RouteError /> },
       { path: 'tasks/:taskId',     element: <TaskViewPage />,            errorElement: <RouteError /> },
       { path: 'my-tasks',          element: <MyTasksPage />,             errorElement: <RouteError /> },
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },

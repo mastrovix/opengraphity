@@ -278,7 +278,7 @@ export async function assignIncidentToTeam(
     `, { id, teamId, tenantId: ctx.tenantId, now }))
 
     const teamResult = await session.executeRead((tx) =>
-      tx.run('MATCH (t:Team {id: $id}) RETURN t.name AS name', { id: teamId }),
+      tx.run('MATCH (t:Team {id: $id, tenant_id: $tenantId}) RETURN t.name AS name', { id: teamId, tenantId: ctx.tenantId }),
     )
     const teamName = (teamResult.records[0]?.get('name') as string | null) ?? teamId
     const transitionNotes = `Riassegnato al team ${teamName}`
@@ -392,7 +392,7 @@ export async function assignIncidentToUser(
     `, { id, userId, tenantId: ctx.tenantId, now }))
 
     const userResult = await session.executeRead((tx) =>
-      tx.run('MATCH (u:User {id: $id}) RETURN u.name AS name', { id: userId }),
+      tx.run('MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name', { id: userId, tenantId: ctx.tenantId }),
     )
     const userName = (userResult.records[0]?.get('name') as string | null) ?? userId
 

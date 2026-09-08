@@ -6,19 +6,7 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
-import { gql } from '@apollo/client'
-
-const CREATE_PROBLEM = gql`
-  mutation CreateProblem($input: CreateProblemInput!) {
-    createProblem(input: $input) { id title }
-  }
-`
-
-const ASSIGN_PROBLEM_TO_TEAM = gql`
-  mutation AssignProblemToTeam($problemId: ID!, $teamId: ID!) {
-    assignProblemToTeam(problemId: $problemId, teamId: $teamId) { id }
-  }
-`
+import { CREATE_PROBLEM, ASSIGN_PROBLEM_TO_TEAM } from '@/graphql/mutations'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }

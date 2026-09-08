@@ -212,7 +212,6 @@ export function buildBaseSDL(): string {
     deleteProblem(id: ID!): Boolean!
     linkIncidentToProblem(problemId: ID!, incidentId: ID!): Problem!
     unlinkIncidentFromProblem(problemId: ID!, incidentId: ID!): Problem!
-    linkChangeToProblem(problemId: ID!, changeId: ID!): Problem!
     # Collega/scollega ticket dello stesso tipo (RELATED_TO). entityType: incident|problem.
     linkRelatedTicket(entityType: String!, entityId: ID!, otherId: ID!): Boolean!
     unlinkRelatedTicket(entityType: String!, entityId: ID!, otherId: ID!): Boolean!

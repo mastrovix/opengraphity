@@ -10,7 +10,6 @@ export const GET_PROBLEMS = gql`
         assignee { id name }
         assignedTeam { id name }
         affectedCIs { id name type }
-        relatedIncidents { id title status }
       }
     }
   }
@@ -26,8 +25,6 @@ export const GET_PROBLEM = gql`
       assignee { id name email }
       assignedTeam { id name }
       affectedCIs { id name type status environment }
-      relatedIncidents { id title status severity createdAt }
-      relatedChanges { id title changeType workflowInstance { currentStep } }
       workflowInstance { id currentStep status }
       linkedIncidents { id number title status removable }
       linkedProblems { id number title status removable }

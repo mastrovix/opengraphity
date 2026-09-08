@@ -6,6 +6,10 @@ import { CountBadge } from '@/components/ui/CountBadge'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { ciPath } from '@/lib/ciPath'
 
+// NB: le sezioni "incident correlati" e "change correlate" che vivevano qui
+// sono state sostituite da UnifiedLinkedTickets (ticket collegati per tipo).
+// Resta solo la lista dei CI impattati.
+
 interface CIRef {
   id:          string
   name:        string
@@ -20,22 +24,6 @@ interface CIRelationRule {
   relationType: string
   direction:    string
   description:  string | null
-}
-
-interface IncidentRef {
-  id:        string
-  title:     string
-  status:    string
-  severity:  string
-  createdAt: string
-}
-
-interface ChangeRef {
-  id:             string
-  title:          string
-  type:           string
-  status:         string
-  scheduledStart: string | null
 }
 
 function groupByField<T>(items: T[], key: keyof T): Record<string, T[]> {
@@ -109,7 +97,7 @@ export function ProblemCIList({
           <CountBadge count={affectedCIs.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
+          <button type="button" onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
             {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
           </button>
           {ciOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
@@ -145,7 +133,7 @@ export function ProblemCIList({
                             {relTypes.length === 1 && (
                               <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: 'var(--color-info-bg)', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
                             )}
-                            <button onClick={() => handleAdd(ci)}
+                            <button type="button" onClick={() => handleAdd(ci)}
                               style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>+</button>
                           </div>
                         </div>
@@ -165,181 +153,10 @@ export function ProblemCIList({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {cis.map((ci) => (
                       <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
-                        <button onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
+                        <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
                         <MicroBadge>{ci.status}</MicroBadge>
                         <MicroBadge>{ci.environment}</MicroBadge>
-                        <button onClick={() => onRemoveCI(ci.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleGroup>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Incident Correlati ────────────────────────────────────────────────────────
-
-interface ProblemIncidentListProps {
-  problemId:         string
-  relatedIncidents:  IncidentRef[]
-  incidentsOpen:     boolean
-  showIncidentSearch: boolean
-  incidentSearch:    string
-  incidentResults:   IncidentRef[]
-  onToggle:          () => void
-  onToggleSearch:    (e: React.MouseEvent) => void
-  onSearchChange:    (value: string) => void
-  onLink:            (incidentId: string) => void
-  onUnlink:          (incidentId: string) => void
-}
-
-export function ProblemIncidentList({
-  problemId: _problemId,
-  relatedIncidents,
-  incidentsOpen,
-  showIncidentSearch,
-  incidentSearch,
-  incidentResults,
-  onToggle,
-  onToggleSearch,
-  onSearchChange,
-  onLink,
-  onUnlink,
-}: ProblemIncidentListProps) {
-  const navigate = useNavigate()
-
-  return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: incidentsOpen ? '1px solid #e5e7eb' : 'none', background: incidentsOpen ? '#0ea5e9' : undefined }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: incidentsOpen ? '#fff' : 'var(--color-slate-dark)' }}>Incident Correlati</span>
-          <CountBadge count={relatedIncidents.length} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
-            {showIncidentSearch ? 'Chiudi' : '+ Collega Incident'}
-          </button>
-          {incidentsOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-        </div>
-      </div>
-      {incidentsOpen && (
-        <div style={{ padding: '16px 20px 20px' }}>
-          {showIncidentSearch && (
-            <div style={{ marginBottom: 12 }}>
-              <Input type="text" value={incidentSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Filtra incident per titolo..." autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
-              {incidentResults.length > 0 && (
-                <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                  {incidentResults.filter((i) => !relatedIncidents.find((r) => r.id === i.id) && (incidentSearch.length < 2 || i.title.toLowerCase().includes(incidentSearch.toLowerCase()))).map((inc) => (
-                    <div key={inc.id} onClick={() => onLink(inc.id)} className="hover-bg" style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', ['--hover-bg' as string]: 'var(--surface-2)' }}>
-                      <span style={{ fontWeight: 500 }}>{inc.title}</span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>{inc.status}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {relatedIncidents.length === 0 ? (
-            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessun incident correlato.</p>
-          ) : (
-            <div>
-              {Object.entries(groupByField(relatedIncidents, 'status')).map(([status, incidents]) => (
-                <CollapsibleGroup key={status} title={status.replace(/_/g, ' ')} count={incidents.length}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {incidents.map((inc) => (
-                      <div key={inc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                        <button onClick={() => navigate(`/incidents/${inc.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{inc.title}</button>
-                        <MicroBadge>{inc.severity}</MicroBadge>
-                        <button onClick={() => onUnlink(inc.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 'auto' }} title="Scollega"><X size={14} /></button>
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleGroup>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Change Correlate ──────────────────────────────────────────────────────────
-
-interface ProblemChangeListProps {
-  problemId:       string
-  relatedChanges:  ChangeRef[]
-  changesOpen:     boolean
-  showChangeSearch: boolean
-  changeSearch:    string
-  changeResults:   ChangeRef[]
-  onToggle:        () => void
-  onToggleSearch:  (e: React.MouseEvent) => void
-  onSearchChange:  (value: string) => void
-  onLink:          (changeId: string) => void
-}
-
-export function ProblemChangeList({
-  problemId: _problemId,
-  relatedChanges,
-  changesOpen,
-  showChangeSearch,
-  changeSearch,
-  changeResults,
-  onToggle,
-  onToggleSearch,
-  onSearchChange,
-  onLink,
-}: ProblemChangeListProps) {
-  const navigate = useNavigate()
-
-  return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: changesOpen ? '1px solid #e5e7eb' : 'none', background: changesOpen ? '#0ea5e9' : undefined }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: changesOpen ? '#fff' : 'var(--color-slate-dark)' }}>Change Correlate</span>
-          <CountBadge count={relatedChanges.length} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
-            {showChangeSearch ? 'Chiudi' : '+ Collega Change'}
-          </button>
-          {changesOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-        </div>
-      </div>
-      {changesOpen && (
-        <div style={{ padding: '16px 20px 20px' }}>
-          {showChangeSearch && (
-            <div style={{ marginBottom: 12 }}>
-              <Input type="text" value={changeSearch} onChange={(e) => onSearchChange(e.target.value)} placeholder="Cerca change (min. 2 caratteri)..." autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
-              {changeResults.length > 0 && (
-                <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                  {changeResults.filter((c) => !relatedChanges.find((r) => r.id === c.id)).map((ch) => (
-                    <div key={ch.id} onClick={() => onLink(ch.id)} className="hover-bg" style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', ['--hover-bg' as string]: 'var(--surface-2)' }}>
-                      <span style={{ fontWeight: 500 }}>{ch.title}</span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>{ch.type} · {ch.status}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {relatedChanges.length === 0 ? (
-            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessuna change correlata.</p>
-          ) : (
-            <div>
-              {Object.entries(groupByField(relatedChanges, 'type')).map(([type, changes]) => (
-                <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={changes.length}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {changes.map((ch) => (
-                      <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                        <button onClick={() => navigate(`/changes/${ch.id}`)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ch.title}</button>
-                        <MicroBadge>{ch.status}</MicroBadge>
+                        <button type="button" onClick={() => onRemoveCI(ci.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
                       </div>
                     ))}
                   </div>

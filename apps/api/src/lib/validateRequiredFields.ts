@@ -71,3 +71,18 @@ export async function validateRequiredFields(
     })
   }
 }
+
+/**
+ * Proprietà persistite (snake_case) → valori campo per validateRequiredFields,
+ * esposti sia in snake_case sia in camelCase, così le regole trovano il campo
+ * qualunque convenzione usino. Da unire alla patch: la validazione si fa sullo
+ * stato risultante, non sulla sola patch.
+ */
+export function propsToFieldValues(props: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(props)) {
+    out[k] = v
+    out[k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())] = v
+  }
+  return out
+}
