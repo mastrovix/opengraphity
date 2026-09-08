@@ -6,17 +6,14 @@
  * been computed yet (async pipeline) — never conflated with "no results".
  */
 import { GraphQLError } from 'graphql'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { vectorIndexName } from '../../services/embeddings.js'
 import { suggestTriage } from '../../services/triageService.js'
 import { draftResolutionNotes, problemCandidates as findProblemCandidates, draftKbContent } from '../../services/postIncidentService.js'
 import { createKBArticle } from './knowledgeBase.js'
 
-interface Neo4jInt { toNumber(): number }
-function num(v: unknown): number {
-  return typeof v === 'object' && v !== null && 'toNumber' in v ? (v as Neo4jInt).toNumber() : Number(v)
-}
+const num = toNumber
 
 async function loadEmbedding(
   incidentId: string,

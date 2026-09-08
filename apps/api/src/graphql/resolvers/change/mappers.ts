@@ -1,21 +1,14 @@
 import { mapCI } from '../ci-utils.js'
 import { mapUser, mapTeam } from '../../../lib/mappers.js'
 import { deriveChangePriority } from './scoring.js'
+import { toNumber } from '@opengraphity/neo4j'
 
 export type Props = Record<string, unknown>
 
 export { mapCI, mapUser, mapTeam }
 
-export function toInt(v: unknown, fallback = 0): number {
-  if (v == null) return fallback
-  if (typeof v === 'number') return v
-  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
-    return (v as { toNumber: () => number }).toNumber()
-  return Number(v)
-}
-
 export function mapChange(props: Props) {
-  const aggregateRiskScore = props['aggregate_risk_score'] != null ? toInt(props['aggregate_risk_score']) : null
+  const aggregateRiskScore = props['aggregate_risk_score'] != null ? toNumber(props['aggregate_risk_score']) : null
   const changeType = (props['change_type'] ?? 'normal') as string
   return {
     id:                 props['id']                  as string,
@@ -47,7 +40,7 @@ export function mapAssessmentTask(props: Props) {
     code:          (props['code'] ?? '')   as string,
     responderRole: props['responder_role'] as string,
     status:        props['status']         as string,
-    score:         props['score'] != null ? toInt(props['score']) : null,
+    score:         props['score'] != null ? toNumber(props['score']) : null,
     completedAt:   (props['completed_at']    ?? null) as string | null,
     createdAt:     props['created_at']     as string,
     completedBy:   null,
@@ -61,8 +54,8 @@ export function mapAnswerOption(props: Props) {
   return {
     id:        props['id']    as string,
     label:     props['label'] as string,
-    score:     toInt(props['score']),
-    sortOrder: toInt(props['sort_order']),
+    score:     toNumber(props['score']),
+    sortOrder: toNumber(props['sort_order']),
   }
 }
 

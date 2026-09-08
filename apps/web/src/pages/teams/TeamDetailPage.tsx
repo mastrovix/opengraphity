@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -141,9 +141,9 @@ export function TeamDetailPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/teams')}>
+        <Link to="/teams" style={{ display: 'inline-block', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, textDecoration: 'none' }}>
           ← {t('pages.teams.title')}
-        </div>
+        </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <UsersRound size={22} color="var(--color-icon-accent)" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
@@ -164,12 +164,14 @@ export function TeamDetailPage() {
             <DetailField label="Manager" value={
               team.manager ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ cursor: 'pointer', color: 'var(--color-brand)', fontWeight: 500 }} onClick={() => navigate(`/users/${team.manager!.id}`)}>{team.manager.name}</span>
-                  <span style={{ color: 'var(--color-brand)', cursor: 'pointer', fontWeight: 500, fontSize: 'var(--font-size-table)' }} onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }}>Cambia</span>
+                  <Link to={`/users/${team.manager.id}`} style={{ color: 'var(--color-brand)', fontWeight: 500, textDecoration: 'none' }}>{team.manager.name}</Link>
+                  <Button variant="ghost" onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }} style={{ color: 'var(--color-brand)', fontWeight: 500, fontSize: 'var(--font-size-table)', padding: 0 }}>{t('pages.teams.changeManager')}</Button>
                   <button
+                    type="button"
                     onClick={() => removeManager({ variables: { teamId: team.id } })}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', borderRadius: 4 }}
-                    title="Rimuovi manager"
+                    title={t('pages.teams.removeManager')}
+                    aria-label={t('pages.teams.removeManager')}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                   >
@@ -177,7 +179,7 @@ export function TeamDetailPage() {
                   </button>
                 </div>
               ) : (
-                <span style={{ color: 'var(--color-brand)', cursor: 'pointer', fontWeight: 500 }} onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }}>+ Assegna</span>
+                <Button variant="ghost" onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }} style={{ color: 'var(--color-brand)', fontWeight: 500, padding: 0 }}>+ {t('pages.teams.assignManager')}</Button>
               )
             } />
             <DetailField label={t('pages.teams.description')} value={team.description} />
@@ -239,8 +241,8 @@ export function TeamDetailPage() {
 
                 {/* Search */}
                 {!pendingManagerUser && (
-                  <div style={{ padding: '12px 20px', borderBottom: '1px solid #e5e7eb' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>
+                  <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}>
                       <Search size={14} color="var(--color-slate-light)" />
                       <input
                         autoFocus
@@ -259,7 +261,8 @@ export function TeamDetailPage() {
                     {filtered.length === 0 ? (
                       <div style={{ padding: '20px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun membro trovato</div>
                     ) : filtered.map((u, i) => (
-                      <div
+                      <button
+                        type="button"
                         key={u.id}
                         onClick={() => {
                           if (team.manager) {
@@ -269,7 +272,7 @@ export function TeamDetailPage() {
                           }
                         }}
                         className="hover-bg"
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', cursor: 'pointer', borderBottom: i < filtered.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '10px 20px', cursor: 'pointer', borderBottom: i < filtered.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
                       >
                         <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <Users size={13} color="var(--color-brand)" />
@@ -279,7 +282,7 @@ export function TeamDetailPage() {
                           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{u.email}</div>
                         </div>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{u.role}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}

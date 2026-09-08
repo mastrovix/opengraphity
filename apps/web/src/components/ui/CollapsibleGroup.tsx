@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 
 interface CollapsibleGroupProps {
@@ -15,10 +15,15 @@ export function CollapsibleGroup({
   defaultOpen = false,
 }: CollapsibleGroupProps) {
   const [open, setOpen] = useState(defaultOpen)
+  const panelId = useId()
 
   return (
     <div style={{ marginBottom: 8 }}>
-      <div
+      {/* Header is a real button: focusable, Space/Enter toggle, state exposed (E-14). */}
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
         onClick={() => setOpen((p) => !p)}
         style={{
           display: 'flex',
@@ -28,9 +33,13 @@ export function CollapsibleGroup({
           padding: '4px 0',
           marginLeft: 12,
           userSelect: 'none',
+          background: 'none',
+          border: 'none',
+          font: 'inherit',
+          textAlign: 'left',
         }}
       >
-        <span style={{
+        <span aria-hidden="true" style={{
           fontSize: 'var(--font-size-label)',
           color: 'var(--color-slate)',
           transition: 'transform 0.15s',
@@ -53,12 +62,12 @@ export function CollapsibleGroup({
             </span>
           )}
         </span>
-      </div>
+      </button>
 
       {open && (
-        <div style={{
+        <div id={panelId} style={{
           paddingLeft: 24,
-          borderLeft: '2px solid #f3f4f6',
+          borderLeft: '2px solid var(--color-border-light)',
           marginLeft: 16,
           marginTop: 4,
         }}>

@@ -109,7 +109,7 @@ function FieldEditor({
         <div style={{ paddingTop: 8 }}>
           <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
             {(['validation', 'visibility', 'default'] as const).map((tab) => (
-              <button key={tab} onClick={() => setScriptTab(tab)}
+              <button type="button" key={tab} onClick={() => setScriptTab(tab)}
                 style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                   background: scriptTab === tab ? 'var(--color-brand-light)' : '#f1f5f9',
                   color:      scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
@@ -152,10 +152,10 @@ function FieldEditor({
       </details>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button style={btnSecondary} onClick={onCancel}>
+        <button type="button" style={btnSecondary} onClick={onCancel}>
           <X size={13} /> {t('common.cancel')}
         </button>
-        <button style={btnPrimary} onClick={() => onSave(form)}>
+        <button type="button" style={btnPrimary} onClick={() => onSave(form)}>
           <Check size={13} /> {t('itilDesigner.save')}
         </button>
       </div>
@@ -235,7 +235,7 @@ export function ITILTypeFields({
           <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>
             {t('itilDesigner.customFields', { count: customFields.length })}
           </div>
-          <button
+          <button type="button"
             style={btnPrimary}
             onClick={() => { setAddingField(true); setEditingFieldId(null) }}
             disabled={addingField}
@@ -265,7 +265,7 @@ export function ITILTypeFields({
           )
         ))}
         {customFields.length === 0 && !addingField && (
-          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
+          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed var(--border)', borderRadius: 8 }}>
             {t('itilDesigner.noCustomFields')}
           </div>
         )}

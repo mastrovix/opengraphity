@@ -7,7 +7,7 @@ services:
       - "7474:7474"
       - "7687:7687"
     environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-opengraphity_local}
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD mancante nel .env}"
       NEO4J_server_memory_heap_initial__size: 2g
       NEO4J_server_memory_heap_max__size: 4g
       NEO4J_server_memory_pagecache_size: 1g
@@ -27,13 +27,13 @@ services:
     image: redis:7-alpine
     platform: linux/arm64
     restart: always
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD mancante nel .env}", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - redis-data:/data
     networks:
       - opengrafo
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD mancante nel .env}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -82,10 +82,10 @@ services:
       PORT: 4000
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-opengraphity_local}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?NEO4J_PASSWORD mancante nel .env}"
+      # packages/events getRedisConnection(): REDIS_URL + REDIS_PASSWORD (Redis con requirepass)
       REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD mancante nel .env}"
       KEYCLOAK_URL: https://192.168.1.119
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
     networks:

@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 function pickEnvironment(): string {
   const r = Math.random()
@@ -18,7 +18,7 @@ function pickStatus(): string {
   return 'inactive'
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   // Load owner teams
@@ -107,4 +107,7 @@ async function seed() {
   console.log(`Support teams used: ${supportEntries.length}/${supportTeams.length}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-apps-with-teams', async () => {
+  refuseInProduction('seed-apps-with-teams')
+  await seed(resolveTenantArg())
+})

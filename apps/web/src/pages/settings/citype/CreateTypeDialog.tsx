@@ -29,8 +29,8 @@ export function CreateTypeDialog({
     <Modal open={open} onClose={onClose} title="Nuovo tipo CI" width={440}
       footer={
         <>
-          <button style={btnSecondary} onClick={onClose}>Annulla</button>
-          <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
+          <button type="button" style={btnSecondary} onClick={onClose}>Annulla</button>
+          <button type="button" style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
             onClick={async () => {
               if (!form.name || !form.label) { toast.error('Nome e label obbligatori'); return }
               setSaving(true)

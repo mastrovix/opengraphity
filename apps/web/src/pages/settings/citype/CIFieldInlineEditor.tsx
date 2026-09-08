@@ -133,7 +133,7 @@ export function CIFieldInlineEditor({
         <div style={{ paddingTop: 8 }}>
           <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
             {(['validation', 'visibility', 'default'] as const).map((tab) => (
-              <button key={tab} onClick={() => setScriptTab(tab)}
+              <button type="button" key={tab} onClick={() => setScriptTab(tab)}
                 style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                   background: scriptTab === tab ? 'var(--color-brand-light)' : '#f1f5f9',
                   color: scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
@@ -177,10 +177,10 @@ export function CIFieldInlineEditor({
 
       {/* actions */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button style={btnSecondary} onClick={onCancel}>
+        <button type="button" style={btnSecondary} onClick={onCancel}>
           <X size={13} /> Annulla
         </button>
-        <button style={btnPrimary} onClick={() => onSave(form)}>
+        <button type="button" style={btnPrimary} onClick={() => onSave(form)}>
           <Check size={13} /> Salva
         </button>
       </div>

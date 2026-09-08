@@ -23,6 +23,8 @@ import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
 
 import { toPascalCase, pluralize } from '@/lib/stringUtils'
+import { formatDate } from '@/lib/datetime'
+import { ciTypeLabelKey, toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
 
 const PAGE_SIZE = 50
 
@@ -34,15 +36,6 @@ interface CIItem {
   environment: string | null
   createdAt: string
   ownerGroup: { id: string; name: string } | null
-}
-
-const CI_TYPE_KEYS: Record<string, string> = {
-  application:       'sidebar.application',
-  server:            'sidebar.server',
-  database:          'sidebar.database',
-  database_instance: 'sidebar.dbInstance',
-  certificate:       'sidebar.certificate',
-  ssl_certificate:   'sidebar.certificate',
 }
 
 export function CIListPage() {
@@ -61,7 +54,9 @@ export function CIListPage() {
   }
 
   const ciType = typeName ? getCIType(typeName) : undefined
-  const ciTypeLabel = (typeName && CI_TYPE_KEYS[typeName]) ? t(CI_TYPE_KEYS[typeName]) : (ciType?.label ?? '')
+  const labelKey = ciTypeLabelKey(typeName)
+  const ciTypeLabel = labelKey ? t(labelKey) : (ciType?.label ?? '')
+  const baseEnums = useCIBaseEnums()
   const newLabel = i18n.language.startsWith('it') && ciTypeLabel.match(/[aA]$/)
     ? t('pages.cmdb.newFeminine', { type: ciTypeLabel })
     : t('pages.cmdb.new', { type: ciTypeLabel })
@@ -131,16 +126,8 @@ export function CIListPage() {
     if (!ciType) return []
     const base: FieldConfig[] = [
       { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
-      { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: [
-        { value: 'active',      label: 'Active'      },
-        { value: 'inactive',    label: 'Inactive'    },
-        { value: 'maintenance', label: 'Maintenance' },
-      ]},
-      { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: [
-        { value: 'production',  label: 'Production'  },
-        { value: 'staging',     label: 'Staging'     },
-        { value: 'development', label: 'Development' },
-      ]},
+      { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: toEnumOptions(baseEnums.statuses) },
+      { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: toEnumOptions(baseEnums.environments) },
       { key: 'ownerGroup',  label: t('pages.cmdb.ownerGroup'),  type: 'text' },
       { key: 'chain',       label: t('ciTypeDesigner.chain'),    type: 'enum', options: [
         { value: 'Application',    label: t('ciTypeDesigner.chainApplication')    },
@@ -162,7 +149,7 @@ export function CIListPage() {
           : undefined,
       } as FieldConfig))
     return [...base, ...custom]
-  }, [ciType, t])
+  }, [ciType, t, baseEnums.statuses, baseEnums.environments])
 
   const COLUMNS: ColumnDef<CIItem>[] = [
     { key: 'name', label: t('pages.cmdb.name'), sortable: true },
@@ -180,7 +167,7 @@ export function CIListPage() {
     },
     {
       key: 'createdAt', label: t('pages.cmdb.createdAt'), sortable: true,
-      render: (v) => new Date(v as string).toLocaleDateString(),
+      render: (v) => formatDate(v as string),
     },
   ]
 
@@ -211,6 +198,8 @@ export function CIListPage() {
           </Button>
         }
       />
+
+      {baseEnums.error && <QueryError message={`${t('pages.cmdb.baseEnumsUnavailable')}: ${baseEnums.error}`} />}
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>

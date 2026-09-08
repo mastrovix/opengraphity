@@ -17,7 +17,8 @@
 import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { closeDriver } from '@opengraphity/neo4j'
-import { parseCsv, importKBArticles, type ImportResult } from '../services/ticketImportService.js'
+import { parseCsv, importKBArticles } from '../services/ticketImportService.js'
+import { printImportSummary } from './lib/importSummary.js'
 
 const { values: args } = parseArgs({
   options: {
@@ -35,32 +36,6 @@ if (!file || !tenantId) {
   console.error('Errore: argomenti mancanti.')
   console.error('Uso: --file <path.csv> --tenant-id <id> [--dry-run]')
   process.exit(1)
-}
-
-function printImportSummary(label: string, result: ImportResult, isDryRun: boolean): void {
-  console.log(`\n── Import ${label} ${isDryRun ? '(DRY-RUN — nessuna scrittura)' : ''}`)
-  console.log(`   Righe totali: ${result.totalRows}`)
-  console.log(`   Create:       ${result.created}`)
-  console.log(`   Aggiornate:   ${result.updated}`)
-  console.log(`   Errori:       ${result.errors.length}`)
-  console.log(`   Warning:      ${result.warnings.length}`)
-
-  if (result.warnings.length > 0) {
-    console.log('\n   Warning:')
-    for (const w of result.warnings.slice(0, 20)) {
-      console.log(`     riga ${w.row} [${w.externalId ?? '—'}]: ${w.message}`)
-    }
-    if (result.warnings.length > 20) console.log(`     ... e altri ${result.warnings.length - 20} warning`)
-  }
-
-  if (result.errors.length > 0) {
-    console.log('\n   Errori (prime 20 righe):')
-    for (const e of result.errors.slice(0, 20)) {
-      console.log(`     riga ${e.row} [${e.externalId ?? '—'}]: ${e.message}`)
-    }
-    if (result.errors.length > 20) console.log(`     ... e altri ${result.errors.length - 20} errori`)
-  }
-  console.log('')
 }
 
 async function main() {

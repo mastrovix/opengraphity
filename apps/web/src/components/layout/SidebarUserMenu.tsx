@@ -11,8 +11,10 @@ export function SidebarCollapseButton({ collapsed, onToggle }: SidebarUserMenuPr
   const { t } = useTranslation()
   return (
     <button
+      type="button"
       onClick={onToggle}
-      aria-label={collapsed ? t('sidebar.expand', 'Espandi sidebar') : t('sidebar.collapse', 'Comprimi sidebar')}
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
       className="hover-bg"
       style={{
         display:         'flex',
@@ -28,12 +30,13 @@ export function SidebarCollapseButton({ collapsed, onToggle }: SidebarUserMenuPr
         flexShrink:      0,
         fontSize:        12,
         transition:      'background 150ms',
+        background:      'none',
         ['--hover-bg' as string]: C.hoverBg,
       }}
     >
       {collapsed
         ? <ChevronRight size={14} aria-hidden="true" />
-        : <><ChevronLeft size={14} aria-hidden="true" /><span>{t('sidebar.collapse', 'Collapse')}</span></>
+        : <><ChevronLeft size={14} aria-hidden="true" /><span>{t('sidebar.collapse')}</span></>
       }
     </button>
   )

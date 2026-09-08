@@ -4,6 +4,8 @@ import { GraphQLError } from 'graphql'
 import { getSession } from '@opengraphity/neo4j'
 import { verifyKeycloakToken, type KeycloakTokenPayload } from './keycloak.js'
 import { authLogger } from '../lib/logger.js'
+import { config } from '../lib/config.js'
+import { USER_ROLES } from '@opengraphity/types'
 
 /**
  * Single authentication resolver shared by GraphQL (`buildContext`) and the
@@ -17,16 +19,9 @@ import { authLogger } from '../lib/logger.js'
  * can never resolve to this tenant's user.
  */
 
-const _jwtSecret = process.env['JWT_SECRET']
-if (!_jwtSecret) {
-  throw new Error(
-    'JWT_SECRET environment variable is required. ' +
-    'Set it in your .env file or deployment configuration.',
-  )
-}
-const JWT_SECRET: string = _jwtSecret
+// JWT_SECRET serve solo al path legacy (ALLOW_LEGACY_JWT): letto lì, fail-loud se manca.
 
-export const ROLES = ['admin', 'operator', 'viewer', 'end_user'] as const
+export const ROLES = USER_ROLES
 export type Role = (typeof ROLES)[number]
 
 export interface GraphQLContext {
@@ -165,9 +160,11 @@ export async function resolveAuth(token: string, req: express.Request): Promise<
   // Legacy dev JWT — trusts tenant_id/role straight from the payload with no
   // DB lookup or host/tenant cross-check. Only for local dev, never production:
   // gated behind an explicit opt-in so a leaked JWT_SECRET can't impersonate.
-  if (process.env['ALLOW_LEGACY_JWT'] !== 'true') {
+  if (!config.allowLegacyJwt) {
     throw unauthorized('Invalid token')
   }
+  const JWT_SECRET = config.jwtSecret
+  if (!JWT_SECRET) throw new Error('ALLOW_LEGACY_JWT=true richiede JWT_SECRET')
   let payload: LegacyJWTPayload
   try {
     payload = jwt.verify(token, JWT_SECRET) as LegacyJWTPayload

@@ -1,5 +1,5 @@
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { enqueueTenantScan } from '../../anomaly/anomalyEngine.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
@@ -26,14 +26,6 @@ function toStr(v: unknown): string {
   if (!v) return ''
   if (typeof v === 'string') return v
   return String(v)
-}
-
-function toNum(v: unknown): number {
-  if (typeof v === 'number') return v
-  if (v && typeof (v as { toNumber(): number }).toNumber === 'function') {
-    return (v as { toNumber(): number }).toNumber()
-  }
-  return Number(v ?? 0)
 }
 
 function mapAnomaly(p: Props) {
@@ -102,7 +94,7 @@ export const anomalyResolvers = {
           RETURN count(a) AS total
         `, params)
 
-        const total = toNum(countRows[0]?.total)
+        const total = toNumber(countRows[0]?.total)
         return { items: itemRows.map(r => mapAnomaly(r.props)), total }
       } finally {
         await session.close()
@@ -131,7 +123,7 @@ export const anomalyResolvers = {
         `, { tenantId: ctx.tenantId })
         return {
           lastScanAt: row ? toStr(row.lastScanAt) || null : null,
-          totalScans: row ? toNum(row.totalScans) : 0,
+          totalScans: row ? toNumber(row.totalScans) : 0,
         }
       } finally {
         await session.close()
@@ -160,14 +152,14 @@ export const anomalyResolvers = {
         `, { tenantId: ctx.tenantId })
         if (!row) return { total: 0, open: 0, critical: 0, high: 0, medium: 0, low: 0, falsePositive: 0, acceptedRisk: 0 }
         const result = {
-          total:         toNum(row['total']),
-          open:          toNum(row['open']),
-          critical:      toNum(row['critical']),
-          high:          toNum(row['high']),
-          medium:        toNum(row['medium']),
-          low:           toNum(row['low']),
-          falsePositive: toNum(row['falsePositive']),
-          acceptedRisk:  toNum(row['acceptedRisk']),
+          total:         toNumber(row['total']),
+          open:          toNumber(row['open']),
+          critical:      toNumber(row['critical']),
+          high:          toNumber(row['high']),
+          medium:        toNumber(row['medium']),
+          low:           toNumber(row['low']),
+          falsePositive: toNumber(row['falsePositive']),
+          acceptedRisk:  toNumber(row['acceptedRisk']),
         }
         cache.set(cacheKey, result, 60)
         return result

@@ -2,12 +2,13 @@
  * Seed BusinessCapability CIs (CSDM-style capability map): a two-level
  * hierarchy (PARENT_OF) with each leaf enabled by BusinessApplication CIs
  * via (:BusinessCapability)-[:ENABLED_BY]->(:BusinessApplication).
- * Idempotent: MERGE by name + tenant. Usage: pnpm seed:business-capabilities
+ * Idempotent: MERGE by name + tenant. Usage: pnpm --filter @opengraphity/api seed:business-capabilities -- --tenant=<slug>
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const TENANT_ID = 'c-one'
 const now = new Date().toISOString()
 
 interface CapSeed {
@@ -42,7 +43,7 @@ const CAPABILITIES: CapSeed[] = [
     parent: 'Workforce Management', enabledBy: ['HR Self Service'] },
 ]
 
-async function main() {
+async function main(TENANT_ID: string) {
   const session = getSession(undefined, 'WRITE')
   try {
     for (const cap of CAPABILITIES) {
@@ -86,4 +87,7 @@ async function main() {
   }
 }
 
-main().then(() => process.exit(0)).catch((err: unknown) => { console.error(err); process.exit(1) })
+runScript('seed-business-capabilities', async () => {
+  refuseInProduction('seed-business-capabilities')
+  await main(resolveTenantArg())
+})

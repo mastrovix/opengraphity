@@ -1,8 +1,8 @@
 import { useQuery } from '@apollo/client/react'
-import ReactECharts from 'echarts-for-react'
 import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity } from 'lucide-react'
 import { GET_WIDGET_DATA } from '@/graphql/queries'
 import { lookupOrError } from '@/lib/tokens'
+import { WidgetBody, type WidgetSeriesData } from '@/components/WidgetBody'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,12 +22,6 @@ export interface CustomWidgetData {
   dashboardId:  string
 }
 
-interface WidgetDataResult {
-  value:  number | null
-  label:  string | null
-  series: { label: string; value: number; color?: string | null }[]
-}
-
 interface Props {
   widget:   CustomWidgetData
   editMode?: boolean
@@ -45,80 +39,20 @@ const TIME_LABEL: Record<string, string> = {
 
 // ── Widget type icon ──────────────────────────────────────────────────────────
 
+const TYPE_ICON: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+  counter: Hash, chart_bar: BarChart2, chart_line: TrendingUp, chart_pie: PieChart,
+  chart_donut: PieChart, table: Table, gauge: Gauge, heatmap: Activity,
+}
+
 function TypeIcon({ type, color }: { type: string; color: string }) {
-  const props = { size: 14, color }
-  switch (type) {
-    case 'counter':    return <Hash {...props} />
-    case 'chart_bar':  return <BarChart2 {...props} />
-    case 'chart_line': return <TrendingUp {...props} />
-    case 'chart_pie':  return <PieChart {...props} />
-    case 'chart_donut':return <PieChart {...props} />
-    case 'table':      return <Table {...props} />
-    case 'gauge':      return <Gauge {...props} />
-    case 'heatmap':    return <Activity {...props} />
-    default:           return <BarChart2 {...props} />
-  }
-}
-
-// ── Chart builders ────────────────────────────────────────────────────────────
-
-function buildBarOption(data: WidgetDataResult, color: string) {
-  return {
-    tooltip: { trigger: 'axis', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-body)' } },
-    grid:    { top: 12, right: 12, bottom: 20, left: 40, containLabel: true },
-    xAxis:   { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
-    yAxis:   { type: 'value', axisLabel: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
-    series:  [{ type: 'bar', data: data.series.map(s => s.value), itemStyle: { color, borderRadius: [3, 3, 0, 0] } }],
-  }
-}
-
-function buildPieOption(data: WidgetDataResult, _color: string, donut = false) {
-  const palette = ['#0EA5E9','#10b981','var(--color-warning)','var(--color-danger)','#8b5cf6','#06b6d4','#84cc16']
-  return {
-    tooltip: { trigger: 'item', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-body)' }, formatter: '{b}: {c} ({d}%)' },
-    legend:  { orient: 'horizontal', bottom: 0, textStyle: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
-    series:  [{
-      type: 'pie', radius: donut ? ['40%', '70%'] : '65%',
-      center: ['50%', '45%'],
-      data: data.series.map((s, i) => ({ name: s.label, value: s.value, itemStyle: { color: palette[i % palette.length] } })),
-      label: { show: false },
-      labelLine: { show: false },
-    }],
-  }
-}
-
-function buildLineOption(data: WidgetDataResult, color: string) {
-  return {
-    tooltip: { trigger: 'axis', backgroundColor: 'var(--color-slate-dark)', textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-body)' } },
-    grid:    { top: 12, right: 12, bottom: 20, left: 40, containLabel: true },
-    xAxis:   { type: 'category', data: data.series.map(s => s.label), axisLabel: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
-    yAxis:   { type: 'value', axisLabel: { fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' } },
-    series:  [{
-      type: 'line', data: data.series.map(s => s.value),
-      smooth: true, lineStyle: { color }, itemStyle: { color },
-      areaStyle: { color: `${color}22` },
-    }],
-  }
-}
-
-function buildGaugeOption(data: WidgetDataResult, color: string) {
-  const val = Math.min(100, Math.max(0, data.value ?? 0))
-  return {
-    series: [{
-      type: 'gauge', startAngle: 200, endAngle: -20,
-      min: 0, max: 100, splitNumber: 5,
-      axisLine: { lineStyle: { width: 18, color: [[val / 100, color], [1, '#e5e7eb']] } },
-      pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-      detail: { fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', formatter: `${Math.round(val)}%`, offsetCenter: [0, '20%'] },
-      data: [{ value: val }],
-    }],
-  }
+  const Icon = lookupOrError(TYPE_ICON, type, 'WIDGET_TYPE_ICON', BarChart2)
+  return <Icon size={14} color={color} />
 }
 
 // ── CustomWidgetCard ──────────────────────────────────────────────────────────
 
 export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) {
-  const { data, loading, error } = useQuery<{ widgetData: WidgetDataResult }>(GET_WIDGET_DATA, {
+  const { data, loading, error } = useQuery<{ widgetData: WidgetSeriesData }>(GET_WIDGET_DATA, {
     variables: { widgetId: widget.id },
     fetchPolicy: 'cache-and-network',
   })
@@ -177,108 +111,34 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
 
   // ── Body ─────────────────────────────────────────────────────────────────────
 
-  if (loading) {
-    return (
-      <div style={cardStyle}>
-        {header}
-        <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 24, height: 24, border: `3px solid ${widget.color}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        </div>
+  let body: React.ReactNode
+  if (loading && !wData) {
+    body = (
+      <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 24, height: 24, border: `3px solid ${widget.color}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       </div>
     )
-  }
-
-  if (error || !wData) {
-    return (
-      <div style={cardStyle}>
-        {header}
-        <div style={{ padding: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
-          {error?.message ?? 'Errore nel caricamento dati'}
-        </div>
+  } else if (error || !wData) {
+    body = (
+      <div style={{ padding: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
+        {error?.message ?? 'Errore nel caricamento dati'}
       </div>
     )
-  }
-
-  // ── Counter ──────────────────────────────────────────────────────────────────
-
-  if (widget.widgetType === 'counter') {
-    return (
-      <div style={cardStyle}>
-        {header}
-        <div style={{ padding: '20px 14px', textAlign: 'center' }}>
-          <div style={{ fontSize: 42, fontWeight: 700, color: widget.color, lineHeight: 1 }}>
-            {wData.value != null ? Math.round(wData.value).toLocaleString('it-IT') : '—'}
-          </div>
-          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 6 }}>
-            {widget.filterValue ? `Status: ${widget.filterValue}` : widget.entityType}
-          </div>
-        </div>
-      </div>
+  } else {
+    body = (
+      <WidgetBody
+        widgetType={widget.widgetType}
+        color={widget.color}
+        data={wData}
+        caption={widget.filterValue ? `Status: ${widget.filterValue}` : widget.entityType}
+      />
     )
-  }
-
-  // ── Table ────────────────────────────────────────────────────────────────────
-
-  if (widget.widgetType === 'table') {
-    return (
-      <div style={cardStyle}>
-        {header}
-        <div style={{ overflow: 'auto', maxHeight: 220 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-            <thead>
-              <tr style={{ background: 'var(--color-slate-bg)' }}>
-                <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--color-slate-light)', fontWeight: 600 }}>Label</th>
-                <th style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--color-slate-light)', fontWeight: 600 }}>Valore</th>
-              </tr>
-            </thead>
-            <tbody>
-              {wData.series.map((s, i) => (
-                <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '5px 10px', color: 'var(--color-slate-dark)' }}>{s.label}</td>
-                  <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 600, color: widget.color }}>{s.value.toLocaleString('it-IT')}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Gauge ────────────────────────────────────────────────────────────────────
-
-  if (widget.widgetType === 'gauge') {
-    return (
-      <div style={cardStyle}>
-        {header}
-        <ReactECharts
-          option={buildGaugeOption(wData, widget.color)}
-          style={{ height: 160 }}
-          opts={{ renderer: 'svg' }}
-        />
-      </div>
-    )
-  }
-
-  // ── ECharts (bar, line, pie, donut) ───────────────────────────────────────────
-
-  let option: object
-  switch (widget.widgetType) {
-    case 'chart_bar':   option = buildBarOption(wData, widget.color); break
-    case 'chart_line':  option = buildLineOption(wData, widget.color); break
-    case 'chart_pie':   option = buildPieOption(wData, widget.color, false); break
-    case 'chart_donut': option = buildPieOption(wData, widget.color, true); break
-    default:            option = buildBarOption(wData, widget.color)
   }
 
   return (
     <div style={cardStyle}>
       {header}
-      <ReactECharts
-        option={option}
-        style={{ height: 180 }}
-        opts={{ renderer: 'svg' }}
-      />
+      {body}
     </div>
   )
 }

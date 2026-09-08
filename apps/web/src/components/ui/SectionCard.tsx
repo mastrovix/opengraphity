@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type CSSProperties } from 'react'
+import { useId, useState, type ReactNode, type CSSProperties } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from './CountBadge'
 
@@ -34,6 +34,7 @@ export function SectionCard({
   children,
 }: SectionCardProps) {
   const [internalOpen, setInternalOpen] = useState(collapsible ? defaultOpen : true)
+  const panelId = useId()
   const isControlled = controlledOpen !== undefined
   const open = isControlled ? controlledOpen : internalOpen
   const handleToggle = () => {
@@ -45,38 +46,60 @@ export function SectionCard({
   const headerColor    = (headerStyle?.color as string | undefined) ?? (open ? activeTextColor : 'var(--color-slate-dark)')
   const chevronColor   = (headerStyle?.color as string | undefined) ?? (open ? activeTextColor : 'var(--color-slate-light)')
 
+  const titleContent = (
+    <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: headerColor, display: 'flex', alignItems: 'center' }}>
+      {title}
+      {count !== undefined && <CountBadge count={count} />}
+    </span>
+  )
+
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       <div
-        onClick={collapsible ? handleToggle : undefined}
         style={{
           display:        'flex',
           alignItems:     'center',
           justifyContent: 'space-between',
-          cursor:         collapsible ? 'pointer' : 'default',
           padding:        '14px 20px',
-          borderBottom:   open ? '1px solid #e5e7eb' : 'none',
+          borderBottom:   open ? '1px solid var(--border)' : 'none',
           transition:     'background-color 150ms, color 150ms',
           // Scheda aperta (attiva): intestazione colorata (default turchese logo).
           background:     open ? activeColor : undefined,
           ...headerStyle,
         }}
       >
-        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: headerColor, display: 'flex', alignItems: 'center' }}>
-          {title}
-          {count !== undefined && <CountBadge count={count} />}
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: headerColor }}>
-          {headerRight}
-          {collapsible && (
-            open
-              ? <ChevronDown size={16} color={chevronColor} />
-              : <ChevronRight size={16} color={chevronColor} />
-          )}
-        </div>
+        {/* The toggle is a real <button> (E-14): focusable, Space/Enter, aria-expanded.
+            `headerRight` stays OUTSIDE it so its own controls are not nested in a button. */}
+        {collapsible ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={handleToggle}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+              background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
+              font: 'inherit', color: 'inherit', textAlign: 'left',
+            }}
+          >
+            {titleContent}
+            <span style={{ display: 'flex', alignItems: 'center', color: headerColor }}>
+              {open
+                ? <ChevronDown size={16} color={chevronColor} aria-hidden="true" />
+                : <ChevronRight size={16} color={chevronColor} aria-hidden="true" />}
+            </span>
+          </button>
+        ) : (
+          <div style={{ flex: 1 }}>{titleContent}</div>
+        )}
+        {headerRight && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8, color: headerColor }}>
+            {headerRight}
+          </div>
+        )}
       </div>
       {open && (
-        <div style={{ padding: '16px 20px' }}>
+        <div id={panelId} style={{ padding: '16px 20px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {children}
           </div>

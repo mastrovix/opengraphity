@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { getDriver, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { calculateDeadline, type SLATier, type SLAPolicy } from './policy.js'
 
 export interface SLAStatus {
@@ -39,13 +39,15 @@ const SLA_STATUS_PROJECTION = `
 export type SLAPauseType = 'resolve' | 'response' | 'both'
 
 // ── Session helpers ──────────────────────────────────────────────────────────
+// getSession() (not getDriver().session()): the wrapped session feeds the
+// slow-query/metrics tracker and converts Neo4j Integers (D-22).
 
 function readSession() {
-  return getDriver().session({ defaultAccessMode: 'READ' as const })
+  return getSession(undefined, 'READ')
 }
 
 function writeSession() {
-  return getDriver().session({ defaultAccessMode: 'WRITE' as const })
+  return getSession(undefined, 'WRITE')
 }
 
 // ── Node → SLAStatus mapping ─────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { requireRole } from '../../lib/requireRole.js'
 import { applyAuthorizationPolicy } from '../../lib/authorization.js'
-import { requireEnv, envOrThrowInProd } from '../../lib/env.js'
+import { config } from '../../lib/config.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { mergeResolvers } from '@graphql-tools/merge'
 import type { IResolvers } from '@graphql-tools/utils'
@@ -146,9 +146,9 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
     throw new GraphQLError(`Ruolo non valido: ${role}`, { extensions: { code: 'BAD_USER_INPUT' } })
   }
   const tenantId = ctx.tenantId
-  const KEYCLOAK_URL  = envOrThrowInProd('KEYCLOAK_URL', 'http://localhost:8080')
-  const KEYCLOAK_ADMIN_USER = process.env['KEYCLOAK_ADMIN_USER'] ?? 'admin'
-  const KEYCLOAK_ADMIN_PASS = requireEnv('KEYCLOAK_ADMIN_PASSWORD')
+  const KEYCLOAK_URL        = config.keycloakUrl
+  const KEYCLOAK_ADMIN_USER = config.keycloakAdminUser
+  const KEYCLOAK_ADMIN_PASS = config.keycloakAdminPassword   // requireEnv: throws if unset
 
   // 1. Get Keycloak admin token
   const tokenRes = await fetch(`${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token`, {

@@ -1,7 +1,7 @@
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 function randomSubset<T>(arr: T[], min: number, max: number): T[] {
   const n = min + Math.floor(Math.random() * (max - min + 1))
@@ -17,7 +17,7 @@ function pickAppDepCount(): number {
   return 4
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   // ── STEP 1: Load CIs ────────────────────────────────────────────────────────
@@ -159,4 +159,7 @@ async function seed() {
   console.log(`  Total                          : ${dbToDbi + dbiToSrv + appToSrv + appToDB + appToApp}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-ci-relations', async () => {
+  refuseInProduction('seed-ci-relations')
+  await seed(resolveTenantArg())
+})

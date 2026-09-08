@@ -6,10 +6,6 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQuery: vi.fn(),
   runQueryOne: vi.fn(),
 }))
-vi.mock('../../../services/cmdbService.js', () => ({
-  createCI: vi.fn(),
-  addDependency: vi.fn(),
-}))
 
 const { buildCIFieldUpdates, cmdbResolvers } = await import('../cmdb.js')
 const { getSession, runQuery } = await import('@opengraphity/neo4j')

@@ -1,12 +1,13 @@
 /**
  * Seed BusinessApplication CIs (CSDM-style business catalog entries) linked
  * via REALIZES to existing Application CIs and OWNED_BY to existing teams.
- * Idempotent: MERGE by name + tenant. Usage: pnpm seed:business-applications
+ * Idempotent: MERGE by name + tenant. Usage: pnpm --filter @opengraphity/api seed:business-applications -- --tenant=<slug>
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const TENANT_ID = 'c-one'
 const now = new Date().toISOString()
 
 interface BASeed {
@@ -44,7 +45,7 @@ const BUSINESS_APPS: BASeed[] = [
   },
 ]
 
-async function main() {
+async function main(TENANT_ID: string) {
   const session = getSession(undefined, 'WRITE')
   try {
     for (const ba of BUSINESS_APPS) {
@@ -87,4 +88,7 @@ async function main() {
   }
 }
 
-main().then(() => process.exit(0)).catch((err: unknown) => { console.error(err); process.exit(1) })
+runScript('seed-business-applications', async () => {
+  refuseInProduction('seed-business-applications')
+  await main(resolveTenantArg())
+})

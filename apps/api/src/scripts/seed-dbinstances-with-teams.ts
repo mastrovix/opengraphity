@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 function pickEnvironment(): string {
   const r = Math.random()
@@ -18,7 +18,7 @@ function pickStatus(): string {
   return 'inactive'
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   const ownerResult = await session.run(
@@ -86,4 +86,7 @@ async function seed() {
   console.log(`\nDone. Created: ${created}, Skipped: ${skipped}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-dbinstances-with-teams', async () => {
+  refuseInProduction('seed-dbinstances-with-teams')
+  await seed(resolveTenantArg())
+})

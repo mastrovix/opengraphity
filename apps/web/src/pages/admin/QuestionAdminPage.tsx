@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
+import { useConfirm } from '@/hooks/useConfirm'
 import { lookupOrError } from '@/lib/tokens'
 import { HelpCircle, Plus, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
@@ -21,6 +23,7 @@ import {
 } from '@/graphql/mutations'
 import { QUESTION_CATEGORY } from '@/lib/taskStatus'
 import { Pill } from '@/components/ui/Pill'
+import { inputS } from '@/components/ui/styles'
 
 type QuestionCategoryKey = typeof QUESTION_CATEGORY[keyof typeof QUESTION_CATEGORY]
 
@@ -57,11 +60,8 @@ interface CITypeAssignment {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb',
-  borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
-  boxSizing: 'border-box',
-}
+// Shared input style (E-09); the page keeps its own uppercase small-caps label.
+const inputStyle: React.CSSProperties = inputS
 
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600,
@@ -117,6 +117,8 @@ function CommitNumberInput({ value, onCommit, disabled, title, min }: {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function QuestionAdminPage() {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const { data: qData, refetch: refetchQuestions } = useQuery<{ assessmentQuestionsAdmin: Question[] }>(GET_QUESTIONS_ADMIN, {
     fetchPolicy: 'cache-and-network',
   })
@@ -206,9 +208,9 @@ export function QuestionAdminPage() {
     }
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedId) return
-    if (!window.confirm('Eliminare questa domanda? Non sarà possibile se esistono risposte associate.')) return
+    if (!(await confirm({ title: t('admin.questions.deleteTitle'), body: t('admin.questions.deleteBody'), danger: true }))) return
     void deleteQuestion({ variables: { id: selectedId } })
   }
 
@@ -246,7 +248,7 @@ export function QuestionAdminPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20, alignItems: 'start' }}>
 
         {/* Left: question list */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16 }}>
+        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
               Domande ({questions.length}{filterCat && questions.length !== allQuestions.length ? ` / ${allQuestions.length}` : ''})
@@ -279,13 +281,16 @@ export function QuestionAdminPage() {
             {questions.map(q => {
               const active = q.id === selectedId
               return (
-                <div
+                <button
+                  type="button"
                   key={q.id}
+                  aria-pressed={active}
                   onClick={() => setSelectedId(q.id)}
                   style={{
+                    display: 'block', width: '100%', textAlign: 'left', font: 'inherit',
                     padding: '10px 12px',
                     borderRadius: 8,
-                    border: active ? '1.5px solid var(--color-brand)' : '1px solid #e5e7eb',
+                    border: active ? '1.5px solid var(--color-brand)' : '1px solid var(--border)',
                     cursor: 'pointer',
                     background: active ? 'var(--color-brand-light)' : '#fff',
                   }}
@@ -302,7 +307,7 @@ export function QuestionAdminPage() {
                       <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#fee2e2', color: '#b91c1c' }}>INATTIVA</span>
                     )}
                   </div>
-                </div>
+                </button>
               )
             })}
             {questions.length === 0 && (
@@ -312,7 +317,7 @@ export function QuestionAdminPage() {
         </div>
 
         {/* Right: editor panel */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20 }}>
+        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
           {!selectedId && !isNew && (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)' }}>
               Seleziona una domanda o creane una nuova
@@ -437,10 +442,10 @@ export function QuestionAdminPage() {
                       placeholder="Score"
                       style={{ ...inputStyle, width: 90 }}
                     />
-                    <button type="button" onClick={() => moveOption(i, -1)} disabled={i === 0} style={{ background: 'none', border: '1px solid #e5e7eb', cursor: i === 0 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
+                    <button type="button" onClick={() => moveOption(i, -1)} disabled={i === 0} style={{ background: 'none', border: '1px solid var(--border)', cursor: i === 0 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
                       <ChevronUp size={12} />
                     </button>
-                    <button type="button" onClick={() => moveOption(i, 1)} disabled={i === options.length - 1} style={{ background: 'none', border: '1px solid #e5e7eb', cursor: i === options.length - 1 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
+                    <button type="button" onClick={() => moveOption(i, 1)} disabled={i === options.length - 1} style={{ background: 'none', border: '1px solid var(--border)', cursor: i === options.length - 1 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
                       <ChevronDown size={12} />
                     </button>
                     <button type="button" onClick={() => removeOption(i)} style={{ background: 'none', border: '1px solid #fecaca', color: 'var(--color-danger)', cursor: 'pointer', padding: 6, borderRadius: 4 }}>

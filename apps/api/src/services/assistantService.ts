@@ -8,6 +8,7 @@
  * as explicit SSE error events.
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { config } from '../lib/config.js'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
@@ -272,7 +273,7 @@ export async function streamAssistantChat(
   messages: AssistantMessage[],
   emit: AssistantEmitter,
 ): Promise<void> {
-  if (!process.env['ANTHROPIC_API_KEY']) {
+  if (!config.anthropicApiKey) {
     emit.error('Assistente AI non configurato: ANTHROPIC_API_KEY mancante')
     return
   }

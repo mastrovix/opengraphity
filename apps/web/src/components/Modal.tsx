@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
 interface ModalProps {
@@ -20,9 +21,15 @@ interface ModalProps {
   footerStyle?: React.CSSProperties
   /** Overlay z-index. Default unchanged (1000). */
   zIndex?: number
+  /**
+   * Close when the overlay (outside the panel) is clicked. Defaults to `true`
+   * for plain dialogs and to `false` for `as="form"`: a stray click outside a
+   * form must not throw away what the user typed (E-14).
+   */
+  closeOnOverlay?: boolean
 }
 
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 export function Modal({
   open,
@@ -35,27 +42,46 @@ export function Modal({
   onSubmit,
   footerStyle,
   zIndex = 1000,
+  closeOnOverlay,
 }: ModalProps) {
+  const { t } = useTranslation()
   const titleId = useId()
   const panelRef = useRef<HTMLElement | null>(null)
+  const overlayClosesDialog = closeOnOverlay ?? (as !== 'form')
 
-  // Close on Escape while open.
+  // Escape closes; Tab / Shift+Tab cycle inside the panel (minimal focus trap).
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key !== 'Tab') return
+      const panel = panelRef.current
+      if (!panel) return
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))
+        .filter((el) => el.offsetParent !== null || el === document.activeElement)
+      if (focusable.length === 0) { e.preventDefault(); return }
+      const first = focusable[0]!
+      const last  = focusable[focusable.length - 1]!
+      const active = document.activeElement
+      if (!panel.contains(active)) { e.preventDefault(); first.focus(); return }
+      if (e.shiftKey && active === first) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus() }
+    }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
   // Move focus inside the modal on open — unless something inside already
-  // grabbed it (e.g. an input with autoFocus).
+  // grabbed it (e.g. an input with autoFocus) — and give it back on close.
   useEffect(() => {
     if (!open) return
+    const previouslyFocused = document.activeElement as HTMLElement | null
     queueMicrotask(() => {
       const panel = panelRef.current
       if (!panel || panel.contains(document.activeElement)) return
       panel.querySelector<HTMLElement>(FOCUSABLE)?.focus()
     })
+    return () => { previouslyFocused?.focus?.() }
   }, [open])
 
   if (!open) return null
@@ -78,7 +104,7 @@ export function Modal({
       {/* Header */}
       <div style={{
         padding:        '20px 24px',
-        borderBottom:   '1px solid #e5e7eb',
+        borderBottom:   '1px solid var(--border)',
         display:        'flex',
         alignItems:     'center',
         justifyContent: 'space-between',
@@ -88,7 +114,7 @@ export function Modal({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Chiudi"
+          aria-label={t('common.close')}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4 }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-slate)' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-slate-light)' }}
@@ -106,7 +132,7 @@ export function Modal({
       {footer && (
         <div style={{
           padding:        '16px 24px',
-          borderTop:      '1px solid #e5e7eb',
+          borderTop:      '1px solid var(--border)',
           display:        'flex',
           justifyContent: 'flex-end',
           gap:            8,
@@ -133,7 +159,7 @@ export function Modal({
         alignItems:     'center',
         justifyContent: 'center',
       }}
-      onClick={onClose}
+      onClick={overlayClosesDialog ? onClose : undefined}
     >
       {as === 'form' ? (
         <form

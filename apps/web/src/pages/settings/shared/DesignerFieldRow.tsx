@@ -31,7 +31,7 @@ export function DesignerFieldRow({
     <div
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb',
+        padding: '10px 14px', background: '#fff', border: '1px solid var(--border)',
         borderRadius: 6, marginBottom: 4,
       }}
     >
@@ -62,9 +62,9 @@ export function DesignerFieldRow({
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button style={btnSecondary} onClick={onEdit}>{editLabel}</button>
+        <button type="button" style={btnSecondary} onClick={onEdit}>{editLabel}</button>
         {!field.isSystem && (
-          <button style={btnDanger} onClick={onDelete} aria-label={`Delete ${field.name}`}>
+          <button type="button" style={btnDanger} onClick={onDelete} aria-label={`Delete ${field.name}`}>
             <Trash2 size={12} />
           </button>
         )}

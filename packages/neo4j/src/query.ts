@@ -1,4 +1,7 @@
-import { Session, ManagedTransaction, Integer, isInt, isDate, isDateTime, isLocalDateTime, isLocalTime, isTime, isDuration } from 'neo4j-driver'
+import {
+  Session, ManagedTransaction, Integer, isInt, isDate, isDateTime, isLocalDateTime, isLocalTime, isTime, isDuration,
+  Neo4jError, isRetriableError,
+} from 'neo4j-driver'
 
 /**
  * Anything runQuery/runQueryOne can execute against: a plain Session
@@ -6,6 +9,65 @@ import { Session, ManagedTransaction, Integer, isInt, isDate, isDateTime, isLoca
  * open transaction, e.g. inside session.executeWrite). Both expose .run().
  */
 export type Queryable = Session | ManagedTransaction
+
+// ── Numbers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Neo4j Integer / BigInt / number → plain JS number (D-22). The single helper
+ * behind the many local `toInt`/`toNum` copies:
+ *   - `null`/`undefined` → 0 (every former copy did this: a missing count is 0)
+ *   - numeric strings are accepted (`"42"` → 42)
+ *   - anything else (NaN, objects, booleans) THROWS — a silent NaN reaching a
+ *     resolver or a SLA deadline is worse than a loud failure.
+ */
+export function toNumber(v: unknown): number {
+  if (v === null || v === undefined) return 0
+  if (typeof v === 'number') {
+    if (Number.isNaN(v)) throw new TypeError('[neo4j] toNumber: value is NaN')
+    return v
+  }
+  if (typeof v === 'bigint') return Number(v)
+  if (isInt(v as Integer)) return (v as Integer).toNumber()
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    if (!Number.isNaN(n)) return n
+  }
+  throw new TypeError(`[neo4j] toNumber: cannot convert ${typeof v} ${JSON.stringify(v)} to a number`)
+}
+
+// ── Errors ───────────────────────────────────────────────────────────────────
+
+/**
+ * Error thrown by runQuery/runQueryOne (D-16). The message is the Neo4j
+ * message (no Cypher in it: the statement is a property, for logs that want
+ * it, not for responses); `code` is the Neo4j status code
+ * (e.g. `Neo.ClientError.Schema.ConstraintValidationFailed`) so callers can map
+ * it (→ 409) and `retryable` tells transient failures apart. `cause` keeps the
+ * original error.
+ */
+export class QueryError extends Error {
+  override readonly name = 'QueryError'
+  readonly code: string | undefined
+  readonly retryable: boolean
+  readonly cypher: string
+  override readonly cause: unknown
+
+  constructor(cause: unknown, cypher: string) {
+    const message = cause instanceof Error ? cause.message : String(cause)
+    super(message)
+    this.cause     = cause
+    this.cypher    = cypher
+    this.code      = cause instanceof Neo4jError ? cause.code : undefined
+    this.retryable = cause instanceof Error ? isRetriableError(cause) : false
+  }
+
+  /** True when the failure is a uniqueness/existence constraint violation. */
+  get isConstraintViolation(): boolean {
+    return this.code === 'Neo.ClientError.Schema.ConstraintValidationFailed'
+  }
+}
+
+// ── Records → plain values ───────────────────────────────────────────────────
 
 function toNative(value: unknown): unknown {
   if (value === null || value === undefined) return value
@@ -46,8 +108,7 @@ export async function runQuery<T>(
       return obj as T
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    throw new Error(`[neo4j] Query failed: ${message}\nCypher: ${cypher}`)
+    throw new QueryError(err, cypher)
   }
 }
 

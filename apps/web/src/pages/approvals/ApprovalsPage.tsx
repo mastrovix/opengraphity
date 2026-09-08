@@ -13,6 +13,7 @@ import { QueryError } from '@/components/QueryError'
 import { toast } from 'sonner'
 import { lookupOrError } from '@/lib/tokens'
 import { Textarea } from '@/components/ui/FormControls'
+import { useConfirm } from '@/hooks/useConfirm'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -149,7 +150,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
 
   return (
     <div style={{ marginTop: 10 }}>
-      <button
+      <button type="button"
         onClick={toggle}
         style={{
           display:     'inline-flex',
@@ -242,8 +243,15 @@ function ApprovalCard({
   onCancel?: (id: string) => void
   showActions: boolean
 }) {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [noteOpen, setNoteOpen] = useState<'approve' | 'reject' | null>(null)
   const [note, setNote]         = useState('')
+
+  const handleCancel = async () => {
+    if (!onCancel) return
+    if (await confirm({ title: t('admin.approvals.cancelRequestTitle'), body: req.title, danger: true })) onCancel(req.id)
+  }
 
   return (
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, background: '#fff', marginBottom: 12 }}>
@@ -288,13 +296,13 @@ function ApprovalCard({
 
         {showActions && req.status === 'pending' && (
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button
+            <button type="button"
               onClick={() => setNoteOpen(noteOpen === 'approve' ? null : 'approve')}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               <CheckCircle size={14} /> Approva
             </button>
-            <button
+            <button type="button"
               onClick={() => setNoteOpen(noteOpen === 'reject' ? null : 'reject')}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
@@ -305,7 +313,8 @@ function ApprovalCard({
 
         {!showActions && req.status === 'pending' && onCancel && (
           <button
-            onClick={() => { if (confirm(`Annullare la richiesta di approvazione "${req.title}"?`)) onCancel(req.id) }}
+            type="button"
+            onClick={() => void handleCancel()}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--color-danger)', background: '#fff', color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500, flexShrink: 0, alignSelf: 'flex-start' }}
           >
             <XCircle size={14} /> Annulla richiesta
@@ -323,7 +332,7 @@ function ApprovalCard({
             style={{ padding: 8, borderRadius: 4, border: '1px solid #e2e8f0', lineHeight: 'normal', outline: undefined }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button
+            <button type="button"
               onClick={() => {
                 if (noteOpen === 'approve') { onApprove(req.id, note); setNoteOpen(null); setNote('') }
                 else if (noteOpen === 'reject') {
@@ -335,7 +344,7 @@ function ApprovalCard({
             >
               Conferma {noteOpen === 'approve' ? 'Approvazione' : 'Rifiuto'}
             </button>
-            <button
+            <button type="button"
               onClick={() => { setNoteOpen(null); setNote('') }}
               style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
@@ -422,7 +431,7 @@ export function ApprovalsPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>
-        <button style={tabStyle(tab === 'mine')} onClick={() => setTab('mine')}>
+        <button type="button" style={tabStyle(tab === 'mine')} onClick={() => setTab('mine')}>
           {t('pages.approvals.tabMine')}
           {myItems.length > 0 && (
             <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: 'var(--color-danger)', color: '#fff', fontSize: 'var(--font-size-table)' }}>
@@ -430,7 +439,7 @@ export function ApprovalsPage() {
             </span>
           )}
         </button>
-        <button style={tabStyle(tab === 'all')}  onClick={() => setTab('all')}>
+        <button type="button" style={tabStyle(tab === 'all')}  onClick={() => setTab('all')}>
           {t('pages.approvals.tabAll')}
         </button>
       </div>

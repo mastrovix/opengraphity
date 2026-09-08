@@ -11,15 +11,17 @@ import { Modal } from '@/components/Modal'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_USERS, GET_TEAMS } from '@/graphql/queries'
-import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { FilterBuilder, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
-import { inputS, selectS, labelS } from '@/pages/settings/shared/designerStyles'
+import { Input, Select } from '@/components/ui/FormControls'
+import { labelS } from '@/components/ui/styles'
 import { RoleBadge } from '@/components/ui/badges'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { applyFilterGroup } from '@/lib/filterGroup'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
+import { useListQueryState } from '@/hooks/useListQueryState'
 import { ALL_ROLES } from '@/hooks/useMe'
 
 // ── GraphQL ──────────────────────────────────────────────────────────────────
@@ -46,7 +48,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const EMPTY_FORM = { email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] as string[] }
 
-const PAGE_SIZE = 50
+const REQUIRED = <span aria-hidden="true" style={{ color: 'var(--color-danger)' }}>*</span>
 
 export function UsersPage() {
   const { t } = useTranslation()
@@ -78,24 +80,18 @@ export function UsersPage() {
     },
   ]
   const navigate = useNavigate()
-  const [page, setPage] = useState(0)
-  const [sortField, setSortField] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  // Sort / filters / page live in the URL: reload and shared links keep the view.
+  const list = useListQueryState({ pageSize: 50, persistInQuery: true })
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [teamSearch, setTeamSearch] = useState('')
 
+  // `users(sortField, sortDirection)` has no `filters` argument (see below).
   const { data, loading, error, refetch } = useQuery<{ users: UserRow[] }>(GET_USERS, {
-    variables: { sortField, sortDirection: sortDir },
+    variables: { sortField: list.sortField, sortDirection: list.sortDir },
     fetchPolicy: 'cache-and-network',
   })
 
-  function handleSort(field: string, direction: 'asc' | 'desc') {
-    setSortField(field)
-    setSortDir(direction)
-    setPage(0)
-  }
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string; description: string | null; type: string | null }[] }>(GET_TEAMS)
   const teams = teamsData?.teams ?? []
   const [createUserMut, { loading: creating }] = useMutationWithToast(CREATE_USER, {
@@ -108,10 +104,10 @@ export function UsersPage() {
   // filters are applied here, on the full list, with the same semantics as
   // the API's filter builder — so the table AND the CSV export see them (E-02).
   const allUsers   = data?.users ?? []
-  const filtered   = applyFilterGroup(allUsers, filterGroup)
-  const total      = filtered.length
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const pageItems  = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const filtered   = applyFilterGroup(allUsers, list.filterGroup)
+  const { pageItems, totalPages, total } = list.paginate(filtered)
+
+  const canCreate = !creating && form.email.trim() && form.firstName.trim() && form.lastName.trim() && form.password.trim() && form.role
 
   return (
     <PageContainer>
@@ -134,7 +130,7 @@ export function UsersPage() {
         <div style={{ flex: 1 }}>
           <FilterBuilder
             fields={FILTER_FIELDS}
-            onApply={(group) => { setFilterGroup(group); setPage(0) }}
+            onApply={list.setFilterGroup}
           />
         </div>
         <ExportCsvButton
@@ -150,9 +146,9 @@ export function UsersPage() {
             columns={COLUMNS}
             data={pageItems}
             loading={loading}
-            onSort={handleSort}
-            sortField={sortField}
-            sortDir={sortDir}
+            onSort={list.handleSort}
+            sortField={list.sortField}
+            sortDir={list.sortDir}
             emptyComponent={
               <EmptyState
                 icon={<User size={32} color="var(--color-slate-light)" />}
@@ -163,110 +159,107 @@ export function UsersPage() {
             onRowClick={(row) => navigate(`/users/${row.id}`)}
           />
 
-          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+          <Pagination currentPage={list.page + 1} totalPages={totalPages} onPrev={list.prevPage} onNext={list.nextPage} />
         </>
       )}
       {/* Create User Modal */}
-      {modalOpen && (
-        <Modal
-          open
-          onClose={() => setModalOpen(false)}
-          title="Nuovo utente"
-          width={440}
-          footer={(() => {
-            const canCreate = !creating && form.email.trim() && form.firstName.trim() && form.lastName.trim() && form.password.trim() && form.role
-            return (
-              <>
-                <Button variant="secondary" onClick={() => setModalOpen(false)}>Annulla</Button>
-                <Button
-                  disabled={!canCreate}
-                  style={{ opacity: canCreate ? 1 : 0.5 }}
-                  onClick={() => void createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
-                >
-                  {creating ? 'Creazione…' : 'Crea utente'}
-                </Button>
-              </>
-            )
-          })()}
-        >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Email <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><label style={labelS}>Nome <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="Mario" /></div>
-                <div><label style={labelS}>Cognome <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Rossi" /></div>
-              </div>
-              <div><label style={labelS}>Password <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 8 caratteri" /></div>
-              <div><label style={labelS}>Ruolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
-                <select style={selectS} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                  {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
-                </select>
-              </div>
-              {/* Team — search + chips */}
-              <div>
-                <label style={labelS}>Team</label>
-                {/* Selected team chips */}
-                {(() => {
-                  const uniqueIds = [...new Set(form.teamIds)]
-                  if (uniqueIds.length === 0) return null
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={t('pages.users.newUserTitle')}
+        width={440}
+        closeOnOverlay={false}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>{t('common.cancel')}</Button>
+            <Button
+              disabled={!canCreate}
+              onClick={() => void createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
+            >
+              {creating ? t('pages.users.creating') : t('pages.users.create')}
+            </Button>
+          </>
+        }
+      >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div><label style={labelS}>{t('pages.users.email')} {REQUIRED}</label><Input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div><label style={labelS}>{t('pages.users.firstName')} {REQUIRED}</label><Input required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="Mario" /></div>
+              <div><label style={labelS}>{t('pages.users.lastName')} {REQUIRED}</label><Input required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Rossi" /></div>
+            </div>
+            <div><label style={labelS}>{t('pages.users.password')} {REQUIRED}</label><Input type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={t('pages.users.passwordHint')} /></div>
+            <div><label style={labelS}>{t('pages.users.role')} {REQUIRED}</label>
+              <Select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
+              </Select>
+            </div>
+            {/* Team — search + chips */}
+            <div>
+              <label style={labelS}>{t('pages.users.teams')}</label>
+              {/* Selected team chips */}
+              {(() => {
+                const uniqueIds = [...new Set(form.teamIds)]
+                if (uniqueIds.length === 0) return null
+                return (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {uniqueIds.map(tid => {
+                      const team = teams.find(x => x.id === tid)
+                      if (!team) return null
+                      return (
+                        <span key={tid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
+                          {team.name}{team.type ? ` (${team.type})` : ''}
+                          <button type="button" aria-label={t('pages.users.removeTeam', { name: team.name })} onClick={() => setForm(prev => ({ ...prev, teamIds: prev.teamIds.filter(id => id !== tid) }))}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
+                            <X size={12} aria-hidden="true" />
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+              {/* Search input */}
+              <div style={{ position: 'relative' }}>
+                <Input
+                  type="search"
+                  value={teamSearch}
+                  onChange={e => setTeamSearch(e.target.value)}
+                  placeholder={t('pages.users.searchTeams')}
+                  aria-label={t('pages.users.searchTeams')}
+                />
+                {teamSearch.length >= 1 && (() => {
+                  const available = teams.filter(team =>
+                    !form.teamIds.includes(team.id) &&
+                    team.name.toLowerCase().includes(teamSearch.toLowerCase())
+                  )
+                  if (available.length === 0) return null
                   return (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                      {uniqueIds.map(tid => {
-                        const t = teams.find(x => x.id === tid)
-                        if (!t) return null
-                        return (
-                          <span key={tid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
-                            {t.name}{t.type ? ` (${t.type})` : ''}
-                            <button type="button" onClick={() => setForm(prev => ({ ...prev, teamIds: prev.teamIds.filter(id => id !== tid) }))}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
-                              <X size={12} />
-                            </button>
-                          </span>
-                        )
-                      })}
+                    <div role="listbox" style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
+                      {available.map(team => (
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={false}
+                          key={team.id}
+                          onMouseDown={() => { setForm(prev => ({ ...prev, teamIds: [...new Set([...prev.teamIds, team.id])] })); setTeamSearch('') }}
+                          className="hover-bg"
+                          style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--color-border-light)' }}
+                        >
+                          <Users size={14} aria-hidden="true" color="var(--color-slate-light)" />
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{team.name}</span>
+                            {team.type && <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 6 }}>({team.type})</span>}
+                            {team.description && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>{team.description}</div>}
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   )
                 })()}
-                {/* Search input */}
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>🔍</span>
-                  <input
-                    type="text"
-                    value={teamSearch}
-                    onChange={e => setTeamSearch(e.target.value)}
-                    placeholder="Digita per cercare team..."
-                    style={{ ...inputS, paddingLeft: 36 }}
-                  />
-                  {teamSearch.length >= 1 && (() => {
-                    const available = teams.filter(t =>
-                      !form.teamIds.includes(t.id) &&
-                      t.name.toLowerCase().includes(teamSearch.toLowerCase())
-                    )
-                    if (available.length === 0) return null
-                    return (
-                      <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
-                        {available.map(t => (
-                          <div
-                            key={t.id}
-                            onMouseDown={() => { setForm(prev => ({ ...prev, teamIds: [...new Set([...prev.teamIds, t.id])] })); setTeamSearch('') }}
-                            className="hover-bg"
-                            style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
-                          >
-                            <Users size={14} color="var(--color-slate-light)" />
-                            <div style={{ flex: 1 }}>
-                              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
-                              {t.type && <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 6 }}>({t.type})</span>}
-                              {t.description && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>{t.description}</div>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  })()}
-                </div>
               </div>
             </div>
-        </Modal>
-      )}
+          </div>
+      </Modal>
     </PageContainer>
   )
 }

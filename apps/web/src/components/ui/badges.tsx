@@ -16,7 +16,8 @@ const BROKEN = { bg: 'var(--color-danger)', color: '#fff' }
 
 // ── Severità / priorità (incident, problem, change) ─────────────────────────
 
-const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
+/** Palette severità UNICA (incident, problem, anomalie, impatto what-if): niente copie locali. */
+export const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
   critical: { bg: '#fee2e2', color: '#b91c1c' },
   high:     { bg: '#ffedd5', color: '#c2410c' },
   medium:   { bg: '#fef3c7', color: '#b45309' },

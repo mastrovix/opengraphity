@@ -35,6 +35,11 @@ jobs:
       - name: Build packages
         run: pnpm --filter "./packages/*" build
 
+      # infra/.env.example must document exactly the variables the code reads
+      # (G-08): fails on used-but-undocumented or documented-but-dead keys
+      - name: Check env documentation
+        run: node scripts/check-env-example.mjs
+
       - name: Lint
         run: pnpm lint
 

@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client/react'
 import { Link } from 'react-router-dom'
 import { Sparkles, BookOpen } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { SeverityBadge } from '@/components/ui/badges'
 
 const GET_SIMILAR_INCIDENTS = gql`
   query SimilarIncidents($incidentId: ID!, $limit: Int) {
@@ -26,14 +27,6 @@ interface ArticleItem { id: string; title: string; slug: string | null; category
 interface QueryData {
   similarIncidents: { ready: boolean; items: SimilarItem[] }
   suggestedArticles: { ready: boolean; items: ArticleItem[] }
-}
-
-// Unknown severity renders RED (fail-visible), never a benign default.
-const SEV_STYLE: Record<string, { bg: string; color: string }> = {
-  critical: { bg: '#fee2e2', color: '#b91c1c' },
-  high:     { bg: '#ffedd5', color: '#c2410c' },
-  medium:   { bg: '#fef3c7', color: '#b45309' },
-  low:      { bg: '#dcfce7', color: '#15803d' },
 }
 
 function scorePct(score: number): string {
@@ -87,7 +80,6 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {similar?.items.map((it) => {
-              const sev = SEV_STYLE[it.severity] ?? { bg: 'var(--color-danger)', color: '#fff' }
               const closed = it.status === 'closed' || it.status === 'resolved'
               return (
                 <Link
@@ -107,9 +99,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                     {it.title}
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: sev.bg, color: sev.color, textTransform: 'uppercase' }}>
-                      {it.severity}
-                    </span>
+                    <SeverityBadge value={it.severity} />
                     <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: closed ? '#dcfce7' : '#f1f5f9', color: closed ? '#15803d' : 'var(--color-slate)', textTransform: 'uppercase' }}>
                       {it.status.replace(/_/g, ' ')}
                     </span>

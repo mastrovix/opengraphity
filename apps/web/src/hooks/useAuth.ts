@@ -1,19 +1,14 @@
-import { useNavigate } from 'react-router-dom'
-import { setToken, removeToken, isAuthenticated } from '@/lib/auth'
 import { keycloak } from '../lib/keycloak'
 
+/**
+ * Session actions. Authentication itself is owned by Keycloak (`initKeycloak`
+ * with `login-required`): there is no app-level `login(token)` and nothing is
+ * persisted in localStorage (E-18).
+ */
 export function useAuth() {
-  const navigate = useNavigate()
-
-  const login = (token: string) => {
-    setToken(token)
-    navigate('/')
-  }
-
   const logout = () => {
-    removeToken()
     keycloak.logout({ redirectUri: window.location.origin + '/' })
   }
 
-  return { isAuthenticated: isAuthenticated(), login, logout }
+  return { logout }
 }

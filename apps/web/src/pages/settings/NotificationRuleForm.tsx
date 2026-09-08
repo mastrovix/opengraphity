@@ -123,7 +123,7 @@ export function NewRuleDialog({
           <span style={{ fontSize: 'var(--font-size-section-title)', fontWeight: fontWeight.bold, color: 'var(--color-slate-dark)' }}>
             {t('notificationRules.addRule')}
           </span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}>
             <X size={18} />
           </button>
         </div>
@@ -244,7 +244,7 @@ export function NewRuleDialog({
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button
+          <button type="button"
             onClick={onClose}
             style={{
               padding: '8px 18px', borderRadius: 6, border: '1px solid #e2e8f0',
@@ -253,7 +253,7 @@ export function NewRuleDialog({
           >
             {t('notificationRules.cancel')}
           </button>
-          <button
+          <button type="button"
             onClick={() => onSave({
               eventType, titleKey: titleKey.trim(), severityOverride: severity, channels, target, enabled: true,
               escalationDelayMinutes: isEscalation && escalationDelay ? Number(escalationDelay) : undefined,

@@ -4,6 +4,7 @@ import { ApolloProvider } from '@apollo/client/react'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { apolloClient } from '@/lib/apollo'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
+import { startTokenRefreshLoop } from '@/lib/tokenRefresh'
 import { PortalLayout } from '@/components/PortalLayout'
 import { HomePage }        from '@/pages/HomePage'
 import { TicketListPage }  from '@/pages/TicketListPage'
@@ -42,10 +43,10 @@ initKeycloak().then((authenticated) => {
     return
   }
 
-  // Auto-refresh token before expiry
-  setInterval(() => {
-    keycloak.updateToken(60).catch(() => keycloak.login())
-  }, 30_000)
+  // Keep the token fresh: onTokenExpired + 30s safety interval. A network
+  // blip towards Keycloak retries with backoff (banner), only an invalid
+  // session redirects to login — same loop as apps/web (E-05).
+  startTokenRefreshLoop()
 
   createRoot(root).render(
     <StrictMode>
@@ -54,9 +55,20 @@ initKeycloak().then((authenticated) => {
       </ApolloProvider>
     </StrictMode>,
   )
-}).catch((err: Error) => {
-  root.innerHTML = `<div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui">
-    <div style="font-size:20px;font-weight:600;color:#EF4444">Errore di autenticazione</div>
-    <div style="color:#64748B;font-size:14px">${err.message}</div>
-  </div>`
+}).catch((err: unknown) => {
+  // initKeycloak throws for: no tenant in subdomain, missing VITE_KEYCLOAK_URL /
+  // VITE_KEYCLOAK_CLIENT_ID, unknown realm, Keycloak unreachable (the message
+  // already carries the cause). Without this the user sees a blank page.
+  const message = err instanceof Error ? err.message : String(err)
+  root.replaceChildren()
+  const box = document.createElement('div')
+  box.style.cssText = 'display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui;padding:24px;text-align:center'
+  const title = document.createElement('div')
+  title.style.cssText = 'font-size:20px;font-weight:600;color:#EF4444'
+  title.textContent = 'Errore di autenticazione'
+  const detail = document.createElement('div')
+  detail.style.cssText = 'color:#64748B;font-size:14px;max-width:640px'
+  detail.textContent = message   // textContent: the message may echo the hostname/URL
+  box.append(title, detail)
+  root.appendChild(box)
 })

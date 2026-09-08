@@ -20,7 +20,7 @@ const baseEntryStyle = (selected: boolean): React.CSSProperties => ({
   background: selected ? '#f0f9ff' : 'var(--color-slate-bg)',
   borderLeft: `3px solid ${selected ? 'var(--color-brand)' : 'transparent'}`,
   borderTop: 'none', borderRight: 'none',
-  borderBottom: '1px solid #e5e7eb',
+  borderBottom: '1px solid var(--border)',
 })
 
 const typeEntryStyle = (selected: boolean): React.CSSProperties => ({
@@ -43,10 +43,10 @@ export function CITypeList({
   onNew,
 }: CITypeListProps) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e5e7eb' }}>
+    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Tipi CI</span>
-        <button onClick={onNew} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>
+        <button type="button" onClick={onNew} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>
           <Plus size={12} /> Nuovo
         </button>
       </div>
@@ -57,7 +57,7 @@ export function CITypeList({
 
       <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
         {/* Campi Base special entry */}
-        <button onClick={onSelectBase} style={baseEntryStyle(selectedBase)}>
+        <button type="button" onClick={onSelectBase} style={baseEntryStyle(selectedBase)}>
           <Layout size={15} color={selectedBase ? 'var(--color-brand)' : 'var(--color-slate)'} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
@@ -78,7 +78,7 @@ export function CITypeList({
         {ciTypes.map((t) => {
           const isSelected = t.id === selectedId
           return (
-            <button key={t.id} onClick={() => onSelectType(t)} style={typeEntryStyle(isSelected)}>
+            <button type="button" key={t.id} onClick={() => onSelectType(t)} style={typeEntryStyle(isSelected)}>
               <CIIcon icon={t.icon} size={15} color={isSelected ? 'var(--color-brand)' : (t.color ?? 'var(--color-brand)')} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

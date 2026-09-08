@@ -1,27 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { gql } from '@apollo/client'
+import { useTranslation } from 'react-i18next'
 import { Lock, SendHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
-import { EDIT_INTERNAL_MESSAGE, DELETE_INTERNAL_MESSAGE } from '@/graphql/mutations'
-
-const GET_MESSAGES = gql`
-  query InternalMessages($entityType: String!, $entityId: ID!, $limit: Int) {
-    internalMessages(entityType: $entityType, entityId: $entityId, limit: $limit) {
-      id authorId authorName body mentions createdAt editedAt
-    }
-  }
-`
-
-const SEND_MESSAGE = gql`
-  mutation SendInternalMessage($entityType: String!, $entityId: ID!, $body: String!) {
-    sendInternalMessage(entityType: $entityType, entityId: $entityId, body: $body) {
-      id authorId authorName body createdAt
-    }
-  }
-`
+import { GET_INTERNAL_MESSAGES } from '@/graphql/queries'
+import { SEND_INTERNAL_MESSAGE, EDIT_INTERNAL_MESSAGE, DELETE_INTERNAL_MESSAGE } from '@/graphql/mutations'
+import { useConfirm } from '@/hooks/useConfirm'
+import { timeAgo } from '@/lib/datetime'
 
 interface Message {
   id: string
@@ -39,47 +26,38 @@ interface Props {
   currentUserId: string
 }
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'ora'
-  if (mins < 60) return `${mins}m fa`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h fa`
-  const days = Math.floor(hrs / 24)
-  return `${days}g fa`
-}
-
 function initials(name: string): string {
   return name.split(' ').map(w => w[0] ?? '').join('').toUpperCase().slice(0, 2)
 }
 
 export function InternalChatPanel({ entityType, entityId, currentUserId }: Props) {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [body, setBody] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
-  const { data, refetch } = useQuery(GET_MESSAGES, {
+  const { data, refetch } = useQuery<{ internalMessages: Message[] }>(GET_INTERNAL_MESSAGES, {
     variables: { entityType, entityId, limit: 50 },
   })
 
-  const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
-    onCompleted: () => { setBody(''); refetch() },
+  const [sendMessage, { loading: sending }] = useMutation(SEND_INTERNAL_MESSAGE, {
+    onCompleted: () => { setBody(''); void refetch() },
     // Il testo NON viene svuotato su errore: l'utente può ritentare l'invio.
-    onError: (e) => toast.error(`Invio messaggio fallito: ${e.message}`),
+    onError: (e) => toast.error(`${t('internalChat.sendFailed')}: ${e.message}`),
   })
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody]   = useState('')
   const [editMessage, { loading: editing }] = useMutation(EDIT_INTERNAL_MESSAGE, {
-    onCompleted: () => { setEditingId(null); setEditBody(''); refetch() },
-    onError: (e) => toast.error(`Modifica fallita: ${e.message}`),
+    onCompleted: () => { setEditingId(null); setEditBody(''); void refetch() },
+    onError: (e) => toast.error(`${t('internalChat.editFailed')}: ${e.message}`),
   })
   const [deleteMessage] = useMutation(DELETE_INTERNAL_MESSAGE, {
-    onCompleted: () => refetch(),
-    onError: (e) => toast.error(`Eliminazione fallita: ${e.message}`),
+    onCompleted: () => void refetch(),
+    onError: (e) => toast.error(`${t('internalChat.deleteFailed')}: ${e.message}`),
   })
 
-  const messages: Message[] = (data as { internalMessages?: Message[] } | undefined)?.internalMessages ?? []
+  const messages: Message[] = data?.internalMessages ?? []
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
@@ -88,7 +66,12 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
   const handleSend = () => {
     const trimmed = body.trim()
     if (!trimmed || sending) return
-    sendMessage({ variables: { entityType, entityId, body: trimmed } })
+    void sendMessage({ variables: { entityType, entityId, body: trimmed } })
+  }
+
+  const handleDelete = async (msg: Message) => {
+    const ok = await confirm({ title: t('internalChat.confirmDelete'), danger: true })
+    if (ok) void deleteMessage({ variables: { messageId: msg.id } })
   }
 
   const isOwn = (msg: Message) => msg.authorId === currentUserId
@@ -97,21 +80,21 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
     <div style={{ background: '#FFF7ED', border: '1px solid #fed7aa', borderRadius: 10, overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #fed7aa' }}>
-        <Lock size={15} color="#92400e" />
-        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)', color: '#92400e' }}>Chat interna</span>
+        <Lock size={15} color="#92400e" aria-hidden="true" />
+        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)', color: '#92400e' }}>{t('internalChat.title')}</span>
         <span style={{
           marginLeft: 'auto', fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#92400e',
           background: '#fde68a', padding: '2px 8px', borderRadius: 9999,
         }}>
-          Solo agenti
+          {t('internalChat.agentsOnly')}
         </span>
       </div>
 
       {/* Messages */}
       <div ref={listRef} style={{ maxHeight: 400, overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {messages.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 'var(--font-size-body)', padding: 20 }}>
-            Nessun messaggio
+          <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', padding: 20 }}>
+            {t('internalChat.empty')}
           </div>
         )}
         {messages.map(msg => {
@@ -120,9 +103,9 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
             <div key={msg.id} style={{ display: 'flex', justifyContent: own ? 'flex-end' : 'flex-start' }}>
               <div style={{ display: 'flex', gap: 8, maxWidth: '80%', flexDirection: own ? 'row-reverse' : 'row' }}>
                 {/* Avatar */}
-                <div style={{
+                <div aria-hidden="true" style={{
                   width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-                  background: own ? '#0369a1' : '#6b7280', color: '#fff',
+                  background: own ? 'var(--accent-hover)' : 'var(--color-slate)', color: '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 'var(--font-size-table)', fontWeight: 700,
                 }}>
@@ -135,30 +118,30 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
                 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
                     <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)' }}>{msg.authorName}</span>
-                    <span style={{ fontSize: 'var(--font-size-table)', color: '#9ca3af' }}>{relativeTime(msg.createdAt)}</span>
-                    {msg.editedAt && <span style={{ fontSize: 'var(--font-size-label)', color: '#9ca3af', fontStyle: 'italic' }}>(modificato)</span>}
+                    <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{timeAgo(msg.createdAt)}</span>
+                    {msg.editedAt && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', fontStyle: 'italic' }}>({t('internalChat.edited')})</span>}
                     {own && editingId !== msg.id && (
                       <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
-                        <button title="Modifica" onClick={() => { setEditingId(msg.id); setEditBody(msg.body) }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: 0, display: 'inline-flex' }}>
-                          <Pencil size={12} />
+                        <button type="button" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => { setEditingId(msg.id); setEditBody(msg.body) }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate)', padding: 0, display: 'inline-flex' }}>
+                          <Pencil size={12} aria-hidden="true" />
                         </button>
-                        <button title="Elimina" onClick={() => { if (confirm('Eliminare il messaggio?')) void deleteMessage({ variables: { messageId: msg.id } }) }}
+                        <button type="button" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => void handleDelete(msg)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: 0, display: 'inline-flex' }}>
-                          <Trash2 size={12} />
+                          <Trash2 size={12} aria-hidden="true" />
                         </button>
                       </span>
                     )}
                   </div>
                   {editingId === msg.id ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={2}
-                        style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 6, padding: 6, fontSize: 'var(--font-size-body)', resize: 'vertical', boxSizing: 'border-box' }} />
+                      <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={2} aria-label={t('common.edit')}
+                        style={{ width: '100%', border: '1px solid var(--border-strong)', borderRadius: 6, padding: 6, fontSize: 'var(--font-size-body)', resize: 'vertical', boxSizing: 'border-box' }} />
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button onClick={() => { setEditingId(null); setEditBody('') }}
-                          style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)' }}>Annulla</button>
-                        <button disabled={editing || !editBody.trim()} onClick={() => void editMessage({ variables: { messageId: msg.id, body: editBody.trim() } })}
-                          style={{ background: '#0369a1', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: (editing || !editBody.trim()) ? 0.6 : 1 }}>Salva</button>
+                        <button type="button" onClick={() => { setEditingId(null); setEditBody('') }}
+                          style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)' }}>{t('common.cancel')}</button>
+                        <button type="button" disabled={editing || !editBody.trim()} onClick={() => void editMessage({ variables: { messageId: msg.id, body: editBody.trim() } })}
+                          style={{ background: 'var(--accent-hover)', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: (editing || !editBody.trim()) ? 0.6 : 1 }}>{t('common.save')}</button>
                       </div>
                     </div>
                   ) : (
@@ -176,21 +159,24 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
         <MentionInput
           value={body}
           onChange={setBody}
-          placeholder="Scrivi un messaggio... (Ctrl+Enter per inviare)"
+          placeholder={t('internalChat.placeholder')}
           onSubmit={handleSend}
           rows={2}
           style={{ flex: 1 }}
         />
         <button
+          type="button"
           onClick={handleSend}
           disabled={sending || !body.trim()}
+          aria-label={t('internalChat.send')}
+          title={t('internalChat.send')}
           style={{
-            background: body.trim() ? '#0369a1' : '#d1d5db', color: '#fff',
+            background: body.trim() ? 'var(--accent-hover)' : '#d1d5db', color: '#fff',
             border: 'none', borderRadius: 8, padding: '8px 12px', cursor: body.trim() ? 'pointer' : 'default',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}
         >
-          <SendHorizontal size={18} />
+          <SendHorizontal size={18} aria-hidden="true" />
         </button>
       </div>
     </div>

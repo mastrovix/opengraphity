@@ -63,7 +63,7 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
   try { prettyData = JSON.stringify(JSON.parse(job.data), null, 2) } catch { /* keep raw */ }
 
   return (
-    <div style={{ padding: '12px 16px', background: 'var(--color-slate-bg)', borderTop: '1px solid #e5e7eb', fontSize: 'var(--font-size-body)' }}>
+    <div style={{ padding: '12px 16px', background: 'var(--color-slate-bg)', borderTop: '1px solid var(--border)', fontSize: 'var(--font-size-body)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Job ID</div>
@@ -106,14 +106,14 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
       )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button
+        <button type="button"
           onClick={() => setShowPayload((p) => !p)}
           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
         >
           {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Payload
         </button>
         {job.stacktrace.length > 0 && (
-          <button
+          <button type="button"
             onClick={() => setShowStack((p) => !p)}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
           >
@@ -121,7 +121,7 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
           </button>
         )}
         {job.status === 'failed' && (
-          <button
+          <button type="button"
             onClick={onRetry}
             disabled={retrying}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: retrying ? 'not-allowed' : 'pointer', opacity: retrying ? 0.6 : 1, fontWeight: 500 }}
@@ -190,9 +190,11 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
   return (
     <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
       {/* Queue header row */}
-      <div
+      <button
+        type="button"
+        aria-expanded={expanded}
         onClick={handleExpand}
-        style={{ padding: '16px 20px', background: 'white', display: 'flex', alignItems: 'center', gap: 20, cursor: 'pointer' }}
+        style={{ width: '100%', textAlign: 'left', border: 'none', font: 'inherit', padding: '16px 20px', background: 'white', display: 'flex', alignItems: 'center', gap: 20, cursor: 'pointer' }}
       >
         <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -222,16 +224,16 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
             )
           })}
         </div>
-      </div>
+      </button>
 
       {/* Expanded job list */}
       {expanded && (
-        <div style={{ borderTop: '1px solid #e5e7eb' }}>
+        <div style={{ borderTop: '1px solid var(--border)' }}>
           {/* Status filter tabs */}
           <div style={{ display: 'flex', gap: 4, padding: '10px 16px', background: 'var(--color-slate-bg)', alignItems: 'center' }}>
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginRight: 4 }}>Show:</span>
             {JOB_STATUSES.map((s) => (
-              <button
+              <button type="button"
                 key={s}
                 onClick={(e) => { e.stopPropagation(); handleStatusChange(s) }}
                 style={{
@@ -244,7 +246,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 {s}
               </button>
             ))}
-            <button
+            <button type="button"
               onClick={(e) => { e.stopPropagation(); void loadJobs({ variables: { queueName: queue.name, status: jobStatus, limit: 50 } }) }}
               style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
             >
@@ -327,7 +329,7 @@ export function QueueStatsPage() {
             {loading ? '—' : `${queues.length} code`}
           </p>
         </div>
-        <button
+        <button type="button"
           onClick={() => void refetch()}
           disabled={loading}
           style={{

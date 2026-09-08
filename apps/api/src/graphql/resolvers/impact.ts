@@ -3,16 +3,9 @@ import { calculateRiskScore } from '../../lib/riskScore.js'
 import { getTerminalStepNames } from '../../lib/workflowHelpers.js'
 import type { GraphQLContext } from '../../context.js'
 import { ciLabelPredicate, IMPACT_REL_TYPES } from '../../lib/ciLabels.js'
+import { toNumber } from '@opengraphity/neo4j'
 
 type Session = ReturnType<typeof getSession>
-
-function toInt(v: unknown, fallback = 0): number {
-  if (v == null) return fallback
-  if (typeof v === 'number') return v
-  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
-    return (v as { toNumber: () => number }).toNumber()
-  return Number(v)
-}
 
 export async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: string[]) {
   const incidentTerminal = await getTerminalStepNames(session, tenantId, 'incident')
@@ -40,7 +33,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     name:        r.get('name') as string,
     type:        ciTypeFromLabels([r.get('label') as string]),
     environment: (r.get('environment') ?? 'unknown') as string,
-    distance:    toInt(r.get('distance'), 1),
+    distance:    toNumber(r.get('distance')),
   }))
 
   // 2a. Open incidents

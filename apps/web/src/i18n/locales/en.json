@@ -21,7 +21,8 @@
     "resolvedBy": "Resolved by",
     "title": "Title",
     "select": "Select",
-    "writeHere": "Write here..."
+    "writeHere": "Write here...",
+    "close": "Close"
   },
   "bulk": {
     "selected_one": "{{count}} selected",
@@ -37,7 +38,8 @@
     "resolveNotes": "Resolution notes (optional)",
     "confirm": "Confirm",
     "summary": "{{ok}} completed",
-    "summaryWithFailed": "{{ok}} completed, {{failed}} failed"
+    "summaryWithFailed": "{{ok}} completed, {{failed}} failed",
+    "selected": "{{count}} selected"
   },
   "sidebar": {
     "workspace": "WORKSPACE",
@@ -93,7 +95,11 @@
     "assessmentQuestions": "Assessment Questions",
     "whatIf": "What-if Planning",
     "collapse": "Collapse sidebar",
-    "expand": "Expand sidebar"
+    "expand": "Expand sidebar",
+    "mainMenu": "Main menu",
+    "anomalyLoadError": "Error loading anomalies",
+    "criticalAnomalies": "{{count}} critical anomalies",
+    "pendingBadge": "{{count}} pending"
   },
   "pages": {
     "incidents": {
@@ -159,7 +165,8 @@
       "ciCreated": "{{type}} created",
       "noResults": "No configuration items found",
       "noResultsDesc": "The CMDB is empty. Add the first CI to get started.",
-      "noCiOfType": "No {{type}}"
+      "noCiOfType": "No {{type}}",
+      "baseEnumsUnavailable": "Status/environment values unavailable from the metamodel (base type)"
     },
     "anomalies": {
       "title": "Anomalies",
@@ -213,7 +220,10 @@
       "noOwnedCIs": "No owned CIs",
       "noSupportedCIs": "No supported CIs",
       "members": "Members",
-      "noMembers": "No members"
+      "noMembers": "No members",
+      "changeManager": "Change",
+      "assignManager": "Assign",
+      "removeManager": "Remove manager"
     },
     "users": {
       "title": "Users",
@@ -224,7 +234,18 @@
       "createdAt": "Created",
       "noResults": "No users",
       "noResultsDesc": "There are no users for this tenant.",
-      "count": "{{count}} users"
+      "count": "{{count}} users",
+      "newUserTitle": "New user",
+      "creating": "Creating…",
+      "create": "Create",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "password": "Password",
+      "passwordHint": "At least 8 characters",
+      "teams": "Teams",
+      "removeTeam": "Remove {{name}}",
+      "searchTeams": "Search teams…",
+      "backToList": "Users"
     },
     "logs": {
       "title": "Logs",
@@ -320,7 +341,9 @@
       "modeInline": "Inline",
       "modeFile": "Upload file",
       "dropHint": "Drag here or",
-      "browse": "Browse"
+      "browse": "Browse",
+      "deleteSourceTitle": "Delete this sync source?",
+      "sourceDeleted": "Source deleted"
     },
     "import": {
       "title": "Historical data import",
@@ -360,7 +383,8 @@
       "dryRunErrors": "Dry-run completed with {{count}} error rows",
       "importDone": "Import completed: {{created}} created, {{updated}} updated",
       "confirmErrors": "{{count}} rows have errors and will be skipped. Continue with the import?",
-      "requestFailed": "Import request failed"
+      "requestFailed": "Import request failed",
+      "import": "Import"
     },
     "monitoring": {
       "title": "Monitoring",
@@ -775,14 +799,18 @@
     "advancedScripts": "Advanced scripts (validation, visibility, default)",
     "systemFields": "SYSTEM FIELDS ({{count}}) — not editable",
     "customFields": "CUSTOM FIELDS ({{count}})",
-    "noCustomFields": "No custom fields. Click \"+ Add field\" to add one."
+    "noCustomFields": "No custom fields. Click \"+ Add field\" to add one.",
+    "deleteFieldTitle": "Delete this field?"
   },
   "ciTypeDesigner": {
     "chain": "Chain",
     "chainFamilies": "Chain Families",
     "chainApplication": "Application",
     "chainInfrastructure": "Infrastructure",
-    "chainFamiliesTooltip": "Which service chains this CI type belongs to"
+    "chainFamiliesTooltip": "Which service chains this CI type belongs to",
+    "deleteTypeTitle": "Delete type \"{{label}}\"?",
+    "deleteFieldTitle": "Delete field \"{{name}}\"?",
+    "deleteRelationTitle": "Delete relation \"{{name}}\"?"
   },
   "fieldRules": {
     "show": "Show",
@@ -884,7 +912,8 @@
       "problems": "Problems",
       "tasks": "Tasks",
       "kbArticles": "Knowledge Base"
-    }
+    },
+    "error": "Search error"
   },
   "notification": {
     "ola": {
@@ -903,5 +932,91 @@
     "resolve": "Resolution",
     "paused": "SLA paused",
     "none": "No SLA"
+  },
+  "confirm": {
+    "irreversible": "This action cannot be undone."
+  },
+  "pagination": {
+    "label": "Pagination"
+  },
+  "layout": {
+    "skipToContent": "Skip to content"
+  },
+  "topbar": {
+    "detail": "Detail",
+    "breadcrumb": "Breadcrumb",
+    "notificationsUnread": "Notifications, {{count}} unread",
+    "sseDisconnected": "Real-time notifications disconnected",
+    "userMenu": "User menu ({{name}})"
+  },
+  "watchers": {
+    "title": "Watchers",
+    "watch": "Watch",
+    "watching": "Watching",
+    "listLabel": "Watchers: {{count}}",
+    "add": "Add watcher",
+    "remove": "Remove {{name}}",
+    "searchPlaceholder": "Search user…",
+    "typeToSearch": "Type at least 2 characters",
+    "nowWatching": "You are now watching",
+    "stoppedWatching": "You are no longer watching",
+    "added": "Watcher added",
+    "removed": "Watcher removed"
+  },
+  "internalChat": {
+    "title": "Internal chat",
+    "agentsOnly": "Agents only",
+    "empty": "No messages",
+    "edited": "edited",
+    "placeholder": "Write a message... (Ctrl+Enter to send)",
+    "send": "Send",
+    "sendFailed": "Message not sent",
+    "editFailed": "Edit failed",
+    "deleteFailed": "Delete failed",
+    "confirmDelete": "Delete this message?"
+  },
+  "admin": {
+    "triggers": {
+      "deleteTitle": "Delete this trigger?",
+      "toggleLabel": "Toggle {{name}}",
+      "enabledLabel": "Enabled"
+    },
+    "rules": {
+      "deleteTitle": "Delete this rule?",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "toggleLabel": "Toggle {{name}}"
+    },
+    "sla": {
+      "deleteTitle": "Delete this SLA policy?",
+      "toggleLabel": "Toggle {{name}}",
+      "businessHoursLabel": "Business hours only"
+    },
+    "integrations": {
+      "tabsLabel": "Integration sections",
+      "webhookIn": "Webhook In",
+      "webhookOut": "Webhook Out",
+      "apiKeys": "API Keys",
+      "deleteWebhookTitle": "Delete this webhook?",
+      "deleteApiKeyTitle": "Delete this API key?",
+      "webhookDeleted": "Webhook deleted",
+      "apiKeyDeleted": "API key deleted",
+      "toggleLabel": "Toggle {{name}}",
+      "regenToken": "Regenerate token",
+      "regenKey": "Regenerate key",
+      "test": "Test",
+      "copy": "Copy",
+      "copyEndpoint": "Copy endpoint"
+    },
+    "questions": {
+      "deleteTitle": "Delete this question?",
+      "deleteBody": "Not possible if answers are linked to it."
+    },
+    "approvals": {
+      "cancelRequestTitle": "Cancel this approval request?"
+    },
+    "notificationChannels": {
+      "deleteTitle": "Delete this channel?"
+    }
   }
 }

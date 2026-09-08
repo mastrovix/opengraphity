@@ -7,6 +7,7 @@ import { publish } from '@opengraphity/events'
 import { sseManager } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
+import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 import * as incidentService from '../../services/incidentService.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
@@ -218,44 +219,8 @@ export async function updateWorkflowTransition(
     if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
     const wd    = wdResult.records[0].get('wd').properties    as Record<string, unknown>
     const steps = wdResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
-    const trResult = await session.executeRead((tx) =>
-      tx.run(`
-        MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
-        RETURN from.name AS fromStep, to.name AS toStep,
-               tr.id AS id, tr.trigger AS trigger, tr.label AS label,
-               tr.requires_input AS requiresInput,
-               tr.input_field AS inputField,
-               tr.condition AS condition,
-               tr.timer_hours AS timerHours
-      `, { defId: definitionId, tenantId: ctx.tenantId }),
-    )
-    return {
-      id:            wd['id']              as string,
-      name:          wd['name']            as string,
-      entityType:    wd['entity_type']     as string,
-      changeSubtype: (wd['change_subtype'] ?? null) as string | null,
-      version:       Number(wd['version'] ?? 1),
-      active:        wd['active']          as boolean,
-      steps: steps.map((s) => ({
-        id:           s.properties['id']             as string,
-        name:         s.properties['name']           as string,
-        label:        s.properties['label']          as string,
-        type:         s.properties['type']           as string,
-        enterActions: (s.properties['enter_actions'] ?? null) as string | null,
-        exitActions:  (s.properties['exit_actions']  ?? null) as string | null,
-      })),
-      transitions: trResult.records.map((r) => ({
-        id:            r.get('id')            as string,
-        fromStepName:  r.get('fromStep')      as string,
-        toStepName:    r.get('toStep')        as string,
-        trigger:       r.get('trigger')       as string,
-        label:         r.get('label')         as string,
-        requiresInput: r.get('requiresInput') as boolean,
-        inputField:    (r.get('inputField')   ?? null) as string | null,
-        condition:     (r.get('condition')    ?? null) as string | null,
-        timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
-      })),
-    }
+    const transitions = await loadTransitionRows(session, definitionId, ctx.tenantId)
+    return mapWorkflowDefinition(wd, steps, transitions)
   }, true)
 }
 
@@ -811,45 +776,7 @@ export async function saveWorkflowChanges(
         { definitionId, tenantId: ctx.tenantId }),
     )
     const savedSteps = stepsResult.records[0]?.get('steps') as Array<{ properties: Record<string, unknown> }> ?? []
-
-    const trResult = await session.executeRead((tx) =>
-      tx.run(`
-        MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
-        RETURN from.name AS fromStep, to.name AS toStep,
-               tr.id AS id, tr.trigger AS trigger, tr.label AS label,
-               tr.requires_input AS requiresInput,
-               tr.input_field AS inputField,
-               tr.condition AS condition,
-               tr.timer_hours AS timerHours
-      `, { defId: definitionId, tenantId: ctx.tenantId }),
-    )
-
-    return {
-      id:            wd['id']              as string,
-      name:          wd['name']            as string,
-      entityType:    wd['entity_type']     as string,
-      changeSubtype: (wd['change_subtype'] ?? null) as string | null,
-      version:       Number(wd['version'] ?? 1),
-      active:        wd['active']          as boolean,
-      steps: savedSteps.map((s) => ({
-        id:           s.properties['id']             as string,
-        name:         s.properties['name']           as string,
-        label:        s.properties['label']          as string,
-        type:         s.properties['type']           as string,
-        enterActions: (s.properties['enter_actions'] ?? null) as string | null,
-        exitActions:  (s.properties['exit_actions']  ?? null) as string | null,
-      })),
-      transitions: trResult.records.map((r) => ({
-        id:            r.get('id')            as string,
-        fromStepName:  r.get('fromStep')      as string,
-        toStepName:    r.get('toStep')        as string,
-        trigger:       r.get('trigger')       as string,
-        label:         r.get('label')         as string,
-        requiresInput: r.get('requiresInput') as boolean,
-        inputField:    (r.get('inputField')   ?? null) as string | null,
-        condition:     (r.get('condition')    ?? null) as string | null,
-        timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
-      })),
-    }
+    const transitions = await loadTransitionRows(session, definitionId, ctx.tenantId)
+    return mapWorkflowDefinition(wd, savedSteps, transitions)
   }, true)
 }

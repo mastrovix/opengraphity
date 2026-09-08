@@ -11,8 +11,9 @@ import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
-import { lookupOrError } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
+import { kbCategoryColor } from '@/lib/kbCategories'
+import { formatDate } from '@/lib/datetime'
 
 const GET_ARTICLE = gql`
   query KBArticleBySlug($slug: String!) {
@@ -37,11 +38,6 @@ const RATE_ARTICLE = gql`
     rateKBArticle(id: $id, helpful: $helpful) { id helpfulCount notHelpfulCount }
   }
 `
-
-const CATEGORY_COLORS: Record<string, string> = {
-  hardware: '#3b82f6', software: '#8b5cf6', network: '#06b6d4',
-  security: 'var(--color-danger)', 'how-to': '#22c55e', faq: 'var(--color-warning)', general: 'var(--color-slate-light)',
-}
 
 export function KBArticlePage() {
   const { slug }  = useParams<{ slug: string }>()
@@ -91,7 +87,7 @@ export function KBArticlePage() {
         </Link>
 
         <div style={{ marginBottom: 12 }}>
-          <Pill bg={lookupOrError(CATEGORY_COLORS, article.category, 'CATEGORY_COLORS', 'var(--color-danger)') + '20'} color={lookupOrError(CATEGORY_COLORS, article.category, 'CATEGORY_COLORS', 'var(--color-danger)')} radius={12} style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px' }}>
+          <Pill bg={kbCategoryColor(article.category) + '20'} color={kbCategoryColor(article.category)} radius={12} style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px' }}>
             {article.category}
           </Pill>
         </div>
@@ -105,7 +101,7 @@ export function KBArticlePage() {
             <User size={11} /> {article.authorName}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Calendar size={11} /> {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : '—'}
+            <Calendar size={11} /> {formatDate(article.publishedAt)}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Eye size={11} /> {article.views} visualizzazioni
@@ -189,8 +185,8 @@ export function KBArticlePage() {
           </h3>
           <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div><strong>{t('pages.kb.author')}:</strong> {article.authorName}</div>
-            <div><strong>{t('pages.kb.published')}:</strong> {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : '—'}</div>
-            <div><strong>{t('pages.kb.updated')}:</strong> {new Date(article.updatedAt).toLocaleDateString()}</div>
+            <div><strong>{t('pages.kb.published')}:</strong> {formatDate(article.publishedAt)}</div>
+            <div><strong>{t('pages.kb.updated')}:</strong> {formatDate(article.updatedAt)}</div>
             <div><strong>{t('pages.kb.views')}:</strong> {article.views}</div>
           </div>
         </div>

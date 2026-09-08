@@ -10,6 +10,8 @@
   --background:    #f8fafc;
   --shadow-card:   0 1px 2px rgba(0,0,0,0.05);
   --surface:       #ffffff;
+  /* Subtle surface between the page ground and white cards (row hover, chips). */
+  --surface-1:     #f8fafc;
   --surface-2:     #f1f3f9;
   --border:        #e2e6f0;
   --border-strong: #c8cfe0;
@@ -85,6 +87,15 @@
   --font-size-table:          11px;
   --font-size-label:          10px;
   --font-size-small:          10px;
+  /* Caption / metadata (dates, IDs, counts) — same scale as `.ty-caption`. */
+  --font-size-caption:        10px;
+
+  /* ── Dark chrome (Sidebar / Topbar / GlobalSearch) — see tokens.ts layoutPalette ── */
+  --chrome-bg:          #3d4856;
+  --chrome-border:      #4f5e70;
+  --chrome-text:        #e2e8f0;
+  --chrome-hover-bg:    rgba(255,255,255,0.08);
+  --chrome-input-bg:    rgba(255,255,255,0.06);
 
   /* ── shadcn variable overrides ─────────────────────── */
   --background-shadcn: var(--background);
@@ -246,7 +257,7 @@ tr:hover .sft-td * {
 /* ── Card border — uniform style for all white panels ──── */
 .card-border {
   background:    #fff;
-  border:        1px solid #e5e7eb;
+  border:        1px solid var(--border);
   border-radius: 10px;
   box-shadow:    0 1px 2px rgba(0,0,0,0.05);
 }

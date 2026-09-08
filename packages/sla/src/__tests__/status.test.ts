@@ -8,7 +8,7 @@ let currentStatus: Record<string, unknown> | null = null
 
 const session = { close: vi.fn(async () => {}) }
 vi.mock('@opengraphity/neo4j', () => ({
-  getDriver: () => ({ session: () => session }),
+  getSession: () => session,
   runQuery: vi.fn(async (_s: unknown, cypher: string, params: Record<string, unknown>) => {
     writes.push({ cypher, params })
     return []

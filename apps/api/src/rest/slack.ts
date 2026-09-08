@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto'
+import { config } from '../lib/config.js'
 import type { Request, Response } from 'express'
 import { getSession } from '@opengraphity/neo4j'
 import { GraphQLError } from 'graphql'
@@ -9,7 +10,7 @@ const VALID_SEVERITIES = ['critical', 'high', 'medium', 'low'] as const
 const USAGE = '`/og incident apri <titolo> ci=<id-o-nome-CI> <' + VALID_SEVERITIES.join('|') + '>`'
 
 function verifySlackSignature(req: Request): boolean {
-  const signingSecret = process.env['SLACK_SIGNING_SECRET']
+  const signingSecret = config.slackSigningSecret
   if (!signingSecret) {
     logger.error('[slack] SLACK_SIGNING_SECRET not configured — rejecting request')
     return false

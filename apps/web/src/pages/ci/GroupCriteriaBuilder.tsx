@@ -10,6 +10,7 @@ import { Button } from '@/components/Button'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { toPascalCase } from '@/lib/stringUtils'
 import { UPDATE_CI } from '@/graphql/mutations'
+import { useCIBaseEnums } from '@/lib/ciEnums'
 
 const PREVIEW_COUNT = gql`
   query GroupCriteriaPreview($ciTypes: [String], $environment: String, $status: String, $search: String) {
@@ -18,9 +19,6 @@ const PREVIEW_COUNT = gql`
     }
   }
 `
-
-const ENVIRONMENTS = ['production', 'staging', 'development']
-const STATUSES     = ['active', 'inactive', 'maintenance']
 
 interface Props {
   groupId:  string
@@ -37,6 +35,8 @@ interface Props {
 export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
   const { t } = useTranslation()
   const { ciTypes } = useMetamodel()
+  // Status/environment dal tipo base del metamodello (stessa sorgente del backend)
+  const baseEnums = useCIBaseEnums()
 
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(
     () => new Set(criteria.ciTypes.split(',').map((s) => s.trim()).filter(Boolean)),
@@ -139,19 +139,24 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
         </div>
 
         {/* Environment / status / name */}
+        {baseEnums.error && (
+          <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', margin: 0 }}>
+            {t('pages.cmdb.baseEnumsUnavailable')}: {baseEnums.error}
+          </p>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
           <div>
             <FieldLabel>Environment</FieldLabel>
             <Select value={environment} onChange={(e) => setEnvironment(e.target.value)}>
               <option value="">—</option>
-              {ENVIRONMENTS.map((v) => <option key={v} value={v}>{v}</option>)}
+              {baseEnums.environments.map((v) => <option key={v} value={v}>{v}</option>)}
             </Select>
           </div>
           <div>
             <FieldLabel>Status</FieldLabel>
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">—</option>
-              {STATUSES.map((v) => <option key={v} value={v}>{v}</option>)}
+              {baseEnums.statuses.map((v) => <option key={v} value={v}>{v}</option>)}
             </Select>
           </div>
           <div>

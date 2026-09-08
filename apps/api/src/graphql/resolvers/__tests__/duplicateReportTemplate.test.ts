@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+vi.mock('@opengraphity/neo4j', () => ({
+  getSession: vi.fn(),
+  // Stub of the real helper (D-22): plain numbers and Integer-like objects.
+  toNumber: (v: unknown) => (v == null ? 0 : typeof v === 'object' && 'toNumber' in v ? (v as { toNumber(): number }).toNumber() : Number(v)),
+}))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 vi.mock('../../../lib/reportExecutor.js', () => ({ executeReportSection: vi.fn() }))
 vi.mock('../../../lib/navigableGraph.js', () => ({

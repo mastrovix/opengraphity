@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as d3 from 'd3'
 import { ciPath } from '@/lib/ciPath'
-import { lookupOrError } from '@/lib/tokens'
+import { useMetamodel } from '@/contexts/MetamodelContext'
+import { buildTypeIconMap, iconKeyForType } from '@/lib/ciIconPaths'
+import {
+  appendArrowMarker, appendIcon, attachZoom, fitTransform, linkEndpoints, nodeDrag, styleText, truncate,
+} from '@/lib/d3/graphPrimitives'
 
 interface CINode {
   id:          string
@@ -39,6 +43,7 @@ interface GraphNode extends d3.SimulationNodeDatum {
   environment:  string
   role:         NodeRole
   relationType: string | null
+  distance?:    number
 }
 
 interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
@@ -53,28 +58,10 @@ const COLORS: Record<NodeRole, { fill: string; stroke: string; r: number }> = {
   blast:      { fill: '#ffffff', stroke: 'var(--color-trigger-timer)', r: 18 },
 }
 
-const LINK_STYLE: Record<string, { stroke: string; opacity: number; dash?: string }> = {
+const LINK_STYLE: Record<GraphLink['role'], { stroke: string; opacity: number; dash?: string }> = {
   dependency: { stroke: 'var(--color-brand)', opacity: 0.6 },
   dependent:  { stroke: 'var(--color-trigger-automatic)', opacity: 0.6 },
   blast:      { stroke: 'var(--color-trigger-timer)', opacity: 0.4, dash: '4' },
-}
-
-const TYPE_ICON: Record<string, string> = {
-  business_capability:  '🎯',
-  business_application: '💼',
-  server:            '🖥',
-  virtual_machine:   '☁',
-  database:          '🗄',
-  database_instance: '🗄',
-  application:       '📦',
-  microservice:      '⚙',
-  network_device:    '🌐',
-  storage:           '💾',
-  cloud_service:     '☁',
-  ssl_certificate:   '🔒',
-  certificate:       '🔒',
-  api_endpoint:      '🔌',
-  dynamic_ci_group:  '🧩',
 }
 
 interface TooltipState {
@@ -92,6 +79,12 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
   const [nodeSpread, setNodeSpread] = useState(1)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Icona per tipo dal metamodello (`ciType.icon`): prima CIGraph usava una
+  // mappa emoji propria che ignorava il metamodello e mostrava ❌ per i tipi
+  // non previsti.
+  const { ciTypes } = useMetamodel()
+  const typeIconMap = useMemo(() => buildTypeIconMap(ciTypes), [ciTypes])
+
   const centerCIRef = useRef(centerCI)
   centerCIRef.current = centerCI
   const centerCIId = centerCI.id
@@ -108,7 +101,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
 
     const nodeMap = new Map<string, GraphNode>()
 
-    function addNode(ci: CINode, role: NodeRole, relationType: string | null = null) {
+    function addNode(ci: CINode, role: NodeRole, relationType: string | null = null, distance?: number) {
       if (!nodeMap.has(ci.id)) {
         nodeMap.set(ci.id, {
           id:           ci.id,
@@ -118,6 +111,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           environment:  ci.environment ?? '',
           role,
           relationType,
+          distance,
         })
       }
     }
@@ -126,84 +120,34 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
     dependencies.forEach(({ ci, relationType }) => addNode(ci, 'dependency', relationType))
     dependents.forEach(({ ci, relationType }) => addNode(ci, 'dependent', relationType))
 
-    const filteredBlastRadius = showBlastRadius
-      ? blastRadius.filter((b) => (b.distance ?? 0) <= maxDepth)
-      : []
-
     const depIds = new Set([
       ...dependencies.map((r) => r.ci.id),
       ...dependents.map((r) => r.ci.id),
     ])
-    if (showBlastRadius) {
-      filteredBlastRadius
-        .filter((ci) => !depIds.has(ci.id) && ci.id !== centerCI.id)
-        .forEach((ci) => addNode(ci, 'blast'))
-    }
+    const blastNodes = showBlastRadius
+      ? blastRadius.filter((b) => (b.distance ?? 0) <= maxDepth && !depIds.has(b.id) && b.id !== centerCI.id)
+      : []
+    blastNodes.forEach((ci) => addNode(ci, 'blast', null, ci.distance))
 
     const nodes: GraphNode[] = Array.from(nodeMap.values())
 
     const links: GraphLink[] = [
-      ...dependencies.map((r) => ({
-        source:       centerCI.id,
-        target:       r.ci.id,
-        relationType: r.relationType,
-        role:         'dependency' as const,
-      })),
-      ...dependents.map((r) => ({
-        source:       r.ci.id,
-        target:       centerCI.id,
-        relationType: r.relationType,
-        role:         'dependent' as const,
-      })),
-      ...(showBlastRadius
-        ? filteredBlastRadius
-            .filter((ci) => !depIds.has(ci.id) && ci.id !== centerCI.id)
-            .map((ci) => ({
-              source:       ci.parentId ?? centerCI.id,
-              target:       ci.id,
-              relationType: 'blast_radius',
-              role:         'blast' as const,
-            }))
-        : []),
+      ...dependencies.map((r) => ({ source: centerCI.id, target: r.ci.id, relationType: r.relationType, role: 'dependency' as const })),
+      ...dependents.map((r)   => ({ source: r.ci.id, target: centerCI.id, relationType: r.relationType, role: 'dependent' as const })),
+      ...blastNodes.map((ci)  => ({ source: ci.parentId ?? centerCI.id, target: ci.id, relationType: 'blast_radius', role: 'blast' as const })),
     ]
 
     // ── SVG setup ───────────────────────────────────────────────────────────
 
-    const root = svg
-      .attr('width',  '100%')
-      .attr('height', height)
+    const root = svg.attr('width', '100%').attr('height', height)
 
-    // Arrow markers
     const defs = root.append('defs')
-    const markerDefs: Array<{ id: string; color: string }> = [
-      { id: 'arrow-dependency', color: 'var(--color-brand)' },
-      { id: 'arrow-dependent',  color: 'var(--color-trigger-automatic)' },
-      { id: 'arrow-blast',      color: 'var(--color-trigger-timer)' },
-    ]
-    markerDefs.forEach(({ id, color }) => {
-      defs.append('marker')
-        .attr('id',           id)
-        .attr('viewBox',      '0 -5 10 10')
-        .attr('refX',         10)
-        .attr('refY',         0)
-        .attr('markerWidth',  6)
-        .attr('markerHeight', 6)
-        .attr('orient',       'auto')
-        .append('path')
-        .attr('d',    'M0,-5L10,0L0,5')
-        .attr('fill', color)
-    })
+    ;(Object.keys(LINK_STYLE) as GraphLink['role'][]).forEach((role) =>
+      appendArrowMarker(defs, `arrow-${role}`, LINK_STYLE[role].stroke),
+    )
 
-    // Zoom/pan container
     const g = root.append('g')
-
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.3, 3])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform)
-        setTooltip(null)
-      })
-    root.call(zoom)
+    const zoom = attachZoom(root, g, { scaleExtent: [0.3, 3], onZoom: () => setTooltip(null) })
 
     // ── Simulation ──────────────────────────────────────────────────────────
 
@@ -212,23 +156,20 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
     centerNode.fy = height / 2
 
     const simulation = d3.forceSimulation<GraphNode>(nodes)
-      .force('link',      d3.forceLink<GraphNode, GraphLink>(links).id((d) => d.id).distance((d) => ((d as GraphLink).role === 'blast' ? 120 : 80) * nodeSpread).strength(0.8))
+      .force('link',      d3.forceLink<GraphNode, GraphLink>(links).id((d) => d.id).distance((d) => (d.role === 'blast' ? 120 : 80) * nodeSpread).strength(0.8))
       .force('charge',    d3.forceManyBody().strength(-300 * nodeSpread))
       .force('center',    d3.forceCenter(width / 2, height / 2).strength(0.1))
       .force('collision', d3.forceCollide(40))
-      .force('radial',    d3.forceRadial((d) => {
-        const n = d as GraphNode
-        if (n.role === 'center')     return 0
-        if (n.role === 'dependency') return 120 * nodeSpread
-        if (n.role === 'dependent')  return 120 * nodeSpread
-        return (120 + ((n as GraphNode & { distance?: number }).distance ?? 1) * 80) * nodeSpread
+      .force('radial',    d3.forceRadial<GraphNode>((n) => {
+        if (n.role === 'center') return 0
+        if (n.role === 'dependency' || n.role === 'dependent') return 120 * nodeSpread
+        return (120 + (n.distance ?? 1) * 80) * nodeSpread
       }, width / 2, height / 2).strength(0.5))
 
     // ── Links ───────────────────────────────────────────────────────────────
 
-    const linkGroup = g.append('g').attr('class', 'links')
-
-    const linkEl = linkGroup.selectAll('line')
+    const linkEl = g.append('g').attr('class', 'links')
+      .selectAll('line')
       .data(links)
       .enter().append('line')
       .attr('stroke',            (d) => LINK_STYLE[d.role].stroke)
@@ -239,9 +180,8 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
 
     // ── Nodes ───────────────────────────────────────────────────────────────
 
-    const nodeGroup = g.append('g').attr('class', 'nodes')
-
-    const nodeEl = nodeGroup.selectAll('g')
+    const nodeEl = g.append('g').attr('class', 'nodes')
+      .selectAll<SVGGElement, GraphNode>('g')
       .data(nodes)
       .enter().append('g')
       .attr('cursor', (d) => d.role === 'center' ? 'default' : 'pointer')
@@ -251,20 +191,15 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .on('mouseover', (event, d) => {
         const rect = containerRef.current?.getBoundingClientRect()
         if (!rect) return
-        setTooltip({
-          x:    event.clientX - rect.left + 12,
-          y:    event.clientY - rect.top  - 10,
-          node: d,
-        })
+        setTooltip({ x: event.clientX - rect.left + 12, y: event.clientY - rect.top - 10, node: d })
       })
-      .on('mousemove', (event, _d) => {
+      .on('mousemove', (event) => {
         const rect = containerRef.current?.getBoundingClientRect()
         if (!rect) return
         setTooltip((prev) => prev ? { ...prev, x: event.clientX - rect.left + 12, y: event.clientY - rect.top - 10 } : null)
       })
       .on('mouseout', () => setTooltip(null))
 
-    // Circle
     nodeEl.append('circle')
       .attr('r',            (d) => COLORS[d.role].r)
       .attr('fill',         (d) => COLORS[d.role].fill)
@@ -273,26 +208,25 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .attr('opacity',      (d) => d.role === 'blast' ? 0.7 : 1)
       .attr('filter',       (d) => d.role === 'center' ? 'drop-shadow(0 4px 12px rgba(79,70,229,0.4))' : null)
 
-    // Icon emoji
-    nodeEl.append('text')
-      .attr('text-anchor',     'middle')
-      .attr('dominant-baseline', 'central')
-      .attr('font-size',       (d) => d.role === 'center' ? 20 : 16)
-      .attr('y',               0)
-      .text((d) => lookupOrError(TYPE_ICON, d.type, 'TYPE_ICON', '❌'))
+    // Icona lucide dal metamodello (bianca sul centro, colore del ruolo altrove)
+    nodeEl.each(function (d) {
+      const sel = d3.select(this)
+      const color = d.role === 'center' ? '#ffffff' : COLORS[d.role].stroke
+      appendIcon(sel, iconKeyForType(typeIconMap, d.type), color, d.role === 'center' ? 22 : 18)
+    })
 
     // Name label (row 1)
-    nodeEl.append('text')
+    styleText(nodeEl.append('text'))
       .attr('text-anchor',       'middle')
       .attr('dominant-baseline', 'hanging')
       .attr('y',                 (d) => COLORS[d.role].r + 14)
       .attr('font-size',         11)
       .attr('font-weight',       600)
       .attr('fill',              'var(--color-slate-dark)')
-      .text((d) => d.name.length > 14 ? d.name.slice(0, 13) + '…' : d.name)
+      .text((d) => truncate(d.name, 14))
 
     // Type label (row 2)
-    nodeEl.append('text')
+    styleText(nodeEl.append('text'))
       .attr('text-anchor',       'middle')
       .attr('dominant-baseline', 'hanging')
       .attr('y',                 (d) => COLORS[d.role].r + 25)
@@ -301,70 +235,27 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .text((d) => d.type.replace(/_/g, ' '))
 
     // Relation type label (row 3 — only for non-center nodes)
-    nodeEl.filter((d) => d.role !== 'center' && d.relationType !== null)
-      .append('text')
+    styleText(nodeEl.filter((d) => d.role !== 'center' && d.relationType !== null).append('text'))
       .attr('text-anchor',       'middle')
       .attr('dominant-baseline', 'hanging')
       .attr('y',                 (d) => COLORS[d.role].r + 35)
       .attr('font-size',         9)
-      .attr('font-family', "'Plus Jakarta Sans', system-ui, sans-serif")
       .attr('fill',              'var(--color-brand)')
       .text((d) => (d.relationType ?? '').replace(/_/g, ' '))
 
     // ── Drag ────────────────────────────────────────────────────────────────
 
-    const drag = d3.drag<SVGGElement, GraphNode>()
-      .on('start', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0.3).restart()
-        if (d.role !== 'center') { d.fx = d.x; d.fy = d.y }
-      })
-      .on('drag', (event, d) => {
-        if (d.role !== 'center') { d.fx = event.x; d.fy = event.y }
-      })
-      .on('end', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0)
-        if (d.role !== 'center') { d.fx = null; d.fy = null }
-      })
-
-    nodeEl.call(drag as d3.DragBehavior<SVGGElement, GraphNode, GraphNode | d3.SubjectPosition>)
+    nodeEl.call(nodeDrag(simulation, { canDrag: (d) => d.role !== 'center' }))
 
     // ── Tick ────────────────────────────────────────────────────────────────
 
     simulation.on('tick', () => {
-      linkEl
-        .attr('x1', (d) => {
-          const s = d.source as GraphNode
-          const t = d.target as GraphNode
-          const dx = (t.x ?? 0) - (s.x ?? 0)
-          const dy = (t.y ?? 0) - (s.y ?? 0)
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1
-          return (s.x ?? 0) + dx / dist * COLORS[s.role].r
-        })
-        .attr('y1', (d) => {
-          const s = d.source as GraphNode
-          const t = d.target as GraphNode
-          const dx = (t.x ?? 0) - (s.x ?? 0)
-          const dy = (t.y ?? 0) - (s.y ?? 0)
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1
-          return (s.y ?? 0) + dy / dist * COLORS[s.role].r
-        })
-        .attr('x2', (d) => {
-          const s = d.source as GraphNode
-          const t = d.target as GraphNode
-          const dx = (t.x ?? 0) - (s.x ?? 0)
-          const dy = (t.y ?? 0) - (s.y ?? 0)
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1
-          return (t.x ?? 0) - dx / dist * (COLORS[t.role].r + 8)
-        })
-        .attr('y2', (d) => {
-          const s = d.source as GraphNode
-          const t = d.target as GraphNode
-          const dx = (t.x ?? 0) - (s.x ?? 0)
-          const dy = (t.y ?? 0) - (s.y ?? 0)
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1
-          return (t.y ?? 0) - dy / dist * (COLORS[t.role].r + 8)
-        })
-
+      linkEl.each(function (d) {
+        const s = d.source as GraphNode
+        const t = d.target as GraphNode
+        const { x1, y1, x2, y2 } = linkEndpoints(s, t, COLORS[s.role].r, COLORS[t.role].r + 8)
+        d3.select(this).attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+      })
       nodeEl.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`)
     })
 
@@ -372,22 +263,12 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
     // manual pan/zoom — matters for large groups where the members would
     // otherwise overflow the fixed-height canvas.
     simulation.on('end', () => {
-      const xs = nodes.map((n) => n.x ?? 0)
-      const ys = nodes.map((n) => n.y ?? 0)
-      const minX = Math.min(...xs), maxX = Math.max(...xs)
-      const minY = Math.min(...ys), maxY = Math.max(...ys)
-      const pad = 60
-      const bw = (maxX - minX) + pad * 2
-      const bh = (maxY - minY) + pad * 2
-      if (bw <= 0 || bh <= 0) return
-      const scale = Math.max(0.3, Math.min(1, Math.min(width / bw, height / bh)))
-      const tx = width  / 2 - scale * (minX + maxX) / 2
-      const ty = height / 2 - scale * (minY + maxY) / 2
-      root.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+      const tr = fitTransform(nodes, width, height)
+      if (tr) root.transition().duration(500).call(zoom.transform, tr)
     })
 
     return () => { simulation.stop() }
-  }, [centerCIId, dependencies, dependents, blastRadius, showBlastRadius, maxDepth, nodeSpread, navigate])
+  }, [centerCIId, dependencies, dependents, blastRadius, showBlastRadius, maxDepth, nodeSpread, navigate, typeIconMap])
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>

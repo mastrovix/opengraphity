@@ -25,11 +25,13 @@ import {
   btnPrimary, btnDanger,
 } from './shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
+import { Tabs } from '@/components/ui/Tabs'
 import type { EnumTypeRef } from './shared/designerStyles'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
 import { CIFieldInlineEditor, FormField } from './citype/CIFieldInlineEditor'
 import { CreateTypeDialog } from './citype/CreateTypeDialog'
 import { FieldRulesPanel } from './shared/FieldRulesPanel'
+import { useConfirm } from '@/hooks/useConfirm'
 
 // ── Style helpers ──────────────────────────────────────────────────────────────
 
@@ -43,6 +45,7 @@ type Tab = 'settings' | 'fields' | 'relations' | 'rules' | 'preview'
 
 export function CITypeDesignerPage() {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const { data, loading, refetch } = useQuery<{ ciTypes: CITypeDef[] }>(GET_CI_TYPES)
   const { data: baseData, refetch: refetchBase } = useQuery<{ baseCIType: CITypeDef }>(GET_BASE_CI_TYPE)
   const { data: enumData } = useQuery<{ enumTypes: EnumTypeOption[] }>(GET_ENUM_TYPES, {
@@ -140,8 +143,8 @@ export function CITypeDesignerPage() {
         {/* Right: type editor */}
         <div>
           {selectedBase && baseType ? (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                 <Layout size={20} color="var(--color-brand)" />
                 <div>
                   <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Campi Base</div>
@@ -154,7 +157,7 @@ export function CITypeDesignerPage() {
                     <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>CAMPI DI SISTEMA</div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{baseType.fields.length} campi — non eliminabili</div>
                   </div>
-                  <button style={btnPrimary} onClick={() => { setEditingBaseField(null); setShowBaseFieldModal(true) }}>
+                  <button type="button" style={btnPrimary} onClick={() => { setEditingBaseField(null); setShowBaseFieldModal(true) }}>
                     <Plus size={13} /> Aggiungi campo base
                   </button>
                 </div>
@@ -172,30 +175,30 @@ export function CITypeDesignerPage() {
             </div>
 
           ) : !selected ? (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 40 }}>
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 40 }}>
               <EmptyState icon={<Layers size={32} color="#94a3b8" />} title="Seleziona un tipo per modificarlo" />
             </div>
 
           ) : (
             <>
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
               {/* Type header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <CIIcon icon={selected.icon} size={20} color={selected.color ?? 'var(--color-brand)'} />
                   <div>
                     <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selected.label}</div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{selected.name}</div>
                   </div>
-                  <button
+                  <button type="button"
                     onClick={() => updateType({ variables: { id: selected.id, input: { active: !selected.active } } })}
-                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: selected.active ? '#dcfce7' : 'var(--color-border-light)', color: selected.active ? 'var(--color-success)' : 'var(--color-slate-light)', fontWeight: 500 }}>
+                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: selected.active ? '#dcfce7' : 'var(--color-border-light)', color: selected.active ? 'var(--color-success)' : 'var(--color-slate-light)', fontWeight: 500 }}>
                     {selected.active ? '● active' : '○ inactive'}
                   </button>
                 </div>
-                <button style={btnDanger}
-                  onClick={() => {
-                    if (!confirm(`Eliminare il tipo "${selected.label}"? Questa azione è irreversibile.`)) return
+                <button type="button" style={btnDanger}
+                  onClick={async () => {
+                    if (!(await confirm({ title: t('ciTypeDesigner.deleteTypeTitle', { label: selected.label }), danger: true }))) return
                     void deleteType({ variables: { id: selected.id } })
                   }}>
                   <Trash2 size={12} /> Elimina tipo
@@ -203,13 +206,19 @@ export function CITypeDesignerPage() {
               </div>
 
               {/* Tabs */}
-              <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', padding: '0 20px' }}>
-                {(['settings', 'fields', 'relations', 'rules', 'preview'] as Tab[]).map((tab) => (
-                  <button key={tab} onClick={() => { setActiveTab(tab); setEditingFieldId(null); setAddingField(false) }}
-                    style={{ padding: '10px 14px', border: 'none', borderBottom: activeTab === tab ? '2px solid var(--color-brand)' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: activeTab === tab ? 600 : 400 }}>
-                    {tab === 'settings' ? 'Impostazioni' : tab === 'fields' ? 'Campi' : tab === 'relations' ? 'Relazioni CI' : tab === 'rules' ? 'Regole' : 'Preview'}
-                  </button>
-                ))}
+              <div style={{ padding: '0 20px' }}>
+                <Tabs<Tab>
+                  ariaLabel={t('sidebar.ciTypeDesigner')}
+                  items={[
+                    { key: 'settings',  label: 'Impostazioni' },
+                    { key: 'fields',    label: 'Campi' },
+                    { key: 'relations', label: 'Relazioni CI' },
+                    { key: 'rules',     label: 'Regole' },
+                    { key: 'preview',   label: 'Preview' },
+                  ]}
+                  value={activeTab}
+                  onChange={(tab) => { setActiveTab(tab); setEditingFieldId(null); setAddingField(false) }}
+                />
               </div>
 
               <div style={{ padding: '20px 24px' }}>
@@ -281,7 +290,7 @@ export function CITypeDesignerPage() {
                         placeholder={"// Esempio: validazione cross-field\nif (input.env === 'production' && !input.owner) throw 'Ambiente production richiede un owner'"} />
                     </FormField>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button style={{ ...btnPrimary, opacity: settingsSaving ? 0.6 : 1 }} disabled={settingsSaving}
+                      <button type="button" style={{ ...btnPrimary, opacity: settingsSaving ? 0.6 : 1 }} disabled={settingsSaving}
                         onClick={async () => {
                           setSettingsSaving(true)
                           try {
@@ -330,7 +339,7 @@ export function CITypeDesignerPage() {
                           <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>
                             CAMPI SPECIFICI ({specificFields.length})
                           </div>
-                          <button style={btnPrimary} onClick={() => { setAddingField(true); setEditingFieldId(null) }} disabled={addingField}>
+                          <button type="button" style={btnPrimary} onClick={() => { setAddingField(true); setEditingFieldId(null) }} disabled={addingField}>
                             <Plus size={13} /> Aggiungi campo
                           </button>
                         </div>
@@ -362,8 +371,8 @@ export function CITypeDesignerPage() {
                               key={f.id}
                               field={{ ...f, enumValues: (f as unknown as { enumValues?: string[] }).enumValues ?? [] }}
                               onEdit={() => { setEditingFieldId(f.id); setAddingField(false) }}
-                              onDelete={() => {
-                                if (!confirm(`Eliminare il campo "${f.name}"?`)) return
+                              onDelete={async () => {
+                                if (!(await confirm({ title: t('ciTypeDesigner.deleteFieldTitle', { name: f.name }), danger: true }))) return
                                 void removeField({ variables: { typeId: selected.id, fieldId: f.id } })
                               }}
                               editLabel="Modifica"
@@ -373,7 +382,7 @@ export function CITypeDesignerPage() {
                         ))}
 
                         {specificFields.length === 0 && !addingField && (
-                          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
+                          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed var(--border)', borderRadius: 8 }}>
                             Nessun campo specifico. Clicca "+ Aggiungi campo" per crearne uno.
                           </div>
                         )}
@@ -386,7 +395,7 @@ export function CITypeDesignerPage() {
                 {activeTab === 'relations' && (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-                      <button style={btnPrimary} onClick={() => setShowRelModal(true)}>
+                      <button type="button" style={btnPrimary} onClick={() => setShowRelModal(true)}>
                         <Plus size={13} /> Aggiungi relazione
                       </button>
                     </div>

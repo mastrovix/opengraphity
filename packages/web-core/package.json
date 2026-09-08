@@ -1,0 +1,39 @@
+{
+  "name": "@opengraphity/web-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Auth (Keycloak), tenant slug, Apollo client, token refresh, REST helpers shared by apps/web and apps/portal",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@apollo/client": "^4.1.6",
+    "graphql": "^16.13.1",
+    "keycloak-js": "^26.2.3",
+    "react": "^19.2.4"
+  },
+  "devDependencies": {
+    "@apollo/client": "^4.1.6",
+    "@types/react": "^19.2.14",
+    "graphql": "^16.13.1",
+    "keycloak-js": "^26.2.3",
+    "react": "^19.2.4",
+    "typescript": "~5.9.3",
+    "vitest": "catalog:"
+  }
+}

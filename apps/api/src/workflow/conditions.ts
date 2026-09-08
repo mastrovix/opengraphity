@@ -11,12 +11,11 @@ import { workflowEngine } from '@opengraphity/workflow'
 import type { ConditionEvaluator } from '@opengraphity/workflow'
 import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../lib/taskStatus.js'
+import { toNumber } from '@opengraphity/neo4j'
 
-function toNum(raw: unknown): number {
-  if (raw == null) return 1
-  if (typeof raw === 'number') return raw
-  const m = raw as { toNumber?: () => number }
-  return typeof m.toNumber === 'function' ? m.toNumber() : Number(raw)
+/** Missing row = the entity was not found: report 1 pending so the guard stays closed. */
+function pendingCount(row: { pending?: unknown } | null | undefined): number {
+  return row?.pending == null ? 1 : toNumber(row.pending)
 }
 
 export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; failureMessage: string }> = {
@@ -31,7 +30,7 @@ export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; f
         WHERE coalesce(ch.deleted, false) = false
         RETURN count(ch) AS n
       `, { entityId: c.entityId, tenantId: c.tenantId })
-      return toNum(row?.n ?? 0) > 0
+      return toNumber(row?.n) > 0
     },
   },
 
@@ -50,7 +49,7 @@ export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; f
         WITH ciCount, count(DISTINCT at) + count(DISTINCT dp) AS pending
         RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
       `, { changeId: c.entityId, tenantId: c.tenantId, completedStatus: TASK_STATUS.COMPLETED })
-      return toNum(row?.pending) === 0
+      return pendingCount(row) === 0
     },
   },
 
@@ -69,7 +68,7 @@ export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; f
         WITH ciCount, count(DISTINCT vt) + count(DISTINCT dt) AS pending
         RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
       `, { changeId: c.entityId, tenantId: c.tenantId, completedStatus: TASK_STATUS.COMPLETED, passResult: VALIDATION_RESULT.PASS })
-      return toNum(row?.pending) === 0
+      return pendingCount(row) === 0
     },
   },
 
@@ -86,7 +85,7 @@ export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; f
         WITH ciCount, count(DISTINCT rv) AS pending
         RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
       `, { changeId: c.entityId, tenantId: c.tenantId, completedStatus: TASK_STATUS.COMPLETED, confirmedResult: REVIEW_RESULT.CONFIRMED })
-      return toNum(row?.pending) === 0
+      return pendingCount(row) === 0
     },
   },
 }

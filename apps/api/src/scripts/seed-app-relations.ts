@@ -1,7 +1,7 @@
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 function pickDepCount(): number {
   const r = Math.random()
@@ -12,7 +12,7 @@ function pickDepCount(): number {
   return 4
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   const result = await session.run(
@@ -61,4 +61,7 @@ async function seed() {
   console.log(`\nDone. App→App DEPENDS_ON relations created: ${total}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-app-relations', async () => {
+  refuseInProduction('seed-app-relations')
+  await seed(resolveTenantArg())
+})

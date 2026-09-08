@@ -194,11 +194,11 @@ export function LogsPage() {
           />
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 2 }}>
-          <button
+          <button type="button"
             onClick={() => void refetch()}
             style={{
               height: 32, padding: '0 14px', borderRadius: 6,
-              border: '1px solid #e5e7eb', background: '#fff',
+              border: '1px solid var(--border)', background: '#fff',
               fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer',
             }}
           >

@@ -1,19 +1,23 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
+import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
-import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { FilterBuilder, type FieldConfig } from '@/components/FilterBuilder'
 import { Plug, Plus, Trash2, Copy, Play, RefreshCw } from 'lucide-react'
 import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
 import { toast } from 'sonner'
-import {
-  inputS, selectS, labelS, btnPrimary, btnSecondary,
-} from '@/pages/settings/shared/designerStyles'
+import { inputS, selectS, labelS, textareaS as sharedTextareaS } from '@/components/ui/styles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
+import { Toggle } from '@/components/ui/Toggle'
+import { Tabs, type TabItem } from '@/components/ui/Tabs'
 import { useMutationWithToast, errorMessage } from '@/hooks/useMutationWithToast'
+import { useListQueryState } from '@/hooks/useListQueryState'
+import { useConfirm } from '@/hooks/useConfirm'
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
 // Every operation is named: `operationName` shows up in the errorLink logs and
@@ -43,53 +47,30 @@ const UPDATE_API_KEY = gql`mutation UpdateApiKey($id: ID!, $input: UpdateApiKeyI
 const DELETE_API_KEY = gql`mutation DeleteApiKey($id: ID!) { deleteApiKey(id: $id) }`
 const REGEN_API_KEY = gql`mutation RegenerateApiKey($id: ID!) { regenerateApiKey(id: $id) { key } }`
 
-// ── Per-tab list state (sort + filters) ─────────────────────────────────────
-// Each tab owns its own sort/filter: an `entityType` filter set on "Webhook In"
-// must not silently narrow "API Keys" (E-06 d).
-
-function useTabListState() {
-  const [sortField, setSortField] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
-  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
-  return {
-    sortField, sortDir, handleSort, setFilterGroup,
-    variables: { filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
-  }
-}
-
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const TABS = ['Webhook In', 'Webhook Out', 'API Keys'] as const
+type TabKey = 'inbound' | 'outbound' | 'apikeys'
 const ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request', 'ci'] as const
 const HTTP_METHODS = ['POST', 'PUT', 'PATCH'] as const
 const OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'change.approved', 'change.completed', 'problem.created', 'sla.breached'] as const
 const PERMISSIONS = ['incidents:read', 'incidents:write', 'changes:read', 'changes:write', 'problems:read', 'problems:write', 'ci:read', 'ci:write', 'kb:read'] as const
 
-const tabS: React.CSSProperties = { padding: '8px 18px', border: 'none', borderBottom: '2px solid transparent', background: 'none', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', cursor: 'pointer' }
-const tabActiveS: React.CSSProperties = { ...tabS, color: 'var(--color-brand)', borderBottomColor: 'var(--color-brand)' }
-const textareaS: React.CSSProperties = { ...inputS, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)', resize: 'vertical' as const, minHeight: 70 }
-const toggleS = (on: boolean): React.CSSProperties => ({ width: 36, height: 20, borderRadius: 10, background: on ? 'var(--color-brand)' : '#d1d5db', position: 'relative', cursor: 'pointer', border: 'none', transition: 'background .2s' })
-const toggleDot = (on: boolean): React.CSSProperties => ({ position: 'absolute', top: 2, left: on ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' })
+const textareaS: React.CSSProperties = { ...sharedTextareaS, minHeight: 70 }
 // Pill overrides: these badges are regular-weight with a small right gap.
 const PILL_S: React.CSSProperties = { fontWeight: 400, marginRight: 4 }
+const ROW_ACTIONS: React.CSSProperties = { display: 'flex', gap: 6 }
 
 function fmtDate(d: string | null) { return d ? new Date(d).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
-function copyText(t: string) { navigator.clipboard.writeText(t); toast.success('Copiato!') }
-
-// ── Extracted sub-components (MUST be outside the main component to avoid remount on re-render) ─
-
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return <button style={toggleS(on)} onClick={onClick}><span style={toggleDot(on)} /></button>
-}
+function copyText(t: string) { void navigator.clipboard.writeText(t); toast.success('Copiato!') }
 
 const MODAL_TITLES: Record<string, string> = {
   inbound: 'Nuovo Webhook In', outbound: 'Nuovo Webhook Out', apikey: 'Nuova API Key', secret: 'Credenziale generata',
 }
 
+// Defined outside the page component so it is not remounted on every re-render.
 function ModalPortal({ modalType, children, onClose }: { modalType: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <Modal open onClose={onClose} title={MODAL_TITLES[modalType] ?? ''} width={520}>
+    <Modal open onClose={onClose} title={MODAL_TITLES[modalType] ?? ''} width={520} closeOnOverlay={false}>
       {children}
     </Modal>
   )
@@ -98,12 +79,22 @@ function ModalPortal({ modalType, children, onClose }: { modalType: string; chil
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function IntegrationsPage() {
-  const [tab, setTab] = useState<typeof TABS[number]>('Webhook In')
+  const { t } = useTranslation()
+  const confirm = useConfirm()
+  const [tab, setTab] = useState<TabKey>('inbound')
   const [modal, setModal] = useState<'inbound' | 'outbound' | 'apikey' | 'secret' | null>(null)
   const [secret, setSecret] = useState('')
-  const inList  = useTabListState()
-  const outList = useTabListState()
-  const keyList = useTabListState()
+  // Each tab owns its own sort/filter: an `entityType` filter set on "Webhook In"
+  // must not silently narrow "API Keys" (E-06 d).
+  const inList  = useListQueryState()
+  const outList = useListQueryState()
+  const keyList = useListQueryState()
+
+  const TABS: TabItem<TabKey>[] = [
+    { key: 'inbound',  label: t('admin.integrations.webhookIn') },
+    { key: 'outbound', label: t('admin.integrations.webhookOut') },
+    { key: 'apikeys',  label: t('admin.integrations.apiKeys') },
+  ]
 
   const INBOUND_FILTERS: FieldConfig[] = [
     { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
@@ -138,19 +129,19 @@ export function IntegrationsPage() {
   // Inbound mutations
   const [createIn] = useMutation(CREATE_INBOUND, refetchIn)
   const [updateIn] = useMutationWithToast(UPDATE_INBOUND, { refetch: inQ.refetch })
-  const [deleteIn] = useMutationWithToast(DELETE_INBOUND, { successMessage: 'Webhook eliminato', refetch: inQ.refetch })
+  const [deleteIn] = useMutationWithToast(DELETE_INBOUND, { successMessage: t('admin.integrations.webhookDeleted'), refetch: inQ.refetch })
   const [regenToken] = useMutation(REGEN_WEBHOOK_TOKEN)
 
   // Outbound mutations
   const [createOut] = useMutation(CREATE_OUTBOUND, refetchOut)
   const [updateOut] = useMutationWithToast(UPDATE_OUTBOUND, { refetch: outQ.refetch })
-  const [deleteOut] = useMutationWithToast(DELETE_OUTBOUND, { successMessage: 'Webhook eliminato', refetch: outQ.refetch })
+  const [deleteOut] = useMutationWithToast(DELETE_OUTBOUND, { successMessage: t('admin.integrations.webhookDeleted'), refetch: outQ.refetch })
   const [testOut] = useMutation(TEST_OUTBOUND)
 
   // API key mutations
   const [createKey] = useMutation(CREATE_API_KEY, refetchKey)
   const [updateKey] = useMutationWithToast(UPDATE_API_KEY, { refetch: keyQ.refetch })
-  const [deleteKey] = useMutationWithToast(DELETE_API_KEY, { successMessage: 'API key eliminata', refetch: keyQ.refetch })
+  const [deleteKey] = useMutationWithToast(DELETE_API_KEY, { successMessage: t('admin.integrations.apiKeyDeleted'), refetch: keyQ.refetch })
   const [regenKey] = useMutation(REGEN_API_KEY)
 
   // ── Form state ──────────────────────────────────────────────────────────────
@@ -203,12 +194,23 @@ export function IntegrationsPage() {
     void updateKey({ variables: { id, input: { enabled: !enabled } } })
   }
 
+  async function handleDeleteInbound(row: InboundWebhook) {
+    if (await confirm({ title: t('admin.integrations.deleteWebhookTitle'), body: row.name, danger: true })) void deleteIn({ variables: { id: row.id } })
+  }
+  async function handleDeleteOutbound(row: OutboundWebhook) {
+    if (await confirm({ title: t('admin.integrations.deleteWebhookTitle'), body: row.name, danger: true })) void deleteOut({ variables: { id: row.id } })
+  }
+  async function handleDeleteKey(row: ApiKeyRow) {
+    if (await confirm({ title: t('admin.integrations.deleteApiKeyTitle'), body: row.name, danger: true })) void deleteKey({ variables: { id: row.id } })
+  }
+
   async function handleTestOutbound(id: string) {
     try {
       const res = await testOut({ variables: { id } })
       const r = (res.data as { testOutboundWebhook?: { success: boolean; statusCode: number | null; error: string | null } } | undefined)?.testOutboundWebhook
       if (!r) throw new Error('risposta vuota')
-      r.success ? toast.success(`Test OK — status ${r.statusCode}`) : toast.error(`Test fallito: ${r.error}`)
+      if (r.success) toast.success(`Test OK — status ${r.statusCode}`)
+      else toast.error(`Test fallito: ${r.error}`)
     } catch (e) { toast.error(`Test webhook fallito: ${errorMessage(e)}`) }
   }
 
@@ -236,26 +238,26 @@ export function IntegrationsPage() {
   const outbounds: OutboundWebhook[] = outQ.data?.outboundWebhooks ?? []
   const apiKeys: ApiKeyRow[]         = keyQ.data?.apiKeys ?? []
 
-  // Toggle and ModalPortal are defined outside the component to prevent remount on re-render
-
   // ── Column definitions ─────────────────────────────────────────────────────
 
   const inboundColumns: ColumnDef<InboundWebhook>[] = [
     { key: 'name', label: 'Nome', sortable: true },
     { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <Pill bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
     { key: 'id', label: 'Endpoint URL', sortable: true, render: (v) => (
-      <>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace' }}>/api/webhooks/in/{String(v)}</span>
-        <Copy size={12} style={{ marginLeft: 6, cursor: 'pointer', color: 'var(--color-slate)' }} onClick={() => copyText(`/api/webhooks/in/${String(v)}`)} />
-      </>
+        <Button variant="ghost" size="xs" aria-label={t('admin.integrations.copyEndpoint')} title={t('admin.integrations.copyEndpoint')} onClick={() => copyText(`/api/webhooks/in/${String(v)}`)} style={{ padding: 2, color: 'var(--color-slate)' }}>
+          <Copy size={12} aria-hidden="true" />
+        </Button>
+      </span>
     ) },
-    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleInbound(row.id, row.enabled)} /> },
+    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleInbound(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
     { key: 'receiveCount', label: 'Ricevuti', sortable: true, render: (v) => String(v ?? 0) },
     { key: 'lastReceivedAt', label: 'Ultimo', sortable: true, render: (v) => fmtDate(v as string | null) },
     { key: 'createdAt', label: '', render: (_v, row) => (
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button style={btnSecondary} title="Rigenera token" onClick={() => handleRegenToken(row.id)}><RefreshCw size={13} /></button>
-        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) void deleteIn({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+      <div style={ROW_ACTIONS}>
+        <Button variant="icon" size="xs" title={t('admin.integrations.regenToken')} onClick={() => void handleRegenToken(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
+        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteInbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
@@ -267,7 +269,7 @@ export function IntegrationsPage() {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{events.map(e => <Pill key={e} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
     } },
-    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleOutbound(row.id, row.enabled)} /> },
+    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleOutbound(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
     { key: 'sendCount', label: 'Invii', sortable: true, render: (v) => String(v ?? 0) },
     { key: 'lastStatusCode', label: 'Ultimo Status', sortable: true, render: (v) => {
       if (!v) return '—'
@@ -276,9 +278,9 @@ export function IntegrationsPage() {
     } },
     { key: 'lastError', label: 'Ultimo Errore', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button style={btnSecondary} title="Test" onClick={() => handleTestOutbound(row.id)}><Play size={13} /></button>
-        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) void deleteOut({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+      <div style={ROW_ACTIONS}>
+        <Button variant="icon" size="xs" title={t('admin.integrations.test')} onClick={() => void handleTestOutbound(row.id)}><Play size={13} aria-hidden="true" /></Button>
+        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteOutbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
@@ -291,18 +293,16 @@ export function IntegrationsPage() {
       return <>{perms.map(p => <Pill key={p} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>
     } },
     { key: 'rateLimit', label: 'Rate Limit', sortable: true, render: (v) => `${String(v)}/min` },
-    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle on={row.enabled} onClick={() => handleToggleKey(row.id, row.enabled)} /> },
+    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleKey(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
     { key: 'lastUsedAt', label: 'Ultimo uso', sortable: true, render: (v) => fmtDate(v as string | null) },
     { key: 'requestCount', label: 'Richieste', sortable: true, render: (v) => String(v ?? 0) },
     { key: 'createdAt', label: '', render: (_v, row) => (
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button style={btnSecondary} title="Rigenera chiave" onClick={() => handleRegenApiKey(row.id)}><RefreshCw size={13} /></button>
-        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) void deleteKey({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+      <div style={ROW_ACTIONS}>
+        <Button variant="icon" size="xs" title={t('admin.integrations.regenKey')} onClick={() => void handleRegenApiKey(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
+        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteKey(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
-
-  // SecretModal rendered inline below (no text inputs, so no focus issue)
 
   // ── Checkbox helpers ────────────────────────────────────────────────────────
 
@@ -317,15 +317,12 @@ export function IntegrationsPage() {
         </p>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e5e7eb', marginBottom: 20 }}>
-        {TABS.map(t => <button key={t} style={tab === t ? tabActiveS : tabS} onClick={() => setTab(t)}>{t}</button>)}
-      </div>
+      <Tabs items={TABS} value={tab} onChange={setTab} ariaLabel={t('admin.integrations.tabsLabel')} />
 
       {/* ── TAB: Webhook In ─────────────────────────────────────────────────── */}
-      {tab === 'Webhook In' && <>
+      {tab === 'inbound' && <>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <button style={btnPrimary} onClick={() => { resetInForm(); setModal('inbound') }}><Plus size={14} /> Nuovo Webhook In</button>
+          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetInForm(); setModal('inbound') }}>Nuovo Webhook In</Button>
         </div>
         <FilterBuilder fields={INBOUND_FILTERS} onApply={inList.setFilterGroup} />
         <SortableFilterTable<InboundWebhook> onSort={inList.handleSort} sortField={inList.sortField} sortDir={inList.sortDir}
@@ -337,20 +334,20 @@ export function IntegrationsPage() {
         />
 
         {modal === 'inbound' && (
-          <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>
+          <ModalPortal modalType="inbound" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div><label style={labelS}>Nome</label><Input style={inputS} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
               <div><label style={labelS}>Entity Type</label>
                 <Select style={selectS} value={inForm.entityType} onChange={e => setInForm({ ...inForm, entityType: e.target.value })}>
-                  {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
                 </Select>
               </div>
               <div><label style={labelS}>Field Mapping (JSON)</label><textarea style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} /></div>
               <div><label style={labelS}>Default Values (JSON)</label><textarea style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} /></div>
               <div><label style={labelS}>Transform Script</label><textarea style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                <button style={btnSecondary} onClick={() => setModal(null)}>Annulla</button>
-                <button style={btnPrimary} onClick={handleCreateInbound} disabled={!inForm.name}>Crea</button>
+                <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
+                <Button onClick={() => void handleCreateInbound()} disabled={!inForm.name}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>
@@ -358,9 +355,9 @@ export function IntegrationsPage() {
       </>}
 
       {/* ── TAB: Webhook Out ────────────────────────────────────────────────── */}
-      {tab === 'Webhook Out' && <>
+      {tab === 'outbound' && <>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <button style={btnPrimary} onClick={() => { resetOutForm(); setModal('outbound') }}><Plus size={14} /> Nuovo Webhook Out</button>
+          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetOutForm(); setModal('outbound') }}>Nuovo Webhook Out</Button>
         </div>
         <FilterBuilder fields={OUTBOUND_FILTERS} onApply={outList.setFilterGroup} />
         <SortableFilterTable<OutboundWebhook> onSort={outList.handleSort} sortField={outList.sortField} sortDir={outList.sortDir}
@@ -372,7 +369,7 @@ export function IntegrationsPage() {
         />
 
         {modal === 'outbound' && (
-          <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>
+          <ModalPortal modalType="outbound" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div><label style={labelS}>Nome</label><Input style={inputS} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
               <div><label style={labelS}>URL</label><Input style={inputS} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
@@ -400,8 +397,8 @@ export function IntegrationsPage() {
                 Riprova in caso di errore
               </label>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                <button style={btnSecondary} onClick={() => setModal(null)}>Annulla</button>
-                <button style={btnPrimary} onClick={handleCreateOutbound} disabled={!outForm.name || !outForm.url}>Crea</button>
+                <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
+                <Button onClick={() => void handleCreateOutbound()} disabled={!outForm.name || !outForm.url}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>
@@ -409,9 +406,9 @@ export function IntegrationsPage() {
       </>}
 
       {/* ── TAB: API Keys ───────────────────────────────────────────────────── */}
-      {tab === 'API Keys' && <>
+      {tab === 'apikeys' && <>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <button style={btnPrimary} onClick={() => { resetKeyForm(); setModal('apikey') }}><Plus size={14} /> Nuova API Key</button>
+          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetKeyForm(); setModal('apikey') }}>Nuova API Key</Button>
         </div>
         <FilterBuilder fields={APIKEY_FILTERS} onApply={keyList.setFilterGroup} />
         <SortableFilterTable<ApiKeyRow> onSort={keyList.handleSort} sortField={keyList.sortField} sortDir={keyList.sortDir}
@@ -423,7 +420,7 @@ export function IntegrationsPage() {
         />
 
         {modal === 'apikey' && (
-          <ModalPortal modalType={modal ?? 'secret'} onClose={() => setModal(null)}>
+          <ModalPortal modalType="apikey" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div><label style={labelS}>Nome</label><Input style={inputS} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
               <div>
@@ -440,8 +437,8 @@ export function IntegrationsPage() {
               <div><label style={labelS}>Rate Limit (req/min)</label><Input style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
               <div><label style={labelS}>Scadenza</label><Input style={inputS} type="date" value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                <button style={btnSecondary} onClick={() => setModal(null)}>Annulla</button>
-                <button style={btnPrimary} onClick={handleCreateApiKey} disabled={!keyForm.name || !keyForm.permissions.length}>Crea</button>
+                <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
+                <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name || !keyForm.permissions.length}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>
@@ -455,8 +452,8 @@ export function IntegrationsPage() {
             Questo token non sarà più visibile. Copialo ora!
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <code style={{ flex: 1, padding: '8px 12px', background: 'var(--color-slate-bg)', borderRadius: 6, fontSize: 'var(--font-size-body)', wordBreak: 'break-all', border: '1px solid #e5e7eb' }}>{secret}</code>
-            <button style={btnSecondary} onClick={() => copyText(secret)}><Copy size={14} /> Copia</button>
+            <code style={{ flex: 1, padding: '8px 12px', background: 'var(--color-slate-bg)', borderRadius: 6, fontSize: 'var(--font-size-body)', wordBreak: 'break-all', border: '1px solid var(--border)' }}>{secret}</code>
+            <Button variant="secondary" icon={<Copy size={14} aria-hidden="true" />} onClick={() => copyText(secret)}>{t('admin.integrations.copy')}</Button>
           </div>
         </ModalPortal>
       )}

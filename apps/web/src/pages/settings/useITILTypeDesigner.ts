@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useConfirm } from '@/hooks/useConfirm'
 import { GET_ITIL_TYPES, GET_ENUM_TYPES, GET_CI_TYPES, GET_ITIL_CI_RELATION_RULES, GET_WORKFLOW_LIST } from '@/graphql/queries'
 import {
   CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD, UPDATE_ITIL_TYPE,
@@ -99,6 +100,7 @@ export interface RelFormState {
 
 export function useITILTypeDesigner() {
   const { t } = useTranslation()
+  const confirm = useConfirm()
 
   // ── State ───────────────────────────────────────────────────────────────────
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null)
@@ -240,8 +242,8 @@ export function useITILTypeDesigner() {
     }
   }
 
-  const handleDeleteField = (typeId: string, fieldId: string) => {
-    if (!confirm(t('common.confirm') + '?')) return
+  const handleDeleteField = async (typeId: string, fieldId: string) => {
+    if (!(await confirm({ title: t('itilDesigner.deleteFieldTitle'), danger: true }))) return
     void deleteField({ variables: { typeId, fieldId } })
   }
 
@@ -255,8 +257,8 @@ export function useITILTypeDesigner() {
     void createRule({ variables })
   }
 
-  const handleDeleteRule = (id: string) => {
-    if (!confirm(t('itilDesigner.ciRelations.confirmDelete'))) return
+  const handleDeleteRule = async (id: string) => {
+    if (!(await confirm({ title: t('itilDesigner.ciRelations.confirmDelete'), danger: true }))) return
     void deleteRule({ variables: { id } })
   }
 

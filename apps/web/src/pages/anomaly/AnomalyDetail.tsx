@@ -3,27 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { colors } from '@/lib/tokens'
-import { CI_TYPE_KEYS, RULE_LABEL_KEYS } from './AnomalyPage'
-import { AnomalyStatusBadge } from './AnomalyPage'
+import { formatDateTime } from '@/lib/datetime'
+import { RULE_LABEL_KEYS, AnomalyStatusBadge, anomalyEntityTypeLabel } from './AnomalyPage'
 import { ResolutionForm } from './AnomalyModal'
-
-interface Anomaly {
-  id:               string
-  ruleKey:          string
-  title:            string
-  severity:         string
-  status:           string
-  entityId:         string
-  entityType:       string
-  entitySubtype:    string
-  entityName:       string
-  description:      string
-  detectedAt:       string
-  resolvedAt:       string | null
-  resolutionStatus: string | null
-  resolutionNote:   string | null
-  resolvedBy:       string | null
-}
+import type { Anomaly } from '@/types/anomaly'
 
 export function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -91,11 +74,11 @@ export function DetailPanel({
 
       {/* Fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
-        <Field label={t('pages.anomalies.entity')} value={`${anomaly.entityName} (${CI_TYPE_KEYS[anomaly.entitySubtype] ? t(CI_TYPE_KEYS[anomaly.entitySubtype]) : (anomaly.entitySubtype ?? anomaly.entityType)})`} />
+        <Field label={t('pages.anomalies.entity')} value={`${anomaly.entityName} (${anomalyEntityTypeLabel(t, anomaly)})`} />
         <Field label={t('common.description')} value={anomaly.description} />
-        <Field label={t('pages.anomalies.detectedAtCol')} value={new Date(anomaly.detectedAt).toLocaleString()} />
+        <Field label={t('pages.anomalies.detectedAtCol')} value={formatDateTime(anomaly.detectedAt)} />
         {anomaly.resolvedAt && (
-          <Field label={t('common.resolvedAt')} value={new Date(anomaly.resolvedAt).toLocaleString()} />
+          <Field label={t('common.resolvedAt')} value={formatDateTime(anomaly.resolvedAt)} />
         )}
         {anomaly.resolutionNote && (
           <Field label={t('common.note')} value={anomaly.resolutionNote} />

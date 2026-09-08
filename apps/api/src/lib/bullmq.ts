@@ -13,10 +13,13 @@
  *
  * Single-replica note: the singletons are per process; every replica holds its
  * own Queue objects, which is fine (Queue objects are cheap producers).
+ *
+ * Connection options come from `getRedisConnection()` in @opengraphity/events —
+ * the single parser of REDIS_URL/REDIS_PASSWORD for the whole platform (D-14).
  */
 import { Queue, Worker, type Job, type Processor, type WorkerOptions, type QueueOptions } from 'bullmq'
 import { Redis } from 'ioredis'
-import { getRedisOptions } from '@opengraphity/events'
+import { getRedisConnection } from '@opengraphity/events'
 import { logger } from './logger.js'
 
 const log = logger.child({ module: 'bullmq' })
@@ -29,7 +32,7 @@ const queues = new Map<string, Queue>()
 export function getQueue<D = unknown>(name: string, opts?: Omit<QueueOptions, 'connection'>): Queue<D> {
   let q = queues.get(name)
   if (!q) {
-    q = new Queue(name, { ...opts, connection: getRedisOptions() })
+    q = new Queue(name, { ...opts, connection: getRedisConnection() })
     q.on('error', (err: Error) => {
       log.error({ err, queue: name }, '[bullmq] queue connection error')
     })
@@ -50,8 +53,7 @@ let redis: Redis | null = null
 /** Lazy shared ioredis client. Closed by closeAllQueues(). */
 export function getSharedRedis(): Redis {
   if (!redis) {
-    const { host, port } = getRedisOptions()
-    redis = new Redis({ host, port, maxRetriesPerRequest: 3, lazyConnect: false })
+    redis = new Redis({ ...getRedisConnection(), maxRetriesPerRequest: 3, lazyConnect: false })
     redis.on('error', (err: Error) => {
       log.error({ err }, '[bullmq] shared redis client error')
     })
@@ -105,7 +107,7 @@ export function createWorker<D = unknown, R = unknown, N extends string = string
   opts: CreateWorkerOptions = {},
 ): Worker<D, R, N> {
   const { onFailed, ...workerOpts } = opts
-  const worker = new Worker<D, R, N>(name, processor, { ...workerOpts, connection: getRedisOptions() })
+  const worker = new Worker<D, R, N>(name, processor, { ...workerOpts, connection: getRedisConnection() })
 
   worker.on('error', (err: Error) => {
     log.error({ err, worker: name }, '[bullmq] worker error (connection/internal) — worker keeps running')

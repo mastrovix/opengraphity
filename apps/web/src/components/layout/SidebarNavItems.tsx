@@ -1,17 +1,10 @@
 import { NavLink } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import type { LucideIcon } from 'lucide-react'
+import { layoutPalette } from '@/lib/tokens'
 
-// ── Colours (shared with Sidebar) ────────────────────────────────────────────
-export const C = {
-  bg:           '#3d4856',
-  border:       '#4f5e70',
-  textDefault:  '#e2e8f0',
-  textSection:  'var(--color-slate-light)',
-  textChevron:  'var(--color-slate-light)',
-  hoverBg:      'rgba(255,255,255,0.08)',
-  activeBg:     'rgba(255,255,255,0.08)',
-  brand:        'var(--color-brand)',
-}
+// ── Colours: ONE palette shared with Topbar / GlobalSearch (E-23) ────────────
+export const C = layoutPalette
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
@@ -60,13 +53,18 @@ export function parentGroupStyle(isActive: boolean): React.CSSProperties {
     display:         'flex',
     alignItems:      'center',
     justifyContent:  'space-between',
+    width:           '100%',
     padding:         '7px 10px',
     borderRadius:    6,
     cursor:          'pointer',
-    backgroundColor: isActive ? C.activeBg : undefined,
+    background:      isActive ? C.activeBg : 'none',
+    border:          'none',
     borderLeft:      isActive ? `2px solid ${C.brand}` : '2px solid transparent',
     transition:      'background 150ms',
     margin:          '1px 0',
+    font:            'inherit',
+    textAlign:       'left',
+    boxSizing:       'border-box' as const,
     ['--hover-bg' as string]: C.hoverBg,
   }
 }
@@ -83,6 +81,7 @@ interface NavItemProps {
 }
 
 export function NavItem({ to, label, icon: Icon, collapsed, isActive, badge = 0 }: NavItemProps) {
+  const { t } = useTranslation()
   return (
     <NavLink
       to={to}
@@ -94,12 +93,39 @@ export function NavItem({ to, label, icon: Icon, collapsed, isActive, badge = 0 
       {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
       {!collapsed && badge > 0 && (
         <span
-          aria-label={`${badge} notifiche`}
+          aria-label={t('sidebar.pendingBadge', { count: badge })}
           style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: 8, background: 'var(--danger)', color: '#fff' }}
         >
           {badge}
         </span>
       )}
+    </NavLink>
+  )
+}
+
+// ── Sub item (inside a collapsible group) ─────────────────────────────────────
+
+interface SubItemProps {
+  to:        string
+  label:     string
+  icon?:     LucideIcon
+  /** Custom icon node (e.g. CIIcon) when a Lucide icon is not enough. */
+  iconNode?: React.ReactNode
+  end?:      boolean
+  /** Explicit active flag (default: NavLink's own matching). */
+  isActive?: boolean
+  /** Extra node rendered at the right (badges). */
+  trailing?: React.ReactNode
+}
+
+export function SubItem({ to, label, icon: Icon, iconNode, end, isActive, trailing }: SubItemProps) {
+  return (
+    <NavLink key={to} to={to} end={end} style={({ isActive: navActive }) => subItemStyle(isActive ?? navActive)}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {iconNode ?? (Icon && <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />)}
+        {label}
+      </span>
+      {trailing}
     </NavLink>
   )
 }

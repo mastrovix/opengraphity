@@ -1,70 +1,47 @@
 /**
- * Renders type-specific param inputs for AutoTrigger and BusinessRule actions.
- * Each action type gets the appropriate control (dropdown, textarea, etc.).
+ * Renders type-specific param inputs for automation actions.
+ *
+ * Due vocabolari (vedi lib/automationOperators.ts):
+ *  - `automation` (default): auto-trigger e business rule (actionExecutor).
+ *  - `workflow_step`: azioni enter/exit degli step di workflow
+ *    (packages/workflow) — stessi controlli, parametri persistiti invariati.
  */
-import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { GET_TEAMS, GET_WORKFLOW_LIST, GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
+import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
+import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
+import { fieldTypeLabel } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
-import { gql } from '@apollo/client'
-
-const GET_USERS = gql`query GetUsers { users { id name email } }`
 
 interface Props {
   actionType: string
   params:     Record<string, string>
   entityType: string
   onChange:   (key: string, value: string) => void
-}
-
-interface FieldMeta {
-  name:       string
-  label:      string
-  fieldType:  string
-  enumValues: string[]
+  vocabulary?: 'automation' | 'workflow_step'
 }
 
 const textareaS: React.CSSProperties = { ...inputS, minHeight: 60, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }
 const monoS: React.CSSProperties     = { ...inputS, minHeight: 80, resize: 'vertical', fontFamily: 'monospace', fontSize: 'var(--font-size-body)', lineHeight: 1.5 }
+const labelS: React.CSSProperties    = { fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
 
-const ITIL_ENTITIES = new Set(['incident', 'problem', 'change', 'service_request'])
-const FIELD_TYPE_LABELS: Record<string, string> = {
-  string: 'testo', number: 'numero', date: 'data', boolean: 'booleano', enum: 'enum',
-  user: 'utente', team: 'team',
+function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 120 }}>
+      <span style={labelS}>{label}</span>
+      {children}
+    </div>
+  )
 }
 
-function useEntityFieldMetas(entityType: string): FieldMeta[] {
-  const isITIL = ITIL_ENTITIES.has(entityType)
-  const { data: itilData } = useQuery(GET_ITIL_TYPES, { skip: !isITIL, fetchPolicy: 'cache-first' })
-  const { data: ciData }   = useQuery(GET_CI_TYPES,   { skip: isITIL, fetchPolicy: 'cache-first' })
-
-  return useMemo(() => {
-    type TypeDef = { name: string; fields: { name: string; label: string; fieldType: string; enumValues?: string[] | null }[] }
-    const types = isITIL
-      ? (itilData as { itilTypes?: TypeDef[] } | undefined)?.itilTypes
-      : (ciData   as { ciTypes?:   TypeDef[] } | undefined)?.ciTypes
-    if (!types) return []
-    const typeDef = types.find(t => t.name === entityType)
-    if (!typeDef) return []
-    const fields: FieldMeta[] = typeDef.fields.map(f => ({
-      name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [],
-    }))
-    // Add virtual relationship fields
-    if (!fields.find(f => f.name === 'assigned_to'))   fields.push({ name: 'assigned_to',   label: 'Assegnato a',     fieldType: 'user', enumValues: [] })
-    if (!fields.find(f => f.name === 'assigned_team')) fields.push({ name: 'assigned_team', label: 'Team assegnato', fieldType: 'team', enumValues: [] })
-    return fields
-  }, [isITIL, entityType, itilData, ciData])
-}
-
-export function ActionParamsEditor({ actionType, params, entityType, onChange }: Props) {
+export function ActionParamsEditor({ actionType, params, entityType, onChange, vocabulary = 'automation' }: Props) {
   const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
   const { data: usersData }    = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: 'cache-first' })
   const { data: workflowData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; steps: { name: string; label: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: 'cache-first' })
   const { values: priorityValues } = useEnumValues(entityType || 'incident', 'priority')
   const { values: severityValues } = useEnumValues(entityType || 'incident', 'severity')
-  const fieldMetas = useEntityFieldMetas(entityType)
+  const { fields: fieldMetas } = useEntityFieldMetas(entityType)
 
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []
@@ -75,7 +52,21 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange }:
 
   const selectedFieldMeta = fieldMetas.find(f => f.name === params['field'])
 
+  const text = (key: string, label: string, placeholder = '', type = 'text') => (
+    <Labeled key={key} label={label}>
+      <Input type={type} style={inputS} placeholder={placeholder} value={params[key] ?? ''} onChange={e => onChange(key, e.target.value)} />
+    </Labeled>
+  )
+  const choice = (key: string, label: string, options: { value: string; label?: string }[], fallback: string) => (
+    <Labeled key={key} label={label}>
+      <Select style={selectS} value={params[key] ?? fallback} onChange={e => onChange(key, e.target.value)}>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label ?? o.value}</option>)}
+      </Select>
+    </Labeled>
+  )
+
   switch (actionType) {
+    // ── Vocabolario automation (actionExecutor) ───────────────────────────────
     case 'assign_team':
       return (
         <Select style={{ ...selectS, flex: 1 }} value={params['team_id'] ?? ''} onChange={e => onChange('team_id', e.target.value)}>
@@ -121,7 +112,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange }:
           >
             <option value="">-- Campo --</option>
             {fieldMetas.map(f => (
-              <option key={f.name} value={f.name}>{f.label} ({FIELD_TYPE_LABELS[f.fieldType] ?? f.fieldType})</option>
+              <option key={f.name} value={f.name}>{f.label} ({fieldTypeLabel(f.fieldType)})</option>
             ))}
           </Select>
           {/* Value input — adapts to field type */}
@@ -153,6 +144,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange }:
             <option value="GET">GET</option>
           </Select>
           <Input style={{ ...inputS, flex: 1, minWidth: 200 }} placeholder="https://..." value={params['url'] ?? ''} onChange={e => onChange('url', e.target.value)} />
+          {vocabulary === 'workflow_step' && text('payload_template', 'payload_template (JSON)', '{}')}
         </div>
       )
 
@@ -161,6 +153,78 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange }:
         <div style={{ display: 'flex', gap: 6, flex: 1 }}>
           <Input style={{ ...inputS, width: 100 }} type="number" placeholder="Risposta (min)" value={params['response_minutes'] ?? ''} onChange={e => onChange('response_minutes', e.target.value)} />
           <Input style={{ ...inputS, width: 100 }} type="number" placeholder="Risoluzione (min)" value={params['resolve_minutes'] ?? ''} onChange={e => onChange('resolve_minutes', e.target.value)} />
+        </div>
+      )
+
+    // ── Vocabolario workflow_step (packages/workflow) ─────────────────────────
+    case 'sla_start':
+    case 'sla_stop':
+      return choice('sla_type', 'sla_type', [{ value: 'response' }, { value: 'resolve' }], 'response')
+
+    case 'schedule_job':
+      return (
+        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          {text('job', 'job', 'auto_close')}
+          {text('delay_hours', 'delay_hours', '0', 'number')}
+        </div>
+      )
+
+    case 'cancel_job':
+      return text('job', 'job', 'auto_close')
+
+    case 'create_entity':
+      return (
+        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          {choice('entity_type', 'entity_type', [{ value: 'incident' }, { value: 'problem' }, { value: 'change' }], 'incident')}
+          {text('title_template', 'title_template', '{title} — escalated')}
+          {choice('link_to_current', 'link_to_current', [{ value: 'true' }, { value: 'false' }], 'true')}
+          {text('copy_fields', 'copy_fields (comma-sep)', 'severity,priority')}
+        </div>
+      )
+
+    case 'assign_to': {
+      const targetType = params['target_type'] ?? 'team'
+      return (
+        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          {choice('target_type', 'target_type', [{ value: 'team' }, { value: 'user' }], 'team')}
+          <Labeled label="target_id">
+            <Select style={selectS} value={params['target_id'] ?? ''} onChange={e => onChange('target_id', e.target.value)}>
+              <option value="">-- {targetType === 'user' ? 'Utente' : 'Team'} --</option>
+              {targetType === 'user'
+                ? users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)
+                : teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+          </Labeled>
+          {text('target_name', 'target_name (template)', '{assigned_team}')}
+        </div>
+      )
+    }
+
+    case 'update_field':
+      return (
+        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          <Labeled label="field">
+            <Select style={selectS} value={params['field'] ?? 'severity'} onChange={e => onChange('field', e.target.value)}>
+              {fieldMetas.filter(f => f.fieldType !== 'user' && f.fieldType !== 'team').map(f => (
+                <option key={f.name} value={f.name}>{f.label} ({fieldTypeLabel(f.fieldType)})</option>
+              ))}
+            </Select>
+          </Labeled>
+          {/* Testo libero: il valore può essere un template ({field}), non solo un enum */}
+          {text('value', 'value', 'critical or {field}')}
+        </div>
+      )
+
+    case 'create_approval_request':
+      return (
+        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          {text('title_template', 'title_template', 'Pubblicazione: {title}')}
+          {choice('approver_role', 'approver_role', [{ value: 'admin' }, { value: 'manager' }], 'admin')}
+          {choice('approval_type', 'approval_type', [
+            { value: 'any', label: 'any (1 approver sufficient)' },
+            { value: 'all', label: 'all (all approvers required)' },
+            { value: 'majority', label: 'majority' },
+          ], 'any')}
         </div>
       )
 

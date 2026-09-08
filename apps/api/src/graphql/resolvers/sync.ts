@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import {
   encryptCredentials,
   decryptCredentials,
@@ -27,14 +27,6 @@ function toStr(v: unknown): string {
   return String(v)
 }
 
-function toNum(v: unknown): number {
-  if (typeof v === 'number') return v
-  if (v && typeof (v as { toNumber(): number }).toNumber === 'function') {
-    return (v as { toNumber(): number }).toNumber()
-  }
-  return Number(v ?? 0)
-}
-
 function mapSource(p: Props) {
   return {
     id:                 toStr(p['id']),
@@ -47,7 +39,7 @@ function mapSource(p: Props) {
     enabled:            Boolean(p['enabled']),
     lastSyncAt:         p['last_sync_at']          ? toStr(p['last_sync_at'])          : null,
     lastSyncStatus:     p['last_sync_status']      ? toStr(p['last_sync_status'])      : null,
-    lastSyncDurationMs: p['last_sync_duration_ms'] ? toNum(p['last_sync_duration_ms']) : null,
+    lastSyncDurationMs: p['last_sync_duration_ms'] ? toNumber(p['last_sync_duration_ms']) : null,
     createdAt:          toStr(p['created_at']),
     updatedAt:          toStr(p['updated_at']),
   }
@@ -60,14 +52,14 @@ function mapRun(p: Props) {
     tenantId:         toStr(p['tenant_id']),
     syncType:         toStr(p['sync_type']),
     status:           toStr(p['status']),
-    ciCreated:        toNum(p['ci_created']),
-    ciUpdated:        toNum(p['ci_updated']),
-    ciUnchanged:      toNum(p['ci_unchanged']),
-    ciStale:          toNum(p['ci_stale']),
-    ciConflicts:      toNum(p['ci_conflicts']),
-    relationsCreated: toNum(p['relations_created']),
-    relationsRemoved: toNum(p['relations_removed']),
-    durationMs:       p['duration_ms']    ? toNum(p['duration_ms'])    : null,
+    ciCreated:        toNumber(p['ci_created']),
+    ciUpdated:        toNumber(p['ci_updated']),
+    ciUnchanged:      toNumber(p['ci_unchanged']),
+    ciStale:          toNumber(p['ci_stale']),
+    ciConflicts:      toNumber(p['ci_conflicts']),
+    relationsCreated: toNumber(p['relations_created']),
+    relationsRemoved: toNumber(p['relations_removed']),
+    durationMs:       p['duration_ms']    ? toNumber(p['duration_ms'])    : null,
     errorMessage:     p['error_message']  ? toStr(p['error_message'])  : null,
     startedAt:        toStr(p['started_at']),
     completedAt:      p['completed_at']   ? toStr(p['completed_at'])   : null,
@@ -143,7 +135,7 @@ export const syncResolvers = {
            ORDER BY ${orderBy} SKIP toInteger($offset) LIMIT toInteger($limit)`,
           { sourceId: args.sourceId, tenantId: ctx.tenantId, offset, limit },
         )
-        const total = rows[0] ? toNum(rows[0].total) : 0
+        const total = rows[0] ? toNumber(rows[0].total) : 0
         return { items: rows.map(r => mapRun(r.p)), total }
       })
     },
@@ -170,7 +162,7 @@ export const syncResolvers = {
            ORDER BY n.created_at DESC SKIP toInteger($offset) LIMIT toInteger($limit)`,
           params,
         )
-        const total = rows[0] ? toNum(rows[0].total) : 0
+        const total = rows[0] ? toNumber(rows[0].total) : 0
         return { items: rows.map(r => mapConflict(r.p)), total }
       })
     },
@@ -197,14 +189,14 @@ export const syncResolvers = {
         `, { tenantId: ctx.tenantId })
 
         const s = rows[0] ?? {}
-        const total   = toNum(s.totalRuns)
-        const success = toNum(s.successRuns)
+        const total   = toNumber(s.totalRuns)
+        const success = toNumber(s.successRuns)
         return {
-          totalSources:   toNum(s.totalSources),
-          enabledSources: toNum(s.enabledSources),
+          totalSources:   toNumber(s.totalSources),
+          enabledSources: toNumber(s.enabledSources),
           lastSyncAt:     s.lastSyncAt ? toStr(s.lastSyncAt) : null,
-          ciManaged:      toNum(s.ciManaged),
-          openConflicts:  toNum(s.openConflicts),
+          ciManaged:      toNumber(s.ciManaged),
+          openConflicts:  toNumber(s.openConflicts),
           totalRuns:      total,
           successRate:    total > 0 ? Math.round((success / total) * 100) / 100 : 0,
         }
@@ -230,7 +222,7 @@ export const syncResolvers = {
         const countRes = await session.executeRead(tx =>
           tx.run(`MATCH (r:SyncChangeRecord {ci_id: $ciId, tenant_id: $tenantId}) RETURN count(r) AS cnt`, { ciId: args.ciId, tenantId: ctx.tenantId }),
         )
-        const total = toNum(countRes.records[0]?.get('cnt') ?? 0)
+        const total = toNumber(countRes.records[0]?.get('cnt') ?? 0)
         const items = result.records.map(rec => {
           const p = rec.get('p') as Props
           return {

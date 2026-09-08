@@ -36,7 +36,7 @@ interface SystemMetrics {
 
 const card: React.CSSProperties = {
   background:   'white',
-  border:       '1px solid #e5e7eb',
+  border:       '1px solid var(--border)',
   borderRadius: 10,
   padding:      '20px 24px',
   marginBottom: 16,
@@ -52,7 +52,7 @@ const sectionTitle: React.CSSProperties = {
 
 const statCard: React.CSSProperties = {
   background:   'var(--color-slate-bg)',
-  border:       '1px solid #e5e7eb',
+  border:       '1px solid var(--border)',
   borderRadius: 8,
   padding:      '14px 18px',
   flex:         1,
@@ -221,7 +221,7 @@ export function MonitoringPage() {
         {metrics?.queues && metrics.queues.length > 0 ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+              <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th style={{ textAlign: 'left', padding: '6px 12px 6px 0', color: '#6b7280', fontWeight: 600 }}>Queue</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: '#3b82f6', fontWeight: 600 }}>{t('pages.monitoring.queues.waiting')}</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: '#22c55e', fontWeight: 600 }}>{t('pages.monitoring.queues.active')}</th>
@@ -313,7 +313,7 @@ export function MonitoringPage() {
               {trace.recentTraces.length > 0 ? (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       <th style={{ textAlign: 'left', padding: '6px 0', color: '#6b7280', fontWeight: 600 }}>Operation</th>
                       <th style={{ textAlign: 'right', padding: '6px 12px', color: '#6b7280', fontWeight: 600 }}>Duration</th>
                       <th style={{ textAlign: 'right', padding: '6px 12px', color: '#6b7280', fontWeight: 600 }}>Status</th>

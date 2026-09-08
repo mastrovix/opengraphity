@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Lock, Unlock } from 'lucide-react'
 import { colors, fontSize, fontWeight } from '@/lib/tokens'
+import { Toggle as SharedToggle } from '@/components/ui/Toggle'
 
 // ── Re-exported from NotificationRulesPage ────────────────────────────────────
 
@@ -63,23 +64,9 @@ export interface UpdateInput {
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
-export function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div
-      onClick={() => onChange(!value)}
-      style={{
-        width: 36, height: 20, borderRadius: 10, cursor: 'pointer',
-        backgroundColor: value ? colors.brand : '#cbd5e1',
-        position: 'relative', transition: 'background 200ms', flexShrink: 0,
-      }}
-    >
-      <div style={{
-        position: 'absolute', top: 2, left: value ? 18 : 2,
-        width: 16, height: 16, borderRadius: '50%', background: '#fff',
-        transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-      }} />
-    </div>
-  )
+/** Thin alias over the design-system `Toggle` (E-10): same `value/onChange` API, accessible switch. */
+export function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
+  return <SharedToggle checked={value} onChange={onChange} label={label} />
 }
 
 // ── RuleRow ───────────────────────────────────────────────────────────────────
@@ -114,7 +101,7 @@ export function RuleRow({
     <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
       {/* Enabled */}
       <td style={{ padding: '10px 12px', width: 52 }}>
-        <Toggle value={rule.enabled} onChange={(v) => debounce({ enabled: v })} />
+        <Toggle value={rule.enabled} onChange={(v) => debounce({ enabled: v })} label={`${t('notificationRules.enabled')}: ${titleLabel}`} />
       </td>
 
       {/* Event */}
@@ -171,7 +158,7 @@ export function RuleRow({
       {/* Delete (custom rules only) */}
       <td style={{ padding: '10px 8px', width: 36, textAlign: 'center' }}>
         {!rule.isSeed && (
-          <button
+          <button type="button"
             onClick={() => onDelete(rule.id)}
             title={t('notificationRules.deleteRule')}
             style={{

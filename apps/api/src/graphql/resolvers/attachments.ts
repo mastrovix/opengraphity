@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { logger } from '../../lib/logger.js'
 
@@ -20,12 +20,7 @@ function mapAttachment(r: { get: (k: string) => unknown }): Attachment {
     id,
     filename:    r.get('filename')    as string,
     mimeType:    r.get('mimeType')    as string,
-    sizeBytes:   (() => {
-      const v = r.get('sizeBytes')
-      return v != null && typeof (v as { toNumber(): number }).toNumber === 'function'
-        ? (v as { toNumber(): number }).toNumber()
-        : Number(v ?? 0)
-    })(),
+    sizeBytes:   toNumber(r.get('sizeBytes')),
     uploadedBy:  r.get('uploadedBy')  as string,
     uploadedAt:  r.get('uploadedAt')  as string,
     description: r.get('description') as string | null,

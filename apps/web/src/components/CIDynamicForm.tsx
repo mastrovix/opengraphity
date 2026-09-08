@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import type { CITypeDef, CIFieldDef } from '@/contexts/MetamodelContext'
 import { validateCI, isFieldVisible, getFieldDefault } from '@/lib/ciValidator'
+import { useCIBaseEnums } from '@/lib/ciEnums'
 
 // Base (__base__) fields every CI shares — the Create input requires `name`
 // and accepts status/environment/description. They aren't in a type's own
-// field list, so the form renders them explicitly.
-const BASE_STATUSES = ['active', 'inactive', 'maintenance']
-const BASE_ENVIRONMENTS = ['production', 'staging', 'development']
+// field list, so the form renders them explicitly; i valori di status e
+// environment vengono dal tipo base del metamodello (useCIBaseEnums).
+
+/** Attesa dopo l'ultima modifica prima di rieseguire i default_script (F-13). */
+const DEFAULTS_DEBOUNCE_MS = 300
 
 // ── Style constants ────────────────────────────────────────────────────────────
 
@@ -159,34 +162,40 @@ export function CIDynamicForm({
   const [scriptError, setScriptError] = useState<string | undefined>()
   const [visibilityMap, setVisibilityMap] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
+  const baseEnums = useCIBaseEnums()
 
-  // Evaluate default scripts when form values change
+  // Default script: rieseguiti a ogni modifica dei valori (con debounce), non
+  // solo al mount — un default che dipende da un altro campo (es. porta in
+  // base al tipo di database) deve seguire quel campo. Il ciclo converge perché
+  // si scrive solo quando il valore calcolato è diverso da quello corrente.
   useEffect(() => {
     let cancelled = false
+    const hasDefaults = ciType.fields.some(f => f.defaultScript)
+    if (!hasDefaults) return
 
-    async function applyDefaults() {
-      try {
-        const updates: Record<string, unknown> = {}
-        for (const field of ciType.fields) {
-          if (!field.defaultScript) continue
-          const computed = await getFieldDefault(field.name, formValues, ciType)
-          const current = formValues[field.name]
-          if (computed !== null && computed !== undefined && computed !== current) {
-            updates[field.name] = computed
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const updates: Record<string, unknown> = {}
+          for (const field of ciType.fields) {
+            if (!field.defaultScript) continue
+            const computed = await getFieldDefault(field.name, formValues, ciType)
+            const current = formValues[field.name]
+            if (computed !== null && computed !== undefined && computed !== current) {
+              updates[field.name] = computed
+            }
           }
+          if (!cancelled && Object.keys(updates).length > 0) {
+            setFormValues(prev => ({ ...prev, ...updates }))
+          }
+        } catch (e) {
+          if (!cancelled) setScriptError(e instanceof Error ? e.message : String(e))
         }
-        if (!cancelled && Object.keys(updates).length > 0) {
-          setFormValues(prev => ({ ...prev, ...updates }))
-        }
-      } catch (e) {
-        if (!cancelled) setScriptError(e instanceof Error ? e.message : String(e))
-      }
-    }
+      })()
+    }, DEFAULTS_DEBOUNCE_MS)
 
-    applyDefaults()
-    return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // run once on mount to apply initial defaults
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [formValues, ciType])
 
   // Evaluate visibility scripts when form values change
   useEffect(() => {
@@ -253,6 +262,10 @@ export function CIDynamicForm({
 
     try {
       await onSubmit(formValues)
+    } catch (e) {
+      // Il server rivalida (required/validation_script lato API): il suo
+      // messaggio va mostrato nella form, non solo in un toast del chiamante.
+      setGlobalError(e instanceof Error ? e.message : String(e))
     } finally {
       setSubmitting(false)
     }
@@ -308,19 +321,24 @@ export function CIDynamicForm({
           </p>
         )}
       </div>
+      {baseEnums.error && (
+        <div style={{ padding: '8px 14px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
+          <strong>Metamodello:</strong> {baseEnums.error}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>Stato</label>
           <select value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>
             <option value="">—</option>
-            {BASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {baseEnums.statuses.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>Ambiente</label>
           <select value={String(formValues['environment'] ?? '')} onChange={e => handleChange('environment', e.target.value)} style={inputBase}>
             <option value="">—</option>
-            {BASE_ENVIRONMENTS.map(v => <option key={v} value={v}>{v}</option>)}
+            {baseEnums.environments.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
       </div>

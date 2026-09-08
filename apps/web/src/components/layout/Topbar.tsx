@@ -13,18 +13,9 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useMe } from '@/hooks/useMe'
 import { keycloak } from '@/lib/keycloak'
+import { layoutPalette as C } from '@/lib/tokens'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import { NotificationPanel } from '@/components/ui/NotificationPanel'
-
-// ── colours (aligned with Sidebar) ───────────────────────────────────────────
-const C = {
-  bg:          '#3d4856',
-  border:      '#2e3744',
-  textDefault: '#e2e8f0',
-  textMuted:   'var(--color-slate-light)',
-  brand:       'var(--color-brand)',
-  hoverBg:     'rgba(255,255,255,0.08)',
-}
 
 function Breadcrumb() {
   const { t } = useTranslation()
@@ -61,27 +52,27 @@ function Breadcrumb() {
 
   const formatSegment = (part: string): string => {
     if (LABELS[part]) return LABELS[part]
-    if (/^[0-9a-f-]{20,}$/i.test(part)) return 'Detail'
-    if (/^\d+$/.test(part)) return 'Detail'
+    if (/^[0-9a-f-]{20,}$/i.test(part)) return t('topbar.detail')
+    if (/^\d+$/.test(part)) return t('topbar.detail')
     return part.charAt(0).toUpperCase() + part.slice(1).replace(/_/g, ' ')
   }
   const parts = pathname.split('/').filter(Boolean)
 
   if (parts.length === 0) {
-    return <span style={{ color: C.textDefault, fontWeight: 600, fontSize: 12 }}>Dashboard</span>
+    return <span style={{ color: C.textDefault, fontWeight: 600, fontSize: 12 }}>{t('sidebar.dashboard')}</span>
   }
 
   return (
-    <nav style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+    <nav aria-label={t('topbar.breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
       {parts.map((part, i) => {
         const isLast = i === parts.length - 1
         const path   = '/' + parts.slice(0, i + 1).join('/')
         const label  = formatSegment(part)
         return (
           <span key={path} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {i > 0 && <span style={{ color: C.textMuted }}>/</span>}
+            {i > 0 && <span aria-hidden="true" style={{ color: C.textMuted }}>/</span>}
             {isLast ? (
-              <span style={{ color: C.textDefault, fontWeight: 600 }}>{label}</span>
+              <span aria-current="page" style={{ color: C.textDefault, fontWeight: 600 }}>{label}</span>
             ) : (
               <Link
                 to={path}
@@ -155,7 +146,10 @@ export function Topbar() {
         {/* Bell */}
         <div style={{ position: 'relative' }}>
           <button
+            type="button"
             onClick={() => setPanelOpen(v => !v)}
+            aria-expanded={panelOpen}
+            aria-label={unreadCount > 0 ? t('topbar.notificationsUnread', { count: unreadCount }) : t('notifications.title')}
             className="hover-bg"
             style={{
               position:        'relative',
@@ -166,18 +160,20 @@ export function Topbar() {
               height:          32,
               borderRadius:    6,
               border:          'none',
-              backgroundColor: panelOpen ? C.hoverBg : undefined,
+              backgroundColor: panelOpen ? C.hoverBg : 'transparent',
               color:           C.brand,
               cursor:          'pointer',
               ['--hover-bg' as string]: C.hoverBg,
             }}
           >
-            <Bell size={16} />
+            <Bell size={16} aria-hidden="true" />
             {/* Realtime channel down: amber dot — the user must know
                 notifications are NOT arriving, not just see silence. */}
             {!sseConnected && (
               <span
-                title="Canale notifiche disconnesso — riconnessione in corso"
+                role="status"
+                title={t('topbar.sseDisconnected')}
+                aria-label={t('topbar.sseDisconnected')}
                 style={{
                   position:        'absolute',
                   bottom:          3,
@@ -185,13 +181,14 @@ export function Topbar() {
                   width:           8,
                   height:          8,
                   borderRadius:    4,
-                  backgroundColor: '#f59e0b',
+                  backgroundColor: 'var(--warning)',
                   border:          '1px solid #fff',
                 }}
               />
             )}
             {unreadCount > 0 && (
               <span
+                aria-hidden="true"
                 style={{
                   position:        'absolute',
                   top:             3,
@@ -218,12 +215,13 @@ export function Topbar() {
         </div>
 
         {/* Divider */}
-        <div style={{ width: 1, height: 20, backgroundColor: C.border }} />
+        <div aria-hidden="true" style={{ width: 1, height: 20, backgroundColor: C.border }} />
 
         {/* User dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger
             className="hover-bg"
+            aria-label={t('topbar.userMenu', { name: display })}
             style={{
               display:         'flex',
               alignItems:      'center',
@@ -232,10 +230,12 @@ export function Topbar() {
               borderRadius:    6,
               border:          'none',
               cursor:          'pointer',
+              background:      'transparent',
               ['--hover-bg' as string]: C.hoverBg,
             }}
           >
             <div
+              aria-hidden="true"
               style={{
                 width:           32,
                 height:          32,
@@ -262,7 +262,7 @@ export function Topbar() {
             align="end"
             style={{
               backgroundColor: '#ffffff',
-              border: '1px solid #e5e7eb',
+              border: '1px solid var(--border)',
               borderRadius: 10,
               boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
               minWidth: 180,

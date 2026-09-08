@@ -13,7 +13,7 @@ export function ExportCsvButton({ onExport }: Props) {
   const [busy, setBusy] = useState(false)
 
   return (
-    <button
+    <button type="button"
       onClick={() => {
         setBusy(true)
         onExport()

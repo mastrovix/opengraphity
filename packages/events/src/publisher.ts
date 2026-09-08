@@ -1,6 +1,7 @@
 import { Queue } from 'bullmq'
 import type { DomainEvent } from '@opengraphity/types'
-import { getRedisOptions, registerQueue } from './connection.js'
+import { registerQueue } from './connection.js'
+import { getRedisConnection } from './redis.js'
 
 /** One queue per consumer — fan-out by publishing to all */
 const CONSUMER_QUEUES = ['notification-service', 'sla-engine', 'escalation-consumer'] as const
@@ -16,7 +17,7 @@ let _queues: Queue[] | null = null
 
 function getQueues(): Queue[] {
   if (_queues) return _queues
-  const conn = getRedisOptions()
+  const conn = getRedisConnection()
   const queues = CONSUMER_QUEUES.map(name => new Queue(name, { connection: conn }))
   _queues = queues
   for (const q of queues) {

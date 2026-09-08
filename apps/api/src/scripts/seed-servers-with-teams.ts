@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 const LOCATIONS  = ['Milano', 'Roma', 'Torino', 'Napoli', 'Bologna', 'Firenze', 'Palermo', 'Genova']
 const VENDORS    = ['Dell', 'HP', 'IBM', 'Cisco', 'Lenovo', 'Supermicro', 'Fujitsu']
@@ -25,7 +25,7 @@ function pickStatus(): string {
   return 'inactive'
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   const ownerResult = await session.run(
@@ -101,4 +101,7 @@ async function seed() {
   console.log(`\nDone. Created: ${created}, Skipped: ${skipped}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-servers-with-teams', async () => {
+  refuseInProduction('seed-servers-with-teams')
+  await seed(resolveTenantArg())
+})

@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { Queue } from 'bullmq'
 import pino from 'pino'
-import { publish, assertSafeOutboundUrl, loggableUrl } from '@opengraphity/events'
+import { publish, assertSafeOutboundUrl, loggableUrl, getRedisConnection } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import type {
   WorkflowActionConfig,
@@ -17,10 +17,8 @@ import type {
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow:actions' })
 
-const redisConnection = {
-  host: process.env['REDIS_HOST'] ?? 'localhost',
-  port: parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
-}
+// Connessione Redis unica del monorepo (packages/events): REDIS_URL/HOST/PASSWORD, fail-fast in prod.
+const redisConnection = getRedisConnection()
 
 // ── Webhook retry job data ────────────────────────────────────────────────────
 

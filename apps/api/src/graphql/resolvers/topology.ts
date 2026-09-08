@@ -14,6 +14,7 @@ interface TopologyArgs {
 
 // All known CI labels in Neo4j — single source of truth
 import { ALL_CI_LABELS as CI_LABELS, TYPE_TO_LABEL } from '../../lib/ciLabels.js'
+import { toNumber } from '@opengraphity/neo4j'
 
 const NODE_LIMIT = 2000
 const EDGE_LIMIT = 5000
@@ -38,14 +39,6 @@ function labelFromType(t: string): string {
   return TYPE_TO_LABEL[t.toLowerCase()] ?? t
 }
 
-function toNum(v: unknown): number {
-  if (v == null) return 0
-  if (typeof v === 'number') return v
-  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
-    return (v as { toNumber: () => number }).toNumber()
-  return Number(v)
-}
-
 function mapNode(r: { get: (k: string) => unknown }) {
   return {
     id:            r.get('id')           as string,
@@ -54,8 +47,8 @@ function mapNode(r: { get: (k: string) => unknown }) {
     status:        r.get('status')       as string,
     environment:   r.get('environment')  as string | null,
     ownerGroup:    r.get('ownerGroup')   as string | null,
-    incidentCount: toNum(r.get('incidentCount')),
-    changeCount:   toNum(r.get('changeCount')),
+    incidentCount: toNumber(r.get('incidentCount')),
+    changeCount:   toNumber(r.get('changeCount')),
   }
 }
 

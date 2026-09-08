@@ -27,7 +27,7 @@ export function SyncPage() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>
         {TABS.map(t => (
-          <button
+          <button type="button"
             key={t}
             onClick={() => hook.setTab(t)}
             style={{

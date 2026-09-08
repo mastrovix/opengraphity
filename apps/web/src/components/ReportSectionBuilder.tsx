@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import {
   ReactFlow, Background, Controls,
@@ -17,6 +17,7 @@ import {
 import { ReportPreview, type SectionResult } from './ReportPreview'
 import { ReportQueryBuilder } from './ReportQueryBuilder'
 import { ReportChartConfig, CHART_TYPES, DATE_FIELD_NAMES } from './ReportChartConfig'
+import { useCIBaseEnums } from '@/lib/ciEnums'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,9 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   // ── Node field helpers ──────────────────────────────────────────────────────
 
+  // Status/environment dei CI dal tipo base del metamodello (F-23)
+  const baseEnums = useCIBaseEnums()
+
   const getNodeFields = useCallback((neo4jLabel: string): NavigableField[] => {
     const entity     = entities.find(e => e.neo4jLabel === neo4jLabel)
     const typeFields = entity?.fields ?? []
@@ -110,14 +114,14 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     if (!isCIEntity) return typeFields
     const baseFields: NavigableField[] = [
       { name: 'name',        label: 'Nome',        fieldType: 'string', enumValues: [] },
-      { name: 'status',      label: 'Stato',       fieldType: 'enum',   enumValues: ['active', 'inactive', 'maintenance'] },
-      { name: 'environment', label: 'Ambiente',    fieldType: 'enum',   enumValues: ['production', 'staging', 'development'] },
+      { name: 'status',      label: 'Stato',       fieldType: 'enum',   enumValues: baseEnums.statuses },
+      { name: 'environment', label: 'Ambiente',    fieldType: 'enum',   enumValues: baseEnums.environments },
       { name: 'description', label: 'Descrizione', fieldType: 'string', enumValues: [] },
     ]
     const merged = [...baseFields]
     typeFields.forEach(f => { if (!merged.find(b => b.name === f.name)) merged.push(f) })
     return merged
-  }, [entities])
+  }, [entities, baseEnums.statuses, baseEnums.environments])
 
   // ── Node data callbacks ──────────────────────────────────────────────────────
 
@@ -163,20 +167,38 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   // ── Sync nodeDataMap → ReactFlow nodes ──────────────────────────────────────
 
+  // Callback stabili PER NODO (F-26): create una volta per id e riusate, così
+  // `data` di un nodo cambia solo quando cambia la sua entry e
+  // memo(ReportEntityNode) può saltare il render degli altri.
+  type NodeCallbacks = Pick<NodeData, 'onToggleResult' | 'onAddFilter' | 'onRemoveFilter' | 'onFilterChange' | 'onConnect' | 'onDelete'>
+  const callbacksRef = useRef(new Map<string, NodeCallbacks>())
+  const nodeCallbacks = useCallback((id: string, neo4jLabel: string): NodeCallbacks => {
+    const hit = callbacksRef.current.get(id)
+    if (hit) return hit
+    const cbs: NodeCallbacks = {
+      onToggleResult: () => toggleResult(id),
+      onAddFilter:    () => addFilter(id),
+      onRemoveFilter: (i: number) => removeFilter(id, i),
+      onFilterChange: (i: number, k: keyof FilterState, v: string) => updateFilter(id, i, k, v),
+      onConnect: () => { setConnectingNodeId(id); fetchReachable({ variables: { fromNeo4jLabel: neo4jLabel } }) },
+      onDelete: () => { callbacksRef.current.delete(id); deleteNode(id) },
+    }
+    callbacksRef.current.set(id, cbs)
+    return cbs
+  }, [toggleResult, addFilter, removeFilter, updateFilter, fetchReachable, deleteNode])
+
   const makeNodeData = useCallback((id: string, nd: NodeDataEntry, neo4jLabel: string): NodeData => ({
     ...nd,
-    onToggleResult: () => toggleResult(id),
-    onAddFilter:    () => addFilter(id),
-    onRemoveFilter: (i: number) => removeFilter(id, i),
-    onFilterChange: (i: number, k: keyof FilterState, v: string) => updateFilter(id, i, k, v),
-    onConnect: () => { setConnectingNodeId(id); fetchReachable({ variables: { fromNeo4jLabel: neo4jLabel } }) },
-    onDelete: () => deleteNode(id),
-  }), [toggleResult, addFilter, removeFilter, updateFilter, fetchReachable, deleteNode]) // eslint-disable-line react-hooks/exhaustive-deps
+    ...nodeCallbacks(id, neo4jLabel),
+    // Riferimento all'entry: permette all'effetto di sync di saltare i nodi invariati
+    entry: nd,
+  }), [nodeCallbacks])
 
   useEffect(() => {
     setNodes(nds => nds.map(n => {
       const nd = nodeDataMap[n.id]
       if (!nd) return n
+      if ((n.data as NodeData).entry === nd) return n   // entry invariata → stesso oggetto data
       return { ...n, data: makeNodeData(n.id, nd, nd.neo4jLabel) }
     }))
   }, [nodeDataMap]) // eslint-disable-line react-hooks/exhaustive-deps

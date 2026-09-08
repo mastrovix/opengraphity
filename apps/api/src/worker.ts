@@ -8,6 +8,11 @@
  * independently. The API skips its own embedding worker when
  * EMBEDDING_WORKER_EXTERNAL=true.
  */
+// Fail-fast configuration for THIS process (a subset of the API's: no HTTP,
+// no Keycloak, no attachments) — see CONFIG_PROFILES.worker in lib/config.ts.
+import { validateConfig } from './lib/config.js'
+validateConfig('worker')
+
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
 import { closeConnection } from '@opengraphity/events'
 import { neo4jQueryDurationSeconds, recordSlowQuery } from './middleware/metrics.js'

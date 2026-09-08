@@ -14,8 +14,8 @@ import {
   mapUser,
   mapTeam,
   mapCI,
-  toInt,
 } from './mappers.js'
+import { toNumber } from '@opengraphity/neo4j'
 
 type Session = ReturnType<typeof getSession>
 
@@ -161,7 +161,7 @@ export async function changes(_: unknown, args: { currentStep?: string; priority
         changeOwner: userOrNull(r.ownerUser),
         approvalBy:  userOrNull(r.appUser),
       })),
-      total: toInt(countRows[0]?.total),
+      total: toNumber(countRows[0]?.total),
     }
   })
 }
@@ -269,7 +269,7 @@ export async function changeAffectedCIs(_: unknown, args: { changeId: string }, 
       return {
         ci:                mapCI(r.ciProps),
         ciPhase:           r.ciPhase,
-        riskScore:         r.riskScore != null ? toInt(r.riskScore) : null,
+        riskScore:         r.riskScore != null ? toNumber(r.riskScore) : null,
         assessmentOwner:   buildAssessTask(r.ownerTask),
         assessmentSupport: buildAssessTask(r.supportTask),
         deployPlan:        buildDeployPlan(r.deployPlan),
@@ -312,8 +312,8 @@ export async function assessmentQuestionCatalog(_: unknown, args: { category?: s
     const optsMap = await loadOptionsForQuestions(session, questionIds)
     return rows.map((r) => ({
       question:  { ...mapAssessmentQuestion(r.questionProps), options: optsMap[r.questionProps['id'] as string] ?? [] },
-      weight:    toInt(r.weight, 1),
-      sortOrder: toInt(r.sortOrder, 0),
+      weight:    r.weight == null ? 1 : toNumber(r.weight),
+      sortOrder: toNumber(r.sortOrder),
     }))
   })
 }
@@ -593,7 +593,7 @@ export async function changeImpactedCIs(_: unknown, args: { changeId: string; de
       r.affectedProps['type'] = r.affectedProps['type'] as string | undefined ?? r.affectedLabel.toLowerCase()
       return {
         ci: mapCI(r.impactedProps),
-        distance: toInt(r.distance, 1),
+        distance: r.distance == null ? 1 : toNumber(r.distance),
         affectedBy: mapCI(r.affectedProps),
         impactPath: (r.pathNames ?? []).map(String),
       }
@@ -663,8 +663,8 @@ export async function questionCITypeAssignments(_: unknown, args: { questionId: 
     return rows.map((r) => ({
       ciTypeId:   r.ciTypeId,
       ciTypeName: r.ciTypeName,
-      weight:     toInt(r.weight, 1),
-      sortOrder:  toInt(r.sortOrder, 0),
+      weight:     r.weight == null ? 1 : toNumber(r.weight),
+      sortOrder:  toNumber(r.sortOrder),
     }))
   })
 }

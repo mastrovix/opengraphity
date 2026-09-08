@@ -1,5 +1,10 @@
 export type Props = Record<string, unknown>
 
+/** camelCase → snake_case (`ipAddress` → `ip_address`), the Neo4j property convention. */
+export function toSnakeCase(s: string): string {
+  return s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
+}
+
 // Neo4j DateTime/Date objects come back as structured objects instead of strings.
 // This helper normalises them to ISO 8601 strings.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

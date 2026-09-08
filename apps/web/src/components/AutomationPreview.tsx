@@ -1,14 +1,17 @@
 /**
  * Real-time preview for trigger and business rule configurations.
  * Resolves field names, team/user IDs, and enum values to human-readable text.
+ * Vocabolario (operatori, azioni, entità, eventi): lib/automationOperators.ts.
  */
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { gql } from '@apollo/client'
-import { GET_ITIL_TYPES, GET_CI_TYPES, GET_TEAMS } from '@/graphql/queries'
+import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
+import { useEntityFieldLookup } from '@/hooks/useEntityFields'
+import { lookupOrError } from '@/lib/tokens'
+import {
+  ENTITY_LABELS, EVENT_LABELS, NO_VALUE_OPERATORS, automationActionLabel, operatorLabel,
+} from '@/lib/automationOperators'
 import { Eye } from 'lucide-react'
-
-const GET_USERS_PREVIEW = gql`query GetUsersPreview { users { id name email } }`
 
 interface Condition { field: string; operator: string; value: string }
 interface Action { type: string; params: Record<string, string> }
@@ -22,67 +25,12 @@ interface Props {
   timerMinutes?:  number | null
 }
 
-// ── Lookups ──────────────────────────────────────────────────────────────────
-
-const ITIL_ENTITIES = new Set(['incident', 'problem', 'change', 'service_request'])
-
-const ENTITY_LABELS: Record<string, string> = {
-  incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
-}
-
-const EVENT_LABELS: Record<string, string> = {
-  on_create: 'creato', on_update: 'aggiornato', on_timer: 'creato',
-  on_sla_breach: 'in breach SLA', on_field_change: 'modificato',
-  on_transition: 'transizionato',
-}
-
-const OP_LABELS: Record<string, string> = {
-  equals: '=', not_equals: '≠', is_null: 'è vuoto', is_not_null: 'non è vuoto',
-  greater_than: '>', less_than: '<', contains: 'contiene',
-}
-
-const NO_VALUE_OPS = new Set(['is_null', 'is_not_null'])
-
-const ACTION_LABELS: Record<string, string> = {
-  set_field: 'Imposta campo', assign_team: 'Assegna team', assign_user: 'Assegna utente',
-  transition_workflow: 'Transizione', create_notification: 'Notifica',
-  create_comment: 'Commento', set_priority: 'Imposta priorità',
-  execute_script: 'Esegui script', call_webhook: 'Chiama webhook', set_sla: 'Imposta SLA',
-}
-
-// ── Hooks ────────────────────────────────────────────────────────────────────
-
-interface FieldMeta { name: string; label: string; fieldType: string; enumValues: string[] }
-type TypeDef = { name: string; fields: { name: string; label: string; fieldType: string; enumValues?: string[] | null }[] }
-
-function useFieldLookup(entityType: string): Map<string, FieldMeta> {
-  const isITIL = ITIL_ENTITIES.has(entityType)
-  const { data: itilData } = useQuery(GET_ITIL_TYPES, { skip: !isITIL, fetchPolicy: 'cache-first' })
-  const { data: ciData }   = useQuery(GET_CI_TYPES,   { skip: isITIL, fetchPolicy: 'cache-first' })
-
-  return useMemo(() => {
-    const map = new Map<string, FieldMeta>()
-    const types = isITIL
-      ? (itilData as { itilTypes?: TypeDef[] } | undefined)?.itilTypes
-      : (ciData   as { ciTypes?:   TypeDef[] } | undefined)?.ciTypes
-    const typeDef = (types ?? []).find(t => t.name === entityType)
-    if (typeDef) {
-      for (const f of typeDef.fields) {
-        map.set(f.name, { name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [] })
-      }
-    }
-    map.set('assigned_to',   { name: 'assigned_to',   label: 'Assegnato a',     fieldType: 'user', enumValues: [] })
-    map.set('assigned_team', { name: 'assigned_team', label: 'Team assegnato', fieldType: 'team', enumValues: [] })
-    return map
-  }, [isITIL, entityType, itilData, ciData])
-}
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function AutomationPreview({ entityType, eventType, conditions, conditionLogic, actions, timerMinutes }: Props) {
-  const fieldLookup = useFieldLookup(entityType)
+  const fieldLookup = useEntityFieldLookup(entityType)
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
-  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS_PREVIEW, { fetchPolicy: 'cache-first' })
+  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: 'cache-first' })
 
   const teamMap = useMemo(() => new Map((teamsData?.teams ?? []).map(t => [t.id, t.name])), [teamsData])
   const userMap = useMemo(() => new Map((usersData?.users ?? []).map(u => [u.id, `${u.name} (${u.email})`])), [usersData])
@@ -93,8 +41,8 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
     ? conditions.map(c => {
         const meta      = fieldLookup.get(c.field)
         const fieldName = meta?.label ?? (c.field || '?')
-        const op        = OP_LABELS[c.operator] ?? c.operator
-        if (NO_VALUE_OPS.has(c.operator)) return `${fieldName} ${op}`
+        const op        = operatorLabel(c.operator)
+        if (NO_VALUE_OPERATORS.has(c.operator)) return `${fieldName} ${op}`
         let val = c.value
         // Resolve IDs to names
         if (meta?.fieldType === 'user') val = userMap.get(c.value) ?? c.value
@@ -107,7 +55,7 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
   const actText = actions.length > 0
     ? actions.map(a => {
         const p = a.params ?? {}
-        const label = ACTION_LABELS[a.type] ?? a.type
+        const label = automationActionLabel(a.type)
         switch (a.type) {
           case 'assign_team':    return `${label} ${teamMap.get(p['team_id'] ?? '') ?? p['team_id'] ?? '?'}`
           case 'assign_user':    return `${label} ${userMap.get(p['user_id'] ?? '') ?? p['user_id'] ?? '?'}`
@@ -128,8 +76,8 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
     : null
 
   // ── Compose full preview ─────────────────────────────────────────────────
-  const entityLabel = ENTITY_LABELS[entityType] ?? entityType
-  const eventLabel  = EVENT_LABELS[eventType] ?? eventType
+  const entityLabel = lookupOrError(ENTITY_LABELS, entityType, 'ENTITY_LABELS', `?${entityType}`)
+  const eventLabel  = lookupOrError(EVENT_LABELS, eventType, 'EVENT_LABELS', `?${eventType}`)
 
   const parts: string[] = [`Quando un ${entityLabel} viene ${eventLabel}`]
   if (timerMinutes && timerMinutes > 0) parts.push(`dopo ${timerMinutes} minut${timerMinutes === 1 ? 'o' : 'i'}`)

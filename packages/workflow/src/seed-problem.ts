@@ -1,5 +1,5 @@
 import type { WorkflowDefinition } from './types.js'
-import { seedWorkflowDefinition, isMainModule } from './seed-common.js'
+import { seedWorkflowDefinition } from './seed-common.js'
 
 export const PROBLEM_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'Problem Management',
@@ -40,8 +40,4 @@ export async function seedProblemWorkflowForTenant(tenantId: string): Promise<st
   return r.definitionId
 }
 
-if (isMainModule(import.meta.url)) {
-  seedProblemWorkflowForTenant('c-one')
-    .then(() => process.exit(0))
-    .catch((e: unknown) => { console.error(e); process.exit(1) })
-}
+// Runner operativo: apps/api/src/scripts/seed-problem-workflow.ts (D-31).

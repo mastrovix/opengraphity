@@ -3,6 +3,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import compression from 'compression'
 import { rateLimit } from 'express-rate-limit'
+import { config } from './lib/config.js'
 import { ApolloServer } from '@apollo/server'
 import { ApolloServerPluginLandingPageLocalDefault, ApolloServerPluginLandingPageProductionDefault } from '@apollo/server/plugin/landingPage/default'
 import { expressMiddleware } from '@apollo/server/express4'
@@ -30,7 +31,7 @@ import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from '
 import { startGraphQLSpan, updateActiveSpanName, type GraphQLSpanHandle } from './telemetry.js'
 import http from 'http'
 
-const PORT = parseInt(process.env['PORT'] ?? '4000', 10)
+const PORT = config.port
 
 // ── GraphQL depth limit (inline, no external dependency) ─────────────────────
 
@@ -103,7 +104,7 @@ function fieldCountLimit(maxFields: number): ValidationRule {
 export const app: Application = express()
 
 app.use(helmet({
-  contentSecurityPolicy: process.env['NODE_ENV'] === 'production',
+  contentSecurityPolicy: config.isProduction,
 }))
 
 // ── Compression ────────────────────────────────────────────────────────────────
@@ -165,12 +166,12 @@ function buildCorsOrigin(
   }
 }
 
-if (!process.env['CORS_ORIGIN'] && process.env['NODE_ENV'] === 'production') {
+if (!config.corsOrigin && config.isProduction) {
   throw new Error('CORS_ORIGIN environment variable is required in production.')
 }
 
 app.use(cors({
-  origin:      buildCorsOrigin(process.env['CORS_ORIGIN']),
+  origin:      buildCorsOrigin(config.corsOrigin),
   credentials: true,
 }))
 
@@ -207,7 +208,7 @@ app.set('trust proxy', 1)
 
 app.use(rateLimit({
   windowMs: 15 * 60 * 1_000,
-  max:      process.env['NODE_ENV'] === 'production' && process.env['RATE_LIMIT_MAX'] ? Number(process.env['RATE_LIMIT_MAX']) : 1000,
+  max:      config.isProduction ? config.rateLimitMax : 1000,
   skip:     (req) => req.path === '/api/sse',
   standardHeaders: true,
   legacyHeaders:   false,
@@ -242,7 +243,7 @@ export async function startServer(): Promise<http.Server> {
     schema,
     // Off in production unless explicitly re-enabled (local compose sets
     // NODE_ENV=production, so the flag keeps Apollo Sandbox usable in dev)
-    introspection: process.env['GRAPHQL_INTROSPECTION'] === 'true' || process.env['NODE_ENV'] !== 'production',
+    introspection: config.graphqlIntrospection || !config.isProduction,
     validationRules: [depthLimit(10), fieldCountLimit(2000)],
     formatError: (formattedError, error) => {
       if (formattedError.extensions?.['code'] !== 'UNAUTHORIZED') {
@@ -256,7 +257,7 @@ export async function startServer(): Promise<http.Server> {
       return formattedError
     },
     plugins: [
-      process.env['NODE_ENV'] !== 'production'
+      !config.isProduction
         ? ApolloServerPluginLandingPageLocalDefault({ embed: true })
         : ApolloServerPluginLandingPageProductionDefault(),
       graphqlMetricsPlugin,

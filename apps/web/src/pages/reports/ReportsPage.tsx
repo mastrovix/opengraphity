@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { keycloak } from '@/lib/keycloak'
+import { timeAgo } from '@/lib/datetime'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
@@ -45,16 +46,6 @@ interface ReportConversation {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1)   return 'ora'
-  if (mins < 60)  return `${mins} min fa`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24)   return `${hrs} ore fa`
-  return `${Math.floor(hrs / 24)} giorni fa`
-}
 
 function extractCSV(content: string): string | null {
   const tableRegex = /\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)+)/g
@@ -374,7 +365,7 @@ export default function ReportsPage() {
                   <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', fontWeight: activeId === c.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
                     {c.title.length > 40 ? c.title.slice(0, 40) + '…' : c.title}
                   </div>
-                  <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 1 }}>{relativeTime(c.updatedAt)}</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 1 }}>{timeAgo(c.updatedAt)}</div>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); void handleDelete(c.id) }}

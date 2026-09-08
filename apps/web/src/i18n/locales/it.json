@@ -21,7 +21,8 @@
     "resolvedBy": "Risolta da",
     "title": "Titolo",
     "select": "Seleziona",
-    "writeHere": "Scrivi qui..."
+    "writeHere": "Scrivi qui...",
+    "close": "Chiudi"
   },
   "bulk": {
     "selected_one": "{{count}} selezionato",
@@ -37,7 +38,8 @@
     "resolveNotes": "Note di risoluzione (opzionale)",
     "confirm": "Conferma",
     "summary": "{{ok}} completati",
-    "summaryWithFailed": "{{ok}} completati, {{failed}} falliti"
+    "summaryWithFailed": "{{ok}} completati, {{failed}} falliti",
+    "selected": "{{count}} selezionati"
   },
   "sidebar": {
     "workspace": "WORKSPACE",
@@ -93,7 +95,11 @@
     "assessmentQuestions": "Domande Assessment",
     "whatIf": "What-if Planning",
     "collapse": "Comprimi sidebar",
-    "expand": "Espandi sidebar"
+    "expand": "Espandi sidebar",
+    "mainMenu": "Menu principale",
+    "anomalyLoadError": "Errore caricamento anomalie",
+    "criticalAnomalies": "{{count}} anomalie critiche",
+    "pendingBadge": "{{count}} in attesa"
   },
   "pages": {
     "incidents": {
@@ -159,7 +165,8 @@
       "ciCreated": "{{type}} creato",
       "noResults": "Nessun configuration item trovato",
       "noResultsDesc": "Il CMDB è vuoto. Aggiungi il primo CI per iniziare.",
-      "noCiOfType": "Nessun {{type}}"
+      "noCiOfType": "Nessun {{type}}",
+      "baseEnumsUnavailable": "Valori di stato/ambiente non disponibili dal metamodello (tipo base)"
     },
     "anomalies": {
       "title": "Anomalie",
@@ -213,7 +220,10 @@
       "noOwnedCIs": "Nessun CI in ownership",
       "noSupportedCIs": "Nessun CI in supporto",
       "members": "Membri",
-      "noMembers": "Nessun membro"
+      "noMembers": "Nessun membro",
+      "changeManager": "Cambia",
+      "assignManager": "Assegna",
+      "removeManager": "Rimuovi manager"
     },
     "users": {
       "title": "Utenti",
@@ -224,7 +234,18 @@
       "createdAt": "Creato il",
       "noResults": "Nessun utente",
       "noResultsDesc": "Non ci sono utenti per questo tenant.",
-      "count": "{{count}} utenti"
+      "count": "{{count}} utenti",
+      "newUserTitle": "Nuovo utente",
+      "creating": "Creazione…",
+      "create": "Crea",
+      "firstName": "Nome",
+      "lastName": "Cognome",
+      "password": "Password",
+      "passwordHint": "Minimo 8 caratteri",
+      "teams": "Team",
+      "removeTeam": "Rimuovi {{name}}",
+      "searchTeams": "Cerca team…",
+      "backToList": "Utenti"
     },
     "logs": {
       "title": "Log",
@@ -320,7 +341,9 @@
       "modeInline": "Inline",
       "modeFile": "Carica file",
       "dropHint": "Trascina qui o",
-      "browse": "Sfoglia"
+      "browse": "Sfoglia",
+      "deleteSourceTitle": "Eliminare questa sorgente di sincronizzazione?",
+      "sourceDeleted": "Sorgente eliminata"
     },
     "import": {
       "title": "Import dati storici",
@@ -360,7 +383,8 @@
       "dryRunErrors": "Dry-run completato con {{count}} righe in errore",
       "importDone": "Import completato: {{created}} creati, {{updated}} aggiornati",
       "confirmErrors": "{{count}} righe contengono errori e saranno saltate. Continuare con l'import?",
-      "requestFailed": "Richiesta di import fallita"
+      "requestFailed": "Richiesta di import fallita",
+      "import": "Importa"
     },
     "monitoring": {
       "title": "Monitoring",
@@ -775,14 +799,18 @@
     "advancedScripts": "Script avanzati (validazione, visibilità, default)",
     "systemFields": "CAMPI DI SISTEMA ({{count}}) — non modificabili",
     "customFields": "CAMPI PERSONALIZZATI ({{count}})",
-    "noCustomFields": "Nessun campo personalizzato. Clicca \"+ Aggiungi campo\" per aggiungerne uno."
+    "noCustomFields": "Nessun campo personalizzato. Clicca \"+ Aggiungi campo\" per aggiungerne uno.",
+    "deleteFieldTitle": "Eliminare il campo?"
   },
   "ciTypeDesigner": {
     "chain": "Chain",
     "chainFamilies": "Famiglie Chain",
     "chainApplication": "Applicativa",
     "chainInfrastructure": "Infrastrutturale",
-    "chainFamiliesTooltip": "A quali catene di servizio appartiene questo tipo CI"
+    "chainFamiliesTooltip": "A quali catene di servizio appartiene questo tipo CI",
+    "deleteTypeTitle": "Eliminare il tipo \"{{label}}\"?",
+    "deleteFieldTitle": "Eliminare il campo \"{{name}}\"?",
+    "deleteRelationTitle": "Eliminare la relazione \"{{name}}\"?"
   },
   "fieldRules": {
     "show": "Mostra",
@@ -884,7 +912,8 @@
       "problems": "Problem",
       "tasks": "Task",
       "kbArticles": "Knowledge Base"
-    }
+    },
+    "error": "Errore di ricerca"
   },
   "notification": {
     "ola": {
@@ -903,5 +932,91 @@
     "resolve": "Risoluzione",
     "paused": "SLA in pausa",
     "none": "Nessuno SLA"
+  },
+  "confirm": {
+    "irreversible": "Questa azione non è reversibile."
+  },
+  "pagination": {
+    "label": "Paginazione"
+  },
+  "layout": {
+    "skipToContent": "Salta al contenuto"
+  },
+  "topbar": {
+    "detail": "Dettaglio",
+    "breadcrumb": "Percorso di navigazione",
+    "notificationsUnread": "Notifiche, {{count}} non lette",
+    "sseDisconnected": "Notifiche in tempo reale disconnesse",
+    "userMenu": "Menu utente ({{name}})"
+  },
+  "watchers": {
+    "title": "Osservatori",
+    "watch": "Osserva",
+    "watching": "Osservando",
+    "listLabel": "Osservatori: {{count}}",
+    "add": "Aggiungi osservatore",
+    "remove": "Rimuovi {{name}}",
+    "searchPlaceholder": "Cerca utente…",
+    "typeToSearch": "Digita almeno 2 caratteri",
+    "nowWatching": "Ora stai osservando",
+    "stoppedWatching": "Non stai più osservando",
+    "added": "Osservatore aggiunto",
+    "removed": "Osservatore rimosso"
+  },
+  "internalChat": {
+    "title": "Chat interna",
+    "agentsOnly": "Solo agenti",
+    "empty": "Nessun messaggio",
+    "edited": "modificato",
+    "placeholder": "Scrivi un messaggio... (Ctrl+Enter per inviare)",
+    "send": "Invia",
+    "sendFailed": "Invio messaggio fallito",
+    "editFailed": "Modifica fallita",
+    "deleteFailed": "Eliminazione fallita",
+    "confirmDelete": "Eliminare il messaggio?"
+  },
+  "admin": {
+    "triggers": {
+      "deleteTitle": "Eliminare il trigger?",
+      "toggleLabel": "Attiva/disattiva {{name}}",
+      "enabledLabel": "Abilitato"
+    },
+    "rules": {
+      "deleteTitle": "Eliminare la regola?",
+      "moveUp": "Sposta su",
+      "moveDown": "Sposta giù",
+      "toggleLabel": "Attiva/disattiva {{name}}"
+    },
+    "sla": {
+      "deleteTitle": "Eliminare la policy SLA?",
+      "toggleLabel": "Attiva/disattiva {{name}}",
+      "businessHoursLabel": "Solo orario lavorativo"
+    },
+    "integrations": {
+      "tabsLabel": "Sezioni integrazioni",
+      "webhookIn": "Webhook In",
+      "webhookOut": "Webhook Out",
+      "apiKeys": "API Keys",
+      "deleteWebhookTitle": "Eliminare il webhook?",
+      "deleteApiKeyTitle": "Eliminare la API key?",
+      "webhookDeleted": "Webhook eliminato",
+      "apiKeyDeleted": "API key eliminata",
+      "toggleLabel": "Attiva/disattiva {{name}}",
+      "regenToken": "Rigenera token",
+      "regenKey": "Rigenera chiave",
+      "test": "Test",
+      "copy": "Copia",
+      "copyEndpoint": "Copia endpoint"
+    },
+    "questions": {
+      "deleteTitle": "Eliminare questa domanda?",
+      "deleteBody": "Non sarà possibile se esistono risposte associate."
+    },
+    "approvals": {
+      "cancelRequestTitle": "Annullare la richiesta di approvazione?"
+    },
+    "notificationChannels": {
+      "deleteTitle": "Eliminare questo canale?"
+    }
   }
 }

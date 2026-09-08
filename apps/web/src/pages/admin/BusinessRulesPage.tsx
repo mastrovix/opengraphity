@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
-import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { FilterBuilder, type FieldConfig } from '@/components/FilterBuilder'
 import { toast } from 'sonner'
 import {
   GitBranch, Plus, Trash2, Pencil, GripVertical, ChevronUp, ChevronDown,
@@ -14,19 +14,19 @@ import {
   CREATE_BUSINESS_RULE, UPDATE_BUSINESS_RULE,
   DELETE_BUSINESS_RULE, REORDER_BUSINESS_RULES,
 } from '@/graphql/mutations'
-// Queries for teams/users/workflows handled inside ActionParamsEditor
-// gql no longer needed here — queries handled by ActionParamsEditor
 import { ConditionRowEditor } from '@/components/ConditionRowEditor'
 import { ActionParamsEditor } from '@/components/ActionParamsEditor'
 import { AutomationPreview } from '@/components/AutomationPreview'
-import {
-  inputS, selectS, textareaS, labelS, btnPrimary, btnSecondary,
-} from '@/pages/settings/shared/designerStyles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { selectS, labelS } from '@/components/ui/styles'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
-import { createPortal } from 'react-dom'
+import { Toggle } from '@/components/ui/Toggle'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
+import { useListQueryState } from '@/hooks/useListQueryState'
+import { useCrudModal } from '@/hooks/useCrudModal'
+import { useConfirm } from '@/hooks/useConfirm'
+import { errorMessage } from '@/hooks/useMutationWithToast'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,12 @@ interface BusinessRule {
   priority: number; stopOnMatch: boolean; enabled: boolean
 }
 
+type RuleDraft = {
+  name: string; description: string; entityType: string; eventType: string
+  conditionLogic: 'AND' | 'OR'; conditions: Condition[]; actions: RuleAction[]
+  priority: number; stopOnMatch: boolean; enabled: boolean
+}
+
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
 const EVENT_TYPES   = ['on_create', 'on_update', 'on_transition'] as const
 // Operators now handled by ConditionRowEditor component
@@ -52,11 +58,33 @@ const ACTION_LABELS: Record<string, string> = {
   create_comment: 'Crea commento', set_priority: 'Imposta priorità',
   execute_script: 'Esegui script', call_webhook: 'Chiama webhook', set_sla: 'Imposta SLA',
 }
-// HTTP methods now handled inside ActionParamsEditor
 
 const EMPTY_CONDITION: Condition = { field: '', operator: 'equals', value: '' }
 const EMPTY_ACTION: RuleAction   = { type: 'set_field', params: {} }
 
+const emptyDraft = (): RuleDraft => ({
+  name: '', description: '', entityType: 'incident', eventType: 'on_create',
+  conditionLogic: 'AND', conditions: [{ ...EMPTY_CONDITION }], actions: [{ ...EMPTY_ACTION }],
+  priority: 10, stopOnMatch: false, enabled: true,
+})
+
+const RULE_FILTER_FIELDS: FieldConfig[] = [
+  { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+    { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
+    { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
+  ]},
+  { key: 'eventType', label: 'Tipo evento', type: 'enum', options: [
+    { value: 'on_create', label: 'Creazione' }, { value: 'on_update', label: 'Aggiornamento' },
+    { value: 'on_transition', label: 'Transizione' },
+  ]},
+  { key: 'enabled', label: 'Abilitato', type: 'enum', options: [
+    { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
+  ]},
+  { key: 'conditionLogic', label: 'Logica', type: 'enum', options: [
+    { value: 'and', label: 'AND' }, { value: 'or', label: 'OR' },
+  ]},
+  { key: 'name', label: 'Nome', type: 'text' },
+]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -86,52 +114,32 @@ function migrateActions(raw: unknown[]): RuleAction[] {
   })
 }
 
-// Preview text now handled by AutomationPreview component
+/** Refuses corrupt data (throws): see parseStored. */
+function ruleToDraft(r: BusinessRule): RuleDraft {
+  return {
+    name: r.name, description: r.description ?? '',
+    entityType: r.entityType, eventType: r.eventType,
+    conditionLogic: r.conditionLogic as 'AND' | 'OR',
+    conditions: parseStored(r.conditions, [{ ...EMPTY_CONDITION }], 'conditions'),
+    actions:    migrateActions(parseStored(r.actions, [{ ...EMPTY_ACTION }], 'actions')),
+    priority: r.priority, stopOnMatch: r.stopOnMatch, enabled: r.enabled,
+  }
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function BusinessRulesPage() {
-  const [sortField, setSortField] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
-  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
-  const RULE_FILTER_FIELDS: FieldConfig[] = [
-    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
-      { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
-      { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
-    ]},
-    { key: 'eventType', label: 'Tipo evento', type: 'enum', options: [
-      { value: 'on_create', label: 'Creazione' }, { value: 'on_update', label: 'Aggiornamento' },
-      { value: 'on_transition', label: 'Transizione' },
-    ]},
-    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [
-      { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
-    ]},
-    { key: 'conditionLogic', label: 'Logica', type: 'enum', options: [
-      { value: 'and', label: 'AND' }, { value: 'or', label: 'OR' },
-    ]},
-    { key: 'name', label: 'Nome', type: 'text' },
-  ]
-  const { data, loading, refetch } = useQuery<{ businessRules: BusinessRule[] }>(GET_BUSINESS_RULES, { variables: { sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null } })
+  const { t } = useTranslation()
+  const confirm = useConfirm()
+  const list  = useListQueryState()
+  const modal = useCrudModal<BusinessRule, RuleDraft>(emptyDraft, ruleToDraft)
+  const { draft, patch } = modal
+
+  const { data, loading, refetch } = useQuery<{ businessRules: BusinessRule[] }>(GET_BUSINESS_RULES, { variables: list.variables })
   const [createRule]  = useMutation(CREATE_BUSINESS_RULE)
   const [updateRule]  = useMutation(UPDATE_BUSINESS_RULE)
   const [deleteRule]  = useMutation(DELETE_BUSINESS_RULE)
   const [reorderRules] = useMutation(REORDER_BUSINESS_RULES)
-
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editId,    setEditId]    = useState<string | null>(null)
-
-  // form state
-  const [name,           setName]           = useState('')
-  const [description,    setDescription]    = useState('')
-  const [entityType,     setEntityType]     = useState<string>('incident')
-  const [eventType,      setEventType]      = useState<string>('on_create')
-  const [conditionLogic, setConditionLogic] = useState<'AND' | 'OR'>('AND')
-  const [conditions,     setConditions]     = useState<Condition[]>([{ ...EMPTY_CONDITION }])
-  const [actions,        setActions]        = useState<RuleAction[]>([{ ...EMPTY_ACTION }])
-  const [priority,       setPriority]       = useState(10)
-  const [stopOnMatch,    setStopOnMatch]    = useState(false)
-  const [enabled,        setEnabled]        = useState(true)
 
   const rules: BusinessRule[] = (data?.businessRules ?? [])
     .slice()
@@ -139,69 +147,44 @@ export function BusinessRulesPage() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  function resetForm() {
-    setName(''); setDescription(''); setEntityType('incident'); setEventType('on_create')
-    setConditionLogic('AND'); setConditions([{ ...EMPTY_CONDITION }])
-    setActions([{ ...EMPTY_ACTION }]); setPriority(10); setStopOnMatch(false); setEnabled(true)
-    setEditId(null)
-  }
-
-  function openCreate() { resetForm(); setModalOpen(true) }
-
   function openEdit(r: BusinessRule) {
     // Refuse to open the editor on corrupt data: an editor silently opened
     // empty would destroy the original conditions/actions at the next save.
-    let conds: Condition[]
-    let acts: RuleAction[]
-    try {
-      conds = parseStored(r.conditions, [{ ...EMPTY_CONDITION }], 'conditions')
-      acts  = migrateActions(parseStored(r.actions, [{ ...EMPTY_ACTION }], 'actions'))
-    } catch (e) {
-      toast.error(`Impossibile aprire "${r.name}": ${e instanceof Error ? e.message : String(e)}. Correggi il dato dal database prima di modificare.`)
-      return
-    }
-    setEditId(r.id); setName(r.name); setDescription(r.description ?? '')
-    setEntityType(r.entityType); setEventType(r.eventType)
-    setConditionLogic(r.conditionLogic as 'AND' | 'OR')
-    setConditions(conds)
-    setActions(acts)
-    setPriority(r.priority); setStopOnMatch(r.stopOnMatch); setEnabled(r.enabled)
-    setModalOpen(true)
+    try { modal.openEdit(r) }
+    catch (e) { toast.error(`Impossibile aprire "${r.name}": ${errorMessage(e)}. Correggi il dato dal database prima di modificare.`) }
   }
 
   async function handleSave() {
-    if (!name.trim()) { toast.error('Nome obbligatorio'); return }
+    if (!draft.name.trim()) { toast.error('Nome obbligatorio'); return }
+    const common = {
+      name: draft.name, description: draft.description || null, eventType: draft.eventType, conditionLogic: draft.conditionLogic,
+      conditions: JSON.stringify(draft.conditions), actions: JSON.stringify(draft.actions),
+      priority: draft.priority, stopOnMatch: draft.stopOnMatch, enabled: draft.enabled,
+    }
     try {
-      if (editId) {
-        await updateRule({ variables: { id: editId, input: {
-          name, description: description || null, eventType, conditionLogic,
-          conditions: JSON.stringify(conditions), actions: JSON.stringify(actions),
-          priority, stopOnMatch, enabled,
-        } } })
+      if (modal.editing) {
+        await updateRule({ variables: { id: modal.editing.id, input: common } })
         toast.success('Regola aggiornata')
       } else {
-        await createRule({ variables: { input: {
-          name, description: description || null, entityType, eventType, conditionLogic,
-          conditions: JSON.stringify(conditions), actions: JSON.stringify(actions),
-          priority, stopOnMatch, enabled,
-        } } })
+        await createRule({ variables: { input: { ...common, entityType: draft.entityType } } })
         toast.success('Regola creata')
       }
-      setModalOpen(false); resetForm(); refetch()
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)) }
+      modal.close(); void refetch()
+    } catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Eliminare questa regola?')) return
-    try { await deleteRule({ variables: { id } }); toast.success('Regola eliminata'); refetch() }
-    catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)) }
+  async function handleDelete(r: BusinessRule) {
+    const ok = await confirm({ title: t('admin.rules.deleteTitle'), body: r.name, danger: true })
+    if (!ok) return
+    try { await deleteRule({ variables: { id: r.id } }); toast.success('Regola eliminata'); void refetch() }
+    catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
   async function handleToggleEnabled(r: BusinessRule) {
     try {
       await updateRule({ variables: { id: r.id, input: { enabled: !r.enabled } } })
-      refetch()
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)) }
+      void refetch()
+    } catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
   async function moveRule(idx: number, dir: -1 | 1) {
@@ -209,8 +192,8 @@ export function BusinessRulesPage() {
     const target = idx + dir
     if (target < 0 || target >= ids.length) return
     ;[ids[idx], ids[target]] = [ids[target], ids[idx]]
-    try { await reorderRules({ variables: { ruleIds: ids } }); refetch() }
-    catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)) }
+    try { await reorderRules({ variables: { ruleIds: ids } }); void refetch() }
+    catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
   const ruleColumns: ColumnDef<BusinessRule>[] = [
@@ -218,9 +201,9 @@ export function BusinessRulesPage() {
       const idx = rules.indexOf(row)
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <GripVertical size={14} style={{ color: '#cbd5e1', cursor: 'grab' }} />
-          <button onClick={() => moveRule(idx, -1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} disabled={idx === 0}><ChevronUp size={14} color={idx === 0 ? '#e5e7eb' : 'var(--color-slate)'} /></button>
-          <button onClick={() => moveRule(idx, 1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} disabled={idx === rules.length - 1}><ChevronDown size={14} color={idx === rules.length - 1 ? '#e5e7eb' : 'var(--color-slate)'} /></button>
+          <GripVertical size={14} aria-hidden="true" style={{ color: 'var(--border-strong)', cursor: 'grab' }} />
+          <Button variant="ghost" title={t('admin.rules.moveUp')} aria-label={t('admin.rules.moveUp')} onClick={() => void moveRule(idx, -1)} disabled={idx === 0} style={{ padding: 2 }}><ChevronUp size={14} aria-hidden="true" color={idx === 0 ? 'var(--border)' : 'var(--color-slate)'} /></Button>
+          <Button variant="ghost" title={t('admin.rules.moveDown')} aria-label={t('admin.rules.moveDown')} onClick={() => void moveRule(idx, 1)} disabled={idx === rules.length - 1} style={{ padding: 2 }}><ChevronDown size={14} aria-hidden="true" color={idx === rules.length - 1 ? 'var(--border)' : 'var(--color-slate)'} /></Button>
         </div>
       )
     } },
@@ -231,34 +214,26 @@ export function BusinessRulesPage() {
     { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <Pill bg={v === 'AND' ? '#dbeafe' : '#fef3c7'} color={v === 'AND' ? '#1d4ed8' : '#92400e'} radius={10}>{String(v)}</Pill> },
     { key: 'stopOnMatch', label: 'Stop', sortable: true, render: (v) => v ? <Pill bg="#fee2e2" color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
     { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
-      <div onClick={() => handleToggleEnabled(row)} style={{ width: 36, height: 20, borderRadius: 10, background: row.enabled ? 'var(--color-brand)' : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background .2s' }}>
-        <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: row.enabled ? 18 : 2, transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.15)' }} />
-      </div>
+      <Toggle checked={row.enabled} onChange={() => void handleToggleEnabled(row)} label={t('admin.rules.toggleLabel', { name: row.name })} />
     ) },
     { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={() => openEdit(row)} style={{ ...btnSecondary, padding: '4px 8px' }}><Pencil size={13} /></button>
-        <button onClick={() => handleDelete(row.id)} style={{ ...btnSecondary, padding: '4px 8px', color: 'var(--color-danger)', borderColor: '#fecaca' }}><Trash2 size={13} /></button>
+        <Button variant="icon" size="xs" title={t('common.edit')} onClick={() => openEdit(row)}><Pencil size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => void handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: '#fecaca' }}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
 
   // ── Condition / Action builders ───────────────────────────────────────────
 
-  function updateCondition(i: number, patch: Partial<Condition>) {
-    setConditions(prev => prev.map((c, j) => j === i ? { ...c, ...patch } : c))
-  }
-  function removeCondition(i: number) { setConditions(prev => prev.filter((_, j) => j !== i)) }
-  function addCondition() { setConditions(prev => [...prev, { ...EMPTY_CONDITION }]) }
+  const updateCondition = (i: number, p: Partial<Condition>) => patch({ conditions: draft.conditions.map((c, j) => j === i ? { ...c, ...p } : c) })
+  const removeCondition = (i: number) => patch({ conditions: draft.conditions.filter((_, j) => j !== i) })
+  const addCondition = () => patch({ conditions: [...draft.conditions, { ...EMPTY_CONDITION }] })
 
-  function setActionParam(i: number, key: string, val: string) {
-    setActions(prev => prev.map((a, j) => j === i ? { ...a, params: { ...a.params, [key]: val } } : a))
-  }
-  function updateAction(i: number, patch: Partial<RuleAction>) {
-    setActions(prev => prev.map((a, j) => j === i ? { ...a, ...patch } : a))
-  }
-  function removeAction(i: number) { setActions(prev => prev.filter((_, j) => j !== i)) }
-  function addAction() { setActions(prev => [...prev, { ...EMPTY_ACTION }]) }
+  const setActionParam = (i: number, key: string, val: string) => patch({ actions: draft.actions.map((a, j) => j === i ? { ...a, params: { ...a.params, [key]: val } } : a) })
+  const updateAction = (i: number, p: Partial<RuleAction>) => patch({ actions: draft.actions.map((a, j) => j === i ? { ...a, ...p } : a) })
+  const removeAction = (i: number) => patch({ actions: draft.actions.filter((_, j) => j !== i) })
+  const addAction = () => patch({ actions: [...draft.actions, { ...EMPTY_ACTION }] })
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -271,10 +246,10 @@ export function BusinessRulesPage() {
             {loading ? '—' : `${rules.length} regole`}
           </p>
         </div>
-        <button style={btnPrimary} onClick={openCreate}><Plus size={14} /> Nuova regola</button>
+        <Button icon={<Plus size={14} aria-hidden="true" />} onClick={modal.openCreate}>Nuova regola</Button>
       </div>
 
-      <FilterBuilder fields={RULE_FILTER_FIELDS} onApply={g => setFilterGroup(g)} />
+      <FilterBuilder fields={RULE_FILTER_FIELDS} onApply={list.setFilterGroup} />
 
       {!loading && !rules.length && (
         <EmptyState
@@ -286,9 +261,9 @@ export function BusinessRulesPage() {
       {!loading && rules.length > 0 && (
         <SortableFilterTable<BusinessRule>
           columns={ruleColumns}
-          onSort={handleSort}
-          sortField={sortField}
-          sortDir={sortDir}
+          onSort={list.handleSort}
+          sortField={list.sortField}
+          sortDir={list.sortDir}
           data={rules}
           loading={false}
           label="Business Rules"
@@ -296,122 +271,120 @@ export function BusinessRulesPage() {
       )}
 
       {/* ── Modal ──────────────────────────────────────────────────────────── */}
-      {modalOpen && createPortal(
-        <Modal
-          open
-          onClose={() => { setModalOpen(false); resetForm() }}
-          title={editId ? 'Modifica regola' : 'Nuova regola'}
-          width={680}
-          zIndex={9999}
-          footerStyle={{ gap: 10 }}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => { setModalOpen(false); resetForm() }} style={{ padding: '7px 14px' }}>Annulla</Button>
-              <Button onClick={() => void handleSave()}>{editId ? 'Salva modifiche' : 'Crea regola'}</Button>
-            </>
-          }
-        >
-            {/* Basic fields */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
-              <div>
-                <label style={labelS}>Nome *</label>
-                <Input style={inputS} value={name} onChange={e => setName(e.target.value)} placeholder="Assegna priorità alta" />
-              </div>
-              <div>
-                <label style={labelS}>Priorità</label>
-                <Input style={inputS} type="number" value={priority} onChange={e => setPriority(+e.target.value)} min={1} />
-              </div>
+      <Modal
+        open={modal.open}
+        onClose={modal.close}
+        title={modal.editing ? 'Modifica regola' : 'Nuova regola'}
+        width={680}
+        zIndex={9000}
+        closeOnOverlay={false}
+        footerStyle={{ gap: 10 }}
+        footer={
+          <>
+            <Button variant="secondary" size="xs" onClick={modal.close}>{t('common.cancel')}</Button>
+            <Button onClick={() => void handleSave()}>{modal.editing ? 'Salva modifiche' : 'Crea regola'}</Button>
+          </>
+        }
+      >
+          {/* Basic fields */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <div>
+              <label style={labelS}>Nome *</label>
+              <Input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Assegna priorità alta" />
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelS}>Descrizione</label>
-              <textarea style={textareaS} value={description} onChange={e => setDescription(e.target.value)} rows={2} />
+            <div>
+              <label style={labelS}>Priorità</label>
+              <Input type="number" value={draft.priority} onChange={e => patch({ priority: +e.target.value })} min={1} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
-              <div>
-                <label style={labelS}>Tipo entità</label>
-                <Select style={selectS} value={entityType} onChange={e => setEntityType(e.target.value)}>
-                  {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </Select>
-              </div>
-              <div>
-                <label style={labelS}>Evento</label>
-                <Select style={selectS} value={eventType} onChange={e => setEventType(e.target.value)}>
-                  {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </Select>
-              </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelS}>Descrizione</label>
+            <Textarea value={draft.description} onChange={e => patch({ description: e.target.value })} rows={2} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <div>
+              <label style={labelS}>Tipo entità</label>
+              <Select style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
+                {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
+              </Select>
             </div>
+            <div>
+              <label style={labelS}>Evento</label>
+              <Select style={selectS} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
+                {EVENT_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
+              </Select>
+            </div>
+          </div>
 
-            {/* Condition Logic toggle */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelS}>Logica condizioni</label>
-              <div style={{ display: 'flex', gap: 0 }}>
-                {(['AND', 'OR'] as const).map(v => (
-                  <button key={v} onClick={() => setConditionLogic(v)} style={{
-                    padding: '6px 18px', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
-                    border: '1px solid #e5e7eb', background: conditionLogic === v ? 'var(--color-brand)' : '#fff',
-                    color: conditionLogic === v ? '#fff' : 'var(--color-slate)',
-                    borderRadius: v === 'AND' ? '6px 0 0 6px' : '0 6px 6px 0',
-                  }}>{v}</button>
-                ))}
-              </div>
+          {/* Condition Logic toggle */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelS}>Logica condizioni</label>
+            <div role="group" aria-label="Logica condizioni" style={{ display: 'flex', gap: 0 }}>
+              {(['AND', 'OR'] as const).map(v => (
+                <button key={v} type="button" aria-pressed={draft.conditionLogic === v} onClick={() => patch({ conditionLogic: v })} style={{
+                  padding: '6px 18px', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
+                  border: '1px solid var(--border)', background: draft.conditionLogic === v ? 'var(--color-brand)' : '#fff',
+                  color: draft.conditionLogic === v ? '#fff' : 'var(--color-slate)',
+                  borderRadius: v === 'AND' ? '6px 0 0 6px' : '0 6px 6px 0',
+                }}>{v}</button>
+              ))}
             </div>
+          </div>
 
-            {/* Conditions builder */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ ...labelS, marginBottom: 8 }}>Condizioni</label>
-              {conditions.map((c, i) => (
-                <ConditionRowEditor
-                  key={i}
-                  condition={c}
-                  entityType={entityType}
-                  onChange={patch => updateCondition(i, patch)}
-                  onRemove={() => removeCondition(i)}
+          {/* Conditions builder */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ ...labelS, marginBottom: 8 }}>Condizioni</label>
+            {draft.conditions.map((c, i) => (
+              <ConditionRowEditor
+                key={i}
+                condition={c}
+                entityType={draft.entityType}
+                onChange={p => updateCondition(i, p)}
+                onRemove={() => removeCondition(i)}
+              />
+            ))}
+            <Button variant="secondary" size="xs" icon={<Plus size={12} aria-hidden="true" />} onClick={addCondition} style={{ marginTop: 4 }}>Aggiungi condizione</Button>
+          </div>
+
+          {/* Actions builder */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ ...labelS, marginBottom: 8 }}>Azioni</label>
+            {draft.actions.map((a, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 8 }}>
+                <Select style={{ ...selectS, width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>
+                  {ACTION_TYPES.map(at => <option key={at} value={at}>{ACTION_LABELS[at] ?? at}</option>)}
+                </Select>
+                <ActionParamsEditor
+                  actionType={a.type}
+                  params={a.params}
+                  entityType={draft.entityType}
+                  onChange={(key, val) => setActionParam(i, key, val)}
                 />
-              ))}
-              <button onClick={addCondition} style={{ ...btnSecondary, fontSize: 'var(--font-size-body)', padding: '4px 10px', marginTop: 4 }}><Plus size={12} /> Aggiungi condizione</button>
-            </div>
+                <Button variant="ghost" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => removeAction(i)} style={{ padding: 4, flexShrink: 0, color: 'var(--color-danger)' }}><Trash2 size={14} aria-hidden="true" /></Button>
+              </div>
+            ))}
+            <Button variant="secondary" size="xs" icon={<Plus size={12} aria-hidden="true" />} onClick={addAction} style={{ marginTop: 4 }}>Aggiungi azione</Button>
+          </div>
 
-            {/* Actions builder */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ ...labelS, marginBottom: 8 }}>Azioni</label>
-              {actions.map((a, i) => (
-                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 8 }}>
-                  <Select style={{ ...selectS, width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>
-                    {ACTION_TYPES.map(t => <option key={t} value={t}>{ACTION_LABELS[t] ?? t}</option>)}
-                  </Select>
-                  <ActionParamsEditor
-                    actionType={a.type}
-                    params={a.params}
-                    entityType={entityType}
-                    onChange={(key, val) => setActionParam(i, key, val)}
-                  />
-                  <button onClick={() => removeAction(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, flexShrink: 0 }}><Trash2 size={14} color="#ef4444" /></button>
-                </div>
-              ))}
-              <button onClick={addAction} style={{ ...btnSecondary, fontSize: 'var(--font-size-body)', padding: '4px 10px', marginTop: 4 }}><Plus size={12} /> Aggiungi azione</button>
-            </div>
+          {/* Toggles */}
+          <div style={{ display: 'flex', gap: 24, marginBottom: 20 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={draft.stopOnMatch} onChange={e => patch({ stopOnMatch: e.target.checked })} /> Stop on match
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={draft.enabled} onChange={e => patch({ enabled: e.target.checked })} /> Attiva
+            </label>
+          </div>
 
-            {/* Toggles */}
-            <div style={{ display: 'flex', gap: 24, marginBottom: 20 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={stopOnMatch} onChange={e => setStopOnMatch(e.target.checked)} /> Stop on match
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} /> Attiva
-              </label>
-            </div>
-
-            {/* Preview */}
-            <AutomationPreview
-              entityType={entityType}
-              eventType={eventType}
-              conditions={conditions}
-              conditionLogic={conditionLogic}
-              actions={actions}
-            />
-        </Modal>,
-        document.body,
-      )}
+          {/* Preview */}
+          <AutomationPreview
+            entityType={draft.entityType}
+            eventType={draft.eventType}
+            conditions={draft.conditions}
+            conditionLogic={draft.conditionLogic}
+            actions={draft.actions}
+          />
+      </Modal>
     </PageContainer>
   )
 }

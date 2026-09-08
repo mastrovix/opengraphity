@@ -17,9 +17,9 @@ import {
 import { runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
-import { toInt } from './mappers.js'
 import { calculateCIRiskScore, determineApprovalRoute, deriveChangePriority } from './scoring.js'
 import { getInitialStepName } from '../../../lib/workflowHelpers.js'
+import { toNumber } from '@opengraphity/neo4j'
 
 export type Session = ReturnType<typeof getSession>
 
@@ -78,7 +78,7 @@ export async function nextChangeCode(session: Session, tenantId: string): Promis
     WITH max(toInteger(substring(c.code, 3))) AS maxNum
     RETURN coalesce(maxNum, 0) AS maxNum
   `, { tenantId })
-  const maxNum = toInt(rows[0]?.maxNum)
+  const maxNum = toNumber(rows[0]?.maxNum)
   return 'CHG' + String(maxNum + 1).padStart(8, '0')
 }
 
@@ -293,8 +293,8 @@ export async function recomputeCIRiskIfReady(session: SessionOrTx, changeId: str
   `, { changeId, ciId, tenantId })
   if (!row || !row.ownerDone || !row.supportDone) return
 
-  const os = row.ownerScore != null ? toInt(row.ownerScore) : 0
-  const ss = row.supportScore != null ? toInt(row.supportScore) : 0
+  const os = row.ownerScore != null ? toNumber(row.ownerScore) : 0
+  const ss = row.supportScore != null ? toNumber(row.supportScore) : 0
   const ciRisk = calculateCIRiskScore(os, ss)
 
   await runWrite(session, `
@@ -311,7 +311,7 @@ export async function computeAggregateRisk(session: SessionOrTx, changeId: strin
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->()
     RETURN max(r.risk_score) AS maxRisk, c.change_type AS changeType
   `, { changeId, tenantId })
-  const maxRisk = row?.maxRisk != null ? toInt(row.maxRisk) : 0
+  const maxRisk = row?.maxRisk != null ? toNumber(row.maxRisk) : 0
   const approvalRoute = determineApprovalRoute(maxRisk)
   // Priorità (ITIL) = tipo × rischio, ricalcolata e MEMORIZZATA quando il
   // rischio aggregato cambia.

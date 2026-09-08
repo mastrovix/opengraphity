@@ -123,7 +123,11 @@ function TextareaFileField({ fieldName, value, onChange, required }: TextareaFil
             </div>
           ) : (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label={t('pages.sync.browse')}
               onClick={() => fileRef.current?.click()}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click() } }}
               onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#2563eb' }}
               onDragLeave={e => { e.currentTarget.style.borderColor = '#d1d5db' }}
               onDrop={handleDrop}
@@ -224,7 +228,7 @@ export function SyncSourcesTab({
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button
+        <button type="button"
           onClick={() => setShowCreate(true)}
           style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
@@ -233,7 +237,7 @@ export function SyncSourcesTab({
       </div>
 
       {/* Sources list */}
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
         {sources.length === 0 && (
           <div style={{ padding: 32, textAlign: 'center', color: '#6b7280', fontSize: 'var(--font-size-body)' }}>
             No sync sources configured. Add one to start importing CIs.
@@ -255,10 +259,10 @@ export function SyncSourcesTab({
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => onTestConnection(s.id)}  style={btnStyle('#fff', '#374151')}>Test</button>
-              <button onClick={() => openSchedule(s)}         style={btnStyle('#fff', '#7c3aed')}><Clock size={12} />Schedule</button>
-              <button onClick={() => onTriggerSync(s.id)}     style={btnStyle('#2563eb', '#fff')}><Play size={12} />Sync Now</button>
-              <button onClick={() => onDeleteSource(s.id)}    style={btnStyle('#fff', 'var(--color-trigger-sla-breach)')}><Trash2 size={12} /></button>
+              <button type="button" onClick={() => onTestConnection(s.id)}  style={btnStyle('#fff', '#374151')}>Test</button>
+              <button type="button" onClick={() => openSchedule(s)}         style={btnStyle('#fff', '#7c3aed')}><Clock size={12} />Schedule</button>
+              <button type="button" onClick={() => onTriggerSync(s.id)}     style={btnStyle('#2563eb', '#fff')}><Play size={12} />Sync Now</button>
+              <button type="button" onClick={() => onDeleteSource(s.id)}    style={btnStyle('#fff', 'var(--color-trigger-sla-breach)')}><Trash2 size={12} /></button>
             </div>
           </div>
         ))}

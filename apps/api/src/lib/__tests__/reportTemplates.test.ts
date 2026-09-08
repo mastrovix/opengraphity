@@ -5,7 +5,11 @@ import { GraphQLError } from 'graphql'
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+vi.mock('@opengraphity/neo4j', () => ({
+  getSession: vi.fn(),
+  // Stub of the real helper (D-22): plain numbers and Integer-like objects.
+  toNumber: (v: unknown) => (v == null ? 0 : typeof v === 'object' && 'toNumber' in v ? (v as { toNumber(): number }).toNumber() : Number(v)),
+}))
 vi.mock('../../lib/reportExecutor.js', () => ({
   executeReportSection: vi.fn().mockResolvedValue({ sectionId: 's1', title: 'T', chartType: 'kpi', data: '{"value":1}', total: 1, error: null }),
 }))

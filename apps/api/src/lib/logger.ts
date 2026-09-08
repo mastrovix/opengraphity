@@ -1,6 +1,7 @@
 import pino from 'pino'
 import { randomUUID } from 'node:crypto'
 import { pushLog } from './logBuffer.js'
+import { config } from './config.js'
 
 const LEVEL_MAP: Record<number, string> = {
   10: 'trace',
@@ -30,7 +31,7 @@ function bufferLog(raw: Record<string, unknown>): void {
 const streams: pino.StreamEntry[] = [
   {
     level: 'trace' as pino.Level,
-    stream: process.env['NODE_ENV'] !== 'production'
+    stream: !config.isProduction
       ? (await import('pino-pretty')).default({ colorize: true })
       : process.stdout,
   },
@@ -46,10 +47,10 @@ const streams: pino.StreamEntry[] = [
 
 export const logger = pino(
   {
-    level: process.env['LOG_LEVEL'] ?? 'info',
+    level: config.logLevel,
     base: {
       service: 'opengrafo-api',
-      env:     process.env['NODE_ENV'] ?? 'development',
+      env:     config.nodeEnv,
     },
     // pino redact: `*` matches exactly ONE path segment (no `**`), so each
     // nesting depth that can carry a secret is listed explicitly. Deeper

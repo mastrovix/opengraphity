@@ -1,5 +1,6 @@
 import type { Session, ManagedTransaction, QueryResult } from 'neo4j-driver'
 import neo4j from 'neo4j-driver'
+import { toNumber } from '@opengraphity/neo4j'
 
 /**
  * Atomic, per-tenant monotonic counters for human-facing numbers
@@ -21,12 +22,6 @@ import neo4j from 'neo4j-driver'
  */
 export type SessionOrTx = Session | ManagedTransaction
 
-function toInt(v: unknown): number {
-  if (typeof v === 'number') return v
-  if (v && typeof (v as neo4j.Integer).toNumber === 'function') return (v as neo4j.Integer).toNumber()
-  return Number(v)
-}
-
 async function runCounter(sessionOrTx: SessionOrTx, cypher: string, params: Record<string, unknown>): Promise<QueryResult> {
   // A Session exposes executeWrite (managed retries); a ManagedTransaction only run().
   if ('executeWrite' in sessionOrTx && typeof (sessionOrTx as Session).executeWrite === 'function') {
@@ -45,7 +40,7 @@ export async function nextSequenceValue(sessionOrTx: SessionOrTx, tenantId: stri
      RETURN c.value AS value`,
     { tenantId, kind },
   )
-  return toInt(res.records[0]!.get('value'))
+  return toNumber(res.records[0]!.get('value'))
 }
 
 /**
@@ -61,5 +56,5 @@ export async function nextSequenceBlock(sessionOrTx: SessionOrTx, tenantId: stri
      RETURN c.value AS value`,
     { tenantId, kind, count: neo4j.int(count) },
   )
-  return toInt(res.records[0]!.get('value'))
+  return toNumber(res.records[0]!.get('value'))
 }

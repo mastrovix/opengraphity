@@ -15,10 +15,9 @@
  *   - infine ogni istanza della definizione senza CURRENT_STEP viene
  *     ricollegata allo step con il suo current_step (auto-riparazione).
  */
-import { fileURLToPath } from 'node:url'
 import { v4 as uuidv4 } from 'uuid'
 import type { Session } from 'neo4j-driver'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { WorkflowDefinition, WorkflowStepDef } from './types.js'
 
 export type SeedableWorkflow = Omit<WorkflowDefinition, 'id' | 'tenantId'> & { category?: string | null }
@@ -34,12 +33,6 @@ export interface SeedOptions {
   skipIfExists?: boolean
   /** Sessione esterna (WRITE); altrimenti ne apre una propria. */
   session?: Session
-}
-
-function toNumber(v: unknown): number {
-  if (typeof v === 'number') return v
-  const n = (v as { toNumber?: () => number } | null)?.toNumber?.()
-  return typeof n === 'number' ? n : 0
 }
 
 const STEP_METADATA_KEY_RE = /^[a-z][a-z0-9_]*$/
@@ -114,7 +107,7 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         RETURN s.name AS name, count(wi) AS live
       `, { defId, names: def.steps.map((s) => s.name) })
       const blocking = removed.records
-        .filter((r) => Number((r.get('live') as { toNumber?: () => number })?.toNumber?.() ?? r.get('live')) > 0)
+        .filter((r) => toNumber(r.get('live')) > 0)
         .map((r) => r.get('name') as string)
       if (blocking.length > 0) {
         throw new Error(`Seed "${def.name}": gli step ${blocking.join(', ')} non sono più nel seed ma hanno istanze in corso — migra prima quelle istanze`)
@@ -168,9 +161,4 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
   } finally {
     if (ownSession) await session.close()
   }
-}
-
-/** True quando il modulo è eseguito direttamente (runner standalone dei seed). */
-export function isMainModule(importMetaUrl: string): boolean {
-  return process.argv[1] === fileURLToPath(importMetaUrl)
 }

@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 function pickRole(): string {
   const rand = Math.random()
@@ -21,7 +21,7 @@ function pickUnique<T>(arr: T[], n: number): T[] {
   return shuffled.slice(0, Math.min(n, shuffled.length))
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   // Load teams
@@ -30,7 +30,7 @@ async function seed() {
     { tenantId: TENANT_ID }
   )
   const teamIds = teamsResult.records.map((r) => r.get('id') as string)
-  if (teamIds.length === 0) throw new Error('No teams found for c-one')
+  if (teamIds.length === 0) throw new Error(`No teams found for tenant ${TENANT_ID}`)
   console.log(`Loaded ${teamIds.length} teams`)
 
   let created   = 0
@@ -67,9 +67,9 @@ async function seed() {
 
     for (const teamId of assignedTeams) {
       await session.run(
-        `MATCH (u:User {id: $userId}), (t:Team {id: $teamId})
+        `MATCH (u:User {id: $userId, tenant_id: $tenantId}), (t:Team {id: $teamId, tenant_id: $tenantId})
          MERGE (u)-[:MEMBER_OF]->(t)`,
-        { userId, teamId }
+        { userId, teamId, tenantId: TENANT_ID }
       )
       relations++
     }
@@ -84,4 +84,7 @@ async function seed() {
   console.log(`  MEMBER_OF     : ${relations}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-users-bulk', async () => {
+  refuseInProduction('seed-users-bulk')
+  await seed(resolveTenantArg())
+})

@@ -7,6 +7,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
+import { inputS, labelS, btnSecondary, btnDanger, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
 import { toast } from 'sonner'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import {
@@ -29,29 +30,9 @@ interface EnumType {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-
-// Per-page overrides on top of the shared FormControls base style.
-const inputS: React.CSSProperties = {
-  padding: '7px 10px', border: '1px solid #e5e7eb', color: 'var(--color-slate-dark)',
-}
-const labelS: React.CSSProperties = {
-  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
-}
-const btnPrimary: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: 'pointer',
-}
-const btnSecondary: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-}
-const btnDanger: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-}
+// Shared design-system constants (E-09): no page-local copies.
+// The former local `btnPrimary` used the compact (7px 14px / body) size; kept via override.
+const btnPrimary: React.CSSProperties = { ...sharedBtnPrimary, padding: '7px 14px', fontSize: 'var(--font-size-body)' }
 
 // ── CreateEnumDialog ──────────────────────────────────────────────────────────
 
@@ -392,8 +373,8 @@ export function EnumDesignerPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
         {/* Left: enum list */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('pages.dictionary.listHeader')}</span>
             <button
               type="button"
@@ -460,7 +441,7 @@ export function EnumDesignerPage() {
             />
           ) : (
             <div style={{
-              background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+              background: '#fff', border: '1px solid var(--border)', borderRadius: 10,
               padding: 40, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)',
             }}>
               {t('common.noResults')}

@@ -35,7 +35,8 @@ COPY apps/api/   apps/api/
 COPY packages/   packages/
 
 # Build packages then API
-RUN pnpm --filter "./packages/**" build
+# web-core è un package browser (keycloak-js/react/apollo): non serve all'API e le sue dipendenze non sono installate qui
+RUN pnpm --filter "./packages/**" --filter "!@opengraphity/web-core" build
 RUN pnpm --filter @opengraphity/api build
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────

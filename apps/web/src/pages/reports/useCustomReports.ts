@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useConfirm } from '@/hooks/useConfirm'
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
@@ -60,6 +61,7 @@ export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadiu
 
 export function useCustomReports() {
   const { t: tr } = useTranslation()
+  const confirm = useConfirm()
   const [view,           setView]           = useState<View>('list')
   const [selectedId,     setSelectedId]     = useState<string | null>(null)
   const [editSection,    setEditSection]    = useState<ReportSection | null>(null)
@@ -287,12 +289,12 @@ export function useCustomReports() {
   }
 
   function handleDeleteTemplate(id: string) {
-    if (confirm('Eliminare il report?')) deleteTemplate({ variables: { id } })
     setMenuOpenId(null)
+    void confirm({ title: 'Eliminare il report?', danger: true }).then((ok) => { if (ok) void deleteTemplate({ variables: { id } }) })
   }
 
   function handleRemoveSection(templateId: string, sectionId: string) {
-    if (confirm('Rimuovere la sezione?')) removeSection({ variables: { templateId, sectionId } })
+    void confirm({ title: 'Rimuovere la sezione?', danger: true }).then((ok) => { if (ok) void removeSection({ variables: { templateId, sectionId } }) })
   }
 
   function handleExecuteAndGoToDetail(t: ReportTemplate) {

@@ -19,16 +19,29 @@ import { buildBaseSDL } from '../schema-base.js'
 const here = dirname(fileURLToPath(import.meta.url))
 const webGraphql = join(here, '../../../../web/src/graphql')
 
-// File ITSM del frontend (query + mutation) + i file admin, che contengono i
-// documenti report/dashboard (Ondata 2). I documenti CMDB usano tipi generati
+// File ITSM del frontend (query + mutation) + i file per dominio in cui è
+// stato spezzato l'ex catch-all `admin.ts` (E-17; `admin.ts` è ora un barrel
+// di soli re-export, senza documenti). I documenti CMDB usano tipi generati
 // dinamicamente e restano fuori. `mutations/ci.ts` resta fuori perché
 // CREATE_CI_TYPE/ADD_CI_FIELD/ADD_CI_RELATION… vivono nello schema del metamodello.
+// `fragments.ts` non è nell'elenco: un documento di soli fragment non valida
+// da solo (NoUnusedFragments); i fragment vengono validati inlined nei
+// documenti che li interpolano (vedi resolveInterpolations).
 const FILES = [
   'queries/incident.ts', 'queries/problem.ts', 'queries/change.ts',
   'queries/ci.ts', 'queries/workflow.ts',
   'mutations/incident.ts', 'mutations/problem.ts', 'mutations/change.ts',
   'mutations/workflow.ts',
-  'queries/admin.ts', 'mutations/admin.ts',
+  // ex queries/admin.ts
+  'queries/users.ts', 'queries/teams.ts', 'queries/reports.ts', 'queries/dashboard.ts',
+  'queries/anomaly.ts', 'queries/enum.ts', 'queries/notifications.ts', 'queries/queue.ts',
+  'queries/rules.ts', 'queries/automation.ts', 'queries/sla.ts', 'queries/collaboration.ts',
+  'queries/whatIf.ts', 'queries/catalog.ts',
+  // ex mutations/admin.ts
+  'mutations/serviceRequest.ts', 'mutations/teams.ts', 'mutations/reports.ts', 'mutations/dashboard.ts',
+  'mutations/notifications.ts', 'mutations/itil.ts', 'mutations/enum.ts', 'mutations/queue.ts',
+  'mutations/rules.ts', 'mutations/automation.ts', 'mutations/sla.ts', 'mutations/collaboration.ts',
+  'mutations/catalog.ts',
 ]
 
 // Documenti admin esclusi ESPLICITAMENTE, con motivo. Ogni nuova esclusione
@@ -41,14 +54,41 @@ const FILES = [
 // di questa tranche), dopodiché queste righe spariscono.
 const EXCLUDED_DOCUMENTS: Record<string, string> = {}
 
-/** Estrae ogni template gql`…` senza interpolazioni. */
+/** Tutti i template gql`…` di un sorgente (anche non esportati), per nome. */
+function collectTemplates(source: string): Map<string, string> {
+  const map = new Map<string, string>()
+  const re = /(?:export )?const (\w+) = gql`([\s\S]*?)`/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(source)) !== null) map.set(m[1]!, m[2]!)
+  return map
+}
+
+// Fragment condivisi (`${USER_REF}`, `${TEAM_REF}`): risolti inlined, così la
+// selezione dei fragment viene validata contro lo schema come il resto.
+const sharedFragments = collectTemplates(readFileSync(join(webGraphql, 'fragments.ts'), 'utf8'))
+
+/**
+ * Sostituisce ogni `${NAME}` con il template omonimo (stesso file o
+ * fragments.ts), ricorsivamente. Un riferimento non risolvibile è un errore
+ * del test, non un documento "saltato" in silenzio.
+ */
+function resolveInterpolations(body: string, local: Map<string, string>, owner: string, depth = 0): string {
+  if (depth > 5) throw new Error(`${owner}: interpolazioni annidate oltre il limite (ciclo?)`)
+  return body.replace(/\$\{(\w+)\}/g, (_all, name: string) => {
+    const ref = local.get(name) ?? sharedFragments.get(name)
+    if (ref === undefined) throw new Error(`${owner}: interpolazione \${${name}} non risolvibile (né nel file né in fragments.ts)`)
+    return resolveInterpolations(ref, local, owner, depth + 1)
+  })
+}
+
+/** Estrae ogni documento esportato, con le interpolazioni di fragment risolte. */
 function extractDocuments(source: string): Array<{ name: string; doc: DocumentNode }> {
   const out: Array<{ name: string; doc: DocumentNode }> = []
+  const local = collectTemplates(source)
   const re = /export const (\w+) = gql`([\s\S]*?)`/g
   let m: RegExpExecArray | null
   while ((m = re.exec(source)) !== null) {
-    if (m[2]!.includes('${')) continue // frammenti interpolati: fuori perimetro
-    out.push({ name: m[1]!, doc: parse(m[2]!) })
+    out.push({ name: m[1]!, doc: parse(resolveInterpolations(m[2]!, local, m[1]!)) })
   }
   return out
 }

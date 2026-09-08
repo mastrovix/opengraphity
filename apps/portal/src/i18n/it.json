@@ -142,6 +142,9 @@
     "home": "Torna alla home"
   },
   "errors": {
-    "network": "Errore di connessione al server"
+    "network": "Errore di connessione al server",
+    "sessionExpired": "Sessione scaduta — nuovo accesso necessario",
+    "authRestored": "Connessione al server di autenticazione ripristinata",
+    "authUnreachable": "Server di autenticazione non raggiungibile — nuovo tentativo tra {{seconds}}s"
   }
 }

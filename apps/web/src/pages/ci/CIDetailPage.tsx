@@ -23,6 +23,7 @@ import { CIChangeList } from '@/components/CIChangeList'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
+import { formatDate } from '@/lib/datetime'
 import { GroupCriteriaBuilder } from './GroupCriteriaBuilder'
 import { GET_BLAST_RADIUS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
 import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI, ASSIGN_CI_OWNER, ASSIGN_CI_SUPPORT_GROUP } from '@/graphql/mutations'
@@ -504,8 +505,8 @@ export function CIDetailPage() {
                   {/* Read-only fields */}
                   <DetailField label="ID" value={ci.id} mono />
                   <DetailField label="Tipo" value={ciType.label} />
-                  <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
-                  <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
+                  <DetailField label="Creato" value={formatDate(ci.createdAt)} />
+                  <DetailField label="Aggiornato" value={ci.updatedAt ? formatDate(ci.updatedAt) : null} />
 
                   {/* Editable base fields */}
                   <EditField label="Nome" value={editDraft['name'] ?? ''} onChange={v => setEditDraft(d => ({ ...d, name: v }))} />
@@ -552,8 +553,8 @@ export function CIDetailPage() {
                   <DetailField label="Tipo" value={ciType.label} />
                   <DetailField label="Status" value={ci.status ? <StatusBadge value={ci.status} /> : null} />
                   <DetailField label="Environment" value={ci.environment ?? null} />
-                  <DetailField label="Creato" value={new Date(ci.createdAt).toLocaleDateString('it-IT')} />
-                  <DetailField label="Aggiornato" value={ci.updatedAt ? new Date(ci.updatedAt).toLocaleDateString('it-IT') : null} />
+                  <DetailField label="Creato" value={formatDate(ci.createdAt)} />
+                  <DetailField label="Aggiornato" value={ci.updatedAt ? formatDate(ci.updatedAt) : null} />
                   <DetailField label="Owner Group" value={
                     <Select
                       value={(ci.ownerGroup as Team | null)?.id ?? ''}

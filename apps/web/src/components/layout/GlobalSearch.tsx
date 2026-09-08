@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { gql } from '@apollo/client'
@@ -9,6 +9,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { apolloClient } from '@/lib/apollo'
 import { ciPath } from '@/lib/ciPath'
+import { layoutPalette as C } from '@/lib/tokens'
 
 const GLOBAL_SEARCH = gql`
   query GlobalSearch($query: String!, $limit: Int) {
@@ -95,20 +96,14 @@ function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResul
   }
 }
 
-// ── colori allineati alla Topbar/Sidebar ──────────────────────────────────────
-const C = {
-  border:      '#2e3744',
-  textDefault: '#e2e8f0',
-  textMuted:   'var(--color-slate-light)',
-  inputBg:     'rgba(255,255,255,0.06)',
-}
-
 export function GlobalSearch() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const rootRef  = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef  = useRef<HTMLDivElement>(null)
+  const listboxId = useId()
+  const optionId = (idx: number) => `${listboxId}-opt-${idx}`
 
   const [query, setQuery]             = useState('')
   const [results, setResults]         = useState<GlobalSearchResults>(EMPTY)
@@ -246,8 +241,8 @@ export function GlobalSearch() {
         }}
       >
         {loading
-          ? <Loader2 size={14} className="animate-spin" style={{ color: C.textMuted, flexShrink: 0 }} />
-          : <Search size={14} style={{ color: C.textMuted, flexShrink: 0 }} />}
+          ? <Loader2 size={14} aria-hidden="true" className="animate-spin" style={{ color: C.textMuted, flexShrink: 0 }} />
+          : <Search size={14} aria-hidden="true" style={{ color: C.textMuted, flexShrink: 0 }} />}
         <input
           ref={inputRef}
           value={query}
@@ -256,6 +251,11 @@ export function GlobalSearch() {
           onKeyDown={handleKeyDown}
           placeholder={t('search.placeholder')}
           aria-label={t('search.placeholder')}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={showDropdown}
+          aria-controls={showDropdown ? listboxId : undefined}
+          aria-activedescendant={showDropdown && flat[selectedIdx] ? optionId(selectedIdx) : undefined}
           style={{
             flex:       1,
             minWidth:   0,
@@ -271,7 +271,9 @@ export function GlobalSearch() {
       {/* Dropdown risultati */}
       {showDropdown && (
         <div
+          id={listboxId}
           role="listbox"
+          aria-label={t('search.placeholder')}
           style={{
             position:      'absolute',
             top:           38,
@@ -280,7 +282,7 @@ export function GlobalSearch() {
             maxHeight:     '60vh',
             overflowY:     'auto',
             background:    '#fff',
-            border:        '1px solid #e5e7eb',
+            border:        '1px solid var(--border)',
             borderRadius:  10,
             boxShadow:     '0 12px 40px rgba(0,0,0,0.2)',
             zIndex:        60,
@@ -289,8 +291,8 @@ export function GlobalSearch() {
           ref={listRef}
         >
           {!loading && searched && searchError && (
-            <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 12, color: 'var(--color-danger, #ef4444)' }}>
-              Errore di ricerca: {searchError}
+            <div role="alert" style={{ padding: '24px 16px', textAlign: 'center', fontSize: 12, color: 'var(--color-danger)' }}>
+              {t('search.error')}: {searchError}
             </div>
           )}
 
@@ -321,7 +323,7 @@ export function GlobalSearch() {
                   color:         'var(--color-slate-light)',
                 }}
               >
-                <Icon size={12} />
+                <Icon size={12} aria-hidden="true" />
                 {t(`search.groups.${type}`)}
               </div>
               {items.map((item, i) => {
@@ -330,6 +332,7 @@ export function GlobalSearch() {
                 return (
                   <div
                     key={item.key}
+                    id={optionId(idx)}
                     data-idx={idx}
                     role="option"
                     aria-selected={selected}
@@ -366,7 +369,7 @@ export function GlobalSearch() {
                         style={{
                           fontSize:     10,
                           color:        'var(--color-slate-light)',
-                          border:       '1px solid #e5e7eb',
+                          border:       '1px solid var(--border)',
                           borderRadius: 999,
                           padding:      '1px 8px',
                           flexShrink:   0,

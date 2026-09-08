@@ -5,9 +5,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const queueAdd = vi.fn().mockResolvedValue(undefined)
 const workerOn = vi.fn()
 
+// vitest 4: a mock is constructible (`new Queue(...)`) only when its
+// implementation is a `function`/class, not an arrow function.
 vi.mock('bullmq', () => ({
-  Queue:  vi.fn().mockImplementation(() => ({ add: queueAdd, on: vi.fn(), close: vi.fn().mockResolvedValue(undefined), name: 'anomaly-scanner' })),
-  Worker: vi.fn().mockImplementation(() => ({ on: workerOn, close: vi.fn().mockResolvedValue(undefined) })),
+  Queue:  vi.fn(function () { return { add: queueAdd, on: vi.fn(), close: vi.fn().mockResolvedValue(undefined), name: 'anomaly-scanner' } }),
+  Worker: vi.fn(function () { return { on: workerOn, close: vi.fn().mockResolvedValue(undefined) } }),
 }))
 
 vi.mock('ioredis', () => ({ Redis: vi.fn() }))

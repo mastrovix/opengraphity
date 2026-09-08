@@ -9,6 +9,7 @@
  * mancante, errori provider e violazioni di schema propagano.
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { vectorIndexName } from './embeddings.js'
@@ -17,7 +18,7 @@ import { logger } from '../lib/logger.js'
 const log = logger.child({ module: 'post-incident' })
 
 function getClient(): Anthropic {
-  if (!process.env['ANTHROPIC_API_KEY']) {
+  if (!config.anthropicApiKey) {
     throw new GraphQLError('AI non configurata: ANTHROPIC_API_KEY mancante', {
       extensions: { code: 'FAILED_PRECONDITION' },
     })

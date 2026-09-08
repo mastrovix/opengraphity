@@ -71,7 +71,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
       </FormField>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
+        <button type="button"
           style={{ ...btnPrimary, opacity: settingsSaving ? 0.6 : 1 }}
           disabled={settingsSaving}
           onClick={() => void onSaveSettings()}

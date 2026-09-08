@@ -1,15 +1,19 @@
 /**
  * Runs the anomaly scanner once, directly (no BullMQ queue).
- * Usage: pnpm --filter @opengraphity/api run scan:anomalies
+ * Usage: pnpm --filter @opengraphity/api scan:anomalies -- --tenant=<slug>
+ *
+ * Una regola la cui query fallisce fa fallire lo scan (niente "0 anomalie"
+ * silenzioso su una regola rotta).
  */
 import { getSession } from '@opengraphity/neo4j'
 import { ANOMALY_RULES } from '../anomaly/rules.js'
+import { resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const TENANT = 'c-one'
-
-async function main() {
+async function main(): Promise<void> {
+  const TENANT = resolveTenantArg()
   const now = new Date().toISOString()
-  console.log(`\n=== Anomaly Scanner — ${now} ===\n`)
+  console.log(`\n=== Anomaly Scanner — tenant ${TENANT} — ${now} ===\n`)
 
   const totals: Record<string, number> = {}
 
@@ -25,7 +29,7 @@ async function main() {
         description:   r.get('description')   as string,
       }))
     } catch (err) {
-      console.warn(`  [WARN] ${rule.key}: query failed —`, (err as Error).message.split('\n')[0])
+      throw new Error(`Regola ${rule.key}: query fallita — ${err instanceof Error ? err.message : String(err)}`, { cause: err })
     } finally {
       await session.close()
     }
@@ -110,7 +114,6 @@ async function main() {
   console.log(`\n${'─'.repeat(50)}`)
   console.log(`Totale anomalie rilevate: ${grand}`)
   Object.entries(totals).forEach(([k, v]) => v > 0 && console.log(`  ${k}: ${v}`))
-  process.exit(0)
 }
 
-main().catch(err => { console.error(err); process.exit(1) })
+runScript('run-anomaly-scan', main)

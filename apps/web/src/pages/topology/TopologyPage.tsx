@@ -3,7 +3,9 @@ import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { Share2 } from 'lucide-react'
 import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
-import { lookupOrError } from '@/lib/tokens'
+import { fontFamily } from '@/lib/tokens'
+import { Pill } from '@/components/ui/Pill'
+import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
 import TopologyGraph, { TopologyLegend, type TopologyNode } from '@/components/topology/TopologyGraph'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -66,6 +68,8 @@ export function TopologyPage() {
     () => (ciTypesData?.ciTypes ?? []).filter(t => t.name !== '__base__'),
     [ciTypesData?.ciTypes],
   )
+  // Status/environment dal tipo base del metamodello (unica sorgente, F-23)
+  const baseEnums = useCIBaseEnums()
 
   // Reset focusNodeId quando l'utente cambia tipo
   useEffect(() => { setFocusNodeId(null) }, [filters.type])
@@ -178,20 +182,21 @@ export function TopologyPage() {
           )}
 
           {/* Environment filter */}
-          <select value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} style={selectStyle}>
+          <select value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
             <option value="">Tutti gli env</option>
-            <option value="production">Production</option>
-            <option value="staging">Staging</option>
-            <option value="development">Development</option>
+            {baseEnums.environments.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
           </select>
 
           {/* Status filter */}
-          <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} style={selectStyle}>
+          <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
             <option value="">Tutti gli stati</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="maintenance">Maintenance</option>
+            {baseEnums.statuses.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
           </select>
+          {baseEnums.error && (
+            <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }} title={baseEnums.error}>
+              enum CI non disponibili
+            </span>
+          )}
 
           {/* Labels toggle */}
           <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
@@ -235,13 +240,13 @@ export function TopologyPage() {
               <div style={{
                 fontSize: 'var(--font-size-page-title)', fontWeight: 600,
                 color: 'var(--color-slate-dark)',
-                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                fontFamily,
               }}>
                 Topology Map
               </div>
               <div style={{
                 fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-light)',
-                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                fontFamily,
                 textAlign: 'center',
               }}>
                 {loading
@@ -256,7 +261,7 @@ export function TopologyPage() {
               position: 'absolute', inset: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'var(--danger)', fontSize: 'var(--font-size-card-title)',
-              fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+              fontFamily,
             }}>
               Errore nel caricamento: {error.message}
             </div>
@@ -282,7 +287,7 @@ export function TopologyPage() {
               position:   'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
               background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6,
               padding:    '5px 14px', fontSize: 'var(--font-size-body)', color: '#854d0e',
-              fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+              fontFamily,
               whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}>
               ⚠️ Grafo troncato a {data.topology.nodeLimit} nodi — usa i filtri per restringere
@@ -296,7 +301,7 @@ export function TopologyPage() {
             border:      '1px solid #e2e8f0', borderRadius: 6,
             padding:     '5px 12px', fontSize: 'var(--font-size-body)',
             color:       'var(--color-slate)',
-            fontFamily:  "'Plus Jakarta Sans', system-ui, sans-serif",
+            fontFamily,
             transition:  'right 200ms ease',
           }}>
             {nodes.length} nodi · {edges.length} relazioni
@@ -405,7 +410,7 @@ export function TopologyPage() {
                   fontSize:     13,
                   fontWeight:   600,
                   cursor:       'pointer',
-                  fontFamily:   "'Plus Jakarta Sans', system-ui, sans-serif",
+                  fontFamily,
                 }}
               >
                 Vai al dettaglio →
@@ -509,7 +514,7 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
           style={{
             border: 'none', outline: 'none', background: 'transparent',
             fontSize: 'var(--font-size-body)', width: '100%', color: 'inherit',
-            fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+            fontFamily,
           }}
         />
         {value && (
@@ -583,21 +588,8 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
   )
 }
 
-const TOPOLOGY_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  active:      { bg: '#dcfce7', color: '#166534' },
-  inactive:    { bg: '#fee2e2', color: '#991b1b' },
-  maintenance: { bg: '#fef9c3', color: '#854d0e' },
-}
-
+/** Stato CI colorato: palette unica in lib/ciEnums (CI_STATUS_STYLE). */
 function StatusBadge({ status }: { status: string }) {
-  const s = lookupOrError(TOPOLOGY_STATUS_STYLE, status, 'TOPOLOGY_STATUS_STYLE', { bg: 'var(--color-danger)', color: '#fff' })
-  return (
-    <span style={{
-      fontSize: 'var(--font-size-body)', fontWeight: 600,
-      background: s.bg, color: s.color,
-      padding: '2px 8px', borderRadius: 10,
-    }}>
-      {status}
-    </span>
-  )
+  const s = ciStatusStyle(status)
+  return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{status}</Pill>
 }

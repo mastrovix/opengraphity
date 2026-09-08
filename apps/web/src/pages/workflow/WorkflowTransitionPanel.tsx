@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirm } from '@/hooks/useConfirm'
 import { toast } from 'sonner'
 import type { WFTransition, PendingTransitionChange } from './workflow-types'
 import { panelStyle, panelInputStyle, saveButtonStyle, PanelHeader, PanelField } from './workflow-panel-helpers'
@@ -15,6 +16,7 @@ interface EdgePanelProps {
 }
 
 export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLocally, onDelete }: EdgePanelProps) {
+  const confirm = useConfirm()
   const [label,         setLabel]         = useState(transition.label)
   const [trigger,       setTrigger]       = useState(transition.trigger)
   const [requiresInput, setRequiresInput] = useState(transition.requiresInput)
@@ -120,9 +122,9 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
       {onDelete && (
         <button
           onClick={() => {
-            if (confirm(`Eliminare la transizione ${transition.fromStepName} → ${transition.toStepName}?`)) {
-              onDelete(transition.id)
-            }
+            void confirm({ title: `Eliminare la transizione ${transition.fromStepName} → ${transition.toStepName}?`, danger: true }).then((ok) => {
+              if (ok) onDelete(transition.id)
+            })
           }}
           style={{
             marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,

@@ -1,4 +1,4 @@
-import { getDriver } from '@opengraphity/neo4j'
+import { getSession } from '@opengraphity/neo4j'
 
 export interface SLAPolicyRecord {
   id:               string
@@ -32,7 +32,7 @@ export async function selectSLAForEntity(
   category:   string | null,
   teamId:     string | null,
 ): Promise<SLAPolicyRecord | null> {
-  const session = getDriver().session({ defaultAccessMode: 'READ' as const })
+  const session = getSession(undefined, 'READ')
   try {
     const result = await session.executeRead(tx =>
       tx.run(`

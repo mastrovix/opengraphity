@@ -1,6 +1,7 @@
 import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
+import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 
 // ── Shared mappers ────────────────────────────────────────────────────────────
 
@@ -105,60 +106,8 @@ export async function workflowDefinition(
 
     const wd    = defResult.records[0].get('wd').properties    as Record<string, unknown>
     const steps = defResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
-
-    const trResult = await session.executeRead((tx) =>
-      tx.run(`
-        MATCH (wd:WorkflowDefinition {id: $defId, tenant_id: $tenantId})
-        // tenant-ok: step vincolati alla definizione appena scopata
-        MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
-        RETURN from.name AS fromStep, to.name AS toStep,
-               tr.id AS id, tr.trigger AS trigger, tr.label AS label,
-               tr.requires_input AS requiresInput,
-               tr.input_field AS inputField,
-               tr.condition AS condition,
-               tr.timer_hours AS timerHours,
-               tr.source_handle AS sourceHandle,
-               tr.target_handle AS targetHandle
-      `, { defId: wd['id'], tenantId: ctx.tenantId }),
-    )
-
-    return {
-      id:            wd['id']              as string,
-      name:          wd['name']            as string,
-      entityType:    wd['entity_type']     as string,
-      category:      (wd['category']       ?? null) as string | null,
-      changeSubtype: (wd['change_subtype'] ?? null) as string | null,
-      version:       Number(wd['version'] ?? 1),
-      active:        wd['active']          as boolean,
-      steps: steps.map((s) => ({
-        id:           s.properties['id']            as string,
-        name:         s.properties['name']          as string,
-        label:        s.properties['label']         as string,
-        type:         s.properties['type']          as string,
-        enterActions:       (s.properties['enter_actions']       ?? null) as string | null,
-        exitActions:        (s.properties['exit_actions']        ?? null) as string | null,
-        timerDelayMinutes:  s.properties['timer_delay_minutes'] != null ? Number(s.properties['timer_delay_minutes']) : null,
-        subWorkflowId:      (s.properties['sub_workflow_id']     ?? null) as string | null,
-        isInitial:    Boolean(s.properties['is_initial']  ?? s.properties['type'] === 'start'),
-        isTerminal:   Boolean(s.properties['is_terminal'] ?? s.properties['type'] === 'end'),
-        isOpen:       (s.properties['is_open']   != null) ? Boolean(s.properties['is_open'])  : !(s.properties['type'] === 'end'),
-        category:     (s.properties['category']  ?? null) as string | null,
-        order:        s.properties['step_order'] != null ? Number(s.properties['step_order']) : 999,
-      })).sort((a, b) => a.order - b.order),
-      transitions: trResult.records.map((r) => ({
-        id:            r.get('id')            as string,
-        fromStepName:  r.get('fromStep')      as string,
-        toStepName:    r.get('toStep')        as string,
-        trigger:       r.get('trigger')       as string,
-        label:         r.get('label')         as string,
-        requiresInput: r.get('requiresInput') as boolean,
-        inputField:    (r.get('inputField')   ?? null) as string | null,
-        condition:     (r.get('condition')    ?? null) as string | null,
-        timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
-        sourceHandle:  (r.get('sourceHandle') ?? null) as string | null,
-        targetHandle:  (r.get('targetHandle') ?? null) as string | null,
-      })),
-    }
+    const transitions = await loadTransitionRows(session, wd['id'] as string, ctx.tenantId)
+    return mapWorkflowDefinition(wd, steps, transitions)
   })
 }
 
@@ -180,62 +129,8 @@ export async function workflowDefinitionById(
 
     const wd    = defResult.records[0].get('wd').properties    as Record<string, unknown>
     const steps = defResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
-
-    const trResult = await session.executeRead((tx) =>
-      tx.run(`
-        MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
-        RETURN from.name AS fromStep, to.name AS toStep,
-               tr.id AS id, tr.trigger AS trigger, tr.label AS label,
-               tr.requires_input AS requiresInput,
-               tr.input_field AS inputField,
-               tr.condition AS condition,
-               tr.timer_hours AS timerHours,
-               tr.source_handle AS sourceHandle,
-               tr.target_handle AS targetHandle
-      `, { defId: id, tenantId: ctx.tenantId }),
-    )
-
-    return {
-      id:            wd['id']              as string,
-      name:          wd['name']            as string,
-      entityType:    wd['entity_type']     as string,
-      category:      (wd['category']       ?? null) as string | null,
-      changeSubtype: (wd['change_subtype'] ?? null) as string | null,
-      version:       Number(wd['version'] ?? 1),
-      active:        wd['active']          as boolean,
-      steps: steps.map((s) => ({
-        id:           s.properties['id']             as string,
-        name:         s.properties['name']           as string,
-        label:        s.properties['label']          as string,
-        type:         s.properties['type']           as string,
-        enterActions:       (s.properties['enter_actions']       ?? null) as string | null,
-        exitActions:        (s.properties['exit_actions']        ?? null) as string | null,
-        timerDelayMinutes:  s.properties['timer_delay_minutes'] != null ? Number(s.properties['timer_delay_minutes']) : null,
-        subWorkflowId:      (s.properties['sub_workflow_id']     ?? null) as string | null,
-        isInitial:    Boolean(s.properties['is_initial']  ?? s.properties['type'] === 'start'),
-        isTerminal:   Boolean(s.properties['is_terminal'] ?? s.properties['type'] === 'end'),
-        isOpen:       (s.properties['is_open']   != null) ? Boolean(s.properties['is_open'])  : !(s.properties['type'] === 'end'),
-        category:     (s.properties['category']  ?? null) as string | null,
-        order:        s.properties['step_order'] != null ? Number(s.properties['step_order']) : 999,
-        // Layout del designer: scritto da saveWorkflowChanges.positions, letto
-        // qui (prima nessuno lo rileggeva e il canvas usava sempre il default).
-        positionX:    s.properties['position_x'] != null ? Number(s.properties['position_x']) : null,
-        positionY:    s.properties['position_y'] != null ? Number(s.properties['position_y']) : null,
-      })).sort((a, b) => a.order - b.order),
-      transitions: trResult.records.map((r) => ({
-        id:            r.get('id')            as string,
-        fromStepName:  r.get('fromStep')      as string,
-        toStepName:    r.get('toStep')        as string,
-        trigger:       r.get('trigger')       as string,
-        label:         r.get('label')         as string,
-        requiresInput: r.get('requiresInput') as boolean,
-        inputField:    (r.get('inputField')   ?? null) as string | null,
-        condition:     (r.get('condition')    ?? null) as string | null,
-        timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
-        sourceHandle:  (r.get('sourceHandle') ?? null) as string | null,
-        targetHandle:  (r.get('targetHandle') ?? null) as string | null,
-      })),
-    }
+    const transitions = await loadTransitionRows(session, id, ctx.tenantId)
+    return mapWorkflowDefinition(wd, steps, transitions)
   })
 }
 
@@ -253,62 +148,14 @@ export async function workflowDefinitions(
         RETURN wd, collect(s) AS steps
       `, { tenantId: ctx.tenantId, entityType: entityType ?? null }),
     )
-    if (!defResult.records.length) return []
 
     const results = []
     for (const record of defResult.records) {
       const wd    = record.get('wd').properties    as Record<string, unknown>
       const steps = record.get('steps') as Array<{ properties: Record<string, unknown> }>
-
-      const trResult = await session.executeRead((tx) =>
-        tx.run(`
-          MATCH (wd:WorkflowDefinition {id: $defId, tenant_id: $tenantId})
-          // tenant-ok: step vincolati alla definizione appena scopata
-          MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
-          RETURN from.name AS fromStep, to.name AS toStep,
-                 tr.id AS id, tr.trigger AS trigger, tr.label AS label,
-                 tr.requires_input AS requiresInput,
-                 tr.input_field AS inputField,
-                 tr.condition AS condition,
-                 tr.timer_hours AS timerHours
-        `, { defId: wd['id'], tenantId: ctx.tenantId }),
-      )
-
-      results.push({
-        id:            wd['id']              as string,
-        name:          wd['name']            as string,
-        entityType:    wd['entity_type']     as string,
-        category:      (wd['category']       ?? null) as string | null,
-        changeSubtype: (wd['change_subtype'] ?? null) as string | null,
-        version:       Number(wd['version'] ?? 1),
-        active:        wd['active']          as boolean,
-        steps: steps.map((s) => ({
-          id:           s.properties['id']             as string,
-          name:         s.properties['name']           as string,
-          label:        s.properties['label']          as string,
-          type:         s.properties['type']           as string,
-          enterActions: (s.properties['enter_actions'] ?? null) as string | null,
-          exitActions:  (s.properties['exit_actions']  ?? null) as string | null,
-          isInitial:    Boolean(s.properties['is_initial']  ?? s.properties['type'] === 'start'),
-          isTerminal:   Boolean(s.properties['is_terminal'] ?? s.properties['type'] === 'end'),
-          isOpen:       (s.properties['is_open']   != null) ? Boolean(s.properties['is_open'])  : !(s.properties['type'] === 'end'),
-          category:     (s.properties['category']  ?? null) as string | null,
-          order:        s.properties['step_order'] != null ? Number(s.properties['step_order']) : 999,
-        })).sort((a, b) => a.order - b.order),
-        transitions: trResult.records.map((r) => ({
-          id:            r.get('id')            as string,
-          fromStepName:  r.get('fromStep')      as string,
-          toStepName:    r.get('toStep')        as string,
-          trigger:       r.get('trigger')       as string,
-          label:         r.get('label')         as string,
-          requiresInput: r.get('requiresInput') as boolean,
-          inputField:    (r.get('inputField')   ?? null) as string | null,
-          condition:     (r.get('condition')    ?? null) as string | null,
-          timerHours:    r.get('timerHours') != null ? Number(r.get('timerHours')) : null,
-        })),
-      })
+      const transitions = await loadTransitionRows(session, wd['id'] as string, ctx.tenantId)
+      results.push(mapWorkflowDefinition(wd, steps, transitions))
     }
-
     return results
   })
 }

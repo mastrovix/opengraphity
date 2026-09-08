@@ -1,25 +1,10 @@
-import {
-  Box, Boxes, Database, Server, Shield,
-  HardDrive, Cloud, Globe, Cpu, Network,
-  Monitor, Lock, Briefcase, Target,
-} from 'lucide-react'
-
-const iconMap: Record<string, React.ComponentType<{ size?: number; color?: string; style?: React.CSSProperties }>> = {
-  box:          Box,
-  boxes:        Boxes,
-  database:     Database,
-  server:       Server,
-  shield:       Shield,
-  'hard-drive': HardDrive,
-  cloud:        Cloud,
-  globe:        Globe,
-  cpu:          Cpu,
-  network:      Network,
-  monitor:      Monitor,
-  lock:         Lock,
-  briefcase:    Briefcase,
-  target:       Target,
-}
+/**
+ * Icona React di un tipo CI, disegnata dal registro unico `ciIconPaths.ts`
+ * (stessi path usati dai grafi D3): una chiave sconosciuta è un "?" rosso,
+ * non un Box silenzioso come prima.
+ */
+import { createElement } from 'react'
+import { iconPathsOrError, isBrokenIconKey, BROKEN_ICON_COLOR, CI_ICON_PATHS } from '@/lib/ciIconPaths'
 
 export function CIIcon({
   icon,
@@ -32,6 +17,24 @@ export function CIIcon({
   color?: string
   style?: React.CSSProperties
 }) {
-  const Icon = iconMap[icon] ?? Box
-  return <Icon size={size} color={color} style={style} />
+  const known  = isBrokenIconKey(icon) ? false : icon in CI_ICON_PATHS
+  const nodes  = iconPathsOrError(icon)
+  const stroke = known ? (color ?? 'currentColor') : BROKEN_ICON_COLOR
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={stroke}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={style}
+      aria-label={known ? icon : `icona sconosciuta: ${icon}`}
+      role="img"
+    >
+      {nodes.map(([tag, attrs], i) => createElement(tag, { key: i, ...attrs }))}
+    </svg>
+  )
 }

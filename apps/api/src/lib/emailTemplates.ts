@@ -8,6 +8,7 @@
  */
 
 import { escapeHtml as e } from '@opengraphity/notifications'
+import { config } from './config.js'
 
 const BRAND     = '#0EA5E9'
 const BRAND_BG  = '#E0F2FE'
@@ -24,8 +25,8 @@ const SEV_COLORS: Record<string, string> = { critical: DANGER, high: '#F97316', 
 // Localhost default is dev-only: in production a missing APP_URL would put
 // localhost links in every email (same guard as @opengraphity/notifications).
 function baseUrl(): string {
-  const url = process.env['APP_URL']
-  if (!url && process.env['NODE_ENV'] === 'production') {
+  const url = config.appUrl
+  if (!url && config.isProduction) {
     throw new Error('[emailTemplates] APP_URL is not set in production — email links would point to localhost')
   }
   return url ?? 'http://localhost:5173'

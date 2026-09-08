@@ -8,7 +8,7 @@ RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 
 WORKDIR /app
 
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json ./
 COPY apps/portal/package.json apps/portal/
 
 COPY packages/discovery/package.json        packages/discovery/
@@ -19,9 +19,15 @@ COPY packages/schema-generator/package.json packages/schema-generator/
 COPY packages/scripting/package.json        packages/scripting/
 COPY packages/sla/package.json              packages/sla/
 COPY packages/types/package.json            packages/types/
+COPY packages/web-core/package.json         packages/web-core/
 COPY packages/workflow/package.json         packages/workflow/
 
 RUN pnpm install --frozen-lockfile
+
+# @opengraphity/web-core (auth/tenant/apollo shared with apps/web) is consumed
+# from its dist/, which .dockerignore excludes: build it in the container.
+COPY packages/web-core/ packages/web-core/
+RUN pnpm --filter @opengraphity/web-core build
 
 COPY apps/portal/ apps/portal/
 

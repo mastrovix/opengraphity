@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -23,8 +22,6 @@ import {
   BrainCircuit,
   LayoutGrid,
   ScrollText,
-  ChevronDown,
-  ChevronRight,
   Layers,
   Settings,
   Settings2,
@@ -49,7 +46,8 @@ import {
 import { useMe } from '@/hooks/useMe'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
-import { C, navItemStyle, subItemStyle, parentGroupStyle, NavItem } from './SidebarNavItems'
+import { C, navItemStyle, NavItem, SubItem } from './SidebarNavItems'
+import { SidebarGroup, useGroupOpen } from './SidebarGroup'
 import { SidebarCollapseButton } from './SidebarUserMenu'
 
 const MY_PENDING_APPROVALS_COUNT = gql`
@@ -95,6 +93,18 @@ const REPORTING_ITEM_DEFS = [
   { to: '/custom-reports', labelKey: 'sidebar.reportBuilder', icon: LayoutGrid   },
 ]
 
+const TEAMS_ITEM_DEFS = [
+  { to: '/teams', labelKey: 'sidebar.teams', icon: UsersRound },
+  { to: '/users', labelKey: 'sidebar.users', icon: User },
+]
+
+const SETTINGS_ITEM_DEFS = [
+  { to: '/settings/notifications',      labelKey: 'sidebar.notificationChannels', icon: Bell },
+  { to: '/settings/notification-rules', labelKey: 'sidebar.notificationRules',    icon: Bell },
+  { to: '/settings/sync',               labelKey: 'sidebar.cmdbSync',             icon: Activity },
+  { to: '/admin/queues',                labelKey: 'sidebar.bullBoard',            icon: Activity },
+]
+
 const ADMIN_NAV_ITEM_DEFS = [
   { to: '/logs',                   labelKey: 'sidebar.logs',           icon: ScrollText  },
   { to: '/admin/audit',            labelKey: 'sidebar.auditLog',       icon: ShieldCheck },
@@ -108,6 +118,20 @@ const ADMIN_NAV_ITEM_DEFS = [
   { to: '/admin/assessment-questions', labelKey: 'sidebar.assessmentQuestions', icon: HelpCircle  },
 ]
 
+// CI type → sidebar label key (module scope: not rebuilt on every render, E-12).
+const CI_LABEL_KEYS: Record<string, string> = {
+  application:       'sidebar.application',
+  server:            'sidebar.server',
+  database:          'sidebar.database',
+  database_instance: 'sidebar.dbInstance',
+  certificate:       'sidebar.certificate',
+  ssl_certificate:   'sidebar.certificate',
+}
+
+const CMDB_LEGACY_PREFIXES = ['/cmdb', '/ci/', '/applications', '/databases', '/database-instances', '/servers', '/certificates']
+
+const startsWithAny = (pathname: string, defs: readonly { to: string }[]) => defs.some(({ to }) => pathname.startsWith(to))
+
 interface SidebarProps {
   collapsed: boolean
   width:     number
@@ -117,27 +141,6 @@ interface SidebarProps {
 export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { t } = useTranslation()
   const { pathname } = useLocation()
-  const [configOpen, setConfigOpen] = useState(
-    () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/settings/itil-designer') || pathname.startsWith('/settings/enum-designer') || pathname.startsWith('/workflow'),
-  )
-  const [itsmOpen, setItsmOpen] = useState(
-    () => ITSM_ITEM_DEFS.some(({ to }) => pathname.startsWith(to)),
-  )
-  const [cmdbOpen, setCmdbOpen] = useState(
-    () => pathname.startsWith('/cmdb') || pathname.startsWith('/ci/'),
-  )
-  const [teamsOpen, setTeamsOpen] = useState(
-    () => pathname.startsWith('/teams') || pathname.startsWith('/users'),
-  )
-  const [settingsOpen, setSettingsOpen] = useState(
-    () => pathname.startsWith('/settings') || pathname === '/settings/notification-rules',
-  )
-  const [reportingOpen, setReportingOpen] = useState(
-    () => pathname.startsWith('/reports') || pathname.startsWith('/custom-reports'),
-  )
-  const [analysisOpen, setAnalysisOpen] = useState(
-    () => ANALYSIS_ITEM_DEFS.some(({ to }) => pathname.startsWith(to)),
-  )
 
   // Same source of truth as the pages and the RequireRole route guard:
   // `me.role` from the DB, not the Keycloak realm role. Groups whose every
@@ -145,8 +148,24 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   // Configuration, Admin) are hidden from everyone else — no menu entry may
   // lead to a "forbidden" page.
   const { isAdmin } = useMe()
-  const settingsActive = pathname.startsWith('/settings')
   const { ciTypes } = useMetamodel()
+
+  // Active flags derived from the location; open state re-opens on entry (E-12).
+  const itsmActive      = startsWithAny(pathname, ITSM_ITEM_DEFS)
+  const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
+  const analysisActive  = startsWithAny(pathname, ANALYSIS_ITEM_DEFS)
+  const cmdbActive      = CMDB_LEGACY_PREFIXES.some((p) => pathname.startsWith(p))
+  const teamsActive     = startsWithAny(pathname, TEAMS_ITEM_DEFS)
+  const configActive    = startsWithAny(pathname, CONFIG_ITEM_DEFS)
+  const settingsActive  = pathname.startsWith('/settings') || pathname.startsWith('/admin/queues')
+
+  const [itsmOpen, toggleItsm]           = useGroupOpen(itsmActive)
+  const [reportingOpen, toggleReporting] = useGroupOpen(reportingActive)
+  const [analysisOpen, toggleAnalysis]   = useGroupOpen(analysisActive)
+  const [cmdbOpen, toggleCmdb]           = useGroupOpen(cmdbActive)
+  const [teamsOpen, toggleTeams]         = useGroupOpen(teamsActive)
+  const [configOpen, toggleConfig]       = useGroupOpen(configActive)
+  const [settingsOpen, toggleSettings]   = useGroupOpen(settingsActive)
 
   const { data: anomalyStatsData, error: anomalyError } = useQuery<{ anomalyStats: { critical: number; open: number } }>(
     GET_ANOMALY_STATS,
@@ -160,15 +179,19 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   )
   const pendingApprovalsCount = pendingApprovalsData?.myPendingApprovals?.length ?? 0
 
-  const configActive    = CONFIG_ITEM_DEFS.some(({ to }) => pathname.startsWith(to))
-  const itsmActive      = ITSM_ITEM_DEFS.some(({ to }) => pathname.startsWith(to))
-  const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
-  const analysisActive  = ANALYSIS_ITEM_DEFS.some(({ to }) => pathname.startsWith(to))
-
-  const cmdbActive = pathname.startsWith('/cmdb') || pathname.startsWith('/ci/')
-    || pathname.startsWith('/applications') || pathname.startsWith('/databases')
-    || pathname.startsWith('/database-instances') || pathname.startsWith('/servers')
-    || pathname.startsWith('/certificates')
+  const anomalyBadge = (anomalyCritical > 0 || anomalyError) ? (
+    <span
+      aria-label={anomalyError ? t('sidebar.anomalyLoadError') : t('sidebar.criticalAnomalies', { count: anomalyCritical })}
+      title={anomalyError ? anomalyError.message : undefined}
+      style={{
+        fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
+        padding: '2px 5px', borderRadius: 8,
+        background: 'var(--danger)', color: '#fff',
+      }}
+    >
+      {anomalyError ? '!' : anomalyCritical}
+    </span>
+  ) : undefined
 
   return (
     <aside
@@ -209,7 +232,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
       {/* Nav */}
       <nav
-        aria-label="Menu principale"
+        aria-label={t('sidebar.mainMenu')}
         style={{
           flex:      1,
           overflowY: 'auto',
@@ -220,7 +243,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           <p
             style={{
               color:         C.textSection,
-              fontSize:      10,
+              fontSize:      'var(--font-size-label)',
               fontWeight:    600,
               letterSpacing: '0.08em',
               padding:       '0 8px 8px',
@@ -240,210 +263,40 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           )
         })}
 
-        {/* ITIL Processes — collapsible */}
-        {collapsed ? (
-          <NavLink
-            to="/incidents"
-            title={t('sidebar.itilProcesses')}
-            style={navItemStyle(itsmActive, true)}
-            className="hover-bg"
-          >
-            <ListChecks size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-          </NavLink>
-        ) : (
-          <div style={{ marginBottom: 2 }}>
-            <div
-              onClick={() => setItsmOpen((p) => !p)}
-              style={parentGroupStyle(itsmActive)}
-              className="hover-bg"
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ListChecks size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: itsmActive ? 600 : 400, color: itsmActive ? C.brand : C.textDefault }}>
-                  {t('sidebar.itilProcesses')}
-                </span>
-              </div>
-              {itsmOpen
-                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
-                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
-            </div>
+        {/* ITIL Processes */}
+        <SidebarGroup title={t('sidebar.itilProcesses')} icon={ListChecks} active={itsmActive} open={itsmOpen} onToggle={toggleItsm} collapsed={collapsed} collapsedTo="/incidents">
+          {ITSM_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+        </SidebarGroup>
 
-            {itsmOpen && (
-              <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {ITSM_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
-                  <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                      {t(labelKey)}
-                    </span>
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Reporting */}
+        <SidebarGroup title={t('sidebar.reporting')} icon={BarChart2} active={reportingActive} open={reportingOpen} onToggle={toggleReporting} collapsed={collapsed} collapsedTo="/reports">
+          {REPORTING_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+        </SidebarGroup>
 
-        {/* Reporting — collapsible */}
-        {collapsed ? (
-          <NavLink
-            to="/reports"
-            title={t('sidebar.reporting')}
-            style={navItemStyle(reportingActive, true)}
-            className="hover-bg"
-          >
-            <BarChart2 size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-          </NavLink>
-        ) : (
-          <div style={{ marginBottom: 2 }}>
-            <div
-              onClick={() => setReportingOpen((p) => !p)}
-              style={parentGroupStyle(reportingActive)}
-              className="hover-bg"
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <BarChart2 size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: reportingActive ? 600 : 400, color: reportingActive ? C.brand : C.textDefault }}>
-                  {t('sidebar.reporting')}
-                </span>
-              </div>
-              {reportingOpen
-                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
-                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
-            </div>
+        {/* Analysis */}
+        <SidebarGroup title={t('sidebar.analysis')} icon={Activity} active={analysisActive} open={analysisOpen} onToggle={toggleAnalysis} collapsed={collapsed} collapsedTo="/anomalies">
+          {ANALYSIS_ITEM_DEFS.map(({ to, labelKey, icon }) => (
+            <SubItem key={to} to={to} label={t(labelKey)} icon={icon} trailing={to === '/anomalies' ? anomalyBadge : undefined} />
+          ))}
+        </SidebarGroup>
 
-            {reportingOpen && (
-              <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {REPORTING_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
-                  <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                      {t(labelKey)}
-                    </span>
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Analysis — collapsible */}
-        {collapsed ? (
-          <NavLink
-            to="/anomalies"
-            title={t('sidebar.analysis')}
-            style={navItemStyle(analysisActive, true)}
-            className="hover-bg"
-          >
-            <Activity size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-          </NavLink>
-        ) : (
-          <div style={{ marginBottom: 2 }}>
-            <div
-              onClick={() => setAnalysisOpen((p) => !p)}
-              style={parentGroupStyle(analysisActive)}
-              className="hover-bg"
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Activity size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: analysisActive ? 600 : 400, color: analysisActive ? C.brand : C.textDefault }}>
-                  {t('sidebar.analysis')}
-                </span>
-              </div>
-              {analysisOpen
-                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
-                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
-            </div>
-
-            {analysisOpen && (
-              <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {ANALYSIS_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
-                  <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                      {t(labelKey)}
-                    </span>
-                    {to === '/anomalies' && (anomalyCritical > 0 || anomalyError) && (
-                      <span
-                        aria-label={anomalyError ? 'errore caricamento anomalie' : `${anomalyCritical} anomalie critiche`}
-                        title={anomalyError ? anomalyError.message : undefined}
-                        style={{
-                          fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
-                          padding: '2px 5px', borderRadius: 8,
-                          background: 'var(--danger)', color: '#fff',
-                        }}
-                      >
-                        {anomalyError ? '!' : anomalyCritical}
-                      </span>
-                    )}
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* CMDB — collapsible */}
-        {collapsed ? (
-          <NavLink
-            to="/cmdb"
-            title={t('sidebar.cmdb')}
-            style={navItemStyle(cmdbActive, true)}
-            className="hover-bg"
-          >
-            <Server size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-          </NavLink>
-        ) : (
-          <div style={{ marginBottom: 2 }}>
-            <div
-              onClick={() => setCmdbOpen((p) => !p)}
-              style={parentGroupStyle(cmdbActive)}
-              className="hover-bg"
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Server size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: cmdbActive ? 600 : 400, color: cmdbActive ? C.brand : C.textDefault }}>
-                  {t('sidebar.cmdb')}
-                </span>
-              </div>
-              {cmdbOpen
-                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
-                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
-            </div>
-
-            {cmdbOpen && (
-              <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                <NavLink to="/cmdb" end style={({ isActive }) => subItemStyle(isActive)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Server size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                    {t('sidebar.all')}
-                  </span>
-                </NavLink>
-                {ciTypes.map(ct => {
-                  const to = `/ci/${ct.name}`
-                  const isActive = pathname === to || pathname.startsWith(`${to}/`)
-                  const CI_LABEL_KEYS: Record<string, string> = {
-                    application:       'sidebar.application',
-                    server:            'sidebar.server',
-                    database:          'sidebar.database',
-                    database_instance: 'sidebar.dbInstance',
-                    certificate:       'sidebar.certificate',
-                    ssl_certificate:   'sidebar.certificate',
-                  }
-                  const labelKey = CI_LABEL_KEYS[ct.name]
-                  const label = labelKey ? t(labelKey) : ct.label
-                  return (
-                    <NavLink key={ct.name} to={to} style={() => subItemStyle(isActive)}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CIIcon icon={ct.icon} size={12} color={C.brand} />
-                        {label}
-                      </span>
-                    </NavLink>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        {/* CMDB */}
+        <SidebarGroup title={t('sidebar.cmdb')} icon={Server} active={cmdbActive} open={cmdbOpen} onToggle={toggleCmdb} collapsed={collapsed} collapsedTo="/cmdb">
+          <SubItem to="/cmdb" end label={t('sidebar.all')} icon={Server} />
+          {ciTypes.map(ct => {
+            const to = `/ci/${ct.name}`
+            const labelKey = CI_LABEL_KEYS[ct.name]
+            return (
+              <SubItem
+                key={ct.name}
+                to={to}
+                label={labelKey ? t(labelKey) : ct.label}
+                iconNode={<CIIcon icon={ct.icon} size={12} color={C.brand} />}
+                isActive={pathname === to || pathname.startsWith(`${to}/`)}
+              />
+            )
+          })}
+        </SidebarGroup>
 
         {/* Profile — personal, every role */}
         <NavItem
@@ -455,81 +308,17 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         />
 
         {/* Teams & Users — admin only (routes are admin(...) in main.tsx) */}
-        {isAdmin && !collapsed && (
-          <div style={{ marginBottom: 2 }}>
-            <div
-              onClick={() => setTeamsOpen((p) => !p)}
-              style={parentGroupStyle(false)}
-              className="hover-bg"
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Users size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, color: C.textDefault }}>{t('sidebar.teamsUsers')}</span>
-              </div>
-              {teamsOpen
-                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
-                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
-            </div>
-
-            {teamsOpen && (
-              <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                <NavLink to="/teams" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <UsersRound size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                    {t('sidebar.teams')}
-                  </span>
-                </NavLink>
-                <NavLink to="/users" style={({ isActive }) => subItemStyle(isActive)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <User size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                    {t('sidebar.users')}
-                  </span>
-                </NavLink>
-              </div>
-            )}
-          </div>
+        {isAdmin && (
+          <SidebarGroup title={t('sidebar.teamsUsers')} icon={Users} active={teamsActive} open={teamsOpen} onToggle={toggleTeams} collapsed={collapsed} collapsedTo="/teams">
+            {TEAMS_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+          </SidebarGroup>
         )}
 
-        {/* Configuration — collapsible, admin only (routes are admin(...) in main.tsx) */}
-        {!isAdmin ? null : collapsed ? (
-          <NavLink
-            to="/workflow"
-            title={t('sidebar.configuration')}
-            style={navItemStyle(configActive, true)}
-            className="hover-bg"
-          >
-            <SlidersHorizontal size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-          </NavLink>
-        ) : (
-          <div style={{ marginBottom: 2 }}>
-            <div
-              onClick={() => setConfigOpen((p) => !p)}
-              style={parentGroupStyle(configActive)}
-              className="hover-bg"
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <SlidersHorizontal size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: configActive ? 600 : 400, color: configActive ? C.brand : C.textDefault }}>
-                  {t('sidebar.configuration')}
-                </span>
-              </div>
-              {configOpen
-                ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
-                : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
-            </div>
-            {configOpen && (
-              <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                {CONFIG_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => (
-                  <NavLink key={to} to={to} style={({ isActive }) => subItemStyle(isActive)}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                      {t(labelKey)}
-                    </span>
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
+        {/* Configuration — admin only (routes are admin(...) in main.tsx) */}
+        {isAdmin && (
+          <SidebarGroup title={t('sidebar.configuration')} icon={SlidersHorizontal} active={configActive} open={configOpen} onToggle={toggleConfig} collapsed={collapsed} collapsedTo="/workflow">
+            {CONFIG_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+          </SidebarGroup>
         )}
 
         {/* Admin items + Settings */}
@@ -558,62 +347,9 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
             })}
 
             {/* Settings — collapsible, dentro ADMIN */}
-            {collapsed ? (
-              <NavLink
-                to="/settings/notifications"
-                title={t('sidebar.settings')}
-                style={navItemStyle(settingsActive, true)}
-                className="hover-bg"
-              >
-                <Settings size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-              </NavLink>
-            ) : (
-              <div style={{ marginBottom: 2 }}>
-                <div
-                  onClick={() => setSettingsOpen((p) => !p)}
-                  style={parentGroupStyle(settingsActive)}
-                  className="hover-bg"
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Settings size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                    <span style={{ fontSize: 'var(--font-size-body)', fontWeight: settingsActive ? 600 : 400, color: settingsActive ? C.brand : C.textDefault }}>
-                      {t('sidebar.settings')}
-                    </span>
-                  </div>
-                  {settingsOpen
-                    ? <ChevronDown size={12} aria-hidden="true" color={C.textChevron} />
-                    : <ChevronRight size={12} aria-hidden="true" color={C.textChevron} />}
-                </div>
-                {settingsOpen && (
-                  <div style={{ paddingLeft: 28, marginTop: 2 }}>
-                    <NavLink to="/settings/notifications" style={({ isActive }) => subItemStyle(isActive)}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Bell size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                        {t('sidebar.notificationChannels')}
-                      </span>
-                    </NavLink>
-                    <NavLink to="/settings/notification-rules" style={({ isActive }) => subItemStyle(isActive)}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Bell size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                        {t('sidebar.notificationRules')}
-                      </span>
-                    </NavLink>
-                    <NavLink to="/settings/sync" style={({ isActive }) => subItemStyle(isActive)}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Activity size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                        {t('sidebar.cmdbSync')}
-                      </span>
-                    </NavLink>
-                    <NavLink to="/admin/queues" style={({ isActive }) => subItemStyle(isActive)}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Activity size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                        {t('sidebar.bullBoard')}
-                      </span>
-                    </NavLink>
-                  </div>
-                )}
-              </div>
-            )}
+            <SidebarGroup title={t('sidebar.settings')} icon={Settings} active={settingsActive} open={settingsOpen} onToggle={toggleSettings} collapsed={collapsed} collapsedTo="/settings/notifications">
+              {SETTINGS_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+            </SidebarGroup>
           </>
         )}
       </nav>

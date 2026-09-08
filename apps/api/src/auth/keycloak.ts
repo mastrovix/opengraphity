@@ -1,12 +1,14 @@
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
 import { authLogger as logger } from '../lib/logger.js'
+import { config } from '../lib/config.js'
 
 /**
  * Internal Keycloak URL used for server-to-server calls (JWKS fetch).
  * Inside Docker this is http://keycloak:8080; in local dev it equals the public URL.
+ * (config.keycloakUrl — required in production, no localhost default there.)
  */
-const KEYCLOAK_INTERNAL_URL = process.env['KEYCLOAK_URL']        ?? 'http://localhost:8080'
+const KEYCLOAK_INTERNAL_URL = config.keycloakUrl
 
 /**
  * Public Keycloak URL(s) that browsers use.  Tokens issued to browsers carry the
@@ -16,10 +18,7 @@ const KEYCLOAK_INTERNAL_URL = process.env['KEYCLOAK_URL']        ?? 'http://loca
  * We must NOT use these for server-side JWKS fetch inside Docker because
  * `localhost` inside a container resolves to the container itself.
  */
-const KEYCLOAK_PUBLIC_URLS = (process.env['KEYCLOAK_PUBLIC_URL'] ?? KEYCLOAK_INTERNAL_URL)
-  .split(',')
-  .map((u) => u.trim())
-  .filter((u) => u.length > 0)
+const KEYCLOAK_PUBLIC_URLS = config.keycloakPublicUrls
 
 /** Per-issuer JWKS client cache — one entry per tenant */
 const clientCache = new Map<string, ReturnType<typeof jwksClient>>()

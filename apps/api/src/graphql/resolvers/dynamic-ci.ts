@@ -1,6 +1,6 @@
 import { withSession } from './ci-utils.js'
-import { getSession } from '@opengraphity/neo4j'
-import { neo4jDateToISO } from '../../lib/mappers.js'
+import { getSession, toNumber } from '@opengraphity/neo4j'
+import { neo4jDateToISO, toSnakeCase } from '../../lib/mappers.js'
 import { toPascalCase, pluralize } from '@opengraphity/schema-generator'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
@@ -12,14 +12,6 @@ import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeF
 import { requireAdmin, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations } from './ciTypeMetamodel.js'
 
 type Props = Record<string, unknown>
-
-// Neo4j count() arriva qui come number nativo (il wrapper getSession converte gli
-// Integer) ma può anche essere un Integer con toNumber(): gestiamo entrambi. Senza
-// il ramo Number() il totale cadeva sempre a 0 (bug conteggio liste CI).
-function toInt(v: unknown): number {
-  const n = (v as { toNumber?: () => number })?.toNumber?.()
-  return typeof n === 'number' ? n : Number(v ?? 0)
-}
 
 // ── mapCI ────────────────────────────────────────────────────────────────────
 
@@ -48,12 +40,6 @@ function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unkn
   }
 
   return base
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function toSnakeCase(str: string): string {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
 }
 
 // ── Query generiche ───────────────────────────────────────────────────────────
@@ -109,7 +95,7 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
           const t = types.find(t => t.neo4jLabel === label)
           return t ? mapCI(props, t) : null
         }).filter(Boolean),
-        total: toInt(countResult.records[0]?.get('total')),
+        total: toNumber(countResult.records[0]?.get('total')),
       }
     } catch (err) {
       await Promise.allSettled([s1.close(), s2.close()])
@@ -156,7 +142,7 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
         const props = rec.get('props') as Props
         const label = rec.get('label') as string
         const rawDist = rec.get('distance')
-        const distance = typeof rawDist === 'number' ? rawDist : typeof (rawDist as { toNumber?: () => number })?.toNumber === 'function' ? (rawDist as { toNumber: () => number }).toNumber() : Number(rawDist)
+        const distance = toNumber(rawDist)
         const parentProps = rec.get('parentProps') as Props | null
         const t = types.find(t => t.neo4jLabel === label)
         if (!t) return null
@@ -235,7 +221,7 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
             ci['_prefetched']   = true
             return ci
           }),
-          total: toInt(count.records[0]?.get('total')),
+          total: toNumber(count.records[0]?.get('total')),
         }
         cache.set(cacheKey, result, 30)
         return result

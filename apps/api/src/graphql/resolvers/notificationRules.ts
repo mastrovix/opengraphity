@@ -1,17 +1,17 @@
 import { GraphQLError } from 'graphql'
 import { randomUUID } from 'crypto'
-import { Queue } from 'bullmq'
+import type { Queue } from 'bullmq'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { invalidateRuleCache } from '@opengraphity/notifications'
 import { validateEnum } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
-import { getRedisOptions } from '@opengraphity/events'
+import { getQueue } from '../../lib/bullmq.js'
 
 // Shared queue for notification jobs
 let _notifQueue: Queue | null = null
 function getNotifQueue(): Queue {
-  if (!_notifQueue) _notifQueue = new Queue('notification-jobs', { connection: getRedisOptions() })
+  if (!_notifQueue) _notifQueue = getQueue('notification-jobs')
   return _notifQueue
 }
 

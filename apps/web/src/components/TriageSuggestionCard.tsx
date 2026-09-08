@@ -1,6 +1,8 @@
 import { gql } from '@apollo/client'
 import { useLazyQuery } from '@apollo/client/react'
 import { Sparkles } from 'lucide-react'
+import { lookupOrError } from '@/lib/tokens'
+import { SeverityBadge } from '@/components/ui/badges'
 
 const TRIAGE_SUGGESTION = gql`
   query TriageSuggestion($title: String!, $description: String, $ciIds: [ID!]) {
@@ -55,7 +57,7 @@ export function TriageSuggestionCard({
   })
 
   const s = data?.triageSuggestion
-  const conf = s ? (CONF_LABEL[s.confidence] ?? { label: s.confidence, bg: 'var(--color-danger)', color: '#fff' }) : null
+  const conf = s ? lookupOrError(CONF_LABEL, s.confidence, 'CONF_LABEL', { label: s.confidence, bg: 'var(--color-danger)', color: '#fff' }) : null
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -94,8 +96,8 @@ export function TriageSuggestionCard({
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-            <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: '#fff', border: '1px solid #e5e7eb' }}>
-              Severity: <strong>{s.severity}</strong>
+            <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: '#fff', border: '1px solid #e5e7eb', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              Severity: <SeverityBadge value={s.severity} />
             </span>
             <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: '#fff', border: '1px solid #e5e7eb' }}>
               Categoria: <strong>{s.category}</strong>

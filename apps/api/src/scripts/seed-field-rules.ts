@@ -1,34 +1,16 @@
 /**
- * Seed field visibility and requirement rules for the c-one tenant.
+ * Seed field visibility and requirement rules for a tenant (idempotent MERGE).
  *
  * Usage:
- *   pnpm tsx apps/api/src/scripts/seed-field-rules.ts [--tenant-id <uuid>]
+ *   pnpm --filter @opengraphity/api seed:field-rules -- --tenant=<slug>
  *
- * If --tenant-id is not provided, looks up the first tenant with slug "c-one".
+ * The tenant is mandatory (no default, no slug lookup): Tenant.id = slug.
  */
 
-import { parseArgs } from 'node:util'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
-
-const { values: args } = parseArgs({
-  options: { 'tenant-id': { type: 'string' } },
-})
-
-async function resolveTenantId(provided?: string): Promise<string> {
-  if (provided) return provided
-  const session = getSession()
-  try {
-    const res = await session.executeRead((tx) =>
-      tx.run(`MATCH (t:Tenant {slug: 'c-one'}) RETURN t.id AS id LIMIT 1`),
-    )
-    const id = res.records[0]?.get('id') as string | null
-    if (!id) throw new Error('Tenant "c-one" not found. Pass --tenant-id explicitly.')
-    return id
-  } finally {
-    await session.close()
-  }
-}
+import { resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 interface VisibilityRule {
   entityType:   string
@@ -146,7 +128,7 @@ async function seedRequirementRule(tenantId: string, rule: RequirementRule): Pro
 }
 
 async function main() {
-  const tenantId = await resolveTenantId(args['tenant-id'])
+  const tenantId = resolveTenantArg()
   process.stdout.write(`Seeding field rules for tenant ${tenantId}…\n\n`)
 
   for (const rule of VISIBILITY_RULES) {
@@ -157,10 +139,6 @@ async function main() {
   }
 
   process.stdout.write('\nDone.\n')
-  process.exit(0)
 }
 
-main().catch((err) => {
-  process.stderr.write(`Error: ${(err as Error).message}\n`)
-  process.exit(1)
-})
+runScript('seed-field-rules', main)

@@ -8,10 +8,8 @@ import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import { Pill } from '@/components/ui/Pill'
 import { Button } from '@/components/Button'
 import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
-
-// Same base-URL convention as clientLogger: VITE_API_URL points at the GraphQL
-// endpoint; strip the /graphql suffix. Unset → relative (nginx proxies /api).
-const API_BASE = import.meta.env['VITE_API_URL']?.replace('/graphql', '') ?? ''
+import { apiUrl } from '@/lib/apiBase'
+import { useConfirm } from '@/hooks/useConfirm'
 
 // ── Types (REST contract /api/v1/import/*) ────────────────────────────────────
 
@@ -63,6 +61,7 @@ function toIssueRows(issues: ImportIssue[]): IssueRow[] {
 
 export function ImportTab() {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // The API key lives only in component state (session-only, never persisted).
@@ -90,7 +89,7 @@ export function ImportTab() {
     try {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch(`${API_BASE}/api/v1/import/${entityType}?dryRun=${dryRun}`, {
+      const res = await fetch(apiUrl(`/api/v1/import/${entityType}?dryRun=${dryRun}`), {
         method:  'POST',
         headers: { 'X-API-Key': apiKey },
         body:    form,
@@ -115,10 +114,10 @@ export function ImportTab() {
     }
   }
 
-  function handleImportClick() {
+  async function handleImportClick() {
     if (!report || reportKind !== 'dry') return
     if (report.errors.length > 0) {
-      const ok = confirm(t('pages.import.confirmErrors', { count: report.errors.length }))
+      const ok = await confirm({ title: t('pages.import.import'), body: t('pages.import.confirmErrors', { count: report.errors.length }) })
       if (!ok) return
     }
     void runImport(false)

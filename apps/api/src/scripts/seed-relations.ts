@@ -1,7 +1,18 @@
+/**
+ * Seed demo delle relazioni DEPENDS_ON / HOSTED_ON tra APP-*, DB-*, DBINST-* e server.
+ *
+ * DISTRUTTIVO: prima di ricreare, CANCELLA tutte le relazioni DEPENDS_ON/HOSTED_ON
+ * uscenti dai CI del tenant con nome APP-*, DB-*, DBINST-*. Per questo:
+ *   - tenant obbligatorio (--tenant=<slug>), nessun default;
+ *   - conferma esplicita --yes-delete;
+ *   - rifiutato con NODE_ENV=production.
+ *
+ * Uso: pnpm --filter @opengraphity/api seed:relations -- --tenant=<slug> --yes-delete
+ */
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, requireConfirmFlag, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
@@ -13,7 +24,7 @@ function randomSubset<T>(arr: T[], min: number, max: number): T[] {
   return shuffled.slice(0, Math.min(n, shuffled.length))
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   // ── STEP 1: Load existing CIs ─────────────────────────────────────────────
@@ -144,4 +155,9 @@ async function seed() {
   console.log(`  Total new relations            : ${dbToInst + instToSrv + appToSrv + appToDB}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-relations', async () => {
+  refuseInProduction('seed-relations')
+  const tenantId = resolveTenantArg()
+  requireConfirmFlag('--yes-delete')
+  await seed(tenantId)
+})

@@ -50,6 +50,23 @@ export const colors = {
   },
 } as const
 
+// ── DARK CHROME (Sidebar / Topbar / GlobalSearch) ────────────────────────────
+// One palette for the three layout components (E-23): they used to declare
+// three different `C` objects with two different border colours.
+
+export const layoutPalette = {
+  bg:          v('--chrome-bg'),        // #3d4856
+  border:      v('--chrome-border'),    // #4f5e70 — dividers on the dark chrome
+  textDefault: v('--chrome-text'),      // #e2e8f0
+  textMuted:   v('--color-slate-light'),
+  textSection: v('--color-slate-light'),
+  textChevron: v('--color-slate-light'),
+  hoverBg:     v('--chrome-hover-bg'),  // rgba(255,255,255,0.08)
+  activeBg:    v('--chrome-hover-bg'),
+  inputBg:     v('--chrome-input-bg'),  // rgba(255,255,255,0.06)
+  brand:       v('--color-brand'),
+} as const
+
 // ── TYPOGRAPHY ───────────────────────────────────────────────────────────────
 
 export const fontFamily = v('--font-family')
@@ -63,6 +80,7 @@ export const fontSize = {
   table:        v('--font-size-table'),         // 12px
   label:        v('--font-size-label'),         // 12px
   small:        v('--font-size-small'),         // 11px
+  caption:      v('--font-size-caption'),       // 10px — dates, IDs, counts
 } as const
 
 export const fontWeight = {

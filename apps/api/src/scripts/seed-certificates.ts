@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 function pickEnvironment(): string {
   const r = Math.random()
@@ -33,7 +33,7 @@ function pickSubset<T>(arr: T[], n: number): T[] {
   return [...arr].sort(() => Math.random() - 0.5).slice(0, Math.min(n, arr.length))
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   const ownerResult = await session.run(
@@ -122,4 +122,7 @@ async function seed() {
   console.log(`\nDone. Created: ${created}, Skipped: ${skipped}`)
 }
 
-seed().catch(err => { console.error(err); process.exit(1) })
+runScript('seed-certificates', async () => {
+  refuseInProduction('seed-certificates')
+  await seed(resolveTenantArg())
+})

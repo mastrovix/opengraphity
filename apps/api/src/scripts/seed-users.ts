@@ -1,7 +1,14 @@
+/**
+ * Seed demo: 10 utenti con appartenenza ai team (MEMBER_OF).
+ * Idempotente: MERGE per (id, tenant_id); created_at impostato solo alla
+ * creazione (una riesecuzione non riscrive la data di audit).
+ *
+ * Uso: pnpm --filter @opengraphity/api seed:users -- --tenant=<slug>
+ * Richiede i team già presenti (seed:teams). Rifiutato con NODE_ENV=production.
+ */
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT = 'c-one'
-const now    = new Date().toISOString()
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 const USERS_WITH_TEAMS = [
   { id: 'user-001', name: 'Admin Demo',      email: 'admin@demo.opengraphity.io',          role: 'admin',    team: 'IT Operations' },
@@ -16,35 +23,46 @@ const USERS_WITH_TEAMS = [
   { id: 'user-010', name: 'Viewer Demo',     email: 'viewer@demo.opengraphity.io',          role: 'viewer',   team: 'IT Operations' },
 ]
 
-const session = getSession(undefined, 'WRITE')
-try {
-  const teamResult = await session.run(
-    'MATCH (t:Team {tenant_id: $tenantId}) RETURN t.id AS id, t.name AS name',
-    { tenantId: TENANT },
-  )
-  const teamMap: Record<string, string> = {}
-  teamResult.records.forEach((r) => { teamMap[r.get('name') as string] = r.get('id') as string })
-  console.log('Team trovati:', Object.keys(teamMap).join(', '))
+async function seed(TENANT: string): Promise<void> {
+  const now     = new Date().toISOString()
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const teamResult = await session.run(
+      'MATCH (t:Team {tenant_id: $tenantId}) RETURN t.id AS id, t.name AS name',
+      { tenantId: TENANT },
+    )
+    const teamMap: Record<string, string> = {}
+    teamResult.records.forEach((r) => { teamMap[r.get('name') as string] = r.get('id') as string })
+    console.log('Team trovati:', Object.keys(teamMap).join(', '))
 
-  for (const u of USERS_WITH_TEAMS) {
-    const teamId = teamMap[u.team]
-    if (!teamId) { console.warn(`Team non trovato: ${u.team}`); continue }
+    const missingTeams = [...new Set(USERS_WITH_TEAMS.map(u => u.team))].filter(t => !teamMap[t])
+    if (missingTeams.length) {
+      throw new Error(`Team mancanti nel tenant ${TENANT}: ${missingTeams.join(', ')} — eseguire prima seed:teams`)
+    }
 
-    await session.executeWrite((tx) => tx.run(`
-      MERGE (u:User {id: $id, tenant_id: $tenantId})
-      SET u.name       = $name,
-          u.email      = $email,
-          u.role       = $role,
-          u.created_at = $now,
-          u.updated_at = $now
-      WITH u
-      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-      MERGE (u)-[:MEMBER_OF]->(t)
-    `, { ...u, teamId, tenantId: TENANT, now }))
-    console.log(`✓ ${u.name} (${u.role}) → ${u.team}`)
+    for (const u of USERS_WITH_TEAMS) {
+      const teamId = teamMap[u.team]!
+      await session.executeWrite((tx) => tx.run(`
+        MERGE (u:User {id: $id, tenant_id: $tenantId})
+        ON CREATE SET u.created_at = $now
+        SET u.name       = $name,
+            u.email      = $email,
+            u.role       = $role,
+            u.updated_at = $now
+        WITH u
+        MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+        MERGE (u)-[:MEMBER_OF]->(t)
+      `, { ...u, teamId, tenantId: TENANT, now }))
+      console.log(`✓ ${u.name} (${u.role}) → ${u.team}`)
+    }
+
+    console.log(`\nSeed completato — ${USERS_WITH_TEAMS.length} utenti creati/aggiornati e associati ai team`)
+  } finally {
+    await session.close()
   }
-
-  console.log(`\nSeed completato — ${USERS_WITH_TEAMS.length} utenti creati e associati ai team`)
-} finally {
-  await session.close()
 }
+
+runScript('seed-users', async () => {
+  refuseInProduction('seed-users')
+  await seed(resolveTenantArg())
+})

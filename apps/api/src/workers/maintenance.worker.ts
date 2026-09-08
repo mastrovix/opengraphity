@@ -4,11 +4,12 @@ import { resolve }                from 'node:path'
 import { unlink }                 from 'node:fs/promises'
 import { runBackup }              from '../scripts/backup-neo4j.js'
 import { logger }                 from '../lib/logger.js'
+import { config }                 from '../lib/config.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
-const BACKUP_DIR      = resolve(process.env['BACKUP_DIR'] ?? './backups')
+const BACKUP_DIR      = config.backupDir   // absolute; required in production
 const RETENTION_COUNT = 7
 
 export const MAINTENANCE_QUEUE = 'maintenance'

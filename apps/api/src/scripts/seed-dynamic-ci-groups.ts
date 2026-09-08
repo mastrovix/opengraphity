@@ -5,12 +5,13 @@
  *    resolved live by the ciGroupMembers query — no HAS_MEMBER edges)
  *  - "Billing Stack": manual membership via HAS_MEMBER toward APP-003 and the
  *    databases it depends on (DTB-009, DTB-148)
- * Idempotent: MERGE by name + tenant. Usage: pnpm seed:dynamic-ci-groups
+ * Idempotent: MERGE by name + tenant. Usage: pnpm --filter @opengraphity/api seed:dynamic-ci-groups -- --tenant=<slug>
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const TENANT_ID = 'c-one'
 const now = new Date().toISOString()
 
 interface GroupSeed {
@@ -41,7 +42,7 @@ const GROUPS: GroupSeed[] = [
   },
 ]
 
-async function main() {
+async function main(TENANT_ID: string) {
   const session = getSession(undefined, 'WRITE')
   try {
     for (const g of GROUPS) {
@@ -76,4 +77,7 @@ async function main() {
   }
 }
 
-main().then(() => process.exit(0)).catch((err: unknown) => { console.error(err); process.exit(1) })
+runScript('seed-dynamic-ci-groups', async () => {
+  refuseInProduction('seed-dynamic-ci-groups')
+  await main(resolveTenantArg())
+})

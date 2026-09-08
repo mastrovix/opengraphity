@@ -238,7 +238,7 @@ function LogicConnector({
     <div style={{ display: 'flex', alignItems: 'center', padding: '4px 12px' }}>
       <div style={{ display: 'flex', borderRadius: 5, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
         {(['AND', 'OR'] as const).map((l) => (
-          <button
+          <button type="button"
             key={l}
             onClick={() => onChange(l)}
             style={{
@@ -320,7 +320,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
     <div className="card-border" style={{ marginBottom: 16, padding: '10px 14px' }}>
       {/* Header bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: open ? 10 : 0 }}>
-        <button
+        <button type="button"
           onClick={() => setOpen((v) => !v)}
           style={{
             display:         'flex',
@@ -351,7 +351,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
 
         {open && (
           <>
-            <button
+            <button type="button"
               onClick={addRule}
               style={{
                 display:         'flex',
@@ -372,7 +372,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
 
             <div style={{ flex: 1 }} />
 
-            <button
+            <button type="button"
               onClick={handleApply}
               style={{
                 padding:         '4px 14px',
@@ -388,7 +388,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
               {t('common.apply')}
             </button>
 
-            <button
+            <button type="button"
               onClick={handleReset}
               style={{
                 padding:         '4px 14px',
@@ -472,7 +472,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                     )}
 
                     {/* Remove */}
-                    <button
+                    <button type="button"
                       onClick={() => removeRule(rule.id)}
                       style={{
                         display:         'flex',

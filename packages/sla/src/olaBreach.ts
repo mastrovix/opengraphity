@@ -1,4 +1,4 @@
-import { getDriver } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 
 export interface OLAContractLite {
   id: string
@@ -17,18 +17,12 @@ const OLA_RESOLVED_FIELD: Record<string, { label: string; field: string }> = {
   change:          { label: 'Change',         field: 'completed_at' },
 }
 
-function toInt(v: unknown): number {
-  if (v == null) return 0
-  if (typeof (v as { toNumber?: () => number }).toNumber === 'function') return (v as { toNumber: () => number }).toNumber()
-  return Number(v)
-}
-
 /**
  * Active OLA/UC contracts covering an entity type (its own type or 'any').
  * Used to schedule proactive breach checks when the entity is created.
  */
 export async function getActiveOLAContractsFor(tenantId: string, entityType: string): Promise<OLAContractLite[]> {
-  const session = getDriver().session({ defaultAccessMode: 'READ' as const })
+  const session = getSession(undefined, 'READ')
   try {
     const res = await session.executeRead((tx) =>
       tx.run(`
@@ -42,7 +36,7 @@ export async function getActiveOLAContractsFor(tenantId: string, entityType: str
       id:              r.get('id')   as string,
       name:            r.get('name') as string,
       type:            r.get('type') as string,
-      resolve_minutes: toInt(r.get('resolveMinutes')),
+      resolve_minutes: toNumber(r.get('resolveMinutes')),
       business_hours:  r.get('businessHours') as boolean,
     }))
   } finally {
@@ -58,7 +52,7 @@ export async function getActiveOLAContractsFor(tenantId: string, entityType: str
 export async function isEntityResolved(tenantId: string, entityType: string, entityId: string): Promise<boolean> {
   const mapping = OLA_RESOLVED_FIELD[entityType]
   if (!mapping) return false
-  const session = getDriver().session({ defaultAccessMode: 'READ' as const })
+  const session = getSession(undefined, 'READ')
   try {
     const res = await session.executeRead((tx) =>
       tx.run(`

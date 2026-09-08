@@ -21,7 +21,7 @@ import {
   GET_CHANGE,
   GET_CHANGE_AFFECTED_CIS,
   GET_QUESTION_CATALOG,
-  GET_USERS,
+  GET_TEAM_DETAIL,
 } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
 import {
@@ -73,7 +73,6 @@ export function TaskViewPage() {
   const { data: techCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.TECHNICAL }, skip: !task || (task.kind !== 'assessment') })
   const { me } = useMe()
   const meData: { me: MeData | null } = { me }
-  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; teams: { id: string }[] }> }>(GET_USERS, { variables: { sortField: 'name', sortDirection: 'asc' }, fetchPolicy: 'cache-first' })
   const { byName: changeStepByName } = useWorkflowSteps('change')
 
   const change = changeData?.change
@@ -83,9 +82,15 @@ export function TaskViewPage() {
   const userTeamIds = new Set((meData?.me?.teams ?? []).map(t => t.id))
   const currentUserId = meData?.me?.id ?? null
 
+  // Team assegnatario del task assegnabile (assessment/deploy-plan): si caricano solo i suoi membri,
+  // non l'intera anagrafica utenti.
+  const assignableTeamId = task?.kind === 'assessment'
+    ? ((ciAffected?.assessmentOwner?.id === id ? ciAffected?.assessmentOwner : ciAffected?.assessmentSupport?.id === id ? ciAffected?.assessmentSupport : null)?.assignedTeam?.id ?? null)
+    : task?.kind === 'deploy-plan' ? (ciAffected?.deployPlan?.assignedTeam?.id ?? null) : null
+  const { data: teamData } = useQuery<{ team: { id: string; members: Array<{ id: string; name: string }> } | null }>(GET_TEAM_DETAIL, { variables: { id: assignableTeamId ?? '' }, skip: !assignableTeamId, fetchPolicy: 'cache-first' })
   const getTeamUsers = (teamId: string | null | undefined): Array<{ id: string; name: string }> => {
-    if (!teamId) return []
-    return (usersData?.users ?? []).filter(u => u.teams.some(t => t.id === teamId)).map(u => ({ id: u.id, name: u.name }))
+    if (!teamId || teamId !== assignableTeamId) return []
+    return (teamData?.team?.members ?? []).map(u => ({ id: u.id, name: u.name }))
   }
 
   const refetchAll = async () => { await refetchAffected() }

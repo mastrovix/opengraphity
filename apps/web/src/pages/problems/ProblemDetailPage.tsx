@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirm } from '@/hooks/useConfirm'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -120,6 +121,7 @@ interface User  { id: string; name: string; email: string; teams: { id: string; 
 
 export function ProblemDetailPage() {
   const { t }    = useTranslation()
+  const confirm  = useConfirm()
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -322,9 +324,9 @@ export function ProblemDetailPage() {
           disabled={deleting}
           icon={<Trash2 size={13} />}
           onClick={() => {
-            if (confirm(`Eliminare definitivamente il problem ${problem.number || ''}? L'operazione non è reversibile.`)) {
-              void deleteProblem({ variables: { id: problem.id } })
-            }
+            void confirm({ title: `Eliminare definitivamente il problem ${problem.number || ''}?`, body: t('confirm.irreversible'), danger: true }).then((ok) => {
+              if (ok) void deleteProblem({ variables: { id: problem.id } })
+            })
           }}
         >
           Elimina

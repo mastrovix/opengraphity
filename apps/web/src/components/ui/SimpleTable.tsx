@@ -22,7 +22,7 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+        <tr style={{ borderBottom: '1px solid var(--border)' }}>
           {columns.map((c) => (
             <th key={c.key} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em', width: c.width }}>
               {c.label}
@@ -35,6 +35,9 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
           <tr
             key={row.id}
             onClick={onRowClick ? () => onRowClick(row) : undefined}
+            // Clickable rows are reachable and activatable from the keyboard (E-14).
+            tabIndex={onRowClick ? 0 : undefined}
+            onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) } } : undefined}
             className={onRowClick ? 'hover-bg' : undefined}
             style={{ cursor: onRowClick ? 'pointer' : undefined, borderBottom: '1px solid #f3f4f6' }}
           >

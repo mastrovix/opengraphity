@@ -13,6 +13,7 @@
  * propagates. Callers (BullMQ worker, backfill) fail the job loudly.
  */
 import { logger } from '../lib/logger.js'
+import { config, type EmbeddingsProvider } from '../lib/config.js'
 
 export interface Embedder {
   readonly provider: string
@@ -36,7 +37,7 @@ let localPipeline: Promise<FeaturePipeline> | null = null
 function getLocalPipeline(): Promise<FeaturePipeline> {
   localPipeline ??= (async () => {
     const { pipeline, env } = await import('@xenova/transformers')
-    env.cacheDir = process.env['TRANSFORMERS_CACHE'] ?? './data/models'
+    env.cacheDir = config.transformersCache
     logger.info({ model: LOCAL_MODEL, cacheDir: env.cacheDir }, '[embeddings] loading local model')
     const t0 = Date.now()
     const pipe = (await pipeline('feature-extraction', LOCAL_MODEL)) as unknown as FeaturePipeline
@@ -71,7 +72,7 @@ const voyageEmbedder: Embedder = {
   model: VOYAGE_MODEL,
   dimensions: VOYAGE_DIMENSIONS,
   async embed(texts: string[]): Promise<number[][]> {
-    const apiKey = process.env['VOYAGE_API_KEY']
+    const apiKey = config.voyageApiKey
     if (!apiKey) throw new Error('[embeddings] EMBEDDINGS_PROVIDER=voyage but VOYAGE_API_KEY is not set')
     const res = await fetch('https://api.voyageai.com/v1/embeddings', {
       method: 'POST',
@@ -89,12 +90,11 @@ const voyageEmbedder: Embedder = {
 // ── Provider selection ───────────────────────────────────────────────────────
 
 export function getEmbedder(): Embedder {
-  const provider = process.env['EMBEDDINGS_PROVIDER'] ?? 'local'
+  // config.embeddingsProvider already rejects anything but local|voyage.
+  const provider: EmbeddingsProvider = config.embeddingsProvider
   switch (provider) {
     case 'local':  return localEmbedder
     case 'voyage': return voyageEmbedder
-    default:
-      throw new Error(`[embeddings] Unknown EMBEDDINGS_PROVIDER: ${provider} (valid: local, voyage)`)
   }
 }
 

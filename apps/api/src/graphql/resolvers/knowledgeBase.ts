@@ -1,6 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
@@ -46,14 +46,6 @@ interface KBArticleVersion {
   editedAt:     string
 }
 
-function toInt(v: unknown): number {
-  if (v == null) return 0
-  if (typeof (v as { toNumber(): number }).toNumber === 'function') {
-    return (v as { toNumber(): number }).toNumber()
-  }
-  return Number(v)
-}
-
 export function mapArticle(r: { get: (k: string) => unknown }): KBArticle {
   return {
     id:                 r.get('id')                 as string,
@@ -65,15 +57,15 @@ export function mapArticle(r: { get: (k: string) => unknown }): KBArticle {
     status:             r.get('status')             as string,
     authorId:           r.get('authorId')           as string,
     authorName:         r.get('authorName')         as string,
-    views:              toInt(r.get('views')),
-    helpfulCount:       toInt(r.get('helpfulCount')),
-    notHelpfulCount:    toInt(r.get('notHelpfulCount')),
+    views:              toNumber(r.get('views')),
+    helpfulCount:       toNumber(r.get('helpfulCount')),
+    notHelpfulCount:    toNumber(r.get('notHelpfulCount')),
     createdAt:          r.get('createdAt')          as string,
     updatedAt:          r.get('updatedAt')          as string,
     publishedAt:        r.get('publishedAt')        as string | null,
     workflowInstanceId: (r.get('workflowInstanceId') ?? null) as string | null,
     currentStep:        (r.get('currentStep')        ?? null) as string | null,
-    version:            toInt(r.get('version')) || 1,
+    version:            toNumber(r.get('version')) || 1,
     lastEditedByName:   (r.get('lastEditedByName')   ?? null) as string | null,
   }
 }
@@ -158,7 +150,7 @@ export async function kbArticles(
       RETURN count(a) AS total
     `, params))
 
-    const total = toInt(countRes.records[0]?.get('total'))
+    const total = toNumber(countRes.records[0]?.get('total'))
     return { items: dataRes.records.map(mapArticle), total }
   } finally {
     await session.close()
@@ -226,7 +218,7 @@ export async function kbCategories(
     `, { tenantId: ctx.tenantId }))
     return res.records.map((r) => ({
       name:  r.get('name')  as string,
-      count: toInt(r.get('count')),
+      count: toNumber(r.get('count')),
     }))
   } finally {
     await session.close()
@@ -493,7 +485,7 @@ export async function kbArticleVersions(
       ORDER BY v.version DESC
     `, { articleId: args.articleId, tenantId: ctx.tenantId }))
     return res.records.map((r) => ({
-      version:      toInt(r.get('version')),
+      version:      toNumber(r.get('version')),
       title:        r.get('title')    as string,
       body:         r.get('body')     as string,
       category:     r.get('category') as string,

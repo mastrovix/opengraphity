@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import pino from 'pino'
+import { toNumber as neo4jToNumber } from '@opengraphity/neo4j'
 import type {
   WorkflowInstance,
   WorkflowActionConfig,
@@ -32,13 +33,8 @@ export const ENTITY_LABELS: Record<string, string> = {
   kb_article:      'KBArticle',
 }
 
-/** Neo4j Integer (o numero nativo) → number. */
-function toNumber(raw: unknown): number {
-  if (raw == null) return 0
-  if (typeof raw === 'number') return raw
-  const maybe = raw as { toNumber?: () => number }
-  return typeof maybe.toNumber === 'function' ? maybe.toNumber() : Number(raw)
-}
+// Neo4j Integer (o numero nativo) → number: helper unico di @opengraphity/neo4j (D-22).
+const toNumber = neo4jToNumber
 
 function fail(error: string): TransitionResult {
   return { success: false, error } as unknown as TransitionResult
@@ -433,8 +429,8 @@ export class WorkflowEngine {
       } else if (nextStepType === 'timer_wait') {
         try {
           const { Queue } = await import('bullmq')
-          const { getRedisOptions } = await import('@opengraphity/events')
-          const queue = new Queue('notification-jobs', { connection: getRedisOptions() })
+          const { getRedisConnection } = await import('@opengraphity/events')
+          const queue = new Queue('notification-jobs', { connection: getRedisConnection() })
           const nextTransRes = await session.executeRead(tx =>
             tx.run(`
               MATCH (step:WorkflowStep {id: $stepId})-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(nextStep:WorkflowStep)

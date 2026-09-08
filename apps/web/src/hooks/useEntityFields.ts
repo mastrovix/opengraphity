@@ -1,11 +1,79 @@
 /**
- * Builds FilterBuilder FieldConfig[] dynamically from GraphQL schema introspection.
- * No hardcoded enum values — status/severity/priority/type are now proper GraphQL
- * enums, so their values come directly from the schema via __type introspection.
+ * Campi di un'entità, in due forme:
+ *
+ *  - `useEntityFields(typeName)`: FieldConfig[] per FilterBuilder, da
+ *    introspezione GraphQL (`__type`) — enum e date dallo schema.
+ *  - `useEntityFieldMetas(entityType)`: FieldMeta[] dal METAMODELLO
+ *    (GET_ITIL_TYPES / GET_CI_TYPES) per gli editor di automazione. Prima
+ *    esisteva in tre varianti quasi identiche (ConditionRowEditor,
+ *    ActionParamsEditor, AutomationPreview).
  */
+import { useMemo } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import type { FieldConfig } from '@/components/FilterBuilder'
+import { GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
+import { isITILEntity } from '@/lib/automationOperators'
+
+// ── Metamodel field metas (automazione) ──────────────────────────────────────
+
+export interface FieldMeta {
+  name:       string
+  label:      string
+  fieldType:  string
+  enumValues: string[]
+}
+
+interface TypeDef {
+  name:   string
+  fields: { name: string; label: string; fieldType: string; enumValues?: string[] | null }[]
+}
+
+/** Campi "virtuali" di relazione, offerti oltre a quelli del tipo. */
+const VIRTUAL_RELATION_FIELDS: FieldMeta[] = [
+  { name: 'assigned_to',   label: 'Assegnato a',    fieldType: 'user', enumValues: [] },
+  { name: 'assigned_team', label: 'Team assegnato', fieldType: 'team', enumValues: [] },
+]
+
+/**
+ * Campi del tipo `entityType` (ITIL o CI) dal metamodello. `withVirtual`
+ * aggiunge assigned_to/assigned_team se il tipo non li dichiara già.
+ * Tipo non trovato → lista vuota + `error` (non un silenzio).
+ */
+export function useEntityFieldMetas(entityType: string, { withVirtual = true }: { withVirtual?: boolean } = {}): { fields: FieldMeta[]; error: string | null } {
+  const isITIL = isITILEntity(entityType)
+  const { data: itilData, error: itilErr } = useQuery(GET_ITIL_TYPES, { skip: !isITIL || !entityType, fetchPolicy: 'cache-first' })
+  const { data: ciData,   error: ciErr   } = useQuery(GET_CI_TYPES,   { skip: isITIL  || !entityType, fetchPolicy: 'cache-first' })
+
+  return useMemo(() => {
+    if (!entityType) return { fields: [], error: null }
+    const qErr = (isITIL ? itilErr : ciErr)
+    if (qErr) return { fields: [], error: qErr.message }
+    const types = isITIL
+      ? (itilData as { itilTypes?: TypeDef[] } | undefined)?.itilTypes
+      : (ciData   as { ciTypes?:   TypeDef[] } | undefined)?.ciTypes
+    if (!types) return { fields: [], error: null }   // in caricamento
+    const typeDef = types.find(t => t.name === entityType)
+    if (!typeDef) return { fields: [], error: `tipo "${entityType}" non presente nel metamodello` }
+    const fields: FieldMeta[] = typeDef.fields.map(f => ({
+      name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [],
+    }))
+    if (withVirtual) {
+      for (const v of VIRTUAL_RELATION_FIELDS) {
+        if (!fields.find(f => f.name === v.name)) fields.push(v)
+      }
+    }
+    return { fields, error: null }
+  }, [isITIL, entityType, itilData, ciData, itilErr, ciErr, withVirtual])
+}
+
+/** Stessi campi, indicizzati per nome (anteprime/lookup). */
+export function useEntityFieldLookup(entityType: string): Map<string, FieldMeta> {
+  const { fields } = useEntityFieldMetas(entityType)
+  return useMemo(() => new Map(fields.map(f => [f.name, f])), [fields])
+}
+
+// ── Introspection (FilterBuilder) ────────────────────────────────────────────
 
 // ── Introspection query ───────────────────────────────────────────────────────
 

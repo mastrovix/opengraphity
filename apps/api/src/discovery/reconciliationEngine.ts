@@ -11,6 +11,7 @@ import { applyMappingRules, inferCIType, normalizeProperties } from '@opengraphi
 import { logger } from '../lib/logger.js'
 import { FIELD_NAME_RE } from '../lib/cypherIdentifiers.js'
 import { ValidationError } from '../lib/errors.js'
+import { toNum } from './connectors/normalize.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -440,6 +441,6 @@ export async function markStale(
        RETURN count(ci) AS n`,
       { sourceId, tenantId, seenIds: Array.from(seenIds), now: new Date().toISOString() },
     ))
-    return (result.records[0]?.get('n') as { toNumber(): number } | undefined)?.toNumber() ?? 0
+    return toNum(result.records[0]?.get('n')) ?? 0
   }, true)
 }

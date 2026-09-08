@@ -11,46 +11,13 @@ import {
   GET_ANOMALIES, GET_ANOMALY_STATS, GET_ANOMALY_SCAN_STATUS,
   RESOLVE_ANOMALY, RUN_ANOMALY_SCANNER,
 } from '@/graphql/queries'
-import { colors } from '@/lib/tokens'
+import { colors, lookupOrError } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
+import { ciTypeLabelKey } from '@/lib/ciEnums'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { DetailPanel } from './AnomalyDetail'
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-export interface Anomaly {
-  id:               string
-  ruleKey:          string
-  title:            string
-  severity:         string
-  status:           string
-  entityId:         string
-  entityType:       string
-  entitySubtype:    string
-  entityName:       string
-  description:      string
-  detectedAt:       string
-  resolvedAt:       string | null
-  resolutionStatus: string | null
-  resolutionNote:   string | null
-  resolvedBy:       string | null
-}
-
-interface AnomalyStats {
-  total:         number
-  open:          number
-  critical:      number
-  high:          number
-  medium:        number
-  low:           number
-  falsePositive: number
-  acceptedRisk:  number
-}
-
-interface AnomalyScanStatus {
-  lastScanAt:  string | null
-  totalScans:  number
-}
+import type { Anomaly, AnomalyStats, AnomalyScanStatus } from '@/types/anomaly'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -62,13 +29,10 @@ const PAGE_SIZE = 10
 const SCAN_POLL_MS    = 2_000
 const SCAN_TIMEOUT_MS = 120_000
 
-// CI_TYPE_LABEL is used inside components that receive t() — kept as a key lookup
-export const CI_TYPE_KEYS: Record<string, string> = {
-  application:       'sidebar.application',
-  database:          'sidebar.database',
-  database_instance: 'sidebar.dbInstance',
-  server:            'sidebar.server',
-  certificate:       'sidebar.certificate',
+/** Etichetta del tipo CI dell'entità: chiave i18n fissa (lib/ciEnums) o il nome grezzo. */
+export function anomalyEntityTypeLabel(t: (k: string) => string, a: Pick<Anomaly, 'entitySubtype' | 'entityType'>): string {
+  const key = ciTypeLabelKey(a.entitySubtype)
+  return key ? t(key) : (a.entitySubtype ?? a.entityType)
 }
 
 export const RULE_LABEL_KEYS: Record<string, string> = {
@@ -93,24 +57,20 @@ export const RULE_SUGGESTION_KEYS: Record<string, string> = {
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
+const ANOMALY_STATUS_STYLE: Record<string, { color: string; weight: number; labelKey: string }> = {
+  open:           { color: colors.danger,     weight: 600, labelKey: 'pages.anomalies.statusOpen' },
+  resolved:       { color: colors.success,    weight: 500, labelKey: 'pages.anomalies.statusResolved' },
+  false_positive: { color: colors.slateLight, weight: 400, labelKey: 'pages.anomalies.statusFalsePositive' },
+  accepted_risk:  { color: colors.slateLight, weight: 400, labelKey: 'pages.anomalies.statusAcceptedRisk' },
+}
+
 export function AnomalyStatusBadge({ value }: { value: string }) {
   const { t } = useTranslation()
-  const map: Record<string, { color: string; weight?: number }> = {
-    open:           { color: colors.danger,     weight: 600 },
-    resolved:       { color: colors.success,    weight: 500 },
-    false_positive: { color: colors.slateLight, weight: 400 },
-    accepted_risk:  { color: colors.slateLight, weight: 400 },
-  }
-  const labelMap: Record<string, string> = {
-    open:           t('pages.anomalies.statusOpen'),
-    resolved:       t('pages.anomalies.statusResolved'),
-    false_positive: t('pages.anomalies.statusFalsePositive'),
-    accepted_risk:  t('pages.anomalies.statusAcceptedRisk'),
-  }
-  const s = map[value] ?? { color: colors.slate, weight: 400 }
+  // Stato fuori vocabolario: rosso e loggato, non un grigio "plausibile".
+  const s = lookupOrError(ANOMALY_STATUS_STYLE, value, 'ANOMALY_STATUS_STYLE', { color: colors.danger, weight: 700, labelKey: '' })
   return (
     <span style={{ fontSize: 'var(--font-size-body)', fontWeight: s.weight, color: s.color }}>
-      {labelMap[value] ?? value}
+      {s.labelKey ? t(s.labelKey) : `?${value}`}
     </span>
   )
 }
@@ -160,7 +120,7 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
     )
   }
 
-  const lastScan = new Date(scanStatus.lastScanAt!).toLocaleString()
+  const lastScan = formatDateTime(scanStatus.lastScanAt)
   return (
     <div style={{ textAlign: 'center', padding: '56px 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
@@ -220,7 +180,7 @@ export function AnomalyPage() {
         <div>
           <div style={{ color: 'var(--color-slate-dark)' }}>{String(v)}</div>
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            {CI_TYPE_KEYS[row.entitySubtype] ? t(CI_TYPE_KEYS[row.entitySubtype]) : (row.entitySubtype ?? row.entityType)}
+            {anomalyEntityTypeLabel(t, row)}
           </div>
         </div>
       ),
@@ -232,7 +192,7 @@ export function AnomalyPage() {
       sortable: true,
       render:   (v) => (
         <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
-          {new Date(String(v)).toLocaleString()}
+          {formatDateTime(String(v))}
         </span>
       ),
     },

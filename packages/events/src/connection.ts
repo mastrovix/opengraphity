@@ -1,16 +1,7 @@
 import type { Queue } from 'bullmq'
 
-export interface RedisOptions {
-  host: string
-  port: number
-}
-
-export function getRedisOptions(): RedisOptions {
-  return {
-    host: process.env['REDIS_HOST'] ?? 'localhost',
-    port: parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
-  }
-}
+// Redis connection options live in ./redis.ts (getRedisConnection) — the one
+// parser shared by every package and by apps/api.
 
 // ── Queue registry ────────────────────────────────────────────────────────────
 // Every Queue this package opens (publisher fan-out queues) registers here so

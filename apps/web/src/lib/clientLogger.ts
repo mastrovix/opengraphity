@@ -1,35 +1,10 @@
-import { keycloak } from './keycloak'
+/**
+ * Client → server logger (`POST /api/logs/client`). Implementation in
+ * `@opengraphity/web-core` (shared with apps/portal): a failed delivery is
+ * reported on the console — never swallowed silently — but cannot throw
+ * into the caller (E-19).
+ */
+import { createClientLogger } from '@opengraphity/web-core'
+import { apiBase } from './apiBase'
 
-const API_URL = import.meta.env['VITE_API_URL']?.replace('/graphql', '') ?? ''
-
-async function sendLog(
-  level: 'error' | 'warn' | 'info',
-  message: string,
-  data?: Record<string, unknown>,
-): Promise<void> {
-  try {
-    const token = keycloak.token ?? ''
-    await fetch(`${API_URL}/api/logs/client`, {
-      method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        level,
-        message,
-        data,
-        url:       window.location.pathname,
-        timestamp: new Date().toISOString(),
-      }),
-    })
-  } catch {
-    // Silently ignore logger errors
-  }
-}
-
-export const clientLogger = {
-  error: (message: string, data?: Record<string, unknown>) => void sendLog('error', message, data),
-  warn:  (message: string, data?: Record<string, unknown>) => void sendLog('warn',  message, data),
-  info:  (message: string, data?: Record<string, unknown>) => void sendLog('info',  message, data),
-}
+export const clientLogger = createClientLogger(apiBase)

@@ -1,39 +1,14 @@
 import ReactECharts from 'echarts-for-react'
 import { BarChart2 } from 'lucide-react'
-
-// ── Palette ───────────────────────────────────────────────────────────────────
-
-const COLORS = [
-  'var(--color-brand)', '#0891b2', 'var(--color-trigger-automatic)',
-  'var(--color-trigger-timer)', 'var(--color-trigger-sla-breach)', '#7c3aed',
-  'var(--color-brand)', 'var(--color-success)', 'var(--color-brand)',
-  '#0d9488',
-]
-
-// ── Theme ─────────────────────────────────────────────────────────────────────
-
-const BASE_TOOLTIP = {
-  trigger: 'item' as const,
-  backgroundColor: 'var(--color-slate-dark)',
-  borderColor: '#334155',
-  borderWidth: 1,
-  textStyle: { color: 'var(--color-slate-bg)', fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" },
-  padding: [8, 12] as [number, number],
-}
-
-const BASE_LEGEND = {
-  bottom: 0,
-  textStyle: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" },
-  icon: 'circle',
-  itemWidth: 8,
-  itemHeight: 8,
-}
+import { fontFamily } from '@/lib/tokens'
+import {
+  buildBarOption, buildHorizontalBarOption, buildLineOption, buildPieOption, toPoints,
+  type LooseChartPoint,
+} from '@/lib/charts/echartsOptions'
 
 // ── Data shapes ───────────────────────────────────────────────────────────────
 
 interface KpiData   { value: number; label?: string }
-interface LabelVal  { name?: string; label?: string; value: number }
-interface TimeVal   { date?: string; label?: string; value: number }
 interface TableData { columns: string[]; rows: unknown[][] }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -73,6 +48,8 @@ function ChartError({ title, message }: { title: string; message: string }) {
   )
 }
 
+const REPORT_STYLE = { showValueLabels: true } as const
+
 export function ReportChartRenderer({ chartType, data, title, error }: Props) {
   if (error) return <ChartError title="Errore nel calcolo della sezione" message={error} />
   if (!data) return <EmptyChart />
@@ -85,6 +62,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
   }
 
   const echartsProps = { style: { height: 320, width: '100%' }, opts: { renderer: 'svg' as const }, theme: 'light' }
+  const points = () => toPoints(parsed as LooseChartPoint[])
 
   switch (chartType) {
 
@@ -92,212 +70,42 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
       const d = parsed as KpiData
       return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', gap: 8 }}>
-          <div style={{ fontSize: 56, fontWeight: 800, color: 'var(--color-brand)', lineHeight: 1, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+          <div style={{ fontSize: 56, fontWeight: 800, color: 'var(--color-brand)', lineHeight: 1, fontFamily }}>
             {d.value?.toLocaleString('it-IT')}
           </div>
-          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', fontFamily }}>
             {d.label ?? title}
           </div>
         </div>
       )
     }
 
-    case 'pie': {
-      const d = parsed as LabelVal[]
-      const option = {
-        tooltip: { ...BASE_TOOLTIP, formatter: '{b}: {c} ({d}%)' },
-        legend: { ...BASE_LEGEND, type: 'scroll' as const },
-        series: [{
-          type: 'pie',
-          radius: ['0%', '65%'],
-          center: ['50%', '45%'],
-          data: d.map((item, i) => ({
-            name: item.name ?? item.label ?? '—',
-            value: item.value,
-            itemStyle: { color: COLORS[i % COLORS.length], borderRadius: 4, borderWidth: 2, borderColor: '#fff' },
-          })),
-          label: { show: true, formatter: '{b}\n{d}%', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
-        }],
-      }
-      return <ReactECharts option={option} {...echartsProps} />
-    }
+    case 'pie':
+      return <ReactECharts option={buildPieOption(points(), REPORT_STYLE)} {...echartsProps} />
 
     case 'donut': {
-      const d = parsed as LabelVal[]
-      const total = d.reduce((s, item) => s + item.value, 0)
-      const option = {
-        tooltip: { ...BASE_TOOLTIP, formatter: '{b}: {c} ({d}%)' },
-        legend: { ...BASE_LEGEND, type: 'scroll' as const },
-        graphic: [
-          {
-            type: 'text', left: 'center', top: '40%',
-            style: { text: total.toLocaleString('it-IT'), fontSize: 'var(--font-size-page-title)', fontWeight: 700, fill: 'var(--color-slate-dark)' },
-          },
-          {
-            type: 'text', left: 'center', top: '50%',
-            style: { text: 'totale', fontSize: 'var(--font-size-body)', fill: 'var(--color-slate)' },
-          },
-        ],
-        series: [{
-          type: 'pie',
-          radius: ['40%', '65%'],
-          center: ['50%', '45%'],
-          data: d.map((item, i) => ({
-            name: item.name ?? item.label ?? '—',
-            value: item.value,
-            itemStyle: { color: COLORS[i % COLORS.length], borderRadius: 4, borderWidth: 2, borderColor: '#fff' },
-          })),
-          label: { show: true, formatter: '{b}\n{d}%', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
-        }],
-      }
-      return <ReactECharts option={option} {...echartsProps} />
+      const pts = points()
+      const total = pts.reduce((s, p) => s + p.value, 0)
+      return <ReactECharts option={buildPieOption(pts, { ...REPORT_STYLE, donut: true, centerText: total.toLocaleString('it-IT') })} {...echartsProps} />
     }
 
-    case 'bar': {
-      const d = parsed as LabelVal[]
-      const option = {
-        tooltip: { ...BASE_TOOLTIP, trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
-        grid: { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
-        xAxis: {
-          type: 'category' as const,
-          data: d.map(item => item.name ?? item.label ?? '—'),
-          axisLabel: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', interval: 0, rotate: d.length > 6 ? 30 : 0 },
-          axisLine: { lineStyle: { color: '#e2e8f0' } },
-          axisTick: { show: false },
-        },
-        yAxis: {
-          type: 'value' as const,
-          axisLabel: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' },
-          splitLine: { lineStyle: { color: 'var(--color-slate-bg)', type: 'dashed' as const } },
-          axisLine: { show: false },
-          axisTick: { show: false },
-        },
-        series: [{
-          type: 'bar',
-          data: d.map((item, i) => ({
-            value: item.value,
-            itemStyle: { color: COLORS[i % COLORS.length], borderRadius: [4, 4, 0, 0] },
-          })),
-          barMaxWidth: 48,
-          label: { show: true, position: 'top' as const, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', fontWeight: 600 },
-        }],
-      }
-      return <ReactECharts option={option} {...echartsProps} />
-    }
+    case 'bar':
+      return <ReactECharts option={buildBarOption(points(), REPORT_STYLE)} {...echartsProps} />
 
-    case 'bar_horizontal': {
-      const d = parsed as LabelVal[]
-      const option = {
-        tooltip: { ...BASE_TOOLTIP, trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
-        grid: { left: 16, right: 60, bottom: 16, top: 16, containLabel: true },
-        xAxis: {
-          type: 'value' as const,
-          axisLabel: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' },
-          splitLine: { lineStyle: { color: 'var(--color-slate-bg)', type: 'dashed' as const } },
-          axisLine: { show: false },
-          axisTick: { show: false },
-        },
-        yAxis: {
-          type: 'category' as const,
-          data: d.map(item => item.name ?? item.label ?? '—').reverse(),
-          axisLabel: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' },
-          axisLine: { lineStyle: { color: '#e2e8f0' } },
-          axisTick: { show: false },
-        },
-        series: [{
-          type: 'bar',
-          data: d.map((item, i) => ({
-            value: item.value,
-            itemStyle: { color: COLORS[i % COLORS.length], borderRadius: [0, 4, 4, 0] },
-          })).reverse(),
-          barMaxWidth: 32,
-          label: { show: true, position: 'right' as const, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', fontWeight: 600 },
-        }],
-      }
-      return <ReactECharts option={option} {...echartsProps} />
-    }
+    case 'bar_horizontal':
+      return <ReactECharts option={buildHorizontalBarOption(points(), REPORT_STYLE)} {...echartsProps} />
 
-    case 'line': {
-      const d = parsed as TimeVal[]
-      const option = {
-        tooltip: { ...BASE_TOOLTIP, trigger: 'axis' as const },
-        grid: { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
-        xAxis: {
-          type: 'category' as const,
-          data: d.map(item => item.date ?? item.label),
-          axisLabel: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' },
-          axisLine: { lineStyle: { color: '#e2e8f0' } },
-          axisTick: { show: false },
-        },
-        yAxis: {
-          type: 'value' as const,
-          axisLabel: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' },
-          splitLine: { lineStyle: { color: 'var(--color-slate-bg)', type: 'dashed' as const } },
-          axisLine: { show: false },
-          axisTick: { show: false },
-        },
-        series: [{
-          type: 'line',
-          data: d.map(item => item.value),
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 6,
-          lineStyle: { color: 'var(--color-brand)', width: 2.5 },
-          itemStyle: { color: 'var(--color-brand)', borderWidth: 2, borderColor: '#fff' },
-        }],
-      }
-      return <ReactECharts option={option} {...echartsProps} />
-    }
+    case 'line':
+      return <ReactECharts option={buildLineOption(points())} {...echartsProps} />
 
-    case 'area': {
-      const d = parsed as TimeVal[]
-      const option = {
-        tooltip: { ...BASE_TOOLTIP, trigger: 'axis' as const },
-        grid: { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
-        xAxis: {
-          type: 'category' as const,
-          data: d.map(item => item.date ?? item.label),
-          axisLabel: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' },
-          axisLine: { lineStyle: { color: '#e2e8f0' } },
-          axisTick: { show: false },
-        },
-        yAxis: {
-          type: 'value' as const,
-          axisLabel: { color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' },
-          splitLine: { lineStyle: { color: 'var(--color-slate-bg)', type: 'dashed' as const } },
-          axisLine: { show: false },
-          axisTick: { show: false },
-        },
-        series: [{
-          type: 'line',
-          data: d.map(item => item.value),
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 6,
-          lineStyle: { color: 'var(--color-brand)', width: 2.5 },
-          itemStyle: { color: 'var(--color-brand)', borderWidth: 2, borderColor: '#fff' },
-          areaStyle: {
-            color: {
-              type: 'linear' as const,
-              x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [
-                { offset: 0, color: 'rgba(79,70,229,0.2)' },
-                { offset: 1, color: 'rgba(79,70,229,0.02)' },
-              ],
-            },
-          },
-        }],
-      }
-      return <ReactECharts option={option} {...echartsProps} />
-    }
+    case 'area':
+      return <ReactECharts option={buildLineOption(points(), { area: true })} {...echartsProps} />
 
     case 'table': {
       const d = parsed as TableData
       return (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
                 {d.columns.map(col => (

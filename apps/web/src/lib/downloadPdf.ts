@@ -1,9 +1,4 @@
-import { keycloak } from '@/lib/keycloak'
-
-export function authHeader(): Record<string, string> {
-  const token = keycloak.token ?? localStorage.getItem('og_token') ?? ''
-  return token ? { authorization: `Bearer ${token}` } : {}
-}
+import { apiUrl, authHeader } from '@/lib/apiBase'
 
 export function filenameFromDisposition(header: string | null): string | null {
   if (!header) return null
@@ -16,9 +11,9 @@ export function filenameFromDisposition(header: string | null): string | null {
  * download. The filename comes from Content-Disposition, falling back to
  * `fallbackFilename`. Throws on non-2xx responses.
  */
-export async function downloadPdf(url: string, fallbackFilename: string): Promise<void> {
-  const res = await fetch(url, { headers: authHeader() })
-  if (!res.ok) throw new Error(res.statusText)
+export async function downloadPdf(path: string, fallbackFilename: string): Promise<void> {
+  const res = await fetch(apiUrl(path), { headers: authHeader() })
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   const blob     = await res.blob()
   const filename = filenameFromDisposition(res.headers.get('Content-Disposition'))
     ?? fallbackFilename

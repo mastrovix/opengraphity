@@ -7,6 +7,7 @@ import { publishEvent } from '../../lib/publishEvent.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { validateStringLength } from '../../lib/validation.js'
 import type { GraphQLContext } from '../../context.js'
+import { toNumber } from '@opengraphity/neo4j'
 
 /** Load allowed values for a system enum from Neo4j (cached per request). */
 async function loadEnumValues(tenantId: string, enumName: string): Promise<Set<string>> {
@@ -23,14 +24,6 @@ async function loadEnumValues(tenantId: string, enumName: string): Promise<Set<s
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function toInt(v: unknown): number {
-  if (v == null) return 0
-  if (typeof (v as { toNumber(): number }).toNumber === 'function') {
-    return (v as { toNumber(): number }).toNumber()
-  }
-  return Number(v)
-}
 
 /**
  * Read model of a portal ticket. Every portal ticket is an Incident node
@@ -92,7 +85,7 @@ async function myTickets(
       `, { tenantId: ctx.tenantId, userId: ctx.userId, status: status ?? null }),
     )
 
-    const total = toInt(countResult.records[0]?.get('total'))
+    const total = toNumber(countResult.records[0]?.get('total'))
     const items = result.records.map((r) => ({
       ...mapTicket(r.get('props') as Record<string, unknown>),
       assignedTeam: (r.get('assignedTeam') ?? null) as string | null,
@@ -168,7 +161,7 @@ async function myTicket(
       id:          r.get('id')          as string,
       filename:    r.get('filename')    as string,
       mimeType:    r.get('mimeType')    as string,
-      sizeBytes:   toInt(r.get('sizeBytes')),
+      sizeBytes:   toNumber(r.get('sizeBytes')),
       uploadedBy:  r.get('uploadedBy')  as string,
       uploadedAt:  r.get('uploadedAt')  as string,
       description: (r.get('description') ?? null) as string | null,
@@ -220,7 +213,7 @@ async function myTicketStats(
     let open = 0, inProgress = 0, resolved = 0, total = 0
     for (const r of result.records) {
       const status = r.get('status') as string
-      const cnt    = toInt(r.get('cnt'))
+      const cnt    = toNumber(r.get('cnt'))
       total += cnt
       const step = stepByName.get(status)
       if (!step) continue

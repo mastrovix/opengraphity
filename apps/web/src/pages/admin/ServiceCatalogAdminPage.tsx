@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { ShoppingCart, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
@@ -13,6 +13,7 @@ import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControl
 import { Pill } from '@/components/ui/Pill'
 import { GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { CREATE_SERVICE_CATALOG_ITEM, UPDATE_SERVICE_CATALOG_ITEM } from '@/graphql/mutations'
+import { useCrudModal } from '@/hooks/useCrudModal'
 
 interface CatalogItem {
   id: string
@@ -26,29 +27,27 @@ interface CatalogItem {
 
 type FormState = { name: string; description: string; category: string; requiresApproval: boolean }
 const EMPTY_FORM: FormState = { name: '', description: '', category: '', requiresApproval: false }
+const itemToForm = (item: CatalogItem): FormState => ({
+  name: item.name, description: item.description ?? '', category: item.category ?? '', requiresApproval: item.requiresApproval,
+})
 
 export function ServiceCatalogAdminPage() {
+  const { t } = useTranslation()
   const { data, loading, error, refetch } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(
     GET_SERVICE_CATALOG_ADMIN,
     { fetchPolicy: 'cache-and-network' },
   )
-  const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'edit'; item: CatalogItem } | null>(null)
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const modal = useCrudModal<CatalogItem, FormState>(EMPTY_FORM, itemToForm)
+  const { draft: form, patch } = modal
 
   const [createItem, { loading: creating }] = useMutation(CREATE_SERVICE_CATALOG_ITEM, {
-    onCompleted: async () => { setModal(null); await refetch(); toast.success('Voce creata') },
+    onCompleted: async () => { modal.close(); await refetch(); toast.success('Voce creata') },
     onError: (e) => toast.error(e.message),
   })
   const [updateItem, { loading: updating }] = useMutation(UPDATE_SERVICE_CATALOG_ITEM, {
-    onCompleted: async () => { setModal(null); await refetch() },
+    onCompleted: async () => { modal.close(); await refetch() },
     onError: (e) => toast.error(e.message),
   })
-
-  const openCreate = () => { setForm(EMPTY_FORM); setModal({ mode: 'create' }) }
-  const openEdit = (item: CatalogItem) => {
-    setForm({ name: item.name, description: item.description ?? '', category: item.category ?? '', requiresApproval: item.requiresApproval })
-    setModal({ mode: 'edit', item })
-  }
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,9 +57,9 @@ export function ServiceCatalogAdminPage() {
       category: form.category.trim() || null,
       requiresApproval: form.requiresApproval,
     }
-    if (!modal) return
-    if (modal.mode === 'create') void createItem({ variables: { input } })
-    else void updateItem({ variables: { id: modal.item.id, input } })
+    if (!modal.open) return
+    if (modal.editing) void updateItem({ variables: { id: modal.editing.id, input } })
+    else void createItem({ variables: { input } })
   }
 
   const toggleActive = (item: CatalogItem) =>
@@ -73,7 +72,7 @@ export function ServiceCatalogAdminPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <PageTitle icon={<ShoppingCart size={20} />}>Catalogo servizi</PageTitle>
-        <Button onClick={openCreate}><Plus size={15} style={{ marginRight: 6 }} />Nuova voce</Button>
+        <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>Nuova voce</Button>
       </div>
 
       {loading && !data && <Skeleton style={{ height: 240 }} />}
@@ -87,7 +86,7 @@ export function ServiceCatalogAdminPage() {
         <div style={{ border: '1px solid var(--color-border-light)', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
-              <tr style={{ background: 'var(--color-bg-subtle, #f8fafc)', textAlign: 'left', color: 'var(--color-slate-light)' }}>
+              <tr style={{ background: 'var(--surface-1)', textAlign: 'left', color: 'var(--color-slate-light)' }}>
                 <th style={{ padding: '10px 14px', fontWeight: 600 }}>Nome</th>
                 <th style={{ padding: '10px 14px', fontWeight: 600 }}>Categoria</th>
                 <th style={{ padding: '10px 14px', fontWeight: 600 }}>Approvazione</th>
@@ -111,11 +110,11 @@ export function ServiceCatalogAdminPage() {
                   <td style={{ padding: '10px 14px' }}>
                     {it.active
                       ? <Pill bg="#d1fae5" color="#065f46">Attiva</Pill>
-                      : <Pill bg="var(--color-border-light)" color="#6b7280">Disattivata</Pill>}
+                      : <Pill bg="var(--color-border-light)" color="var(--color-slate)">Disattivata</Pill>}
                   </td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <Button variant="ghost" onClick={() => openEdit(it)} style={{ marginRight: 6 }}>Modifica</Button>
-                    <Button variant="secondary" onClick={() => toggleActive(it)} disabled={saving}>
+                    <Button variant="ghost" onClick={() => modal.openEdit(it)} style={{ marginRight: 6 }}>{t('common.edit')}</Button>
+                    <Button variant="secondary" size="xs" onClick={() => toggleActive(it)} disabled={saving}>
                       {it.active ? 'Disattiva' : 'Attiva'}
                     </Button>
                   </td>
@@ -127,35 +126,35 @@ export function ServiceCatalogAdminPage() {
       )}
 
       <Modal
-        open={modal !== null}
-        onClose={() => setModal(null)}
-        title={modal?.mode === 'edit' ? 'Modifica voce di catalogo' : 'Nuova voce di catalogo'}
+        open={modal.open}
+        onClose={modal.close}
+        title={modal.editing ? 'Modifica voce di catalogo' : 'Nuova voce di catalogo'}
         as="form"
         onSubmit={submit}
         footer={
           <>
-            <Button type="button" variant="secondary" onClick={() => setModal(null)}>Annulla</Button>
+            <Button type="button" variant="secondary" onClick={modal.close}>{t('common.cancel')}</Button>
             <Button type="submit" disabled={saving || form.name.trim().length === 0}>
-              {saving ? 'Salvataggio…' : 'Salva'}
+              {saving ? 'Salvataggio…' : t('common.save')}
             </Button>
           </>
         }
       >
         <div style={{ marginBottom: 14 }}>
           <FieldLabel>Nome *</FieldLabel>
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus placeholder="Es. Nuovo laptop" />
+          <Input value={form.name} onChange={(e) => patch({ name: e.target.value })} required autoFocus placeholder="Es. Nuovo laptop" />
         </div>
         <div style={{ marginBottom: 14 }}>
           <FieldLabel>Descrizione</FieldLabel>
-          <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Cosa include il servizio…" />
+          <Textarea value={form.description} onChange={(e) => patch({ description: e.target.value })} rows={3} placeholder="Cosa include il servizio…" />
         </div>
         <div style={{ marginBottom: 14 }}>
           <FieldLabel>Categoria</FieldLabel>
-          <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Es. Hardware, Accessi, Software" />
+          <Input value={form.category} onChange={(e) => patch({ category: e.target.value })} placeholder="Es. Hardware, Accessi, Software" />
         </div>
         <div>
           <FieldLabel>Approvazione</FieldLabel>
-          <Select value={form.requiresApproval ? 'yes' : 'no'} onChange={(e) => setForm({ ...form, requiresApproval: e.target.value === 'yes' })}>
+          <Select value={form.requiresApproval ? 'yes' : 'no'} onChange={(e) => patch({ requiresApproval: e.target.value === 'yes' })}>
             <option value="no">Non richiede approvazione</option>
             <option value="yes">Richiede approvazione</option>
           </Select>

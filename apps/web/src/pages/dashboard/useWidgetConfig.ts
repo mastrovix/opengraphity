@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { isITILEntity } from '@/lib/automationOperators'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { CREATE_CUSTOM_WIDGET, UPDATE_CUSTOM_WIDGET } from '@/graphql/mutations'
@@ -75,8 +76,6 @@ export const SIZE_OPTIONS = [
   { value: 'medium', label: 'Medio',    sub: '1/2 larghezza' },
   { value: 'large',  label: 'Grande',   sub: 'Larghezza intera' },
 ]
-
-const ITIL_ENTITIES = new Set(['incident', 'problem', 'change', 'service_request'])
 
 export const FIELD_TYPE_LABELS: Record<string, string> = {
   string: 'testo', number: 'numero', date: 'data', boolean: 'booleano', enum: 'enum',
@@ -170,7 +169,7 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
   const needsGroupBy = metric === 'count_by_field' || metric === 'avg_field' || metric === 'sum_field'
 
   // ── Load field metadata from type definitions ──────────────────────────────
-  const isITIL = ITIL_ENTITIES.has(entityType)
+  const isITIL = isITILEntity(entityType)
   const { data: itilTypesData } = useQuery(GET_ITIL_TYPES, { skip: !isITIL })
   const { data: ciTypesData }   = useQuery(GET_CI_TYPES,   { skip: isITIL })
 

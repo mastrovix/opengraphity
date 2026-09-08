@@ -73,10 +73,10 @@ export function ITILTypeCIRelations({
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button style={btnSecondary} onClick={() => setShowRelForm(false)}>
+            <button type="button" style={btnSecondary} onClick={() => setShowRelForm(false)}>
               <X size={13} /> {t('itilDesigner.ciRelations.cancel')}
             </button>
-            <button style={btnPrimary}
+            <button type="button" style={btnPrimary}
               disabled={!relForm.ciType || !relForm.relationType}
               onClick={() => void onCreateRule({
                 itilType:     typeName,
@@ -91,7 +91,7 @@ export function ITILTypeCIRelations({
         </div>
       ) : (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <button style={btnPrimary} onClick={() => setShowRelForm(true)}>
+          <button type="button" style={btnPrimary} onClick={() => setShowRelForm(true)}>
             <Plus size={13} /> {t('itilDesigner.ciRelations.addRelation')}
           </button>
         </div>
@@ -103,7 +103,7 @@ export function ITILTypeCIRelations({
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+            <tr style={{ borderBottom: '2px solid var(--border)' }}>
               {[
                 t('itilDesigner.ciRelations.ciType'),
                 t('itilDesigner.ciRelations.relationType'),
@@ -129,7 +129,7 @@ export function ITILTypeCIRelations({
                   </td>
                   <td style={{ padding: '8px', color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{rule.description ?? '\u2014'}</td>
                   <td style={{ padding: '8px' }}>
-                    <button
+                    <button type="button"
                       style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}
                       onClick={() => onDeleteRule(rule.id)}
                     ><X size={12} /></button>

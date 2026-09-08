@@ -142,6 +142,9 @@
     "home": "Back to home"
   },
   "errors": {
-    "network": "Connection error"
+    "network": "Connection error",
+    "sessionExpired": "Session expired — please sign in again",
+    "authRestored": "Connection to the authentication server restored",
+    "authUnreachable": "Authentication server unreachable — retrying in {{seconds}}s"
   }
 }

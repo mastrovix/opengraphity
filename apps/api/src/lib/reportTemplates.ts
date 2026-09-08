@@ -16,21 +16,19 @@
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import { ValidationError } from './errors.js'
 import type { ReportEdgeDef, ReportNodeDef, ReportSectionDef } from './reportQueryBuilder.js'
+import { toNumber } from '@opengraphity/neo4j'
 
 export type Props = Record<string, unknown>
 
 type Runner = Session | ManagedTransaction
 
-/** Neo4j INTEGER (Integer object) or float → JS number. */
-function toNum(v: unknown, fallback = 0): number {
-  if (v == null) return fallback
-  if (typeof v === 'number') return v
-  if (typeof v === 'object' && typeof (v as { toNumber?: () => number }).toNumber === 'function') {
-    return (v as { toNumber: () => number }).toNumber()
+/** `toNumber` (null → 0) with the failure surfaced as a ValidationError of the persisted report. */
+function toNum(v: unknown): number {
+  try {
+    return toNumber(v)
+  } catch {
+    throw new ValidationError(`Expected a number, got ${JSON.stringify(v)}`)
   }
-  const n = Number(v)
-  if (Number.isNaN(n)) throw new ValidationError(`Expected a number, got ${JSON.stringify(v)}`)
-  return n
 }
 
 function optInt(v: unknown): number | null {

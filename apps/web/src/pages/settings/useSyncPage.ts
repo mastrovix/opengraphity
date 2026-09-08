@@ -3,6 +3,7 @@ import { gql } from '@apollo/client'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
+import { useConfirm } from '@/hooks/useConfirm'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -173,6 +174,7 @@ export interface UseSyncPageReturn {
 
 export function useSyncPage(): UseSyncPageReturn {
   const { t } = useTranslation()
+  const confirm = useConfirm()
 
   // Tab state
   const [tab, setTab] = useState<Tab>('Sources')
@@ -220,10 +222,10 @@ export function useSyncPage(): UseSyncPageReturn {
   }
 
   async function handleDeleteSource(id: string) {
-    if (!confirm('Delete this sync source?')) return
+    if (!(await confirm({ title: t('pages.sync.deleteSourceTitle'), danger: true }))) return
     try {
       await deleteSourceMut({ variables: { id } })
-      toast.success('Source deleted')
+      toast.success(t('pages.sync.sourceDeleted'))
     } catch (err) {
       toast.error((err as Error).message)
     }

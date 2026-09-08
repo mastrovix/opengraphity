@@ -4,16 +4,18 @@
  * change_in_progress). Usa il vero engine, quindi produce storia e status coerenti.
  *
  * Uso (da host):
- *   pnpm --filter @opengraphity/api exec tsx src/scripts/revert-problem.ts PRB00000001
+ *   pnpm --filter @opengraphity/api revert-problem -- --tenant=<slug> PRB00000001
  */
 import { getSession } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
+import { ScriptArgError, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const TENANT = 'c-one'
-
-async function main() {
-  const number = process.argv[2]
-  if (!number) { console.error('Uso: revert-problem.ts <PRB...>'); process.exit(1) }
+async function main(): Promise<void> {
+  const TENANT = resolveTenantArg()
+  // Primo argomento posizionale (non un'opzione `--…`).
+  const number = process.argv.slice(2).find(a => !a.startsWith('--'))
+  if (!number) throw new ScriptArgError('Uso: revert-problem.ts --tenant=<slug> <PRB...>')
 
   const session = getSession(undefined, 'WRITE')
   try {
@@ -21,7 +23,7 @@ async function main() {
       MATCH (p:Problem {number: $number, tenant_id: $tenant})-[:HAS_WORKFLOW]->(pw:WorkflowInstance)
       RETURN pw.id AS instanceId, pw.current_step AS step
     `, { number, tenant: TENANT }))
-    if (res.records.length === 0) { console.error(`Problem ${number} o workflow non trovato`); process.exit(1) }
+    if (res.records.length === 0) throw new Error(`Problem ${number} o workflow non trovato nel tenant ${TENANT}`)
     const instanceId = res.records[0]!.get('instanceId') as string
     const step       = res.records[0]!.get('step') as string
     console.log(`[revert] ${number}: step attuale = ${step}`)
@@ -36,11 +38,11 @@ async function main() {
       { instanceId, toStepName: 'under_investigation', triggeredBy: 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata (fix retroattivo)' },
       { userId: 'system', entityData: {} },
     )
-    if (t.success) console.log(`[revert] ${number} → under_investigation ✅`)
-    else { console.error(`[revert] fallito: ${t.error}`); process.exit(1) }
+    if (!t.success) throw new Error(`[revert] fallito: ${t.error}`)
+    console.log(`[revert] ${number} → under_investigation ✅`)
   } finally {
     await session.close()
   }
 }
 
-main().then(() => process.exit(0)).catch((e: unknown) => { console.error(e); process.exit(1) })
+runScript('revert-problem', main)

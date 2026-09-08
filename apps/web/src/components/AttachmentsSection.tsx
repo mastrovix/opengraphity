@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Paperclip, Trash2, Download, Loader2 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { keycloak } from '@/lib/keycloak'
+import { apiUrl, authHeader } from '@/lib/apiBase'
+import { useConfirm } from '@/hooks/useConfirm'
+import { errorMessage } from '@/hooks/useMutationWithToast'
 
 const GET_ATTACHMENTS = gql`
   query GetAttachments($entityType: String!, $entityId: String!) {
@@ -45,11 +47,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function authHeader(): Record<string, string> {
-  const token = keycloak.token ?? localStorage.getItem('og_token') ?? ''
-  return token ? { authorization: `Bearer ${token}` } : {}
-}
-
 interface Props {
   entityType: string
   entityId:   string
@@ -64,6 +61,7 @@ interface Props {
  */
 export function AttachmentsSection({ entityType, entityId, defaultOpen = true }: Props) {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const [uploading, setUploading] = useState(false)
   const fileInputRef              = useRef<HTMLInputElement>(null)
 
@@ -86,7 +84,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
         form.append('entityType', entityType)
         form.append('entityId', entityId)
         form.append('file', file)
-        const res = await fetch('/api/attachments', {
+        const res = await fetch(apiUrl('/api/attachments'), {
           method:  'POST',
           headers: authHeader(),
           body:    form,
@@ -108,8 +106,9 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
 
   async function handleDownload(a: Attachment) {
     try {
-      const res = await fetch(a.downloadUrl, { headers: authHeader() })
-      if (!res.ok) throw new Error(res.statusText)
+      // `downloadUrl` is a `/api/...` path served by the API origin.
+      const res = await fetch(a.downloadUrl.startsWith('/') ? apiUrl(a.downloadUrl) : a.downloadUrl, { headers: authHeader() })
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -117,9 +116,15 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
       link.download = a.filename
       link.click()
       URL.revokeObjectURL(url)
-    } catch {
-      toast.error(t('attachments.downloadFailed'))
+    } catch (err) {
+      // The real cause (401, 404, network) must reach the user, not a generic label.
+      toast.error(`${t('attachments.downloadFailed')}: ${errorMessage(err)}`)
     }
+  }
+
+  async function handleDelete(a: Attachment) {
+    const ok = await confirm({ title: t('attachments.confirmDelete'), body: a.filename, danger: true })
+    if (ok) void deleteAttachment({ variables: { id: a.id } })
   }
 
   return (
@@ -134,23 +139,26 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
               {attachments.map((a) => (
                 <div
                   key={a.id}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 12px', backgroundColor: '#f8fafc', borderRadius: 6 }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 12px', backgroundColor: 'var(--surface-1)', borderRadius: 6 }}
                 >
                   <button
+                    type="button"
                     onClick={() => void handleDownload(a)}
                     title={t('attachments.download')}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-primary, #0ea5e9)', textAlign: 'left', flex: 1, minWidth: 0 }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', textAlign: 'left', flex: 1, minWidth: 0 }}
                   >
-                    <Download size={13} style={{ flexShrink: 0 }} />
+                    <Download size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.filename}</span>
                   </button>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{formatBytes(a.sizeBytes)}</span>
+                  <span style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', flexShrink: 0 }}>{formatBytes(a.sizeBytes)}</span>
                   <button
-                    onClick={() => { if (window.confirm(t('attachments.confirmDelete'))) void deleteAttachment({ variables: { id: a.id } }) }}
+                    type="button"
+                    onClick={() => void handleDelete(a)}
                     title={t('common.delete')}
+                    aria-label={`${t('common.delete')} ${a.filename}`}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--color-slate-light)', flexShrink: 0, display: 'flex' }}
                   >
-                    <Trash2 size={13} />
+                    <Trash2 size={13} aria-hidden="true" />
                   </button>
                 </div>
               ))}
@@ -158,11 +166,12 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
           )}
 
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', backgroundColor: '#fff', border: '1px dashed #cbd5e1', borderRadius: 6, cursor: uploading ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', backgroundColor: '#fff', border: '1px dashed var(--border-strong)', borderRadius: 6, cursor: uploading ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}
           >
-            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
+            {uploading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Paperclip size={13} aria-hidden="true" />}
             {uploading ? t('attachments.uploading') : t('attachments.upload')}
           </button>
           <input

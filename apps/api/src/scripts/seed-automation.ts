@@ -1,19 +1,19 @@
 /**
- * Seeds automation data for tenant c-one:
+ * Seeds automation data for a tenant:
  * - Security incident workflow with extra security_review step
  * - Granular SLA policies
  * - Auto triggers
  * - Business rules
  *
- * Usage: pnpm tsx apps/api/src/scripts/seed-automation.ts
+ * Usage: pnpm --filter @opengraphity/api seed:automation -- --tenant=<slug>
  */
 
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const TENANT = 'c-one'
-
-async function main() {
+async function main(TENANT: string) {
   const session = getSession(undefined, 'WRITE')
 
   console.log('\n=== Seed Automation Data ===\n')
@@ -174,8 +174,7 @@ async function main() {
     console.log('\n=== Seed complete ===\n')
   } finally {
     await session.close()
-    process.exit(0)
   }
 }
 
-main().catch(err => { console.error(err); process.exit(1) })
+runScript('seed-automation', () => main(resolveTenantArg()))

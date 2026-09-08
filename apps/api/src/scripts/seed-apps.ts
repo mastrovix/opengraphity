@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-
-const TENANT_ID = 'c-one'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
@@ -34,7 +34,7 @@ function pickStatus(): string {
   return 'inactive'
 }
 
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   // Load teams
@@ -43,7 +43,7 @@ async function seed() {
     { tenantId: TENANT_ID }
   )
   const teamIds = teamsResult.records.map((r) => r.get('id') as string)
-  if (teamIds.length === 0) throw new Error('No teams found for c-one')
+  if (teamIds.length === 0) throw new Error(`No teams found for tenant ${TENANT_ID}`)
 
   // Load databases
   const dbsResult = await session.run(
@@ -53,7 +53,7 @@ async function seed() {
     { tenantId: TENANT_ID }
   )
   const dbIds = dbsResult.records.map((r) => r.get('id') as string)
-  if (dbIds.length === 0) throw new Error('No database CIs found for c-one')
+  if (dbIds.length === 0) throw new Error(`No database CIs found for tenant ${TENANT_ID}`)
 
   let created = 0
   let skipped = 0
@@ -133,4 +133,7 @@ async function seed() {
   console.log(`\nDone. Created: ${created}, Skipped (already existed): ${skipped}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-apps', async () => {
+  refuseInProduction('seed-apps')
+  await seed(resolveTenantArg())
+})

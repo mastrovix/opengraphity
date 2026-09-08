@@ -8,8 +8,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
-
-const ITIL_ENTITIES = new Set(['incident', 'problem', 'change', 'service_request'])
+import { isITILEntity } from '@/lib/automationOperators'
 
 interface TypeDef {
   name:   string
@@ -17,7 +16,7 @@ interface TypeDef {
 }
 
 export function useEnumValues(entityType: string, fieldName: string): { values: string[]; loading: boolean; error: Error | null } {
-  const isITIL = ITIL_ENTITIES.has(entityType)
+  const isITIL = isITILEntity(entityType)
 
   const { data: itilData, loading: itilLoading, error: itilError } = useQuery(GET_ITIL_TYPES, {
     skip: !isITIL,

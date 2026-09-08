@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { resetConfigCache } from '../../lib/config.js'
 import type express from 'express'
 
 // ── Mocks (declared before the dynamic import below) ─────────────────────────
@@ -63,6 +64,8 @@ beforeEach(() => {
   verifyKeycloakToken.mockReset()
   executeRead.mockReset()
   delete process.env['ALLOW_LEGACY_JWT']
+  // config memoizza: ogni caso rilegge ALLOW_LEGACY_JWT/JWT_SECRET dall'env
+  resetConfigCache()
 })
 
 // ── resolveAuth ──────────────────────────────────────────────────────────────
@@ -174,6 +177,7 @@ describe('resolveAuth (legacy JWT)', () => {
 
   it('con ALLOW_LEGACY_JWT=true accetta un JWT firmato con JWT_SECRET', async () => {
     process.env['ALLOW_LEGACY_JWT'] = 'true'
+    resetConfigCache()
     verifyKeycloakToken.mockRejectedValue(new Error('not a keycloak token'))
     const jwt = (await import('jsonwebtoken')).default
     const token = jwt.sign({ tenant_id: 't', user_id: 'u', email: 'e@x', role: 'admin' }, 'test-secret')
@@ -183,6 +187,7 @@ describe('resolveAuth (legacy JWT)', () => {
 
   it('con ALLOW_LEGACY_JWT=true un JWT con firma errata è rifiutato', async () => {
     process.env['ALLOW_LEGACY_JWT'] = 'true'
+    resetConfigCache()
     verifyKeycloakToken.mockRejectedValue(new Error('not a keycloak token'))
     const jwt = (await import('jsonwebtoken')).default
     const token = jwt.sign({ tenant_id: 't', user_id: 'u', email: 'e@x', role: 'admin' }, 'other-secret')

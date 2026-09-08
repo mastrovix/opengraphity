@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
+import { useConfirm } from '@/hooks/useConfirm'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Plus, Bell } from 'lucide-react'
@@ -71,6 +72,7 @@ const TH: React.CSSProperties = {
 
 export default function NotificationRulesPage() {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const [showDialog, setShowDialog] = useState(false)
 
   const { data, loading, refetch } = useQuery<{ notificationRules: NotificationRule[] }>(
@@ -103,11 +105,11 @@ export default function NotificationRulesPage() {
     void createRule({ variables: { input } })
   }, [createRule])
 
-  const handleDelete = useCallback((id: string) => {
-    if (window.confirm(t('notificationRules.deleteRule') + '?')) {
+  const handleDelete = useCallback(async (id: string) => {
+    if (await confirm({ title: t('notificationRules.deleteRule'), danger: true })) {
       void deleteRule({ variables: { id } })
     }
-  }, [deleteRule, t])
+  }, [confirm, deleteRule, t])
 
   const allRules   = data?.notificationRules ?? []
   const byEvent    = allRules.reduce<Record<string, NotificationRule>>((acc, r) => { acc[r.eventType] = r; return acc }, {})
@@ -136,7 +138,7 @@ export default function NotificationRulesPage() {
             {t('notificationRules.description')}
           </p>
         </div>
-        <button
+        <button type="button"
           onClick={() => setShowDialog(true)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,

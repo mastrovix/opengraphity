@@ -9,9 +9,12 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
+import { QueryError } from '@/components/QueryError'
 import { GET_ALL_CIS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
+import { formatDate } from '@/lib/datetime'
+import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
 
 interface CI {
   id:          string
@@ -27,6 +30,7 @@ const PAGE_SIZE = 50
 
 export function CMDBPage() {
   const { t } = useTranslation()
+  const baseEnums = useCIBaseEnums()
 
   const columns: ColumnDef<CI>[] = [
     { key: 'name', label: t('pages.cmdb.name'), sortable: true },
@@ -62,24 +66,17 @@ export function CMDBPage() {
       sortable: true,
       render:   (v) => (
         <span style={{ color: "var(--color-slate-light)" }}>
-          {new Date(String(v)).toLocaleDateString()}
+          {formatDate(String(v))}
         </span>
       ),
     },
   ]
 
+  // Status/environment dal tipo base del metamodello (unica sorgente, F-23)
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
-    { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: [
-      { value: 'active',      label: 'Active'      },
-      { value: 'inactive',    label: 'Inactive'    },
-      { value: 'maintenance', label: 'Maintenance' },
-    ]},
-    { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: [
-      { value: 'production',  label: 'Production'  },
-      { value: 'staging',     label: 'Staging'     },
-      { value: 'development', label: 'Development' },
-    ]},
+    { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: toEnumOptions(baseEnums.statuses) },
+    { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: toEnumOptions(baseEnums.environments) },
     { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
   ]
   const navigate = useNavigate()
@@ -131,13 +128,19 @@ export function CMDBPage() {
             {loading ? '—' : t('pages.cmdb.count', { count: total })}
           </p>
         </div>
-        <button
-          disabled
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'not-allowed', opacity: 0.5 }}
-        >
-          {t('common.create')}
-        </button>
+        {/* La creazione richiede un tipo CI (form dinamica per tipo): con un
+            tipo in URL si va alla sua lista, altrimenti nessun bottone morto. */}
+        {typeFromUrl && (
+          <button
+            onClick={() => navigate(`/ci/${typeFromUrl}`)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
+          >
+            {t('common.create')}
+          </button>
+        )}
       </div>
+
+      {baseEnums.error && <QueryError message={`${t('pages.cmdb.baseEnumsUnavailable')}: ${baseEnums.error}`} />}
 
       <FilterBuilder
         fields={FILTER_FIELDS}

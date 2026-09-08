@@ -30,7 +30,7 @@ const UNLINK_SLACK = gql`
 
 const card: React.CSSProperties = {
   background:   '#fff',
-  border:       '1px solid #e5e7eb',
+  border:       '1px solid var(--border)',
   borderRadius: 10,
   padding:      '20px 24px',
   maxWidth:     520,
@@ -103,7 +103,7 @@ export function ProfilePage() {
             style={{
               padding: '8px 12px',
               borderRadius: 6,
-              border: '1px solid #e5e7eb',
+              border: '1px solid var(--border)',
               fontSize: 'var(--font-size-card-title)',
               color: 'var(--color-slate-dark)',
               background: '#fff',

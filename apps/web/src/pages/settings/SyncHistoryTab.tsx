@@ -44,7 +44,7 @@ export function SyncHistoryTab({
       {selected && loading && <div style={{ padding: 24, color: '#6b7280' }}>Loading...</div>}
 
       {selected && !loading && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
           {runs.length === 0 && (
             <div style={{ padding: 32, textAlign: 'center', color: '#6b7280', fontSize: 'var(--font-size-body)' }}>No runs yet</div>
           )}

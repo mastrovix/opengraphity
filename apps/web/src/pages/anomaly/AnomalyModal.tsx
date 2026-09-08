@@ -4,24 +4,7 @@ import { Lightbulb } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { RULE_SUGGESTION_KEYS } from './AnomalyPage'
-
-interface Anomaly {
-  id:               string
-  ruleKey:          string
-  title:            string
-  severity:         string
-  status:           string
-  entityId:         string
-  entityType:       string
-  entitySubtype:    string
-  entityName:       string
-  description:      string
-  detectedAt:       string
-  resolvedAt:       string | null
-  resolutionStatus: string | null
-  resolutionNote:   string | null
-  resolvedBy:       string | null
-}
+import type { Anomaly } from '@/types/anomaly'
 
 export function ResolutionForm({
   anomaly,

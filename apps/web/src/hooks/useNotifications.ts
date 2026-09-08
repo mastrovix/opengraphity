@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import { keycloak } from '@/lib/keycloak'
+import { apiUrl, authHeader } from '@/lib/apiBase'
 import { clientLogger } from '@/lib/clientLogger'
 
 export interface InAppNotification {
@@ -34,10 +34,8 @@ export function useNotifications() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    fetchEventSource('/api/sse', {
-      headers: {
-        Authorization: `Bearer ${keycloak.token ?? ''}`,
-      },
+    fetchEventSource(apiUrl('/api/sse'), {
+      headers: authHeader(),
       signal:         controller.signal,
       openWhenHidden: true,
 

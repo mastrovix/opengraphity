@@ -1,23 +1,16 @@
 import { randomUUID } from 'crypto'
 import { Queue, Worker, Job } from 'bullmq'
-import { publish } from '@opengraphity/events'
+import { publish, getRedisConnection } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
 import { markBreached, getSLAStatus } from './status.js'
 import type { SLAStatus } from './status.js'
 import { calculateDeadline } from './policy.js'
 import { isEntityResolved, type OLAContractLite } from './olaBreach.js'
 
-const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
-
-// Pass plain connection options — avoids IORedis version conflicts with BullMQ's peer dep
-function parseRedisOptions() {
-  const url      = new URL(REDIS_URL)
-  const port     = parseInt(url.port, 10) || 6379
-  const password = url.password || undefined
-  return { host: url.hostname, port, password, maxRetriesPerRequest: null as null }
-}
-
-const REDIS_OPTIONS = parseRedisOptions()
+// Redis options come from the shared parser in @opengraphity/events (D-14):
+// same REDIS_URL / REDIS_PASSWORD rules as the event queues, so the SLA timers
+// can never land on a different Redis than the consumers. Resolved lazily so a
+// unit test that mocks the events package never touches the environment.
 
 const QUEUE_NAME = 'sla-jobs'
 
@@ -27,7 +20,7 @@ let _worker: Worker | null = null
 function getQueue(): Queue {
   if (!_queue) {
     _queue = new Queue(QUEUE_NAME, {
-      connection: REDIS_OPTIONS,
+      connection: getRedisConnection(),
       defaultJobOptions: {
         removeOnComplete: true,
         // Keep the last N failed jobs for diagnosis; `false` would let them
@@ -186,7 +179,7 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
 export function initScheduler(): void {
   if (_worker) return
 
-  _worker = new Worker(QUEUE_NAME, processSLAJob, { connection: REDIS_OPTIONS })
+  _worker = new Worker(QUEUE_NAME, processSLAJob, { connection: getRedisConnection() })
 
   _worker.on('completed', (job) => {
     console.log(`[sla:scheduler] Job completed: ${job.name} (id: ${job.id})`)
@@ -275,12 +268,6 @@ export async function scheduleResponseCheck(status: SLAStatus): Promise<void> {
 }
 
 /**
- * Cancels the SLA timers for an entity. `which` selects the target: 'resolve'
- * cancels the warning + breach timers (both keyed to the resolve deadline),
- * 'response' cancels the response timer, 'both' cancels all three. Used both
- * on resolution ('both') and on a per-type pause.
- */
-/**
  * Schedules one breach-check timer per OLA/UC contract covering the entity.
  * Each fires at created_at + the contract's resolve target; the processor
  * alerts only if the entity is still open at that point. Fire-time is the
@@ -319,6 +306,12 @@ export async function cancelOLABreaches(entityId: string, contractIds: string[])
   }
 }
 
+/**
+ * Cancels the SLA timers for an entity. `which` selects the target: 'resolve'
+ * cancels the warning + breach timers (both keyed to the resolve deadline),
+ * 'response' cancels the response timer, 'both' cancels all three. Used both
+ * on resolution ('both') and on a per-type pause.
+ */
 export async function cancelSLAJobs(entityId: string, which: 'resolve' | 'response' | 'both' = 'both'): Promise<void> {
   const queue = getQueue()
 

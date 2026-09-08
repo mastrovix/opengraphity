@@ -7,14 +7,14 @@ vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
 }))
 
-vi.mock('../../lib/navigableGraph.js', () => ({
+vi.mock('../../../lib/navigableGraph.js', () => ({
   getNavigableEntities: vi.fn().mockResolvedValue([
     { entityType: 'Application', label: 'Application', neo4jLabel: 'Application', fields: [], relations: [] },
   ]),
   getNavigableRelations: vi.fn().mockResolvedValue([]),
 }))
 
-vi.mock('../../lib/reportExecutor.js', () => ({
+vi.mock('../../../lib/reportExecutor.js', () => ({
   executeReportSection: vi.fn().mockResolvedValue({ rows: [] }),
 }))
 
@@ -100,7 +100,7 @@ describe('reachableEntities — whitelist validation', () => {
   it('label nel whitelist dinamico (da getNavigableEntities) → non lancia errore', async () => {
     // getNavigableEntities restituisce un label che è nella whitelist statica
     // (Application): verifica che il path dinamico funzioni
-    const { getNavigableEntities } = await import('../../lib/navigableGraph.js')
+    const { getNavigableEntities } = await import('../../../lib/navigableGraph.js')
     vi.mocked(getNavigableEntities).mockResolvedValue([
       { entityType: 'Application', label: 'Application', neo4jLabel: 'Application', fields: [], relations: [] },
     ])

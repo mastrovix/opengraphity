@@ -31,6 +31,8 @@ vi.mock('@opengraphity/neo4j', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
+  // Stub of the real helper (D-22): plain numbers and Integer-like objects.
+  toNumber:    (v: unknown) => (v == null ? 0 : typeof v === 'object' && 'toNumber' in v ? (v as { toNumber(): number }).toNumber() : Number(v)),
 }))
 
 vi.mock('../../lib/workflowHelpers.js', () => ({

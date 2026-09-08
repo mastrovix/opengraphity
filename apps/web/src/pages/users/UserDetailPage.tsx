@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
@@ -42,7 +43,7 @@ interface UserData {
 
 export function UserDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const { t } = useTranslation()
   const [showAddTeam, setShowAddTeam] = useState(false)
 
   const { data, loading, error, refetch } = useQuery<{ user: UserData | null }>(GET_USER, {
@@ -56,8 +57,8 @@ export function UserDetailPage() {
 
   const user = data?.user
   const allTeams = allTeamsData?.teams ?? []
-  const userTeamIds = user?.teams.map(t => t.id) ?? []
-  const availableTeams = allTeams.filter(t => !userTeamIds.includes(t.id))
+  const userTeamIds = user?.teams.map(team => team.id) ?? []
+  const availableTeams = allTeams.filter(team => !userTeamIds.includes(team.id))
 
   if (loading && !user) {
     return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento...</div>
@@ -79,9 +80,9 @@ export function UserDetailPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, cursor: 'pointer' }} onClick={() => navigate('/users')}>
-          ← Users
-        </div>
+        <Link to="/users" style={{ display: 'inline-block', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, textDecoration: 'none' }}>
+          ← {t('pages.users.backToList')}
+        </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <User size={22} color="var(--color-icon-accent)" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
@@ -111,26 +112,26 @@ export function UserDetailPage() {
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>Nessun team assegnato</p>
             ) : (
               <div style={{ marginBottom: 12 }}>
-                {user.teams.map((t, i) => (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < user.teams.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+                {user.teams.map((team, i) => (
+                  <div key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < user.teams.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
                     <div style={{ width: 28, height: 28, borderRadius: 6, background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Users size={14} color="var(--color-brand)" />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', cursor: 'pointer' }} onClick={() => navigate(`/teams/${t.id}`)}>{t.name}</span>
-                        {t.type && (
+                        <Link to={`/teams/${team.id}`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', textDecoration: 'none' }}>{team.name}</Link>
+                        {team.type && (
                           <Pill
-                            bg={t.type === 'support' ? 'var(--color-success-bg)' : t.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
-                            color={t.type === 'support' ? 'var(--color-success)' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)'}
+                            bg={team.type === 'support' ? 'var(--color-success-bg)' : team.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
+                            color={team.type === 'support' ? 'var(--color-success)' : team.type === 'owner' ? '#2563eb' : 'var(--color-slate)'}
                             radius={4}
                             style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}
-                          >{t.type}</Pill>
+                          >{team.type}</Pill>
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => void updateTeams({ variables: { userId: user.id, teamIds: userTeamIds.filter(tid => tid !== t.id) } })}
+                    <button type="button"
+                      onClick={() => void updateTeams({ variables: { userId: user.id, teamIds: userTeamIds.filter(tid => tid !== team.id) } })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
                       title="Rimuovi dal team"
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
@@ -145,45 +146,46 @@ export function UserDetailPage() {
 
             {/* Add team */}
             {!showAddTeam ? (
-              <button
+              <button type="button"
                 onClick={() => setShowAddTeam(true)}
                 style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
               >
                 <Plus size={14} /> Aggiungi a un team
               </button>
             ) : (
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 8 }}>
-                <div style={{ padding: '6px 12px', background: 'var(--color-slate-bg)', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 8 }}>
+                <div style={{ padding: '6px 12px', background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--border)', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Team disponibili</span>
-                  <button onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>Chiudi</button>
+                  <button type="button" onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>Chiudi</button>
                 </div>
                 {availableTeams.length === 0 ? (
                   <div style={{ padding: '12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun altro team disponibile</div>
-                ) : availableTeams.map((t, i) => (
-                  <div
-                    key={t.id}
-                    onClick={() => { void updateTeams({ variables: { userId: user.id, teamIds: [...userTeamIds, t.id] } }); setShowAddTeam(false) }}
+                ) : availableTeams.map((team, i) => (
+                  <button
+                    type="button"
+                    key={team.id}
+                    onClick={() => { void updateTeams({ variables: { userId: user.id, teamIds: [...userTeamIds, team.id] } }); setShowAddTeam(false) }}
                     className="hover-bg"
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', borderBottom: i < availableTeams.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', cursor: 'pointer', borderBottom: i < availableTeams.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
                   >
-                    <Plus size={14} color="var(--color-brand)" />
+                    <Plus size={14} color="var(--color-brand)" aria-hidden="true" />
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
-                        {t.type && (
+                        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{team.name}</span>
+                        {team.type && (
                           <Pill
-                            bg={t.type === 'support' ? 'var(--color-success-bg)' : t.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
-                            color={t.type === 'support' ? 'var(--color-success)' : t.type === 'owner' ? '#2563eb' : 'var(--color-slate)'}
+                            bg={team.type === 'support' ? 'var(--color-success-bg)' : team.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
+                            color={team.type === 'support' ? 'var(--color-success)' : team.type === 'owner' ? '#2563eb' : 'var(--color-slate)'}
                             radius={4}
                             style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}
-                          >{t.type}</Pill>
+                          >{team.type}</Pill>
                         )}
                       </div>
-                      {t.description && (
-                        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>{t.description}</div>
+                      {team.description && (
+                        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>{team.description}</div>
                       )}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

@@ -132,6 +132,14 @@ const CONSTRAINTS: SchemaStatement[] = [
   { label: 'ApiEndpoint.id', cypher: 'CREATE CONSTRAINT unique_api_endpoint_id IF NOT EXISTS FOR (n:ApiEndpoint) REQUIRE n.id IS UNIQUE' },
   { label: 'Microservice.id', cypher: 'CREATE CONSTRAINT unique_microservice_id IF NOT EXISTS FOR (n:Microservice) REQUIRE n.id IS UNIQUE' },
   { label: 'DynamicCIGroup.id', cypher: 'CREATE CONSTRAINT unique_dynamic_c_i_group_id IF NOT EXISTS FOR (n:DynamicCIGroup) REQUIRE n.id IS UNIQUE' },
+  // D-15 — labels looked up on every request/event that had no schema at all.
+  // ApiKey.key_hash: `apiKeyAuth.ts` MATCHes on it for every REST v1 call
+  // (was a full label scan) and two keys with the same hash would be a
+  // security bug, hence UNIQUE rather than a plain index.
+  { label: 'ApiKey.key_hash', cypher: 'CREATE CONSTRAINT api_key_hash_unique IF NOT EXISTS FOR (n:ApiKey) REQUIRE n.key_hash IS UNIQUE' },
+  { label: 'KBArticle.id', cypher: 'CREATE CONSTRAINT kb_article_id_unique IF NOT EXISTS FOR (n:KBArticle) REQUIRE n.id IS UNIQUE' },
+  { label: 'Team.id', cypher: 'CREATE CONSTRAINT team_id_unique IF NOT EXISTS FOR (n:Team) REQUIRE n.id IS UNIQUE' },
+  { label: 'WorkflowDefinition.id', cypher: 'CREATE CONSTRAINT workflow_definition_id_unique IF NOT EXISTS FOR (n:WorkflowDefinition) REQUIRE n.id IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -251,6 +259,42 @@ const INDEXES: SchemaStatement[] = [
   { label: 'ValidationTest(code)', cypher: 'CREATE INDEX validation_test_code IF NOT EXISTS FOR (t:ValidationTest) ON (t.code)' },
   { label: 'DeploymentTask(code)', cypher: 'CREATE INDEX deployment_task_code IF NOT EXISTS FOR (t:DeploymentTask) ON (t.code)' },
   { label: 'ReviewTask(code)', cypher: 'CREATE INDEX review_task_code IF NOT EXISTS FOR (t:ReviewTask) ON (t.code)' },
+  // ── D-15: labels used by the API without any index ──────────────────────
+  // NotificationRule: dispatcher.ts loads the rules for (tenant, event) on EVERY domain event.
+  { label: 'NotificationRule(tenant_id, event_type)', cypher: 'CREATE INDEX notification_rule_tenant_event IF NOT EXISTS FOR (n:NotificationRule) ON (n.tenant_id, n.event_type)' },
+  // SLAPolicyNode: sla/selector.ts picks the policy for every created entity.
+  { label: 'SLAPolicyNode(tenant_id, entity_type)', cypher: 'CREATE INDEX sla_policy_node_tenant_type IF NOT EXISTS FOR (n:SLAPolicyNode) ON (n.tenant_id, n.entity_type)' },
+  // WorkflowStep: the engine resolves steps by (definition, name) on every transition.
+  { label: 'WorkflowStep(definition_id, name)', cypher: 'CREATE INDEX workflow_step_definition_name IF NOT EXISTS FOR (n:WorkflowStep) ON (n.definition_id, n.name)' },
+  // Comments: two labels coexist — `Comment` (Incident HAS_COMMENT, legacy) and
+  // `EntityComment` (generic, resolvers/comments.ts + portal). Both indexed.
+  { label: 'EntityComment(tenant_id, entity_id)', cypher: 'CREATE INDEX entity_comment_tenant_entity IF NOT EXISTS FOR (n:EntityComment) ON (n.tenant_id, n.entity_id)' },
+  { label: 'Comment(tenant_id)', cypher: 'CREATE INDEX comment_tenant IF NOT EXISTS FOR (n:Comment) ON (n.tenant_id)' },
+  // Metamodel definitions (id lookups from the dynamic CI resolvers; nodes are
+  // MERGEd on (tenant_id, name), so `id` gets a plain index, not a constraint).
+  { label: 'CITypeDefinition(id)', cypher: 'CREATE INDEX ci_type_definition_id IF NOT EXISTS FOR (n:CITypeDefinition) ON (n.id)' },
+  { label: 'CITypeDefinition(tenant_id, name)', cypher: 'CREATE INDEX ci_type_definition_tenant_name IF NOT EXISTS FOR (n:CITypeDefinition) ON (n.tenant_id, n.name)' },
+  { label: 'EnumTypeDefinition(id)', cypher: 'CREATE INDEX enum_type_definition_id IF NOT EXISTS FOR (n:EnumTypeDefinition) ON (n.id)' },
+  { label: 'EnumTypeDefinition(tenant_id, name)', cypher: 'CREATE INDEX enum_type_definition_tenant_name IF NOT EXISTS FOR (n:EnumTypeDefinition) ON (n.tenant_id, n.name)' },
+  // Reports — moved here from apps/api/src/scripts/seed-report-templates.ts
+  // (init.ts is the single source of schema; that script is now redundant).
+  { label: 'ReportTemplate(tenant_id)', cypher: 'CREATE INDEX report_template_tenant IF NOT EXISTS FOR (r:ReportTemplate) ON (r.tenant_id)' },
+  { label: 'ReportTemplate(created_by)', cypher: 'CREATE INDEX report_template_created_by IF NOT EXISTS FOR (r:ReportTemplate) ON (r.created_by)' },
+  { label: 'ReportSection(template_id)', cypher: 'CREATE INDEX report_section_template IF NOT EXISTS FOR (s:ReportSection) ON (s.template_id)' },
+  { label: 'TraversalStep(section_id)', cypher: 'CREATE INDEX traversal_step_section IF NOT EXISTS FOR (t:TraversalStep) ON (t.section_id)' },
+  // DashboardConfig(tenant_id) and Anomaly(tenant_id, status) already exist above.
+  // Automation
+  { label: 'AutoTrigger(tenant_id)', cypher: 'CREATE INDEX auto_trigger_tenant IF NOT EXISTS FOR (n:AutoTrigger) ON (n.tenant_id)' },
+  { label: 'BusinessRule(tenant_id)', cypher: 'CREATE INDEX business_rule_tenant IF NOT EXISTS FOR (n:BusinessRule) ON (n.tenant_id)' },
+  // Attachments / audit trail — always read per entity
+  { label: 'Attachment(tenant_id, entity_id)', cypher: 'CREATE INDEX attachment_tenant_entity IF NOT EXISTS FOR (n:Attachment) ON (n.tenant_id, n.entity_id)' },
+  { label: 'AuditEntry(tenant_id, entity_id)', cypher: 'CREATE INDEX audit_entry_tenant_entity IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.entity_id)' },
+  // NOTE — vector indexes are NOT listed here on purpose: their name and
+  // dimension depend on the configured embedding provider
+  // (`incident_embedding_<dims>` / `kb_embedding_<dims>`, see
+  // apps/api/src/services/embeddings.ts#vectorIndexName). They are created
+  // dynamically by apps/api/src/jobs/embeddingWorker.ts (`ensureVectorIndexes`)
+  // at worker start, so a provider switch never queries vectors of the wrong size.
 ]
 
 // Raise-only seeding of the atomic counters to the current max number/code, so
@@ -318,6 +362,47 @@ const UNIQUENESS_PRECHECKS: UniquenessPrecheck[] = [
     hint: 'Duplicates come from pre-fix concurrent discovery syncs. Keep the oldest node ' +
           '(the one incidents/changes/relations point at), re-point relationships from the ' +
           'others to it, DETACH DELETE the others, then rerun neo4j:init.',
+  },
+  {
+    label: 'ApiKey(key_hash)',
+    cypher: `
+      MATCH (k:ApiKey) WHERE k.key_hash IS NOT NULL
+      WITH k.key_hash AS key_hash, collect({id: k.id, tenant_id: k.tenant_id, name: k.name}) AS keys
+      WHERE size(keys) > 1
+      RETURN key_hash, keys ORDER BY key_hash`,
+    hint: 'Two API keys share the same hash (same secret issued twice). Revoke/delete all but ' +
+          'one of them (the callers must rotate the key anyway), then rerun neo4j:init.',
+  },
+  {
+    label: 'KBArticle(id)',
+    cypher: `
+      MATCH (a:KBArticle) WHERE a.id IS NOT NULL
+      WITH a.id AS id, collect({tenant_id: a.tenant_id, title: a.title, created_at: a.created_at}) AS nodes
+      WHERE size(nodes) > 1
+      RETURN id, nodes ORDER BY id`,
+    hint: 'Keep the KBArticle the versions/links (HAS_VERSION, RELATED_KB) point at, re-point ' +
+          'the others’ relationships to it, DETACH DELETE the others, then rerun neo4j:init.',
+  },
+  {
+    label: 'Team(id)',
+    cypher: `
+      MATCH (t:Team) WHERE t.id IS NOT NULL
+      WITH t.id AS id, collect({tenant_id: t.tenant_id, name: t.name}) AS nodes
+      WHERE size(nodes) > 1
+      RETURN id, nodes ORDER BY id`,
+    hint: 'Keep the Team referenced by MEMBER_OF / OWNED_BY / SUPPORTED_BY, re-point the others’ ' +
+          'relationships to it, DETACH DELETE the others, then rerun neo4j:init.',
+  },
+  {
+    label: 'WorkflowDefinition(id)',
+    cypher: `
+      MATCH (w:WorkflowDefinition) WHERE w.id IS NOT NULL
+      WITH w.id AS id, collect({tenant_id: w.tenant_id, name: w.name, entity_type: w.entity_type}) AS nodes
+      WHERE size(nodes) > 1
+      RETURN id, nodes ORDER BY id`,
+    hint: 'Keep the WorkflowDefinition whose steps carry the running WorkflowInstances ' +
+          '(CURRENT_STEP), re-point the others’ HAS_STEP/instances to it, DETACH DELETE the ' +
+          'others, then rerun neo4j:init.',
   },
 ]
 

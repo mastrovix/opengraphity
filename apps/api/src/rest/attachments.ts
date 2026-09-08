@@ -1,4 +1,3 @@
-import path from 'path'
 import fs from 'fs'
 import { createWriteStream, existsSync, mkdirSync } from 'fs'
 import type { Readable } from 'stream'
@@ -8,6 +7,7 @@ import Busboy from 'busboy'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
 import { logger } from '../lib/logger.js'
+import { config } from '../lib/config.js'
 import { ValidationError } from '../lib/errors.js'
 import {
   UPLOAD_ROLES,
@@ -20,7 +20,7 @@ import {
 
 const router: ExpressRouter = Router()
 
-const ATTACHMENT_DIR = process.env['ATTACHMENT_DIR'] ?? path.resolve('./data/attachments')
+const ATTACHMENT_DIR = config.attachmentDir
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',

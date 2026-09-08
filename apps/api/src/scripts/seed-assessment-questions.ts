@@ -1,4 +1,5 @@
 import { getSession, closeDriver } from '@opengraphity/neo4j'
+import { resolveTenantArg } from './lib/scriptArgs.js'
 import { v4 as uuidv4 } from 'uuid'
 
 type OptionSeed = { label: string; score: number }
@@ -78,7 +79,7 @@ const QUESTIONS: QuestionSeed[] = [
 ]
 
 async function main() {
-  const tenantId = process.env['TENANT_ID'] ?? 'opengraphity'
+  const tenantId = resolveTenantArg()
   const session = getSession(undefined, 'WRITE')
   try {
     const now = new Date().toISOString()

@@ -29,12 +29,12 @@ async function checkNeo4j(): Promise<{ status: string; latencyMs: number | null;
 async function checkRedis(): Promise<{ status: string; latencyMs: number | null; error: string | null }> {
   const start = Date.now()
   try {
-    const { getRedisOptions }   = await import('@opengraphity/events')
+    const { getRedisConnection } = await import('@opengraphity/events')
     const ioredisModule         = await import('ioredis')
     // ioredis exports the class as both default and named export
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const RedisClass = (ioredisModule as any).default ?? ioredisModule
-    const opts   = getRedisOptions()
+    const opts   = getRedisConnection()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client: { connect(): Promise<void>; ping(): Promise<string>; quit(): Promise<string> } = new (RedisClass as any)({ ...opts, lazyConnect: true, connectTimeout: 3000 })
     await client.connect()

@@ -21,8 +21,8 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {['open', 'resolved', 'all'].map(s => (
-          <button key={s} onClick={() => setFilter(s)}
-            style={{ padding: '6px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: filter === s ? '#2563eb' : '#fff', color: filter === s ? '#fff' : '#374151' }}>
+          <button type="button" key={s} onClick={() => setFilter(s)}
+            style={{ padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: filter === s ? '#2563eb' : '#fff', color: filter === s ? '#fff' : '#374151' }}>
             {s}
           </button>
         ))}
@@ -31,7 +31,7 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
       {loading && <div style={{ padding: 24, color: '#6b7280' }}>Loading...</div>}
 
       {!loading && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
           {filtered.length === 0 && (
             <div style={{ padding: 32, textAlign: 'center', color: '#6b7280', fontSize: 'var(--font-size-body)' }}>
               {filter === 'open' ? 'No open conflicts' : 'No conflicts found'}
@@ -57,9 +57,9 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
                   </div>
                   {c.status === 'open' && (
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => onResolveConflict(c.id, 'merged')}   style={btnStyle('#2563eb', '#fff')} title="Aggiorna il CI esistente con i dati importati">Unisci</button>
-                      <button onClick={() => onResolveConflict(c.id, 'distinct')} style={btnStyle('#fff', '#374151')} title="Crea un nuovo CI separato dai dati importati">Sono diversi</button>
-                      <button onClick={() => onResolveConflict(c.id, 'linked')}   style={btnStyle('#fff', '#7c3aed')} title="Crea un nuovo CI e collega entrambi con RELATED_TO">Collega</button>
+                      <button type="button" onClick={() => onResolveConflict(c.id, 'merged')}   style={btnStyle('#2563eb', '#fff')} title="Aggiorna il CI esistente con i dati importati">Unisci</button>
+                      <button type="button" onClick={() => onResolveConflict(c.id, 'distinct')} style={btnStyle('#fff', '#374151')} title="Crea un nuovo CI separato dai dati importati">Sono diversi</button>
+                      <button type="button" onClick={() => onResolveConflict(c.id, 'linked')}   style={btnStyle('#fff', '#7c3aed')} title="Crea un nuovo CI e collega entrambi con RELATED_TO">Collega</button>
                     </div>
                   )}
                 </div>

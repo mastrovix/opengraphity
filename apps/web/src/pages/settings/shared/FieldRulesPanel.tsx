@@ -124,7 +124,7 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
           </div>
           <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{t('fieldRules.visibility.subtitle')}</div>
         </div>
-        <button style={btnPrimary} onClick={() => { setAdding(true); setForm(emptyVisForm(fields)) }} disabled={adding}>
+        <button type="button" style={btnPrimary} onClick={() => { setAdding(true); setForm(emptyVisForm(fields)) }} disabled={adding}>
           <Plus size={13} /> {t('fieldRules.visibility.add')}
         </button>
       </div>
@@ -144,7 +144,7 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
 
       {/* List */}
       {rules.length === 0 && !adding && (
-        <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
+        <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', border: '1px dashed var(--border)', borderRadius: 8 }}>
           {t('fieldRules.visibility.empty')}
         </div>
       )}
@@ -161,13 +161,13 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
             onCancel={() => setEditingId(null)}
           />
         ) : (
-          <div key={rule.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 6, background: 'var(--color-slate-bg)', border: '1px solid #e5e7eb', marginBottom: 6, fontSize: 'var(--font-size-body)' }}>
+          <div key={rule.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 6, background: 'var(--color-slate-bg)', border: '1px solid var(--border)', marginBottom: 6, fontSize: 'var(--font-size-body)' }}>
             <span style={{ color: 'var(--color-slate-dark)' }}>
               {t('fieldRules.visibility.ruleDesc', { triggerField: rule.triggerField, triggerValue: rule.triggerValue, action: rule.action === 'show' ? t('fieldRules.show') : t('fieldRules.hide'), targetField: rule.targetField })}
             </span>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-              <button style={{ ...btnSecondary, padding: '4px 8px' }} onClick={() => startEdit(rule)}><Edit2 size={12} /></button>
-              <button style={btnDanger} onClick={() => { void deleteRule({ variables: { id: rule.id } }) }}><Trash2 size={12} /></button>
+              <button type="button" style={{ ...btnSecondary, padding: '4px 8px' }} onClick={() => startEdit(rule)}><Edit2 size={12} /></button>
+              <button type="button" style={btnDanger} onClick={() => { void deleteRule({ variables: { id: rule.id } }) }}><Trash2 size={12} /></button>
             </div>
           </div>
         )
@@ -221,8 +221,8 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button style={btnSecondary} onClick={onCancel}><X size={13} /> {t('common.cancel')}</button>
-        <button style={btnPrimary}   onClick={onSave}><Check size={13} /> {t('common.save')}</button>
+        <button type="button" style={btnSecondary} onClick={onCancel}><X size={13} /> {t('common.cancel')}</button>
+        <button type="button" style={btnPrimary}   onClick={onSave}><Check size={13} /> {t('common.save')}</button>
       </div>
     </div>
   )
@@ -270,11 +270,11 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
         <table style={{ width: '100%', fontSize: 'var(--font-size-body)', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--color-slate)', fontWeight: 600, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>
+              <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--color-slate)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
                 {t('fieldRules.requirement.field')}
               </th>
               {stepOptions.map((s) => (
-                <th key={s} style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--color-slate)', fontWeight: 600, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>
+                <th key={s} style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--color-slate)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
                   {s === '' ? t('fieldRules.requirement.allSteps') : s}
                 </th>
               ))}
@@ -324,7 +324,7 @@ export function FieldRulesPanel({ entityType, fields, workflowSteps, flat = fals
   )
   if (flat) return content
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '20px 24px', marginTop: 16 }}>
+    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '20px 24px', marginTop: 16 }}>
       {content}
     </div>
   )

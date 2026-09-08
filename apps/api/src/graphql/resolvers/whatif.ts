@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
@@ -19,14 +19,6 @@ function impactLevel(dist: number, action: string): string {
   if (dist === 2) return 'high'
   if (dist === 3) return 'medium'
   return 'low'
-}
-
-function toNum(v: unknown): number {
-  if (v == null) return 0
-  if (typeof v === 'number') return v
-  if (typeof (v as { toNumber?: () => number }).toNumber === 'function')
-    return (v as { toNumber: () => number }).toNumber()
-  return Number(v)
 }
 
 /** Open incidents linked to any of $impactedIds (tenant-scoped, non-terminal). */
@@ -89,7 +81,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     type:        r.lbls?.[0] ?? 'Unknown',
     environment: r.env,
     status:      r.status,
-    impactLevel: impactLevel(toNum(r.distance), action),
+    impactLevel: impactLevel(toNumber(r.distance), action),
     impactPath:  (r.pathNames ?? []).map(String),
     isRedundant: false,
   }))
@@ -118,7 +110,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
       // (incidentService.createIncident / addAffectedCI). Exported below so the
       // relationship is pinned by a test — a wrong type here is a silent 0.
       const row = await runQueryOne<{ cnt: unknown }>(s3, OPEN_INCIDENTS_ON_CIS_CYPHER, { impactedIds, tenantId, terminalSteps })
-      openIncidents = toNum(row?.cnt)
+      openIncidents = toNumber(row?.cnt)
     } finally { await s3.close() }
   }
 
@@ -149,7 +141,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     action,
     impactedCIs,
     impactedServices,
-    impactedTeams: teams.map(t => ({ id: t.id, name: t.name, role: 'owner', impactedCICount: toNum(t.cnt) })),
+    impactedTeams: teams.map(t => ({ id: t.id, name: t.name, role: 'owner', impactedCICount: toNumber(t.cnt) })),
     totalImpacted,
     riskScore,
     hasRedundancy: false,

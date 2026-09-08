@@ -1,6 +1,8 @@
+import { memo } from 'react'
 import { Handle, Position, BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react'
 import type { EdgeProps } from '@xyflow/react'
 import { Star, X } from 'lucide-react'
+import { fontFamily } from '@/lib/tokens'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -31,7 +33,10 @@ export interface NodeData {
 
 // ── Custom Node ───────────────────────────────────────────────────────────────
 
-export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
+// memo (F-26): ReportSectionBuilder ricostruisce `data` solo per i nodi la cui
+// entry è cambiata (callback stabili per nodo), quindi gli altri non
+// rirenderizzano a ogni keystroke nei filtri.
+export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: string; data: NodeData }) {
   const d = data
 
   return (
@@ -41,7 +46,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
       border: d.isRoot ? '2px solid #0284c7' : d.isResult ? '1.5px solid #0284c7' : '1.5px dashed #c4b5fd',
       borderRadius: 10,
       fontSize: 'var(--font-size-body)',
-      fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      fontFamily,
       overflow: 'hidden',
     }}>
       <Handle type="source" position={Position.Top}    id="top-source"    style={{ opacity: 0, width: 8, height: 8 }} />
@@ -149,7 +154,7 @@ export function ReportEntityNode({ data }: { id: string; data: NodeData }) {
       </div>
     </div>
   )
-}
+})
 
 export const nodeTypes = { reportEntity: ReportEntityNode }
 

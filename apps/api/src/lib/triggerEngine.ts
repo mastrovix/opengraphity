@@ -1,15 +1,13 @@
 /**
- * AutoTrigger engine — evaluates and executes automatic triggers.
+ * AutoTrigger engine — facade over the shared automation engine.
  * Triggers are simpler than business rules: no AND/OR logic toggle (always AND),
- * no priority ordering, no stop_on_match.
+ * no priority ordering, no stop_on_match; they add timers and execution counters.
  */
 import { runQuery } from '@opengraphity/neo4j'
 import { logger as appLogger } from './logger.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
-import { evaluateConditions, parseConditions } from './conditionEvaluator.js'
-import { executeActions, parseActions, type ActionExecutionContext } from './actionExecutor.js'
-import { audit } from './audit.js'
 import { getQueue } from './bullmq.js'
+import { createAutomationCache, evaluateRules } from './automationEngine.js'
 
 const WORKFLOW_JOBS_QUEUE = 'workflow-jobs'
 
@@ -27,30 +25,10 @@ interface TriggerRecord {
   actions:            string | null
 }
 
-// ── In-memory cache ──────────────────────────────────────────────────────────
+const cache = createAutomationCache<TriggerRecord>('trigger')
 
-interface CacheEntry {
-  triggers: TriggerRecord[]
-  loadedAt: number
-}
-
-const cache = new Map<string, CacheEntry>()
-const CACHE_TTL_MS = 60_000
-
-function cacheKey(tenantId: string, entityType: string, eventType: string): string {
-  return `${tenantId}:${entityType}:${eventType}`
-}
-
-async function loadTriggers(
-  tenantId:   string,
-  entityType: string,
-  eventType:  string,
-): Promise<TriggerRecord[]> {
-  const key = cacheKey(tenantId, entityType, eventType)
-  const cached = cache.get(key)
-  if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) return cached.triggers
-
-  const triggers = await withSession(async (session) => {
+async function loadTriggers(tenantId: string, entityType: string, eventType: string): Promise<TriggerRecord[]> {
+  return cache.get(tenantId, entityType, eventType, () => withSession(async (session) => {
     const rows = await runQuery<Record<string, unknown>>(session, `
       MATCH (t:AutoTrigger {tenant_id: $tenantId, entity_type: $entityType, event_type: $eventType, enabled: true})
       RETURN t.id AS id, t.name AS name, t.entity_type AS entity_type, t.event_type AS event_type,
@@ -66,10 +44,7 @@ async function loadTriggers(
       timer_delay_minutes: r['timer_delay_minutes'] != null ? Number(r['timer_delay_minutes']) : null,
       actions:             r['actions']              as string | null,
     }))
-  })
-
-  cache.set(key, { triggers, loadedAt: Date.now() })
-  return triggers
+  }))
 }
 
 // ── Main evaluation function ─────────────────────────────────────────────────
@@ -97,79 +72,32 @@ export async function evaluateTriggers(
   const triggers = await loadTriggers(tenantId, entityType, eventType)
   if (triggers.length === 0) return []
 
-  const results: TriggerResult[] = []
-
-  for (const trigger of triggers) {
-    // Corrupt conditions must NOT fire the trigger (parseConditions would
-    // otherwise yield [] = "always matches"). Skip it and log loud.
-    let matched: boolean
-    try {
-      const conditions = parseConditions(trigger.conditions)
-      matched = evaluateConditions(conditions, entity)
-    } catch (err) {
-      log.error({ err, triggerId: trigger.id, triggerName: trigger.name, tenantId },
-        '[triggerEngine] trigger has corrupt conditions — trigger NOT fired, fix its configuration')
-      results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: false, actionsRun: 0 })
-      continue
-    }
-
-    if (!matched) {
-      results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: false, actionsRun: 0 })
-      continue
-    }
-
-    const execCtx: ActionExecutionContext = {
-      tenantId,
-      userId,
-      entityId:   entity['id'] as string,
-      entityType,
-      entity,
-      source:     'trigger',
-      sourceName: trigger.name,
-    }
-
-    try {
-      // parseActions throws on corrupt JSON — handled below like any action failure
-      const actions = parseActions(trigger.actions)
-      const actionResults = await executeActions(actions, execCtx)
-
-      // Update execution count
+  const outcomes = await evaluateRules({
+    kind: 'trigger',
+    tenantId, entityType, entity, userId,
+    records: triggers.map((t) => ({
+      id: t.id, name: t.name, conditions: t.conditions, actions: t.actions,
+      conditionLogic: 'and', stopOnMatch: false,
+    })),
+    // Update execution count
+    afterExecute: async (record) => {
       await withSession(async (session) => {
         await runQuery(session, `
           MATCH (t:AutoTrigger {id: $id, tenant_id: $tenantId})
           SET t.execution_count = coalesce(t.execution_count, 0) + 1,
               t.last_executed_at = $now
-        `, { id: trigger.id, tenantId, now: new Date().toISOString() })
+        `, { id: record.id, tenantId, now: new Date().toISOString() })
       }, true)
+    },
+  })
 
-      void audit(
-        { tenantId, userId, userEmail: 'system', role: 'system' } as never,
-        'trigger.executed', 'AutoTrigger', trigger.id,
-        { triggerName: trigger.name, entityId: entity['id'], actionsRun: actionResults.length },
-      )
-
-      const actionsRun = actionResults.filter(r => r.success).length
-      const failed = actionResults.find(r => !r.success)
-      if (failed) {
-        // Partial failure is reported in the result (fired + error), not
-        // hidden behind a plain `fired: true` (C-15).
-        const error = `action "${failed.action}" failed: ${failed.error ?? 'unknown error'} (${actionsRun}/${actionResults.length} actions ran)`
-        results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: true, actionsRun, error })
-        log.error({ triggerId: trigger.id, name: trigger.name, entityId: entity['id'], error }, 'Trigger fired with a failed action')
-        continue
-      }
-
-      results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: true, actionsRun })
-
-      log.info({ triggerId: trigger.id, name: trigger.name, entityId: entity['id'], actionsRun }, 'Trigger fired')
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err)
-      results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: true, actionsRun: 0, error: errorMsg })
-      log.error({ triggerId: trigger.id, err }, 'Trigger execution failed')
-    }
-  }
-
-  return results
+  return outcomes.map((o) => ({
+    triggerId:   o.id,
+    triggerName: o.name,
+    fired:       o.matched,
+    actionsRun:  o.actionsRun,
+    ...(o.error ? { error: o.error } : {}),
+  }))
 }
 
 /**
@@ -207,7 +135,5 @@ export async function scheduleTimerTriggers(
 
 /** Invalidate the trigger cache for a tenant. */
 export function invalidateTriggerCache(tenantId: string): void {
-  for (const key of cache.keys()) {
-    if (key.startsWith(`${tenantId}:`)) cache.delete(key)
-  }
+  cache.invalidate(tenantId)
 }

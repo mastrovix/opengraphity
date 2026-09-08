@@ -166,27 +166,49 @@ export function SortableFilterTable<T extends object>({
                     : undefined}
                   style={thStyle}
                 >
-                  <div
-                    style={{
-                      display:       'flex',
-                      alignItems:    'center',
-                      gap:           4,
-                      fontSize:      11,
-                      fontWeight:    500,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      color:         isActive ? colors.brand : colors.slateDark,
-                      cursor:        col.sortable ? 'pointer' : 'default',
-                    }}
-                    onClick={() => col.sortable && handleSort(col.key)}
-                  >
-                    {col.label}
-                    {col.sortable && (
+                  {/* Sortable headers are real buttons (keyboard + screen reader); static ones stay plain text (E-14). */}
+                  {col.sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSort(col.key)}
+                      style={{
+                        display:       'flex',
+                        alignItems:    'center',
+                        gap:           4,
+                        fontSize:      11,
+                        fontWeight:    500,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        color:         isActive ? colors.brand : colors.slateDark,
+                        cursor:        'pointer',
+                        background:    'none',
+                        border:        'none',
+                        padding:       0,
+                        font:          'inherit',
+                        fontFamily:    'inherit',
+                      }}
+                    >
+                      {col.label}
                       <span style={{ opacity: isActive ? 1 : 0.3, color: isActive ? colors.brand : colors.slateDark, display: 'flex' }}>
                         {isActive && activeSortDir === 'asc' ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}
                       </span>
-                    )}
-                  </div>
+                    </button>
+                  ) : (
+                    <div
+                      style={{
+                        display:       'flex',
+                        alignItems:    'center',
+                        gap:           4,
+                        fontSize:      11,
+                        fontWeight:    500,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        color:         colors.slateDark,
+                      }}
+                    >
+                      {col.label}
+                    </div>
+                  )}
                 </th>
               )
             })}
@@ -224,6 +246,9 @@ export function SortableFilterTable<T extends object>({
                 <React.Fragment key={rowId}>
                   <tr
                     onClick={() => onRowClick?.(row)}
+                    // Clickable rows are reachable and activatable from the keyboard (E-14).
+                    tabIndex={onRowClick ? 0 : undefined}
+                    onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) } } : undefined}
                     style={{
                       borderBottom:    expandedContent ? 'none' : '1px solid #f1f3f9',
                       cursor:          onRowClick ? 'pointer' : 'default',

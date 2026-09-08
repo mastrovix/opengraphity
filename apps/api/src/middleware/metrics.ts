@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express'
+import { config } from '../lib/config.js'
 import type { Queue } from 'bullmq'
 import type { ApolloServerPlugin } from '@apollo/server'
 import type { GraphQLContext } from '../context.js'
@@ -289,7 +290,7 @@ export function isPrivateAddress(addr: string | undefined): boolean {
  *   address (not `req.ip`: with `trust proxy` an X-Forwarded-For header could
  *   spoof it).
  */
-export function metricsAccessAllowed(req: Pick<Request, 'headers' | 'socket'>, token = process.env['METRICS_TOKEN']): boolean {
+export function metricsAccessAllowed(req: Pick<Request, 'headers' | 'socket'>, token = config.metricsToken): boolean {
   if (token) {
     const auth = req.headers['authorization'] ?? ''
     return auth === `Bearer ${token}`
@@ -299,7 +300,7 @@ export function metricsAccessAllowed(req: Pick<Request, 'headers' | 'socket'>, t
 
 export function metricsHandler(req: Request, res: Response): void {
   if (!metricsAccessAllowed(req)) {
-    res.status(process.env['METRICS_TOKEN'] ? 401 : 403).type('text/plain').send('metrics: forbidden')
+    res.status(config.metricsToken ? 401 : 403).type('text/plain').send('metrics: forbidden')
     return
   }
 

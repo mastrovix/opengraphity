@@ -28,10 +28,18 @@ docker compose -f infra/docker-compose.yml up -d --build
 ```
 
 The compose file has no default secrets: `docker compose` refuses to start until
-`JWT_SECRET`, `NEO4J_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `MINIO_ROOT_USER` and
-`MINIO_ROOT_PASSWORD` are set in `infra/.env` (`./infra/start.sh` stops with the
-same list when it has just created the file). Only nginx (`:80`) listens on all
-interfaces; every other port below is bound to `127.0.0.1`.
+`JWT_SECRET`, `NEO4J_PASSWORD`, `REDIS_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`,
+`MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` are set in `infra/.env`
+(`./infra/start.sh` stops with the same list when it has just created the file).
+Redis runs with `--requirepass`; api and worker reach it through `REDIS_URL` +
+`REDIS_PASSWORD`. Only nginx (`:80`) listens on all interfaces; every other port
+below is bound to `127.0.0.1`.
+
+`infra/.env.example` documents every variable the code reads, with a comment
+each; `node scripts/check-env-example.mjs` (also a CI step) fails when the code
+and the example drift. With `NODE_ENV=production` the API validates its whole
+configuration at boot (`apps/api/src/lib/config.ts`) and lists every missing
+variable in one error — the localhost/`./data` defaults exist only in development.
 
 Wait ~60 seconds for all services to come up, then open:
 
@@ -109,7 +117,7 @@ pnpm --filter "./packages/**" build
 pnpm dev   # runs api (port 4000) + web (port 5173) + portal (port 5174) in parallel
 ```
 
-The apps read their env vars from `apps/api/.env` — copy from `infra/.env.example` and adjust `NEO4J_URI`, `REDIS_HOST` etc. to `localhost`.
+The apps read their env vars from `apps/api/.env` — copy from `infra/.env.example`: the example already points `NEO4J_URI`, `REDIS_URL`, `KEYCLOAK_URL` at `localhost`; set `REDIS_PASSWORD` to the value the `redis` container was started with (or the same `REDIS_URL=redis://:<password>@localhost:6379`).
 
 ---
 

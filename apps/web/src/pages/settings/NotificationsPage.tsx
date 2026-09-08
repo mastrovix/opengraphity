@@ -7,6 +7,8 @@ import { Modal } from '@/components/Modal'
 import { Bell } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { lookupStyle } from '@/lib/tokens'
+import { useConfirm } from '@/hooks/useConfirm'
+import { useTranslation } from 'react-i18next'
 
 const GET_NOTIFICATION_CHANNELS = gql`
   query GetNotificationChannels {
@@ -83,6 +85,8 @@ const PLATFORM_BADGE: Record<string, { bg: string; color: string }> = {
 }
 
 export default function NotificationsPage() {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const { data, refetch } = useQuery<{ notificationChannels: Channel[] }>(GET_NOTIFICATION_CHANNELS)
   const [createChannel] = useMutation(CREATE_NOTIFICATION_CHANNEL)
   const [updateChannel] = useMutation(UPDATE_NOTIFICATION_CHANNEL)
@@ -138,7 +142,7 @@ export default function NotificationsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Eliminare questo canale?')) return
+    if (!(await confirm({ title: t('admin.notificationChannels.deleteTitle'), danger: true }))) return
     try {
       await deleteChannel({ variables: { id } })
     } catch (e) {
@@ -174,7 +178,7 @@ export default function NotificationsPage() {
         <PageTitle icon={<Bell size={22} color="var(--color-icon-accent)" />}>
           Notifiche
         </PageTitle>
-        <button
+        <button type="button"
           onClick={openCreate}
           style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#fff', background: 'var(--color-brand)', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer' }}
         >
@@ -192,7 +196,7 @@ export default function NotificationsPage() {
             const pb = lookupStyle(PLATFORM_BADGE, ch.platform, 'PLATFORM_BADGE')
             const tr = testResult[ch.id]
             return (
-              <div key={ch.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div key={ch.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '2px 8px', borderRadius: 4, background: pb.bg, color: pb.color }}>
                   {ch.platform}
                 </span>
@@ -202,9 +206,9 @@ export default function NotificationsPage() {
                 </div>
                 {tr === true  && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)' }}>✓ Inviato</span>}
                 {tr === false && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>✗ Errore</span>}
-                <button onClick={() => void handleTest(ch.id)}   style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: '1px solid #e5e7eb', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Testa</button>
-                <button onClick={() => openEdit(ch)}              style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'none', border: '1px solid #e5e7eb', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Modifica</button>
-                <button onClick={() => void handleDelete(ch.id)}  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', background: 'none', border: '1px solid #fee2e2', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Elimina</button>
+                <button type="button" onClick={() => void handleTest(ch.id)}   style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Testa</button>
+                <button type="button" onClick={() => openEdit(ch)}              style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Modifica</button>
+                <button type="button" onClick={() => void handleDelete(ch.id)}  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', background: 'none', border: '1px solid #fee2e2', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Elimina</button>
               </div>
             )
           })}
@@ -217,8 +221,8 @@ export default function NotificationsPage() {
         title={editingId ? 'Modifica canale' : 'Aggiungi canale'}
         footer={
           <>
-            <button onClick={() => setDialogOpen(false)} style={{ fontSize: 'var(--font-size-card-title)', padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: 'var(--color-slate)', cursor: 'pointer' }}>Annulla</button>
-            <button onClick={() => void handleSave()} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)', color: '#fff', cursor: 'pointer' }}>Salva</button>
+            <button type="button" onClick={() => setDialogOpen(false)} style={{ fontSize: 'var(--font-size-card-title)', padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', color: 'var(--color-slate)', cursor: 'pointer' }}>Annulla</button>
+            <button type="button" onClick={() => void handleSave()} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)', color: '#fff', cursor: 'pointer' }}>Salva</button>
           </>
         }
       >
@@ -226,10 +230,10 @@ export default function NotificationsPage() {
           <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Platform</label>
           <div style={{ display: 'flex', gap: 8 }}>
             {['slack', 'teams'].map((p) => (
-              <button
+              <button type="button"
                 key={p}
                 onClick={() => setForm((f) => ({ ...f, platform: p }))}
-                style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? 'var(--color-brand)' : '#e5e7eb', background: form.platform === p ? '#eff0ff' : '#fff', color: form.platform === p ? 'var(--color-brand)' : 'var(--color-slate)' }}
+                style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? 'var(--color-brand)' : 'var(--border)', background: form.platform === p ? '#eff0ff' : '#fff', color: form.platform === p ? 'var(--color-brand)' : 'var(--color-slate)' }}
               >
                 {p.charAt(0).toUpperCase() + p.slice(1)}
               </button>

@@ -11,10 +11,12 @@ import { MiniPathGraph } from '@/components/MiniPathGraph'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Pill } from '@/components/ui/Pill'
+import { Pagination } from '@/components/ui/Pagination'
 import { Input } from '@/components/ui/FormControls'
-import { RiskBadge, riskLevel } from '@/components/ui/badges'
+import { RiskBadge, riskLevel, SEVERITY_STYLE } from '@/components/ui/badges'
 import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, lookupStyle } from '@/lib/tokens'
+import { buildTypeIconMap } from '@/lib/ciIconPaths'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,11 +42,11 @@ const ACTIONS: { key: Action; icon: typeof Zap; labelKey: string; bg: string; fg
   { key: 'remove', icon: Trash2, labelKey: 'pages.whatIf.remove',  bg: '#e0f2fe', fg: 'var(--color-trigger-manual)' },
 ]
 
-const IMPACT_STYLES: Record<string, { bg: string; fg: string }> = {
-  critical: { bg: '#fee2e2', fg: '#991b1b' },
-  high:     { bg: '#ffedd5', fg: '#9a3412' },
-  medium:   { bg: '#fef3c7', fg: '#92400e' },
-  low:      { bg: 'var(--color-border-light)', fg: '#374151' },
+// Livello di impatto (critical/high/medium/low): stessa palette della severità
+// (ui/badges.tsx) — prima WhatIf aveva un quarto set di colori proprio.
+function impactBadge(level: string, label: string) {
+  const s = lookupStyle(SEVERITY_STYLE, level, 'SEVERITY_STYLE')
+  return badge(s.bg, s.color, label)
 }
 
 // Colore del cerchio del risk score: stesso livello di RiskBadge (soglie di
@@ -81,11 +83,7 @@ export function WhatIfPage() {
 
   // CI type → icon map from metamodel
   const { data: ciTypesData } = useQuery<{ ciTypes: { name: string; icon: string }[] }>(GET_CI_TYPES, { fetchPolicy: 'cache-first' })
-  const typeIconMap = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const ct of ciTypesData?.ciTypes ?? []) m.set(ct.name.toLowerCase().replace(/[_\s]/g, ''), ct.icon ?? 'box')
-    return m
-  }, [ciTypesData])
+  const typeIconMap = useMemo(() => buildTypeIconMap(ciTypesData?.ciTypes ?? []), [ciTypesData])
 
   // CI search
   const { data: ciData } = useQuery<{ allCIs: { items: CIOption[] } }>(GET_ALL_CIS, {
@@ -176,10 +174,7 @@ export function WhatIfPage() {
     { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
     { key: 'type', label: t('pages.whatIf.colType'), sortable: true, width: '120px', render: (v) => badge('#e0f2fe', '#0369a1', String(v)) },
     { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
-    { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => {
-      const ic = lookupOrError(IMPACT_STYLES, String(v), 'IMPACT_STYLES', { bg: 'var(--color-danger)', fg: '#fff' })
-      return badge(ic.bg, ic.fg, impactLabel(String(v)))
-    }},
+    { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => impactBadge(String(v), impactLabel(String(v))) },
     { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => {
       const path = v as unknown as string[]
       return <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{path?.join(' → ') || '—'}</span>
@@ -397,7 +392,7 @@ export function WhatIfPage() {
                     )
                   }}
                 />
-                {total > PAGE_SIZE && <Pager page={cisPage} totalPages={totalPages} total={total} onPage={setCisPage} t={t} />}
+                <Pagination currentPage={cisPage + 1} totalPages={totalPages} onPrev={() => setCisPage(p => Math.max(0, p - 1))} onNext={() => setCisPage(p => Math.min(totalPages - 1, p + 1))} />
               </>
             )
           })()}
@@ -415,7 +410,7 @@ export function WhatIfPage() {
                     columns={[
                       { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
                       { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
-                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => { const ic = lookupOrError(IMPACT_STYLES, String(v), 'IMPACT_STYLES', { bg: 'var(--color-danger)', fg: '#fff' }); return badge(ic.bg, ic.fg, impactLabel(String(v))) } },
+                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => impactBadge(String(v), impactLabel(String(v))) },
                       { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
                     ]}
                     data={paged}
@@ -423,7 +418,7 @@ export function WhatIfPage() {
                     emptyComponent={<EmptyState icon={<ShieldCheck size={32} color="#16a34a" />} title={t('pages.whatIf.noServices')} />}
                     onRowClick={row => navigate(`/ci/${labelToRoute(row.type)}/${row.id}`)}
                   />
-                  {total > PAGE_SIZE && <Pager page={svcPage} totalPages={totalPages} total={total} onPage={setSvcPage} t={t} />}
+                  <Pagination currentPage={svcPage + 1} totalPages={totalPages} onPrev={() => setSvcPage(p => Math.max(0, p - 1))} onNext={() => setSvcPage(p => Math.min(totalPages - 1, p + 1))} />
                 </>
           })()}
 
@@ -445,7 +440,7 @@ export function WhatIfPage() {
                     loading={false}
                     emptyComponent={<EmptyState icon={<Users size={32} color="var(--color-slate-light)" />} title={t('pages.whatIf.noTeams')} />}
                   />
-                  {total > PAGE_SIZE && <Pager page={teamPage} totalPages={totalPages} total={total} onPage={setTeamPage} t={t} />}
+                  <Pagination currentPage={teamPage + 1} totalPages={totalPages} onPrev={() => setTeamPage(p => Math.max(0, p - 1))} onNext={() => setTeamPage(p => Math.min(totalPages - 1, p + 1))} />
                 </>
           })()}
         </div>
@@ -457,33 +452,4 @@ export function WhatIfPage() {
   )
 }
 
-// ── Pagination ───────────────────────────────────────────────────────────────
-
-function Pager({ page, totalPages, total, onPage, t }: {
-  page: number; totalPages: number; total: number
-  onPage: (p: number) => void; t: (k: string) => string
-}) {
-  const PAGE_SIZE = 20
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-      <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {total}</span>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={() => onPage(Math.max(0, page - 1))}
-          disabled={page === 0}
-          style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page === 0 ? 'var(--color-slate-bg)' : '#fff', color: page === 0 ? '#c4c9d4' : 'var(--color-slate)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
-        >{t('common.prev')}</button>
-        <span style={{ padding: '4px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{page + 1} / {totalPages}</span>
-        <button
-          onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
-          disabled={page >= totalPages - 1}
-          style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', border: '1px solid #e5e7eb', borderRadius: 4, background: page >= totalPages - 1 ? 'var(--color-slate-bg)' : '#fff', color: page >= totalPages - 1 ? '#c4c9d4' : 'var(--color-slate)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
-        >{t('common.next')}</button>
-      </div>
-    </div>
-  )
-}
-
-// ── Mini Path Graph (D3 force-simulation) ────────────────────────────────────
-
-// MiniPathGraph extracted to @/components/MiniPathGraph
+// Paginazione: ui/Pagination (prima un Pager locale). Grafo del percorso: components/MiniPathGraph.

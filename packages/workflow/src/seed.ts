@@ -1,5 +1,5 @@
 import type { WorkflowDefinition } from './types.js'
-import { seedWorkflowDefinition, isMainModule } from './seed-common.js'
+import { seedWorkflowDefinition } from './seed-common.js'
 
 export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'Incident Management',
@@ -238,9 +238,6 @@ export async function seedWorkflowForTenant(tenantId: string): Promise<string> {
   return base.definitionId
 }
 
-// Eseguibile standalone: pnpm --filter @opengraphity/workflow run seed
-if (isMainModule(import.meta.url)) {
-  seedWorkflowForTenant('c-one')
-    .then(() => process.exit(0))
-    .catch((e: unknown) => { console.error(e); process.exit(1) })
-}
+// Runner operativo: apps/api/src/scripts/seed-incident-workflow.ts
+// (`pnpm --filter @opengraphity/api seed:incident-workflow -- --tenant=<slug>`).
+// Questo package esporta solo definizioni e funzioni seed*ForTenant (D-31).

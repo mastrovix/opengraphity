@@ -14,14 +14,16 @@ class FakeQueue extends EventEmitter {
   close = vi.fn().mockResolvedValue(undefined)
 }
 
+// vitest 4: a mock is constructible (`new Worker(...)`) only when its
+// implementation is a `function`/class, not an arrow function.
 vi.mock('bullmq', () => ({
-  Worker: vi.fn().mockImplementation((name: string, processor: unknown, opts: Record<string, unknown>) => new FakeWorker(name, processor, opts)),
-  Queue:  vi.fn().mockImplementation((name: string, opts: Record<string, unknown>) => new FakeQueue(name, opts)),
+  Worker: vi.fn(function (name: string, processor: unknown, opts: Record<string, unknown>) { return new FakeWorker(name, processor, opts) }),
+  Queue:  vi.fn(function (name: string, opts: Record<string, unknown>) { return new FakeQueue(name, opts) }),
 }))
 
 const quit = vi.fn().mockResolvedValue('OK')
 vi.mock('ioredis', () => ({
-  Redis: vi.fn().mockImplementation(() => Object.assign(new EventEmitter(), { quit })),
+  Redis: vi.fn(function () { return Object.assign(new EventEmitter(), { quit }) }),
 }))
 
 const logError = vi.fn()

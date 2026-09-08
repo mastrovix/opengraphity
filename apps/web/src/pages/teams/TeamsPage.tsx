@@ -13,13 +13,14 @@ import { CREATE_TEAM } from '@/graphql/mutations'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_TEAMS } from '@/graphql/queries'
-import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { FilterBuilder, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { lookupStyle } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
+import { useListQueryState } from '@/hooks/useListQueryState'
 
 interface Team {
   id:          string
@@ -42,8 +43,6 @@ function TypeBadge({ type }: { type: string | null }) {
     </Pill>
   )
 }
-
-const PAGE_SIZE = 50
 
 export function TeamsPage() {
   const { t } = useTranslation()
@@ -76,13 +75,11 @@ export function TeamsPage() {
     },
   ]
   const navigate = useNavigate()
-  const [page, setPage] = useState(0)
-  const [sortField, setSortField] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  // Sort / filters / page live in the URL: reload and shared links keep the view.
+  const list = useListQueryState({ pageSize: 50, persistInQuery: true })
 
   const { data, loading, error, refetch } = useQuery<{ teams: Team[] }>(GET_TEAMS, {
-    variables: { filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
+    variables: list.variables,
     fetchPolicy: 'cache-and-network',
   })
 
@@ -97,12 +94,8 @@ export function TeamsPage() {
     void createTeam({ variables: { input: { name: form.name.trim(), description: form.description.trim() || null } } })
   }
 
-  function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction); setPage(0) }
-
-  const teams      = data?.teams ?? []
-  const total      = teams.length
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const pageItems  = teams.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const teams = data?.teams ?? []
+  const { pageItems, totalPages, total } = list.paginate(teams)
 
   return (
     <PageContainer>
@@ -115,8 +108,8 @@ export function TeamsPage() {
           </p>
         }
         actions={
-          <Button onClick={() => setCreateOpen(true)} style={{ fontSize: 14 }}>
-            <Plus size={15} style={{ marginRight: 6 }} />{t('pages.teams.new')}
+          <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => setCreateOpen(true)} style={{ fontSize: 14 }}>
+            {t('pages.teams.new')}
           </Button>
         }
       />
@@ -129,17 +122,17 @@ export function TeamsPage() {
         onSubmit={submitTeam}
         footer={
           <>
-            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Annulla</Button>
-            <Button type="submit" disabled={creating || form.name.trim().length === 0}>{creating ? 'Creazione…' : 'Crea'}</Button>
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" disabled={creating || form.name.trim().length === 0}>{creating ? 'Creazione…' : t('common.create')}</Button>
           </>
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel>Nome *</FieldLabel>
+          <FieldLabel>{t('pages.teams.name')} *</FieldLabel>
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus placeholder="Es. Network Operations" />
         </div>
         <div>
-          <FieldLabel>Descrizione</FieldLabel>
+          <FieldLabel>{t('pages.teams.description')}</FieldLabel>
           <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} />
         </div>
       </Modal>
@@ -148,7 +141,7 @@ export function TeamsPage() {
         <div style={{ flex: 1 }}>
           <FilterBuilder
             fields={FILTER_FIELDS}
-            onApply={(group) => { setFilterGroup(group); setPage(0) }}
+            onApply={list.setFilterGroup}
           />
         </div>
         <ExportCsvButton
@@ -164,9 +157,9 @@ export function TeamsPage() {
             columns={COLUMNS}
             data={pageItems}
             loading={loading}
-            onSort={handleSort}
-            sortField={sortField}
-            sortDir={sortDir}
+            onSort={list.handleSort}
+            sortField={list.sortField}
+            sortDir={list.sortDir}
             emptyComponent={
               <EmptyState
                 icon={<UsersRound size={32} color="var(--color-slate-light)" />}
@@ -177,7 +170,7 @@ export function TeamsPage() {
             onRowClick={(row) => navigate(`/teams/${row.id}`)}
           />
 
-          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+          <Pagination currentPage={list.page + 1} totalPages={totalPages} onPrev={list.prevPage} onNext={list.nextPage} />
         </>
       )}
     </PageContainer>

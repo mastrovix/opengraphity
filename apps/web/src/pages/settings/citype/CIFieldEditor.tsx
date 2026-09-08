@@ -12,13 +12,8 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 
-// Re-export shared button styles for any remaining consumers
-export { btnPrimary, btnSecondary } from '../shared/designerStyles'
-export const btnDanger: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '4px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-}
+// Re-export shared button styles for any remaining consumers (E-09: one definition, in ui/styles).
+export { btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,8 +86,8 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
     <Modal open={open} onClose={onClose} title={initial ? `Modifica campo: ${initial.name}` : 'Aggiungi campo'} width={560}
       footer={
         <>
-          <button style={btnSecondary} onClick={onClose}>Annulla</button>
-          <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
+          <button type="button" style={btnSecondary} onClick={onClose}>Annulla</button>
+          <button type="button" style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
             onClick={async () => {
               setSaving(true)
               try { await onSave(form) } finally { setSaving(false) }
@@ -153,10 +148,10 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
       </Field>
 
       {/* Script tabs */}
-      <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 8, paddingTop: 16 }}>
+      <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 16 }}>
         <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
           {(['validation', 'visibility', 'default'] as const).map((tab) => (
-            <button key={tab} onClick={() => setScriptTab(tab)}
+            <button type="button" key={tab} onClick={() => setScriptTab(tab)}
               style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                 background: scriptTab === tab ? 'var(--color-brand-light)' : 'var(--color-slate-bg)',
                 color: scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',

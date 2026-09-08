@@ -21,8 +21,6 @@ import {
   assertCIHasOwnerAndSupport,
   assertInitialStep,
   getCIName,
-  getInstanceId,
-  loadChange,
   loadChangeWorkflow,
   afterEnterStep,
 } from './helpers.js'

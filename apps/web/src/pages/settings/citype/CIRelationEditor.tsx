@@ -1,41 +1,11 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { Input, Select } from '@/components/ui/FormControls'
+import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
+import { useConfirm } from '@/hooks/useConfirm'
 import type { CITypeDef, CIRelationDef } from '@/contexts/MetamodelContext'
-
-// ── Style constants ────────────────────────────────────────────────────────────
-
-// Per-file overrides on top of the shared FormControls base style.
-const inputS: React.CSSProperties = {
-  padding: '8px 12px', border: '1px solid #e5e7eb', color: 'var(--color-slate-dark)',
-}
-
-const selectS: React.CSSProperties = {
-  ...inputS,
-  appearance: 'none',
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer',
-}
-
-const labelS: React.CSSProperties = {
-  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
-}
-
-const btnPrimary: React.CSSProperties = {
-  padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer',
-}
-
-const btnSecondary: React.CSSProperties = {
-  padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer',
-}
-
-const btnDanger: React.CSSProperties = {
-  padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
-  color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -74,8 +44,8 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
     <Modal open={open} onClose={onClose} title="Aggiungi relazione CI" width={500}
       footer={
         <>
-          <button style={btnSecondary} onClick={onClose}>Annulla</button>
-          <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
+          <button type="button" style={btnSecondary} onClick={onClose}>Annulla</button>
+          <button type="button" style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
             onClick={async () => {
               setSaving(true)
               try { await onSave(form) } finally { setSaving(false) }
@@ -128,13 +98,18 @@ interface RelationTableProps {
 }
 
 export function CIRelationTable({ relations, onRemove }: RelationTableProps) {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
+  const handleRemove = async (r: CIRelationDef) => {
+    if (await confirm({ title: t('ciTypeDesigner.deleteRelationTitle', { name: r.name }), danger: true })) onRemove(r)
+  }
   if (relations.length === 0) {
     return <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Nessuna relazione CI configurata.</p>
   }
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
-        <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+        <tr style={{ borderBottom: '2px solid var(--border)' }}>
           {['name', 'label', 'tipo Neo4j', 'target', 'card.', 'dir.', ''].map(h => (
             <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
           ))}
@@ -150,12 +125,9 @@ export function CIRelationTable({ relations, onRemove }: RelationTableProps) {
             <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.cardinality}</td>
             <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.direction}</td>
             <td style={{ padding: '8px' }}>
-              <button style={{ ...btnDanger, padding: '3px 10px' }}
+              <button type="button" style={{ ...btnDanger, padding: '3px 10px' }}
                 aria-label={`Elimina relazione ${r.name}`}
-                onClick={() => {
-                  if (!confirm(`Eliminare la relazione "${r.name}"?`)) return
-                  onRemove(r)
-                }}>
+                onClick={() => void handleRemove(r)}>
                 <X size={12} aria-hidden="true" />
               </button>
             </td>

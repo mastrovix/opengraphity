@@ -1,15 +1,10 @@
 /**
- * Business Rules engine — evaluates rules ordered by priority with AND/OR logic
- * and stop_on_match support.
+ * Business Rules engine — facade over the shared automation engine: rules are
+ * ordered by priority (Cypher), support AND/OR condition logic and stop_on_match.
  */
 import { runQuery } from '@opengraphity/neo4j'
-import { logger as appLogger } from './logger.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
-import { evaluateConditions, parseConditions } from './conditionEvaluator.js'
-import { executeActions, parseActions, type ActionExecutionContext } from './actionExecutor.js'
-import { audit } from './audit.js'
-
-const log = appLogger.child({ module: 'rules-engine' })
+import { createAutomationCache, evaluateRules } from './automationEngine.js'
 
 type RuleEventType = 'on_create' | 'on_update' | 'on_transition'
 
@@ -26,26 +21,10 @@ interface RuleRecord {
   stop_on_match:   boolean
 }
 
-// ── In-memory cache ──────────────────────────────────────────────────────────
-
-interface CacheEntry {
-  rules:    RuleRecord[]
-  loadedAt: number
-}
-
-const cache = new Map<string, CacheEntry>()
-const CACHE_TTL_MS = 60_000
-
-function cacheKey(tenantId: string, entityType: string, eventType: string): string {
-  return `br:${tenantId}:${entityType}:${eventType}`
-}
+const cache = createAutomationCache<RuleRecord>('br')
 
 async function loadRules(tenantId: string, entityType: string, eventType: string): Promise<RuleRecord[]> {
-  const key = cacheKey(tenantId, entityType, eventType)
-  const cached = cache.get(key)
-  if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) return cached.rules
-
-  const rules = await withSession(async (session) => {
+  return cache.get(tenantId, entityType, eventType, () => withSession(async (session) => {
     const rows = await runQuery<Record<string, unknown>>(session, `
       MATCH (r:BusinessRule {tenant_id: $tenantId, entity_type: $entityType, event_type: $eventType, enabled: true})
       RETURN r.id AS id, r.name AS name, r.description AS description,
@@ -66,10 +45,7 @@ async function loadRules(tenantId: string, entityType: string, eventType: string
       priority:        Number(r['priority'] ?? 100),
       stop_on_match:   (r['stop_on_match']  as boolean) ?? false,
     }))
-  })
-
-  cache.set(key, { rules, loadedAt: Date.now() })
-  return rules
+  }))
 }
 
 // ── Main evaluation function ─────────────────────────────────────────────────
@@ -98,71 +74,26 @@ export async function evaluateBusinessRules(
   const rules = await loadRules(tenantId, entityType, eventType)
   if (rules.length === 0) return []
 
-  const results: RuleResult[] = []
+  const outcomes = await evaluateRules({
+    kind: 'rule',
+    tenantId, entityType, entity, userId,
+    records: rules.map((r) => ({
+      id: r.id, name: r.name, conditions: r.conditions, actions: r.actions,
+      conditionLogic: r.condition_logic, stopOnMatch: r.stop_on_match,
+    })),
+  })
 
-  for (const rule of rules) {
-    // Corrupt conditions must NOT run the rule (parseConditions would otherwise
-    // yield [] = "always matches"). Skip it and log loud.
-    let matched: boolean
-    try {
-      const conditions = parseConditions(rule.conditions)
-      matched = evaluateConditions(conditions, entity, rule.condition_logic)
-    } catch (err) {
-      log.error({ err, ruleId: rule.id, ruleName: rule.name, tenantId },
-        '[rulesEngine] rule has corrupt conditions — rule NOT executed, fix its configuration')
-      results.push({ ruleId: rule.id, ruleName: rule.name, matched: false, actionsRun: 0, stopped: false })
-      continue
-    }
-
-    if (!matched) {
-      results.push({ ruleId: rule.id, ruleName: rule.name, matched: false, actionsRun: 0, stopped: false })
-      continue
-    }
-
-    const execCtx: ActionExecutionContext = {
-      tenantId,
-      userId,
-      entityId:   entity['id'] as string,
-      entityType,
-      entity,
-      source:     'business_rule',
-      sourceName: rule.name,
-    }
-
-    try {
-      // parseActions throws on corrupt JSON — handled below like any action failure
-      const actions = parseActions(rule.actions)
-      const actionResults = await executeActions(actions, execCtx)
-
-      void audit(
-        { tenantId, userId, userEmail: 'system', role: 'system' } as never,
-        'business_rule.executed', 'BusinessRule', rule.id,
-        { ruleName: rule.name, entityId: entity['id'], actionsRun: actionResults.length },
-      )
-
-      const stopped = rule.stop_on_match
-      results.push({
-        ruleId: rule.id, ruleName: rule.name, matched: true,
-        actionsRun: actionResults.filter(r => r.success).length,
-        stopped,
-      })
-
-      log.info({ ruleId: rule.id, name: rule.name, entityId: entity['id'], actionsRun: actionResults.length, stopped }, 'Business rule fired')
-
-      if (stopped) break
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err)
-      results.push({ ruleId: rule.id, ruleName: rule.name, matched: true, actionsRun: 0, stopped: false, error: errorMsg })
-      log.error({ ruleId: rule.id, err }, 'Business rule execution failed')
-    }
-  }
-
-  return results
+  return outcomes.map((o) => ({
+    ruleId:     o.id,
+    ruleName:   o.name,
+    matched:    o.matched,
+    actionsRun: o.actionsRun,
+    stopped:    o.stopped,
+    ...(o.error ? { error: o.error } : {}),
+  }))
 }
 
 /** Invalidate the rules cache for a tenant. */
 export function invalidateRulesCache(tenantId: string): void {
-  for (const key of cache.keys()) {
-    if (key.startsWith(`br:${tenantId}:`)) cache.delete(key)
-  }
+  cache.invalidate(tenantId)
 }

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon, LayoutGrid } from 'lucide-react'
+import { LayoutGrid } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/Button'
@@ -11,19 +11,7 @@ import {
   inputStyle, labelStyle, btnPrimary, btnGhost,
 } from './useCustomReports'
 
-// ── Chart icon helper ────────────────────────────────────────────────────────
-
-const CHART_ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
-  kpi: Hash, pie: PieChart, donut: CircleDot,
-  bar: BarChart2, bar_horizontal: BarChart,
-  line: LineChart, area: TrendingUp, table: TableIcon,
-}
-
-function getReportIcon(template: ReportTemplate) {
-  const chartType = template.sections?.[0]?.chartType ?? 'bar'
-  const Icon = lookupOrError(CHART_ICON_MAP, chartType, 'CHART_ICON_MAP', BarChart2)
-  return <Icon size={20} color="var(--color-brand)" />
-}
+import { getReportIcon } from './reportIcons'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 

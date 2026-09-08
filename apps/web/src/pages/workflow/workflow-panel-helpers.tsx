@@ -61,16 +61,7 @@ export function PanelField({ label, children }: { label: string; children: React
   )
 }
 
-// ── Action descriptions ───────────────────────────────────────────────────────
-
-const ACTION_DESCRIPTIONS: Record<string, string> = {
-  sla_start:    'Avvia timer SLA',
-  sla_stop:     'Ferma timer SLA',
-  schedule_job: 'Pianifica job automatico',
-  cancel_job:   'Annulla job pianificato',
-  notify_rule:  'Regola notifica',
-}
-void ACTION_DESCRIPTIONS // used as fallback reference; i18n is primary
+// ── Action descriptions (i18n: workflow.actions.*) ───────────────────────────
 
 export function actionLabel(t: (key: string) => string, type: string, params?: Record<string, unknown>): string {
   const base = t(`workflow.actions.${type}`)
@@ -159,6 +150,11 @@ export function paramsToRaw(type: string, params?: Record<string, unknown>): Rec
     method:           String(params['method']           ?? 'POST'),
     payload_template: String(params['payload_template'] ?? ''),
   }
+  if (type === 'create_approval_request') return {
+    title_template: String(params['title_template'] ?? ''),
+    approver_role:  String(params['approver_role']  ?? 'admin'),
+    approval_type:  String(params['approval_type']  ?? 'any'),
+  }
   return {}
 }
 
@@ -196,6 +192,15 @@ export function buildActionParams(type: string, raw: Record<string, string>): Re
       url:              raw['url']              ?? '',
       method:           raw['method']           ?? 'POST',
       payload_template: raw['payload_template'] ?? '',
+    }
+  }
+  if (type === 'create_approval_request') {
+    // packages/workflow CreateApprovalRequestParams: prima questo ramo mancava
+    // e l'azione veniva salvata con params {} (titolo/approvatori persi).
+    return {
+      title_template: raw['title_template'] ?? '',
+      approver_role:  raw['approver_role']  ?? 'admin',
+      approval_type:  raw['approval_type']  ?? 'any',
     }
   }
   return {}

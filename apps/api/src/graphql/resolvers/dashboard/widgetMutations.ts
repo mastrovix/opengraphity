@@ -1,5 +1,5 @@
 import { NotFoundError, ValidationError } from '../../../lib/errors.js'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../../context.js'
 import { audit } from '../../../lib/audit.js'
 import { mapDashboardConfig, type Props } from './helpers.js'
@@ -12,12 +12,6 @@ export interface DashboardLayoutWidgetInput {
   reportTemplateId: string
   reportSectionId: string
   colSpan: number
-}
-
-function toInt(v: unknown): number {
-  if (typeof v === 'number') return v
-  if (v && typeof (v as { toNumber?: () => number }).toNumber === 'function') return (v as { toNumber: () => number }).toNumber()
-  return Number(v)
 }
 
 /**
@@ -83,7 +77,7 @@ export async function saveDashboardLayout(
            RETURN count(w) AS n`,
           { updates, dashboardId, tenantId: ctx.tenantId, now },
         )
-        const n = toInt(upd.records[0]?.get('n'))
+        const n = toNumber(upd.records[0]?.get('n'))
         if (n !== updates.length) {
           // Throwing inside executeWrite rolls the whole layout back.
           throw new NotFoundError('DashboardWidget', `${updates.length - n} of ${updates.length} widget ids do not belong to dashboard ${dashboardId}`)

@@ -1,5 +1,6 @@
 // Must be imported FIRST in index.ts before any other import
 import { logger } from './lib/logger.js'
+import { config } from './lib/config.js'
 
 // Circular buffer for recent traces (exported for use in monitoring resolver)
 export interface RecentTrace {
@@ -130,10 +131,10 @@ export function updateActiveSpanName(operationName: string): void {
 }
 
 export function initTelemetry(): void {
-  if (process.env['OTEL_ENABLED'] !== 'true') return
+  if (!config.otelEnabled) return
 
   otelEnabled  = true
-  otelEndpoint = process.env['OTEL_ENDPOINT'] ?? 'http://localhost:4318/v1/traces'
+  otelEndpoint = config.otelEndpoint
 
   void (async () => {
     try {

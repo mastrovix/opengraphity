@@ -8,8 +8,9 @@ import { BookOpen, Search, Eye, ThumbsUp, Tag } from 'lucide-react'
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
 import { QueryError } from '@/components/QueryError'
-import { lookupOrError } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
+import { kbCategoryColor, kbCategoryIcon } from '@/lib/kbCategories'
+import { formatDate } from '@/lib/datetime'
 
 const GET_CATEGORIES = gql`
   query KBCategories { kbCategories { name count } }
@@ -31,16 +32,6 @@ interface KBArticle {
 }
 
 interface KBCategory { name: string; count: number }
-
-const CATEGORY_ICONS: Record<string, string> = {
-  hardware: '🖥️', software: '💿', network: '🌐', security: '🔐',
-  'how-to': '📖', faq: '❓', general: '📋',
-}
-
-const CATEGORY_COLORS: Record<string, string> = {
-  hardware: '#3b82f6', software: '#8b5cf6', network: '#06b6d4',
-  security: 'var(--color-danger)', 'how-to': '#22c55e', faq: 'var(--color-warning)', general: 'var(--color-slate-light)',
-}
 
 const PAGE_SIZE = 15
 
@@ -123,10 +114,10 @@ export function KnowledgeBasePage() {
                   background: '#fff', cursor: 'pointer', textAlign: 'center',
                   transition: 'all 150ms',
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = lookupOrError(CATEGORY_COLORS, cat.name, 'CATEGORY_COLORS', 'var(--color-danger)') }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = kbCategoryColor(cat.name) }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0' }}
               >
-                <div style={{ fontSize: 'var(--font-size-page-title)', marginBottom: 6 }}>{lookupOrError(CATEGORY_ICONS, cat.name, 'CATEGORY_ICONS', '📄')}</div>
+                <div style={{ fontSize: 'var(--font-size-page-title)', marginBottom: 6 }}>{kbCategoryIcon(cat.name)}</div>
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#1a2332', marginBottom: 2 }}>{cat.name}</div>
                 <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{cat.count} articoli</div>
               </button>
@@ -139,8 +130,8 @@ export function KnowledgeBasePage() {
       {category && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('pages.kb.category')}:</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', 'var(--color-danger)'), color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-            {lookupOrError(CATEGORY_ICONS, category, 'CATEGORY_ICONS', '📄')} {category}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: kbCategoryColor(category), color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+            {kbCategoryIcon(category)} {category}
             <button onClick={() => { setCategory(''); setPage(0) }} style={{ marginLeft: 4, background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
           </span>
         </div>
@@ -178,8 +169,8 @@ export function KnowledgeBasePage() {
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <Pill bg={lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', 'var(--color-danger)') + '20'} color={lookupOrError(CATEGORY_COLORS, a.category, 'CATEGORY_COLORS', 'var(--color-danger)')} radius={10}>
-                          {lookupOrError(CATEGORY_ICONS, a.category, 'CATEGORY_ICONS', '📄')} {a.category}
+                        <Pill bg={kbCategoryColor(a.category) + '20'} color={kbCategoryColor(a.category)} radius={10}>
+                          {kbCategoryIcon(a.category)} {a.category}
                         </Pill>
                         {a.tags.slice(0, 3).map((tag) => (
                           <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: 'var(--color-slate)' }}>
@@ -190,7 +181,7 @@ export function KnowledgeBasePage() {
                       <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>{a.title}</h3>
                       <div style={{ display: 'flex', gap: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                         <span>{a.authorName}</span>
-                        <span>{a.publishedAt ? new Date(a.publishedAt).toLocaleDateString() : '—'}</span>
+                        <span>{formatDate(a.publishedAt)}</span>
                         <span><Eye size={10} style={{ verticalAlign: 'middle' }} /> {a.views}</span>
                         <span><ThumbsUp size={10} style={{ verticalAlign: 'middle' }} /> {a.helpfulCount}</span>
                       </div>

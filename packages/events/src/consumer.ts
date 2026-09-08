@@ -1,7 +1,7 @@
 import { Worker, type Job } from 'bullmq'
 import { Redis } from 'ioredis'
 import type { DomainEvent } from '@opengraphity/types'
-import { getRedisOptions } from './connection.js'
+import { getRedisConnection } from './redis.js'
 
 /** Days to remember a processed event id for idempotency. */
 const PROCESSED_TTL_SECONDS = 24 * 60 * 60
@@ -66,7 +66,7 @@ export abstract class BaseConsumer<T> {
   abstract process(event: DomainEvent<T>): Promise<void>
 
   async start(): Promise<void> {
-    this.redis = new Redis(getRedisOptions())
+    this.redis = new Redis(getRedisConnection())
     this.worker = new Worker(
       this.queueName,
       async (job: Job) => {
@@ -91,7 +91,7 @@ export abstract class BaseConsumer<T> {
         }
       },
       {
-        connection: getRedisOptions(),
+        connection: getRedisConnection(),
         concurrency: 10,
         settings: { backoffStrategy },
       },

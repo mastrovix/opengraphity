@@ -1,5 +1,4 @@
-import { getSession } from '@opengraphity/neo4j'
-import type { Integer } from 'neo4j-driver'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import { buildReportQuery, assertChartType, type ChartType, type ReportSectionDef } from './reportQueryBuilder.js'
 import { getReportWhitelist } from './reportWhitelist.js'
 
@@ -10,12 +9,6 @@ export interface ReportSectionResult {
   data:      string  // JSON
   total:     number | null
   error:     string | null
-}
-
-function toNumber(v: unknown): number {
-  if (typeof v === 'number') return v
-  if (v && typeof (v as Integer).toNumber === 'function') return (v as Integer).toNumber()
-  return Number(v) || 0
 }
 
 interface ExecutedData { data: unknown; total: number }

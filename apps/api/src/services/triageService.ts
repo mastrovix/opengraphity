@@ -12,6 +12,7 @@
  * violations all throw.
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
@@ -142,7 +143,7 @@ function suggestionSchema(severities: string[], categories: string[]) {
 
 let _client: Anthropic | null = null
 function getClient(): Anthropic {
-  if (!process.env['ANTHROPIC_API_KEY']) {
+  if (!config.anthropicApiKey) {
     throw new GraphQLError('Triage AI non configurato: ANTHROPIC_API_KEY mancante', {
       extensions: { code: 'FAILED_PRECONDITION' },
     })

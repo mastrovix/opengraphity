@@ -12,8 +12,9 @@ import { getSession } from '@opengraphity/neo4j'
 import { logger } from '../../lib/logger.js'
 import { ValidationError } from '../../lib/errors.js'
 import { assertReportTemplateAccess } from './reportAccess.js'
+import { config } from '../../lib/config.js'
 
-const REPORT_DIR = process.env['REPORT_DIR'] ?? path.resolve('./data/reports')
+const REPORT_DIR = config.reportDir
 
 if (!fs.existsSync(REPORT_DIR)) fs.mkdirSync(REPORT_DIR, { recursive: true })
 

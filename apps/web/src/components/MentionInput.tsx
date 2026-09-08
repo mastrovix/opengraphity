@@ -1,12 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { gql } from '@apollo/client'
+import { SEARCH_USERS } from '@/graphql/queries'
 
-const SEARCH_USERS = gql`
-  query SearchUsers($search: String!) {
-    searchUsers(search: $search, limit: 5) { id name email }
-  }
-`
+interface UserSuggestion { id: string; name: string; email: string }
 
 interface Props {
   value: string
@@ -29,13 +25,12 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
   const [selectedIdx, setSelectedIdx] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = useQuery<any>(SEARCH_USERS, {
-    variables: { search: debouncedSearch },
+  const { data } = useQuery<{ searchUsers: UserSuggestion[] }>(SEARCH_USERS, {
+    variables: { search: debouncedSearch, limit: 5 },
     skip: !mentionState.active || debouncedSearch.length < 1,
   })
 
-  const users: { id: string; name: string; email: string }[] = data?.searchUsers ?? []
+  const users: UserSuggestion[] = data?.searchUsers ?? []
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -101,14 +96,16 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
         style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db', resize: 'vertical', fontFamily: 'inherit', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
       />
       {mentionState.active && users.length > 0 && (
-        <div style={{
+        <div role="listbox" style={{
           position: 'absolute', top: mentionState.dropdownPos.top, left: mentionState.dropdownPos.left,
-          zIndex: 100, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+          zIndex: 100, background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
           boxShadow: '0 4px 12px rgba(0,0,0,.12)', minWidth: 220, maxHeight: 200, overflowY: 'auto',
         }}>
           {users.map((u, i) => (
             <div
               key={u.id}
+              role="option"
+              aria-selected={i === selectedIdx}
               onMouseDown={(e) => { e.preventDefault(); insertMention(u) }}
               style={{
                 padding: '6px 10px', cursor: 'pointer', fontSize: 'var(--font-size-body)',
@@ -116,7 +113,7 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
               }}
             >
               <strong>{u.name}</strong>{' '}
-              <span style={{ color: '#6b7280' }}>({u.email})</span>
+              <span style={{ color: 'var(--color-slate)' }}>({u.email})</span>
             </div>
           ))}
         </div>

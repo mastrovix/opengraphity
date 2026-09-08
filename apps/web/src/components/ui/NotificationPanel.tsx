@@ -154,7 +154,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         width:           360,
         maxHeight:       420,
         backgroundColor: '#ffffff',
-        border:          '1px solid #e5e7eb',
+        border:          '1px solid var(--border)',
         borderRadius:    10,
         boxShadow:       '0 8px 24px rgba(0,0,0,0.12)',
         zIndex:          50,
@@ -176,7 +176,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
           {t('notifications.title')}
         </span>
         {notifications.length > 0 && (
-          <button
+          <button type="button"
             onClick={markAllAsRead}
             style={{
               display:         'flex',

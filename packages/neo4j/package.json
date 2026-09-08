@@ -11,13 +11,16 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "init": "node dist/init.js"
+    "init": "node dist/init.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "neo4j-driver": "^5.19.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "catalog:"
   }
 }

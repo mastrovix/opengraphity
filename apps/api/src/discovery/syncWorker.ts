@@ -1,4 +1,5 @@
 import type { Worker, Job } from 'bullmq'
+import { config } from '../lib/config.js'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import {
   decryptCredentials,
@@ -11,7 +12,7 @@ import { publish } from '@opengraphity/events'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 
 function encryptionKey(): string {
-  const k = process.env['DISCOVERY_ENCRYPTION_KEY']
+  const k = config.discoveryEncryptionKey
   if (!k) throw new Error('DISCOVERY_ENCRYPTION_KEY is not set — cannot process discovery credentials')
   return k
 }

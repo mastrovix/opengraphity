@@ -2,22 +2,23 @@
  * Change PDF export — builds the full "Change Audit Report" for a single
  * change: details, approval route, per-CI task dossier (assessments, plan,
  * validation, deployment, review), workflow history, audit trail and
- * attachment metadata. Pure pdfkit, returns a Buffer.
+ * attachment metadata. Pure pdfkit, returns a Buffer. Shared parts live in
+ * ./pdf/ticketDossier.ts.
  */
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
-import { NotFoundError } from './errors.js'
 import { ciTypeFromLabels } from './ciTypeFromLabels.js'
 import { ASSESSMENT_ROLE } from './taskStatus.js'
 import {
-  DASH, fmtDate, fmtDuration, fmtBytes, orDash,
-  PAGE_MARGIN, COLOR, type Doc, type PdfMeta,
-  ensureSpace, sectionHeading, emptyLine,
-  drawTable, keyValue, badge, docHeader, createPdfBuffer,
+  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, type Doc, type PdfMeta,
+  ensureSpace, sectionHeading, emptyLine, drawTable, keyValue, badge, createPdfBuffer,
 } from './pdf/common.js'
+import {
+  loadTicketDossier, renderTicketDossier, userRef,
+  workflowHistorySection, attachmentsSection,
+  type Props, type UserRef, type WorkflowHistoryEntry, type AttachmentEntry,
+} from './pdf/ticketDossier.js'
 
 export type { PdfMeta }
-
-type Props = Record<string, unknown>
 
 // ── Dossier shape ─────────────────────────────────────────────────────────────
 
@@ -58,33 +59,20 @@ export interface ChangeDossier {
     updatedAt:          string | null
   }
   phase:       string | null   // workflow instance current_step
-  requester:   { name: string; email: string } | null
-  changeOwner: { name: string; email: string } | null
+  requester:   UserRef | null
+  changeOwner: UserRef | null
   affectedCIs: ChangeCIDossier[]
-  workflowHistory: Array<{
-    stepName:    string
-    enteredAt:   string | null
-    exitedAt:    string | null
-    durationMs:  number | null
-    triggeredBy: string | null
-    triggerType: string | null
-    notes:       string | null
-  }>
+  workflowHistory: WorkflowHistoryEntry[]
   auditTrail: Array<{
     timestamp: string | null
     action:    string
     detail:    string | null
     actor:     string | null
   }>
-  attachments: Array<{ filename: string; sizeBytes: number; uploadedBy: string | null; uploadedAt: string | null }>
+  attachments: AttachmentEntry[]
 }
 
 // ── Data loading (tenant-scoped Cypher) ───────────────────────────────────────
-
-function userRef(p: Props | null): { name: string; email: string } | null {
-  if (!p || !p['id']) return null
-  return { name: (p['name'] ?? '') as string, email: (p['email'] ?? '') as string }
-}
 
 function taskInfo(p: Props | null, dateProp: string): ChangeTaskInfo | null {
   if (!p || !p['id']) return null
@@ -102,25 +90,24 @@ export async function loadChangeDossier(
   id: string,
   tenantId: string,
 ): Promise<ChangeDossier> {
-  const base = await runQueryOne<{
-    props: Props
-    reqUser: Props | null
-    ownerUser: Props | null
-    currentStep: string | null
-  }>(session, `
+  // Change has no assignee/comments: the common loader still provides the
+  // entity, workflow history and attachments (and NotFound on soft-deleted).
+  const common = await loadTicketDossier(session, {
+    label:      'Change',
+    entityType: 'change',
+    softDelete: true,
+  }, id, tenantId)
+  const p = common.props
+
+  const people = await runQueryOne<{ reqUser: Props | null; ownerUser: Props | null; currentStep: string | null }>(session, `
     MATCH (c:Change {id: $id, tenant_id: $tenantId})
-    WHERE coalesce(c.deleted, false) = false
     OPTIONAL MATCH (c)-[:REQUESTED_BY]->(req:User)
     OPTIONAL MATCH (c)-[:OWNED_BY]->(owner:User)
     OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-    RETURN properties(c) AS props,
-           properties(req)   AS reqUser,
+    RETURN properties(req)   AS reqUser,
            properties(owner) AS ownerUser,
            wi.current_step   AS currentStep
   `, { id, tenantId })
-
-  if (!base) throw new NotFoundError('Change', id)
-  const p = base.props
 
   const ciRows = await runQuery<{
     ciProps: Props
@@ -156,29 +143,11 @@ export async function loadChangeDossier(
     ORDER BY ci.name ASC
   `, { id, tenantId, ownerRole: ASSESSMENT_ROLE.OWNER, supportRole: ASSESSMENT_ROLE.SUPPORT })
 
-  const historyRows = await runQuery<{ eProps: Props }>(session, `
-    MATCH (c:Change {id: $id, tenant_id: $tenantId})
-          -[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-          -[:STEP_HISTORY]->(exec:WorkflowStepExecution)
-    RETURN properties(exec) AS eProps
-    ORDER BY exec.entered_at ASC
-  `, { id, tenantId })
-
   const auditRows = await runQuery<{ aProps: Props; uProps: Props | null }>(session, `
     MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_AUDIT]->(e:ChangeAuditEntry)
     OPTIONAL MATCH (e)-[:BY]->(u:User)
     RETURN properties(e) AS aProps, properties(u) AS uProps
     ORDER BY e.timestamp ASC
-  `, { id, tenantId })
-
-  const attachmentRows = await runQuery<{ filename: string; sizeBytes: number | null; uploadedBy: string | null; uploadedAt: string | null }>(session, `
-    MATCH (a:Attachment {tenant_id: $tenantId, entity_type: 'change', entity_id: $id})
-    OPTIONAL MATCH (u:User {id: a.uploaded_by, tenant_id: $tenantId})
-    RETURN a.filename                              AS filename,
-           a.size_bytes                            AS sizeBytes,
-           coalesce(u.name, u.email, a.uploaded_by) AS uploadedBy,
-           a.uploaded_at                           AS uploadedAt
-    ORDER BY a.uploaded_at DESC
   `, { id, tenantId })
 
   return {
@@ -195,9 +164,9 @@ export async function loadChangeDossier(
       createdAt:          (p['created_at']      ?? null) as string | null,
       updatedAt:          (p['updated_at']      ?? null) as string | null,
     },
-    phase:       base.currentStep ?? null,
-    requester:   userRef(base.reqUser),
-    changeOwner: userRef(base.ownerUser),
+    phase:       people?.currentStep ?? null,
+    requester:   userRef(people?.reqUser),
+    changeOwner: userRef(people?.ownerUser),
     affectedCIs: ciRows.map((r) => ({
       name:              (r.ciProps['name'] ?? r.ciProps['id'] ?? '') as string,
       type:              ciTypeFromLabels(r.nodeLabels ?? []),
@@ -211,27 +180,14 @@ export async function loadChangeDossier(
       deployment:        taskInfo(r.deployment,  'deployed_at'),
       review:            taskInfo(r.review,      'reviewed_at'),
     })),
-    workflowHistory: historyRows.map((r) => ({
-      stepName:    (r.eProps['step_name'] ?? '') as string,
-      enteredAt:   (r.eProps['entered_at'] ?? null) as string | null,
-      exitedAt:    (r.eProps['exited_at']  ?? null) as string | null,
-      durationMs:  r.eProps['duration_ms'] == null ? null : Math.round(Number(r.eProps['duration_ms'])),
-      triggeredBy: (r.eProps['triggered_by'] ?? null) as string | null,
-      triggerType: (r.eProps['trigger_type'] ?? null) as string | null,
-      notes:       (r.eProps['notes'] ?? null) as string | null,
-    })),
+    workflowHistory: common.workflowHistory,
     auditTrail: auditRows.map((r) => ({
       timestamp: (r.aProps['timestamp'] ?? null) as string | null,
       action:    (r.aProps['action'] ?? '') as string,
       detail:    (r.aProps['detail'] ?? null) as string | null,
       actor:     r.uProps ? ((r.uProps['name'] ?? r.uProps['email'] ?? null) as string | null) : null,
     })),
-    attachments: attachmentRows.map((r) => ({
-      filename:   r.filename ?? '',
-      sizeBytes:  r.sizeBytes == null ? 0 : Number(r.sizeBytes),
-      uploadedBy: r.uploadedBy ?? null,
-      uploadedAt: r.uploadedAt ?? null,
-    })),
+    attachments: common.attachments,
   }
 }
 
@@ -251,47 +207,58 @@ export async function buildChangePdf(data: ChangeDossier, meta: PdfMeta): Promis
 function renderDossier(doc: Doc, data: ChangeDossier): void {
   const ch = data.change
 
-  // ── Header ──
-  docHeader(doc, 'Change Audit Report', `${ch.code || ch.id} ${DASH} ${ch.title}`)
+  renderTicketDossier(doc, {
+    reportTitle: 'Change Audit Report',
+    entityTitle: `${ch.code || ch.id} ${DASH} ${ch.title}`,
+    badges: (doc, x, y) => {
+      let bx = x
+      bx += badge(doc, bx, y, `PHASE: ${(data.phase || 'n/d').toUpperCase().replace(/_/g, ' ')}`, COLOR.brand) + 6
+      if (ch.approvalRoute || ch.approvalStatus) {
+        bx += badge(doc, bx, y,
+          `APPROVAL: ${[ch.approvalRoute, ch.approvalStatus].filter(Boolean).join(' / ').toUpperCase()}`,
+          COLOR.dark) + 6
+      }
+      if (ch.aggregateRiskScore != null) {
+        badge(doc, bx, y, `RISK: ${ch.aggregateRiskScore}`, RISK_COLORS(ch.aggregateRiskScore))
+      }
+    },
+    sections: [
+      detailsSection(data),
+      ciTasksSection(data.affectedCIs),
+      workflowHistorySection(data.workflowHistory),
+      auditTrailSection(data.auditTrail),
+      attachmentsSection(data.attachments),
+    ],
+  })
+}
 
-  // Badges: phase + approval + risk
-  let bx = PAGE_MARGIN.left
-  const by = doc.y
-  bx += badge(doc, bx, by, `PHASE: ${(data.phase || 'n/d').toUpperCase().replace(/_/g, ' ')}`, COLOR.brand) + 6
-  if (ch.approvalRoute || ch.approvalStatus) {
-    bx += badge(doc, bx, by,
-      `APPROVAL: ${[ch.approvalRoute, ch.approvalStatus].filter(Boolean).join(' / ').toUpperCase()}`,
-      COLOR.dark) + 6
+function detailsSection(data: ChangeDossier) {
+  const ch = data.change
+  return (doc: Doc): void => {
+    sectionHeading(doc, 'Dettagli')
+    keyValue(doc, 'Perché', orDash(ch.why))
+    keyValue(doc, 'Cosa', orDash(ch.what))
+    keyValue(doc, 'Richiedente', data.requester
+      ? `${data.requester.name} <${data.requester.email}>`
+      : DASH)
+    keyValue(doc, 'Change owner', data.changeOwner
+      ? `${data.changeOwner.name} <${data.changeOwner.email}>`
+      : DASH)
+    keyValue(doc, 'Approvazione', ch.approvalRoute || ch.approvalStatus
+      ? `${orDash(ch.approvalRoute)} ${DASH} ${orDash(ch.approvalStatus)} (${fmtDate(ch.approvalAt)})`
+      : DASH)
+    keyValue(doc, 'Risk score', ch.aggregateRiskScore != null ? String(ch.aggregateRiskScore) : DASH)
+    keyValue(doc, 'Creato il', fmtDate(ch.createdAt))
+    keyValue(doc, 'Aggiornato il', fmtDate(ch.updatedAt))
   }
-  if (ch.aggregateRiskScore != null) {
-    badge(doc, bx, by, `RISK: ${ch.aggregateRiskScore}`, RISK_COLORS(ch.aggregateRiskScore))
-  }
-  doc.y = by + 24
-  doc.x = PAGE_MARGIN.left
+}
 
-  // ── Dettagli ──
-  sectionHeading(doc, 'Dettagli')
-  keyValue(doc, 'Perché', orDash(ch.why))
-  keyValue(doc, 'Cosa', orDash(ch.what))
-  keyValue(doc, 'Richiedente', data.requester
-    ? `${data.requester.name} <${data.requester.email}>`
-    : DASH)
-  keyValue(doc, 'Change owner', data.changeOwner
-    ? `${data.changeOwner.name} <${data.changeOwner.email}>`
-    : DASH)
-  keyValue(doc, 'Approvazione', ch.approvalRoute || ch.approvalStatus
-    ? `${orDash(ch.approvalRoute)} ${DASH} ${orDash(ch.approvalStatus)} (${fmtDate(ch.approvalAt)})`
-    : DASH)
-  keyValue(doc, 'Risk score', ch.aggregateRiskScore != null ? String(ch.aggregateRiskScore) : DASH)
-  keyValue(doc, 'Creato il', fmtDate(ch.createdAt))
-  keyValue(doc, 'Aggiornato il', fmtDate(ch.updatedAt))
-
-  // ── CI impattati con task ──
-  sectionHeading(doc, `CI impattati (${data.affectedCIs.length})`)
-  if (!data.affectedCIs.length) {
-    emptyLine(doc, 'Nessun CI collegato.')
-  } else {
-    for (const ci of data.affectedCIs) {
+/** Per-CI block with the task table (assessments, plan, validation, deployment, review). */
+function ciTasksSection(cis: ChangeCIDossier[]) {
+  return (doc: Doc): void => {
+    sectionHeading(doc, `CI impattati (${cis.length})`)
+    if (!cis.length) { emptyLine(doc, 'Nessun CI collegato.'); return }
+    for (const ci of cis) {
       ensureSpace(doc, 60)
       doc.moveDown(0.3)
       doc.fontSize(10).font('Helvetica-Bold').fillColor(COLOR.dark)
@@ -338,72 +305,24 @@ function renderDossier(doc: Doc, data: ChangeDossier): void {
       }
     }
   }
+}
 
-  // ── Cronologia workflow ──
-  sectionHeading(doc, `Cronologia workflow (${data.workflowHistory.length})`)
-  if (!data.workflowHistory.length) {
-    emptyLine(doc, 'Nessuna cronologia workflow.')
-  } else {
+function auditTrailSection(entries: ChangeDossier['auditTrail']) {
+  return (doc: Doc): void => {
+    sectionHeading(doc, `Audit trail (${entries.length})`)
+    if (!entries.length) { emptyLine(doc, 'Nessuna voce di audit.'); return }
     drawTable(doc,
       [
-        { header: 'Step',       width: 75 },
-        { header: 'Entrata',    width: 82 },
-        { header: 'Uscita',     width: 82 },
-        { header: 'Durata',     width: 50 },
-        { header: 'Attore',     width: 78 },
-        { header: 'Trigger',    width: 48 },
-        { header: 'Note',       width: 80 },
-      ],
-      data.workflowHistory.map((h) => [
-        h.stepName.replace(/_/g, ' '),
-        fmtDate(h.enteredAt),
-        fmtDate(h.exitedAt),
-        fmtDuration(h.durationMs),
-        orDash(h.triggeredBy),
-        orDash(h.triggerType),
-        orDash(h.notes),
-      ]),
-    )
-  }
-
-  // ── Audit trail ──
-  sectionHeading(doc, `Audit trail (${data.auditTrail.length})`)
-  if (!data.auditTrail.length) {
-    emptyLine(doc, 'Nessuna voce di audit.')
-  } else {
-    drawTable(doc,
-      [
-        { header: 'Data',     width: 95 },
-        { header: 'Azione',   width: 120 },
-        { header: 'Utente',   width: 100 },
+        { header: 'Data',      width: 95 },
+        { header: 'Azione',    width: 120 },
+        { header: 'Utente',    width: 100 },
         { header: 'Dettaglio', width: 180 },
       ],
-      data.auditTrail.map((e) => [
+      entries.map((e) => [
         fmtDate(e.timestamp),
         e.action.replace(/_/g, ' '),
         orDash(e.actor),
         orDash(e.detail),
-      ]),
-    )
-  }
-
-  // ── Allegati ──
-  sectionHeading(doc, `Allegati (${data.attachments.length})`)
-  if (!data.attachments.length) {
-    emptyLine(doc, 'Nessun allegato.')
-  } else {
-    drawTable(doc,
-      [
-        { header: 'Filename',    width: 210 },
-        { header: 'Dimensione',  width: 70 },
-        { header: 'Caricato da', width: 120 },
-        { header: 'Caricato il', width: 95 },
-      ],
-      data.attachments.map((a) => [
-        a.filename,
-        fmtBytes(a.sizeBytes),
-        orDash(a.uploadedBy),
-        fmtDate(a.uploadedAt),
       ]),
     )
   }

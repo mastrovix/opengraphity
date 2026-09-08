@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from 'express'
 import { getSession } from '@opengraphity/neo4j'
+import { getRedisConnection } from '@opengraphity/events'
 import { Redis } from 'ioredis'
 
 const router: ExpressRouter = Router()
@@ -26,9 +27,10 @@ async function checkNeo4j(): Promise<'ok' | 'error'> {
 }
 
 async function checkRedis(): Promise<'ok' | 'error'> {
+  // Same connection (host/password/TLS) as the queues: a health check that
+  // pinged a different Redis than the workers use would be meaningless.
   const client = new Redis({
-    host:                 process.env['REDIS_HOST'] ?? 'localhost',
-    port:                 parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
+    ...getRedisConnection(),
     lazyConnect:          true,
     maxRetriesPerRequest: 0,
   })

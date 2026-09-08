@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import { runQuery } from '@opengraphity/neo4j'
+import { runQuery, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { requireRole } from '../../lib/requireRole.js'
@@ -8,16 +8,8 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 
 type Props = Record<string, unknown>
 
-// Neo4j integers arrive as {low, high} or bigint-like objects.
-function toInt(v: unknown): number {
-  if (v == null) return 0
-  if (typeof (v as { toNumber?: () => number }).toNumber === 'function') return (v as { toNumber: () => number }).toNumber()
-  return Number(v)
-}
 function toNum(v: unknown): number | null {
-  if (v == null) return null
-  const n = toInt(v)
-  return Number.isFinite(n) ? n : null
+  return v == null ? null : toNumber(v)
 }
 
 const VALID_TYPES = ['ola', 'uc']
@@ -38,8 +30,8 @@ function mapOLA(p: Props, teamName: string | null) {
     name:            p['name']            as string,
     description:     (p['description']     ?? null) as string | null,
     entityType:      p['entity_type']     as string,
-    responseMinutes: toInt(p['response_minutes']),
-    resolveMinutes:  toInt(p['resolve_minutes']),
+    responseMinutes: toNumber(p['response_minutes']),
+    resolveMinutes:  toNumber(p['resolve_minutes']),
     businessHours:   (p['business_hours']  ?? false) as boolean,
     partyType:       (p['party_type']      ?? null) as string | null,
     partyName:       (p['party_name']      ?? null) as string | null,
@@ -96,10 +88,10 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
     `, { tenantId: ctx.tenantId, cutoff })
 
     const c = complianceRows[0] ?? {}
-    const total    = toInt(c['total'])
-    const met      = toInt(c['met'])
-    const breached = toInt(c['breached'])
-    const paused   = toInt(c['paused'])
+    const total    = toNumber(c['total'])
+    const met      = toNumber(c['met'])
+    const breached = toNumber(c['breached'])
+    const paused   = toNumber(c['paused'])
     // met/breached/paused are disjoint by construction, so the remainder is
     // exactly the open, unpaused, not-yet-breached SLAs.
     const openOnTrack = Math.max(0, total - met - breached - paused)
@@ -119,9 +111,9 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
 
     const byPriority: SLAPriorityRow[] = byPriorityRows.map((r) => ({
       priority: r['priority'] as string,
-      total:    toInt(r['total']),
-      met:      toInt(r['met']),
-      breached: toInt(r['breached']),
+      total:    toNumber(r['total']),
+      met:      toNumber(r['met']),
+      breached: toNumber(r['breached']),
     }))
 
     // ── Average resolution time (incidents resolved within the window) ─────────
@@ -146,7 +138,7 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
       const o = row['props'] as Props
       const entityType = (o['entity_type'] as string) || 'incident'
       const mapping = RESOLVED_FIELD[entityType === 'any' ? 'incident' : entityType]
-      const resolveMinutes = toInt(o['resolve_minutes'])
+      const resolveMinutes = toNumber(o['resolve_minutes'])
 
       let evaluated = 0, cMet = 0, cBreached = 0
       if (mapping) {
@@ -159,9 +151,9 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
                  sum(CASE WHEN mins <= $resolveMinutes THEN 1 ELSE 0 END) AS met,
                  sum(CASE WHEN mins >  $resolveMinutes THEN 1 ELSE 0 END) AS breached
         `, { tenantId: ctx.tenantId, cutoff, resolveMinutes })
-        evaluated = toInt(attRows[0]?.['evaluated'])
-        cMet      = toInt(attRows[0]?.['met'])
-        cBreached = toInt(attRows[0]?.['breached'])
+        evaluated = toNumber(attRows[0]?.['evaluated'])
+        cMet      = toNumber(attRows[0]?.['met'])
+        cBreached = toNumber(attRows[0]?.['breached'])
       }
 
       ola.push({

@@ -6,7 +6,7 @@
  */
 import { useState, useRef, useEffect } from 'react'
 import { Sparkles, Send, Search, Trash2 } from 'lucide-react'
-import { keycloak } from '@/lib/keycloak'
+import { apiUrl, authHeader } from '@/lib/apiBase'
 import { PageContainer } from '@/components/PageContainer'
 
 interface ChatMessage {
@@ -58,16 +58,14 @@ export function AssistantPage() {
 
     const abort = new AbortController()
     abortRef.current = abort
-    const apiUrl = import.meta.env['VITE_API_BASE_URL'] ?? ''
-
     let acc = ''
     let finished = false
     try {
-      const res = await fetch(`${apiUrl}/api/assistant/stream`, {
+      const res = await fetch(apiUrl('/api/assistant/stream'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: keycloak.token ? `Bearer ${keycloak.token}` : '',
+          ...authHeader(),
         },
         body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }),
         signal: abort.signal,
@@ -130,10 +128,10 @@ export function AssistantPage() {
             <Sparkles size={20} color="var(--color-brand)" /> Assistente AI
           </h1>
           {messages.length > 0 && (
-            <button
+            <button type="button"
               onClick={() => setMessages([])}
               disabled={streaming}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
             >
               <Trash2 size={13} /> Nuova conversazione
             </button>
@@ -151,10 +149,10 @@ export function AssistantPage() {
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
                 {SUGGESTIONS.map(s => (
-                  <button
+                  <button type="button"
                     key={s}
                     onClick={() => void send(s)}
-                    style={{ padding: '8px 14px', borderRadius: 18, border: '1px solid #e5e7eb', background: '#fff', color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
+                    style={{ padding: '8px 14px', borderRadius: 18, border: '1px solid var(--border)', background: '#fff', color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
                   >
                     {s}
                   </button>
@@ -176,7 +174,7 @@ export function AssistantPage() {
                 whiteSpace: 'pre-wrap',
                 background: m.error ? 'var(--color-danger-bg)' : m.role === 'user' ? 'var(--color-brand)' : '#fff',
                 color: m.error ? 'var(--color-trigger-sla-breach)' : m.role === 'user' ? '#fff' : 'var(--color-slate-dark)',
-                border: m.role === 'assistant' ? `1px solid ${m.error ? '#fecaca' : '#e5e7eb'}` : 'none',
+                border: m.role === 'assistant' ? `1px solid ${m.error ? '#fecaca' : 'var(--border)'}` : 'none',
               }}
             >
               {m.content}
@@ -194,7 +192,7 @@ export function AssistantPage() {
                   ))}
                 </div>
               )}
-              <div style={{ padding: '10px 14px', borderRadius: 12, background: '#fff', border: '1px solid #e5e7eb', fontSize: 'var(--font-size-body)', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--color-slate-dark)' }}>
+              <div style={{ padding: '10px 14px', borderRadius: 12, background: '#fff', border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--color-slate-dark)' }}>
                 {streamText || 'Sto consultando il grafo…'}
               </div>
             </div>
@@ -211,9 +209,9 @@ export function AssistantPage() {
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input) } }}
             placeholder="Chiedi qualcosa sul tuo ambiente…"
             disabled={streaming}
-            style={{ flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 'var(--font-size-body)', outline: 'none', background: '#fff' }}
+            style={{ flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', outline: 'none', background: '#fff' }}
           />
-          <button
+          <button type="button"
             onClick={() => void send(input)}
             disabled={streaming || !input.trim()}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 18px', borderRadius: 10, border: 'none', background: streaming || !input.trim() ? '#93c5fd' : 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: streaming || !input.trim() ? 'not-allowed' : 'pointer' }}

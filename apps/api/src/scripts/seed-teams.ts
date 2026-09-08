@@ -1,10 +1,10 @@
 import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
+import { refuseInProduction, resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const TENANT_ID = 'c-one'
-
-async function seed() {
+async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
   let created = 0
@@ -35,4 +35,7 @@ async function seed() {
   console.log(`Done. Created: ${created}, Skipped: ${skipped}`)
 }
 
-seed().catch((err) => { console.error(err); process.exit(1) })
+runScript('seed-teams', async () => {
+  refuseInProduction('seed-teams')
+  await seed(resolveTenantArg())
+})

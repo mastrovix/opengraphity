@@ -1,7 +1,13 @@
-import type { CIDependencyType, CIStatus } from './ci.js'
-import type { IncidentSeverity } from './incident.js'
-import type { ChangeType, ChangeRisk } from './change.js'
-import type { ProblemImpact } from './problem.js'
+/**
+ * Domain-event contract shared by the publisher (apps/api, packages/workflow),
+ * the consumers (packages/sla, packages/notifications, escalation consumer)
+ * and the SLA scheduler. This is the ONLY thing the packages actually share:
+ * the entity models that used to live next to it (Incident, Change, …) were
+ * never imported and drifted from the real graph (D-21), so they are gone.
+ *
+ * The literal unions below describe the values carried in the payloads, not
+ * the full domain enums (those live in the GraphQL schema / enum types).
+ */
 
 export interface DomainEvent<T = unknown> {
   id: string
@@ -12,6 +18,13 @@ export interface DomainEvent<T = unknown> {
   actor_id: string
   payload: T
 }
+
+export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type ChangeType       = 'standard' | 'normal' | 'emergency'
+export type ChangeRisk       = 'low' | 'medium' | 'high'
+export type ProblemImpact    = 'low' | 'medium' | 'high' | 'critical'
+export type CIStatus         = 'operational' | 'degraded' | 'down' | 'maintenance'
+export type CIDependencyType = 'depends_on' | 'hosted_on' | 'connects_to' | 'backed_up_by' | 'protected_by'
 
 // --- Incident ---
 

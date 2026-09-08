@@ -9,7 +9,7 @@ import {
 import { withSession, runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
-import { mapAssessmentTask, mapDeployPlanTask, toInt } from './mappers.js'
+import { mapAssessmentTask, mapDeployPlanTask } from './mappers.js'
 import { calculateTaskScore } from './scoring.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
 import {
@@ -24,6 +24,7 @@ import {
   afterEnterStep,
   type Session,
 } from './helpers.js'
+import { toNumber } from '@opengraphity/neo4j'
 
 // ── submitAssessmentResponse ──────────────────────────────────────────────────
 
@@ -134,7 +135,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
 
     const answered = new Map<string, number>()
-    for (const r of responses) answered.set(r.questionId, toInt(r.score))
+    for (const r of responses) answered.set(r.questionId, toNumber(r.score))
 
     const missing = questions.filter(q => !answered.has(q.questionId))
     if (missing.length > 0) {
@@ -144,9 +145,9 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
     // Weighted score + automatic environment factor: pure logic in scoring.ts.
     const score = calculateTaskScore(
       questions.map((q) => ({
-        weight:   toInt(q.weight, 1),
+        weight:   q.weight == null ? 1 : toNumber(q.weight),
         score:    answered.get(q.questionId) ?? 0,
-        maxScore: toInt(q.maxScore, 0),
+        maxScore: toNumber(q.maxScore),
       })),
       ctx1.ciEnv,
     )

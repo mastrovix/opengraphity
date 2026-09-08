@@ -1,20 +1,29 @@
 import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
 import type { Connector, CredentialFieldDefinition, ConfigFieldDefinition, DiscoveredCI, SyncSourceConfig } from '@opengraphity/discovery'
+import { ConnectorError } from './base.js'
+import { normalizeKeys } from './normalize.js'
 
 // ── CSV Connector ─────────────────────────────────────────────────────────────
 // User pastes CSV content directly in the csv_content config field.
 // The CSV must have a header row. Required column: name.
-// Optional column: ci_type. All other columns become CI properties.
-// external_id is derived from the name column.
+// Optional column: ci_type. All other columns become CI properties; header
+// names are normalized to snake_case ("Cost Center" → cost_center) because the
+// reconciliation engine rejects any other property key. Two headers that
+// collapse onto the same name are an error. external_id is derived from name.
+
+const TYPE = 'csv'
 
 type CsvConfig = {
   csv_content?: string
 }
 
-async function* parseCsvStream(
-  readable: NodeJS.ReadableStream,
-): AsyncIterable<DiscoveredCI> {
+function fail(message: string): never {
+  throw new ConnectorError(TYPE, 'parse', new Error(message))
+}
+
+/** Exported for tests. */
+export async function* parseCsvStream(readable: NodeJS.ReadableStream): AsyncIterable<DiscoveredCI> {
   const rl = createInterface({ input: readable, crlfDelay: Infinity })
   let headers: string[] | null = null
   let rowNum = 0
@@ -26,19 +35,27 @@ async function* parseCsvStream(
     const cols = splitCsvLine(trimmed)
 
     if (!headers) {
-      headers = cols.map(h => h.trim())
-      if (!headers.includes('name')) {
-        throw new Error('[csv] header row must include a "name" column')
-      }
+      const rawHeaders: Record<string, number> = {}
+      cols.forEach((h, i) => {
+        const key = h.trim()
+        if (key === '') fail(`header column ${i + 1} is empty`)
+        if (key in rawHeaders) fail(`duplicate header column "${key}"`)
+        rawHeaders[key] = i
+      })
+      const normalized = normalizeKeys(rawHeaders, `[${TYPE}] header row`)
+      headers = new Array<string>(cols.length)
+      for (const [key, i] of Object.entries(normalized)) headers[i] = key
+      if (!headers.includes('name')) fail('header row must include a "name" column')
       continue
     }
 
     rowNum++
+    if (cols.length > headers.length) fail(`row ${rowNum}: ${cols.length} columns but header has ${headers.length}`)
     const row: Record<string, string> = {}
     headers.forEach((h, i) => { row[h] = (cols[i] ?? '').trim() })
 
     const name = row['name']
-    if (!name) throw new Error(`[csv] row ${rowNum}: missing required "name" value`)
+    if (!name) fail(`row ${rowNum}: missing required "name" value`)
 
     const properties: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(row)) {
@@ -47,9 +64,9 @@ async function* parseCsvStream(
     }
 
     yield {
-      external_id: name,
-      source:      'csv',
-      ci_type:     row['ci_type'] ?? 'server',
+      external_id:   name,
+      source:        TYPE,
+      ci_type:       row['ci_type'] || 'server',
       name,
       properties,
       tags:          {},
@@ -58,7 +75,7 @@ async function* parseCsvStream(
   }
 }
 
-function splitCsvLine(line: string): string[] {
+export function splitCsvLine(line: string): string[] {
   const result: string[] = []
   let current  = ''
   let inQuotes = false
@@ -79,26 +96,30 @@ function splitCsvLine(line: string): string[] {
       current += ch
     }
   }
+  if (inQuotes) fail(`unterminated quoted field in line: ${line.slice(0, 60)}`)
   result.push(current)
   return result
 }
 
+function contentOf(config: SyncSourceConfig): string | undefined {
+  const cfg = (config.config ?? {}) as CsvConfig
+  return cfg.csv_content?.trim() || undefined
+}
+
 export const csvConnector: Connector = {
-  type:             'csv',
+  type:             TYPE,
   displayName:      'CSV Import',
   supportedCITypes: ['server', 'application', 'database', 'database_instance', 'certificate', 'network', 'storage'],
 
   async *scan(config: SyncSourceConfig, _creds: Record<string, string>): AsyncIterable<DiscoveredCI> {
-    const cfg     = (config.config ?? {}) as CsvConfig
-    const content = cfg.csv_content?.trim()
-    if (!content) throw new Error('CSV connector: csv_content is required')
+    const content = contentOf(config)
+    if (!content) throw new ConnectorError(TYPE, 'config', new Error('csv_content is required'))
 
     yield* parseCsvStream(Readable.from([content]))
   },
 
   async testConnection(config: SyncSourceConfig, _creds: Record<string, string>) {
-    const cfg     = (config.config ?? {}) as CsvConfig
-    const content = cfg.csv_content?.trim()
+    const content = contentOf(config)
     if (!content) return { ok: false, message: 'CSV content is required' }
 
     // Count non-empty, non-header lines
@@ -118,7 +139,7 @@ export const csvConnector: Connector = {
         label:     'CSV Content',
         type:      'textarea',
         required:  true,
-        help_text: 'Paste the CSV content here. Required column: name. Optional: ci_type. All other columns become properties.',
+        help_text: 'Paste the CSV content here. Required column: name. Optional: ci_type. All other columns become properties (headers normalized to snake_case).',
       },
     ]
   },

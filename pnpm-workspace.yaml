@@ -1,3 +1,12 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# One version per shared runtime/test dependency across the workspace (D-32):
+# every package.json references these as "catalog:". Two copies of ioredis or
+# two majors of vitest meant different behaviour between suites and duplicated
+# dependencies in the image.
+catalog:
+  bullmq: ^5.71.0
+  ioredis: ^5.10.0
+  vitest: ^4.1.0

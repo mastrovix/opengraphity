@@ -1,6 +1,12 @@
 import { initTelemetry } from './telemetry.js'
 initTelemetry()
 
+// Fail-fast configuration: every variable the API process needs is read (and
+// its production guard run) here, before any queue/driver/server is opened.
+// One error lists ALL the missing variables (G-07).
+import { validateConfig, config } from './lib/config.js'
+validateConfig('api')
+
 import { startServer } from './server.js'
 // Registra le condizioni di transizione ITSM sul workflow engine (side-effect).
 import './workflow/conditions.js'
@@ -56,7 +62,7 @@ async function main() {
   // Embedding worker (semantic similarity). CPU-bound: when a dedicated worker
   // container runs it (EMBEDDING_WORKER_EXTERNAL=true) the API skips it so the
   // ONNX inference does not block the request event loop.
-  const embeddingExternal = process.env['EMBEDDING_WORKER_EXTERNAL'] === 'true'
+  const embeddingExternal = config.embeddingWorkerExternal
   const embeddingWorker = embeddingExternal ? null : await startEmbeddingWorker()
   if (embeddingExternal) logger.info('Embedding worker delegated to external worker process')
   const emailDigestWorker = await startEmailDigestWorker()

@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq'
 import type { JobType } from 'bullmq'
-import { getRedisOptions } from '@opengraphity/events'
+import { getRedisConnection } from '@opengraphity/events'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { lookupOrError } from '../../lib/lookupOrError.js'
@@ -14,7 +14,7 @@ const QUEUE_NAMES = [
   'sla-jobs',
 ]
 
-const redisConn = getRedisOptions()
+const redisConn = getRedisConnection()
 
 const STATUS_TYPES: Record<string, JobType[]> = {
   waiting:   ['waiting'],

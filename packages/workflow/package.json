@@ -11,9 +11,6 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "seed": "tsx src/seed.ts",
-    "seed:kb": "tsx src/seed-kb-runner.ts",
-    "seed:problem": "tsx src/seed-problem.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -21,7 +18,7 @@
     "@opengraphity/events": "workspace:*",
     "@opengraphity/neo4j": "workspace:*",
     "@opengraphity/types": "workspace:*",
-    "bullmq": "^5.0.0",
+    "bullmq": "catalog:",
     "pino": "^10.3.1",
     "uuid": "^9.0.0"
   },
@@ -29,8 +26,7 @@
     "@types/node": "^20.12.0",
     "@types/uuid": "^9.0.0",
     "neo4j-driver": "^5.19.0",
-    "tsx": "^4.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^4.1.0"
+    "vitest": "catalog:"
   }
 }

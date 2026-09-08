@@ -45,7 +45,7 @@ export function StatsBar({ stats }: { stats: SyncStats }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
       {cards.map(c => (
-        <div key={c.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 16px' }}>
+        <div key={c.label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6b7280', fontSize: 'var(--font-size-body)', marginBottom: 4 }}>
             {c.icon}{c.label}
           </div>
@@ -71,7 +71,7 @@ export const labelStyle: React.CSSProperties = {
 export function btnStyle(bg: string, color: string): React.CSSProperties {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 4,
-    background: bg, color, border: `1px solid ${color === '#fff' ? bg : '#e5e7eb'}`,
+    background: bg, color, border: `1px solid ${color === '#fff' ? bg : 'var(--border)'}`,
     borderRadius: 6, padding: '6px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', fontWeight: 500,
   }
 }

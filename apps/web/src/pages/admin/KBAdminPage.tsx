@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { Pagination } from '@/components/ui/Pagination'
+import { inputS } from '@/components/ui/styles'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 
@@ -117,7 +118,7 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
               <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>{v.editedByName ?? '—'}</td>
               <td style={{ padding: '7px 12px', color: 'var(--color-slate-light)' }}>{new Date(v.editedAt).toLocaleString('it-IT')}</td>
               <td style={{ padding: '7px 12px', textAlign: 'right' }}>
-                <button
+                <button type="button"
                   disabled={restoring}
                   onClick={() => restore({ variables: { articleId, version: v.version } })}
                   style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-brand)', cursor: restoring ? 'default' : 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: restoring ? 0.6 : 1 }}
@@ -383,23 +384,20 @@ export function KBAdminPage() {
     { key: 'updatedAt', label: 'Aggiornato', render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{new Date(String(v)).toLocaleDateString()}</span> },
     { key: 'id', label: 'Azioni', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <button onClick={() => startEdit(row)} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
+        <button type="button" onClick={() => startEdit(row)} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
         {deleteId === row.id ? (
           <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
-            <button onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
+            <button type="button" onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
+            <button type="button" onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
           </div>
         ) : (
-          <button onClick={() => setDeleteId(row.id)} style={{ color: 'var(--color-slate-light)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
+          <button type="button" onClick={() => setDeleteId(row.id)} style={{ color: 'var(--color-slate-light)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
         )}
       </div>
     ) },
   ]
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '8px 10px', borderRadius: 6,
-    border: '1px solid #e2e8f0', fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
-  }
+  const inputStyle: React.CSSProperties = inputS
 
   return (
     <PageContainer>
@@ -413,7 +411,7 @@ export function KBAdminPage() {
             {loading ? '—' : total === 1 ? '1 articolo' : `${total} articoli`}
           </p>
         </div>
-        <button
+        <button type="button"
           onClick={() => { closeForm(); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
@@ -468,7 +466,7 @@ export function KBAdminPage() {
           {/* ── Action buttons ── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {/* Save (content only) */}
-            <button
+            <button type="button"
               onClick={handleSave}
               disabled={isBusy}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
@@ -478,7 +476,7 @@ export function KBAdminPage() {
 
             {/* Publish — only when editing an existing draft */}
             {editId && editArticle?.status === kbInitialStep?.name && (
-              <button
+              <button type="button"
                 onClick={handlePublish}
                 disabled={isBusy}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
@@ -490,7 +488,7 @@ export function KBAdminPage() {
 
             <div style={{ flex: 1 }} />
 
-            <button
+            <button type="button"
               onClick={closeForm}
               style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
             >

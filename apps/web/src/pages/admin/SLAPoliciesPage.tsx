@@ -1,13 +1,12 @@
-import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { useEnumValues } from '@/hooks/useEnumValues'
-import { createPortal } from 'react-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
-import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
-import { Shield, Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { FilterBuilder, type FieldConfig } from '@/components/FilterBuilder'
+import { Shield, Plus, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_SLA_POLICIES, GET_TEAMS } from '@/graphql/queries'
 import { CREATE_SLA_POLICY, UPDATE_SLA_POLICY, DELETE_SLA_POLICY } from '@/graphql/mutations'
@@ -15,6 +14,12 @@ import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
+import { Toggle } from '@/components/ui/Toggle'
+import { selectS, labelS } from '@/components/ui/styles'
+import { useListQueryState } from '@/hooks/useListQueryState'
+import { useCrudModal } from '@/hooks/useCrudModal'
+import { useConfirm } from '@/hooks/useConfirm'
+import { errorMessage } from '@/hooks/useMutationWithToast'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,31 +44,40 @@ const EMPTY_FORM: FormState = {
   businessHours: true, timezone: 'Europe/Rome',
 }
 
+const policyToForm = (p: SLAPolicy): FormState => ({
+  name: p.name, entityType: p.entityType, priority: p.priority ?? '',
+  category: p.category ?? '', teamId: p.teamId ?? '',
+  responseMinutes: p.responseMinutes, resolveMinutes: p.resolveMinutes,
+  businessHours: p.businessHours, timezone: p.timezone,
+})
+
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
 import { lookupOrError } from '@/lib/tokens'
-import { errorMessage } from '@/hooks/useMutationWithToast'
 
 const ENTITY_LABELS: Record<string, string> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+const SLA_FILTER_FIELDS: FieldConfig[] = [
+  { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+    { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
+    { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
+  ]},
+  { key: 'priority', label: 'Priorità', type: 'enum', options: [
+    { value: 'critical', label: 'Critical' }, { value: 'high', label: 'High' },
+    { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' },
+  ]},
+  { key: 'category', label: 'Categoria', type: 'enum', options: [
+    { value: 'hardware', label: 'Hardware' }, { value: 'software', label: 'Software' },
+    { value: 'network', label: 'Network' }, { value: 'access', label: 'Access' },
+    { value: 'security', label: 'Security' }, { value: 'other', label: 'Other' },
+  ]},
+  { key: 'enabled', label: 'Abilitata', type: 'enum', options: [
+    { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
+  ]},
+  { key: 'name', label: 'Nome', type: 'text' },
+]
 
-// Per-page overrides on top of the shared FormControls base style.
-const inputS: React.CSSProperties = {
-  padding: '7px 10px', border: '1px solid #e5e7eb', color: 'var(--color-slate-dark)',
-}
-const selectS: React.CSSProperties = {
-  ...inputS, appearance: 'none' as const,
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer',
-}
-const labelS: React.CSSProperties = { display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4 }
-const btnPrimary: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
-}
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtMinutes(m: number): string {
@@ -84,37 +98,15 @@ function applicabilityText(p: SLAPolicy): string {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function SLAPoliciesPage() {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const { values: PRIORITIES } = useEnumValues('incident', 'priority')
   const { values: CATEGORIES } = useEnumValues('incident', 'category')
-  const [modalOpen, setModalOpen]     = useState(false)
-  const [editingId, setEditingId]     = useState<string | null>(null)
-  const [deleteId, setDeleteId]       = useState<string | null>(null)
-  const [form, setForm]               = useState<FormState>(EMPTY_FORM)
+  const list  = useListQueryState()
+  const modal = useCrudModal<SLAPolicy, FormState>(EMPTY_FORM, policyToForm)
+  const { draft: form, patch } = modal
 
-  const [sortField, setSortField] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
-  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
-  const SLA_FILTER_FIELDS: FieldConfig[] = [
-    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
-      { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
-      { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
-    ]},
-    { key: 'priority', label: 'Priorità', type: 'enum', options: [
-      { value: 'critical', label: 'Critical' }, { value: 'high', label: 'High' },
-      { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' },
-    ]},
-    { key: 'category', label: 'Categoria', type: 'enum', options: [
-      { value: 'hardware', label: 'Hardware' }, { value: 'software', label: 'Software' },
-      { value: 'network', label: 'Network' }, { value: 'access', label: 'Access' },
-      { value: 'security', label: 'Security' }, { value: 'other', label: 'Other' },
-    ]},
-    { key: 'enabled', label: 'Abilitata', type: 'enum', options: [
-      { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
-    ]},
-    { key: 'name', label: 'Nome', type: 'text' },
-  ]
-  const { data, loading, refetch } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES, { variables: { sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null } })
+  const { data, loading, refetch } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES, { variables: list.variables })
   const { data: teamsData }           = useQuery<{ teams: Team[] }>(GET_TEAMS)
   const policies: SLAPolicy[]        = data?.slaPolicies ?? []
   const teams: Team[]                 = teamsData?.teams ?? []
@@ -135,53 +127,34 @@ export function SLAPoliciesPage() {
     return acc
   }, {})
 
-  function openCreate() {
-    setEditingId(null); setForm(EMPTY_FORM); setModalOpen(true)
-  }
-  function openEdit(p: SLAPolicy) {
-    setEditingId(p.id)
-    setForm({
-      name: p.name, entityType: p.entityType, priority: p.priority ?? '',
-      category: p.category ?? '', teamId: p.teamId ?? '',
-      responseMinutes: p.responseMinutes, resolveMinutes: p.resolveMinutes,
-      businessHours: p.businessHours, timezone: p.timezone,
-    })
-    setModalOpen(true)
-  }
-
   async function handleSave() {
     if (!form.name.trim()) { toast.error('Il nome e obbligatorio'); return }
+    const common = {
+      name: form.name.trim(),
+      priority: form.priority || null, category: form.category || null,
+      teamId: form.teamId || null,
+      responseMinutes: Number(form.responseMinutes), resolveMinutes: Number(form.resolveMinutes),
+      businessHours: form.businessHours, timezone: form.timezone,
+    }
     try {
-      if (editingId) {
-        await updatePolicy({ variables: { id: editingId, input: {
-          name: form.name.trim(),
-          priority: form.priority || null, category: form.category || null,
-          teamId: form.teamId || null,
-          responseMinutes: Number(form.responseMinutes), resolveMinutes: Number(form.resolveMinutes),
-          businessHours: form.businessHours, timezone: form.timezone,
-        } } })
+      if (modal.editing) {
+        await updatePolicy({ variables: { id: modal.editing.id, input: common } })
         toast.success('Policy aggiornata')
       } else {
-        await createPolicy({ variables: { input: {
-          name: form.name.trim(), entityType: form.entityType,
-          priority: form.priority || null, category: form.category || null,
-          teamId: form.teamId || null,
-          responseMinutes: Number(form.responseMinutes), resolveMinutes: Number(form.resolveMinutes),
-          businessHours: form.businessHours, timezone: form.timezone,
-        } } })
+        await createPolicy({ variables: { input: { ...common, entityType: form.entityType } } })
         toast.success('Policy creata')
       }
-      setModalOpen(false)
+      modal.close()
     } catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
-  async function handleDelete() {
-    if (!deleteId) return
+  async function handleDelete(p: SLAPolicy) {
+    const ok = await confirm({ title: t('admin.sla.deleteTitle'), body: p.name, danger: true })
+    if (!ok) return
     try {
-      await deletePolicy({ variables: { id: deleteId } })
+      await deletePolicy({ variables: { id: p.id } })
       toast.success('Policy eliminata')
     } catch (e: unknown) { toast.error(errorMessage(e)) }
-    setDeleteId(null)
   }
 
   async function handleToggle(p: SLAPolicy) {
@@ -205,14 +178,12 @@ export function SLAPoliciesPage() {
     { key: 'resolveMinutes', label: 'Risoluzione', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
     { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <Pill bg={v ? '#dcfce7' : 'var(--color-border-light)'} color={v ? '#15803d' : 'var(--color-slate)'} radius={10}>{v ? 'Si' : 'No'}</Pill> },
     { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
-      <button onClick={() => handleToggle(row)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
-        {row.enabled ? <ToggleRight size={22} color="var(--color-icon-accent)" /> : <ToggleLeft size={22} color="#cbd5e1" />}
-      </button>
+      <Toggle checked={row.enabled} onChange={() => void handleToggle(row)} label={t('admin.sla.toggleLabel', { name: row.name })} />
     ) },
     { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'inline-flex', gap: 6 }}>
-        <button onClick={() => openEdit(row)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Modifica"><Pencil size={15} color="var(--color-slate)" /></button>
-        <button onClick={() => setDeleteId(row.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Elimina"><Trash2 size={15} color="#ef4444" /></button>
+        <Button variant="ghost" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => modal.openEdit(row)} style={{ padding: 4 }}><Pencil size={15} aria-hidden="true" color="var(--color-slate)" /></Button>
+        <Button variant="ghost" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => void handleDelete(row)} style={{ padding: 4 }}><Trash2 size={15} aria-hidden="true" color="var(--color-danger)" /></Button>
       </div>
     ) },
   ]
@@ -222,7 +193,7 @@ export function SLAPoliciesPage() {
     const parts: string[] = [lookupOrError(ENTITY_LABELS, form.entityType, 'ENTITY_LABELS', form.entityType)]
     if (form.priority) parts.push(`priorita ${form.priority}`)
     if (form.category) parts.push(`categoria ${form.category}`)
-    const team = teams.find(t => t.id === form.teamId)
+    const team = teams.find(tm => tm.id === form.teamId)
     if (team) parts.push(`team ${team.name}`)
     return parts.length === 1 ? `Tutti gli ${parts[0]}` : `${parts[0]} con ${parts.slice(1).join(', ')}`
   }
@@ -238,7 +209,7 @@ export function SLAPoliciesPage() {
             {loading ? '—' : `${policies.length} policy`}
           </p>
         </div>
-        <button style={btnPrimary} onClick={openCreate}><Plus size={15} /> Nuova Policy</button>
+        <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>Nuova Policy</Button>
       </div>
 
       {!loading && policies.length === 0 && (
@@ -249,7 +220,7 @@ export function SLAPoliciesPage() {
         />
       )}
 
-      <FilterBuilder fields={SLA_FILTER_FIELDS} onApply={g => setFilterGroup(g)} />
+      <FilterBuilder fields={SLA_FILTER_FIELDS} onApply={list.setFilterGroup} />
 
       {Object.entries(grouped).map(([entityType, items]) => (
         <div key={entityType} style={{ marginBottom: 28 }}>
@@ -257,9 +228,9 @@ export function SLAPoliciesPage() {
             {ENTITY_LABELS[entityType]}
           </h3>
           <SortableFilterTable<SLAPolicy>
-            onSort={handleSort}
-            sortField={sortField}
-            sortDir={sortDir}
+            onSort={list.handleSort}
+            sortField={list.sortField}
+            sortDir={list.sortDir}
             columns={policyColumns}
             data={items}
             loading={false}
@@ -269,116 +240,88 @@ export function SLAPoliciesPage() {
       ))}
 
       {/* ── Create / Edit Modal ──────────────────────────────────────────────── */}
-      {modalOpen && createPortal(
-        <Modal
-          open
-          onClose={() => setModalOpen(false)}
-          title={editingId ? 'Modifica Policy' : 'Nuova SLA Policy'}
-          width={560}
-          zIndex={9999}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setModalOpen(false)} style={{ padding: '7px 14px' }}>Annulla</Button>
-              <Button onClick={() => void handleSave()}>{editingId ? 'Salva' : 'Crea'}</Button>
-            </>
-          }
-        >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <Modal
+        open={modal.open}
+        onClose={modal.close}
+        title={modal.editing ? 'Modifica Policy' : 'Nuova SLA Policy'}
+        width={560}
+        zIndex={9000}
+        closeOnOverlay={false}
+        footer={
+          <>
+            <Button variant="secondary" size="xs" onClick={modal.close}>{t('common.cancel')}</Button>
+            <Button onClick={() => void handleSave()}>{modal.editing ? t('common.save') : t('common.create')}</Button>
+          </>
+        }
+      >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={labelS}>Nome *</label>
+              <Input value={form.name} onChange={e => patch({ name: e.target.value })} placeholder="es. SLA Critical Incident" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={labelS}>Nome *</label>
-                <Input style={inputS} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="es. SLA Critical Incident" />
+                <label style={labelS}>Tipo Entita *</label>
+                <Select style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
+                  {ENTITY_TYPES.map(et => <option key={et} value={et}>{ENTITY_LABELS[et]}</option>)}
+                </Select>
               </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={labelS}>Tipo Entita *</label>
-                  <Select style={selectS} value={form.entityType} onChange={e => setForm({ ...form, entityType: e.target.value })}>
-                    {ENTITY_TYPES.map(et => <option key={et} value={et}>{ENTITY_LABELS[et]}</option>)}
-                  </Select>
-                </div>
-                <div>
-                  <label style={labelS}>Priorita</label>
-                  <Select style={selectS} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
-                    <option value="">Tutte</option>
-                    {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-                  </Select>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={labelS}>Categoria</label>
-                  <Select style={selectS} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-                    <option value="">Tutte</option>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </Select>
-                </div>
-                <div>
-                  <label style={labelS}>Team</label>
-                  <Select style={selectS} value={form.teamId} onChange={e => setForm({ ...form, teamId: e.target.value })}>
-                    <option value="">Tutti</option>
-                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </Select>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={labelS}>Tempo Risposta (minuti) *</label>
-                  <Input style={inputS} type="number" min={1} value={form.responseMinutes} onChange={e => setForm({ ...form, responseMinutes: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <label style={labelS}>Tempo Risoluzione (minuti) *</label>
-                  <Input style={inputS} type="number" min={1} value={form.resolveMinutes} onChange={e => setForm({ ...form, resolveMinutes: Number(e.target.value) })} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
-                <div>
-                  <label style={labelS}>Timezone</label>
-                  <Input style={inputS} value={form.timezone} onChange={e => setForm({ ...form, timezone: e.target.value })} />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 2 }}>
-                  <button onClick={() => setForm({ ...form, businessHours: !form.businessHours })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                    {form.businessHours
-                      ? <ToggleRight size={26} color="var(--color-brand)" />
-                      : <ToggleLeft size={26} color="#cbd5e1" />}
-                  </button>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>Solo orario lavorativo</span>
-                </div>
-              </div>
-
-              {/* Preview */}
-              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 'var(--font-size-body)', color: '#0369a1' }}>
-                <strong>Anteprima:</strong> {formPreview()} — risposta entro {fmtMinutes(form.responseMinutes)}, risoluzione entro {fmtMinutes(form.resolveMinutes)}
-                {form.businessHours ? ' (orario lavorativo)' : ' (24/7)'}
+              <div>
+                <label style={labelS}>Priorita</label>
+                <Select style={selectS} value={form.priority} onChange={e => patch({ priority: e.target.value })}>
+                  <option value="">Tutte</option>
+                  {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                </Select>
               </div>
             </div>
-        </Modal>,
-        document.body,
-      )}
 
-      {/* ── Delete Confirmation ──────────────────────────────────────────────── */}
-      {deleteId && createPortal(
-        <Modal
-          open
-          onClose={() => setDeleteId(null)}
-          title="Conferma eliminazione"
-          width={400}
-          zIndex={9999}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setDeleteId(null)} style={{ padding: '7px 14px' }}>Annulla</Button>
-              <Button onClick={() => void handleDelete()} style={{ background: 'var(--color-danger)' }}>Elimina</Button>
-            </>
-          }
-        >
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0 }}>
-            Sei sicuro di voler eliminare questa SLA policy? L'azione non e reversibile.
-          </p>
-        </Modal>,
-        document.body,
-      )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={labelS}>Categoria</label>
+                <Select style={selectS} value={form.category} onChange={e => patch({ category: e.target.value })}>
+                  <option value="">Tutte</option>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label style={labelS}>Team</label>
+                <Select style={selectS} value={form.teamId} onChange={e => patch({ teamId: e.target.value })}>
+                  <option value="">Tutti</option>
+                  {teams.map(tm => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+                </Select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={labelS}>Tempo Risposta (minuti) *</label>
+                <Input type="number" min={1} value={form.responseMinutes} onChange={e => patch({ responseMinutes: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label style={labelS}>Tempo Risoluzione (minuti) *</label>
+                <Input type="number" min={1} value={form.resolveMinutes} onChange={e => patch({ resolveMinutes: Number(e.target.value) })} />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
+              <div>
+                <label style={labelS}>Timezone</label>
+                <Input value={form.timezone} onChange={e => patch({ timezone: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 2 }}>
+                <Toggle checked={form.businessHours} onChange={v => patch({ businessHours: v })} label={t('admin.sla.businessHoursLabel')} />
+                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{t('admin.sla.businessHoursLabel')}</span>
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 'var(--font-size-body)', color: 'var(--accent-hover)' }}>
+              <strong>Anteprima:</strong> {formPreview()} — risposta entro {fmtMinutes(form.responseMinutes)}, risoluzione entro {fmtMinutes(form.resolveMinutes)}
+              {form.businessHours ? ' (orario lavorativo)' : ' (24/7)'}
+            </div>
+          </div>
+      </Modal>
     </PageContainer>
   )
 }
