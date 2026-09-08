@@ -46,11 +46,11 @@ type TaskResponses = Array<{
   answeredAt: string
 }>
 
-async function loadResponsesForTasks(session: Session, taskIds: string[]): Promise<Record<string, TaskResponses>> {
+async function loadResponsesForTasks(session: Session, taskIds: string[], tenantId: string): Promise<Record<string, TaskResponses>> {
   if (taskIds.length === 0) return {}
   const rows = await runQuery<{ taskId: string; respId: string; questionProps: Props; optionProps: Props; answeredAt: string; userProps: Props | null }>(session, `
     UNWIND $taskIds AS tid
-    MATCH (t:AssessmentTask {id: tid})-[:HAS_RESPONSE]->(resp:AssessmentResponse)-[:ANSWERS]->(q:AssessmentQuestion),
+    MATCH (t:AssessmentTask {id: tid, tenant_id: $tenantId})-[:HAS_RESPONSE]->(resp:AssessmentResponse)-[:ANSWERS]->(q:AssessmentQuestion),
           (resp)-[:SELECTED]->(opt:AnswerOption)
     OPTIONAL MATCH (resp)-[:ANSWERED_BY]->(u:User)
     RETURN DISTINCT tid AS taskId,
@@ -59,7 +59,7 @@ async function loadResponsesForTasks(session: Session, taskIds: string[]): Promi
            properties(opt) AS optionProps,
            resp.answered_at AS answeredAt,
            properties(u) AS userProps
-  `, { taskIds })
+  `, { taskIds, tenantId })
   const map: Record<string, TaskResponses> = {}
   const seen = new Set<string>()
   for (const r of rows) {
@@ -77,13 +77,13 @@ async function loadResponsesForTasks(session: Session, taskIds: string[]): Promi
   return map
 }
 
-async function loadCompletedByForTasks(session: Session, taskIds: string[]): Promise<Record<string, ReturnType<typeof mapUser>>> {
+async function loadCompletedByForTasks(session: Session, taskIds: string[], tenantId: string): Promise<Record<string, ReturnType<typeof mapUser>>> {
   if (taskIds.length === 0) return {}
   const rows = await runQuery<{ taskId: string; userProps: Props }>(session, `
     UNWIND $taskIds AS tid
-    MATCH (t:AssessmentTask {id: tid})-[:COMPLETED_BY]->(u:User)
+    MATCH (t:AssessmentTask {id: tid, tenant_id: $tenantId})-[:COMPLETED_BY]->(u:User)
     RETURN tid AS taskId, properties(u) AS userProps
-  `, { taskIds })
+  `, { taskIds, tenantId })
   const map: Record<string, ReturnType<typeof mapUser>> = {}
   for (const r of rows) map[r.taskId] = mapUser(r.userProps)
   return map
@@ -238,8 +238,8 @@ export async function changeAffectedCIs(_: unknown, args: { changeId: string }, 
       if (r.deployPlan && r.deployPlan['id']) planTaskIds.push(r.deployPlan['id'] as string)
     }
     const allTaskIds = [...assessTaskIds, ...planTaskIds]
-    const responsesByTask = await loadResponsesForTasks(session, assessTaskIds)
-    const completedByMap  = await loadCompletedByForTasks(session, allTaskIds)
+    const responsesByTask = await loadResponsesForTasks(session, assessTaskIds, ctx.tenantId)
+    const completedByMap  = await loadCompletedByForTasks(session, allTaskIds, ctx.tenantId)
     const assignments     = await loadAssignmentsForTasks(session, allTaskIds)
 
     return rows.map((r) => {

@@ -75,8 +75,8 @@ export async function submitAssessmentResponse(
       `${ROLE_LABEL[role]} · ${ciName}: "${qText}" → ${optLabel}`)
 
     const updated = await runQueryOne<{ props: Props }>(session, `
-      MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props
-    `, { taskId: args.taskId })
+      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
     return updated ? mapAssessmentTask(updated.props) : null
   }, true)
 }
@@ -127,10 +127,10 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
     }
 
     const responses = await runQuery<{ questionId: string; score: unknown }>(session, `
-      MATCH (t:AssessmentTask {id: $taskId})-[:HAS_RESPONSE]->(resp:AssessmentResponse)-[:ANSWERS]->(q:AssessmentQuestion)
+      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})-[:HAS_RESPONSE]->(resp:AssessmentResponse)-[:ANSWERS]->(q:AssessmentQuestion)
       MATCH (resp)-[:SELECTED]->(opt:AnswerOption)
       RETURN q.id AS questionId, opt.score AS score
-    `, { taskId: args.taskId })
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
 
     const answered = new Map<string, number>()
     for (const r of responses) answered.set(r.questionId, toInt(r.score))
@@ -188,8 +188,8 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
     }
 
     const updated = await runQueryOne<{ props: Props }>(session, `
-      MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props
-    `, { taskId: args.taskId })
+      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
     return updated ? mapAssessmentTask(updated.props) : null
   }, true)
 }
@@ -236,8 +236,8 @@ export async function assignAssessmentTaskToTeam(
       `${ROLE_LABEL[role]} · ${ciName}: team riassegnato`)
 
     const updated = await runQueryOne<{ props: Props }>(session, `
-      MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props
-    `, { taskId: args.taskId })
+      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
     return updated ? mapAssessmentTask(updated.props) : null
   }, true)
 }
@@ -281,8 +281,8 @@ export async function assignAssessmentTaskToUser(
       `${ROLE_LABEL[role]} · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
 
     const updated = await runQueryOne<{ props: Props }>(session, `
-      MATCH (t:AssessmentTask {id: $taskId}) RETURN properties(t) AS props
-    `, { taskId: args.taskId })
+      MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
     return updated ? mapAssessmentTask(updated.props) : null
   }, true)
 }
@@ -334,8 +334,8 @@ export async function assignDeployPlanTaskToUser(
       `Planning · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
 
     const updated = await runQueryOne<{ props: Props }>(session, `
-      MATCH (t:DeployPlanTask {id: $taskId}) RETURN properties(t) AS props
-    `, { taskId: args.taskId })
+      MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
     return updated ? mapDeployPlanTask(updated.props) : null
   }, true)
 }

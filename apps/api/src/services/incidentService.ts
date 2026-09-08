@@ -14,6 +14,7 @@ import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { ciLabelPredicate } from '../lib/ciLabels.js'
+import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -267,20 +268,7 @@ export async function assignIncidentToTeam(
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      OPTIONAL MATCH (i)-[old:ASSIGNED_TO_TEAM]->()
-      DELETE old
-      WITH i
-      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-      CREATE (i)-[:ASSIGNED_TO_TEAM]->(t)
-      SET i.updated_at = $now
-    `, { id, teamId, tenantId: ctx.tenantId, now }))
-
-    const teamResult = await session.executeRead((tx) =>
-      tx.run('MATCH (t:Team {id: $id, tenant_id: $tenantId}) RETURN t.name AS name', { id: teamId, tenantId: ctx.tenantId }),
-    )
-    const teamName = (teamResult.records[0]?.get('name') as string | null) ?? teamId
+    const { teamName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
     const transitionNotes = `Riassegnato al team ${teamName}`
 
     const wiResult = await session.executeRead((tx) => tx.run(`
@@ -355,12 +343,7 @@ export async function assignIncidentToUser(
 
   return withSession(async (session) => {
     if (!userId) {
-      await session.executeWrite((tx) => tx.run(`
-        MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-        OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()
-        DELETE old
-        SET i.updated_at = $now
-      `, { id, tenantId: ctx.tenantId, now }))
+      await setTicketUser(session, 'Incident', id, null, ctx.tenantId)
       const r = await session.executeRead((tx) => tx.run(
         `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
         { id, tenantId: ctx.tenantId },
@@ -369,32 +352,11 @@ export async function assignIncidentToUser(
       return mapIncident(r.records[0].get('props') as Props)
     }
 
-    // Regola ITSM: si assegna a un utente solo dopo aver assegnato il gruppo, e
-    // l'utente deve appartenere a quel gruppo. Validato lato server, non solo UI.
-    const check = await runQueryOne<{ teamId: string | null; teamName: string | null; isMember: boolean }>(session, `
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(team:Team)
-      RETURN team.id AS teamId, team.name AS teamName,
-             exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)) AS isMember
-    `, { id, userId, tenantId: ctx.tenantId })
-    if (!check) throw new NotFoundError('Incident', id)
-    if (!check.teamId) throw new ValidationError('Assegna prima un gruppo all\'incident, poi un utente di quel gruppo')
-    if (!check.isMember) throw new ValidationError(`L'utente selezionato non appartiene al gruppo assegnatario${check.teamName ? ` (${check.teamName})` : ''}`)
-
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()
-      DELETE old
-      WITH i
-      MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      CREATE (i)-[:ASSIGNED_TO]->(u)
-      SET i.updated_at = $now
-    `, { id, userId, tenantId: ctx.tenantId, now }))
-
-    const userResult = await session.executeRead((tx) =>
-      tx.run('MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name', { id: userId, tenantId: ctx.tenantId }),
-    )
-    const userName = (userResult.records[0]?.get('name') as string | null) ?? userId
+    // Regola ITSM condivisa con il problem (services/ticketAssignment.ts):
+    // prima il gruppo, poi un utente di quel gruppo.
+    await assertUserInAssignedTeam(session, 'Incident', id, userId, ctx.tenantId)
+    const { userName: assignedName } = await setTicketUser(session, 'Incident', id, userId, ctx.tenantId)
+    const userName = assignedName ?? userId
 
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)

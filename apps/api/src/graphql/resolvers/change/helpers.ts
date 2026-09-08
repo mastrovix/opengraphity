@@ -159,13 +159,63 @@ export async function getAnswerLabel(session: Session, optionId: string, tenantI
 
 // ── workflow step helpers ─────────────────────────────────────────────────────
 
+export interface ChangeWorkflow {
+  instanceId:  string
+  currentStep: string
+  props:       Props
+}
+
+/**
+ * Change (non eliminata) + istanza di workflow + step corrente, in UNA lettura.
+ * Lo step è letto dalla relazione CURRENT_STEP (la fonte autoritativa) e
+ * confrontato con wi.current_step: una divergenza è corruzione e va fatta
+ * emergere, non nascosta scegliendo una delle due. Sostituisce le cinque
+ * grafie diverse dello stesso lookup sparse nei moduli.
+ */
+export async function loadChangeWorkflow(session: Session, changeId: string, tenantId: string): Promise<ChangeWorkflow> {
+  const row = await runQueryOne<{ props: Props; deleted: boolean; instanceId: string | null; wiStep: string | null; relStep: string | null }>(session, `
+    MATCH (c:Change {id: $id, tenant_id: $tenantId})
+    OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    OPTIONAL MATCH (wi)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN properties(c) AS props, coalesce(c.deleted, false) AS deleted,
+           wi.id AS instanceId, wi.current_step AS wiStep, s.name AS relStep
+  `, { id: changeId, tenantId })
+  if (!row) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+  if (row.deleted) throw new GraphQLError('La change è stata eliminata: nessuna operazione è più possibile', { extensions: { code: 'CONFLICT' } })
+  if (!row.instanceId) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
+  if (!row.relStep) throw new GraphQLError(`Change ${changeId}: istanza di workflow senza CURRENT_STEP (ri-esegui il seed del workflow per ricollegarla)`, { extensions: { code: 'CONFLICT' } })
+  if (row.wiStep !== row.relStep) {
+    logger.error({ changeId, wiStep: row.wiStep, relStep: row.relStep }, '[change] istanza di workflow incoerente')
+    throw new GraphQLError(`Change ${changeId}: istanza di workflow incoerente (current_step="${row.wiStep}", CURRENT_STEP="${row.relStep}")`, { extensions: { code: 'CONFLICT' } })
+  }
+  return { instanceId: row.instanceId, currentStep: row.relStep, props: row.props }
+}
+
 export async function getCurrentStep(session: Session, changeId: string, tenantId: string): Promise<string | null> {
   const row = await runQueryOne<{ step: string }>(session, `
-    MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
     WHERE ${CHANGE_NOT_DELETED}
-    RETURN wi.current_step AS step
+    RETURN s.name AS step
   `, { id: changeId, tenantId })
   return row?.step ?? null
+}
+
+/**
+ * Azzera tutto ciò che deriva dagli assessment quando uno viene riaperto o
+ * l'approvazione è rifiutata: rischio aggregato, rotta, esito approvazione e
+ * PRIORITÀ (tipo × rischio → con rischio ignoto torna a quella del solo tipo).
+ * Prima il reopen lasciava una priorità "high" con rischio null.
+ */
+export async function resetChangeRisk(session: SessionOrTx, changeId: string, tenantId: string): Promise<void> {
+  const row = await runQueryOne<{ changeType: string | null }>(session, `
+    MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS changeType
+  `, { changeId, tenantId })
+  if (!row) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+  await runWrite(session, `
+    MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+    SET c.aggregate_risk_score = null, c.approval_route = null, c.approval_status = null,
+        c.priority = $priority, c.updated_at = $now
+  `, { changeId, tenantId, priority: deriveChangePriority(row.changeType ?? 'normal', null), now: new Date().toISOString() })
 }
 
 /** Istanza di workflow della change; rifiuta le change eliminate (nessuna mutation su una change cancellata). */

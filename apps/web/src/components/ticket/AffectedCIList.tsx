@@ -1,3 +1,10 @@
+/**
+ * "CI Impattati" di un ticket (incident, problem): ricerca con filtro per tipo
+ * dalle regole ITIL, scelta del tipo di relazione, elenco raggruppato per tipo.
+ * Un'unica implementazione al posto di IncidentCIList / ProblemCIList (che
+ * differivano solo per una prop ignorata e per i colori dello status).
+ * Lo stato di apertura/ricerca è interno: il genitore passa solo dati e azioni.
+ */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, ChevronDown, ChevronRight } from 'lucide-react'
@@ -6,11 +13,7 @@ import { CountBadge } from '@/components/ui/CountBadge'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { ciPath } from '@/lib/ciPath'
 
-// NB: le sezioni "incident correlati" e "change correlate" che vivevano qui
-// sono state sostituite da UnifiedLinkedTickets (ticket collegati per tipo).
-// Resta solo la lista dei CI impattati.
-
-interface CIRef {
+export interface AffectedCIRef {
   id:          string
   name:        string
   type:        string
@@ -18,7 +21,7 @@ interface CIRef {
   environment: string
 }
 
-interface CIRelationRule {
+export interface CIRelationRule {
   id:           string
   ciType:       string
   relationType: string
@@ -26,89 +29,82 @@ interface CIRelationRule {
   description:  string | null
 }
 
-function groupByField<T>(items: T[], key: keyof T): Record<string, T[]> {
-  return items.reduce<Record<string, T[]>>((acc, item) => {
-    const k = String(item[key])
-    ;(acc[k] ??= []).push(item)
-    return acc
-  }, {})
+const STATUS_BG: Record<string, string> = { active: '#dcfce7', maintenance: '#fef9c3', decommissioned: '#fee2e2' }
+
+function groupByType<T extends { type: string }>(items: T[]): Record<string, T[]> {
+  return items.reduce<Record<string, T[]>>((acc, item) => { (acc[item.type] ??= []).push(item); return acc }, {})
 }
 
-function MicroBadge({ children }: { children: React.ReactNode }) {
+function MicroBadge({ children, bg }: { children: React.ReactNode; bg?: string }) {
   return (
-    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: bg ?? 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 'var(--font-size-caption)', fontWeight: 500 }}>
       {children}
     </span>
   )
 }
 
-// ── CI Impattati ──────────────────────────────────────────────────────────────
-
-interface ProblemCIListProps {
-  problemId:    string
-  affectedCIs:  CIRef[]
-  ciOpen:       boolean
-  showCISearch: boolean
-  ciSearch:     string
-  ciResults:    CIRef[]
-  rules:        CIRelationRule[]
-  onToggle:     () => void
-  onToggleSearch: (e: React.MouseEvent) => void
+interface Props {
+  affectedCIs:    AffectedCIRef[]
+  rules:          CIRelationRule[]
+  /** Risultati della ricerca (il genitore esegue la query con `search`). */
+  ciResults:      AffectedCIRef[]
   onSearchChange: (value: string) => void
-  onAddCI:      (ciId: string, relationType?: string) => void
-  onRemoveCI:   (ciId: string) => void
+  onAddCI:        (ciId: string, relationType?: string) => void
+  onRemoveCI:     (ciId: string) => void
+  defaultOpen?:   boolean
 }
 
-export function ProblemCIList({
-  problemId: _problemId,
-  affectedCIs,
-  ciOpen,
-  showCISearch,
-  ciSearch,
-  ciResults,
-  rules,
-  onToggle,
-  onToggleSearch,
-  onSearchChange,
-  onAddCI,
-  onRemoveCI,
-}: ProblemCIListProps) {
+export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, onAddCI, onRemoveCI, defaultOpen = false }: Props) {
   const navigate = useNavigate()
+  const [open, setOpen] = useState(defaultOpen)
+  const [showSearch, setShowSearch] = useState(false)
+  const [search, setSearch] = useState('')
   const [selectedRelType, setSelectedRelType] = useState<Record<string, string>>({})
 
-  const allowedTypes    = rules.map((r) => r.ciType.toLowerCase())
-  const getRelTypes     = (ciType: string) => [...new Set(rules.filter((r) => r.ciType.toLowerCase() === ciType.toLowerCase()).map((r) => r.relationType))]
+  const allowedTypes = rules.map((r) => r.ciType.toLowerCase())
+  const getRelTypes  = (ciType: string) => [...new Set(rules.filter((r) => r.ciType.toLowerCase() === ciType.toLowerCase()).map((r) => r.relationType))]
   const filteredResults = ciResults
     .filter((ci) => !affectedCIs.find((a) => a.id === ci.id))
     .filter((ci) => allowedTypes.length === 0 || allowedTypes.includes(ci.type.toLowerCase()))
 
-  const handleAdd = (ci: CIRef) => {
+  const handleAdd = (ci: AffectedCIRef) => {
     const relTypes = getRelTypes(ci.type)
-    const relType  = relTypes.length > 0 ? (selectedRelType[ci.id] ?? relTypes[0]) : undefined
-    onAddCI(ci.id, relType)
+    onAddCI(ci.id, relTypes.length > 0 ? (selectedRelType[ci.id] ?? relTypes[0]) : undefined)
     setSelectedRelType((p) => { const n = { ...p }; delete n[ci.id]; return n })
+    setSearch(''); onSearchChange(''); setShowSearch(false)
+  }
+  const toggleSearch = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowSearch((s) => !s)
+    if (!open) setOpen(true)
   }
 
   return (
     <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: ciOpen ? '1px solid #e5e7eb' : 'none', background: ciOpen ? '#0ea5e9' : undefined }}>
+      <div
+        role="button" tabIndex={0}
+        onClick={() => setOpen((p) => !p)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((p) => !p) } }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? '1px solid #e5e7eb' : 'none', background: open ? '#0ea5e9' : undefined }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: ciOpen ? '#fff' : 'var(--color-slate-dark)' }}>CI Impattati</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: open ? '#fff' : 'var(--color-slate-dark)' }}>CI Impattati</span>
           <CountBadge count={affectedCIs.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" onClick={onToggleSearch} style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--accent)' }}>
-            {showCISearch ? 'Chiudi' : '+ Aggiungi CI'}
+          <button type="button" onClick={toggleSearch}
+            style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: `1px solid ${open ? '#fff' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', color: open ? '#fff' : 'var(--accent)' }}>
+            {showSearch ? 'Chiudi' : '+ Aggiungi CI'}
           </button>
-          {ciOpen ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
+          {open ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
       </div>
-      {ciOpen && (
+      {open && (
         <div style={{ padding: '16px 20px 20px' }}>
-          {showCISearch && (
+          {showSearch && (
             <div style={{ marginBottom: 12, position: 'relative' }}>
-              <Input type="text" value={ciSearch} onChange={(e) => onSearchChange(e.target.value)}
-                placeholder={allowedTypes.length > 0 ? `Cerca CI (${allowedTypes.join(', ')}) — min. 2 car…` : 'Cerca CI (min. 2 caratteri)...'}
+              <Input type="text" value={search} onChange={(e) => { setSearch(e.target.value); onSearchChange(e.target.value) }}
+                placeholder={allowedTypes.length > 0 ? `Cerca CI (${allowedTypes.join(', ')}) — min. 2 caratteri…` : 'Cerca CI per nome (min. 2 caratteri)...'}
                 autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
               {filteredResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
@@ -148,15 +144,15 @@ export function ProblemCIList({
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
           ) : (
             <div>
-              {Object.entries(groupByField(affectedCIs, 'type')).map(([type, cis]) => (
+              {Object.entries(groupByType(affectedCIs)).map(([type, cis]) => (
                 <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={cis.length}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {cis.map((ci) => (
                       <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
                         <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
-                        <MicroBadge>{ci.status}</MicroBadge>
+                        <MicroBadge bg={STATUS_BG[ci.status]}>{ci.status}</MicroBadge>
                         <MicroBadge>{ci.environment}</MicroBadge>
-                        <button type="button" onClick={() => onRemoveCI(ci.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }} title="Rimuovi CI"><X size={14} /></button>
+                        <button type="button" onClick={() => onRemoveCI(ci.id)} title="Rimuovi CI" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>
                       </div>
                     ))}
                   </div>

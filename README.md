@@ -45,6 +45,19 @@ Or use the helper script:
 ./infra/start.sh
 ```
 
+### Deploy web (build locale, poi immagine)
+
+L'immagine `web` **non compila**: `apps/web/Dockerfile` copia `apps/web/dist`. Le variabili `VITE_*` vanno quindi date al build locale (le `args` del compose valgono solo per il portal), e `apps/web/.env.local` — se presente — ha la precedenza:
+
+```bash
+set -a; . infra/.env; set +a
+pnpm --filter @opengraphity/web build
+grep -o 'localhost:8080' apps/web/dist/assets/index-*.js | wc -l   # deve dare 0 se punti a un Keycloak remoto
+docker compose -f infra/docker-compose.yml build web && docker compose -f infra/docker-compose.yml up -d web
+```
+
+`KEYCLOAK_PUBLIC_URL` (API) accetta una lista separata da virgola quando la stessa API serve più front-door (es. locale + Tailscale): il token è accettato solo se il suo `iss` è tra quegli origin.
+
 ### Verify everything is running
 
 ```bash

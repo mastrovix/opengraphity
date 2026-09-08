@@ -5,48 +5,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Eye, ExternalLink, X } from 'lucide-react'
-import { TASK_STATUS, REVIEW_RESULT } from '@/lib/taskStatus'
+import { TASK_STATUS } from '@/lib/taskStatus'
+import { fmtShort } from '@/lib/datetime'
+import { StatusLabel } from '@/components/ui/badges'
 
-export function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  try { return new Date(iso).toLocaleDateString() } catch { return iso }
-}
-
-export function fmtShort(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  try {
-    const d = new Date(iso)
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
-  } catch { return iso }
-}
-
-export function StatusLabel({ status }: { status: string | null | undefined }) {
-  const s = status ?? '—'
-  const color =
-    s === TASK_STATUS.COMPLETED   ? 'var(--color-success)' :
-    s === TASK_STATUS.IN_PROGRESS ? 'var(--color-warning)' :
-    s === TASK_STATUS.PENDING     ? 'var(--color-danger)' :
-    s === 'failed' || s === REVIEW_RESULT.REJECTED ? 'var(--color-danger)' : '#d1d5db'
-  const label = s === TASK_STATUS.PENDING ? 'TO BE COMPLETED' : s.replace(/_/g, ' ')
-  return <strong title={s} style={{ color, textTransform: 'uppercase' }}>{label}</strong>
-}
-
-export function RiskBadge({ score }: { score: number | null | undefined }) {
-  if (score == null) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
-  const p = score <= 30
-    ? { bg: '#dcfce7', color: '#15803d', label: 'LOW' }
-    : score <= 60
-      ? { bg: '#fef3c7', color: '#b45309', label: 'MEDIUM' }
-      : { bg: '#fee2e2', color: '#b91c1c', label: 'HIGH' }
-  return (
-    <span title={`${p.label} · score ${score}`} style={{
-      display: 'inline-flex', alignItems: 'center', lineHeight: 1,
-      padding: '3px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)',
-      fontWeight: 600, backgroundColor: p.bg, color: p.color,
-    }}>{p.label} · {score}</span>
-  )
-}
+// Date e badge vivono nei moduli condivisi; i re-export mantengono i path
+// storici dei call site delle change.
+export { fmtDate, fmtShort } from '@/lib/datetime'
+export { StatusLabel, RiskBadge } from '@/components/ui/badges'
 
 export function OpenTaskButton({ taskId }: { taskId: string }) {
   return (

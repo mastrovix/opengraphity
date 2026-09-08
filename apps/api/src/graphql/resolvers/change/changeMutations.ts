@@ -23,6 +23,7 @@ import {
   getCIName,
   getInstanceId,
   loadChange,
+  loadChangeWorkflow,
   afterEnterStep,
 } from './helpers.js'
 
@@ -321,14 +322,9 @@ export async function executeChangeTransition(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
-    const entityProps = await loadChange(session, args.changeId, ctx.tenantId) ?? {}
-
-    // ── Current step (for the approval gate) ──────────────────────────────────
-    const stepRow = await runQueryOne<{ step: string }>(session,
-      'MATCH (wi:WorkflowInstance {id: $instanceId})-[:CURRENT_STEP]->(s:WorkflowStep) RETURN s.name AS step',
-      { instanceId })
-    const currentStep = stepRow?.step ?? null
+    // Una sola lettura coerente: change non eliminata + istanza + step corrente
+    // (dalla relazione CURRENT_STEP, verificata contro wi.current_step).
+    const { instanceId, currentStep, props: entityProps } = await loadChangeWorkflow(session, args.changeId, ctx.tenantId)
     const changeType = (entityProps['change_type'] as string) ?? 'normal'
 
     // ── Gate di approvazione ──────────────────────────────────────────────────

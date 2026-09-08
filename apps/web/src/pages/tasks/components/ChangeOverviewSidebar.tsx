@@ -5,8 +5,7 @@
  */
 import { Link } from 'react-router-dom'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Pill } from '@/components/ui/Pill'
-import { styleForCategory } from '@/lib/workflowStepStyle'
+import { PhaseBadge, RiskBadge } from '@/components/ui/badges'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ROLE_LABEL } from '@/lib/taskStatus'
 import type { AffectedCI, AssessmentTaskData, ChangeData, DeployPlanTaskData } from '@/types/change'
 
@@ -86,21 +85,6 @@ function CIDotsLegend() {
   )
 }
 
-function PhaseBadge({ phase, label, category }: { phase: string; label?: string; category?: string | null }) {
-  const s = styleForCategory(category)
-  return (
-    <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'capitalize' }}>
-      {label || phase}
-    </Pill>
-  )
-}
-
-function RiskBadge({ score }: { score: number | null | undefined }) {
-  if (score == null) return null
-  const p = score <= 30 ? { bg: '#dcfce7', color: '#15803d' } : score <= 60 ? { bg: '#fef3c7', color: '#b45309' } : { bg: '#fee2e2', color: '#b91c1c' }
-  return <Pill bg={p.bg} color={p.color} style={{ fontSize: 'var(--font-size-label)' }}>{score}</Pill>
-}
-
 export function ChangeOverviewSidebar({
   change, allAffected, ciAffected, currentCIId, changeId, currentCIName,
   stepLabel, stepCategory, onRowClick,
@@ -155,7 +139,7 @@ export function ChangeOverviewSidebar({
                   >
                     <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.ci.name}</span>
                     <CIDots a={a} />
-                    <RiskBadge score={a.riskScore} />
+                    {a.riskScore != null && <RiskBadge compact score={a.riskScore} />}
                   </div>
                 )
               })}
@@ -175,7 +159,7 @@ export function ChangeOverviewSidebar({
                   </div>
                 ))}
                 <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-                  Risk CI: <RiskBadge score={ciAffected.riskScore} />
+                  Risk CI: {ciAffected.riskScore != null && <RiskBadge compact score={ciAffected.riskScore} />}
                 </div>
               </div>
             )}

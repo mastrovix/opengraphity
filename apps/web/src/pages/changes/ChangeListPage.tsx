@@ -10,14 +10,12 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
-import { Pill } from '@/components/ui/Pill'
-import { SeverityBadge } from '@/components/SeverityBadge'
+import { SeverityBadge, PhaseBadge, RiskBadge } from '@/components/ui/badges'
 import { GET_CHANGES } from '@/graphql/queries'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
-import { lookupOrError } from '@/lib/tokens'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 interface ChangeRow {
@@ -37,47 +35,6 @@ interface ChangeRow {
 
 const PAGE_SIZE = 50
 
-// Visual palette for a step bucket — keyed by the step's `category` metadata
-// (admin-editable in the designer). If a tenant introduces a new category
-// it falls back to the neutral slate style.
-const CATEGORY_STYLE: Record<string, { bg: string; color: string }> = {
-  active:    { bg: '#dbeafe', color: '#2563eb' },
-  waiting:   { bg: '#ede9fe', color: '#7c3aed' },
-  escalated: { bg: '#fed7aa', color: '#b45309' },
-  resolved:  { bg: '#dcfce7', color: '#15803d' },
-  closed:    { bg: 'var(--color-slate-bg)', color: 'var(--color-slate-light)' },
-  failed:    { bg: '#fee2e2', color: '#b91c1c' },
-  draft:     { bg: '#f1f5f9', color: 'var(--color-slate)' },
-}
-const NEUTRAL_STYLE = { bg: '#f1f5f9', color: 'var(--color-slate)' }
-
-function PhaseBadge({ phase, label, category }: { phase: string; label?: string; category?: string | null }) {
-  const style = category ? lookupOrError(CATEGORY_STYLE, category, 'CATEGORY_STYLE', NEUTRAL_STYLE) : NEUTRAL_STYLE
-  return (
-    <Pill bg={style.bg} color={style.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'capitalize', whiteSpace: 'normal' }}>
-      {label || phase}
-    </Pill>
-  )
-}
-
-function RiskBadge({ score }: { score: number | null }) {
-  if (score == null) {
-    return <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)' }}>—</span>
-  }
-  const level = score <= 30 ? 'low' : score <= 60 ? 'medium' : 'high'
-  const palette: Record<string, { bg: string; color: string; label: string }> = {
-    low:    { bg: '#dcfce7', color: '#15803d', label: 'LOW'    },
-    medium: { bg: '#fef3c7', color: '#b45309', label: 'MEDIUM' },
-    high:   { bg: '#fee2e2', color: '#b91c1c', label: 'HIGH'   },
-  }
-  // Unknown risk must LOOK broken (red), never green/low
-  const p = lookupOrError(palette, level, 'RISK_PALETTE', { bg: 'var(--color-danger)', color: '#fff', label: '?' })
-  return (
-    <Pill bg={p.bg} color={p.color} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-label)' }}>
-      {p.label} · {score}
-    </Pill>
-  )
-}
 
 function extractStepFromFilter(group: FilterGroup | null): string | null {
   if (!group || group.rules.length === 0) return null

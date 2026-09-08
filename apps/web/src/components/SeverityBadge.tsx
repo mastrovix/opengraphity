@@ -1,5 +1,2 @@
-import { colors } from '@/lib/tokens'
-
-export function SeverityBadge({ value }: { value: string }) {
-  return <span style={{ color: colors.slate, fontSize: 'var(--font-size-body)' }}>{value}</span>
-}
+// Mantiene il path storico: l'implementazione vive in ui/badges.tsx.
+export { SeverityBadge } from '@/components/ui/badges'

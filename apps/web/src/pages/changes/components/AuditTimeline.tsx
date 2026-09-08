@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import type { ChangeAuditEntryData } from '@/types/change'
+import { formatDateShort } from '@/lib/datetime'
 
 type AuditCategory = 'stato' | 'assessment' | 'assegnazioni' | 'commenti' | 'sistema'
 const AUDIT_CAT_COLOR: Record<AuditCategory, string> = {
@@ -32,13 +33,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
   const [expandedIdx, setExpandedIdx] = useState<Set<number>>(new Set())
   const filtered = filter === 'all' ? audit : audit.filter(e => categorizeAction(e.action) === filter)
   const visible = showAll ? filtered : filtered.slice(0, 20)
-  const fmtTS = (iso: string) => {
-    try {
-      const d = new Date(iso)
-      const p = (n: number) => String(n).padStart(2, '0')
-      return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
-    } catch { return iso }
-  }
+  const fmtTS = formatDateShort
 
   return (
     <SectionCard title="Audit Trail" collapsible defaultOpen={false} count={audit.length}>

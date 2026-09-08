@@ -8,7 +8,6 @@ import { Modal } from '@/components/Modal'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Label } from '@/components/ui/label'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import {
@@ -28,14 +27,13 @@ import {
   DELETE_PROBLEM,
 } from '@/graphql/mutations'
 import { ProblemHeader } from './ProblemHeader'
-import { ProblemTimeline } from './ProblemTimeline'
-import { ProblemCIList } from './ProblemLinkedEntities'
+import { WorkflowTimeline } from '@/components/ticket/WorkflowTimeline'
+import { AffectedCIList } from '@/components/ticket/AffectedCIList'
+import { CommentsSection } from '@/components/ticket/CommentsSection'
 import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
 import { WatcherBar } from '@/components/WatcherBar'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
-import { MentionInput } from '@/components/MentionInput'
-import { MentionText } from '@/components/MentionText'
 import { keycloak } from '@/lib/keycloak'
 import { downloadPdf } from '@/lib/downloadPdf'
 import { FileDown, Loader2, Trash2 } from 'lucide-react'
@@ -133,16 +131,12 @@ export function ProblemDetailPage() {
   const [selectedUserId, setSelectedUserId] = useState('')
   const [showReassign,   setShowReassign]   = useState(false)
 
-  const [commentText, setCommentText] = useState('')
-
   const [ciSearch,      setCiSearch]      = useState('')
-  const [showCISearch,  setShowCISearch]  = useState(false)
 
   const [editRootCause,     setEditRootCause]     = useState<string | null>(null)
   const [editWorkaround,    setEditWorkaround]    = useState<string | null>(null)
   const [editAffectedUsers, setEditAffectedUsers] = useState<string | null>(null)
 
-  const [ciOpen,         setCiOpen]         = useState(true)
   const [timelineOpen,   setTimelineOpen]   = useState(true)
 
   const [exportingPdf, setExportingPdf] = useState(false)
@@ -191,7 +185,7 @@ export function ProblemDetailPage() {
   })
 
   const [addCI] = useMutation(ADD_CI_TO_PROBLEM, {
-    onCompleted: () => { toast.success('CI aggiunto'); setCiSearch(''); setShowCISearch(false); void refetch() },
+    onCompleted: () => { toast.success('CI aggiunto'); setCiSearch(''); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -223,7 +217,7 @@ export function ProblemDetailPage() {
   const [unlinkResolved] = useMutation(UNLINK_RESOLVED_TICKET, relLinkOpts)
 
   const [addComment, { loading: addingComment }] = useMutation(ADD_PROBLEM_COMMENT, {
-    onCompleted: () => { toast.success('Commento aggiunto'); setCommentText(''); void refetch() },
+    onCompleted: () => { toast.success('Commento aggiunto'); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -490,16 +484,11 @@ export function ProblemDetailPage() {
                 />
           </SectionCard>
 
-          <ProblemCIList
-            problemId={problem.id}
+          <AffectedCIList
+            defaultOpen
             affectedCIs={problem.affectedCIs}
-            ciOpen={ciOpen}
-            showCISearch={showCISearch}
-            ciSearch={ciSearch}
             ciResults={ciResults}
             rules={ciRules}
-            onToggle={() => setCiOpen((p) => !p)}
-            onToggleSearch={(e) => { e.stopPropagation(); setShowCISearch((s) => !s); if (!ciOpen) setCiOpen(true) }}
             onSearchChange={setCiSearch}
             onAddCI={(ciId, relationType) => void addCI({ variables: { problemId: problem.id, ciId, relationType } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { problemId: problem.id, ciId } })}
@@ -535,47 +524,12 @@ export function ProblemDetailPage() {
           <AttachmentsSection entityType="problem" entityId={problem.id} />
 
           {/* Commenti */}
-          <SectionCard title={t('detail.sections.comments')} count={problem.comments.length} defaultOpen>
-            <div>
-                {problem.comments.length === 0 ? (
-                  <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>{t('detail.noCommentsYet')}</p>
-                ) : (
-                  <div style={{ marginBottom: 16 }}>
-                    {problem.comments.slice().reverse().map((c, i) => (
-                      <div key={c.id}>
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'var(--color-brand-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-body)', fontWeight: 700, flexShrink: 0 }}>
-                            {c.author ? c.author.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
-                              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? t('detail.unknownUser')}</span>
-                              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
-                            </div>
-                            <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
-                          </div>
-                        </div>
-                        {i < problem.comments.length - 1 && <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px 0' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <Label style={{ fontSize: 'var(--font-size-body)' }}>{t('detail.writeComment')}</Label>
-                  <MentionInput value={commentText} onChange={setCommentText} placeholder={t('detail.commentPlaceholder')} rows={3} />
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button
-                      disabled={!commentText.trim() || addingComment}
-                      onClick={() => void addComment({ variables: { problemId: problem.id, text: commentText.trim() } })}
-                      style={{ padding: '7px 16px', backgroundColor: (commentText.trim() && !addingComment) ? 'var(--accent)' : 'var(--surface-2)', color: (commentText.trim() && !addingComment) ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (commentText.trim() && !addingComment) ? 'pointer' : 'not-allowed' }}
-                    >
-                      {addingComment ? t('detail.sending') : t('detail.sendComment')}
-                    </button>
-                  </div>
-                </div>
-            </div>
-          </SectionCard>
+          <CommentsSection
+            defaultOpen
+            comments={problem.comments}
+            adding={addingComment}
+            onAdd={(text) => addComment({ variables: { problemId: problem.id, text } })}
+          />
 
           <InternalChatPanel
             entityType="problem"
@@ -588,7 +542,7 @@ export function ProblemDetailPage() {
         <div>
 
           {/* Timeline workflow (come nell'incident) */}
-          <ProblemTimeline
+          <WorkflowTimeline
             historyDesc={historyDesc}
             timelineOpen={timelineOpen}
             onToggle={() => setTimelineOpen((p) => !p)}

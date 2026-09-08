@@ -160,10 +160,10 @@ async function walkAutoTransitions(
     visited.add(wi.step)
 
     const transitions = await runQuery<{ toStep: string; condition: string | null }>(session, `
-      MATCH (wi:WorkflowInstance {id: $instanceId})-[:CURRENT_STEP]->(current:WorkflowStep)
+      MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:CURRENT_STEP]->(current:WorkflowStep)
       MATCH (current)-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(next:WorkflowStep)
       RETURN next.name AS toStep, tr.condition AS condition
-    `, { instanceId: wi.instanceId })
+    `, { instanceId: wi.instanceId, tenantId: ctx.tenantId })
     if (transitions.length === 0) return
 
     let fired = false

@@ -36,15 +36,16 @@ async function applyOnEnterFields(
   stepName: string,
   userId: string,
   notes?: string,
+  expectedTenantId?: string,
 ): Promise<void> {
   const fieldsRow = await session.executeRead((tx) => tx.run(`
     MATCH (wi:WorkflowInstance {id: $instanceId})-[:CURRENT_STEP]->(step:WorkflowStep)
-    WHERE step.name = $stepName
+    WHERE step.name = $stepName AND ($tenantId IS NULL OR wi.tenant_id = $tenantId)
     RETURN step.on_enter_fields AS fields,
            wi.entity_id   AS entityId,
            wi.tenant_id   AS tenantId,
            wi.entity_type AS entityType
-  `, { instanceId, stepName }))
+  `, { instanceId, stepName, tenantId: expectedTenantId ?? null }))
   if (!fieldsRow.records.length) return
   const rec       = fieldsRow.records[0]
   const raw       = rec.get('fields')     as string | null
@@ -608,7 +609,7 @@ export async function executeWorkflowTransition(
     if (result.success) {
       const wiResult = await session.executeRead((tx) =>
         tx.run(`
-          MATCH (wi:WorkflowInstance {id: $instanceId})
+          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
           WHERE wi.entity_type = 'incident'
           MATCH (i:Incident {id: wi.entity_id, tenant_id: wi.tenant_id})
           OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci:ConfigurationItem)
@@ -618,7 +619,7 @@ export async function executeWorkflowTransition(
                  wi.tenant_id AS tenantId,
                  collect(DISTINCT ci.name)[0] AS ciName,
                  u.name AS assignedTo, t.name AS teamName
-        `, { instanceId }),
+        `, { instanceId, tenantId: ctx.tenantId }),
       )
       if (wiResult.records.length > 0) {
         const r        = wiResult.records[0]
@@ -647,7 +648,7 @@ export async function executeWorkflowTransition(
         await post('publish incident transition', () => incidentService.publishIncidentTransition(incidentId, toStep, { tenantId, userId: ctx.userId }))
         void audit(ctx, `incident.${toStep}`, 'Incident', incidentId)
 
-        await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes))
+        await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
 
         // Publish workflow.step.entered for any notify_rule enter_actions on this step
         // (SLA pause/resume is driven by the step's own sla_pause/sla_resume
@@ -658,17 +659,17 @@ export async function executeWorkflowTransition(
       // ── KB Article post-transition ────────────────────────────────────────
       const kbResult = await session.executeRead((tx) =>
         tx.run(`
-          MATCH (wi:WorkflowInstance {id: $instanceId})
+          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
           WHERE wi.entity_type = 'kb_article'
           MATCH (a:KBArticle {id: wi.entity_id, tenant_id: wi.tenant_id})
           RETURN a.id AS id, wi.tenant_id AS tenantId, a.requested_by AS requestedBy
-        `, { instanceId }),
+        `, { instanceId, tenantId: ctx.tenantId }),
       )
       if (kbResult.records.length > 0) {
         const kbId     = kbResult.records[0].get('id')     as string
         const tenantId = kbResult.records[0].get('tenantId') as string
         void audit(ctx, `kb_article.${toStep}`, 'KBArticle', kbId)
-        await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes))
+        await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
         await post('notify rules', () => publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'kb_article', kbId))
       }
     }

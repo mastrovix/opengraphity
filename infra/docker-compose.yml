@@ -307,16 +307,14 @@ services:
     restart: unless-stopped
 
   web:
+    # NB: apps/web/Dockerfile è single-stage e COPIA apps/web/dist: non compila.
+    # Le VITE_* vanno passate al build LOCALE (vedi README, "Deploy web"):
+    #   set -a; . infra/.env; set +a; pnpm --filter @opengraphity/web build
+    # Prima qui c'erano `args` VITE_* identiche a quelle del portal ma
+    # silenziosamente ignorate: cambiarle in .env aggiornava il portal e non il web.
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
-      args:
-        # Browser-accessible URLs — NOT internal Docker service names
-        VITE_API_URL: /graphql
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:4000}
-        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://localhost:8080}
-        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-opengrafo-web}
-        VITE_TENANT_SLUG: ${VITE_TENANT_SLUG:-}
     ports:
       - "5173:80"
     depends_on:

@@ -71,8 +71,8 @@ export async function saveDeployPlan(
       `${ciName}: ${normalized.length} step — ${normalized.map(s => `"${s.title}"`).join(', ')}`)
 
     const row = await runQueryOne<{ props: Props }>(session, `
-      MATCH (dp:DeployPlanTask {id: $taskId}) RETURN properties(dp) AS props
-    `, { taskId: args.taskId })
+      MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(dp) AS props
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
     return row ? mapDeployPlanTask(row.props) : null
   }, true)
 }
@@ -114,8 +114,8 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
     await evaluateAutoTransitions(session, tctx.changeId, ctx, afterEnterStep)
 
     const row = await runQueryOne<{ props: Props }>(session, `
-      MATCH (dp:DeployPlanTask {id: $taskId}) RETURN properties(dp) AS props
-    `, { taskId: args.taskId })
+      MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(dp) AS props
+    `, { taskId: args.taskId, tenantId: ctx.tenantId })
     return row ? mapDeployPlanTask(row.props) : null
   }, true)
 }

@@ -3,11 +3,9 @@ import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from '@/components/ui/CountBadge'
-import { lookupOrError } from '@/lib/tokens'
 import { GET_CI_CHANGES } from '@/graphql/queries'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
-import { styleForCategory } from '@/lib/workflowStepStyle'
-import { Pill } from '@/components/ui/Pill'
+import { PhaseBadge, RiskBadge } from '@/components/ui/badges'
 
 interface ChangeRow {
   id:                 string
@@ -19,41 +17,6 @@ interface ChangeRow {
   createdAt:          string
 }
 
-function PhaseBadge({ phase, label, category }: {
-  phase: string; label?: string; category?: string | null
-}) {
-  const s = styleForCategory(category)
-  return (
-    <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', marginTop: 1, flexShrink: 0, textTransform: 'capitalize' }}>
-      {label || phase}
-    </Pill>
-  )
-}
-
-function RiskPill({ score }: { score: number | null }) {
-  if (score == null) return null
-  const level = score <= 30 ? 'low' : score <= 60 ? 'medium' : 'high'
-  const palette: Record<string, { bg: string; color: string }> = {
-    low:    { bg: '#dcfce7', color: '#15803d' },
-    medium: { bg: '#fef3c7', color: '#b45309' },
-    high:   { bg: '#fee2e2', color: '#b91c1c' },
-  }
-  // Unknown risk must LOOK broken (red), never green/low
-  const p = lookupOrError(palette, level, 'RISK_PALETTE', { bg: 'var(--color-danger)', color: '#fff' })
-  return (
-    <span style={{
-      padding:         '1px 6px',
-      borderRadius:    4,
-      fontSize:        'var(--font-size-label)',
-      fontWeight:      600,
-      backgroundColor: p.bg,
-      color:           p.color,
-      flexShrink:      0,
-    }}>
-      {score}
-    </span>
-  )
-}
 
 export function CIChangeList({ ciId }: { ciId: string }) {
   const navigate = useNavigate()
@@ -86,7 +49,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
       >
         {(() => {
           const step = stepOf(ch); const meta = changeStepByName.get(step)
-          return <PhaseBadge phase={step} label={meta?.label} category={meta?.category ?? null} />
+          return <PhaseBadge phase={step} label={meta?.label} category={meta?.category ?? null} style={{ marginTop: 1, flexShrink: 0 }} />
         })()}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -109,7 +72,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
             {ch.title}
           </div>
         </div>
-        <RiskPill score={ch.aggregateRiskScore} />
+        {ch.aggregateRiskScore != null && <RiskBadge compact score={ch.aggregateRiskScore} />}
       </div>
     )
   }

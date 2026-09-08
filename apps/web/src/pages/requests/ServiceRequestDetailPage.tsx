@@ -10,6 +10,7 @@ import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
+import { timeAgo } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { Modal } from '@/components/Modal'
@@ -40,15 +41,6 @@ const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
   cancelled:   { bg: 'var(--color-border-light)', fg: '#6b7280' },
 }
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'ora'
-  if (mins < 60) return `${mins}min fa`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h fa`
-  return `${Math.floor(hrs / 24)}gg fa`
-}
 
 export function ServiceRequestDetailPage() {
   const { t } = useTranslation()
