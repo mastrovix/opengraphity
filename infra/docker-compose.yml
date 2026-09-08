@@ -42,7 +42,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7.4.8-alpine@sha256:7aec734b2bb298a1d769fd8729f13b8514a41bf90fcdd1f38ec52267fbaa8ee6
+    image: redis:8.10.1-alpine@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
     # Password-protected: every client (api, worker) reads the same
     # REDIS_URL + REDIS_PASSWORD through packages/events getRedisConnection().
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}"]
