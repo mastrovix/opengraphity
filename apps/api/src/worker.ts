@@ -12,6 +12,7 @@ import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
 import { closeConnection } from '@opengraphity/events'
 import { neo4jQueryDurationSeconds, recordSlowQuery } from './middleware/metrics.js'
 import { startEmbeddingWorker } from './jobs/embeddingWorker.js'
+import { closeAllQueues } from './lib/bullmq.js'
 import { logger } from './lib/logger.js'
 import type { Worker } from 'bullmq'
 
@@ -21,7 +22,8 @@ registerSessionTracker((durationMs, query) => {
 })
 
 async function main() {
-  const workers: Worker[] = [startEmbeddingWorker()]
+  // Async: vector indexes are ensured BEFORE the worker starts (a failure is fatal here).
+  const workers: Worker[] = [await startEmbeddingWorker()]
   logger.info('Worker process started — embedding worker running')
 
   let shuttingDown = false
@@ -37,6 +39,7 @@ async function main() {
     ])
     logger.info(timedOut ? 'Worker close timed out after 30s' : 'Workers closed')
 
+    await closeAllQueues()
     await closeConnection()
     await closeDriver()
     logger.info('Worker graceful shutdown completed')

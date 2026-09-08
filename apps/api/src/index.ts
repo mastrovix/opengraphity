@@ -5,11 +5,12 @@ import { startServer } from './server.js'
 // Registra le condizioni di transizione ITSM sul workflow engine (side-effect).
 import './workflow/conditions.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
-import { createSLAEngine } from '@opengraphity/sla'
+import { createSLAEngine, closeScheduler } from '@opengraphity/sla'
 import { EscalationConsumer } from './consumers/escalationConsumer.js'
 import { closeConnection } from '@opengraphity/events'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
-import { neo4jQueryDurationSeconds, recordSlowQuery } from './middleware/metrics.js'
+import { neo4jQueryDurationSeconds, recordSlowQuery, startBullMQMetricsCollector } from './middleware/metrics.js'
+import { getAllQueues, closeAllQueues } from './lib/bullmq.js'
 
 // Instrument every Neo4j session.run() — covers all 400+ call sites
 registerSessionTracker((durationMs, query) => {
@@ -41,10 +42,10 @@ async function main() {
   await escalationConsumer.start()
 
   // Start report scheduler (BullMQ, every 60s)
-  const reportScheduler = startReportScheduler()
+  const reportScheduler = await startReportScheduler()
 
   // Start anomaly scanner (BullMQ, every 1h)
-  const anomalyWorker = startAnomalyScanner()
+  const anomalyWorker = await startAnomalyScanner()
 
   // Start workflow job worker (BullMQ, processes auto_close and other scheduled jobs)
   const workflowWorker = startWorkflowJobWorker()
@@ -56,9 +57,9 @@ async function main() {
   // container runs it (EMBEDDING_WORKER_EXTERNAL=true) the API skips it so the
   // ONNX inference does not block the request event loop.
   const embeddingExternal = process.env['EMBEDDING_WORKER_EXTERNAL'] === 'true'
-  const embeddingWorker = embeddingExternal ? null : startEmbeddingWorker()
+  const embeddingWorker = embeddingExternal ? null : await startEmbeddingWorker()
   if (embeddingExternal) logger.info('Embedding worker delegated to external worker process')
-  const emailDigestWorker = startEmailDigestWorker()
+  const emailDigestWorker = await startEmailDigestWorker()
 
   // Register discovery connectors and start sync worker
   registerAllConnectors()
@@ -66,7 +67,11 @@ async function main() {
   await loadScheduledSyncs()
 
   // Start maintenance worker (backup scheduler)
-  const maintenanceWorker = startMaintenanceWorker()
+  const maintenanceWorker = await startMaintenanceWorker()
+
+  // BullMQ queue-depth gauges for /metrics and the admin "System metrics" page
+  // (A-14). Getter: queues opened later are picked up too. Interval is unref'd.
+  startBullMQMetricsCollector(getAllQueues)
 
   logger.info('All consumers started')
 
@@ -105,7 +110,11 @@ async function main() {
     ])
     logger.info(timedOut ? 'BullMQ workers close timed out after 30s' : 'BullMQ workers closed')
 
-    // Close RabbitMQ/Redis event connection
+    // Code singleton (lib/bullmq), poi SLA scheduler, poi publisher (D-24, A-13)
+    await closeAllQueues()
+    logger.info('BullMQ queues closed')
+    await closeScheduler()
+    logger.info('SLA scheduler closed')
     await closeConnection()
     logger.info('Event connection closed')
 

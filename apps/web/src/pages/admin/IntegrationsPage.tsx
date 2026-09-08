@@ -13,32 +13,50 @@ import {
 } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
+import { useMutationWithToast, errorMessage } from '@/hooks/useMutationWithToast'
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
+// Every operation is named: `operationName` shows up in the errorLink logs and
+// the API logs instead of `undefined` (E-06).
 
-const GET_INBOUND_WEBHOOKS = gql`query($filters: String, $sortField: String, $sortDirection: String) { inboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name entityType fieldMapping defaultValues transformScript enabled lastReceivedAt receiveCount createdAt } }`
-const GET_OUTBOUND_WEBHOOKS = gql`query($filters: String, $sortField: String, $sortDirection: String) { outboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name url method headers events payloadTemplate enabled lastSentAt lastStatusCode sendCount errorCount lastError retryOnFailure } }`
-const GET_API_KEYS = gql`query($filters: String, $sortField: String, $sortDirection: String) { apiKeys(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name keyPrefix permissions rateLimit enabled lastUsedAt requestCount createdBy expiresAt createdAt } }`
+const GET_INBOUND_WEBHOOKS = gql`query InboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { inboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name entityType fieldMapping defaultValues transformScript enabled lastReceivedAt receiveCount createdAt } }`
+const GET_OUTBOUND_WEBHOOKS = gql`query OutboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { outboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name url method headers events payloadTemplate enabled lastSentAt lastStatusCode sendCount errorCount lastError retryOnFailure } }`
+const GET_API_KEYS = gql`query ApiKeys($filters: String, $sortField: String, $sortDirection: String) { apiKeys(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name keyPrefix permissions rateLimit enabled lastUsedAt requestCount createdBy expiresAt createdAt } }`
 
 // ── Row types (mirror of the GraphQL selections above) ─────────────────────
 interface InboundWebhook  { id: string; name: string; entityType: string; fieldMapping: string; defaultValues: string; transformScript: string | null; enabled: boolean; lastReceivedAt: string | null; receiveCount: number; createdAt: string }
 interface OutboundWebhook { id: string; name: string; url: string; method: string; headers: string; events: string[] | string; payloadTemplate: string | null; enabled: boolean; lastSentAt: string | null; lastStatusCode: number | null; sendCount: number; errorCount: number; lastError: string | null; retryOnFailure: boolean }
 interface ApiKeyRow       { id: string; name: string; keyPrefix: string; permissions: string[] | string; rateLimit: number; enabled: boolean; lastUsedAt: string | null; requestCount: number; createdBy: string | null; expiresAt: string | null; createdAt: string }
 
-const CREATE_INBOUND = gql`mutation($input: CreateInboundWebhookInput!) { createInboundWebhook(input: $input) { id token } }`
-const UPDATE_INBOUND = gql`mutation($id: ID!, $input: UpdateInboundWebhookInput!) { updateInboundWebhook(id: $id, input: $input) { id } }`
-const DELETE_INBOUND = gql`mutation($id: ID!) { deleteInboundWebhook(id: $id) }`
-const REGEN_WEBHOOK_TOKEN = gql`mutation($id: ID!) { regenerateWebhookToken(id: $id) { token } }`
+const CREATE_INBOUND = gql`mutation CreateInboundWebhook($input: CreateInboundWebhookInput!) { createInboundWebhook(input: $input) { id token } }`
+const UPDATE_INBOUND = gql`mutation UpdateInboundWebhook($id: ID!, $input: UpdateInboundWebhookInput!) { updateInboundWebhook(id: $id, input: $input) { id } }`
+const DELETE_INBOUND = gql`mutation DeleteInboundWebhook($id: ID!) { deleteInboundWebhook(id: $id) }`
+const REGEN_WEBHOOK_TOKEN = gql`mutation RegenerateWebhookToken($id: ID!) { regenerateWebhookToken(id: $id) { token } }`
 
-const CREATE_OUTBOUND = gql`mutation($input: CreateOutboundWebhookInput!) { createOutboundWebhook(input: $input) { id } }`
-const UPDATE_OUTBOUND = gql`mutation($id: ID!, $input: UpdateOutboundWebhookInput!) { updateOutboundWebhook(id: $id, input: $input) { id } }`
-const DELETE_OUTBOUND = gql`mutation($id: ID!) { deleteOutboundWebhook(id: $id) }`
-const TEST_OUTBOUND = gql`mutation($id: ID!) { testOutboundWebhook(id: $id) { success statusCode error } }`
+const CREATE_OUTBOUND = gql`mutation CreateOutboundWebhook($input: CreateOutboundWebhookInput!) { createOutboundWebhook(input: $input) { id } }`
+const UPDATE_OUTBOUND = gql`mutation UpdateOutboundWebhook($id: ID!, $input: UpdateOutboundWebhookInput!) { updateOutboundWebhook(id: $id, input: $input) { id } }`
+const DELETE_OUTBOUND = gql`mutation DeleteOutboundWebhook($id: ID!) { deleteOutboundWebhook(id: $id) }`
+const TEST_OUTBOUND = gql`mutation TestOutboundWebhook($id: ID!) { testOutboundWebhook(id: $id) { success statusCode error } }`
 
-const CREATE_API_KEY = gql`mutation($input: CreateApiKeyInput!) { createApiKey(input: $input) { id key } }`
-const UPDATE_API_KEY = gql`mutation($id: ID!, $input: UpdateApiKeyInput!) { updateApiKey(id: $id, input: $input) { id } }`
-const DELETE_API_KEY = gql`mutation($id: ID!) { deleteApiKey(id: $id) }`
-const REGEN_API_KEY = gql`mutation($id: ID!) { regenerateApiKey(id: $id) { key } }`
+const CREATE_API_KEY = gql`mutation CreateApiKey($input: CreateApiKeyInput!) { createApiKey(input: $input) { id key } }`
+const UPDATE_API_KEY = gql`mutation UpdateApiKey($id: ID!, $input: UpdateApiKeyInput!) { updateApiKey(id: $id, input: $input) { id } }`
+const DELETE_API_KEY = gql`mutation DeleteApiKey($id: ID!) { deleteApiKey(id: $id) }`
+const REGEN_API_KEY = gql`mutation RegenerateApiKey($id: ID!) { regenerateApiKey(id: $id) { key } }`
+
+// ── Per-tab list state (sort + filters) ─────────────────────────────────────
+// Each tab owns its own sort/filter: an `entityType` filter set on "Webhook In"
+// must not silently narrow "API Keys" (E-06 d).
+
+function useTabListState() {
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
+  return {
+    sortField, sortDir, handleSort, setFilterGroup,
+    variables: { filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
+  }
+}
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -83,11 +101,9 @@ export function IntegrationsPage() {
   const [tab, setTab] = useState<typeof TABS[number]>('Webhook In')
   const [modal, setModal] = useState<'inbound' | 'outbound' | 'apikey' | 'secret' | null>(null)
   const [secret, setSecret] = useState('')
-  const [sortField, setSortField] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
-  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
-  const filtersJson = filterGroup ? JSON.stringify(filterGroup) : null
+  const inList  = useTabListState()
+  const outList = useTabListState()
+  const keyList = useTabListState()
 
   const INBOUND_FILTERS: FieldConfig[] = [
     { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
@@ -105,27 +121,36 @@ export function IntegrationsPage() {
     { key: 'name', label: 'Nome', type: 'text' },
   ]
 
-  // Queries
-  const inQ = useQuery<{ inboundWebhooks: InboundWebhook[] }>(GET_INBOUND_WEBHOOKS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
-  const outQ = useQuery<{ outboundWebhooks: OutboundWebhook[] }>(GET_OUTBOUND_WEBHOOKS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
-  const keyQ = useQuery<{ apiKeys: ApiKeyRow[] }>(GET_API_KEYS, { variables: { filters: filtersJson, sortField, sortDirection: sortDir } })
+  // Queries — the active tab's sort/filters are the query variables
+  const inQ = useQuery<{ inboundWebhooks: InboundWebhook[] }>(GET_INBOUND_WEBHOOKS, { variables: inList.variables })
+  const outQ = useQuery<{ outboundWebhooks: OutboundWebhook[] }>(GET_OUTBOUND_WEBHOOKS, { variables: outList.variables })
+  const keyQ = useQuery<{ apiKeys: ApiKeyRow[] }>(GET_API_KEYS, { variables: keyList.variables })
+
+  // Writes refresh the ACTIVE list query via its `refetch()` (keeps the live
+  // sort/filter variables; `refetchQueries: [{ query }]` without variables
+  // would populate another cache entry). Mutations whose result the handler
+  // needs inline (token/key/test outcome) are awaited and report the real
+  // server message on failure; fire-and-forget ones toast via the hook.
+  const refetchIn  = { onCompleted: () => { void inQ.refetch() } }
+  const refetchOut = { onCompleted: () => { void outQ.refetch() } }
+  const refetchKey = { onCompleted: () => { void keyQ.refetch() } }
 
   // Inbound mutations
-  const [createIn] = useMutation(CREATE_INBOUND, { refetchQueries: [{ query: GET_INBOUND_WEBHOOKS }] })
-  const [updateIn] = useMutation(UPDATE_INBOUND, { refetchQueries: [{ query: GET_INBOUND_WEBHOOKS }] })
-  const [deleteIn] = useMutation(DELETE_INBOUND, { refetchQueries: [{ query: GET_INBOUND_WEBHOOKS }] })
+  const [createIn] = useMutation(CREATE_INBOUND, refetchIn)
+  const [updateIn] = useMutationWithToast(UPDATE_INBOUND, { refetch: inQ.refetch })
+  const [deleteIn] = useMutationWithToast(DELETE_INBOUND, { successMessage: 'Webhook eliminato', refetch: inQ.refetch })
   const [regenToken] = useMutation(REGEN_WEBHOOK_TOKEN)
 
   // Outbound mutations
-  const [createOut] = useMutation(CREATE_OUTBOUND, { refetchQueries: [{ query: GET_OUTBOUND_WEBHOOKS }] })
-  const [updateOut] = useMutation(UPDATE_OUTBOUND, { refetchQueries: [{ query: GET_OUTBOUND_WEBHOOKS }] })
-  const [deleteOut] = useMutation(DELETE_OUTBOUND, { refetchQueries: [{ query: GET_OUTBOUND_WEBHOOKS }] })
+  const [createOut] = useMutation(CREATE_OUTBOUND, refetchOut)
+  const [updateOut] = useMutationWithToast(UPDATE_OUTBOUND, { refetch: outQ.refetch })
+  const [deleteOut] = useMutationWithToast(DELETE_OUTBOUND, { successMessage: 'Webhook eliminato', refetch: outQ.refetch })
   const [testOut] = useMutation(TEST_OUTBOUND)
 
   // API key mutations
-  const [createKey] = useMutation(CREATE_API_KEY, { refetchQueries: [{ query: GET_API_KEYS }] })
-  const [updateKey] = useMutation(UPDATE_API_KEY, { refetchQueries: [{ query: GET_API_KEYS }] })
-  const [deleteKey] = useMutation(DELETE_API_KEY, { refetchQueries: [{ query: GET_API_KEYS }] })
+  const [createKey] = useMutation(CREATE_API_KEY, refetchKey)
+  const [updateKey] = useMutationWithToast(UPDATE_API_KEY, { refetch: keyQ.refetch })
+  const [deleteKey] = useMutationWithToast(DELETE_API_KEY, { successMessage: 'API key eliminata', refetch: keyQ.refetch })
   const [regenKey] = useMutation(REGEN_API_KEY)
 
   // ── Form state ──────────────────────────────────────────────────────────────
@@ -145,16 +170,16 @@ export function IntegrationsPage() {
       const res = await createIn({ variables: { input: { ...inForm } } })
       setModal(null); resetInForm()
       const token = (res.data as { createInboundWebhook?: { token: string } } | undefined)?.createInboundWebhook?.token
-      if (!token) throw new Error('token mancante nella risposta')
+      if (!token) throw new Error('Webhook creato ma token mancante nella risposta')
       setSecret(token); setModal('secret')
-    } catch { toast.error('Errore creazione webhook') }
+    } catch (e) { toast.error(`Creazione webhook fallita: ${errorMessage(e)}`) }
   }
 
   async function handleCreateOutbound() {
     try {
       await createOut({ variables: { input: { ...outForm } } })
       setModal(null); resetOutForm(); toast.success('Webhook outbound creato')
-    } catch { toast.error('Errore creazione webhook') }
+    } catch (e) { toast.error(`Creazione webhook fallita: ${errorMessage(e)}`) }
   }
 
   async function handleCreateApiKey() {
@@ -162,19 +187,20 @@ export function IntegrationsPage() {
       const res = await createKey({ variables: { input: { ...keyForm, rateLimit: Number(keyForm.rateLimit) } } })
       setModal(null); resetKeyForm()
       const key = (res.data as { createApiKey?: { key: string } } | undefined)?.createApiKey?.key
-      if (!key) throw new Error('chiave mancante nella risposta')
+      if (!key) throw new Error('API key creata ma chiave mancante nella risposta')
       setSecret(key); setModal('secret')
-    } catch { toast.error('Errore creazione API key') }
+    } catch (e) { toast.error(`Creazione API key fallita: ${errorMessage(e)}`) }
   }
 
-  async function handleToggleInbound(id: string, enabled: boolean) {
-    try { await updateIn({ variables: { id, input: { enabled: !enabled } } }) } catch { toast.error('Errore aggiornamento') }
+  // Toggles: errors are toasted by useMutationWithToast with the server message.
+  function handleToggleInbound(id: string, enabled: boolean) {
+    void updateIn({ variables: { id, input: { enabled: !enabled } } })
   }
-  async function handleToggleOutbound(id: string, enabled: boolean) {
-    try { await updateOut({ variables: { id, input: { enabled: !enabled } } }) } catch { toast.error('Errore aggiornamento') }
+  function handleToggleOutbound(id: string, enabled: boolean) {
+    void updateOut({ variables: { id, input: { enabled: !enabled } } })
   }
-  async function handleToggleKey(id: string, enabled: boolean) {
-    try { await updateKey({ variables: { id, input: { enabled: !enabled } } }) } catch { toast.error('Errore aggiornamento') }
+  function handleToggleKey(id: string, enabled: boolean) {
+    void updateKey({ variables: { id, input: { enabled: !enabled } } })
   }
 
   async function handleTestOutbound(id: string) {
@@ -183,7 +209,7 @@ export function IntegrationsPage() {
       const r = (res.data as { testOutboundWebhook?: { success: boolean; statusCode: number | null; error: string | null } } | undefined)?.testOutboundWebhook
       if (!r) throw new Error('risposta vuota')
       r.success ? toast.success(`Test OK — status ${r.statusCode}`) : toast.error(`Test fallito: ${r.error}`)
-    } catch { toast.error('Errore test webhook') }
+    } catch (e) { toast.error(`Test webhook fallito: ${errorMessage(e)}`) }
   }
 
   async function handleRegenToken(id: string) {
@@ -192,7 +218,7 @@ export function IntegrationsPage() {
       const token = (res.data as { regenerateWebhookToken?: { token: string } } | undefined)?.regenerateWebhookToken?.token
       if (!token) throw new Error('token mancante nella risposta')
       setSecret(token); setModal('secret')
-    } catch { toast.error('Errore rigenerazione token') }
+    } catch (e) { toast.error(`Rigenerazione token fallita: ${errorMessage(e)}`) }
   }
 
   async function handleRegenApiKey(id: string) {
@@ -201,7 +227,7 @@ export function IntegrationsPage() {
       const key = (res.data as { regenerateApiKey?: { key: string } } | undefined)?.regenerateApiKey?.key
       if (!key) throw new Error('chiave mancante nella risposta')
       setSecret(key); setModal('secret')
-    } catch { toast.error('Errore rigenerazione chiave') }
+    } catch (e) { toast.error(`Rigenerazione chiave fallita: ${errorMessage(e)}`) }
   }
 
   // ── Render helpers ──────────────────────────────────────────────────────────
@@ -229,7 +255,7 @@ export function IntegrationsPage() {
     { key: 'createdAt', label: '', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button style={btnSecondary} title="Rigenera token" onClick={() => handleRegenToken(row.id)}><RefreshCw size={13} /></button>
-        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteIn({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) void deleteIn({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
       </div>
     ) },
   ]
@@ -252,7 +278,7 @@ export function IntegrationsPage() {
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button style={btnSecondary} title="Test" onClick={() => handleTestOutbound(row.id)}><Play size={13} /></button>
-        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteOut({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) void deleteOut({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
       </div>
     ) },
   ]
@@ -271,7 +297,7 @@ export function IntegrationsPage() {
     { key: 'createdAt', label: '', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <button style={btnSecondary} title="Rigenera chiave" onClick={() => handleRegenApiKey(row.id)}><RefreshCw size={13} /></button>
-        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) deleteKey({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
+        <button style={{ ...btnSecondary, color: 'var(--color-danger)', borderColor: '#fecaca' }} onClick={() => { if (confirm('Eliminare?')) void deleteKey({ variables: { id: row.id } }) }}><Trash2 size={13} /></button>
       </div>
     ) },
   ]
@@ -301,8 +327,8 @@ export function IntegrationsPage() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <button style={btnPrimary} onClick={() => { resetInForm(); setModal('inbound') }}><Plus size={14} /> Nuovo Webhook In</button>
         </div>
-        <FilterBuilder fields={INBOUND_FILTERS} onApply={g => setFilterGroup(g)} />
-        <SortableFilterTable<InboundWebhook> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+        <FilterBuilder fields={INBOUND_FILTERS} onApply={inList.setFilterGroup} />
+        <SortableFilterTable<InboundWebhook> onSort={inList.handleSort} sortField={inList.sortField} sortDir={inList.sortDir}
           columns={inboundColumns}
           data={inbounds}
           loading={inQ.loading}
@@ -336,8 +362,8 @@ export function IntegrationsPage() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <button style={btnPrimary} onClick={() => { resetOutForm(); setModal('outbound') }}><Plus size={14} /> Nuovo Webhook Out</button>
         </div>
-        <FilterBuilder fields={OUTBOUND_FILTERS} onApply={g => setFilterGroup(g)} />
-        <SortableFilterTable<OutboundWebhook> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+        <FilterBuilder fields={OUTBOUND_FILTERS} onApply={outList.setFilterGroup} />
+        <SortableFilterTable<OutboundWebhook> onSort={outList.handleSort} sortField={outList.sortField} sortDir={outList.sortDir}
           columns={outboundColumns}
           data={outbounds}
           loading={outQ.loading}
@@ -387,8 +413,8 @@ export function IntegrationsPage() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <button style={btnPrimary} onClick={() => { resetKeyForm(); setModal('apikey') }}><Plus size={14} /> Nuova API Key</button>
         </div>
-        <FilterBuilder fields={APIKEY_FILTERS} onApply={g => setFilterGroup(g)} />
-        <SortableFilterTable<ApiKeyRow> onSort={handleSort} sortField={sortField} sortDir={sortDir}
+        <FilterBuilder fields={APIKEY_FILTERS} onApply={keyList.setFilterGroup} />
+        <SortableFilterTable<ApiKeyRow> onSort={keyList.handleSort} sortField={keyList.sortField} sortDir={keyList.sortDir}
           columns={apiKeyColumns}
           data={apiKeys}
           loading={keyQ.loading}

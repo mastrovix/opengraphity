@@ -1,12 +1,23 @@
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
-import { anomalyScannerQueue } from '../../anomaly/anomalyEngine.js'
+import { enqueueTenantScan } from '../../anomaly/anomalyEngine.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { cache } from '../../lib/cache.js'
-import { logger } from '../../lib/logger.js'
 import { validateStringLength } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
+import { requireRole } from '../../lib/requireRole.js'
+
+/** Mirrors `enum ResolutionStatus` in schema-anomaly.ts — re-checked here so the stored status can never be an arbitrary string. */
+export const RESOLUTION_STATUSES = ['resolved', 'false_positive', 'accepted_risk'] as const
+export type ResolutionStatus = (typeof RESOLUTION_STATUSES)[number]
+
+export function assertResolutionStatus(value: unknown): ResolutionStatus {
+  if (typeof value !== 'string' || !(RESOLUTION_STATUSES as readonly string[]).includes(value)) {
+    throw new ValidationError(`Invalid resolutionStatus ${JSON.stringify(value)} — expected one of: ${RESOLUTION_STATUSES.join(', ')}`)
+  }
+  return value as ResolutionStatus
+}
 
 type Props = Record<string, unknown>
 
@@ -173,6 +184,7 @@ export const anomalyResolvers = {
       ctx: GraphQLContext,
     ) => {
       validateStringLength(args.note, 'note', 10, 10000)
+      const resolutionStatus = assertResolutionStatus(args.resolutionStatus)
       const now = new Date().toISOString()
       const session = getSession(undefined, 'WRITE')
       try {
@@ -187,29 +199,28 @@ export const anomalyResolvers = {
         `, {
           id:               args.id,
           tenantId:         ctx.tenantId,
-          resolutionStatus: args.resolutionStatus,
+          resolutionStatus,
           note:             args.note,
           resolvedBy:       ctx.userId || 'unknown',
           now,
         })
         if (!row) throw new NotFoundError('Anomaly')
         cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
-        void audit(ctx, 'anomaly.resolved', 'Anomaly', args.id, { resolutionStatus: args.resolutionStatus })
+        void audit(ctx, 'anomaly.resolved', 'Anomaly', args.id, { resolutionStatus })
         return mapAnomaly(row.props)
       } finally {
         await session.close()
       }
     },
 
+    /**
+     * Enqueues a scan of the CALLER's tenant only (C-18). A queue failure
+     * (Redis down) propagates as a GraphQL error: returning `false` hid it.
+     */
     runAnomalyScanner: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
-      try {
-        await anomalyScannerQueue.add('scan-manual', {}, { jobId: `manual-${Date.now()}` })
-        cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
-      } catch (err) {
-        // Queue unavailable (Redis down etc.) — log and return false
-        logger.error({ err }, 'runAnomalyScanner: failed to enqueue job')
-        return false
-      }
+      requireRole(ctx, 'admin', 'operator')
+      await enqueueTenantScan(ctx.tenantId)
+      cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
       void audit(ctx, 'anomaly.scan_triggered', 'AnomalyScanner', ctx.tenantId)
       return true
     },

@@ -12,6 +12,7 @@ import { TicketDetailPage } from '@/pages/TicketDetailPage'
 import { KBListPage }      from '@/pages/KBListPage'
 import { KBArticlePage }   from '@/pages/KBArticlePage'
 import { ServiceCatalogPage } from '@/pages/ServiceCatalogPage'
+import { NotFoundPage }    from '@/pages/NotFoundPage'
 import '@/index.css'
 import '@/i18n/i18n'
 
@@ -27,6 +28,8 @@ const router = createBrowserRouter([
       { path: 'catalog',         element: <ServiceCatalogPage /> },
       { path: 'kb',              element: <KBListPage /> },
       { path: 'kb/:slug',        element: <KBArticlePage /> },
+      // Catch-all: an unknown URL renders a 404 page instead of a blank layout.
+      { path: '*',               element: <NotFoundPage /> },
     ],
   },
 ])

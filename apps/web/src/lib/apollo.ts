@@ -1,12 +1,13 @@
 import { ApolloClient, InMemoryCache, createHttpLink, from } from '@apollo/client/core'
 import { setContext } from '@apollo/client/link/context'
-import { onError } from '@apollo/client/link/error'
+import { ErrorLink } from '@apollo/client/link/error'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
+import { Observable } from '@apollo/client/utilities'
+import type { ApolloLink } from '@apollo/client/link'
 import { toast } from 'sonner'
-// Legacy auth helpers kept for fallback reference
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { getToken as _getToken, removeToken as _removeToken, isTokenExpired as _isTokenExpired } from './auth'
 import { keycloak } from './keycloak'
 import { clientLogger } from './clientLogger'
+import { refreshToken, isSessionInvalid, forceLogin } from './tokenRefresh'
 
 const httpLink = createHttpLink({
   uri: import.meta.env['VITE_API_URL'] ?? '/graphql',
@@ -24,47 +25,72 @@ function toastOnce(key: string, message: string): void {
   toast.error(message)
 }
 
-// Debounce: N failing queries must trigger ONE re-login, not N.
-let reauthInFlight = false
+const NETWORK_ERROR_MSG = 'Errore di connessione al server'
 
-function forceReauth(): void {
-  if (reauthInFlight) return
-  reauthInFlight = true
-  toastOnce('unauthorized', 'Sessione scaduta — nuovo accesso necessario')
-  // Try a silent token refresh first; if that fails, full login redirect.
-  void keycloak.updateToken(30).then(
-    () => { reauthInFlight = false },
-    () => void keycloak.login(),
-  )
+/**
+ * UNAUTHORIZED from the API: refresh the token (forced — the API just rejected
+ * the one we have) and replay the SAME operation with the new bearer, without
+ * any toast. The user only notices when the refresh itself fails:
+ *   - session invalid → login redirect;
+ *   - Keycloak unreachable → connection toast, the operation errors out and the
+ *     page shows its QueryError/retry instead of a bogus "session expired".
+ */
+function retryAfterRefresh(
+  operation: ApolloLink.Operation,
+  forward:   ApolloLink.ForwardFunction,
+): Observable<ApolloLink.Result> {
+  return new Observable<ApolloLink.Result>((observer) => {
+    let cancelled = false
+    let sub: { unsubscribe(): void } | undefined
+    refreshToken(-1).then(
+      () => {
+        if (cancelled) return
+        operation.setContext({ authRetried: true })
+        sub = forward(operation).subscribe(observer)
+      },
+      (err: unknown) => {
+        if (cancelled) return
+        if (isSessionInvalid()) {
+          forceLogin()
+        } else {
+          clientLogger.error('Token refresh fallito (rete)', { operation: operation.operationName, message: err instanceof Error ? err.message : String(err) })
+          toastOnce('network', NETWORK_ERROR_MSG)
+        }
+        observer.error(err instanceof Error ? err : new Error(String(err)))
+      },
+    )
+    return () => { cancelled = true; sub?.unsubscribe() }
+  })
 }
 
-const errorLink = onError((errResponse) => {
-  const { operation } = errResponse
-  const graphQLErrors = (errResponse as { graphQLErrors?: Array<{ message: string; path?: unknown }> }).graphQLErrors
-  const networkError  = (errResponse as { networkError?: { message: string } }).networkError
-
-  if (graphQLErrors) {
-    graphQLErrors.forEach(({ message, path }) => {
-      if (message.toLowerCase().includes('unauthorized')) {
-        // Expired/invalid session: NEVER swallow silently — the app would keep
-        // rendering empty lists and "not found" pages. Surface + re-auth.
-        clientLogger.error(`Unauthorized: ${message}`, { operation: operation.operationName })
-        forceReauth()
-      } else {
-        clientLogger.error(`GraphQL error: ${message}`, {
-          path:      path as Record<string, unknown> | undefined,
-          operation: operation.operationName,
-        })
-        toastOnce(`gql:${message}`, message)
+const errorLink = new ErrorLink(({ error, operation, forward }) => {
+  if (CombinedGraphQLErrors.is(error)) {
+    const unauthorized = error.errors.some((e) => e.extensions?.['code'] === 'UNAUTHORIZED')
+    if (unauthorized) {
+      const ctx = operation.getContext() as { authRetried?: boolean }
+      if (ctx.authRetried) {
+        // Fresh token, still rejected: the account itself is not accepted by
+        // the API. Re-login is the only sane recovery.
+        clientLogger.error('UNAUTHORIZED dopo refresh del token', { operation: operation.operationName })
+        forceLogin()
+        return
       }
+      return retryAfterRefresh(operation, forward)
+    }
+    error.errors.forEach(({ message, path }) => {
+      clientLogger.error(`GraphQL error: ${message}`, {
+        path:      path as unknown as Record<string, unknown> | undefined,
+        operation: operation.operationName,
+      })
+      toastOnce(`gql:${message}`, message)
     })
+    return
   }
-  if (networkError) {
-    clientLogger.error(`Network error: ${networkError.message}`, {
-      operation: operation.operationName,
-    })
-    toastOnce('network', 'Errore di connessione al server')
-  }
+
+  clientLogger.error(`Network error: ${error.message}`, {
+    operation: operation.operationName,
+  })
+  toastOnce('network', NETWORK_ERROR_MSG)
 })
 
 const authLink = setContext((_, { headers }) => {

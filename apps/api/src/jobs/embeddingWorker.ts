@@ -7,10 +7,10 @@
  * No-fallback: any failure (model load, provider HTTP, Neo4j) throws so the
  * job fails visibly and BullMQ retries.
  */
-import { Worker, Queue, type Job } from 'bullmq'
-import { getRedisOptions } from '@opengraphity/events'
+import type { Worker, Job } from 'bullmq'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
+import { createWorker, getQueue } from '../lib/bullmq.js'
 import {
   getEmbedder,
   vectorIndexName,
@@ -24,20 +24,31 @@ export interface EmbeddingJobData {
   entityType: 'incident' | 'kb_article'
   entityId:   string
   tenantId:   string
+  /** ISO timestamp of the entity version being embedded (job-id versioning). */
+  updatedAt?: string
 }
 
-const QUEUE_NAME = 'embeddings'
+export const EMBEDDINGS_QUEUE = 'embeddings'
 
-let _queue: Queue | null = null
-function getQueue(): Queue {
-  _queue ??= new Queue(QUEUE_NAME, { connection: getRedisOptions() })
-  return _queue
+/**
+ * Job id versioned by the entity's updated_at (C-17): with a fixed
+ * `embed:<type>:<id>` a still-present FAILED job for the entity made BullMQ
+ * silently ignore the re-enqueue after an edit — the embedding stayed stale
+ * until the failed job aged out. Callers that do not know updated_at get the
+ * enqueue time, which has the same effect (a new version ⇒ a new job).
+ */
+export function embeddingJobId(data: EmbeddingJobData, now: number = Date.now()): string {
+  const epoch = data.updatedAt ? Date.parse(data.updatedAt) : now
+  if (Number.isNaN(epoch)) {
+    throw new Error(`[embeddings] invalid updatedAt "${data.updatedAt}" for ${data.entityType} ${data.entityId}`)
+  }
+  return `embed:${data.entityType}:${data.entityId}:${epoch}`
 }
 
-/** Enqueue (or re-enqueue) the embedding of an entity. Deduped per entity. */
+/** Enqueue (or re-enqueue) the embedding of an entity, deduped per entity version. */
 export async function enqueueEmbedding(data: EmbeddingJobData): Promise<void> {
-  await getQueue().add('embed', data, {
-    jobId:            `embed:${data.entityType}:${data.entityId}`,
+  await getQueue<EmbeddingJobData>(EMBEDDINGS_QUEUE).add('embed', data, {
+    jobId:            embeddingJobId(data),
     removeOnComplete: true,
     removeOnFail:     50,
     attempts:         3,
@@ -112,24 +123,20 @@ async function processEmbedding(job: Job<EmbeddingJobData>): Promise<void> {
 
 // ── Worker ───────────────────────────────────────────────────────────────────
 
-export function startEmbeddingWorker(): Worker<EmbeddingJobData> {
-  // Index creation is part of worker startup — failing here must fail startup,
-  // not leave a worker that stores vectors no index will ever serve.
-  void ensureVectorIndexes().catch((err: unknown) => {
-    log.error({ err }, '[embeddings] FATAL: could not ensure vector indexes')
-    throw err
-  })
+/**
+ * Ensures the vector indexes THEN starts the worker. Index creation failing
+ * is a startup failure that propagates to the caller (index.ts → fatal),
+ * instead of a detached rejection racing with an already-running worker.
+ */
+export async function startEmbeddingWorker(): Promise<Worker<EmbeddingJobData>> {
+  await ensureVectorIndexes()
+  getQueue<EmbeddingJobData>(EMBEDDINGS_QUEUE)  // producer singleton (metrics)
 
-  const worker = new Worker<EmbeddingJobData>(QUEUE_NAME, processEmbedding, {
-    connection:  getRedisOptions(),
+  return createWorker<EmbeddingJobData>(EMBEDDINGS_QUEUE, processEmbedding, {
     // The local ONNX model is CPU-bound — one job at a time keeps the API responsive.
     concurrency: 1,
+    onFailed: (job, err) => {
+      log.error({ jobId: job?.id, data: job?.data, err: err.message }, '[embeddings] job failed')
+    },
   })
-
-  worker.on('failed', (job, err) => {
-    log.error({ jobId: job?.id, data: job?.data, err: err.message }, '[embeddings] job failed')
-  })
-
-  log.info('[embeddings] worker started')
-  return worker
 }

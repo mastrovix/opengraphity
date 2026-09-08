@@ -32,6 +32,21 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'ConfigurationItem.id',
     cypher: 'CREATE CONSTRAINT ci_id_unique IF NOT EXISTS FOR (n:ConfigurationItem) REQUIRE n.id IS UNIQUE',
   },
+  // Discovery reconciliation key: one CI per (tenant, source, external id).
+  // The engine MERGEs on this key; the constraint makes a duplicate impossible
+  // even under concurrent syncs. Manually created CIs carry none of the
+  // discovery_* properties and are NOT subject to it (Neo4j ignores nodes
+  // where any constrained property is null). The former plain range index on
+  // the same schema must go first (Neo4j refuses the constraint otherwise);
+  // the constraint's backing index replaces it for the lookups.
+  {
+    label: 'drop range index ci_discovery_key (superseded by ci_discovery_key_unique)',
+    cypher: 'DROP INDEX ci_discovery_key IF EXISTS',
+  },
+  {
+    label: 'ConfigurationItem(tenant_id, discovery_source_id, discovery_external_id)',
+    cypher: 'CREATE CONSTRAINT ci_discovery_key_unique IF NOT EXISTS FOR (n:ConfigurationItem) REQUIRE (n.tenant_id, n.discovery_source_id, n.discovery_external_id) IS UNIQUE',
+  },
   {
     label: 'Incident.id',
     cypher: 'CREATE CONSTRAINT incident_id_unique IF NOT EXISTS FOR (n:Incident) REQUIRE n.id IS UNIQUE',
@@ -226,10 +241,9 @@ const INDEXES: SchemaStatement[] = [
   { label: 'SyncConflict(tenant_id)',                   cypher: 'CREATE INDEX sync_conflict_tenant IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id)' },
   { label: 'SyncConflict(source_id)',                   cypher: 'CREATE INDEX sync_conflict_source IF NOT EXISTS FOR (n:SyncConflict) ON (n.source_id)' },
   { label: 'SyncConflict(tenant_id, status)',           cypher: 'CREATE INDEX sync_conflict_status IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id, n.status)' },
-  // Discovery reconciliation looks up CIs by (tenant_id, source, external_id) on
-  // every batch and every relationship — without this it label-scans the tenant.
   { label: 'ServiceCatalogItem(tenant_id)', cypher: 'CREATE INDEX service_catalog_tenant IF NOT EXISTS FOR (n:ServiceCatalogItem) ON (n.tenant_id)' },
-  { label: 'ConfigurationItem(tenant_id, discovery_source_id, discovery_external_id)', cypher: 'CREATE INDEX ci_discovery_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.discovery_source_id, n.discovery_external_id)' },
+  // Discovery reconciliation lookups by (tenant_id, source, external_id) are
+  // served by the ci_discovery_key_unique constraint's backing index (CONSTRAINTS).
   // Fulltext for the command-palette global search (CONTAINS cannot use range indexes)
   { label: 'global_search (fulltext)', cypher: 'CREATE FULLTEXT INDEX global_search IF NOT EXISTS FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|BusinessCapability|BusinessApplication|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice|DynamicCIGroup) ON EACH [n.title, n.number, n.code, n.name]' },
   { label: 'AssessmentTask(code)', cypher: 'CREATE INDEX assessment_task_code IF NOT EXISTS FOR (t:AssessmentTask) ON (t.code)' },
@@ -291,6 +305,19 @@ const UNIQUENESS_PRECHECKS: UniquenessPrecheck[] = [
       RETURN tenant_id, email, ids ORDER BY tenant_id, email`,
     hint: 'Merge or delete the duplicate User nodes (keep the one referenced by ' +
           'ASSIGNED_TO / REPORTED_BY / MEMBER_OF), then rerun neo4j:init.',
+  },
+  {
+    label: 'ConfigurationItem(tenant_id, discovery_source_id, discovery_external_id)',
+    cypher: `
+      MATCH (ci:ConfigurationItem)
+      WHERE ci.tenant_id IS NOT NULL AND ci.discovery_source_id IS NOT NULL AND ci.discovery_external_id IS NOT NULL
+      WITH ci.tenant_id AS tenant_id, ci.discovery_source_id AS source_id, ci.discovery_external_id AS external_id,
+           collect({id: ci.id, name: ci.name, created_at: ci.created_at}) AS nodes
+      WHERE size(nodes) > 1
+      RETURN tenant_id, source_id, external_id, nodes ORDER BY tenant_id, source_id, external_id`,
+    hint: 'Duplicates come from pre-fix concurrent discovery syncs. Keep the oldest node ' +
+          '(the one incidents/changes/relations point at), re-point relationships from the ' +
+          'others to it, DETACH DELETE the others, then rerun neo4j:init.',
   },
 ]
 

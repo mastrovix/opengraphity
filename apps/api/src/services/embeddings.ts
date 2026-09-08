@@ -117,10 +117,28 @@ export function incidentEmbeddingText(p: { title?: unknown; category?: unknown; 
     .join('\n')
 }
 
+/**
+ * KBArticle.tags is persisted as a JSON string (`JSON.stringify(tags)`); the
+ * single normaliser for every reader (embedding text, resolvers). A Neo4j
+ * list is accepted so a future migration to native lists needs no change.
+ * Corrupt JSON throws: silently embedding/serving an article without its
+ * tags is exactly the fallback the review flagged (C-24).
+ */
+export function normalizeKbTags(raw: unknown): string[] {
+  if (raw == null || raw === '') return []
+  if (Array.isArray(raw)) return raw.map(String)
+  if (typeof raw !== 'string') throw new Error(`[kb] tags has unexpected type ${typeof raw}`)
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) }
+  catch (e) { throw new Error(`[kb] tags is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  if (!Array.isArray(parsed)) throw new Error('[kb] tags JSON must be an array')
+  return parsed.map(String)
+}
+
 /** Canonical text used to embed a KB article. */
 export function kbEmbeddingText(p: { title?: unknown; tags?: unknown; category?: unknown; body?: unknown }): string {
-  const tags = Array.isArray(p.tags) ? p.tags.join(' ') : undefined
-  return [p.title, p.category, tags, typeof p.body === 'string' ? p.body.slice(0, 4000) : undefined]
+  const tags = normalizeKbTags(p.tags)
+  return [p.title, p.category, tags.length ? tags.join(' ') : undefined, typeof p.body === 'string' ? p.body.slice(0, 4000) : undefined]
     .filter((v): v is string => typeof v === 'string' && v.length > 0)
     .join('\n')
 }

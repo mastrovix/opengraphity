@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { GraphQLError } from 'graphql'
-import { buildReportQuery, validateReportSection, type ReportSectionDef, type ReportNodeDef, type ReportEdgeDef } from '../reportQueryBuilder.js'
+import { buildReportQuery, validateReportSection, CHART_TYPES, type ChartType, type ReportSectionDef, type ReportNodeDef, type ReportEdgeDef } from '../reportQueryBuilder.js'
 import type { ReportWhitelist } from '../reportWhitelist.js'
 import { FIELD_NAME_RE } from '../cypherIdentifiers.js'
 
@@ -262,14 +262,43 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     ])
   })
 
-  it('table with no selected fields falls back to the root id column', () => {
-    const { query, columns } = buildReportQuery(section({ chartType: 'table' }), TENANT, whitelist)
-    expect(query).toBe([
-      'MATCH (n0:Incident {tenant_id: $tenantId})',
-      'RETURN n0.id AS c0',
-      'LIMIT toInteger($limit)',
-    ].join('\n'))
-    expect(columns).toEqual([{ alias: 'c0', name: 'id' }])
+  it('table with no selected fields is a validation error (no phantom id column) — C-11', () => {
+    expectValidationError(() => buildReportQuery(section({ chartType: 'table' }), TENANT, whitelist), 'at least one selected field')
+    // selected fields on a NON-result node do not count
+    expectValidationError(() => buildReportQuery(section({
+      chartType: 'table',
+      nodes: [node({ id: 'root', isRoot: true, isResult: false, selectedFields: ['title'] })],
+    }), TENANT, whitelist), 'at least one selected field')
+  })
+
+  // ── One expected RETURN per ChartType (builder side of the C-11 contract) ──
+  const RETURN_BY_TYPE: Record<ChartType, string[]> = {
+    kpi:            ['RETURN count(n0) AS value'],
+    pie:            ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
+    donut:          ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
+    bar:            ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
+    bar_horizontal: ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
+    top_n:          ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
+    line:           ['RETURN date(n0.created_at) AS label, count(n0) AS value', 'ORDER BY label ASC'],
+    area:           ['RETURN date(n0.created_at) AS label, count(n0) AS value', 'ORDER BY label ASC'],
+    table:          ['RETURN n0.title AS c0', 'LIMIT toInteger($limit)'],
+  }
+
+  it('RETURN_BY_TYPE covers every CHART_TYPES entry', () => {
+    expect(Object.keys(RETURN_BY_TYPE).sort()).toEqual([...CHART_TYPES].sort())
+  })
+
+  it.each(CHART_TYPES)('chartType %s → expected RETURN clause', (chartType) => {
+    const sec = section({ chartType, nodes: [node({ id: 'root', isRoot: true, isResult: true, selectedFields: chartType === 'table' ? ['title'] : [] })] })
+    const { query } = buildReportQuery(sec, TENANT, whitelist)
+    expect(query).toBe(['MATCH (n0:Incident {tenant_id: $tenantId})', ...RETURN_BY_TYPE[chartType]].join('\n'))
+  })
+
+  it('top_n honours limit/sortDir like a ranked bar (executor reads label/value)', () => {
+    const { query, params } = buildReportQuery(section({ chartType: 'top_n', groupByField: 'severity', limit: 3, sortDir: 'asc' }), TENANT, whitelist)
+    expect(query).toContain('RETURN n0.severity AS label, count(n0) AS value')
+    expect(query).toContain('ORDER BY value ASC')
+    expect(params['limit']).toBe(3)
   })
 
   it('metamodel labels/relations added to the whitelist are accepted', () => {

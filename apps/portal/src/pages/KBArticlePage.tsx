@@ -7,18 +7,12 @@ import remarkGfm from 'remark-gfm'
 import { ThumbsUp, ThumbsDown } from 'lucide-react'
 import { GET_KB_ARTICLE_BY_SLUG, GET_KB_ARTICLES } from '@/graphql/queries'
 import { RATE_KB_ARTICLE } from '@/graphql/mutations'
+import { fmtDateLong } from '@/lib/format'
 
 interface KBArticle {
   id: string; title: string; slug: string; body: string; category: string
   authorName: string; views: number; helpfulCount: number; notHelpfulCount: number
   createdAt: string; publishedAt: string | null
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return ''
-  try {
-    return new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date(iso))
-  } catch { return iso }
 }
 
 export function KBArticlePage() {
@@ -50,7 +44,7 @@ export function KBArticlePage() {
   }
 
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>{t('common.loading')}</div>
-  if (!article) return <div style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>Articolo non trovato</div>
+  if (!article) return <div style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>{t('kb.notFound')}</div>
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
@@ -71,7 +65,7 @@ export function KBArticlePage() {
       </h1>
       <div style={{ display: 'flex', gap: 16, fontSize: 10, color: '#94A3B8', marginBottom: 32, flexWrap: 'wrap' }}>
         <span>{t('kb.by')} <strong style={{ color: '#64748B' }}>{article.authorName}</strong></span>
-        {article.publishedAt && <span>{t('kb.published')}: {fmtDate(article.publishedAt)}</span>}
+        {article.publishedAt && <span>{t('kb.published')}: {fmtDateLong(article.publishedAt)}</span>}
         <span>{article.views} {t('kb.views')}</span>
       </div>
 

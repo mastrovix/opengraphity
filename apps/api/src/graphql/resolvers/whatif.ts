@@ -29,6 +29,13 @@ function toNum(v: unknown): number {
   return Number(v)
 }
 
+/** Open incidents linked to any of $impactedIds (tenant-scoped, non-terminal). */
+export const OPEN_INCIDENTS_ON_CIS_CYPHER = `
+  MATCH (ci)<-[:AFFECTED_BY]-(inc:Incident {tenant_id: $tenantId})
+  WHERE ci.id IN $impactedIds AND ci.tenant_id = $tenantId AND NOT inc.status IN $terminalSteps
+  RETURN count(DISTINCT inc) AS cnt
+`
+
 // ── whatIfAnalysis ───────────────────────────────────────────────────────────
 
 interface WhatIfArgs { ciId: string; action: string; depth?: number | null }
@@ -107,11 +114,10 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     const s3 = getSession(undefined, 'READ')
     try {
       const terminalSteps = await getTerminalStepNames(s3, tenantId, 'incident')
-      const row = await runQueryOne<{ cnt: unknown }>(s3, `
-        MATCH (ci)<-[:AFFECTS]-(inc {tenant_id: $tenantId})
-        WHERE ci.id IN $impactedIds AND NOT inc.status IN $terminalSteps
-        RETURN count(inc) AS cnt
-      `, { impactedIds, tenantId, terminalSteps })
+      // Incidents point at their CIs: (Incident)-[:AFFECTED_BY]->(ci)
+      // (incidentService.createIncident / addAffectedCI). Exported below so the
+      // relationship is pinned by a test — a wrong type here is a silent 0.
+      const row = await runQueryOne<{ cnt: unknown }>(s3, OPEN_INCIDENTS_ON_CIS_CYPHER, { impactedIds, tenantId, terminalSteps })
       openIncidents = toNum(row?.cnt)
     } finally { await s3.close() }
   }

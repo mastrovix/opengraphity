@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { User, Users, X } from 'lucide-react'
-import { toast } from 'sonner'
 import { gql } from '@apollo/client'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
@@ -15,16 +14,18 @@ import { GET_USERS, GET_TEAMS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { inputS, selectS, labelS } from '@/pages/settings/shared/designerStyles'
-import { lookupStyle } from '@/lib/tokens'
-import { Pill } from '@/components/ui/Pill'
+import { RoleBadge } from '@/components/ui/badges'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
-
-// ── TeamSearchInput — stable component outside render to avoid focus loss ────
+import { applyFilterGroup } from '@/lib/filterGroup'
+import { useMutationWithToast } from '@/hooks/useMutationWithToast'
+import { ALL_ROLES } from '@/hooks/useMe'
 
 // ── GraphQL ──────────────────────────────────────────────────────────────────
 
+// `CreateUserInput` (schema-user-team.ts): email, name, password, role, teamIds —
+// there is no username field, so the form does not ask for one (E-02).
 const CREATE_USER = gql`
   mutation CreateUser($input: CreateUserInput!) {
     createUser(input: $input) { id name email role }
@@ -39,20 +40,11 @@ interface UserRow {
   createdAt: string | null
 }
 
-const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
-  operator: { bg: 'var(--color-info-bg)', color: '#2563eb' },
-  viewer:   { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' },
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin', operator: 'Operator', viewer: 'Viewer', end_user: 'End User',
 }
 
-function RoleBadge({ role }: { role: string }) {
-  const s = lookupStyle(ROLE_STYLES, role, 'ROLE_STYLES')
-  return (
-    <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
-      {role}
-    </Pill>
-  )
-}
+const EMPTY_FORM = { email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] as string[] }
 
 const PAGE_SIZE = 50
 
@@ -62,11 +54,8 @@ export function UsersPage() {
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',      label: t('pages.users.name'),      type: 'text' },
     { key: 'email',     label: t('pages.users.email'),     type: 'text' },
-    { key: 'role',      label: t('pages.users.role'),      type: 'enum', options: [
-      { value: 'admin',    label: 'Admin'    },
-      { value: 'operator', label: 'Operator' },
-      { value: 'viewer',   label: 'Viewer'   },
-    ]},
+    { key: 'role',      label: t('pages.users.role'),      type: 'enum',
+      options: ALL_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] ?? r })) },
     { key: 'createdAt', label: t('pages.users.createdAt'), type: 'date' },
   ]
 
@@ -94,7 +83,7 @@ export function UsersPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] as string[] })
+  const [form, setForm] = useState(EMPTY_FORM)
   const [teamSearch, setTeamSearch] = useState('')
 
   const { data, loading, error, refetch } = useQuery<{ users: UserRow[] }>(GET_USERS, {
@@ -109,13 +98,17 @@ export function UsersPage() {
   }
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string; description: string | null; type: string | null }[] }>(GET_TEAMS)
   const teams = teamsData?.teams ?? []
-  const [createUserMut, { loading: creating }] = useMutation(CREATE_USER, {
-    onCompleted: () => { toast.success('Utente creato'); setModalOpen(false); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }); refetch() },
-    onError: (err) => toast.error(err.message),
+  const [createUserMut, { loading: creating }] = useMutationWithToast(CREATE_USER, {
+    successMessage: 'Utente creato',
+    onSuccess:      () => { setModalOpen(false); setForm(EMPTY_FORM) },
+    refetch,
   })
 
+  // `users(sortField, sortDirection)` has no `filters` argument: the advanced
+  // filters are applied here, on the full list, with the same semantics as
+  // the API's filter builder — so the table AND the CSV export see them (E-02).
   const allUsers   = data?.users ?? []
-  const filtered   = filterGroup ? allUsers : allUsers
+  const filtered   = applyFilterGroup(allUsers, filterGroup)
   const total      = filtered.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const pageItems  = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
@@ -131,7 +124,7 @@ export function UsersPage() {
           </p>
         }
         actions={
-          <Button onClick={() => { setModalOpen(true); setTeamSearch(''); setForm({ username: '', email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] }) }}>
+          <Button onClick={() => { setModalOpen(true); setTeamSearch(''); setForm(EMPTY_FORM) }}>
             {t('pages.users.newUser')}
           </Button>
         }
@@ -181,14 +174,14 @@ export function UsersPage() {
           title="Nuovo utente"
           width={440}
           footer={(() => {
-            const canCreate = !creating && form.username.trim() && form.email.trim() && form.firstName.trim() && form.lastName.trim() && form.password.trim() && form.role
+            const canCreate = !creating && form.email.trim() && form.firstName.trim() && form.lastName.trim() && form.password.trim() && form.role
             return (
               <>
                 <Button variant="secondary" onClick={() => setModalOpen(false)}>Annulla</Button>
                 <Button
                   disabled={!canCreate}
                   style={{ opacity: canCreate ? 1 : 0.5 }}
-                  onClick={() => createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
+                  onClick={() => void createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
                 >
                   {creating ? 'Creazione…' : 'Crea utente'}
                 </Button>
@@ -197,7 +190,6 @@ export function UsersPage() {
           })()}
         >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Username <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="mario.rossi" /></div>
               <div><label style={labelS}>Email <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div><label style={labelS}>Nome <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="Mario" /></div>
@@ -206,10 +198,7 @@ export function UsersPage() {
               <div><label style={labelS}>Password <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label><input style={inputS} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 8 caratteri" /></div>
               <div><label style={labelS}>Ruolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
                 <select style={selectS} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                  <option value="admin">Admin</option>
-                  <option value="operator">Operator</option>
-                  <option value="viewer">Viewer</option>
-                  <option value="end_user">End User</option>
+                  {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
                 </select>
               </div>
               {/* Team — search + chips */}

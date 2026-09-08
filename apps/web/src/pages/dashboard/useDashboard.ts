@@ -10,10 +10,7 @@ import {
   GET_TEAMS,
 } from '@/graphql/queries'
 import {
-  ADD_DASHBOARD_WIDGET,
-  REMOVE_DASHBOARD_WIDGET,
-  REORDER_DASHBOARD_WIDGETS,
-  UPDATE_DASHBOARD_WIDGET,
+  SAVE_DASHBOARD_LAYOUT,
   DELETE_CUSTOM_WIDGET,
   REORDER_CUSTOM_WIDGETS,
 } from '@/graphql/mutations'
@@ -139,10 +136,7 @@ export function useDashboard() {
     }
   }, [activeDash?.customWidgets])
 
-  const [addWidgetMutation]           = useMutation(ADD_DASHBOARD_WIDGET)
-  const [removeWidgetMutation]        = useMutation(REMOVE_DASHBOARD_WIDGET)
-  const [reorderWidgetsMutation]      = useMutation(REORDER_DASHBOARD_WIDGETS)
-  const [updateWidgetMutation]        = useMutation(UPDATE_DASHBOARD_WIDGET)
+  const [saveLayoutMutation]          = useMutation<{ saveDashboardLayout: { id: string; widgets: DashboardWidgetServer[] } }>(SAVE_DASHBOARD_LAYOUT)
   const [deleteCustomWidgetMutation]  = useMutation(DELETE_CUSTOM_WIDGET)
   const [reorderCustomWidgetsMutation]= useMutation(REORDER_CUSTOM_WIDGETS)
 
@@ -199,43 +193,36 @@ export function useDashboard() {
     }
   }
 
+  /**
+   * F-08: ONE atomic mutation with the desired layout (order = list order).
+   * Deleted widgets are simply omitted; entries without `id` are created.
+   * On error nothing was persisted, so the pending state (isNew included) is
+   * still accurate and the user can retry; on success the state is rebuilt
+   * from the server result, never from optimistic guesses.
+   */
   async function handleSave() {
     if (!activeDashboardId) return
     setSaving(true)
     try {
-      // 1. Add new widgets
-      for (const w of pendingWidgets.filter((w) => w.isNew && !w.isDeleted)) {
-        await addWidgetMutation({
-          variables: { input: { dashboardId: activeDashboardId, reportTemplateId: w.reportTemplateId, reportSectionId: w.reportSectionId, colSpan: w.colSpan } },
-        })
-      }
+      const layout = pendingWidgets
+        .filter((w) => !w.isDeleted)
+        .map((w) => ({
+          id:               w.isNew ? null : (w.serverId ?? null),
+          reportTemplateId: w.reportTemplateId,
+          reportSectionId:  w.reportSectionId,
+          colSpan:          w.colSpan,
+        }))
 
-      // 2. Remove deleted existing widgets
-      for (const w of pendingWidgets.filter((w) => w.isDeleted && !w.isNew && w.serverId)) {
-        await removeWidgetMutation({ variables: { widgetId: w.serverId } })
-      }
+      const result = await saveLayoutMutation({ variables: { dashboardId: activeDashboardId, widgets: layout } })
+      const saved = result.data?.saveDashboardLayout
+      if (!saved) throw new Error('Risposta vuota dal server: layout non confermato')
 
-      // 3. Update colSpan for changed existing widgets
-      const serverWidgets = activeDash?.widgets ?? []
-      for (const pw of pendingWidgets.filter((w) => !w.isNew && !w.isDeleted && w.serverId)) {
-        const original = serverWidgets.find((sw) => sw.id === pw.serverId)
-        if (original && original.colSpan !== pw.colSpan) {
-          await updateWidgetMutation({ variables: { widgetId: pw.serverId, input: { colSpan: pw.colSpan } } })
-        }
-      }
-
-      // 4. Reorder existing widgets
-      const existingIds = pendingWidgets
-        .filter((w) => !w.isNew && !w.isDeleted && w.serverId)
-        .map((w) => w.serverId as string)
-      if (existingIds.length > 1) {
-        await reorderWidgetsMutation({ variables: { dashboardId: activeDashboardId, widgetIds: existingIds } })
-      }
-
-      await refetchDash()
+      setPendingWidgets(saved.widgets.map(serverWidgetToPending))
       setEditMode(false)
       toast.success('Dashboard salvata')
     } catch (err: unknown) {
+      // Atomic on the server: nothing was applied. Stay in edit mode with the
+      // untouched pending layout so a retry does not duplicate anything.
       toast.error(err instanceof Error ? err.message : 'Errore durante il salvataggio')
     } finally {
       setSaving(false)

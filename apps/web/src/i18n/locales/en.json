@@ -238,7 +238,8 @@
       "filterLevel": "Level",
       "filterModule": "Module",
       "filterDate": "Date",
-      "count": "{{count}} logs"
+      "count": "{{count}} logs",
+      "notJson": "Not JSON — raw value"
     },
     "aiAnalysis": {
       "title": "AI Analysis",
@@ -253,10 +254,22 @@
     },
     "profile": {
       "title": "Profile",
+      "account": "Account",
+      "noAccount": "No account information available",
       "language": "Language",
       "languageDescription": "Choose your preferred language",
       "english": "English",
-      "italian": "Italiano"
+      "italian": "Italiano",
+      "slackTitle": "Slack integration",
+      "slackDescription": "Link your Slack account to act on incidents directly from Slack.",
+      "slackLinkedAs": "Linked account:",
+      "slackUnlink": "Unlink",
+      "slackUnlinking": "Unlinking…",
+      "slackUserId": "Your Slack user ID",
+      "slackHint": "Find it in Slack → click your avatar → Profile → ⋮ → Copy member ID",
+      "slackSaving": "Saving…",
+      "slackLinked": "Slack account linked",
+      "slackUnlinked": "Slack account unlinked"
     },
     "audit": {
       "title": "Audit Log",

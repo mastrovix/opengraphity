@@ -93,27 +93,39 @@ async function createTeam(
   }, true)
 }
 
-async function assignCIOwner(
-  _: unknown,
-  args: { ciId: string; teamId: string },
+/**
+ * Assegna (teamId) o rimuove (teamId null) la relazione single-valued
+ * CI→Team di tipo `relType` (OWNED_BY / SUPPORTED_BY).
+ */
+async function setCITeamRelation(
+  relType: 'OWNED_BY' | 'SUPPORTED_BY',
+  args: { ciId: string; teamId: string | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    const cypher = `
+    // The relation is single-valued: drop any existing edge before setting the
+    // new one, otherwise re-assigning would leave the CI with multiple owners
+    // (breaks change creation, which assumes exactly one owner team).
+    const cypher = args.teamId == null
+      ? `
+      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      WHERE ${ciLabelPredicate('ci')}
+      OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
+      DELETE old
+      RETURN properties(ci) as props, labels(ci)[0] AS label
+    `
+      : `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciLabelPredicate('ci')}
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-      // Owner is single-valued: drop any existing OWNED_BY before setting the new
-      // one, otherwise re-assigning would leave the CI with multiple owners
-      // (breaks change creation, which assumes exactly one owner team).
       WITH ci, t
-      OPTIONAL MATCH (ci)-[old:OWNED_BY]->(:Team)
+      OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
       DELETE old
-      MERGE (ci)-[:OWNED_BY]->(t)
+      MERGE (ci)-[:${relType}]->(t)
       RETURN properties(ci) as props, labels(ci)[0] AS label
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
-      ciId: args.ciId, teamId: args.teamId, tenantId: ctx.tenantId,
+      ciId: args.ciId, teamId: args.teamId ?? null, tenantId: ctx.tenantId,
     })
     const row = rows[0]
     if (!row) throw new NotFoundError('ConfigurationItem or Team')
@@ -122,31 +134,22 @@ async function assignCIOwner(
   }, true)
 }
 
-async function assignCISupportGroup(
+/** teamId null → rimuove l'owner group. */
+async function assignCIOwner(
   _: unknown,
-  args: { ciId: string; teamId: string },
+  args: { ciId: string; teamId?: string | null },
   ctx: GraphQLContext,
 ) {
-  return withSession(async (session) => {
-    const cypher = `
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE ${ciLabelPredicate('ci')}
-      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-      // Support group is single-valued — see assignCIOwner.
-      WITH ci, t
-      OPTIONAL MATCH (ci)-[old:SUPPORTED_BY]->(:Team)
-      DELETE old
-      MERGE (ci)-[:SUPPORTED_BY]->(t)
-      RETURN properties(ci) as props, labels(ci)[0] AS label
-    `
-    const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
-      ciId: args.ciId, teamId: args.teamId, tenantId: ctx.tenantId,
-    })
-    const row = rows[0]
-    if (!row) throw new NotFoundError('ConfigurationItem or Team')
-    row.props['type'] = ciTypeFromLabels([row.label])
-    return mapCI(row.props)
-  }, true)
+  return setCITeamRelation('OWNED_BY', { ciId: args.ciId, teamId: args.teamId ?? null }, ctx)
+}
+
+/** teamId null → rimuove il support group. */
+async function assignCISupportGroup(
+  _: unknown,
+  args: { ciId: string; teamId?: string | null },
+  ctx: GraphQLContext,
+) {
+  return setCITeamRelation('SUPPORTED_BY', { ciId: args.ciId, teamId: args.teamId ?? null }, ctx)
 }
 
 // ── Field resolvers ──────────────────────────────────────────────────────────

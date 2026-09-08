@@ -42,6 +42,37 @@ interface LogEntry {
   data: string | null
 }
 
+/**
+ * Expanded-row payload. `data` is free text from the API: a non-JSON value
+ * must show up as the raw line with a visible badge, not crash the render
+ * (an exception here would replace the whole app with the ErrorBoundary — E-07).
+ */
+function LogDataView({ data, notJsonLabel }: { data: string; notJsonLabel: string }) {
+  let pretty: string | null = null
+  try { pretty = JSON.stringify(JSON.parse(data), null, 2) } catch { pretty = null }
+  const preStyle: React.CSSProperties = {
+    margin:          0,
+    padding:         12,
+    backgroundColor: '#f1f5f9',
+    color:           'var(--color-slate-dark)',
+    borderRadius:    6,
+    fontSize:        11,
+    overflowX:       'auto',
+    whiteSpace:      'pre-wrap',
+    wordBreak:       'break-all',
+    border:          '1px solid #e2e8f0',
+  }
+  if (pretty !== null) return <pre style={preStyle}>{pretty}</pre>
+  return (
+    <div>
+      <div style={{ marginBottom: 6 }}>
+        <Pill bg="#fff7ed" color="var(--color-trigger-timer)" radius={4} style={{ fontSize: 11 }}>{notJsonLabel}</Pill>
+      </div>
+      <pre style={preStyle}>{data}</pre>
+    </div>
+  )
+}
+
 function LevelBadge({ level }: { level: string }) {
   const style = lookupOrError(LEVEL_STYLES, level, 'LEVEL_STYLES', { backgroundColor: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' })
   return (
@@ -198,22 +229,9 @@ export function LogsPage() {
             setExpandedId(prev => prev === entry.id ? null : entry.id)
           }
         }}
-        renderExpandedRow={(entry) => (
-          <pre style={{
-            margin:          0,
-            padding:         12,
-            backgroundColor: '#f1f5f9',
-            color:           'var(--color-slate-dark)',
-            borderRadius:    6,
-            fontSize:        11,
-            overflowX:       'auto',
-            whiteSpace:      'pre-wrap',
-            wordBreak:       'break-all',
-            border:          '1px solid #e2e8f0',
-          }}>
-            {JSON.stringify(JSON.parse(entry.data!), null, 2)}
-          </pre>
-        )}
+        renderExpandedRow={(entry) => entry.data
+          ? <LogDataView data={entry.data} notJsonLabel={t('pages.logs.notJson')} />
+          : null}
       />
 
       {/* Pagination */}

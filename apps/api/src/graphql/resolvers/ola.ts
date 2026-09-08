@@ -75,13 +75,19 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
 
   return withSession(async (session) => {
     // ── SLA compliance over SLAStatus nodes started within the window ──────────
+    // Semantics (packages/sla markResolveMet): resolve_met = resolved within the
+    // deadline; breached = deadline elapsed unresolved, never cleared by a late
+    // resolution. So met and breached are mutually exclusive and a ticket
+    // resolved after the breach counts as breached, not met (D-02). A closed
+    // SLA (resolved_at set) is never "paused"/"open on track".
     const complianceRows = await runQuery<Props>(session, `
       MATCH (e {tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
       WHERE (e:Incident OR e:Problem OR e:ServiceRequest) AND s.started_at >= $cutoff
       WITH s,
         CASE WHEN s.resolve_met = true THEN 1 ELSE 0 END AS met,
         CASE WHEN s.breached = true AND coalesce(s.resolve_met, false) = false THEN 1 ELSE 0 END AS breached,
-        CASE WHEN s.paused_at IS NOT NULL AND coalesce(s.resolve_met, false) = false THEN 1 ELSE 0 END AS paused
+        CASE WHEN s.paused_at IS NOT NULL AND s.resolved_at IS NULL AND coalesce(s.resolve_met, false) = false
+             AND coalesce(s.breached, false) = false THEN 1 ELSE 0 END AS paused
       RETURN
         count(s)                        AS total,
         sum(met)                        AS met,
@@ -94,6 +100,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
     const met      = toInt(c['met'])
     const breached = toInt(c['breached'])
     const paused   = toInt(c['paused'])
+    // met/breached/paused are disjoint by construction, so the remainder is
+    // exactly the open, unpaused, not-yet-breached SLAs.
     const openOnTrack = Math.max(0, total - met - breached - paused)
     const concluded   = met + breached
     const breachRate  = concluded > 0 ? (breached / concluded) * 100 : 0

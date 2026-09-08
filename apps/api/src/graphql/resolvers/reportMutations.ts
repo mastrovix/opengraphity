@@ -4,9 +4,66 @@ import type { GraphQLContext } from '../../context.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { loadFullTemplate, createSectionWithNodesEdges, type SectionInput } from './customReports.js'
+import { loadTemplateSections } from '../../lib/reportTemplates.js'
+import { getReportWhitelist } from '../../lib/reportWhitelist.js'
 import { assertReportTemplateAccess } from './reportAccess.js'
 
 export const Mutation = {
+  /**
+   * F-07: "Duplica" used to create an EMPTY template client-side. This clones
+   * template + sections + nodes + edges with fresh ids in ONE transaction; the
+   * copy is private to the caller and never inherits the source schedule.
+   */
+  async duplicateReportTemplate(_: unknown, args: { id: string; name?: string | null }, ctx: GraphQLContext) {
+    const newId = uuidv4()
+    const now   = new Date().toISOString()
+    let sectionCount = 0
+    const session = getSession(undefined, 'WRITE')
+    try {
+      await assertReportTemplateAccess(session, args.id, ctx, 'read')
+      const sections = await loadTemplateSections(session, args.id, ctx.tenantId)
+      sectionCount = sections.length
+      // Warm the whitelist cache outside the write tx (createSectionWithNodesEdges validates each section).
+      await getReportWhitelist(ctx.tenantId)
+
+      await session.executeWrite(async (tx) => {
+        const created = await tx.run(`
+          MATCH (src:ReportTemplate {id: $srcId, tenant_id: $tenantId})
+          MATCH (u:User {id: $userId, tenant_id: $tenantId})
+          CREATE (r:ReportTemplate {
+            id:                  $newId,
+            tenant_id:           $tenantId,
+            name:                coalesce($name, src.name + ' (copia)'),
+            description:         src.description,
+            icon:                src.icon,
+            visibility:          'private',
+            created_by:          $userId,
+            schedule_enabled:    false,
+            schedule_cron:       null,
+            schedule_channel_id: null,
+            schedule_recipients: [],
+            schedule_format:     src.schedule_format,
+            created_at:          $now,
+            updated_at:          $now
+          })
+          CREATE (r)-[:CREATED_BY]->(u)
+          RETURN r.id AS id
+        `, { srcId: args.id, tenantId: ctx.tenantId, userId: ctx.userId, newId, name: args.name ?? null, now })
+        if (!created.records.length) throw new NotFoundError('ReportTemplate', args.id)
+
+        for (const sec of sections) {
+          // Node ids become temp_id on the clones; edges are re-linked by temp_id.
+          await createSectionWithNodesEdges(tx, newId, uuidv4(), sec.order, sec, ctx.tenantId)
+        }
+      })
+    } finally {
+      await session.close()
+    }
+
+    void audit(ctx, 'report.duplicated', 'ReportTemplate', newId, { sourceTemplateId: args.id, sections: sectionCount })
+    return loadFullTemplate(newId, ctx.tenantId)
+  },
+
   async createReportTemplate(
     _: unknown,
     args: { input: {

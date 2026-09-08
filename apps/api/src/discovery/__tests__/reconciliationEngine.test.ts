@@ -71,10 +71,10 @@ describe('reconcileBatch', () => {
     vi.clearAllMocks()
   })
 
-  it('CI nuovo: findExisting ritorna null → executeWrite chiamato con CREATE', async () => {
+  it('CI nuovo: findExisting ritorna null → executeWrite chiamato con MERGE (created=true)', async () => {
     const mockSession = makeMockSession(
-      [[]], // findExisting → nessun record → null
-      [[]], // createCI write
+      [[]],                 // findExisting → nessun record → null
+      [[{ created: true }]], // createCI MERGE → ON CREATE
     )
     vi.mocked(getSession).mockReturnValue(mockSession as never)
 
@@ -96,6 +96,35 @@ describe('reconcileBatch', () => {
     expect(stats.ciCreated).toBe(1)
     expect(stats.ciUpdated).toBe(0)
     expect(mockSession.close).toHaveBeenCalledOnce()
+  })
+
+  it('B-03: findExisting null ma MERGE trova il nodo (run concorrente) → nessun duplicato, ciUnchanged', async () => {
+    const mockSession = makeMockSession(
+      [[]],                  // findExisting → null (l'altro run non aveva ancora scritto)
+      [[{ created: false }]], // MERGE → ON MATCH: il nodo esiste già
+    )
+    vi.mocked(getSession).mockReturnValue(mockSession as never)
+
+    const stats = makeStats()
+    await reconcileBatch([{
+      external_id: 'ext-race', source: 'csv', ci_type: 'server', name: 'web-race',
+      properties: { os: 'linux' }, tags: {}, relationships: [],
+    }], testSource, 'run-2', 'tenant-1', stats)
+
+    expect(mockSession.executeWrite).toHaveBeenCalledOnce()
+    expect(stats.ciCreated).toBe(0)
+    expect(stats.ciUnchanged).toBe(1)
+    expect(stats.ciUpdated).toBe(0)
+  })
+
+  it('B-03: MERGE senza riga di ritorno → errore esplicito (mai un conteggio inventato)', async () => {
+    const mockSession = makeMockSession([[]], [[]])
+    vi.mocked(getSession).mockReturnValue(mockSession as never)
+
+    await expect(reconcileBatch([{
+      external_id: 'ext-x', source: 'csv', ci_type: 'server', name: 'x',
+      properties: {}, tags: {}, relationships: [],
+    }], testSource, 'run-3', 'tenant-1', makeStats())).rejects.toThrow(/MERGE for CI ext-x/)
   })
 
   it('CI esistente senza conflitti: discoveryLocked vuoto → executeWrite chiamato con UPDATE (MATCH SET)', async () => {

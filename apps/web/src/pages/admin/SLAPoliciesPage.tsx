@@ -41,6 +41,7 @@ const EMPTY_FORM: FormState = {
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
 import { lookupOrError } from '@/lib/tokens'
+import { errorMessage } from '@/hooks/useMutationWithToast'
 
 const ENTITY_LABELS: Record<string, string> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
@@ -113,15 +114,19 @@ export function SLAPoliciesPage() {
     ]},
     { key: 'name', label: 'Nome', type: 'text' },
   ]
-  const { data, loading } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES, { variables: { sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null } })
+  const { data, loading, refetch } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES, { variables: { sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null } })
   const { data: teamsData }           = useQuery<{ teams: Team[] }>(GET_TEAMS)
   const policies: SLAPolicy[]        = data?.slaPolicies ?? []
   const teams: Team[]                 = teamsData?.teams ?? []
 
-  const refetch = { refetchQueries: [{ query: GET_SLA_POLICIES }] }
-  const [createPolicy] = useMutation(CREATE_SLA_POLICY, refetch)
-  const [updatePolicy] = useMutation(UPDATE_SLA_POLICY, refetch)
-  const [deletePolicy] = useMutation(DELETE_SLA_POLICY, refetch)
+  // `refetch()` of the ACTIVE query keeps its sort/filter variables; a
+  // `refetchQueries: [{ query }]` without variables would fill another cache
+  // entry and leave the visible list stale (E-08). Errors are toasted by the
+  // handlers below (they need the await for the success message).
+  const afterWrite = { onCompleted: () => { void refetch() } }
+  const [createPolicy] = useMutation(CREATE_SLA_POLICY, afterWrite)
+  const [updatePolicy] = useMutation(UPDATE_SLA_POLICY, afterWrite)
+  const [deletePolicy] = useMutation(DELETE_SLA_POLICY, afterWrite)
 
   // Group by entity type
   const grouped = ENTITY_TYPES.reduce<Record<string, SLAPolicy[]>>((acc, et) => {
@@ -167,7 +172,7 @@ export function SLAPoliciesPage() {
         toast.success('Policy creata')
       }
       setModalOpen(false)
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)) }
+    } catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
   async function handleDelete() {
@@ -175,7 +180,7 @@ export function SLAPoliciesPage() {
     try {
       await deletePolicy({ variables: { id: deleteId } })
       toast.success('Policy eliminata')
-    } catch (e: unknown) { toast.error((e as Error).message) }
+    } catch (e: unknown) { toast.error(errorMessage(e)) }
     setDeleteId(null)
   }
 
@@ -183,7 +188,7 @@ export function SLAPoliciesPage() {
     try {
       await updatePolicy({ variables: { id: p.id, input: { enabled: !p.enabled } } })
       toast.success(p.enabled ? 'Policy disabilitata' : 'Policy abilitata')
-    } catch (e: unknown) { toast.error((e as Error).message) }
+    } catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
   const policyColumns: ColumnDef<SLAPolicy>[] = [

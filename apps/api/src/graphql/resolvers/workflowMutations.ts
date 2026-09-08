@@ -696,7 +696,7 @@ export async function executeWorkflowTransition(
 
 export async function saveWorkflowChanges(
   _: unknown,
-  { definitionId, transitions, positions, steps }: {
+  { definitionId, transitions, positions, steps, expectedVersion }: {
     definitionId: string
     transitions: Array<{
       transitionId:  string
@@ -718,15 +718,33 @@ export async function saveWorkflowChanges(
       isOpen?:      boolean | null
       category?:    string | null
     }> | null
+    /** Optimistic lock: versione letta dal client. Null = nessun controllo. */
+    expectedVersion?: number | null
   },
   ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
   return withSession(async (session) => {
-    // Update each transition
-    if (transitions.length > 0) {
-      await session.executeWrite((tx) =>
-        tx.run(`
+    // Tutto in UNA transazione: controllo di versione, aggiornamenti e
+    // incremento. Prima erano write separate senza confronto di versione →
+    // last-writer-wins silenzioso tra due designer aperti sullo stesso workflow.
+    const wd = await session.executeWrite(async (tx) => {
+      const cur = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        RETURN wd.version AS version
+      `, { definitionId, tenantId: ctx.tenantId })
+      if (!cur.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
+      const currentVersion = Number(cur.records[0].get('version') ?? 1)
+      if (expectedVersion != null && currentVersion !== expectedVersion) {
+        throw new GraphQLError(
+          `Workflow modificato da un altro utente (versione ${currentVersion}, tu stavi modificando la v${expectedVersion}). Ricarica la pagina per non sovrascrivere le sue modifiche.`,
+          { extensions: { code: 'CONFLICT', currentVersion, expectedVersion } },
+        )
+      }
+
+      // Update each transition
+      if (transitions.length > 0) {
+        await tx.run(`
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
           UNWIND $transitions AS tr
           // tenant-ok: wd già scopata sopra
@@ -737,13 +755,11 @@ export async function saveWorkflowChanges(
               t.input_field    = tr.inputField,
               t.condition      = tr.condition,
               t.timer_hours    = tr.timerHours
-        `, { transitions, definitionId, tenantId: ctx.tenantId }),
-      )
-    }
-    // Update step properties (label, enterActions, exitActions, metadata)
-    if (steps && steps.length > 0) {
-      await session.executeWrite((tx) =>
-        tx.run(`
+        `, { transitions, definitionId, tenantId: ctx.tenantId })
+      }
+      // Update step properties (label, enterActions, exitActions, metadata)
+      if (steps && steps.length > 0) {
+        await tx.run(`
           UNWIND $steps AS st
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: st.stepName})
           SET s.label         = st.label,
@@ -753,46 +769,40 @@ export async function saveWorkflowChanges(
               s.is_terminal   = coalesce(st.isTerminal, s.is_terminal),
               s.is_open       = coalesce(st.isOpen,     s.is_open),
               s.category      = coalesce(st.category,   s.category)
-        `, { definitionId, tenantId: ctx.tenantId, steps }),
-      )
+        `, { definitionId, tenantId: ctx.tenantId, steps })
 
-      // If any step was marked isInitial=true, demote the others in the same
-      // workflow so there's at most one initial step.
-      const initialStepName = steps.find((s) => s.isInitial === true)?.stepName
-      if (initialStepName) {
-        await session.executeWrite((tx) =>
-          tx.run(`
+        // If any step was marked isInitial=true, demote the others in the same
+        // workflow so there's at most one initial step.
+        const initialStepName = steps.find((s) => s.isInitial === true)?.stepName
+        if (initialStepName) {
+          await tx.run(`
             MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)
             WHERE s.name <> $keep
             SET s.is_initial = false
-          `, { definitionId, tenantId: ctx.tenantId, keep: initialStepName }),
-        )
+          `, { definitionId, tenantId: ctx.tenantId, keep: initialStepName })
+        }
       }
-    }
-    // Update step positions
-    if (positions.length > 0) {
-      await session.executeWrite((tx) =>
-        tx.run(`
+      // Update step positions
+      if (positions.length > 0) {
+        await tx.run(`
           UNWIND $positions AS pos
           MATCH (s:WorkflowStep {id: pos.stepId})<-[:HAS_STEP]-(wd:WorkflowDefinition {
             id: $definitionId, tenant_id: $tenantId
           })
           SET s.position_x = pos.positionX,
               s.position_y = pos.positionY
-        `, { definitionId, tenantId: ctx.tenantId, positions }),
-      )
-    }
-    // Increment version and return full definition
-    const wdResult = await session.executeWrite((tx) =>
-      tx.run(`
+        `, { definitionId, tenantId: ctx.tenantId, positions })
+      }
+      // Increment version (dopo il check, nella stessa tx)
+      const wdResult = await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
         SET wd.version    = wd.version + 1,
             wd.updated_at = $now
         RETURN wd
-      `, { definitionId, tenantId: ctx.tenantId, now }),
-    )
-    if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
-    const wd = wdResult.records[0].get('wd').properties as Record<string, unknown>
+      `, { definitionId, tenantId: ctx.tenantId, now })
+      if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
+      return wdResult.records[0].get('wd').properties as Record<string, unknown>
+    })
 
     void audit(ctx, 'workflow.updated', 'WorkflowDefinition', definitionId)
 

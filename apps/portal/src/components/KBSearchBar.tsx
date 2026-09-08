@@ -73,7 +73,7 @@ export function KBSearchBar({ initialValue = '', onSearch, large = false }: Prop
             cursor:          'pointer',
           }}
         >
-          Cerca
+          {t('kb.searchButton')}
         </button>
       )}
     </form>

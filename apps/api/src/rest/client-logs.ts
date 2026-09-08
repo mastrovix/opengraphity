@@ -25,6 +25,10 @@ router.post(
 
 async function handleClientLog(req: Request, res: Response): Promise<void> {
   const body = req.body as ClientLogBody
+  // authMiddleware always sets req.user before we get here; a missing user is
+  // a wiring bug, never a reason to file the entry under a made-up tenant.
+  const user = req.user
+  if (!user) throw new Error('client-logs reached without authMiddleware — req.user missing')
 
   if (!VALID_LEVELS.includes(body.level as LogLevel)) {
     res.status(400).json({ error: `level must be one of: ${VALID_LEVELS.join(', ')}` })
@@ -46,7 +50,7 @@ async function handleClientLog(req: Request, res: Response): Promise<void> {
           created_at: $timestamp
         })`,
         {
-          tenantId:  req.user?.tenantId ?? 'system',
+          tenantId:  user.tenantId,
           timestamp: body.timestamp ?? new Date().toISOString(),
           level:     body.level,
           message:   body.message,
@@ -54,7 +58,7 @@ async function handleClientLog(req: Request, res: Response): Promise<void> {
             ...(body.data ?? {}),
             ...(body.url   ? { url:   body.url }   : {}),
             ...(body.stack ? { stack: body.stack } : {}),
-            userId: req.user?.userId,
+            userId: user.userId,
           }),
         },
       ),

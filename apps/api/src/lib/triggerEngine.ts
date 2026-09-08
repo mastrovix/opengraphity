@@ -9,6 +9,9 @@ import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { evaluateConditions, parseConditions } from './conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext } from './actionExecutor.js'
 import { audit } from './audit.js'
+import { getQueue } from './bullmq.js'
+
+const WORKFLOW_JOBS_QUEUE = 'workflow-jobs'
 
 const log = appLogger.child({ module: 'trigger-engine' })
 
@@ -145,12 +148,20 @@ export async function evaluateTriggers(
         { triggerName: trigger.name, entityId: entity['id'], actionsRun: actionResults.length },
       )
 
-      results.push({
-        triggerId: trigger.id, triggerName: trigger.name, fired: true,
-        actionsRun: actionResults.filter(r => r.success).length,
-      })
+      const actionsRun = actionResults.filter(r => r.success).length
+      const failed = actionResults.find(r => !r.success)
+      if (failed) {
+        // Partial failure is reported in the result (fired + error), not
+        // hidden behind a plain `fired: true` (C-15).
+        const error = `action "${failed.action}" failed: ${failed.error ?? 'unknown error'} (${actionsRun}/${actionResults.length} actions ran)`
+        results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: true, actionsRun, error })
+        log.error({ triggerId: trigger.id, name: trigger.name, entityId: entity['id'], error }, 'Trigger fired with a failed action')
+        continue
+      }
 
-      log.info({ triggerId: trigger.id, name: trigger.name, entityId: entity['id'], actionsRun: actionResults.length }, 'Trigger fired')
+      results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: true, actionsRun })
+
+      log.info({ triggerId: trigger.id, name: trigger.name, entityId: entity['id'], actionsRun }, 'Trigger fired')
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
       results.push({ triggerId: trigger.id, triggerName: trigger.name, fired: true, actionsRun: 0, error: errorMsg })
@@ -164,6 +175,10 @@ export async function evaluateTriggers(
 /**
  * Schedules timer triggers as BullMQ delayed jobs.
  * Called after entity creation to set up "on_timer" triggers.
+ *
+ * Errors propagate (C-15): the caller decides whether a timer that could not
+ * be scheduled fails the creation. Swallowing it here produced an entity that
+ * looked healthy while its on_timer automations would never run.
  */
 export async function scheduleTimerTriggers(
   tenantId:   string,
@@ -173,29 +188,20 @@ export async function scheduleTimerTriggers(
   const triggers = await loadTriggers(tenantId, entityType, 'on_timer')
   if (triggers.length === 0) return
 
-  try {
-    const { Queue } = await import('bullmq')
-    const { getRedisOptions } = await import('@opengraphity/events')
-    const queue = new Queue('workflow-jobs', { connection: getRedisOptions() })
-
-    for (const trigger of triggers) {
-      if (!trigger.timer_delay_minutes || trigger.timer_delay_minutes <= 0) continue
-      await queue.add('trigger_timer', {
-        triggerId: trigger.id,
-        tenantId,
-        entityType,
-        entityId,
-      }, {
-        delay:              trigger.timer_delay_minutes * 60 * 1000,
-        jobId:              `trigger:${trigger.id}:${entityId}`,
-        removeOnComplete:   true,
-      })
-      log.info({ triggerId: trigger.id, entityId, delayMinutes: trigger.timer_delay_minutes }, 'Timer trigger scheduled')
-    }
-
-    await queue.close()
-  } catch (err) {
-    log.error({ err }, 'Failed to schedule timer triggers')
+  const queue = getQueue(WORKFLOW_JOBS_QUEUE)
+  for (const trigger of triggers) {
+    if (!trigger.timer_delay_minutes || trigger.timer_delay_minutes <= 0) continue
+    await queue.add('trigger_timer', {
+      triggerId: trigger.id,
+      tenantId,
+      entityType,
+      entityId,
+    }, {
+      delay:              trigger.timer_delay_minutes * 60 * 1000,
+      jobId:              `trigger:${trigger.id}:${entityId}`,
+      removeOnComplete:   true,
+    })
+    log.info({ triggerId: trigger.id, entityId, delayMinutes: trigger.timer_delay_minutes }, 'Timer trigger scheduled')
   }
 }
 

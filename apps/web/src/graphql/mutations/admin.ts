@@ -59,6 +59,15 @@ export const DELETE_REPORT_TEMPLATE = gql`
   }
 `
 
+export const DUPLICATE_REPORT_TEMPLATE = gql`
+  mutation DuplicateReportTemplate($id: ID!, $name: String) {
+    duplicateReportTemplate(id: $id, name: $name) {
+      id name description icon visibility scheduleEnabled scheduleCron createdAt
+      sections { id order title chartType }
+    }
+  }
+`
+
 export const ADD_REPORT_SECTION = gql`
   mutation AddReportSection($templateId: ID!, $input: ReportSectionInput!) {
     addReportSection(templateId: $templateId, input: $input) {
@@ -170,6 +179,21 @@ export const REORDER_DASHBOARD_WIDGETS = gql`
   mutation ReorderDashboardWidgets($dashboardId: ID!, $widgetIds: [ID!]!) {
     reorderDashboardWidgets(dashboardId: $dashboardId, widgetIds: $widgetIds) {
       id widgets { id order colSpan }
+    }
+  }
+`
+
+export const SAVE_DASHBOARD_LAYOUT = gql`
+  mutation SaveDashboardLayout($dashboardId: ID!, $widgets: [DashboardLayoutWidgetInput!]!) {
+    saveDashboardLayout(dashboardId: $dashboardId, widgets: $widgets) {
+      id name
+      widgets {
+        id order colSpan
+        reportTemplateId reportSectionId
+        data error
+        reportSection { id title chartType }
+        reportTemplate { id name }
+      }
     }
   }
 `
@@ -491,50 +515,6 @@ export const DELETE_INTERNAL_MESSAGE = gql`
 `
 
 // ── Change Catalog ──────────────────────────────────────────────────────────
-
-export const CREATE_CHANGE_CATALOG_CATEGORY = gql`
-  mutation CreateChangeCatalogCategory($name: String!, $description: String, $icon: String, $color: String, $order: Int) {
-    createChangeCatalogCategory(name: $name, description: $description, icon: $icon, color: $color, order: $order) { id name description icon color order enabled entryCount }
-  }
-`
-
-export const UPDATE_CHANGE_CATALOG_CATEGORY = gql`
-  mutation UpdateChangeCatalogCategory($id: ID!, $name: String, $description: String, $icon: String, $color: String, $order: Int, $enabled: Boolean) {
-    updateChangeCatalogCategory(id: $id, name: $name, description: $description, icon: $icon, color: $color, order: $order, enabled: $enabled) { id name description icon color order enabled entryCount }
-  }
-`
-
-export const DELETE_CHANGE_CATALOG_CATEGORY = gql`
-  mutation DeleteChangeCatalogCategory($id: ID!) { deleteChangeCatalogCategory(id: $id) }
-`
-
-export const REORDER_CHANGE_CATALOG_CATEGORIES = gql`
-  mutation ReorderChangeCatalogCategories($categoryIds: [ID!]!) {
-    reorderChangeCatalogCategories(categoryIds: $categoryIds) { id name order }
-  }
-`
-
-export const CREATE_STANDARD_CHANGE_CATALOG_ENTRY = gql`
-  mutation CreateStandardChangeCatalogEntry($categoryId: String!, $name: String!, $description: String!, $riskLevel: String!, $impact: String!, $defaultTitleTemplate: String!, $defaultDescriptionTemplate: String!, $defaultPriority: String!, $ciTypes: [String!], $checklist: String, $estimatedDurationHours: Float, $requiresDowntime: Boolean, $rollbackProcedure: String, $icon: String, $color: String, $workflowId: String, $ciRequired: Boolean, $maintenanceWindow: String, $notifyTeam: Boolean, $requireCompletionConfirm: Boolean) {
-    createStandardChangeCatalogEntry(categoryId: $categoryId, name: $name, description: $description, riskLevel: $riskLevel, impact: $impact, defaultTitleTemplate: $defaultTitleTemplate, defaultDescriptionTemplate: $defaultDescriptionTemplate, defaultPriority: $defaultPriority, ciTypes: $ciTypes, checklist: $checklist, estimatedDurationHours: $estimatedDurationHours, requiresDowntime: $requiresDowntime, rollbackProcedure: $rollbackProcedure, icon: $icon, color: $color, workflowId: $workflowId, ciRequired: $ciRequired, maintenanceWindow: $maintenanceWindow, notifyTeam: $notifyTeam, requireCompletionConfirm: $requireCompletionConfirm) { id name }
-  }
-`
-
-export const UPDATE_STANDARD_CHANGE_CATALOG_ENTRY = gql`
-  mutation UpdateStandardChangeCatalogEntry($id: ID!, $name: String, $description: String, $categoryId: String, $riskLevel: String, $impact: String, $defaultTitleTemplate: String, $defaultDescriptionTemplate: String, $defaultPriority: String, $ciTypes: [String!], $checklist: String, $estimatedDurationHours: Float, $requiresDowntime: Boolean, $rollbackProcedure: String, $icon: String, $color: String, $enabled: Boolean, $workflowId: String, $ciRequired: Boolean, $maintenanceWindow: String, $notifyTeam: Boolean, $requireCompletionConfirm: Boolean) {
-    updateStandardChangeCatalogEntry(id: $id, name: $name, description: $description, categoryId: $categoryId, riskLevel: $riskLevel, impact: $impact, defaultTitleTemplate: $defaultTitleTemplate, defaultDescriptionTemplate: $defaultDescriptionTemplate, defaultPriority: $defaultPriority, ciTypes: $ciTypes, checklist: $checklist, estimatedDurationHours: $estimatedDurationHours, requiresDowntime: $requiresDowntime, rollbackProcedure: $rollbackProcedure, icon: $icon, color: $color, enabled: $enabled, workflowId: $workflowId, ciRequired: $ciRequired, maintenanceWindow: $maintenanceWindow, notifyTeam: $notifyTeam, requireCompletionConfirm: $requireCompletionConfirm) { id name }
-  }
-`
-
-export const DELETE_STANDARD_CHANGE_CATALOG_ENTRY = gql`
-  mutation DeleteStandardChangeCatalogEntry($id: ID!) { deleteStandardChangeCatalogEntry(id: $id) }
-`
-
-export const CREATE_CHANGE_FROM_CATALOG = gql`
-  mutation CreateChangeFromCatalog($catalogEntryId: ID!, $title: String, $description: String, $ciIds: [ID!]) {
-    createChangeFromCatalog(catalogEntryId: $catalogEntryId, title: $title, description: $description, ciIds: $ciIds) { id title status type }
-  }
-`
 
 // ── Service Catalog (admin) ──────────────────────────────────────────────────
 

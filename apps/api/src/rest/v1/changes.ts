@@ -9,34 +9,28 @@
  *
  * Step names are never hardcoded: phases come from the WorkflowInstance and
  * step ordering/categories from lib/workflowHelpers (WorkflowStep nodes).
+ *
+ * Errors: routes throw lib/errors.js types; rest/errorHandler.ts maps them
+ * (NotFound → 404, Validation → 400, Forbidden → 403, workflow CONFLICT → 400).
  */
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
-import { GraphQLError } from 'graphql'
 import { requirePermission } from '../../middleware/apiKeyAuth.js'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { logger } from '../../lib/logger.js'
+import { withSession } from '../../graphql/resolvers/ci-utils.js'
 import { audit } from '../../lib/audit.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { ASSESSMENT_ROLE, ROLE_TO_CATEGORY } from '../../lib/taskStatus.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import { createChangeRFC } from '../../services/changeCreationService.js'
 import { executeChangeTransition } from '../../graphql/resolvers/change/changeMutations.js'
-import type { GraphQLContext } from '../../context.js'
+import { asyncHandler } from '../errorHandler.js'
+import { apiCtx, apiKeyOf, optionalString, parsePagination, requiredString } from '../apiContext.js'
 
 const router: ExpressRouter = Router()
 
 type Props = Record<string, unknown>
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-/** GraphQL-style context built from the API key, for resolvers/audit reuse. */
-function apiCtx(req: Request): GraphQLContext {
-  return {
-    tenantId:  req.apiKey!.tenantId,
-    userId:    req.apiKey!.keyId,
-    userEmail: `api-key:${req.apiKey!.keyId}`,
-    role:      'operator',
-  }
-}
 
 function mapUserLite(p: Props | null | undefined) {
   if (!p || !p['id']) return null
@@ -134,30 +128,16 @@ async function loadAffectedCIs(session: Session, changeId: string, tenantId: str
   }))
 }
 
-/** Translate lib/errors.js (GraphQLError-based) failures to HTTP responses. */
-function graphQLErrorStatus(err: unknown): { status: number; code: string } | null {
-  if (!(err instanceof GraphQLError)) return null
-  const code = err.extensions['code'] as string | undefined
-  if (code === 'BAD_USER_INPUT') return { status: 400, code: 'VALIDATION_ERROR' }
-  if (code === 'CONFLICT')       return { status: 400, code: 'TRANSITION_NOT_AVAILABLE' }
-  if (code === 'NOT_FOUND')      return { status: 404, code: 'NOT_FOUND' }
-  if (code === 'FORBIDDEN')      return { status: 403, code: 'FORBIDDEN' }
-  return null
-}
-
 // ── GET /api/v1/changes ───────────────────────────────────────────────────────
 
-router.get('/', requirePermission('changes:read'), async (req: Request, res: Response) => {
-  const page   = Math.max(1, parseInt(req.query['page']  as string || '1', 10))
-  const limit  = Math.min(100, Math.max(1, parseInt(req.query['limit'] as string || '20', 10)))
-  const offset = (page - 1) * limit
-  const phase  = req.query['phase'] as string | undefined
+router.get('/', requirePermission('changes:read'), asyncHandler(async (req: Request, res: Response) => {
+  const { page, limit, offset } = parsePagination(req.query)
+  const phase = optionalString(req.query, 'phase')
 
-  const session = getSession()
-  try {
+  await withSession(async (session) => {
     // phase = current_step of the linked WorkflowInstance (legacy changes may have none)
     const phaseFilter = phase ? 'WITH c, wi WHERE wi.current_step = $phase' : ''
-    const params: Record<string, unknown> = { tenantId: req.apiKey!.tenantId, phase: phase ?? null, offset, limit }
+    const params: Record<string, unknown> = { tenantId: apiKeyOf(req).tenantId, phase: phase ?? null, offset, limit }
 
     const countRow = await runQueryOne<{ total: unknown }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
@@ -183,73 +163,49 @@ router.get('/', requirePermission('changes:read'), async (req: Request, res: Res
       data: rows.map((r) => mapChange(r.props, r.phase, r.requester, r.changeOwner)),
       meta: { page, limit, total: Number(countRow?.total ?? 0) },
     })
-  } catch (err) {
-    logger.error({ err: err instanceof Error ? err.message : err }, '[api-v1/changes] list failed')
-    if (!res.headersSent) res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err instanceof Error ? err.message : 'Error' } })
-  } finally { await session.close() }
-})
+  })
+}))
 
 // ── GET /api/v1/changes/:id ───────────────────────────────────────────────────
 
-router.get('/:id', requirePermission('changes:read'), async (req: Request, res: Response) => {
-  const session = getSession()
-  try {
-    const row = await loadChangeRow(session, req.params['id']!, req.apiKey!.tenantId)
-    if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Change not found' } }); return }
-    const affectedCIs = await loadAffectedCIs(session, req.params['id']!, req.apiKey!.tenantId)
+router.get('/:id', requirePermission('changes:read'), asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params['id']!
+  const tenantId = apiKeyOf(req).tenantId
+  await withSession(async (session) => {
+    const row = await loadChangeRow(session, id, tenantId)
+    if (!row) throw new NotFoundError('Change', id)
+    const affectedCIs = await loadAffectedCIs(session, id, tenantId)
     res.json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner), affectedCIs } })
-  } catch (err) {
-    logger.error({ err: err instanceof Error ? err.message : err, changeId: req.params['id'] }, '[api-v1/changes] get failed')
-    if (!res.headersSent) res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err instanceof Error ? err.message : 'Error' } })
-  } finally { await session.close() }
-})
+  })
+}))
 
 // ── POST /api/v1/changes ──────────────────────────────────────────────────────
 
-router.post('/', requirePermission('changes:write'), async (req: Request, res: Response) => {
-  const { title, why, what, changeOwner, affectedCIIds } = req.body as {
-    title?: string; why?: string; what?: string; changeOwner?: string; affectedCIIds?: unknown
-  }
-  if (!title?.trim()) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'title is required' } }); return
-  }
-  if (!why?.trim()) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'why is required' } }); return
-  }
-  if (!what?.trim()) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'what is required' } }); return
-  }
-  if (!changeOwner?.trim()) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'changeOwner is required' } }); return
-  }
+router.post('/', requirePermission('changes:write'), asyncHandler(async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const title       = requiredString(body, 'title')
+  const why         = requiredString(body, 'why')
+  const what        = requiredString(body, 'what')
+  const changeOwner = requiredString(body, 'changeOwner')
+  const affectedCIIds = body['affectedCIIds']
   if (!Array.isArray(affectedCIIds) || affectedCIIds.length === 0 || affectedCIIds.some((v) => typeof v !== 'string')) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'affectedCIIds must be a non-empty array of CI ids' } }); return
+    throw new ValidationError('affectedCIIds must be a non-empty array of CI ids')
   }
 
   const ctx = apiCtx(req)
-  try {
-    const { id, code } = await createChangeRFC(
-      { title, why, what, changeOwner, affectedCIIds: affectedCIIds as string[] },
-      { tenantId: ctx.tenantId, userId: ctx.userId },
-    )
-    await audit(ctx, 'change_created', 'change', id, { code, title, affectedCIIds })
+  const { id, code } = await createChangeRFC(
+    { title, why, what, changeOwner, affectedCIIds: affectedCIIds as string[] },
+    { tenantId: ctx.tenantId, userId: ctx.userId },
+  )
+  await audit(ctx, 'change_created', 'change', id, { code, title, affectedCIIds })
 
-    const session = getSession()
-    try {
-      const row = await loadChangeRow(session, id, ctx.tenantId)
-      const affectedCIs = await loadAffectedCIs(session, id, ctx.tenantId)
-      res.status(201).json({ data: { ...mapChange(row!.props, row!.phase, row!.requester, row!.changeOwner), affectedCIs } })
-    } finally { await session.close() }
-  } catch (err) {
-    const mapped = graphQLErrorStatus(err)
-    if (mapped) {
-      res.status(mapped.status).json({ error: { code: mapped.code, message: err instanceof Error ? err.message : 'Error' } })
-      return
-    }
-    logger.error({ err: err instanceof Error ? err.message : err }, '[api-v1/changes] create failed')
-    if (!res.headersSent) res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err instanceof Error ? err.message : 'Error' } })
-  }
-})
+  await withSession(async (session) => {
+    const row = await loadChangeRow(session, id, ctx.tenantId)
+    if (!row) throw new Error(`Change ${id} not readable right after creation`)
+    const affectedCIs = await loadAffectedCIs(session, id, ctx.tenantId)
+    res.status(201).json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner), affectedCIs } })
+  })
+}))
 
 // ── GET /api/v1/changes/:id/tasks ─────────────────────────────────────────────
 
@@ -262,13 +218,14 @@ const TASK_SOURCES = [
   { rel: 'HAS_REVIEW',      label: 'ReviewTask',     type: 'review',     byRel: 'REVIEWED_BY',  atField: 'reviewed_at' },
 ] as const
 
-router.get('/:id/tasks', requirePermission('changes:read'), async (req: Request, res: Response) => {
-  const session = getSession()
-  try {
+router.get('/:id/tasks', requirePermission('changes:read'), asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params['id']!
+  const tenantId = apiKeyOf(req).tenantId
+  await withSession(async (session) => {
     const exists = await runQueryOne<{ id: string }>(session,
       `MATCH (c:Change {id: $id, tenant_id: $tenantId}) WHERE coalesce(c.deleted, false) = false RETURN c.id AS id`,
-      { id: req.params['id'], tenantId: req.apiKey!.tenantId })
-    if (!exists) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Change not found' } }); return }
+      { id, tenantId })
+    if (!exists) throw new NotFoundError('Change', id)
 
     const tasks: unknown[] = []
     for (const src of TASK_SOURCES) {
@@ -284,7 +241,7 @@ router.get('/:id/tasks', requirePermission('changes:read'), async (req: Request,
         RETURN properties(t) AS props, ci.id AS ciId, coalesce(ci.name, ci.id) AS ciName,
                properties(team) AS team, properties(u) AS completedBy
         ORDER BY t.code
-      `, { id: req.params['id'], tenantId: req.apiKey!.tenantId })
+      `, { id, tenantId })
 
       for (const r of rows) {
         // Assessment tasks split into functional (CI owner) / technical (CI support)
@@ -302,58 +259,45 @@ router.get('/:id/tasks', requirePermission('changes:read'), async (req: Request,
       }
     }
     res.json({ data: tasks })
-  } catch (err) {
-    logger.error({ err: err instanceof Error ? err.message : err, changeId: req.params['id'] }, '[api-v1/changes] tasks failed')
-    if (!res.headersSent) res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err instanceof Error ? err.message : 'Error' } })
-  } finally { await session.close() }
-})
+  })
+}))
 
 // ── POST /api/v1/changes/:id/transition ───────────────────────────────────────
 
-router.post('/:id/transition', requirePermission('changes:write'), async (req: Request, res: Response) => {
-  const { toStep, notes } = req.body as { toStep?: string; notes?: string }
-  if (!toStep?.trim()) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'toStep is required' } }); return
-  }
+router.post('/:id/transition', requirePermission('changes:write'), asyncHandler(async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const toStep = requiredString(body, 'toStep').trim()
+  const notes  = typeof body['notes'] === 'string' ? body['notes'] : undefined
   const ctx = apiCtx(req)
   const changeId = req.params['id']!
-  try {
-    // Reuse the GraphQL resolver: workflow guards, step side-effects
-    // (task creation on step entry), audit trail and auto-transitions
-    // all behave exactly like the UI flow.
-    await executeChangeTransition(null, { changeId, toStep, notes }, ctx)
-    await audit(ctx, 'change_transition', 'change', changeId, { toStep, notes: notes ?? null })
 
-    const session = getSession()
-    try {
-      const row = await loadChangeRow(session, changeId, ctx.tenantId)
-      if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Change not found' } }); return }
-      res.json({ data: mapChange(row.props, row.phase, row.requester, row.changeOwner) })
-    } finally { await session.close() }
-  } catch (err) {
-    const mapped = graphQLErrorStatus(err)
-    if (mapped) {
-      // Guard rejections / unavailable transitions surface as 400 with the guard's message
-      res.status(mapped.status).json({ error: { code: mapped.code, message: err instanceof Error ? err.message : 'Error' } })
-      return
-    }
-    logger.error({ err: err instanceof Error ? err.message : err, changeId, toStep }, '[api-v1/changes] transition failed')
-    if (!res.headersSent) res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err instanceof Error ? err.message : 'Error' } })
-  }
-})
+  // Reuse the GraphQL resolver: workflow guards, step side-effects
+  // (task creation on step entry), audit trail and auto-transitions
+  // all behave exactly like the UI flow. Guard rejections surface as
+  // CONFLICT → 400 TRANSITION_NOT_AVAILABLE via the error middleware.
+  await executeChangeTransition(null, { changeId, toStep, notes }, ctx)
+  await audit(ctx, 'change_transition', 'change', changeId, { toStep, notes: notes ?? null })
+
+  await withSession(async (session) => {
+    const row = await loadChangeRow(session, changeId, ctx.tenantId)
+    if (!row) throw new NotFoundError('Change', changeId)
+    res.json({ data: mapChange(row.props, row.phase, row.requester, row.changeOwner) })
+  })
+}))
 
 // ── GET /api/v1/changes/:id/status ────────────────────────────────────────────
 
-router.get('/:id/status', requirePermission('changes:read'), async (req: Request, res: Response) => {
-  const session = getSession()
-  try {
+router.get('/:id/status', requirePermission('changes:read'), asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params['id']!
+  const tenantId = apiKeyOf(req).tenantId
+  await withSession(async (session) => {
     const row = await runQueryOne<{ code: string | null; approvalStatus: string | null; phase: string | null }>(session, `
       MATCH (c:Change {id: $id, tenant_id: $tenantId})
       WHERE coalesce(c.deleted, false) = false
       OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       RETURN c.code AS code, c.approval_status AS approvalStatus, wi.current_step AS phase
-    `, { id: req.params['id'], tenantId: req.apiKey!.tenantId })
-    if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Change not found' } }); return }
+    `, { id, tenantId })
+    if (!row) throw new NotFoundError('Change', id)
 
     // deployApproved: the workflow has reached (or passed) the deployment
     // step. Computed by comparing step_order metadata on the WorkflowStep
@@ -361,7 +305,7 @@ router.get('/:id/status', requirePermission('changes:read'), async (req: Request
     // never by hardcoding the step sequence.
     let deployApproved = false
     if (row.phase) {
-      const steps = await getWorkflowSteps(session, req.apiKey!.tenantId, 'change')
+      const steps = await getWorkflowSteps(session, tenantId, 'change')
       const currentStep = steps.find((s) => s.name === row.phase)
       const deployStep  = steps.find((s) => s.category === 'deployment') ?? steps.find((s) => s.name === 'deployment')
       if (currentStep?.stepOrder != null && deployStep?.stepOrder != null) {
@@ -370,10 +314,7 @@ router.get('/:id/status', requirePermission('changes:read'), async (req: Request
     }
 
     res.json({ data: { code: row.code, phase: row.phase, approvalStatus: row.approvalStatus, deployApproved } })
-  } catch (err) {
-    logger.error({ err: err instanceof Error ? err.message : err, changeId: req.params['id'] }, '[api-v1/changes] status failed')
-    if (!res.headersSent) res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err instanceof Error ? err.message : 'Error' } })
-  } finally { await session.close() }
-})
+  })
+}))
 
 export { router as changesRouter }

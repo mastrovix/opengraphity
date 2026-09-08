@@ -130,6 +130,7 @@ export const GET_TOPOLOGY = gql`
         source target type
       }
       truncated
+      nodeLimit
     }
   }
 `

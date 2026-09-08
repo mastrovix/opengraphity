@@ -1,7 +1,12 @@
-import { createHmac, timingSafeEqual, randomUUID } from 'crypto'
+import { createHmac, timingSafeEqual } from 'crypto'
 import type { Request, Response } from 'express'
 import { getSession } from '@opengraphity/neo4j'
+import { GraphQLError } from 'graphql'
 import { logger } from '../lib/logger.js'
+import { ciLabelPredicate } from '../lib/ciLabels.js'
+
+const VALID_SEVERITIES = ['critical', 'high', 'medium', 'low'] as const
+const USAGE = '`/og incident apri <titolo> ci=<id-o-nome-CI> <' + VALID_SEVERITIES.join('|') + '>`'
 
 function verifySlackSignature(req: Request): boolean {
   const signingSecret = process.env['SLACK_SIGNING_SECRET']
@@ -41,22 +46,30 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
   const parts = text.trim().split(/\s+/)
 
   if (parts[0] === 'incident' && parts[1] === 'apri') {
-    // Strict command parsing: no defaulted severity, no fabricated title —
-    // a malformed command gets the usage back, not a plausible incident.
+    // Strict command parsing: no defaulted severity, no fabricated title, no
+    // incident without its impacted CI (ITIL: mandatory, enforced by
+    // incidentService) — a malformed command gets the usage back, not a
+    // plausible incident.
     const severity = parts[parts.length - 1] ?? ''
-    const validSev = ['critical', 'high', 'medium', 'low']
-    if (!validSev.includes(severity)) {
-      res.json({ response_type: 'ephemeral', text: `⚠️ Severity mancante o non valida. Usa: \`/og incident apri <titolo> <${validSev.join('|')}>\`` })
+    if (!(VALID_SEVERITIES as readonly string[]).includes(severity)) {
+      res.json({ response_type: 'ephemeral', text: `⚠️ Severity mancante o non valida. Usa: ${USAGE}` })
       return
     }
-    const sev = severity
-    const title = parts.slice(2, -1).join(' ')
+    const words   = parts.slice(2, -1)
+    const ciToken = words.find((w) => w.startsWith('ci='))
+    const ciRef   = ciToken?.slice(3) ?? ''
+    if (!ciRef) {
+      res.json({ response_type: 'ephemeral', text: `⚠️ CI impattato mancante (obbligatorio). Usa: ${USAGE}` })
+      return
+    }
+    const title = words.filter((w) => w !== ciToken).join(' ')
     if (!title) {
-      res.json({ response_type: 'ephemeral', text: '⚠️ Titolo mancante. Usa: `/og incident apri <titolo> <severity>`' })
+      res.json({ response_type: 'ephemeral', text: `⚠️ Titolo mancante. Usa: ${USAGE}` })
       return
     }
 
-    const session = getSession(undefined, 'WRITE')
+    const session = getSession(undefined, 'READ')
+    let tenantId: string, userId: string, ciId: string | null
     try {
       // Resolve Slack user → tenant
       const userResult = await session.executeRead((tx) =>
@@ -66,31 +79,58 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
         res.json({ response_type: 'ephemeral', text: '⚠️ Collega il tuo account Slack nelle impostazioni profilo.' })
         return
       }
-      const u = userResult.records[0]!.get('u').properties as Record<string, unknown>
-      const tenantId = u['tenant_id'] as string
-      const userId   = u['id']        as string
-      const now      = new Date().toISOString()
-      const id       = randomUUID()
-      const { getInitialStepName } = await import('../lib/workflowHelpers.js')
-      const initialStatus = await getInitialStepName(session, tenantId, 'incident')
-      await session.executeWrite((tx) =>
-        tx.run(
-          `CREATE (i:Incident {
-            id: $id, tenant_id: $tenantId, title: $title,
-            severity: $sev, status: $status, created_at: $now, updated_at: $now,
-            created_by: $userId
-          })`,
-          { id, tenantId, title, sev, now, userId, status: initialStatus },
-        ),
+      const u  = userResult.records[0]!.get('u').properties as Record<string, unknown>
+      tenantId = u['tenant_id'] as string
+      userId   = u['id']        as string
+
+      // Resolve the CI by id or (case-insensitive) exact name, tenant-scoped.
+      const ciResult = await session.executeRead((tx) =>
+        tx.run(`
+          MATCH (ci {tenant_id: $tenantId})
+          WHERE ${ciLabelPredicate('ci')} AND (ci.id = $ref OR toLower(ci.name) = toLower($ref))
+          RETURN ci.id AS id LIMIT 2
+        `, { tenantId, ref: ciRef }),
       )
-      res.json({ response_type: 'in_channel', text: `✅ Incident *${title}* creato con severity *${sev}*. ID: \`${id}\`` })
+      if (ciResult.records.length !== 1) {
+        const reason = ciResult.records.length === 0 ? 'non trovato' : 'ambiguo (più CI con questo nome: usa l\'id)'
+        res.json({ response_type: 'ephemeral', text: `⚠️ CI "${ciRef}" ${reason}.` })
+        return
+      }
+      ciId = ciResult.records[0]!.get('id') as string
     } finally {
       await session.close()
     }
+
+    // Same path as GraphQL/REST: number, workflow instance, SLA, watchers,
+    // domain event, triggers — never a bare CREATE (:Incident).
+    const { createIncident } = await import('../services/incidentService.js')
+    let created: { id: string; number: string }
+    try {
+      created = await createIncident({ title, severity, affectedCIIds: [ciId] }, { tenantId, userId })
+    } catch (err) {
+      if (err instanceof GraphQLError && err.extensions['code'] === 'BAD_USER_INPUT') {
+        res.json({ response_type: 'ephemeral', text: `⚠️ ${err.message}` })
+        return
+      }
+      throw err
+    }
+
+    // The portal lists tickets by created_by; keep the Slack requester as the
+    // reporter, exactly as before (incidentService records the watcher only).
+    const wsession = getSession(undefined, 'WRITE')
+    try {
+      await wsession.executeWrite((tx) =>
+        tx.run('MATCH (i:Incident {id: $id, tenant_id: $tenantId}) SET i.created_by = $userId', { id: created.id, tenantId, userId }),
+      )
+    } finally {
+      await wsession.close()
+    }
+
+    res.json({ response_type: 'in_channel', text: `✅ Incident *${created.number}* — *${title}* creato con severity *${severity}*. ID: \`${created.id}\`` })
     return
   }
 
-  res.json({ response_type: 'ephemeral', text: 'Comando non riconosciuto. Usa: `/og incident apri <titolo> <severity>`' })
+  res.json({ response_type: 'ephemeral', text: `Comando non riconosciuto. Usa: ${USAGE}` })
 }
 
 export async function handleSlackActions(req: Request, res: Response): Promise<void> {

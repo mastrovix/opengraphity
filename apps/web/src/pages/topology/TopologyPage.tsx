@@ -3,6 +3,7 @@ import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { Share2 } from 'lucide-react'
 import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
+import { lookupOrError } from '@/lib/tokens'
 import TopologyGraph, { TopologyLegend, type TopologyNode } from '@/components/topology/TopologyGraph'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -12,14 +13,21 @@ interface TopologyData {
     nodes:     TopologyNode[]
     edges:     { source: string; target: string; type: string }[]
     truncated: boolean
+    /** Cap server sui nodi (NODE_LIMIT) — mostrato nell'avviso di troncamento. */
+    nodeLimit: number
   }
 }
 
 interface CIListData {
   allCIs: {
+    total: number
     items: { id: string; name: string; type: string; status: string; environment: string | null }[]
   }
 }
+
+/** Voci mostrate nel combobox per una ricerca; oltre questo il server ha altri risultati ("mostrati N di M"). */
+const COMBOBOX_LIMIT = 80
+const COMBOBOX_DEBOUNCE_MS = 250
 
 interface CITypeItem {
   name:  string
@@ -59,29 +67,6 @@ export function TopologyPage() {
     [ciTypesData?.ciTypes],
   )
 
-  // ── CI list query — popola il combobox, si avvia solo quando si sceglie un tipo ──
-  const { data: ciListData } = useQuery<CIListData>(GET_ALL_CIS, {
-    variables:   { type: filters.type || undefined, limit: 500 },
-    skip:        !filters.type,
-    fetchPolicy: 'cache-first',
-  })
-
-  const ciOptions = useMemo(
-    () => (ciListData?.allCIs.items ?? [])
-      .map((ci) => ({
-        id:            ci.id,
-        name:          ci.name,
-        type:          ci.type,
-        status:        ci.status,
-        environment:   ci.environment ?? null,
-        ownerGroup:    null,
-        incidentCount: 0,
-        changeCount:   0,
-      } as TopologyNode))
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    [ciListData?.allCIs.items],
-  )
-
   // Reset focusNodeId quando l'utente cambia tipo
   useEffect(() => { setFocusNodeId(null) }, [filters.type])
 
@@ -93,6 +78,9 @@ export function TopologyPage() {
     status:       filters.status      ? filters.status      : undefined,
   }
 
+  // Polling a 30 s: TopologyGraph confronta la struttura (id nodi + archi) e a
+  // struttura invariata aggiorna solo contatori/stati in place, senza
+  // ricostruire simulazione, zoom e posizioni trascinate (F-06).
   const { data, loading, error } = useQuery<TopologyData>(GET_TOPOLOGY, {
     variables:   queryVars,
     skip:        !focusNodeId,
@@ -161,7 +149,7 @@ export function TopologyPage() {
           {/* CI combobox — visible only when a type is selected */}
           {filters.type && (
             <CICombobox
-              options={ciOptions}
+              ciType={filters.type}
               value={focusNodeId}
               onChange={(id) => {
                 setFocusNodeId(id)
@@ -297,7 +285,7 @@ export function TopologyPage() {
               fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
               whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}>
-              ⚠️ Grafo troncato a 2000 nodi — usa i filtri per restringere
+              ⚠️ Grafo troncato a {data.topology.nodeLimit} nodi — usa i filtri per restringere
             </div>
           )}
 
@@ -444,20 +432,41 @@ function DetailField({ label, children }: { label: string; children: React.React
 // ── CICombobox ───────────────────────────────────────────────────────────────
 
 interface CIComboboxProps {
-  options:  TopologyNode[]
+  ciType:   string
   value:    string | null
   onChange: (id: string | null) => void
 }
 
-function CICombobox({ options, value, onChange }: CIComboboxProps) {
+/**
+ * Ricerca server-side (allCIs search + limit): prima caricava 500 CI del tipo
+ * e ne mostrava al più 80 filtrati in locale, senza dire che mancavano gli
+ * altri. Ora il totale è visibile ("mostrati N di M") e la ricerca copre tutto.
+ */
+function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
   const [search, setSearch]   = useState('')
+  const [debounced, setDebounced] = useState('')
   const [open, setOpen]       = useState(false)
+  const [selectedName, setSelectedName] = useState('')
   const containerRef          = useRef<HTMLDivElement>(null)
 
-  const selectedName = options.find((o) => o.id === value)?.name ?? ''
-  const filtered = search
-    ? options.filter((o) => o.name.toLowerCase().includes(search.toLowerCase()))
-    : options
+  useEffect(() => {
+    const h = setTimeout(() => setDebounced(search.trim()), COMBOBOX_DEBOUNCE_MS)
+    return () => clearTimeout(h)
+  }, [search])
+
+  const { data, loading, error } = useQuery<CIListData>(GET_ALL_CIS, {
+    variables:   { type: ciType, search: debounced || undefined, limit: COMBOBOX_LIMIT },
+    fetchPolicy: 'cache-first',
+  })
+  const options = useMemo(() => data?.allCIs.items ?? [], [data])
+  const total   = data?.allCIs.total ?? 0
+
+  // Nome del CI selezionato: tenuto in stato perché la lista cambia con la ricerca
+  useEffect(() => {
+    if (!value) { setSelectedName(''); return }
+    const hit = options.find((o) => o.id === value)
+    if (hit) setSelectedName(hit.name)
+  }, [value, options])
 
   // Close on outside click
   useEffect(() => {
@@ -472,6 +481,7 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
 
   function handleSelect(id: string | null) {
     onChange(id)
+    setSelectedName(id ? (options.find((o) => o.id === id)?.name ?? '') : '')
     setSearch('')
     setOpen(false)
   }
@@ -530,12 +540,17 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
           >
             — Tutti —
           </div>
-          {filtered.length === 0 && (
-            <div style={{ padding: '7px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-              Nessun risultato
+          {error && (
+            <div style={{ padding: '7px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
+              Errore nella ricerca: {error.message}
             </div>
           )}
-          {filtered.slice(0, 80).map((o) => (
+          {!error && options.length === 0 && (
+            <div style={{ padding: '7px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+              {loading ? 'Ricerca…' : 'Nessun risultato'}
+            </div>
+          )}
+          {options.map((o) => (
             <div
               key={o.id}
               onClick={() => handleSelect(o.id)}
@@ -550,26 +565,32 @@ function CICombobox({ options, value, onChange }: CIComboboxProps) {
               onMouseLeave={(e) => { if (o.id !== value) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
               <span>{o.name}</span>
-              {o.incidentCount > 0 && (
-                <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-trigger-sla-breach)', fontWeight: 600 }}>
-                  {o.incidentCount} INC
+              {o.environment && (
+                <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+                  {o.environment}
                 </span>
               )}
             </div>
           ))}
+          {total > options.length && (
+            <div style={{ padding: '6px 10px', fontSize: 'var(--font-size-label)', color: '#854d0e', background: '#fef9c3', borderTop: '1px solid #fde68a' }}>
+              Mostrati {options.length} di {total} — affina la ricerca per trovare gli altri
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
 
+const TOPOLOGY_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
+  active:      { bg: '#dcfce7', color: '#166534' },
+  inactive:    { bg: '#fee2e2', color: '#991b1b' },
+  maintenance: { bg: '#fef9c3', color: '#854d0e' },
+}
+
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string }> = {
-    active:      { bg: '#dcfce7', color: '#166534' },
-    inactive:    { bg: '#fee2e2', color: '#991b1b' },
-    maintenance: { bg: '#fef9c3', color: '#854d0e' },
-  }
-  const s = map[status] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
+  const s = lookupOrError(TOPOLOGY_STATUS_STYLE, status, 'TOPOLOGY_STATUS_STYLE', { bg: 'var(--color-danger)', color: '#fff' })
   return (
     <span style={{
       fontSize: 'var(--font-size-body)', fontWeight: 600,

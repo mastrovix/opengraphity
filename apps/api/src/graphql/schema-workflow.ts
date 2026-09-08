@@ -52,6 +52,10 @@ export function workflowSDL(): string {
     isOpen:              Boolean!
     category:            String
     order:               Int!
+    # Posizione salvata dal designer (saveWorkflowChanges.positions); null se
+    # lo step non è mai stato disposto a mano → il web usa il layout di default.
+    positionX:           Float
+    positionY:           Float
   }
 
   type WorkflowTransitionDef {

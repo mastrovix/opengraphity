@@ -184,6 +184,23 @@ function ensurePulseStyle() {
 interface SimNode extends d3.SimulationNodeDatum, TopologyNode {}
 interface SimLink extends d3.SimulationLinkDatum<SimNode> { relType: string }
 
+/**
+ * Anelli incident/change di ogni nodo, in base ai contatori del datum.
+ * Rimuove gli anelli esistenti e li reinserisce come primi figli del gruppo
+ * (sotto node-bg/icona/label) così l'ordine dei layer resta quello del build.
+ */
+function drawStatusRings(nodeEl: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>): void {
+  nodeEl.selectAll('.topo-pulse-incident, .topo-pulse-change').remove()
+  nodeEl.filter((d) => d.changeCount > 0).insert('circle', ':first-child')
+    .attr('class', 'topo-pulse-change')
+    .attr('r', r + 4).attr('fill', 'none')
+    .attr('stroke', '#8b5cf6').attr('stroke-width', 3).attr('pointer-events', 'none')
+  nodeEl.filter((d) => d.incidentCount > 0).insert('circle', ':first-child')
+    .attr('class', 'topo-pulse-incident')
+    .attr('r', r + 6).attr('fill', 'none')
+    .attr('stroke', 'var(--color-trigger-sla-breach)').attr('stroke-width', 3).attr('pointer-events', 'none')
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TopologyGraph({
@@ -198,10 +215,23 @@ export default function TopologyGraph({
   const nodeElRef = useRef<NodeSel | null>(null)
   const linkElRef = useRef<LinkSel | null>(null)
 
+  // ── Diff strutturale (F-06) ────────────────────────────────────────────────
+  // Il polling di GET_TOPOLOGY (30 s) produce array nuovi a ogni giro anche se
+  // il grafo non è cambiato: prima ogni poll smontava SVG, simulazione, zoom e
+  // posizioni trascinate. Ora la ricostruzione avviene SOLO se cambia la
+  // struttura (insieme di id nodi + archi); a struttura invariata i nuovi
+  // contatori/stati vengono applicati in place agli elementi esistenti.
+  const structureKey = useMemo(() => {
+    const ids = nodes.map((n) => n.id).sort().join('|')
+    const es  = edges.map((e) => `${e.source}>${e.target}:${e.type}`).sort().join('|')
+    return `${ids}#${es}`
+  }, [nodes, edges])
+
   const snap = useMemo(
     () => ({ nodes, edges, showLabels, rootNodeId, onNodeClick, ciTypes }),
+    // nodes/edges volutamente esclusi: entrano tramite structureKey (vedi sopra)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, edges, showLabels, rootNodeId, onNodeClick, ciTypes],
+    [structureKey, showLabels, rootNodeId, onNodeClick, ciTypes],
   )
 
   // ── Graph build effect ─────────────────────────────────────────────────────
@@ -322,17 +352,9 @@ export default function TopologyGraph({
     linkElRef.current = linkEl as unknown as LinkSel
     nodeElRef.current = nodeEl
 
-    // Layer 1 (outermost): incident ring — r+6, always on top of everything
-    nodeEl.filter((d) => d.incidentCount > 0).append('circle')
-      .attr('class', 'topo-pulse-incident')
-      .attr('r', r + 6).attr('fill', 'none')
-      .attr('stroke', 'var(--color-trigger-sla-breach)').attr('stroke-width', 3).attr('pointer-events', 'none')
-
-    // Layer 2: change ring — r+4
-    nodeEl.filter((d) => d.changeCount > 0).append('circle')
-      .attr('class', 'topo-pulse-change')
-      .attr('r', r + 4).attr('fill', 'none')
-      .attr('stroke', '#8b5cf6').attr('stroke-width', 3).attr('pointer-events', 'none')
+    // Layer 1-2: incident (r+6) / change (r+4) rings — ridisegnati anche
+    // dall'effetto di aggiornamento in place quando cambiano i contatori.
+    drawStatusRings(nodeEl)
 
     // Layer 3 (removed): root selection ring was #ea580c at r+2 — removed because
     // it was visually indistinguishable from the change ring and confused users.
@@ -470,6 +492,38 @@ export default function TopologyGraph({
       linkElRef.current = null
     }
   }, [snap])
+
+  // ── In-place update effect (no rebuild) ───────────────────────────────────
+  // Stessa struttura, dati freschi dal polling: aggiorna i datum della
+  // simulazione (gli stessi oggetti letti dal tick per il raggio esterno) e
+  // ridisegna anelli, bordo e opacità. Zoom, posizioni e drag restano intatti.
+  useEffect(() => {
+    const nodeEl = nodeElRef.current
+    if (!nodeEl) return
+    const fresh = new Map(nodes.map((n) => [n.id, n]))
+    let changed = false
+    nodeEl.each((d) => {
+      const f = fresh.get(d.id)
+      if (!f) return
+      if (d.incidentCount !== f.incidentCount || d.changeCount !== f.changeCount
+        || d.status !== f.status || d.name !== f.name || d.ownerGroup !== f.ownerGroup || d.environment !== f.environment) {
+        d.incidentCount = f.incidentCount
+        d.changeCount   = f.changeCount
+        d.status        = f.status
+        d.name          = f.name
+        d.ownerGroup    = f.ownerGroup
+        d.environment   = f.environment
+        changed = true
+      }
+    })
+    if (!changed) return
+    drawStatusRings(nodeEl)
+    nodeEl.select<SVGCircleElement>('.node-bg')
+      .attr('stroke', (d) => (d.incidentCount > 0 || d.changeCount > 0) ? 'none' : NODE_COLOR)
+      .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
+    nodeEl.select<SVGTextElement>('.node-label')
+      .text((d) => d.id === rootNodeId ? d.name : (d.name.length > 12 ? d.name.slice(0, 11) + '…' : d.name))
+  }, [nodes, rootNodeId])
 
   // ── Highlight effect (no rebuild) ─────────────────────────────────────────
   useEffect(() => {

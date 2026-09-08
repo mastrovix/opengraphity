@@ -5,21 +5,13 @@ import { PlusCircle, Search } from 'lucide-react'
 import { GET_MY_TICKETS, GET_MY_TICKET_STATS, GET_ME } from '@/graphql/queries'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { KBSearchBar } from '@/components/KBSearchBar'
+import { fmtRelative } from '@/lib/format'
 
 interface Ticket {
   id: string; title: string; status: string; priority: string
   category: string; createdAt: string; updatedAt: string
 }
 interface Stats { open: number; inProgress: number; resolved: number; total: number }
-
-function fmtDate(iso: string): string {
-  try {
-    return new Intl.RelativeTimeFormat('it', { numeric: 'auto' }).format(
-      Math.round((new Date(iso).getTime() - Date.now()) / 86_400_000),
-      'day',
-    )
-  } catch { return iso }
-}
 
 export function HomePage() {
   const { t }     = useTranslation()
@@ -160,7 +152,7 @@ export function HomePage() {
                     {ticket.title}
                   </div>
                   <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
-                    {fmtDate(ticket.updatedAt)}
+                    {fmtRelative(ticket.updatedAt, 'day')}
                   </div>
                 </div>
                 <TicketStatusBadge status={ticket.status} />

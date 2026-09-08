@@ -33,7 +33,27 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
   certificate:     ['status', 'environment'],
   network_device:  ['status', 'environment', 'type'],
   vm:              ['status', 'environment'],
-  business_application: ['status', 'environment', 'criticality', 'businessUnit'],
+  // Properties are snake_case: `businessUnit` (camelCase) never matched (C-23).
+  business_application: ['status', 'environment', 'criticality', 'business_unit'],
+}
+
+/**
+ * Fields avg_field / sum_field may aggregate — NUMERIC only. Averaging a
+ * categorical field (status, severity…) yields null in Cypher, which the old
+ * code rendered as a real 0 (C-23).
+ */
+export const NUMERIC_FIELDS: Record<string, string[]> = {
+  incident:        [],
+  problem:         [],
+  change:          ['aggregate_risk_score'],
+  service_request: [],
+  server:          ['cpu_cores', 'ram_gb'],
+  application:     [],
+  database:        ['size_gb'],
+  certificate:     [],
+  network_device:  [],
+  vm:              ['cpu_cores', 'ram_gb'],
+  business_application: [],
 }
 
 const ALLOWED_METRICS = ['count', 'count_by_field', 'avg_field', 'sum_field']
@@ -104,18 +124,50 @@ interface WidgetConfig {
   title?:       string
 }
 
-async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
+/** Validates the (entityType, metric, groupByField) triple; throws BAD_USER_INPUT. */
+export function validateWidgetConfig(cfg: Pick<WidgetConfig, 'entityType' | 'metric' | 'groupByField' | 'filterField'>): string {
   const neo4jLabel = ENTITY_LABEL_MAP[cfg.entityType]
-  if (!neo4jLabel) throw new GraphQLError(`Tipo entità non supportato: ${cfg.entityType}`)
-  if (!ALLOWED_METRICS.includes(cfg.metric)) throw new GraphQLError(`Metrica non supportata: ${cfg.metric}`)
+  if (!neo4jLabel) throw new GraphQLError(`Tipo entità non supportato: ${cfg.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  if (!ALLOWED_METRICS.includes(cfg.metric)) throw new GraphQLError(`Metrica non supportata: ${cfg.metric}`, { extensions: { code: 'BAD_USER_INPUT' } })
 
   const allowedFields = ALLOWED_FIELDS[cfg.entityType] ?? []
-  if (cfg.groupByField && !allowedFields.includes(cfg.groupByField)) {
-    throw new GraphQLError(`Campo group_by non consentito: ${cfg.groupByField}`)
+  const numericFields = NUMERIC_FIELDS[cfg.entityType] ?? []
+  const isAggregate   = cfg.metric === 'avg_field' || cfg.metric === 'sum_field'
+
+  if (isAggregate) {
+    if (!cfg.groupByField) {
+      throw new GraphQLError(`groupByField è obbligatorio per la metrica '${cfg.metric}'`, { extensions: { code: 'BAD_USER_INPUT' } })
+    }
+    if (!numericFields.includes(cfg.groupByField)) {
+      throw new GraphQLError(
+        `Il campo '${cfg.groupByField}' non è numerico per '${cfg.entityType}': ${cfg.metric} ammette solo ${numericFields.length ? numericFields.join(', ') : 'nessun campo'}`,
+        { extensions: { code: 'BAD_USER_INPUT' } },
+      )
+    }
+  } else if (cfg.groupByField && !allowedFields.includes(cfg.groupByField)) {
+    throw new GraphQLError(`Campo group_by non consentito: ${cfg.groupByField}`, { extensions: { code: 'BAD_USER_INPUT' } })
   }
   if (cfg.filterField && !allowedFields.includes(cfg.filterField)) {
-    throw new GraphQLError(`Campo filtro non consentito: ${cfg.filterField}`)
+    throw new GraphQLError(`Campo filtro non consentito: ${cfg.filterField}`, { extensions: { code: 'BAD_USER_INPUT' } })
   }
+  return neo4jLabel
+}
+
+/** Aggregate value: null means "no numeric data" — an error, never a fabricated 0. */
+function aggregateValue(records: Array<{ get: (k: string) => unknown }>, what: string): number {
+  const raw = records[0]?.get('value')
+  if (raw == null) {
+    throw new GraphQLError(`${what}: nessun valore numerico (nessuna entità corrispondente o campo non valorizzato)`, { extensions: { code: 'NO_DATA' } })
+  }
+  const n = typeof raw === 'object' && typeof (raw as { toNumber?: () => number }).toNumber === 'function'
+    ? (raw as { toNumber: () => number }).toNumber()
+    : Number(raw)
+  if (!Number.isFinite(n)) throw new GraphQLError(`${what}: risultato non numerico (${String(raw)})`)
+  return n
+}
+
+async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
+  const neo4jLabel = validateWidgetConfig(cfg)
 
   const whereClause: string[] = ['n.tenant_id = $tenantId']
   const params: Record<string, unknown> = { tenantId }
@@ -142,7 +194,7 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
     if (cfg.metric === 'count') {
       cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN count(n) AS value`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
-      resultData = { value: Number(res.records[0]?.get('value') ?? 0), label: cfg.title ?? '', series: [] }
+      resultData = { value: aggregateValue(res.records, 'count'), label: cfg.title ?? '', series: [] }
 
     } else if (cfg.metric === 'count_by_field') {
       if (!cfg.groupByField) throw new GraphQLError("groupByField è obbligatorio per la metrica 'count_by_field'", { extensions: { code: 'BAD_USER_INPUT' } })
@@ -151,24 +203,23 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
       const res = await session.executeRead((tx) => tx.run(cypher, params))
       const series = res.records.map((r) => ({
         label: (r.get('label') as string | null) ?? 'N/A',
-        value: Number(r.get('value') ?? 0),
+        value: aggregateValue([r], `count_by_field ${field}`),
       }))
       resultData = { value: series.reduce((a, s) => a + s.value, 0), label: cfg.title ?? '', series }
 
     } else if (cfg.metric === 'avg_field') {
-      if (!cfg.groupByField) throw new GraphQLError("groupByField è obbligatorio per la metrica 'avg_field'", { extensions: { code: 'BAD_USER_INPUT' } })
-      const field = cfg.groupByField
+      // groupByField validated numeric by validateWidgetConfig
+      const field = cfg.groupByField!
       cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN avg(n.${field}) AS value`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
-      const val = Number(res.records[0]?.get('value') ?? 0)
+      const val = aggregateValue(res.records, `avg(${field})`)
       resultData = { value: Math.round(val * 100) / 100, label: cfg.title ?? '', series: [] }
 
     } else {
-      if (!cfg.groupByField) throw new GraphQLError("groupByField è obbligatorio per la metrica 'sum_field'", { extensions: { code: 'BAD_USER_INPUT' } })
-      const field = cfg.groupByField
+      const field = cfg.groupByField!
       cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN sum(n.${field}) AS value`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
-      resultData = { value: Number(res.records[0]?.get('value') ?? 0), label: cfg.title ?? '', series: [] }
+      resultData = { value: aggregateValue(res.records, `sum(${field})`), label: cfg.title ?? '', series: [] }
     }
 
     return {
@@ -253,8 +304,12 @@ async function createCustomWidget(
   const now = new Date().toISOString()
   const { input } = args
 
-  if (!ENTITY_LABEL_MAP[input.entityType]) throw new GraphQLError('Tipo entità non supportato')
-  if (!ALLOWED_METRICS.includes(input.metric)) throw new GraphQLError('Metrica non supportata')
+  // Same validation as execution (numeric whitelist for avg/sum included):
+  // a widget that cannot run must never be stored.
+  validateWidgetConfig({
+    entityType: input.entityType, metric: input.metric,
+    groupByField: input.groupByField ?? null, filterField: input.filterField ?? null,
+  })
 
   const session = getSession(undefined, 'WRITE')
   try {

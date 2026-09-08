@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Bell } from 'lucide-react'
 import { GlobalSearch } from './GlobalSearch'
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
+import { useMe } from '@/hooks/useMe'
 import { keycloak } from '@/lib/keycloak'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import { NotificationPanel } from '@/components/ui/NotificationPanel'
@@ -121,6 +122,10 @@ function getUserInfo() {
 export function Topbar() {
   const { t } = useTranslation()
   const { logout } = useAuth()
+  const navigate = useNavigate()
+  // Same role source as RequireRole/Sidebar (`me.role`): the "Settings" entry
+  // leads to admin-only routes, so it is only offered to admins.
+  const { isAdmin } = useMe()
   const { display, initials } = getUserInfo()
   const { unreadCount, connected: sseConnected } = useNotificationContext()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -265,8 +270,14 @@ export function Topbar() {
               zIndex: 50,
             }}
           >
-            <DropdownMenuItem style={{ fontSize: 12, padding: '10px 16px' }}>{t('sidebar.profile')}</DropdownMenuItem>
-            <DropdownMenuItem style={{ fontSize: 12, padding: '10px 16px' }}>{t('sidebar.settings')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/profile')} style={{ fontSize: 12, padding: '10px 16px' }}>
+              {t('sidebar.profile')}
+            </DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem onClick={() => navigate('/settings/notifications')} style={{ fontSize: 12, padding: '10px 16px' }}>
+                {t('sidebar.settings')}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={logout}

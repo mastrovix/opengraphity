@@ -6,6 +6,7 @@ import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { enqueueEmbedding } from '../../jobs/embeddingWorker.js'
+import { normalizeKbTags } from '../../services/embeddings.js'
 
 interface KBArticle {
   id:                 string
@@ -60,7 +61,7 @@ export function mapArticle(r: { get: (k: string) => unknown }): KBArticle {
     slug:               r.get('slug')               as string,
     body:               r.get('body')               as string,
     category:           r.get('category')           as string,
-    tags:               JSON.parse((r.get('tags') as string | null) ?? '[]') as string[],
+    tags:               normalizeKbTags(r.get('tags')),
     status:             r.get('status')             as string,
     authorId:           r.get('authorId')           as string,
     authorName:         r.get('authorName')         as string,
@@ -256,11 +257,14 @@ export async function createKBArticle(
   const status = initialStep
   const slug   = generateSlug(args.title) + '-' + id.slice(0, 8)
 
-  // Step 1: create the article node
+  // Article node AND its workflow instance are created in the SAME transaction:
+  // an article without workflow is invisible to kbCategories and can never be
+  // published (C-12), so a createInstance failure must roll the article back.
   const createSession = getSession(undefined, 'WRITE')
   let created: KBArticle
   try {
-    const res = await createSession.executeWrite((tx) => tx.run(`
+    const { record, workflowInstanceId } = await createSession.executeWrite(async (tx) => {
+      const res = await tx.run(`
       CREATE (a:KBArticle {
         id:                $id,
         tenant_id:         $tenantId,
@@ -315,24 +319,19 @@ export async function createKBArticle(
       authorName:  ctx.userEmail,
       now,
       publishedAt: null,
-    }))
+    })
+      if (!res.records.length) throw new Error(`KBArticle ${id} was not created`)
+      // Joins this transaction: a failure here throws and rolls the CREATE back.
+      const wi = await workflowEngine.createInstance(tx, ctx.tenantId, id, 'kb_article')
+      return { record: res.records[0]!, workflowInstanceId: wi.id }
+    })
 
-    created = mapArticle(res.records[0])
+    created = mapArticle(record)
+    created.workflowInstanceId = workflowInstanceId
+    created.currentStep        = initialStep
     void audit(ctx, 'kb_article.created', 'KBArticle', id)
   } finally {
     await createSession.close()
-  }
-
-  // Step 2: create workflow instance in a fresh session (best-effort)
-  const wiSession = getSession(undefined, 'WRITE')
-  try {
-    await workflowEngine.createInstance(wiSession, ctx.tenantId, id, 'kb_article')
-    created.workflowInstanceId = null  // will be populated on next fetch
-    created.currentStep        = initialStep
-  } catch (err) {
-    logger.error({ err, tenantId: ctx.tenantId, articleId: id }, 'kb_article: workflow instance creation failed — article created without workflow')
-  } finally {
-    await wiSession.close()
   }
 
   enqueueEmbedding({ entityType: 'kb_article', entityId: id, tenantId: ctx.tenantId }).catch((err: unknown) => {
@@ -498,7 +497,7 @@ export async function kbArticleVersions(
       title:        r.get('title')    as string,
       body:         r.get('body')     as string,
       category:     r.get('category') as string,
-      tags:         JSON.parse((r.get('tags') as string | null) ?? '[]') as string[],
+      tags:         normalizeKbTags(r.get('tags')),
       editedById:   (r.get('editedById')   ?? null) as string | null,
       editedByName: (r.get('editedByName') ?? null) as string | null,
       editedAt:     r.get('editedAt') as string,
@@ -526,7 +525,7 @@ export async function restoreKBArticleVersion(
       throw new GraphQLError(`Version ${args.version} not found for article`, { extensions: { code: 'NOT_FOUND' } })
     }
     const snap = snapRes.records[0]
-    const tags = JSON.parse((snap.get('tags') as string | null) ?? '[]') as string[]
+    const tags = normalizeKbTags(snap.get('tags'))
 
     const restored = await updateKBArticle(_, {
       id:       args.articleId,

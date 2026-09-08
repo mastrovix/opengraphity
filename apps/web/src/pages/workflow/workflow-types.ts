@@ -15,6 +15,9 @@ export interface WFStep {
   isTerminal?:  boolean
   isOpen?:      boolean
   category?:    string | null
+  // Posizione salvata dal designer; null/undefined → layout di default
+  positionX?:   number | null
+  positionY?:   number | null
 }
 
 export interface WFTransition {

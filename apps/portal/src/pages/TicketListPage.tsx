@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom'
 import { PlusCircle } from 'lucide-react'
 import { GET_MY_TICKETS } from '@/graphql/queries'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
+import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
+import { fmtDate } from '@/lib/format'
 
 const PAGE_SIZE = 15
 
@@ -23,12 +25,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   low:    '#22C55E',
 }
 
-function fmtDate(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso))
-  } catch { return iso }
-}
-
 interface Ticket {
   id: string; title: string; status: string; priority: string
   category: string; createdAt: string; updatedAt: string; assignedTeam: string | null
@@ -39,9 +35,10 @@ export function TicketListPage() {
   const [filter, setFilter]       = useState<FilterKey>('all')
   const [page, setPage]           = useState(1)
 
+  // The list polls for status changes made by the IT team; nothing else does.
   const { data, loading } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
     GET_MY_TICKETS,
-    { variables: { status: FILTER_STATUS[filter], page, pageSize: PAGE_SIZE } },
+    { variables: { status: FILTER_STATUS[filter], page, pageSize: PAGE_SIZE }, pollInterval: TICKET_POLL_INTERVAL_MS },
   )
 
   const tickets   = data?.myTickets?.items ?? []
@@ -157,8 +154,8 @@ export function TicketListPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#94A3B8', flexWrap: 'wrap' }}>
                   <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
-                  <span>Aperto {fmtDate(ticket.createdAt)}</span>
-                  <span>Aggiornato {fmtDate(ticket.updatedAt)}</span>
+                  <span>{t('ticket.openedOn', { date: fmtDate(ticket.createdAt) })}</span>
+                  <span>{t('ticket.updatedOn', { date: fmtDate(ticket.updatedAt) })}</span>
                   {ticket.assignedTeam && <span>→ {ticket.assignedTeam}</span>}
                 </div>
               </div>

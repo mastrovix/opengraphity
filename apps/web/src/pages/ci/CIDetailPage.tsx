@@ -116,10 +116,14 @@ function RelationList({
 
 // ── Dynamic CI Group members ──────────────────────────────────────────────
 
+// items è troncato lato server (MEMBERS_LIMIT=500) per i gruppi dinamici:
+// total/truncated servono a mostrare "500 di N" invece di un conteggio falso.
 const CI_GROUP_MEMBERS = gql`
   query CiGroupMembers($groupId: ID!) {
     ciGroupMembers(groupId: $groupId) {
-      id name type environment status
+      items { id name type environment status }
+      total
+      truncated
     }
   }
 `
@@ -129,26 +133,47 @@ interface GroupMember {
   environment: string | null; status: string | null
 }
 
+interface GroupMembersResult {
+  ciGroupMembers: { items: GroupMember[]; total: number; truncated: boolean }
+}
+
 /** Default members drawn in the graph; raisable from the map header. The table shows all. */
 const DEFAULT_GRAPH_MEMBER_CAP = 50
 const GRAPH_MEMBER_CAP_OPTIONS = [50, 100, 200, 500]
 
 const MEMBERS_PAGE_SIZE = 25
 
+/** Array stabili per le prop del grafo: un `[]` inline ricreerebbe la simulazione D3 a ogni render. */
+const NO_RELATIONS: { relationType: string; ci: GraphCI }[] = []
+const NO_BLAST: (GraphCI & { distance: number; parentId: string | null })[] = []
+
+interface GraphCI { id: string; name: string; type: string; status: string; environment: string | undefined }
+
+const toGraphCI = (c: { id: string; name: string; type: string; status: string | null; environment: string | null }): GraphCI =>
+  ({ id: c.id, name: c.name, type: c.type, status: c.status ?? 'unknown', environment: c.environment ?? undefined })
+
 function CIGroupMembersCard({ groupId }: { groupId: string }) {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [membersPage, setMembersPage] = useState(0)
-  const { data, loading } = useQuery<{ ciGroupMembers: GroupMember[] }>(
+  const { data, loading } = useQuery<GroupMembersResult>(
     CI_GROUP_MEMBERS,
     { variables: { groupId } },
   )
-  const members = data?.ciGroupMembers ?? []
+  const members   = data?.ciGroupMembers.items ?? []
+  const total     = data?.ciGroupMembers.total ?? members.length
+  const truncated = data?.ciGroupMembers.truncated ?? false
   const pageMembers = members.slice(membersPage * MEMBERS_PAGE_SIZE, (membersPage + 1) * MEMBERS_PAGE_SIZE)
   const totalPages = Math.ceil(members.length / MEMBERS_PAGE_SIZE)
+  const countLabel = truncated ? `${members.length} di ${total}` : String(total)
 
   return (
-    <SectionCard title={`${t('pages.ci.members')} (${members.length})`} defaultOpen={true}>
+    <SectionCard title={`${t('pages.ci.members')} (${countLabel})`} defaultOpen={true}>
+      {truncated && (
+        <p style={{ fontSize: 'var(--font-size-table)', color: '#854d0e', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 10px', margin: '0 0 8px' }}>
+          Elenco troncato: il server restituisce al massimo {members.length} membri su {total}. Restringi i criteri del gruppo per vederli tutti.
+        </p>
+      )}
       {loading ? (
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>…</p>
       ) : (
@@ -278,12 +303,13 @@ export function CIDetailPage() {
 
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
   const allTeams = teamsData?.teams ?? []
-  const [assignOwner] = useMutation(ASSIGN_CI_OWNER, {
-    onCompleted: () => { toast.success('Owner group aggiornato'); void refetch() },
+  // teamId null → l'API rimuove la relazione ("— non assegnato —" è un'azione reale)
+  const [assignOwner] = useMutation<unknown, { ciId: string; teamId: string | null }>(ASSIGN_CI_OWNER, {
+    onCompleted: (_d, opts) => { toast.success(opts?.variables?.teamId ? 'Owner group aggiornato' : 'Owner group rimosso'); void refetch() },
     onError: (e) => toast.error(e.message),
   })
-  const [assignSupport] = useMutation(ASSIGN_CI_SUPPORT_GROUP, {
-    onCompleted: () => { toast.success('Support group aggiornato'); void refetch() },
+  const [assignSupport] = useMutation<unknown, { ciId: string; teamId: string | null }>(ASSIGN_CI_SUPPORT_GROUP, {
+    onCompleted: (_d, opts) => { toast.success(opts?.variables?.teamId ? 'Support group aggiornato' : 'Support group rimosso'); void refetch() },
     onError: (e) => toast.error(e.message),
   })
 
@@ -291,20 +317,43 @@ export function CIDetailPage() {
     blastRadius: { distance: number; parentId: string | null; ci: { id: string; name: string; type: string; environment: string | null; status: string | null } }[]
   }>(GET_BLAST_RADIUS, { variables: { id }, skip: !id })
 
-  const blastRadius = brData?.blastRadius ?? []
+  // useMemo e non `?? []`: un array nuovo a ogni render invaliderebbe le memo del grafo
+  const blastRadius = useMemo(() => brData?.blastRadius ?? [], [brData])
 
   // Dynamic CI groups have no DEPENDS_ON edges to their members (manual ones use
   // HAS_MEMBER, dynamic ones resolve by criteria), so the map is driven by the
   // group members instead — capped for renderability; the members table shows all.
   const isGroup = typeName === 'dynamic_ci_group'
-  const { data: groupMembersData, refetch: refetchGroupMembers } = useQuery<{ ciGroupMembers: GroupMember[] }>(
+  const { data: groupMembersData, refetch: refetchGroupMembers } = useQuery<GroupMembersResult>(
     CI_GROUP_MEMBERS,
     { variables: { groupId: id }, skip: !id || !isGroup, fetchPolicy: 'cache-and-network' },
   )
-  const groupMembers = groupMembersData?.ciGroupMembers ?? []
+  const groupMembers = useMemo(() => groupMembersData?.ciGroupMembers.items ?? [], [groupMembersData])
   const [graphCap, setGraphCap] = useState(DEFAULT_GRAPH_MEMBER_CAP)
 
   const ci = typeName && data ? data[typeName] : undefined
+
+  // Prop del grafo memoizzate (F-05): l'effetto D3 di CIGraph dipende da questi
+  // array; ricrearli con .map() inline a ogni render (typing nel modal, edit
+  // mode, paginazione) ricostruiva e rilanciava la simulazione a ogni keystroke.
+  const graphCenterCI = useMemo<GraphCI | null>(
+    () => ci ? toGraphCI({ id: ci.id, name: ci.name, type: ci.type, status: ci.status, environment: ci.environment }) : null,
+    [ci],
+  )
+  const graphDependencies = useMemo(
+    () => isGroup
+      ? groupMembers.slice(0, graphCap).map((m) => ({ relationType: 'HAS_MEMBER', ci: toGraphCI(m) }))
+      : ((ci?.dependencies as CIRelation[] | undefined) ?? []).map((r) => ({ relationType: r.relation, ci: toGraphCI(r.ci) })),
+    [isGroup, groupMembers, graphCap, ci],
+  )
+  const graphDependents = useMemo(
+    () => isGroup ? NO_RELATIONS : ((ci?.dependents as CIRelation[] | undefined) ?? []).map((r) => ({ relationType: r.relation, ci: toGraphCI(r.ci) })),
+    [isGroup, ci],
+  )
+  const graphBlastRadius = useMemo(
+    () => isGroup ? NO_BLAST : blastRadius.map((b) => ({ ...toGraphCI(b.ci), distance: b.distance, parentId: b.parentId })),
+    [isGroup, blastRadius],
+  )
 
   // ── Edit mode handlers ─────────────────────────────────────────────────
   function startEdit() {
@@ -508,7 +557,7 @@ export function CIDetailPage() {
                   <DetailField label="Owner Group" value={
                     <Select
                       value={(ci.ownerGroup as Team | null)?.id ?? ''}
-                      onChange={(e) => { if (e.target.value) void assignOwner({ variables: { ciId: ci.id, teamId: e.target.value } }) }}
+                      onChange={(e) => void assignOwner({ variables: { ciId: ci.id, teamId: e.target.value || null } })}
                       style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220 }}
                     >
                       <option value="">— non assegnato —</option>
@@ -518,7 +567,7 @@ export function CIDetailPage() {
                   <DetailField label="Support Group" value={
                     <Select
                       value={(ci.supportGroup as Team | null)?.id ?? ''}
-                      onChange={(e) => { if (e.target.value) void assignSupport({ variables: { ciId: ci.id, teamId: e.target.value } }) }}
+                      onChange={(e) => void assignSupport({ variables: { ciId: ci.id, teamId: e.target.value || null } })}
                       style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220 }}
                     >
                       <option value="">— non assegnato —</option>
@@ -569,39 +618,12 @@ export function CIDetailPage() {
             ) : undefined}
           >
             <Suspense fallback={<div style={{ height: 260 }} />}>
-            {isGroup ? (
+            {graphCenterCI && (
               <CIGraph
-                centerCI={{
-                  id: ci.id, name: ci.name, type: ci.type,
-                  status: ci.status ?? 'unknown', environment: ci.environment ?? undefined,
-                }}
-                dependencies={groupMembers.slice(0, graphCap).map(m => ({
-                  relationType: 'HAS_MEMBER',
-                  ci: { id: m.id, name: m.name, type: m.type, status: m.status ?? 'unknown', environment: m.environment ?? undefined },
-                }))}
-                dependents={[]}
-                blastRadius={[]}
-              />
-            ) : (
-              <CIGraph
-                centerCI={{
-                  id: ci.id, name: ci.name, type: ci.type,
-                  status: ci.status ?? 'unknown', environment: ci.environment ?? undefined,
-                }}
-                dependencies={(ci.dependencies as CIRelation[]).map(r => ({
-                  relationType: r.relation,
-                  ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined },
-                }))}
-                dependents={(ci.dependents as CIRelation[]).map(r => ({
-                  relationType: r.relation,
-                  ci: { id: r.ci.id, name: r.ci.name, type: r.ci.type, status: r.ci.status ?? 'unknown', environment: r.ci.environment ?? undefined },
-                }))}
-                blastRadius={blastRadius.map(b => ({
-                  ...b.ci,
-                  status: b.ci.status ?? 'unknown',
-                  environment: b.ci.environment ?? undefined,
-                  distance: b.distance, parentId: b.parentId,
-                }))}
+                centerCI={graphCenterCI}
+                dependencies={graphDependencies}
+                dependents={graphDependents}
+                blastRadius={graphBlastRadius}
               />
             )}
             {isGroup && groupMembers.length > graphCap && (

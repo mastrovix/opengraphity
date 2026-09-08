@@ -23,6 +23,8 @@ export function cmdbSDL(): string {
   }
 
   type AllCIsResult { items: [CIBase!]!, total: Int! }
+  # items è troncato a MEMBERS_LIMIT per i gruppi dinamici; total è il conteggio reale.
+  type CIGroupMembersResult { items: [CIBase!]!, total: Int!, truncated: Boolean! }
   type BlastRadiusItem { ci: CIBase!, distance: Int!, parentId: String }
 
   # ── Metamodel types ──────────────────────────────────────────────────────────

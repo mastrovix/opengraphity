@@ -36,7 +36,6 @@ import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
 const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/WorkflowDesignerPage').then(m => ({ default: m.WorkflowDesignerPage })))
 import NotificationsPage from '@/pages/settings/NotificationsPage'
 import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
-import ProfilePage from '@/pages/settings/ProfilePage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
 import { EnumDesignerPage }     from '@/pages/settings/EnumDesignerPage.js'
@@ -69,6 +68,7 @@ import type { UserRole } from '@/hooks/useMe'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
+import { startTokenRefreshLoop } from '@/lib/tokenRefresh'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
 import '@/i18n/i18n'
@@ -159,10 +159,11 @@ const router = createBrowserRouter([
       { path: 'workflow',                      element: admin(<WorkflowListPage />),     errorElement: <RouteError /> },
       { path: 'workflow/:id',                  element: admin(<Suspense fallback={<PageLoader />}><Keyed Page={WorkflowDesignerPage} /></Suspense>), errorElement: <RouteError /> },
       // Tenant-wide settings (channels, rules, metamodel designers, sync): admin only.
-      // Personal pages (`profile`, `settings/profile`) stay open to every role.
+      // The personal page (`profile`: language + Slack) stays open to every role;
+      // the old `settings/profile` URL redirects there (E-13).
       { path: 'settings/notifications',      element: admin(<NotificationsPage />),     errorElement: <RouteError /> },
       { path: 'settings/notification-rules', element: admin(<NotificationRulesPage />), errorElement: <RouteError /> },
-      { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
+      { path: 'settings/profile',          element: <Navigate to="/profile" replace /> },
       { path: 'profile',                   element: <UserProfilePage />,         errorElement: <RouteError /> },
       { path: 'settings/ci-types',         element: admin(<CITypeDesignerPage />),   errorElement: <RouteError /> },
       { path: 'settings/itil-designer',   element: admin(<ITILTypeDesignerPage />), errorElement: <RouteError /> },
@@ -204,10 +205,10 @@ initKeycloak().then((authenticated) => {
     return
   }
 
-  // Auto-refresh token before expiry
-  setInterval(() => {
-    keycloak.updateToken(60).catch(() => keycloak.login())
-  }, 30_000)
+  // Keep the token fresh: onTokenExpired + 30s safety interval. A network
+  // blip towards Keycloak retries with backoff (toast), only an invalid
+  // session redirects to login (E-05).
+  startTokenRefreshLoop()
 
   createRoot(root).render(
     <StrictMode>

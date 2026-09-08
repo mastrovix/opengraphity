@@ -57,4 +57,6 @@ RUN mkdir -p /data/attachments /data/backups
 EXPOSE 4000
 
 # Env vars are injected by docker compose — no --env-file needed
-CMD ["node", "apps/api/dist/index.js"]
+# --no-node-snapshot: isolated-vm su Node >= 20 termina il processo senza output
+# alla prima `new Isolate` se il flag manca (scripting engine, webhook transform).
+CMD ["node", "--no-node-snapshot", "apps/api/dist/index.js"]

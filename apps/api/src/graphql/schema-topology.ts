@@ -22,6 +22,8 @@ export function topologySDL(): string {
   type TopologyData {
     nodes:     [TopologyNode!]!
     edges:     [TopologyEdge!]!
+    # Cap server sui nodi (NODE_LIMIT): il web lo mostra nell'avviso di troncamento.
+    nodeLimit: Int!
     truncated: Boolean!
   }
   `

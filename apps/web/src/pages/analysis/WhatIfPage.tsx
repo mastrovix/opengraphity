@@ -12,6 +12,7 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { Skeleton } from '@/components/ui/skeleton'
 import { Pill } from '@/components/ui/Pill'
 import { Input } from '@/components/ui/FormControls'
+import { RiskBadge, riskLevel } from '@/components/ui/badges'
 import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
 import { lookupOrError } from '@/lib/tokens'
 
@@ -44,6 +45,14 @@ const IMPACT_STYLES: Record<string, { bg: string; fg: string }> = {
   high:     { bg: '#ffedd5', fg: '#9a3412' },
   medium:   { bg: '#fef3c7', fg: '#92400e' },
   low:      { bg: 'var(--color-border-light)', fg: '#374151' },
+}
+
+// Colore del cerchio del risk score: stesso livello di RiskBadge (soglie di
+// riskLevel(), le stesse del backend) — prima WhatIf usava 4 soglie proprie.
+const RISK_LEVEL_COLOR: Record<ReturnType<typeof riskLevel>, string> = {
+  low:    'var(--color-success)',
+  medium: 'var(--color-warning)',
+  high:   'var(--color-danger)',
 }
 
 function badge(bg: string, fg: string, text: string) {
@@ -186,8 +195,7 @@ export function WhatIfPage() {
     )},
   ]
 
-  // Risk score color
-  const scoreColor = (s: number) => s < 30 ? 'var(--color-success)' : s < 60 ? '#eab308' : s < 80 ? '#f97316' : 'var(--color-danger)'
+  const scoreColor = (s: number) => lookupOrError(RISK_LEVEL_COLOR, riskLevel(s), 'RISK_LEVEL_COLOR', 'var(--color-danger)')
 
   return (
     <PageContainer>
@@ -319,8 +327,9 @@ export function WhatIfPage() {
 
             {/* Summary text */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>
                 {t('pages.whatIf.riskScore')}
+                <RiskBadge score={result.riskScore} />
               </div>
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0, lineHeight: 1.5 }}>
                 {result.summary}

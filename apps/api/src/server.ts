@@ -25,7 +25,7 @@ import { reportsRouter } from './rest/reports.js'
 import { webhookInboundRouter } from './rest/webhooks-inbound.js'
 import { v1Router } from './rest/v1/index.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
-import { graphqlRateLimiterMiddleware } from './middleware/graphqlRateLimiter.js'
+import { graphqlRateLimiterPlugin } from './middleware/graphqlRateLimiter.js'
 import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
 import { startGraphQLSpan, updateActiveSpanName, type GraphQLSpanHandle } from './telemetry.js'
 import http from 'http'
@@ -118,6 +118,8 @@ app.use(compression({
 }))
 
 // ── Prometheus metrics ─────────────────────────────────────────────────────────
+// /metrics is guarded inside metricsHandler: bearer METRICS_TOKEN when set,
+// otherwise loopback/private networks only (A-15).
 
 app.use(metricsMiddlewareWithRpm)
 app.get('/metrics', metricsHandler)
@@ -211,9 +213,9 @@ app.use(rateLimit({
   legacyHeaders:   false,
 }))
 
-// ── GraphQL per-mutation rate limiter ─────────────────────────────────────────
-
-app.use(graphqlRateLimiterMiddleware)
+// The per-mutation GraphQL rate limiter is an Apollo plugin (see
+// middleware/graphqlRateLimiter.ts): it needs the parsed operation and the
+// verified tenant from the context, neither of which exists at Express level.
 
 // ── REST routes ───────────────────────────────────────────────────────────────
 
@@ -258,6 +260,7 @@ export async function startServer(): Promise<http.Server> {
         ? ApolloServerPluginLandingPageLocalDefault({ embed: true })
         : ApolloServerPluginLandingPageProductionDefault(),
       graphqlMetricsPlugin,
+      graphqlRateLimiterPlugin,
       {
         // ── GraphQL tracing plugin ─────────────────────────────────────────────
         // Creates an explicit OTEL root span per GraphQL operation. This is

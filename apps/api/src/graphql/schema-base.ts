@@ -52,8 +52,10 @@ export function buildBaseSDL(): string {
     blastRadius(id: ID!): [BlastRadiusItem!]!
     ciIncidents(ciId: ID!): [Incident!]!
     ciChanges(ciId: ID!): [Change!]!
-    # Dynamic CI Group members: manual (HAS_MEMBER) or dynamic (live criteria)
-    ciGroupMembers(groupId: ID!): [CIBase!]!
+    # Dynamic CI Group members: manual (HAS_MEMBER) or dynamic (live criteria).
+    # I gruppi dinamici sono troncati lato server (MEMBERS_LIMIT): total/truncated
+    # rendono il taglio visibile invece di far passare 500 per il conteggio reale.
+    ciGroupMembers(groupId: ID!): CIGroupMembersResult!
     baseCIType: CITypeDefinition!
     ciTypes: [CITypeDefinition!]!
     itilTypes: [CITypeDefinition!]!
@@ -234,8 +236,9 @@ export function buildBaseSDL(): string {
 
     # Teams
     createTeam(input: CreateTeamInput!): Team!
-    assignCIOwner(ciId: ID!, teamId: ID!): CIBase!
-    assignCISupportGroup(ciId: ID!, teamId: ID!): CIBase!
+    # teamId null → rimuove l'assegnazione (OWNED_BY / SUPPORTED_BY)
+    assignCIOwner(ciId: ID!, teamId: ID): CIBase!
+    assignCISupportGroup(ciId: ID!, teamId: ID): CIBase!
     addCIRelationship(sourceId: ID!, targetId: ID!, relationType: String!): Boolean!
     removeCIRelationship(sourceId: ID!, targetId: ID!, relationType: String!): Boolean!
 
@@ -288,11 +291,15 @@ export function buildBaseSDL(): string {
       positions:    [StepPositionInput!]!
     ): Boolean!
 
+    # expectedVersion: optimistic lock — se la definizione ha una versione
+    # diversa (salvata da un altro utente) la mutation fallisce con CONFLICT
+    # invece di sovrascrivere. Null = nessun controllo (client legacy).
     saveWorkflowChanges(
-      definitionId: ID!
-      transitions:  [TransitionChangeInput!]!
-      positions:    [StepPositionInput!]!
-      steps:        [StepChangeInput!]
+      definitionId:    ID!
+      transitions:     [TransitionChangeInput!]!
+      positions:       [StepPositionInput!]!
+      steps:           [StepChangeInput!]
+      expectedVersion: Int
     ): WorkflowDefinition!
 
     executeWorkflowTransition(

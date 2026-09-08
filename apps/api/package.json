@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
+    "dev": "NODE_OPTIONS=--no-node-snapshot tsx watch --env-file=.env src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node --no-node-snapshot dist/index.js",
     "backup:neo4j": "tsx src/scripts/backup-neo4j.ts",
     "restore:neo4j": "tsx src/scripts/restore-neo4j.ts",
     "seed:teams": "tsx src/scripts/seed-teams.ts",

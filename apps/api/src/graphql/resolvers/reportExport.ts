@@ -7,6 +7,7 @@ import { NotFoundError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import type { ReportSectionDef } from '../../lib/reportQueryBuilder.js'
+import { loadTemplateSections } from '../../lib/reportTemplates.js'
 import { getSession } from '@opengraphity/neo4j'
 import { logger } from '../../lib/logger.js'
 import { ValidationError } from '../../lib/errors.js'
@@ -52,25 +53,12 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000)
 
-type Props = Record<string, unknown>
-
-function mapSection(p: Props): ReportSectionDef {
-  return {
-    id:            p['id']               as string,
-    order:         Math.round(Number(p['order'] ?? 0)),
-    title:         p['title']            as string,
-    chartType:     p['chart_type']       as string,
-    groupByNodeId: p['group_by_node_id'] as string | null ?? null,
-    groupByField:  p['group_by_field']   as string | null ?? null,
-    metric:        p['metric']           as string,
-    metricField:   p['metric_field']     as string | null ?? null,
-    limit:         p['limit_val']        as number | null ?? null,
-    sortDir:       p['sort_dir']         as string | null ?? null,
-    nodes: [], edges: [],
-  }
-}
-
-async function loadSectionsForTemplate(templateId: string, tenantId: string): Promise<{ name: string; sections: ReportSectionDef[] } | null> {
+/**
+ * Template name + sections WITH nodes/edges via the shared loader. The previous
+ * local copy returned `nodes: [], edges: []`, so every exported section failed
+ * with "No root node found" (C-04).
+ */
+export async function loadTemplateForExport(templateId: string, tenantId: string): Promise<{ name: string; sections: ReportSectionDef[] } | null> {
   const session = getSession(undefined, 'READ')
   try {
     const tplRes = await session.executeRead(tx =>
@@ -78,11 +66,7 @@ async function loadSectionsForTemplate(templateId: string, tenantId: string): Pr
     )
     if (!tplRes.records.length) return null
     const name = tplRes.records[0].get('name') as string
-
-    const secRes = await session.executeRead(tx =>
-      tx.run(`MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection) RETURN properties(s) AS props ORDER BY s.order ASC`, { id: templateId, tenantId }),
-    )
-    const sections = secRes.records.map(r => mapSection(r.get('props') as Props))
+    const sections = await loadTemplateSections(session, templateId, tenantId)
     return { name, sections }
   } finally {
     await session.close()
@@ -230,7 +214,7 @@ async function exportReport(format: 'pdf' | 'excel', args: { templateId: string 
     await accessSession.close()
   }
 
-  const tpl = await loadSectionsForTemplate(args.templateId, ctx.tenantId)
+  const tpl = await loadTemplateForExport(args.templateId, ctx.tenantId)
   if (!tpl) throw new NotFoundError('ReportTemplate', args.templateId)
 
   const data = await fetchSectionData(tpl.sections, ctx.tenantId)

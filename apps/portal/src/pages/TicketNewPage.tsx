@@ -38,14 +38,18 @@ export function TicketNewPage() {
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
+  // The mutation creates an Incident (and attachments are uploaded with
+  // entityType 'incident'), so the admin-configured field rules that apply
+  // are the incident ones — the same set apps/web CreateIncidentPage uses.
+  // Service requests have their own flow (ServiceCatalogPage → createServiceRequest).
   const ticketFormValues = { title, description, priority, category }
-  const { rules: ticketFieldRules, error: rulesError } = useFormFieldRules('service_request', null, ticketFormValues)
+  const { rules: ticketFieldRules, error: rulesError } = useFormFieldRules('incident', null, ticketFormValues)
 
   const [createTicket, { loading }] = useMutation<{ createTicket: { id: string } }>(CREATE_TICKET, {
     onCompleted: (data) => {
       void uploadFilesAndNavigate(data.createTicket.id)
     },
-    onError: (e: { message: string }) => alert(e.message),
+    onError: (e: { message: string }) => notifyError(e.message),
   })
 
   async function uploadFilesAndNavigate(ticketId: string) {
@@ -60,7 +64,7 @@ export function TicketNewPage() {
         }
       }
       setUploading(false)
-      if (failed.length > 0) alert(t('ticket.uploadFailed', { files: failed.join(', ') }))
+      if (failed.length > 0) notifyError(t('ticket.uploadFailed', { files: failed.join(', ') }))
     }
     navigate(`/tickets/${ticketId}`, { state: { created: true } })
   }
@@ -99,7 +103,7 @@ export function TicketNewPage() {
     if (!canSubmit) return
     // Rules failed to load: do not silently treat required fields as optional.
     if (rulesError) {
-      notifyError(`Impossibile validare i campi obbligatori: ${rulesError.message}`)
+      notifyError(t('ticket.rulesError', { message: rulesError.message }))
       return
     }
     const missing = validateFormFields(ticketFieldRules, ticketFormValues)

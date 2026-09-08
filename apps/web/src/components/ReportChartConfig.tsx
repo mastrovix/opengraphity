@@ -85,6 +85,7 @@ export function ReportChartConfig({
   const needsLimit   = !isKpi && !isTable && !isTimeSeries
 
   const resultNodes = Object.entries(nodeDataMap).filter(([, nd]) => nd.isResult)
+  const tableColumnCount = resultNodes.reduce((acc, [, nd]) => acc + nd.selectedFields.length, 0)
 
   return (
     <div>
@@ -191,6 +192,11 @@ export function ReportChartConfig({
           {isTable && resultNodes.length > 0 && (
             <div>
               <label style={labelStyle}>Colonne da mostrare (per nodo risultato)</label>
+              {tableColumnCount === 0 && (
+                <div style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)', marginBottom: 8 }}>
+                  ⚠ Una tabella richiede almeno una colonna: il server rifiuta la sezione senza campi selezionati.
+                </div>
+              )}
               {resultNodes.map(([nid, nd]) => (
                 <div key={nid} style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>{nd.label}</div>

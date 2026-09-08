@@ -124,6 +124,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const deleteNode = useCallback((nodeId: string) => {
     setNodes(nds => nds.filter(n => n.id !== nodeId))
     setEdges(eds => eds.filter(e => e.source !== nodeId && e.target !== nodeId))
+    // F-12: also drop the entry from nodeDataMap, otherwise the deleted node
+    // stays selectable in "Raggruppa per"/columns and the section is saved
+    // with a groupByNodeId that no longer exists (server-side error at run).
+    setNodeDataMap(prev => {
+      if (!(nodeId in prev)) return prev
+      const { [nodeId]: _removed, ...rest } = prev
+      return rest
+    })
+    setGroupByNodeId(prev => (prev === nodeId ? '' : prev))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleResult = useCallback((nodeId: string) => {
@@ -275,12 +284,17 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         selectedFields: nd?.selectedFields ?? [],
       }
     }),
-    edges: edges.map(e => ({
-      id: e.id, sourceNodeId: e.source, targetNodeId: e.target,
-      relationshipType: (e.data as { relationshipType: string } | undefined)?.relationshipType ?? '',
-      direction:        (e.data as { direction: string } | undefined)?.direction ?? 'outgoing',
-      label:            (e.label as string) ?? '',
-    })),
+    edges: edges.map(e => {
+      // The label lives in e.data (set by connectReachable / the reopen effect),
+      // not in the React Flow `label` prop — reading e.label always saved ''.
+      const d = e.data as { relationshipType?: string; direction?: string; label?: string } | undefined
+      return {
+        id: e.id, sourceNodeId: e.source, targetNodeId: e.target,
+        relationshipType: d?.relationshipType ?? '',
+        direction:        d?.direction ?? 'outgoing',
+        label:            d?.label || d?.relationshipType || '',
+      }
+    }),
   }), [nodes, edges, nodeDataMap, title, chartType, metric, metricField, groupByNodeId, groupByField, limit, sortDir])
 
   // ── Derived ──────────────────────────────────────────────────────────────────

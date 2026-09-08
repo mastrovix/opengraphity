@@ -217,6 +217,10 @@ export async function workflowDefinitionById(
         isOpen:       (s.properties['is_open']   != null) ? Boolean(s.properties['is_open'])  : !(s.properties['type'] === 'end'),
         category:     (s.properties['category']  ?? null) as string | null,
         order:        s.properties['step_order'] != null ? Number(s.properties['step_order']) : 999,
+        // Layout del designer: scritto da saveWorkflowChanges.positions, letto
+        // qui (prima nessuno lo rileggeva e il canvas usava sempre il default).
+        positionX:    s.properties['position_x'] != null ? Number(s.properties['position_x']) : null,
+        positionY:    s.properties['position_y'] != null ? Number(s.properties['position_y']) : null,
       })).sort((a, b) => a.order - b.order),
       transitions: trResult.records.map((r) => ({
         id:            r.get('id')            as string,

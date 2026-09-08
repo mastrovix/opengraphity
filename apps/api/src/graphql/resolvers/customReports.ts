@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import type { Session, ManagedTransaction } from 'neo4j-driver'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError } from '../../lib/errors.js'
@@ -7,6 +8,7 @@ import { getNavigableEntities, getNavigableRelations } from '../../lib/navigable
 import type { NavigableEntity } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import { validateReportSection, type ReportSectionDef } from '../../lib/reportQueryBuilder.js'
+import { loadTemplateSections } from '../../lib/reportTemplates.js'
 import { getReportWhitelist, STATIC_REPORT_LABELS } from '../../lib/reportWhitelist.js'
 import { assertReportTemplateAccess } from './reportAccess.js'
 import { withSession } from './ci-utils.js'
@@ -39,51 +41,6 @@ function mapTemplate(p: Props) {
   }
 }
 
-function mapSection(p: Props): ReportSectionDef {
-  return {
-    id:            p['id']               as string,
-    order:         Math.round(Number(p['order'] ?? 0)),
-    title:         p['title']            as string,
-    chartType:     p['chart_type']       as string,
-    groupByNodeId: p['group_by_node_id'] as string | null ?? null,
-    groupByField:  p['group_by_field']   as string | null ?? null,
-    metric:        p['metric']           as string,
-    metricField:   p['metric_field']     as string | null ?? null,
-    limit:         p['limit_val']        as number | null ?? null,
-    sortDir:       p['sort_dir']         as string | null ?? null,
-    nodes:         [],
-    edges:         [],
-  }
-}
-
-function mapNode(p: Props) {
-  return {
-    id:             p['id']             as string,
-    entityType:     p['entity_type']    as string,
-    neo4jLabel:     p['neo4j_label']    as string,
-    label:          p['label']          as string,
-    isResult:       (p['is_result']     as boolean) ?? false,
-    isRoot:         (p['is_root']       as boolean) ?? false,
-    positionX:      Number(p['position_x'] ?? 0),
-    positionY:      Number(p['position_y'] ?? 0),
-    filters:        p['filters']        as string | null ?? null,
-    selectedFields: p['selected_fields']
-      ? JSON.parse(p['selected_fields'] as string) as string[]
-      : [],
-  }
-}
-
-function mapEdge(eProps: Props, sourceId: string, targetId: string) {
-  return {
-    id:               eProps['id']                as string,
-    sourceNodeId:     sourceId,
-    targetNodeId:     targetId,
-    relationshipType: eProps['relationship_type'] as string,
-    direction:        eProps['direction']         as string,
-    label:            eProps['label']             as string,
-  }
-}
-
 // ── Load full template (with sections + nodes + edges) ──────────────────────
 
 export async function loadFullTemplate(id: string, tenantId: string) {
@@ -99,49 +56,8 @@ export async function loadFullTemplate(id: string, tenantId: string) {
 
     const tpl = mapTemplate(tplRes.records[0].get('props') as Props)
 
-    // Sections
-    const secRes = await session.executeRead(tx =>
-      tx.run(`
-        MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection)
-        RETURN properties(s) AS props ORDER BY s.order ASC
-      `, { id, tenantId }),
-    )
-    const sections: ReportSectionDef[] = []
-
-    for (const secRow of secRes.records) {
-      const sec = mapSection(secRow.get('props') as Props)
-
-      // Nodes and edges
-      const nodeEdgeRes = await session.executeRead(tx =>
-        tx.run(`
-          // tenant-ok: sezione letta dal template appena scopato
-          MATCH (s:ReportSection {id: $sectionId})
-          OPTIONAL MATCH (s)-[:HAS_NODE]->(n:ReportNode)
-          OPTIONAL MATCH (n)-[e:REPORT_EDGE]->(m:ReportNode)
-            WHERE (s)-[:HAS_NODE]->(m)
-          RETURN
-            collect(DISTINCT properties(n)) AS nodes,
-            collect(DISTINCT {
-              edgeProps: properties(e),
-              sourceId: n.id,
-              targetId: m.id
-            }) AS edges
-        `, { sectionId: sec.id }),
-      )
-
-      if (nodeEdgeRes.records.length) {
-        const row = nodeEdgeRes.records[0]
-        const rawNodes = row.get('nodes') as Props[]
-        const rawEdges = row.get('edges') as Array<{ edgeProps: Props; sourceId: string; targetId: string }>
-
-        sec.nodes = rawNodes.filter(n => n && n['id']).map(n => mapNode(n))
-        sec.edges = rawEdges
-          .filter(e => e && e.edgeProps && e.edgeProps['id'] && e.sourceId && e.targetId)
-          .map(e => mapEdge(e.edgeProps, e.sourceId, e.targetId))
-      }
-
-      sections.push(sec)
-    }
+    // Sections + nodes + edges: the single shared loader (lib/reportTemplates).
+    const sections: ReportSectionDef[] = await loadTemplateSections(session, id, tenantId)
 
     // sharedWith teams
     const teamRes = await session.executeRead(tx =>
@@ -225,8 +141,22 @@ export function sectionInputToDef(input: SectionInput, id: string, order = 0): R
 
 // ── Create section helper ─────────────────────────────────────────────────────
 
+type WriteRunner = Session | ManagedTransaction
+
+/**
+ * Runs a write statement either as its own managed transaction (Session) or
+ * inside the caller's transaction (ManagedTransaction) — the latter lets
+ * duplicateReportTemplate clone template + sections + nodes + edges atomically.
+ */
+async function write(runner: WriteRunner, query: string, params: Record<string, unknown>) {
+  if (typeof (runner as Session).executeWrite === 'function') {
+    return (runner as Session).executeWrite(tx => tx.run(query, params))
+  }
+  return (runner as ManagedTransaction).run(query, params)
+}
+
 export async function createSectionWithNodesEdges(
-  session: ReturnType<typeof getSession>,
+  runner: WriteRunner,
   templateId: string,
   sectionId: string,
   order: number,
@@ -237,8 +167,7 @@ export async function createSectionWithNodesEdges(
   // stored, otherwise the scheduler/dashboards would execute it without a user.
   validateReportSection(sectionInputToDef(input, sectionId, order), await getReportWhitelist(tenantId))
 
-  await session.executeWrite(tx =>
-    tx.run(`
+  await write(runner, `
       MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})
       CREATE (s:ReportSection {
         id:                $id,
@@ -262,13 +191,12 @@ export async function createSectionWithNodesEdges(
       metric: input.metric,
       metricField: input.metricField ?? null,
       limit: input.limit ?? null, sortDir: input.sortDir ?? null,
-    }),
-  )
+    })
 
   // Create nodes
   for (const node of input.nodes) {
     const nodeId = uuidv4()
-    await session.executeWrite(tx => tx.run(`
+    await write(runner, `
       MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
       CREATE (s)-[:HAS_NODE]->(n:ReportNode {
         id:             $id,
@@ -291,12 +219,12 @@ export async function createSectionWithNodesEdges(
       positionX: node.positionX, positionY: node.positionY,
       filters: node.filters ?? null,
       selectedFields: JSON.stringify(node.selectedFields ?? []),
-    }))
+    })
   }
 
   // Create edges
   for (const edge of input.edges) {
-    await session.executeWrite(tx => tx.run(`
+    await write(runner, `
       MATCH (src:ReportNode {temp_id: $sourceTempId, section_id: $sectionId})
       MATCH (tgt:ReportNode {temp_id: $targetTempId, section_id: $sectionId})
       CREATE (src)-[:REPORT_EDGE {
@@ -312,7 +240,7 @@ export async function createSectionWithNodesEdges(
       relType: edge.relationshipType,
       direction: edge.direction,
       label: edge.label,
-    }))
+    })
   }
 }
 

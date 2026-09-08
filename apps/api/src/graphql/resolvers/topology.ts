@@ -18,6 +18,22 @@ import { ALL_CI_LABELS as CI_LABELS, TYPE_TO_LABEL } from '../../lib/ciLabels.js
 const NODE_LIMIT = 2000
 const EDGE_LIMIT = 5000
 
+/**
+ * Open incident/change counts per CI, shared by both topology branches.
+ * Relationship types are the real ones: (Incident)-[:AFFECTED_BY]->(ci)
+ * (incidentService) and (Change)-[:AFFECTS_CI]->(ci) (changeMutations /
+ * changeCreationService). Exported so a test pins them — a wrong type here
+ * does not error, it silently reports 0 everywhere.
+ */
+export const TICKET_COUNT_MATCHES = `
+          OPTIONAL MATCH (i:Incident)-[:AFFECTED_BY]->(ci)
+            WHERE i.tenant_id = $tenantId
+              AND NOT i.status IN $incidentTerminal
+          OPTIONAL MATCH (ch:Change)-[:AFFECTS_CI]->(ci)
+            WHERE ch.tenant_id = $tenantId
+              AND NOT ch.status IN $changeTerminal
+              AND coalesce(ch.deleted, false) = false`
+
 function labelFromType(t: string): string {
   return TYPE_TO_LABEL[t.toLowerCase()] ?? t
 }
@@ -51,7 +67,7 @@ export const topologyResolvers = {
       ctx: GraphQLContext,
     ) => {
       const cacheKey = `topology:${ctx.tenantId}:${args.selectedCiId ?? ''}:${args.maxHops ?? 'all'}:${args.environment ?? ''}:${args.status ?? ''}:${(args.types ?? []).join(',')}`
-      const cached = cache.get<{ nodes: unknown[]; edges: unknown[]; truncated: boolean }>(cacheKey)
+      const cached = cache.get<{ nodes: unknown[]; edges: unknown[]; truncated: boolean; nodeLimit: number }>(cacheKey)
       if (cached) return cached
 
       return withSession(async (session) => {
@@ -94,7 +110,7 @@ export const topologyResolvers = {
           const nodeIds = reachableResult.records.map((r) => r.get('id') as string)
           const truncated = nodeIds.length >= NODE_LIMIT
 
-          if (nodeIds.length === 0) return { nodes: [], edges: [], truncated: false }
+          if (nodeIds.length === 0) return { nodes: [], edges: [], truncated: false, nodeLimit: NODE_LIMIT }
 
           // 2. Load full node data with incident/change counts
           //    Re-apply filter here too (origin always passes via ci.id = $ciId exception)
@@ -104,13 +120,7 @@ export const topologyResolvers = {
               AND (ci.id = $ciId
                 OR (($environment IS NULL OR ci.environment = $environment)
                     AND ($status IS NULL OR ci.status = $status)))
-            OPTIONAL MATCH (i:Incident)-[:AFFECTED_BY]->(ci)
-              WHERE i.tenant_id = $tenantId
-                AND NOT i.status IN $incidentTerminal
-            OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
-              WHERE ch.tenant_id = $tenantId
-                AND NOT ch.status IN $changeTerminal
-                AND coalesce(ch.deleted, false) = false
+            ${TICKET_COUNT_MATCHES}
             WITH ci,
                  count(DISTINCT i)  AS incidentCount,
                  count(DISTINCT ch) AS changeCount
@@ -143,7 +153,7 @@ export const topologyResolvers = {
             type:   r.get('relType') as string,
           }))
 
-          const result = { nodes, edges, truncated }
+          const result = { nodes, edges, truncated, nodeLimit: NODE_LIMIT }
           cache.set(cacheKey, result, 30)
           return result
         }
@@ -176,13 +186,7 @@ export const topologyResolvers = {
           WHERE ci.tenant_id = $tenantId
             AND ANY(lbl IN labels(ci) WHERE lbl IN $ciLabels)
             ${extraWhere}
-          OPTIONAL MATCH (i:Incident)-[:AFFECTED_BY]->(ci)
-            WHERE i.tenant_id = $tenantId
-              AND NOT i.status IN $incidentTerminal
-          OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
-            WHERE ch.tenant_id = $tenantId
-              AND NOT ch.status IN $changeTerminal
-              AND coalesce(ch.deleted, false) = false
+          ${TICKET_COUNT_MATCHES}
           WITH ci,
                count(DISTINCT i)  AS incidentCount,
                count(DISTINCT ch) AS changeCount
@@ -202,7 +206,7 @@ export const topologyResolvers = {
         const nodes = nodesResult.records.map(mapNode)
         const truncated = nodes.length >= NODE_LIMIT
 
-        if (nodes.length === 0) return { nodes: [], edges: [], truncated: false }
+        if (nodes.length === 0) return { nodes: [], edges: [], truncated: false, nodeLimit: NODE_LIMIT }
 
         const nodeIds = nodes.map((n) => n.id)
         const edgesResult = await session.executeRead((tx) => tx.run(`
@@ -223,7 +227,7 @@ export const topologyResolvers = {
           type:   r.get('relType') as string,
         }))
 
-        const result = { nodes, edges, truncated }
+        const result = { nodes, edges, truncated, nodeLimit: NODE_LIMIT }
         cache.set(cacheKey, result, 30)
         return result
 

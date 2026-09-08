@@ -1,8 +1,8 @@
 import { Router, type Router as ExpressRouter, type Request, type Response } from 'express'
-import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
 import { streamReportAI } from '../services/reportAI.js'
+import { runReportConversation } from '../services/reportConversation.js'
 import { logger } from '../lib/logger.js'
 
 const router: ExpressRouter = Router()
@@ -12,7 +12,7 @@ router.post('/report/stream', authMiddleware, (req: Request, res: Response) => {
 })
 
 async function handleReportStream(req: Request, res: Response): Promise<void> {
-  const { tenantId, userId, role } = req.user!
+  const { tenantId, role } = req.user!
   const { question, conversationId: inputConvId } = req.body as {
     question?: string
     conversationId?: string | null
@@ -41,111 +41,27 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
   }
 
-  const now = new Date().toISOString()
-  let convId = inputConvId ?? null
   const session = getSession(undefined, 'WRITE')
 
   try {
-    // 1. Create conversation if new
-    if (!convId) {
-      convId = uuidv4()
-      const title = question.slice(0, 60)
-      await session.executeWrite((tx) =>
-        tx.run(
-          `CREATE (:ReportConversation {
-            id: $id, tenant_id: $tenantId,
-            title: $title,
-            created_at: $now, updated_at: $now
-          })`,
-          { id: convId, tenantId, title, now },
-        ),
-      )
-      send('conversation', { conversationId: convId })
-    }
-
-    // 2. Save user message
-    const userMsgId = uuidv4()
-    await session.executeWrite((tx) =>
-      tx.run(
-        `MATCH (c:ReportConversation {id: $convId, tenant_id: $tenantId})
-         CREATE (m:ReportMessage {
-           id: $id, tenant_id: $tenantId,
-           conversation_id: $convId,
-           role: 'user', content: $content,
-           created_at: $now
-         })
-         CREATE (c)-[:HAS_MESSAGE]->(m)`,
-        { convId, tenantId, id: userMsgId, content: question, now },
-      ),
-    )
-
-    // 3. Load history (last 10 messages)
-    const histResult = await session.executeRead((tx) =>
-      tx.run(
-        `MATCH (c:ReportConversation {id: $convId, tenant_id: $tenantId})-[:HAS_MESSAGE]->(m:ReportMessage)
-         RETURN m.role AS role, m.content AS content
-         ORDER BY m.created_at ASC LIMIT 10`,
-        { convId, tenantId },
-      ),
-    )
-    const history = histResult.records.map((r) => ({
-      role:    r.get('role')    as string,
-      content: r.get('content') as string,
-    }))
-    const historyWithoutLast = history.slice(0, -1)
-
-    // 4. Stream AI response
-    let fullText = ''
-    const aiText = await streamReportAI(
+    // Conversation persistence + "last 10" history: services/reportConversation
+    // (shared with the GraphQL askReport mutation).
+    const { conversationId, message } = await runReportConversation({
+      session,
       tenantId,
-      historyWithoutLast,
       question,
-      (chunk) => {
-        fullText += chunk
-        send('chunk', { text: chunk })
-      },
-      (description) => {
-        send('tool', { description })
-      },
-    )
-    fullText = aiText
-
-    // 5. Save assistant message
-    const asstMsgId = uuidv4()
-    const asstNow = new Date().toISOString()
-    await session.executeWrite((tx) =>
-      tx.run(
-        `MATCH (c:ReportConversation {id: $convId, tenant_id: $tenantId})
-         CREATE (m:ReportMessage {
-           id: $id, tenant_id: $tenantId,
-           conversation_id: $convId,
-           role: 'assistant', content: $content,
-           created_at: $now
-         })
-         CREATE (c)-[:HAS_MESSAGE]->(m)`,
-        { convId, tenantId, id: asstMsgId, content: fullText, now: asstNow, userId },
+      conversationId: inputConvId,
+      onConversationCreated: (id) => send('conversation', { conversationId: id }),
+      ask: (history, q) => streamReportAI(
+        tenantId,
+        history,
+        q,
+        (chunk) => send('chunk', { text: chunk }),
+        (description) => send('tool', { description }),
       ),
-    )
-
-    // 6. Update conversation updated_at
-    await session.executeWrite((tx) =>
-      tx.run(
-        `MATCH (c:ReportConversation {id: $convId, tenant_id: $tenantId})
-         SET c.updated_at = $now`,
-        { convId, tenantId, now: asstNow },
-      ),
-    )
-
-    // 7. Send done event
-    send('done', {
-      message: {
-        id:        asstMsgId,
-        role:      'assistant',
-        content:   fullText,
-        createdAt: asstNow,
-      },
-      conversationId: convId,
     })
+
+    send('done', { message, conversationId })
   } catch (err: unknown) {
     logger.error({ err }, 'report-stream error')
     send('error', { message: err instanceof Error ? err.message : 'Internal error' })

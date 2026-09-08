@@ -29,6 +29,26 @@ export function SeverityBadge({ value }: { value: string | null | undefined }) {
   return <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }}>{value}</Pill>
 }
 
+// ── Ruolo utente (admin / operator / viewer / end_user) ─────────────────────
+
+/** Stessi 4 ruoli accettati dall'API (`UserRole` in hooks/useMe.ts). */
+const ROLE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)', label: 'Admin' },
+  operator: { bg: 'var(--color-info-bg)',   color: '#2563eb',                          label: 'Operator' },
+  viewer:   { bg: 'var(--color-slate-bg)',  color: 'var(--color-slate)',               label: 'Viewer' },
+  end_user: { bg: '#f5f3ff',                color: '#6d28d9',                          label: 'End user' },
+}
+
+export function RoleBadge({ role }: { role: string | null | undefined }) {
+  if (!role) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
+  const s = lookupOrError(ROLE_STYLE, role, 'ROLE_STYLE', { ...BROKEN, label: role })
+  return (
+    <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)' }}>
+      {s.label}
+    </Pill>
+  )
+}
+
 // ── Rischio aggregato della change ───────────────────────────────────────────
 
 const RISK_STYLE: Record<string, { bg: string; color: string; label: string }> = {

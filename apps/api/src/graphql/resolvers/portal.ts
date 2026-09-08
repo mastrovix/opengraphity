@@ -32,17 +32,32 @@ function toInt(v: unknown): number {
   return Number(v)
 }
 
+/**
+ * Read model of a portal ticket. Every portal ticket is an Incident node
+ * created by `createTicket`, which always writes priority/category, so a node
+ * missing one of them is corrupt data: fail loud (GraphQL error on that field)
+ * instead of inventing 'medium'/'other' and hiding it. `type` is structural
+ * (the portal only exposes Incidents), not read from the node.
+ */
+function requireProp(p: Record<string, unknown>, key: string): string {
+  const v = p[key]
+  if (typeof v !== 'string' || v === '') {
+    throw new Error(`Incident ${String(p['id'])}: missing required property '${key}'`)
+  }
+  return v
+}
+
 function mapTicket(p: Record<string, unknown>) {
   return {
-    id:           p['id']            as string,
-    type:         (p['type']         ?? 'incident') as string,
-    title:        p['title']         as string,
+    id:           requireProp(p, 'id'),
+    type:         'incident',
+    title:        requireProp(p, 'title'),
     description:  (p['description']  ?? null)       as string | null,
-    status:       p['status']        as string,
-    priority:     (p['priority']     ?? 'medium')   as string,
-    category:     (p['category']     ?? 'other')    as string,
-    createdAt:    p['created_at']    as string,
-    updatedAt:    p['updated_at']    as string,
+    status:       requireProp(p, 'status'),
+    priority:     requireProp(p, 'priority'),
+    category:     requireProp(p, 'category'),
+    createdAt:    requireProp(p, 'created_at'),
+    updatedAt:    requireProp(p, 'updated_at'),
     assignedTeam: (p['assigned_team'] ?? null)      as string | null,
   }
 }
@@ -222,20 +237,24 @@ async function myTicketStats(
 
 async function createTicket(
   _: unknown,
-  { title, description, priority = 'medium', category }: {
-    title: string; description?: string; priority?: string; category: string
+  { title, description, priority, category }: {
+    title: string; description?: string; priority?: string | null; category: string
   },
   ctx: GraphQLContext,
 ) {
   validateStringLength(title, 'title', 1, 500)
   validateStringLength(description, 'description', 0, 10000)
 
+  // No defaults: a missing or unknown priority is a client bug, not "medium".
+  if (!priority) throw new ValidationError('priority is required')
+  if (!category) throw new ValidationError('category is required')
+
   const [allowedCategories, allowedPriorities] = await Promise.all([
     loadEnumValues(ctx.tenantId, 'category'),
     loadEnumValues(ctx.tenantId, 'priority'),
   ])
   if (allowedCategories.size > 0 && !allowedCategories.has(category)) throw new ValidationError(`Invalid category: ${category}`)
-  if (allowedPriorities.size > 0 && !allowedPriorities.has(priority)) priority = 'medium'
+  if (allowedPriorities.size > 0 && !allowedPriorities.has(priority)) throw new ValidationError(`Invalid priority: ${priority}`)
 
   const id  = uuidv4()
   const now = new Date().toISOString()
@@ -347,6 +366,14 @@ async function addTicketComment(
 
 // ── Mutation: reopenTicket ────────────────────────────────────────────────────
 
+/**
+ * Reopening is a workflow transition, never a bare `SET i.status`: the engine
+ * moves WorkflowInstance.current_step and syncs Incident.status in the same
+ * transaction, records the step history and keeps SLA/auto-close consistent.
+ * The target step is one the workflow actually allows from the current step
+ * (manual TRANSITIONS_TO), chosen among the open steps: an "in progress"-like
+ * active step first, then any open step. No such transition → ValidationError.
+ */
 async function reopenTicket(
   _: unknown,
   { ticketId }: { ticketId: string },
@@ -356,17 +383,20 @@ async function reopenTicket(
     const check = await session.executeRead((tx) =>
       tx.run(`
         MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
-        RETURN i.created_by AS createdBy, i.status AS status, properties(i) AS props
+        OPTIONAL MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        RETURN i.created_by AS createdBy, i.status AS status, wi.id AS instanceId
       `, { ticketId, tenantId: ctx.tenantId }),
     )
 
     if (!check.records.length) throw new ForbiddenError('Ticket not found')
 
     const r          = check.records[0]
-    const createdBy  = r.get('createdBy') as string
-    const status     = r.get('status')    as string
+    const createdBy  = r.get('createdBy')  as string
+    const status     = r.get('status')     as string
+    const instanceId = r.get('instanceId') as string | null
 
     if (createdBy !== ctx.userId) throw new ForbiddenError('Access denied')
+    if (!instanceId) throw new ValidationError(`Ticket ${ticketId} has no workflow instance and cannot be reopened`)
 
     const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
     const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
@@ -374,27 +404,43 @@ async function reopenTicket(
     if (!resolvedStep || status !== resolvedStep.name) {
       throw new GraphQLError('Only resolved tickets can be reopened', { extensions: { code: 'CONFLICT' } })
     }
-    // Reopen back to an active step: prefer the first non-initial step
-    // marked as 'active' (typical "in progress"), fall back to any active.
+
+    // Candidate targets = manual transitions out of the current step whose
+    // destination is an open step (never terminal/closed).
+    const stepByName = new Map(steps.map((s) => [s.name, s]))
+    const available  = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
+    const openTargets = available
+      .map((t) => stepByName.get(t.toStep))
+      .filter((s): s is NonNullable<typeof s> => !!s && s.isOpen)
     const reopenTo =
-      steps.find((s) => s.isOpen && s.category === 'active' && !s.isInitial) ??
-      steps.find((s) => s.isOpen && s.category === 'active') ??
-      steps.find((s) => s.isOpen)
-    if (!reopenTo) throw new GraphQLError('No active step available to reopen to', { extensions: { code: 'CONFLICT' } })
+      openTargets.find((s) => s.category === 'active' && !s.isInitial) ??
+      openTargets.find((s) => s.category === 'active') ??
+      openTargets[0]
+    if (!reopenTo) {
+      throw new ValidationError(
+        `The incident workflow defines no transition from "${status}" back to an open step: reopening is not allowed`,
+      )
+    }
 
-    const now = new Date().toISOString()
+    const result = await workflowEngine.transition(
+      session,
+      { instanceId, toStepName: reopenTo.name, triggeredBy: ctx.userId, triggerType: 'manual', notes: 'Riaperto dal portale', tenantId: ctx.tenantId },
+      { userId: ctx.userId, entityData: {} },
+    )
+    if (!result.success) {
+      throw new ValidationError(`Reopen failed: ${result.error ?? 'transition rejected by the workflow'}`)
+    }
 
-    const updated = await session.executeWrite((tx) =>
+    void audit(ctx, 'portal.ticket.reopened', 'Incident', ticketId, { fromStep: status, toStep: reopenTo.name })
+
+    const updated = await session.executeRead((tx) =>
       tx.run(`
         MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
-        SET i.status = $status, i.updated_at = $now
         RETURN properties(i) AS props
-      `, { ticketId, tenantId: ctx.tenantId, now, status: reopenTo.name }),
+      `, { ticketId, tenantId: ctx.tenantId }),
     )
-
-    void audit(ctx, 'portal.ticket.reopened', 'Incident', ticketId)
-
-    const props = updated.records[0]?.get('props') as Record<string, unknown>
+    const props = updated.records[0]?.get('props') as Record<string, unknown> | undefined
+    if (!props) throw new Error(`Incident ${ticketId} vanished after reopen transition`)
     return mapTicket(props)
   }, true)
 }

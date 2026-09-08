@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { Queue, Worker, Job } from 'bullmq'
 import { publish } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
-import { markBreached } from './status.js'
+import { markBreached, getSLAStatus } from './status.js'
 import type { SLAStatus } from './status.js'
 import { calculateDeadline } from './policy.js'
 import { isEntityResolved, type OLAContractLite } from './olaBreach.js'
@@ -30,7 +30,9 @@ function getQueue(): Queue {
       connection: REDIS_OPTIONS,
       defaultJobOptions: {
         removeOnComplete: true,
-        removeOnFail:     false,
+        // Keep the last N failed jobs for diagnosis; `false` would let them
+        // accumulate in Redis forever (D-10).
+        removeOnFail:     200,
       },
     })
   }
@@ -52,7 +54,41 @@ interface SLAJobData {
 
 // ── Worker processor ──────────────────────────────────────────────────────────
 
-async function processJob(job: Job<SLAJobData>): Promise<void> {
+/**
+ * Re-reads the SLAStatus at fire time and tells whether the timer is still
+ * relevant. Timers are cancelled on met/resolve/pause, but a cancel can race a
+ * fire or fail: this is the defense in depth (D-01) — a met target never
+ * produces a breach/warning event. Returns null (with a log) when the job must
+ * be skipped, otherwise the current status.
+ */
+async function statusIfStillRelevant(
+  job: Job<SLAJobData>,
+  target: 'response' | 'resolve',
+): Promise<SLAStatus | null> {
+  const { tenantId, entityId, entityType } = job.data
+  const status = await getSLAStatus(tenantId, entityId)
+  const label = `${job.name} for ${entityType} ${entityId}`
+  if (!status) {
+    console.log(`[sla:scheduler] ${label} skipped: no SLAStatus (entity deleted or SLA replaced)`)
+    return null
+  }
+  if (target === 'response' && status.response_met) {
+    console.log(`[sla:scheduler] ${label} skipped: already met (response)`)
+    return null
+  }
+  if (status.resolve_met || status.resolved_at) {
+    console.log(`[sla:scheduler] ${label} skipped: already met (resolve)`)
+    return null
+  }
+  if (status.paused_at) {
+    console.log(`[sla:scheduler] ${label} skipped: SLA paused since ${status.paused_at}`)
+    return null
+  }
+  return status
+}
+
+/** Exported for unit tests; the BullMQ worker calls it for every sla-jobs job. */
+export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
   const { entityId, entityType, tenantId, resolveDeadline } = job.data
 
   const baseEvent = {
@@ -64,6 +100,7 @@ async function processJob(job: Job<SLAJobData>): Promise<void> {
 
   switch (job.name) {
     case 'sla.warning': {
+      if (!(await statusIfStillRelevant(job, 'resolve'))) break
       const minutesRemaining = Math.round(
         (new Date(resolveDeadline).getTime() - Date.now()) / 60_000,
       )
@@ -79,22 +116,31 @@ async function processJob(job: Job<SLAJobData>): Promise<void> {
     }
 
     case 'sla.breach': {
+      const status = await statusIfStillRelevant(job, 'resolve')
+      if (!status) break
+      // State first, event second: if the publish fails and the job is
+      // retried, the status is already consistent. The event id is
+      // deterministic per SLAStatus so a retry re-publishes the SAME event and
+      // the consumers' per-id dedup drops the duplicate instead of escalating
+      // twice (D-10).
+      await markBreached(tenantId, entityId)
       const event: DomainEvent<SLABreachedPayload> = {
         ...baseEvent,
-        id:      randomUUID(),
+        id:      `breach-${status.id}`,
         type:    'sla.breached',
         payload: { entity_id: entityId, entity_type: entityType, breached_at: new Date().toISOString() },
       }
       await publish(event)
-      await markBreached(tenantId, entityId)
       console.log(`[sla:scheduler] Breach fired for ${entityType} ${entityId}`)
       break
     }
 
     case 'sla.response_breach': {
+      const status = await statusIfStillRelevant(job, 'response')
+      if (!status) break
       const event: DomainEvent<SLAWarningPayload> = {
         ...baseEvent,
-        id:      randomUUID(),
+        id:      `response-breach-${status.id}`,
         type:    'sla.warning',
         payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: 0 },
       }
@@ -140,7 +186,7 @@ async function processJob(job: Job<SLAJobData>): Promise<void> {
 export function initScheduler(): void {
   if (_worker) return
 
-  _worker = new Worker(QUEUE_NAME, processJob, { connection: REDIS_OPTIONS })
+  _worker = new Worker(QUEUE_NAME, processSLAJob, { connection: REDIS_OPTIONS })
 
   _worker.on('completed', (job) => {
     console.log(`[sla:scheduler] Job completed: ${job.name} (id: ${job.id})`)
@@ -151,6 +197,26 @@ export function initScheduler(): void {
   })
 
   console.log('[sla:scheduler] Worker started')
+}
+
+/**
+ * Closes the sla-jobs Worker (draining in-flight jobs) and the Queue used to
+ * schedule timers. Called by the API shutdown sequence before the Neo4j driver
+ * is closed (D-24). Idempotent.
+ */
+export async function closeScheduler(): Promise<void> {
+  const worker = _worker
+  const queue  = _queue
+  _worker = null
+  _queue  = null
+  if (worker) {
+    await worker.close()
+    console.log('[sla:scheduler] Worker closed')
+  }
+  if (queue) {
+    await queue.close()
+    console.log('[sla:scheduler] Queue closed')
+  }
 }
 
 async function scheduleJob(

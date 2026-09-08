@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { gql } from '@apollo/client'
-import { useLazyQuery } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { ShieldCheck } from 'lucide-react'
@@ -8,6 +8,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { EmptyState } from '@/components/EmptyState'
+import { QueryError } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
 
 const GET_AUDIT_LOG = gql`
@@ -64,29 +65,20 @@ export function AuditLogPage() {
     { key: 'createdAt', label: 'Data', type: 'date' },
   ]
 
-  const [executeQuery, { data, loading, error }] = useLazyQuery<
+  // Variables derived from state: every change of page/sort/filter re-runs the
+  // query with the CURRENT values — no lazy query reading a stale closure (E-04).
+  const { data, loading, error, refetch } = useQuery<
     { auditLog: { items: AuditEntry[]; total: number } }
-  >(GET_AUDIT_LOG, { fetchPolicy: 'network-only' })
-
-  const runQuery = (opts: { page?: number } = {}) => {
-    void executeQuery({
-      variables: {
-        page:       (opts.page ?? page) + 1,  // API is 1-based
-        pageSize:   PAGE_SIZE,
-        sortField:  sortField || undefined,
-        sortDirection: sortDir,
-        filters: filterGroup ? JSON.stringify(filterGroup) : undefined,
-      },
-    })
-  }
-
-  // Load data on mount
-  useEffect(() => { runQuery() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage)
-    runQuery({ page: newPage })
-  }
+  >(GET_AUDIT_LOG, {
+    fetchPolicy: 'network-only',
+    variables: {
+      page:          page + 1,  // API is 1-based
+      pageSize:      PAGE_SIZE,
+      sortField:     sortField || undefined,
+      sortDirection: sortDir,
+      filters:       filterGroup ? JSON.stringify(filterGroup) : undefined,
+    },
+  })
 
   const items: AuditEntry[] = data?.auditLog?.items ?? []
   const total: number       = data?.auditLog?.total  ?? 0
@@ -94,16 +86,16 @@ export function AuditLogPage() {
 
   const columns: ColumnDef<AuditEntry>[] = [
     {
-      key: 'createdAt', label: t('pages.audit.colDate'), sortable: false,
+      key: 'createdAt', label: t('pages.audit.colDate'), sortable: true,
       render: (v) => (
         <span style={{ color: 'var(--color-slate-light)' }}>
           {new Date(v as string).toLocaleString()}
         </span>
       ),
     },
-    { key: 'userEmail',  label: t('pages.audit.colUser'),       sortable: false },
-    { key: 'action',     label: t('pages.audit.colAction'),     sortable: false },
-    { key: 'entityType', label: t('pages.audit.colEntityType'), sortable: false },
+    { key: 'userEmail',  label: t('pages.audit.colUser'),       sortable: true },
+    { key: 'action',     label: t('pages.audit.colAction'),     sortable: true },
+    { key: 'entityType', label: t('pages.audit.colEntityType'), sortable: true },
     {
       key: 'entityId', label: t('pages.audit.colEntityId'), sortable: false,
       render: (v) => <code style={{ fontSize: 'var(--font-size-table)' }}>{String(v).slice(0, 8)}…</code>,
@@ -128,51 +120,56 @@ export function AuditLogPage() {
         </div>
       </div>
 
-      {/* Advanced filters — replaces standalone dropdowns */}
-      <FilterBuilder fields={AUDIT_FILTER_FIELDS} onApply={g => { setFilterGroup(g); runQuery({ page: 0 }) }} />
+      {/* Advanced filters — the group is state, the query follows it */}
+      <FilterBuilder fields={AUDIT_FILTER_FIELDS} onApply={g => { setFilterGroup(g); setPage(0) }} />
 
-      {/* Error */}
-      {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 16 }}>
-          {(error as { graphQLErrors?: Array<{ message: string }> }).graphQLErrors?.[0]?.message ?? error.message}
-        </div>
-      )}
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      ) : (
+        <>
+          {error && (
+            <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 16 }}>
+              {error.message}
+            </div>
+          )}
 
-      {/* Table */}
-      <SortableFilterTable<AuditEntry>
-        columns={columns}
-        data={items}
-        onSort={handleSort}
-        sortField={sortField}
-        sortDir={sortDir}
-        loading={loading}
-        emptyComponent={
-          <EmptyState
-            icon={<ShieldCheck size={32} color="var(--color-slate-light)" />}
-            title={t('pages.audit.empty')}
+          {/* Table */}
+          <SortableFilterTable<AuditEntry>
+            columns={columns}
+            data={items}
+            onSort={handleSort}
+            sortField={sortField}
+            sortDir={sortDir}
+            loading={loading}
+            emptyComponent={
+              <EmptyState
+                icon={<ShieldCheck size={32} color="var(--color-slate-light)" />}
+                title={t('pages.audit.empty')}
+              />
+            }
+            onRowClick={(row) => setExpandedId(expandedId === row.id ? null : row.id)}
           />
-        }
-        onRowClick={(row) => setExpandedId(expandedId === row.id ? null : row.id)}
-      />
 
-      {/* Expanded detail */}
-      {expandedId && (() => {
-        const entry = items.find((i) => i.id === expandedId)
-        if (!entry?.details) return null
-        let parsed: unknown
-        try { parsed = JSON.parse(entry.details) } catch { parsed = entry.details }
-        return (
-          <div style={{ marginTop: 12, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <strong style={{ fontSize: 'var(--font-size-body)' }}>{t('pages.audit.details', { action: entry.action })}</strong>
-            <pre style={{ marginTop: 8, fontSize: 'var(--font-size-body)', overflowX: 'auto', margin: '8px 0 0 0' }}>
-              {JSON.stringify(parsed, null, 2)}
-            </pre>
-          </div>
-        )
-      })()}
+          {/* Expanded detail */}
+          {expandedId && (() => {
+            const entry = items.find((i) => i.id === expandedId)
+            if (!entry?.details) return null
+            let parsed: unknown
+            try { parsed = JSON.parse(entry.details) } catch { parsed = entry.details }
+            return (
+              <div style={{ marginTop: 12, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <strong style={{ fontSize: 'var(--font-size-body)' }}>{t('pages.audit.details', { action: entry.action })}</strong>
+                <pre style={{ marginTop: 8, fontSize: 'var(--font-size-body)', overflowX: 'auto', margin: '8px 0 0 0' }}>
+                  {JSON.stringify(parsed, null, 2)}
+                </pre>
+              </div>
+            )
+          })()}
 
-      {/* Pagination */}
-      <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => handlePageChange(page - 1)} onNext={() => handlePageChange(page + 1)} />
+          {/* Pagination */}
+          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+        </>
+      )}
     </PageContainer>
   )
 }

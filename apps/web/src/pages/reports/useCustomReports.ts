@@ -10,6 +10,7 @@ import {
   CREATE_REPORT_TEMPLATE,
   UPDATE_REPORT_TEMPLATE,
   DELETE_REPORT_TEMPLATE,
+  DUPLICATE_REPORT_TEMPLATE,
   ADD_REPORT_SECTION,
   UPDATE_REPORT_SECTION,
   REMOVE_REPORT_SECTION,
@@ -137,6 +138,10 @@ export function useCustomReports() {
     onError: (e) => toast.error(e.message),
   })
 
+  const [duplicateTemplateMutation] = useMutation<{ duplicateReportTemplate: { id: string; name: string; sections: { id: string }[] } }>(DUPLICATE_REPORT_TEMPLATE, {
+    onError: (e) => toast.error(e.message),
+  })
+
   const [addSection]    = useMutation(ADD_REPORT_SECTION,    { onCompleted: () => { refetch(); setView('detail') }, onError: (e) => toast.error(e.message) })
   const [updateSection] = useMutation(UPDATE_REPORT_SECTION, { onCompleted: () => { refetch(); setView('detail'); setEditSection(null) }, onError: (e) => toast.error(e.message) })
   const [removeSection] = useMutation(REMOVE_REPORT_SECTION, { onCompleted: () => refetch(), onError: (e) => toast.error(e.message) })
@@ -193,20 +198,17 @@ export function useCustomReports() {
     setMenuOpenId(null)
   }
 
+  /**
+   * F-07: server-side clone (template + sections + nodes + edges, one
+   * transaction). The old client-side version created an EMPTY template.
+   */
   async function duplicateTemplate(t: ReportTemplate) {
     setMenuOpenId(null)
-    await createTemplate({
-      variables: {
-        input: {
-          name:        `${t.name} (copia)`,
-          description: t.description,
-          icon:        t.icon ?? '📊',
-          visibility:  'private',
-          sharedWithTeamIds: [],
-        },
-      },
-    })
-    refetch()
+    const res = await duplicateTemplateMutation({ variables: { id: t.id } }).catch(() => null)
+    const copy = res?.data?.duplicateReportTemplate
+    if (!copy) return  // errore già notificato da onError
+    toast.success(`Report duplicato: "${copy.name}" (${copy.sections.length} sezioni)`)
+    await refetch()
   }
 
   function sectionToInput(s: ReportSection): ReportSectionInput {

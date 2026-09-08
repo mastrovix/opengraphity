@@ -19,12 +19,27 @@ import { buildBaseSDL } from '../schema-base.js'
 const here = dirname(fileURLToPath(import.meta.url))
 const webGraphql = join(here, '../../../../web/src/graphql')
 
-// File ITSM del frontend (query + mutation). I documenti admin/CMDB usano tipi
-// generati dinamicamente e restano fuori.
+// File ITSM del frontend (query + mutation) + i file admin, che contengono i
+// documenti report/dashboard (Ondata 2). I documenti CMDB usano tipi generati
+// dinamicamente e restano fuori. `mutations/ci.ts` resta fuori perché
+// CREATE_CI_TYPE/ADD_CI_FIELD/ADD_CI_RELATION… vivono nello schema del metamodello.
 const FILES = [
   'queries/incident.ts', 'queries/problem.ts', 'queries/change.ts',
+  'queries/ci.ts', 'queries/workflow.ts',
   'mutations/incident.ts', 'mutations/problem.ts', 'mutations/change.ts',
+  'mutations/workflow.ts',
+  'queries/admin.ts', 'mutations/admin.ts',
 ]
+
+// Documenti admin esclusi ESPLICITAMENTE, con motivo. Ogni nuova esclusione
+// deve dichiarare il perché — mai un'allowlist "a prescindere".
+//
+// Change Catalog: l'API (changeCatalogCategories, standardChangeCatalog,
+// createChangeFromCatalog, …) è stata rimossa in 00023d0 ma i documenti web
+// sono rimasti; nessun componente li importa. Vanno eliminati da
+// queries/admin.ts e mutations/admin.ts (fuori dal perimetro report/dashboard
+// di questa tranche), dopodiché queste righe spariscono.
+const EXCLUDED_DOCUMENTS: Record<string, string> = {}
 
 /** Estrae ogni template gql`…` senza interpolazioni. */
 function extractDocuments(source: string): Array<{ name: string; doc: DocumentNode }> {
@@ -59,10 +74,20 @@ describe('documenti GraphQL del web ITSM ↔ schema API', () => {
       expect(docs.length).toBeGreaterThan(0)
     })
     for (const { name, doc } of docs) {
+      const excludedWhy = EXCLUDED_DOCUMENTS[name]
+      if (excludedWhy) {
+        it.skip(`${rel} › ${name} (escluso: ${excludedWhy})`, () => {})
+        continue
+      }
       it(`${rel} › ${name} valida contro lo schema`, () => {
         const errors = validate(schema, doc, rules)
         expect(errors.map((e) => e.message)).toEqual([])
       })
     }
   }
+
+  it('ogni documento in EXCLUDED_DOCUMENTS esiste davvero (niente esclusioni fantasma)', () => {
+    const all = new Set(FILES.flatMap((rel) => extractDocuments(readFileSync(join(webGraphql, rel), 'utf8')).map((d) => d.name)))
+    for (const name of Object.keys(EXCLUDED_DOCUMENTS)) expect(all.has(name), name).toBe(true)
+  })
 })

@@ -8,19 +8,35 @@ import { logger } from '../lib/logger.js'
 
 type Labels = Record<string, string>
 
+export interface CounterSample { labels: Labels; value: number }
+export interface GaugeSample   { labels: Labels; value: number }
+export interface HistogramSample {
+  labels: Labels
+  sum:    number
+  count:  number
+  max:    number
+  /** Cumulative bucket counts, parallel to `buckets` (then +Inf as the last entry). */
+  bucketCounts: number[]
+}
+
 interface Counter {
   inc(labels: Labels, value?: number): void
   collect(): string
+  /** Structured read of the internal map (A-14): no re-parsing of the text exposition. */
+  snapshot(): CounterSample[]
 }
 
 interface Histogram {
   observe(labels: Labels, value: number): void
   collect(): string
+  snapshot(): HistogramSample[]
+  readonly buckets: readonly number[]
 }
 
 interface Gauge {
   set(labels: Labels, value: number): void
   collect(): string
+  snapshot(): GaugeSample[]
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -66,6 +82,9 @@ export function createCounter(name: string, help: string, _labelNames: string[])
       }
       return lines.join('\n')
     },
+    snapshot(): CounterSample[] {
+      return [...counts].map(([key, value]) => ({ labels: labelsMap.get(key) ?? {}, value }))
+    },
   }
 }
 
@@ -84,6 +103,7 @@ export function createHistogram(
     counts: number[]   // parallel to sortedBuckets, then +Inf
     sum:    number
     total:  number
+    max:    number
   }
 
   const states = new Map<string, BucketState>()
@@ -96,16 +116,19 @@ export function createHistogram(
         counts: new Array<number>(sortedBuckets.length + 1).fill(0),
         sum:    0,
         total:  0,
+        max:    0,
       })
     }
     return states.get(key)!
   }
 
   return {
+    buckets: sortedBuckets,
     observe(labels: Labels, value: number): void {
       const state = getOrCreate(labels)
       state.sum += value
       state.total += 1
+      if (value > state.max) state.max = value
       for (let i = 0; i < sortedBuckets.length; i++) {
         if (value <= sortedBuckets[i]!) {
           state.counts[i]! += 1
@@ -137,6 +160,11 @@ export function createHistogram(
       }
       return lines.join('\n')
     },
+    snapshot(): HistogramSample[] {
+      return [...states.values()].map(s => ({
+        labels: s.labels, sum: s.sum, count: s.total, max: s.max, bucketCounts: [...s.counts],
+      }))
+    },
   }
 }
 
@@ -162,6 +190,9 @@ export function createGauge(name: string, help: string, _labelNames: string[]): 
         lines.push(`${name}${labelStr(labels)} ${value} ${now()}`)
       }
       return lines.join('\n')
+    },
+    snapshot(): GaugeSample[] {
+      return [...values].map(([key, value]) => ({ labels: labelsMap.get(key) ?? {}, value }))
     },
   }
 }
@@ -201,17 +232,23 @@ export const bullmqQueueDepth = createGauge(
   ['queue'],
 )
 
-// ── Route normaliser ──────────────────────────────────────────────────────────
+// ── Route label (A-15) ────────────────────────────────────────────────────────
 
-const UUID_RE   = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
-const OBJECT_ID_RE = /[0-9a-f]{24}/gi
-const NUMERIC_RE = /\/\d+/g
-
-function normaliseRoute(path: string): string {
-  return path
-    .replace(UUID_RE, ':id')
-    .replace(OBJECT_ID_RE, ':id')
-    .replace(NUMERIC_RE, '/:id')
+/**
+ * Bounded route label: the matched Express route pattern (mount + path) or
+ * the mount point alone (e.g. `/graphql`, handled by a non-route middleware).
+ * Anything unmatched collapses to `unmatched` — the previous
+ * `normaliseRoute(req.path)` created a new series for every distinct 404 path,
+ * an attacker-controlled memory leak.
+ */
+export function routeLabel(req: Pick<Request, 'route' | 'baseUrl'>): string {
+  const routePath = (req.route as { path?: string | string[] } | undefined)?.path
+  if (routePath) {
+    const p = Array.isArray(routePath) ? routePath[0] ?? '' : routePath
+    return `${req.baseUrl ?? ''}${p}` || '/'
+  }
+  if (req.baseUrl) return req.baseUrl
+  return 'unmatched'
 }
 
 // ── Express middleware ────────────────────────────────────────────────────────
@@ -220,7 +257,7 @@ export function metricsMiddleware(req: Request, res: Response, next: NextFunctio
   const start = process.hrtime.bigint()
 
   res.on('finish', () => {
-    const route      = normaliseRoute(req.path)
+    const route      = routeLabel(req)
     const method     = req.method
     const statusCode = String(res.statusCode)
     const durationNs = process.hrtime.bigint() - start
@@ -233,9 +270,39 @@ export function metricsMiddleware(req: Request, res: Response, next: NextFunctio
   next()
 }
 
-// ── Metrics handler ───────────────────────────────────────────────────────────
+// ── Metrics handler + access guard (A-15) ─────────────────────────────────────
 
-export function metricsHandler(_req: Request, res: Response): void {
+const PRIVATE_NET_RE = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/
+
+/** True for loopback and RFC1918 (docker bridge) addresses. */
+export function isPrivateAddress(addr: string | undefined): boolean {
+  if (!addr) return false
+  const ip = addr.startsWith('::ffff:') ? addr.slice(7) : addr
+  if (ip === '::1') return true
+  return PRIVATE_NET_RE.test(ip)
+}
+
+/**
+ * Access policy for GET /metrics:
+ * - `METRICS_TOKEN` set → `Authorization: Bearer <token>` required (any source).
+ * - not set → only loopback / private (docker) networks, judged on the SOCKET
+ *   address (not `req.ip`: with `trust proxy` an X-Forwarded-For header could
+ *   spoof it).
+ */
+export function metricsAccessAllowed(req: Pick<Request, 'headers' | 'socket'>, token = process.env['METRICS_TOKEN']): boolean {
+  if (token) {
+    const auth = req.headers['authorization'] ?? ''
+    return auth === `Bearer ${token}`
+  }
+  return isPrivateAddress(req.socket?.remoteAddress)
+}
+
+export function metricsHandler(req: Request, res: Response): void {
+  if (!metricsAccessAllowed(req)) {
+    res.status(process.env['METRICS_TOKEN'] ? 401 : 403).type('text/plain').send('metrics: forbidden')
+    return
+  }
+
   const metrics = [
     httpRequestsTotal.collect(),
     httpRequestDurationSeconds.collect(),
@@ -264,6 +331,20 @@ export const graphqlMetricsPlugin: ApolloServerPlugin<GraphQLContext> = {
               graphqlResolverDurationSeconds.observe({ resolver }, durationS)
             }
           },
+        }
+      },
+      // Resolver errors (A-14): attributed to the root field of the error path
+      // (`Mutation.createIncident`), which is what the admin dashboard lists.
+      async didEncounterErrors(ctx) {
+        const rootType = ctx.operation?.operation
+          ? ctx.operation.operation.charAt(0).toUpperCase() + ctx.operation.operation.slice(1)
+          : 'Unknown'
+        for (const err of ctx.errors) {
+          const code = (err.extensions?.['code'] as string | undefined) ?? ''
+          if (code === 'UNAUTHORIZED' || code === 'GRAPHQL_VALIDATION_FAILED' || code === 'GRAPHQL_PARSE_FAILED') continue
+          const root = err.path?.[0]
+          const name = root != null ? `${rootType}.${String(root)}` : `${rootType}.<request>`
+          recordResolverError(name, err.message)
         }
       },
     }
@@ -364,66 +445,39 @@ function recordRequest(): void {
   while (rpmWindow.length > 0 && rpmWindow[0]! < cutoff) rpmWindow.shift()
 }
 
-// ── Structured getters ────────────────────────────────────────────────────────
+// ── Structured getters (read the internal maps, never the text exposition) ───
 
 export function getRequestMetrics(): RequestMetricsData {
-  // Compute totals from httpRequestsTotal
-  const metricsText = httpRequestsTotal.collect()
-  const lines = metricsText.split('\n').filter(l => !l.startsWith('#') && l.trim())
-
   let totalRequests = 0
   let errorRequests = 0
   const statusCodeMap = new Map<string, number>()
 
-  for (const line of lines) {
-    const match = /status_code="(\d+)"[^}]*}\s+([\d.]+)/.exec(line)
-    if (match) {
-      const code  = match[1]!
-      const count = parseInt(match[2]!, 10)
-      totalRequests += count
-      statusCodeMap.set(code, (statusCodeMap.get(code) ?? 0) + count)
-      if (code.startsWith('5')) errorRequests += count
-    }
+  for (const { labels, value } of httpRequestsTotal.snapshot()) {
+    const code = labels['status_code'] ?? 'unknown'
+    totalRequests += value
+    statusCodeMap.set(code, (statusCodeMap.get(code) ?? 0) + value)
+    if (code.startsWith('5')) errorRequests += value
   }
 
-  // Response time from histogram
-  const histText = httpRequestDurationSeconds.collect()
-  const histLines = histText.split('\n').filter(l => !l.startsWith('#'))
-
+  // Response time from histogram (all label sets merged)
+  const buckets = httpRequestDurationSeconds.buckets
+  const merged = new Array<number>(buckets.length + 1).fill(0)
   let histSum   = 0
   let histCount = 0
-  const bucketCounts: { le: number; count: number }[] = []
-
-  for (const line of histLines) {
-    const sumMatch    = /_sum(?:\{[^}]*\})?\s+([\d.eE+-]+)/.exec(line)
-    const countMatch  = /_count(?:\{[^}]*\})?\s+([\d.eE+-]+)/.exec(line)
-    const bucketMatch = /le="([\d.]+)"[^}]*}\s+([\d.]+)/.exec(line)
-
-    if (sumMatch)   histSum   += parseFloat(sumMatch[1]!)
-    if (countMatch) histCount += parseInt(countMatch[1]!, 10)
-    if (bucketMatch && bucketMatch[1] !== '+Inf') {
-      const le    = parseFloat(bucketMatch[1]!)
-      const count = parseInt(bucketMatch[2]!, 10)
-      bucketCounts.push({ le, count })
-    }
+  for (const s of httpRequestDurationSeconds.snapshot()) {
+    histSum   += s.sum
+    histCount += s.count
+    s.bucketCounts.forEach((c, i) => { merged[i]! += c })
   }
 
   const averageResponseMs = histCount > 0 ? (histSum / histCount) * 1000 : 0
 
-  // p95 estimate
+  // p95 estimate: first bucket whose cumulative count reaches 95% of the observations
   let p95ResponseMs = 0
   if (histCount > 0) {
     const p95Target = histCount * 0.95
-    const sorted = [...bucketCounts].sort((a, b) => Number(a.le) - Number(b.le))
-    for (const b of sorted) {
-      if (b.count >= p95Target) {
-        p95ResponseMs = b.le * 1000
-        break
-      }
-    }
-    if (p95ResponseMs === 0 && sorted.length > 0) {
-      p95ResponseMs = (sorted[sorted.length - 1]!.le) * 1000
-    }
+    const idx = merged.findIndex((c, i) => i < buckets.length && c >= p95Target)
+    p95ResponseMs = (idx >= 0 ? buckets[idx]! : buckets[buckets.length - 1]!) * 1000
   }
 
   const statusCodes = Array.from(statusCodeMap.entries()).map(([code, count]) => ({ code, count }))
@@ -439,38 +493,14 @@ export function getRequestMetrics(): RequestMetricsData {
 }
 
 export function getGraphQLMetrics(): GraphQLMetricsData {
-  const text   = graphqlResolverDurationSeconds.collect()
-  const lines  = text.split('\n').filter(l => !l.startsWith('#') && l.trim())
-
-  const resolverMap = new Map<string, { sum: number; count: number; max: number }>()
-
-  for (const line of lines) {
-    const sumMatch   = /resolver="([^"]+)"[^}]*}_sum\s+([\d.]+)/.exec(line)
-    const countMatch = /resolver="([^"]+)"[^}]*}_count\s+([\d.]+)/.exec(line)
-    if (sumMatch) {
-      const resolver = sumMatch[1]!
-      const sum      = parseFloat(sumMatch[2]!)
-      const entry    = resolverMap.get(resolver) ?? { sum: 0, count: 0, max: 0 }
-      entry.sum += sum
-      resolverMap.set(resolver, entry)
-    }
-    if (countMatch) {
-      const resolver = countMatch[1]!
-      const count    = parseInt(countMatch[2]!, 10)
-      const entry    = resolverMap.get(resolver) ?? { sum: 0, count: 0, max: 0 }
-      entry.count += count
-      resolverMap.set(resolver, entry)
-    }
-  }
-
-  const resolverList: ResolverMetricData[] = Array.from(resolverMap.entries()).map(([name, s]) => ({
-    name,
+  const resolverList: ResolverMetricData[] = graphqlResolverDurationSeconds.snapshot().map(s => ({
+    name:      s.labels['resolver'] ?? 'unknown',
     averageMs: s.count > 0 ? (s.sum / s.count) * 1000 : 0,
     maxMs:     s.max * 1000,
     count:     s.count,
   }))
 
-  resolverList.sort((a, b) => Number(b.averageMs) - Number(a.averageMs))
+  resolverList.sort((a, b) => b.averageMs - a.averageMs)
 
   const totalOperations = resolverList.reduce((acc, r) => acc + r.count, 0)
 
@@ -488,17 +518,11 @@ export function getGraphQLMetrics(): GraphQLMetricsData {
 }
 
 export function getNeo4jMetrics(): Neo4jMetricsData {
-  const text  = neo4jQueryDurationSeconds.collect()
-  const lines = text.split('\n').filter(l => !l.startsWith('#') && l.trim())
-
   let totalSum   = 0
   let totalCount = 0
-
-  for (const line of lines) {
-    const sumMatch   = /_sum(?:\{[^}]*\})?\s+([\d.eE+-]+)/.exec(line)
-    const countMatch = /_count(?:\{[^}]*\})?\s+([\d.eE+-]+)/.exec(line)
-    if (sumMatch)   totalSum   += parseFloat(sumMatch[1]!)
-    if (countMatch) totalCount += parseInt(countMatch[1]!, 10)
+  for (const s of neo4jQueryDurationSeconds.snapshot()) {
+    totalSum   += s.sum
+    totalCount += s.count
   }
 
   return {
@@ -549,25 +573,18 @@ export interface QueueMetricsData {
 
 // Reads the current snapshot from the gauge data (set by startBullMQMetricsCollector)
 export function getQueueMetricsSnapshot(): QueueMetricsData[] {
-  const text  = bullmqQueueDepth.collect()
-  const lines = text.split('\n').filter(l => !l.startsWith('#') && l.trim())
-
   const queueMap = new Map<string, QueueMetricsData>()
 
-  for (const line of lines) {
-    const m = /queue="([^"]+)",status="([^"]+)"\s+([\d.]+)/.exec(line)
-    if (!m) continue
-    const name  = m[1]!
-    const status = m[2]!
-    const value  = m[3]!
-    const val = parseInt(value, 10)
-
+  for (const { labels, value } of bullmqQueueDepth.snapshot()) {
+    const name   = labels['queue']
+    const status = labels['status']
+    if (!name || !status) continue
     const entry = queueMap.get(name) ?? { name, waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 }
-    if (status === 'waiting')   entry.waiting   = val
-    if (status === 'active')    entry.active     = val
-    if (status === 'completed') entry.completed  = val
-    if (status === 'failed')    entry.failed     = val
-    if (status === 'delayed')   entry.delayed    = val
+    if (status === 'waiting')   entry.waiting   = value
+    if (status === 'active')    entry.active    = value
+    if (status === 'completed') entry.completed = value
+    if (status === 'failed')    entry.failed    = value
+    if (status === 'delayed')   entry.delayed   = value
     queueMap.set(name, entry)
   }
 
@@ -585,11 +602,17 @@ export function metricsMiddlewareWithRpm(req: import('express').Request, res: im
 
 // ── BullMQ gauge collector ────────────────────────────────────────────────────
 
-export function startBullMQMetricsCollector(queues: Queue[]): NodeJS.Timeout {
+/**
+ * Samples job counts of the given queues every 30s into `bullmq_queue_depth`.
+ * `queues` may be a getter so queues opened after wiring are included.
+ * The interval is unref'd: it never keeps the process alive at shutdown.
+ */
+export function startBullMQMetricsCollector(queues: Queue[] | (() => Queue[]), intervalMs = 30_000): NodeJS.Timeout {
   const metricsLogger = logger.child({ module: 'metrics' })
+  const list = () => (typeof queues === 'function' ? queues() : queues)
 
   async function collect(): Promise<void> {
-    for (const queue of queues) {
+    for (const queue of list()) {
       try {
         const counts = await queue.getJobCounts('active', 'waiting', 'delayed', 'failed', 'completed', 'paused')
         const name   = queue.name
@@ -606,5 +629,7 @@ export function startBullMQMetricsCollector(queues: Queue[]): NodeJS.Timeout {
   }
 
   void collect()
-  return setInterval(() => void collect(), 30_000)
+  const timer = setInterval(() => void collect(), intervalMs)
+  timer.unref()
+  return timer
 }

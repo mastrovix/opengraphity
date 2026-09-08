@@ -1,8 +1,132 @@
-import { NotFoundError } from '../../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../../context.js'
+import { audit } from '../../../lib/audit.js'
 import { mapDashboardConfig, type Props } from './helpers.js'
 import { assertDashboardAccess, assertDashboardOwnerByWidget, assertReportTemplateAccess } from '../reportAccess.js'
+
+// ── Atomic layout save (F-08) ────────────────────────────────────────────────
+
+export interface DashboardLayoutWidgetInput {
+  id?: string | null
+  reportTemplateId: string
+  reportSectionId: string
+  colSpan: number
+}
+
+function toInt(v: unknown): number {
+  if (typeof v === 'number') return v
+  if (v && typeof (v as { toNumber?: () => number }).toNumber === 'function') return (v as { toNumber: () => number }).toNumber()
+  return Number(v)
+}
+
+/**
+ * Replaces the report-widget layout of a dashboard in one transaction.
+ * `widgets` is the desired final state in display order:
+ *   - entry without id  → CREATE
+ *   - entry with id     → SET col_span/order (must belong to this dashboard)
+ *   - existing widget not listed → DETACH DELETE
+ * Any failure rolls back everything, so the client never ends up with widgets
+ * half-persisted (the sequential add/remove/update/reorder it replaced did).
+ */
+export async function saveDashboardLayout(
+  _: unknown,
+  args: { dashboardId: string; widgets: DashboardLayoutWidgetInput[] },
+  ctx: GraphQLContext,
+) {
+  const { dashboardId, widgets } = args
+  const now = new Date().toISOString()
+
+  const seen = new Set<string>()
+  const keepIds: string[] = []
+  const updates: Array<{ id: string; colSpan: number; order: number }> = []
+  const creates: Array<{ reportTemplateId: string; reportSectionId: string; colSpan: number; order: number }> = []
+  widgets.forEach((w, order) => {
+    const colSpan = Math.round(Number(w.colSpan))
+    if (!Number.isFinite(colSpan) || colSpan < 1 || colSpan > 12) {
+      throw new ValidationError(`widget #${order}: colSpan must be between 1 and 12`)
+    }
+    if (w.id) {
+      if (seen.has(w.id)) throw new ValidationError(`widget ${w.id} appears twice in the layout`)
+      seen.add(w.id)
+      keepIds.push(w.id)
+      updates.push({ id: w.id, colSpan, order })
+    } else {
+      creates.push({ reportTemplateId: w.reportTemplateId, reportSectionId: w.reportSectionId, colSpan, order })
+    }
+  })
+
+  const session = getSession(undefined, 'WRITE')
+  try {
+    await assertDashboardAccess(session, dashboardId, ctx, 'write')
+    // Every NEW widget must point to a report the caller can read (a widget
+    // would otherwise expose someone else's private report on this dashboard).
+    for (const templateId of new Set(creates.map(c => c.reportTemplateId))) {
+      await assertReportTemplateAccess(session, templateId, ctx, 'read')
+    }
+
+    const props = await session.executeWrite(async (tx) => {
+      // 1. Delete widgets no longer in the layout
+      await tx.run(
+        `MATCH (d:DashboardConfig {id: $dashboardId, tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget)
+         WHERE NOT w.id IN $keepIds
+         DETACH DELETE w`,
+        { dashboardId, tenantId: ctx.tenantId, keepIds },
+      )
+
+      // 2. Update kept widgets — every id must resolve on THIS dashboard
+      if (updates.length) {
+        const upd = await tx.run(
+          `UNWIND $updates AS u
+           MATCH (d:DashboardConfig {id: $dashboardId, tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget {id: u.id})
+           SET w.col_span = toInteger(u.colSpan), w.order = toInteger(u.order), w.updated_at = $now
+           RETURN count(w) AS n`,
+          { updates, dashboardId, tenantId: ctx.tenantId, now },
+        )
+        const n = toInt(upd.records[0]?.get('n'))
+        if (n !== updates.length) {
+          // Throwing inside executeWrite rolls the whole layout back.
+          throw new NotFoundError('DashboardWidget', `${updates.length - n} of ${updates.length} widget ids do not belong to dashboard ${dashboardId}`)
+        }
+      }
+
+      // 3. Create new widgets
+      if (creates.length) {
+        await tx.run(
+          `MATCH (d:DashboardConfig {id: $dashboardId, tenant_id: $tenantId})
+           UNWIND $creates AS c
+           CREATE (w:DashboardWidget {
+             id: randomUUID(),
+             dashboard_id: $dashboardId,
+             report_template_id: c.reportTemplateId,
+             report_section_id: c.reportSectionId,
+             col_span: toInteger(c.colSpan),
+             order: toInteger(c.order),
+             created_at: $now
+           })
+           CREATE (d)-[:HAS_WIDGET]->(w)`,
+          { creates, dashboardId, tenantId: ctx.tenantId, now },
+        )
+      }
+
+      const dash = await tx.run(
+        `MATCH (d:DashboardConfig {id: $dashboardId, tenant_id: $tenantId})
+         SET d.updated_at = $now
+         RETURN properties(d) AS d`,
+        { dashboardId, tenantId: ctx.tenantId, now },
+      )
+      if (!dash.records.length) throw new NotFoundError('Dashboard', dashboardId)
+      return dash.records[0]!.get('d') as Props
+    })
+
+    void audit(ctx, 'dashboard.layout_saved', 'DashboardConfig', dashboardId, {
+      created: creates.length, kept: updates.length,
+    })
+    return mapDashboardConfig(props)
+  } finally {
+    await session.close()
+  }
+}
 
 // ── Widget Mutations ─────────────────────────────────────────────────────────
 

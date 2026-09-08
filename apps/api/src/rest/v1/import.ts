@@ -7,12 +7,16 @@
  * Both accept multipart/form-data with a `file` field containing the CSV
  * (max 20MB). The response is the ImportResult JSON at the top level:
  *   { totalRows, created, updated, errors: [{row, externalId, message}], warnings: [...] }
+ *
+ * Errors: malformed upload/CSV → ValidationError (400) via rest/errorHandler.ts;
+ * anything else → 500 with the full error in the log.
  */
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import Busboy from 'busboy'
-import { GraphQLError } from 'graphql'
 import { requirePermission } from '../../middleware/apiKeyAuth.js'
-import { logger } from '../../lib/logger.js'
+import { ValidationError } from '../../lib/errors.js'
+import { asyncHandler } from '../errorHandler.js'
+import { apiKeyOf } from '../apiContext.js'
 import {
   parseCsv,
   importIncidents,
@@ -92,52 +96,35 @@ function readCsvUpload(req: Request): Promise<UploadOk | UploadError> {
 
 type Importer = (rows: CsvRow[], ctx: ServiceCtx, opts: { dryRun: boolean }) => Promise<ImportResult>
 
-function makeImportHandler(label: string, importer: Importer) {
-  return (req: Request, res: Response) => {
-    void (async () => {
-      const upload = await readCsvUpload(req)
-      if (!upload.ok) {
-        res.status(upload.status).json({ error: { code: 'VALIDATION_ERROR', message: upload.message } })
-        return
-      }
+function makeImportHandler(importer: Importer) {
+  return asyncHandler(async (req: Request, res: Response) => {
+    const upload = await readCsvUpload(req)
+    if (!upload.ok) throw new ValidationError(upload.message)
 
-      let rows: CsvRow[]
-      try {
-        rows = parseCsv(upload.content)
-      } catch (err) {
-        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: `CSV non valido: ${err instanceof Error ? err.message : 'parse error'}` } })
-        return
-      }
-      if (rows.length === 0) {
-        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Il CSV non contiene righe dati (serve una riga di intestazione + almeno una riga)' } })
-        return
-      }
+    let rows: CsvRow[]
+    try {
+      rows = parseCsv(upload.content)
+    } catch (err) {
+      throw new ValidationError(`CSV non valido: ${err instanceof Error ? err.message : 'parse error'}`)
+    }
+    if (rows.length === 0) {
+      throw new ValidationError('Il CSV non contiene righe dati (serve una riga di intestazione + almeno una riga)')
+    }
 
-      const dryRun = String(req.query['dryRun'] ?? '').toLowerCase() === 'true'
-      const ctx: ServiceCtx = { tenantId: req.apiKey!.tenantId, userId: req.apiKey!.keyId }
+    const dryRun = String(req.query['dryRun'] ?? '').toLowerCase() === 'true'
+    const key = apiKeyOf(req)
+    const ctx: ServiceCtx = { tenantId: key.tenantId, userId: key.keyId }
 
-      try {
-        const result = await importer(rows, ctx, { dryRun })
-        res.json(result)
-      } catch (err) {
-        // ValidationError (lib/errors.js) → 400 with detail; anything else → 500
-        if (err instanceof GraphQLError && err.extensions?.['code'] === 'BAD_USER_INPUT') {
-          res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: err.message } })
-          return
-        }
-        logger.error({ err: err instanceof Error ? err.message : err, label }, '[import] import failed')
-        if (!res.headersSent) {
-          res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err instanceof Error ? err.message : 'Error' } })
-        }
-      }
-    })()
-  }
+    // ValidationError from the importer → 400; anything else → 500 (error middleware)
+    const result = await importer(rows, ctx, { dryRun })
+    res.json(result)
+  })
 }
 
 // POST /api/v1/import/incidents
-router.post('/incidents', requirePermission('incidents:write'), makeImportHandler('incidents', importIncidents))
+router.post('/incidents', requirePermission('incidents:write'), makeImportHandler(importIncidents))
 
 // POST /api/v1/import/kb-articles
-router.post('/kb-articles', requirePermission('kb:write'), makeImportHandler('kb-articles', importKBArticles))
+router.post('/kb-articles', requirePermission('kb:write'), makeImportHandler(importKBArticles))
 
 export { router as importRouter }

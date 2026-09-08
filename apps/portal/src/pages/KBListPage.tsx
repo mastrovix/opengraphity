@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { GET_KB_ARTICLES, GET_KB_CATEGORIES } from '@/graphql/queries'
 import { KBSearchBar } from '@/components/KBSearchBar'
+import { fmtDateLong } from '@/lib/format'
 
 interface KBArticle {
   id: string; title: string; slug: string; body: string
@@ -25,12 +26,6 @@ function excerpt(body: string, max = 200): string {
   return plain.length > max ? plain.slice(0, max) + '…' : plain
 }
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return ''
-  try {
-    return new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date(iso))
-  } catch { return iso }
-}
 
 export function KBListPage() {
   const { t }                   = useTranslation()
@@ -159,7 +154,7 @@ export function KBListPage() {
                       }}>
                         {article.category}
                       </span>
-                      {article.publishedAt && <span>{fmtDate(article.publishedAt)}</span>}
+                      {article.publishedAt && <span>{fmtDateLong(article.publishedAt)}</span>}
                       <span>{article.views} {t('kb.views')}</span>
                     </div>
                   </div>

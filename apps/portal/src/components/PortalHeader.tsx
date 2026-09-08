@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, LogOut, User, Menu, X } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
@@ -25,12 +25,18 @@ const NAV_STYLE_BASE: React.CSSProperties = {
 
 export function PortalHeader({ userName }: Props) {
   const { t }                   = useTranslation()
-  const navigate                = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   function logout() {
     keycloak.logout({ redirectUri: window.location.origin })
+  }
+
+  // The portal has no profile page of its own: identity (name, email,
+  // password, sessions) is managed in the Keycloak account console.
+  function openProfile() {
+    setMenuOpen(false)
+    void keycloak.accountManagement()
   }
 
   return (
@@ -67,7 +73,7 @@ export function PortalHeader({ userName }: Props) {
           {[
             { to: '/',        label: t('nav.home') },
             { to: '/tickets', label: t('nav.tickets') },
-            { to: '/catalog', label: 'Catalogo' },
+            { to: '/catalog', label: t('nav.catalog') },
             { to: '/kb',      label: t('nav.kb') },
           ].map(({ to, label }) => (
             <NavLink
@@ -143,7 +149,7 @@ export function PortalHeader({ userName }: Props) {
                 }}
               >
                 <button
-                  onClick={() => { setMenuOpen(false); navigate('/profile') }}
+                  onClick={openProfile}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#0F172A' }}
                 >
                   <User size={14} style={{ color: '#64748B' }} />
@@ -189,7 +195,7 @@ export function PortalHeader({ userName }: Props) {
           {[
             { to: '/',        label: t('nav.home') },
             { to: '/tickets', label: t('nav.tickets') },
-            { to: '/catalog', label: 'Catalogo' },
+            { to: '/catalog', label: t('nav.catalog') },
             { to: '/kb',      label: t('nav.kb') },
           ].map(({ to, label }) => (
             <NavLink

@@ -6,7 +6,8 @@
   "nav": {
     "home": "Home",
     "tickets": "My tickets",
-    "kb": "Knowledge Base"
+    "kb": "Knowledge Base",
+    "catalog": "Catalog"
   },
   "home": {
     "greeting": "Hello {{name}}, how can we help you?",
@@ -85,7 +86,13 @@
       "closed": "No closed tickets."
     },
     "prev": "← Previous",
-    "next": "Next →"
+    "next": "Next →",
+    "openedOn": "Opened {{date}}",
+    "updatedOn": "Updated {{date}}",
+    "noMessages": "No messages yet.",
+    "loadError": "Unable to load the ticket: {{message}}",
+    "notFound": "Ticket not found or not accessible.",
+    "rulesError": "Unable to validate required fields: {{message}}"
   },
   "kb": {
     "title": "Knowledge Base",
@@ -102,7 +109,9 @@
     "published": "Published on",
     "by": "by",
     "views": "views",
-    "breadcrumb": "Knowledge Base"
+    "breadcrumb": "Knowledge Base",
+    "notFound": "Article not found",
+    "searchButton": "Search"
   },
   "common": {
     "loading": "Loading...",
@@ -113,5 +122,26 @@
     "save": "Save",
     "back": "← Back",
     "required": "Required field"
+  },
+  "catalog": {
+    "title": "Service catalog",
+    "intro": "Request a service from the catalog. Some requests go through an approval.",
+    "loadError": "Error loading the catalog: {{message}}",
+    "empty": "No services available.",
+    "uncategorized": "Other",
+    "requiresApproval": "Requires approval",
+    "approvalNotice": "This request will be submitted for approval.",
+    "details": "Details (optional)",
+    "detailsPlaceholder": "Add any detail useful for fulfilment…",
+    "submit": "Submit request",
+    "submitting": "Submitting…"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The address {{path}} does not exist in the portal.",
+    "home": "Back to home"
+  },
+  "errors": {
+    "network": "Connection error"
   }
 }

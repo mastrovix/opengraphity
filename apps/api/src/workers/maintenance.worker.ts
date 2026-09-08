@@ -1,21 +1,17 @@
-import { Worker, Queue, type Job } from 'bullmq'
+import type { Worker, Job } from 'bullmq'
 import { readdirSync, statSync }  from 'node:fs'
 import { resolve }                from 'node:path'
 import { unlink }                 from 'node:fs/promises'
-import { getRedisOptions }        from '@opengraphity/events'
 import { runBackup }              from '../scripts/backup-neo4j.js'
 import { logger }                 from '../lib/logger.js'
+import { createWorker, getQueue } from '../lib/bullmq.js'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
 const BACKUP_DIR      = resolve(process.env['BACKUP_DIR'] ?? './backups')
 const RETENTION_COUNT = 7
 
-// ── Queue ─────────────────────────────────────────────────────────────────────
-
-const maintenanceQueue = new Queue('maintenance', {
-  connection: getRedisOptions(),
-})
+export const MAINTENANCE_QUEUE = 'maintenance'
 
 // ── Retention: keep last N backups ────────────────────────────────────────────
 
@@ -30,8 +26,13 @@ async function pruneOldBackups(): Promise<void> {
         const mtimeB = statSync(b).mtimeMs
         return mtimeA - mtimeB   // oldest first
       })
-  } catch {
-    return   // directory may not exist yet
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') {
+      maintenanceLogger.info({ backupDir: BACKUP_DIR }, 'Backup directory does not exist yet — nothing to prune')
+      return
+    }
+    throw err
   }
 
   if (files.length <= RETENTION_COUNT) return
@@ -65,6 +66,8 @@ async function processMaintenanceJob(job: Job): Promise<void> {
 // ── Schedule recurring backup ─────────────────────────────────────────────────
 
 async function scheduleBackupJob(): Promise<void> {
+  const maintenanceQueue = getQueue(MAINTENANCE_QUEUE)
+
   // Remove any stale repeatable jobs first, then re-add
   const repeatableJobs = await maintenanceQueue.getRepeatableJobs()
   for (const job of repeatableJobs) {
@@ -86,18 +89,11 @@ async function scheduleBackupJob(): Promise<void> {
 
 // ── Worker export ─────────────────────────────────────────────────────────────
 
-export function startMaintenanceWorker(): Worker {
-  void scheduleBackupJob()
+/** Async: the schedule registration is awaited (a failure is a startup error, not an unhandled rejection). */
+export async function startMaintenanceWorker(): Promise<Worker> {
+  await scheduleBackupJob()
 
-  const worker = new Worker('maintenance', processMaintenanceJob, {
-    connection:  getRedisOptions(),
-    concurrency: 1,
-  })
-
-  worker.on('failed', (job, err) => {
-    maintenanceLogger.error({ jobName: job?.name, err: err.message }, 'Maintenance job failed')
-  })
-
+  const worker = createWorker(MAINTENANCE_QUEUE, processMaintenanceJob, { concurrency: 1 })
   maintenanceLogger.info({ backupDir: BACKUP_DIR }, 'Maintenance worker started')
   return worker
 }

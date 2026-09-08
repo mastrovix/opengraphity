@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNodesState, useEdgesState, MarkerType } from '@xyflow/react'
-import type { Node, Edge } from '@xyflow/react'
+import type { Node, Edge, OnNodesChange } from '@xyflow/react'
 import type {
   WorkflowDefinition,
   WorkflowKey,
@@ -37,26 +37,58 @@ export function defToWorkflowKey(def: WorkflowDefinition | null): WorkflowKey {
   return 'standard'
 }
 
+export interface PendingStepChange {
+  stepName:     string
+  label:        string
+  enterActions: string | null
+  exitActions:  string | null
+  isInitial?:   boolean
+  isTerminal?:  boolean
+  isOpen?:      boolean
+  category?:    string | null
+}
+
 export function useWorkflowDesigner(def: WorkflowDefinition | null) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hasChanges,         setHasChanges]         = useState(false)
   const [pendingChanges,     setPendingChanges]     = useState<PendingTransitionChange[]>([])
-  const [pendingStepChanges, setPendingStepChanges] = useState<{
-    stepName:     string
-    label:        string
-    enterActions: string | null
-    exitActions:  string | null
-    isInitial?:   boolean
-    isTerminal?:  boolean
-    isOpen?:      boolean
-    category?:    string | null
-  }[]>([])
+  const [pendingStepChanges, setPendingStepChanges] = useState<PendingStepChange[]>([])
+
+  // Modifiche locali non ancora salvate, lette al rebuild (refetch dopo
+  // add/remove di step o transizioni) per non farle sparire dal canvas pur
+  // restando in coda per il Salva. Ref e non dep dell'effetto: un rebuild a
+  // ogni "Salva localmente" chiuderebbe il pannello e resetterebbe la selezione.
+  const pendingStepRef = useRef<PendingStepChange[]>([])
+  const pendingTrRef   = useRef<PendingTransitionChange[]>([])
+  const draggedPosRef  = useRef<Record<string, { x: number; y: number }>>({})
+  pendingStepRef.current = pendingStepChanges
+  pendingTrRef.current   = pendingChanges
 
   const selectedWorkflow = defToWorkflowKey(def)
+
+  // Il solo drag di un nodo è una modifica da salvare (le posizioni vanno in
+  // saveWorkflowChanges.positions): prima non abilitava "Salva".
+  const onNodesChange: OnNodesChange<Node> = useCallback((changes) => {
+    onNodesChangeBase(changes)
+    for (const c of changes) {
+      if (c.type === 'position' && !c.dragging && c.position) {
+        draggedPosRef.current[c.id] = { x: c.position.x, y: c.position.y }
+        setHasChanges(true)
+      }
+    }
+  }, [onNodesChangeBase])
+
+  /** Dopo un salvataggio riuscito: le modifiche sono ora nel `def` refetchato. */
+  const clearLocalChanges = useCallback(() => {
+    setPendingChanges([])
+    setPendingStepChanges([])
+    draggedPosRef.current = {}
+    setHasChanges(false)
+  }, [])
 
   // ── Build nodes / edges from definition ──────────────────────────────────────
   useEffect(() => {
@@ -79,14 +111,33 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     const stepById: Record<string, string> = {}
     def.steps.forEach((s) => { stepById[s.name] = s.id })
 
-    const newNodes: Node[] = def.steps.map((step, index) => ({
-      id:       step.id,
-      type:     'workflowStep',
-      position: positions[step.name] ?? { x: index * 220, y: 200 },
-      data:     { step, accentColor } satisfies StepNodeData,
-    }))
+    const pendingStepByName = new Map(pendingStepRef.current.map((c) => [c.stepName, c]))
+    const pendingTrById     = new Map(pendingTrRef.current.map((c) => [c.transitionId, c]))
 
-    const newEdges: Edge[] = def.transitions.map((tr) => {
+    const newNodes: Node[] = def.steps.map((step, index) => {
+      // Sorgente del layout, in ordine: drag non ancora salvato → posizione
+      // salvata sul server → tabella curata del workflow seed → fila di default.
+      const dragged = draggedPosRef.current[step.id]
+      const saved   = (step.positionX != null && step.positionY != null)
+        ? { x: step.positionX, y: step.positionY }
+        : null
+      const position = dragged ?? saved ?? positions[step.name] ?? { x: index * 220, y: 200 }
+      const pending  = pendingStepByName.get(step.name)
+      const mergedStep: WFStep = pending
+        ? { ...step, label: pending.label, enterActions: pending.enterActions, exitActions: pending.exitActions,
+            isInitial: pending.isInitial, isTerminal: pending.isTerminal, isOpen: pending.isOpen, category: pending.category }
+        : step
+      return {
+        id:       step.id,
+        type:     'workflowStep',
+        position,
+        data:     { step: mergedStep, accentColor } satisfies StepNodeData,
+      }
+    })
+
+    const newEdges: Edge[] = def.transitions.map((serverTr) => {
+      const pending = pendingTrById.get(serverTr.id)
+      const tr: WFTransition = pending ? { ...serverTr, ...pending } : serverTr
       const edgeColor  = lookupOrError(TRIGGER_COLOR, tr.trigger, 'TRIGGER_COLOR', 'var(--color-danger)')
       const baseKey    = `${tr.fromStepName}→${tr.toStepName}`
       const triggerKey = `${tr.fromStepName}→${tr.toStepName}→${tr.trigger}`
@@ -133,8 +184,10 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
 
     setNodes(newNodes)
     setEdges(newEdges)
-    setSelectedNodeId(null)
-    setSelectedEdgeId(null)
+    // La selezione sopravvive al refetch se l'elemento esiste ancora (es. dopo
+    // aver disegnato una transizione l'utente vuole impostarne il trigger).
+    setSelectedNodeId((prev) => prev && newNodes.some((n) => n.id === prev) ? prev : null)
+    setSelectedEdgeId((prev) => prev && newEdges.some((e) => e.id === prev) ? prev : null)
   }, [def, selectedWorkflow, setNodes, setEdges])
 
   // ── Click handlers ────────────────────────────────────────────────────────────
@@ -168,16 +221,7 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     setHasChanges(true)
   }, [])
 
-  const handleSaveStepLocally = useCallback((change: {
-    stepName:     string
-    label:        string
-    enterActions: string | null
-    exitActions:  string | null
-    isInitial?:   boolean
-    isTerminal?:  boolean
-    isOpen?:      boolean
-    category?:    string | null
-  }) => {
+  const handleSaveStepLocally = useCallback((change: PendingStepChange) => {
     setPendingStepChanges((prev) => {
       const idx = prev.findIndex((c) => c.stepName === change.stepName)
       if (idx >= 0) {
@@ -215,7 +259,6 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
           : e,
       ),
     )
-    setHasChanges(false)
   }
 
   const handleReconnect = useCallback((
@@ -253,6 +296,7 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     selectedWorkflow,
     setHasChanges,
     setPendingChanges,
+    clearLocalChanges,
     handleNodeClick,
     handleEdgeClick,
     handlePaneClick,

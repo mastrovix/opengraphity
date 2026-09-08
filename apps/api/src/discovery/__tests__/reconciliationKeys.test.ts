@@ -11,7 +11,7 @@ vi.mock('@opengraphity/discovery', () => ({
   normalizeProperties: vi.fn((props: unknown) => props),
 }))
 
-const { reconcileBatch, assertDiscoveredPropertyKeys } = await import('../reconciliationEngine.js')
+const { reconcileBatch, assertDiscoveredPropertyKeys, createCICypher } = await import('../reconciliationEngine.js')
 const { getSession } = await import('@opengraphity/neo4j')
 
 // Session whose tx.run captures (query, params) so we can assert the SET shape.
@@ -22,8 +22,13 @@ function makeCapturingSession(reads: Record<string, unknown>[][] = []) {
     executeRead: vi.fn().mockImplementation(() =>
       Promise.resolve({ records: (reads[readCall++] ?? []).map(r => ({ get: (k: string) => r[k] })) }),
     ),
+    // The MERGE create returns `created`; every other write returns no rows.
     executeWrite: vi.fn().mockImplementation((fn: (tx: unknown) => unknown) =>
-      fn({ run: (query: string, params: Record<string, unknown>) => { writes.push({ query, params }); return Promise.resolve({ records: [] }) } }),
+      fn({ run: (query: string, params: Record<string, unknown>) => {
+        writes.push({ query, params })
+        const records = query.startsWith('MERGE (ci:ConfigurationItem') ? [{ get: (k: string) => (k === 'created' ? true : null) }] : []
+        return Promise.resolve({ records })
+      } }),
     ),
     close: vi.fn().mockResolvedValue(undefined),
   }
@@ -62,7 +67,7 @@ describe('assertDiscoveredPropertyKeys (B-04)', () => {
 describe('reconcileBatch uses parameter maps, never keys in the query text', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('createCI: CREATE … SET ci += $props', async () => {
+  it('createCI (B-03): MERGE sulla chiave di discovery, ON CREATE SET label + props, ON MATCH solo last_seen', async () => {
     const { session, writes } = makeCapturingSession([[]])
     vi.mocked(getSession).mockReturnValue(session as never)
 
@@ -72,7 +77,16 @@ describe('reconcileBatch uses parameter maps, never keys in the query text', () 
     }], source, 'run-1', 'tenant-1', stats())
 
     expect(writes).toHaveLength(1)
-    expect(writes[0]!.query).toBe('CREATE (ci:ConfigurationItem:Server) SET ci += $props')
+    const q = writes[0]!.query
+    expect(q).toBe(createCICypher('Server'))
+    // Idempotency key = the same triple findExisting looks up and the
+    // ci_discovery_key_unique constraint enforces (packages/neo4j/src/init.ts).
+    expect(q).toContain('MERGE (ci:ConfigurationItem {tenant_id: $key.tenant_id, discovery_source_id: $key.discovery_source_id, discovery_external_id: $key.discovery_external_id})')
+    expect(q).toContain('ON CREATE SET ci:Server, ci += $props')
+    expect(q).toContain('ON MATCH SET ci.discovery_last_seen = $now, ci.updated_at = $now')
+    expect(q).toContain('RETURN ci.id = $props.id AS created')
+    expect(q).not.toMatch(/^CREATE /)
+    expect(writes[0]!.params['key']).toEqual({ tenant_id: 'tenant-1', discovery_source_id: 'src-1', discovery_external_id: 'ext-1' })
     expect(writes[0]!.params['props']).toMatchObject({
       ip_address: '10.0.0.1', os: 'linux', name: 'web-01', tenant_id: 'tenant-1', type: 'server',
       discovery_external_id: 'ext-1', discovery_source_id: 'src-1',

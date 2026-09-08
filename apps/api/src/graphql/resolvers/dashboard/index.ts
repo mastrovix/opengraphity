@@ -24,6 +24,7 @@ import {
   removeDashboardWidget,
   updateDashboardWidget,
   reorderDashboardWidgets,
+  saveDashboardLayout,
 } from './widgetMutations.js'
 
 export const dashboardResolvers = {
@@ -41,6 +42,7 @@ export const dashboardResolvers = {
     removeDashboardWidget,
     updateDashboardWidget,
     reorderDashboardWidgets,
+    saveDashboardLayout,
   },
   DashboardConfig: {
     widgets:       dashboardWidgets,

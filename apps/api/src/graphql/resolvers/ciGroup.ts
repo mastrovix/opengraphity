@@ -54,6 +54,7 @@ async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQ
     const membershipType = prop(group.props, 'membership_type', 'membershipType') ?? 'manual'
 
     let rows: { props: Props; nodeLabels: string[] }[]
+    let total: number
 
     if (membershipType === 'dynamic') {
       // Build the member query from the criteria fields.
@@ -70,17 +71,29 @@ async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQ
         nameContains: prop(group.props, 'criteria_name_contains', 'criteriaNameContains'),
         limit:        MEMBERS_LIMIT,
       }
-      rows = await runQuery<{ props: Props; nodeLabels: string[] }>(session,
-        `MATCH (m {tenant_id: $tenantId})
+      const criteriaWhere = `
          WHERE ${labelPredicate}
            AND NOT m:${GROUP_LABEL}
            AND ($environment IS NULL OR m.environment = $environment)
            AND ($status IS NULL OR m.status = $status)
-           AND ($nameContains IS NULL OR toLower(m.name) CONTAINS toLower($nameContains))
+           AND ($nameContains IS NULL OR toLower(m.name) CONTAINS toLower($nameContains))`
+      rows = await runQuery<{ props: Props; nodeLabels: string[] }>(session,
+        `MATCH (m {tenant_id: $tenantId})
+         ${criteriaWhere}
          RETURN properties(m) AS props, labels(m) AS nodeLabels
          ORDER BY m.name ASC LIMIT toInteger($limit)`,
         params,
       )
+      // Conteggio reale, stessi criteri, senza LIMIT: il taglio a MEMBERS_LIMIT
+      // deve essere visibile al client ("500 di N"), non spacciato per il totale.
+      const countRow = await runQueryOne<{ total: number }>(session,
+        `MATCH (m {tenant_id: $tenantId})
+         ${criteriaWhere}
+         RETURN count(m) AS total`,
+        params,
+      )
+      if (!countRow) throw new Error(`ciGroupMembers: count query returned no row for group ${args.groupId}`)
+      total = Number(countRow.total)
     } else {
       // Manual membership: HAS_MEMBER relationships toward any known CI label.
       const labelPredicate = '(' + ALL_CI_LABELS.map(l => `m:${l}`).join(' OR ') + ')'
@@ -91,12 +104,14 @@ async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQ
          ORDER BY m.name ASC`,
         { groupId: args.groupId, tenantId: ctx.tenantId },
       )
+      total = rows.length
     }
 
-    return rows.map((r) => {
+    const items = rows.map((r) => {
       r.props['type'] = ciTypeFromLabels(r.nodeLabels)
       return mapCI(r.props)
     })
+    return { items, total, truncated: total > items.length }
   })
 }
 

@@ -1,20 +1,11 @@
+import { fmtDateTime } from '@/lib/format'
+
 interface Props {
   body:        string
   authorName:  string
   authorEmail: string
   createdAt:   string
   isOwn:       boolean   // true = utente corrente (destra), false = agente IT (sinistra)
-}
-
-function fmtDate(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat('it-IT', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    }).format(new Date(iso))
-  } catch {
-    return iso
-  }
 }
 
 export function CommentBubble({ body, authorName, createdAt, isOwn }: Props) {
@@ -31,7 +22,7 @@ export function CommentBubble({ body, authorName, createdAt, isOwn }: Props) {
         marginBottom: 4,
         textAlign: isOwn ? 'right' : 'left',
       }}>
-        {authorName || 'Agente IT'} · {fmtDate(createdAt)}
+        {authorName || 'Agente IT'} · {fmtDateTime(createdAt)}
       </div>
       <div style={{
         maxWidth:        '75%',

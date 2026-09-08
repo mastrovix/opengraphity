@@ -2,9 +2,10 @@ import { assertSafeOutboundUrl } from '@opengraphity/events'
 
 export * from './sse.js'
 export * from './email.js'
-export * from './teams.js'
 export * from './webhook.js'
 export * from './dispatcher.js'
+export * from './escapeHtml.js'
+export { loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
 
 export interface NotificationChannelData {
   id: string

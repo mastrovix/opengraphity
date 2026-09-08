@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { toast } from 'sonner'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { SAVE_WORKFLOW_CHANGES, ADD_WORKFLOW_TRANSITION, REMOVE_WORKFLOW_TRANSITION, REMOVE_WORKFLOW_STEP } from '@/graphql/mutations'
@@ -34,9 +35,7 @@ export function WorkflowDesignerPage() {
     hasChanges,
     pendingChanges,
     pendingStepChanges,
-    setHasChanges,
-    setPendingChanges,
-    setPendingStepChanges,
+    clearLocalChanges,
     handleNodeClick,
     handleEdgeClick,
     handlePaneClick,
@@ -47,9 +46,9 @@ export function WorkflowDesignerPage() {
     onEdgeSaved,
   } = useWorkflowDesigner(def)
 
-  const [saveWorkflowChanges] = useMutation<{ saveWorkflowChanges: { id: string; name: string; version: number } }>(SAVE_WORKFLOW_CHANGES, {
-    onError: (e) => toast.error(e.message),
-  })
+  // Nessun onError qui: handleSave distingue CONFLICT (modifiche di un altro
+  // utente → non sovrascrivere, invitare a ricaricare) dagli altri errori.
+  const [saveWorkflowChanges] = useMutation<{ saveWorkflowChanges: { id: string; name: string; version: number } }>(SAVE_WORKFLOW_CHANGES)
 
   const [addTransition] = useMutation(ADD_WORKFLOW_TRANSITION, { onError: (e) => toast.error(e.message) })
   const [removeTransition] = useMutation(REMOVE_WORKFLOW_TRANSITION, { onError: (e) => toast.error(e.message) })
@@ -107,20 +106,36 @@ export function WorkflowDesignerPage() {
       positionX: n.position.x,
       positionY: n.position.y,
     }))
-    const result = await saveWorkflowChanges({
-      variables: {
-        definitionId: def.id,
-        transitions:  pendingChanges,
-        positions,
-        steps:        pendingStepChanges,
-      },
-    })
-    const newVersion = result.data?.saveWorkflowChanges?.version ?? (def.version + 1)
-    setPendingChanges([])
-    setPendingStepChanges([])
-    setHasChanges(false)
+    let result
+    try {
+      result = await saveWorkflowChanges({
+        variables: {
+          definitionId:    def.id,
+          transitions:     pendingChanges,
+          positions,
+          steps:           pendingStepChanges,
+          expectedVersion: def.version,
+        },
+      })
+    } catch (e) {
+      const code = CombinedGraphQLErrors.is(e) ? e.errors[0]?.extensions?.['code'] : undefined
+      if (code === 'CONFLICT') {
+        // Le modifiche locali restano in coda: sta all'utente ricaricare (perdendole)
+        // o confrontarle; non sovrascriviamo mai il lavoro dell'altro utente.
+        toast.error('Workflow modificato da un altro utente: ricarica la pagina prima di salvare. Le tue modifiche non sono state applicate.', { duration: 10_000 })
+      } else {
+        toast.error(e instanceof Error ? e.message : String(e))
+      }
+      return
+    }
+    const newVersion = result.data?.saveWorkflowChanges?.version
+    if (newVersion == null) {
+      toast.error('Salvataggio senza risposta dal server: ricarica la pagina per verificare lo stato del workflow.')
+      return
+    }
+    clearLocalChanges()
     toast.success(`Workflow salvato — v${newVersion}`)
-    refetch()
+    void refetch()
   }
 
   return (

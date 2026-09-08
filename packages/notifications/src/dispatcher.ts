@@ -3,10 +3,14 @@ import { BaseConsumer } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import { getSession } from '@opengraphity/neo4j'
 import { sseManager, InAppNotification } from './sse.js'
-import { sendTeamsCard, TeamsCard } from './teams.js'
-import { dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
+import { sendTeamsAdaptiveMessage, type TeamsAdaptiveCard } from './index.js'
+import {
+  loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification,
+  type ChannelPlatform,
+} from './consumer.js'
 import type { IncidentData, ChangeTaskPayload } from './formatters.js'
 import { APP_URL } from './appUrl.js'
+import { escapeHtml } from './escapeHtml.js'
 
 // ── Rule model ────────────────────────────────────────────────────────────────
 
@@ -110,6 +114,23 @@ function extractMessage(eventType: string, payload: unknown): string {
   if (severity && eventType === 'incident.created') parts.push(severity)
   if (assignedTo) parts.push(assignedTo)
   return parts.join(' — ')
+}
+
+/**
+ * HTML body of a notification email. Title/message derive from user input
+ * (ticket titles, step names): every interpolation is escaped so a crafted
+ * title cannot inject markup or links into the admins' mailbox (D-11).
+ * Exported for tests.
+ */
+export function renderNotificationEmail(notification: InAppNotification): string {
+  const link = notification.entity_id
+    ? `<a href="${escapeHtml(`${APP_URL}/${notification.entity_type ?? 'incidents'}s/${notification.entity_id}`)}" style="color:#0EA5E9;">Vedi dettagli</a>`
+    : ''
+  return `<div style="font-family:Arial,sans-serif;padding:16px;">
+          <h2 style="color:#0F172A;margin:0 0 8px;">${escapeHtml(notification.title)}</h2>
+          <p style="color:#64748B;margin:0 0 16px;">${escapeHtml(notification.message)}</p>
+          ${link}
+        </div>`
 }
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
@@ -218,23 +239,15 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       return
     }
 
-    // SLA breached → Slack + Teams card
+    // Platforms the rule routes this event to. Every Slack/Teams message goes
+    // to the TENANT's NotificationChannel rows (loadChannels) — never to a
+    // process-wide webhook from env, which would mix tenants (D-07).
+    const platforms = channels.filter((c): c is ChannelPlatform => c === 'slack' || c === 'teams')
+
+    // SLA breached → tenant Slack/Teams channels subscribed to 'sla_breach'
     if (event.type === 'sla.breached') {
       const p = event.payload as Record<string, unknown>
-      if (hasTeams) {
-        const card: TeamsCard = {
-          title:   'SLA Violato',
-          message: `SLA superato per ${p['entity_type']} ${p['entity_id']}`,
-          color:   'FF0000',
-          facts: [
-            { name: 'Entity Type', value: p['entity_type'] as string },
-            { name: 'Entity ID',   value: p['entity_id']   as string },
-            { name: 'Breached At', value: p['breached_at'] as string },
-          ],
-        }
-        await sendTeamsCard(card)
-      }
-      if (hasSlack && p['entity_type'] === 'incident') {
+      if (p['entity_type'] === 'incident') {
         const incident: IncidentData = {
           id:       p['entity_id'] as string,
           title:    `SLA breach su incident ${p['entity_id']}`,
@@ -242,29 +255,32 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
           status:   'open',
           tenantId: event.tenant_id,
         }
-        await dispatchIncidentNotification(event.tenant_id, 'sla_breach', incident)
+        await dispatchIncidentNotification(event.tenant_id, 'sla_breach', incident, platforms)
+      } else if (hasTeams) {
+        const card: TeamsAdaptiveCard = {
+          type: 'AdaptiveCard',
+          version: '1.4',
+          body: [
+            { type: 'TextBlock', text: '🔴 SLA Violato', weight: 'Bolder', size: 'Large', wrap: true },
+            { type: 'TextBlock', text: `SLA superato per ${String(p['entity_type'])} ${String(p['entity_id'])}`, wrap: true },
+            { type: 'FactSet', facts: [
+              { title: 'Entity Type', value: String(p['entity_type'] ?? '—') },
+              { title: 'Entity ID',   value: String(p['entity_id']   ?? '—') },
+              { title: 'Breached At', value: String(p['breached_at'] ?? '—') },
+            ] },
+          ],
+        }
+        const teamsChannels = await loadChannels(event.tenant_id, 'sla_breach', ['teams'])
+        for (const ch of teamsChannels) {
+          if (!ch.webhookUrl) throw new Error(`Teams NotificationChannel ${ch.id} has no webhook_url`)
+          await sendTeamsAdaptiveMessage(ch.webhookUrl, card)
+        }
       }
       return
     }
 
-    // Incident critical → Teams card on incident.created
-    if (event.type === 'incident.created' && hasTeams) {
-      const p = event.payload as Record<string, unknown>
-      if (p['severity'] === 'critical') {
-        const card: TeamsCard = {
-          title:   'notification.incident.created.title',
-          message: `${p['title']} — ${p['severity']}`,
-          color:   'FF0000',
-          facts: [
-            { name: 'Severity',    value: p['severity'] as string },
-            { name: 'Incident ID', value: p['id']       as string },
-          ],
-        }
-        await sendTeamsCard(card)
-      }
-    }
-
-    // Incident Slack dispatch
+    // Incident Slack/Teams dispatch (a critical incident.created reaches the
+    // tenant's Teams channels through the same path — formatTeamsIncident).
     const INCIDENT_EVENT_MAP: Record<string, 'assigned' | 'resolved' | 'escalation' | 'sla_breach'> = {
       'incident.created':   'assigned',
       'incident.resolved':  'resolved',
@@ -286,7 +302,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       assigneeName: typeof p['assignedTo'] === 'string' && p['assignedTo'] !== '—' ? p['assignedTo'] as string : null,
       tenantId:     event.tenant_id,
     }
-    await dispatchIncidentNotification(event.tenant_id, notifType, incident)
+    await dispatchIncidentNotification(event.tenant_id, notifType, incident, platforms)
   }
 
   private async dispatchEmail(event: DomainEvent<unknown>, notification: InAppNotification): Promise<void> {
@@ -295,7 +311,10 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     // never be invisible.
     const { sendEmail } = await import('./email.js')
 
-    // Only send to admin/operator users with real email addresses
+    // Recipients: admin/operator users with an email address who have not
+    // opted out. `notifications_enabled` is the ONLY exclusion criterion
+    // (absent → enabled, false → excluded) — demo accounts are flagged with
+    // it instead of being pattern-matched on their address (D-20).
     const session = getSession()
     try {
         const result = await session.executeRead(tx => tx.run(
@@ -303,9 +322,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
            WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR']
              AND u.email IS NOT NULL
              AND u.email <> ''
-             AND NOT u.email CONTAINS '@demo.'
-             AND NOT u.email CONTAINS '@opengrafo.com'
-             AND NOT u.email =~ 'usr-\\\\d+@.*'
+             AND coalesce(u.notifications_enabled, true) = true
            RETURN u.email AS email`,
           { tenantId: event.tenant_id },
         ))
@@ -313,11 +330,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         if (emails.length === 0) return
 
         const subject = `[${event.tenant_id}] ${notification.title}: ${notification.message.slice(0, 80)}`
-        const html = `<div style="font-family:Arial,sans-serif;padding:16px;">
-          <h2 style="color:#0F172A;margin:0 0 8px;">${notification.title}</h2>
-          <p style="color:#64748B;margin:0 0 16px;">${notification.message}</p>
-          ${notification.entity_id ? `<a href="${APP_URL}/${notification.entity_type ?? 'incidents'}s/${notification.entity_id}" style="color:#0EA5E9;">Vedi dettagli</a>` : ''}
-        </div>`
+        const html = renderNotificationEmail(notification)
 
       // Batch emails (Resend limit: 50 per call)
       for (let i = 0; i < emails.length; i += 50) {

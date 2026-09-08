@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm'
 import { BookOpen, Eye, ThumbsUp, ThumbsDown, Tag, ArrowLeft, User, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
+import { QueryError } from '@/components/QueryError'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { lookupOrError } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
@@ -46,7 +47,7 @@ export function KBArticlePage() {
   const { slug }  = useParams<{ slug: string }>()
   const { t }     = useTranslation()
 
-  const { data, loading, error } = useQuery<{ kbArticleBySlug: {
+  const { data, loading, error, refetch } = useQuery<{ kbArticleBySlug: {
     id: string; title: string; slug: string; body: string; category: string
     tags: string[]; status: string; authorId: string; authorName: string
     views: number; helpfulCount: number; notHelpfulCount: number
@@ -71,7 +72,15 @@ export function KBArticlePage() {
   const related = (relData?.kbArticles?.items ?? []).filter((a) => a.id !== article?.id).slice(0, 4)
 
   if (loading) return <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: 32 }}>{t('common.loading')}</div>
-  if (error || !article) return <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.articleNotFound')} />
+  // A failed request (network, 500, auth) is NOT "article not found" (F-09).
+  if (error) {
+    return (
+      <PageContainer>
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      </PageContainer>
+    )
+  }
+  if (!article) return <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.articleNotFound')} />
 
   return (
     <PageContainer style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 32 }}>

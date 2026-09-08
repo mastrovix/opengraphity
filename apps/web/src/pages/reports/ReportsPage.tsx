@@ -152,6 +152,10 @@ export default function ReportsPage() {
       let accumulatedText = ''
       let donePayload: { message: ReportMessage; conversationId?: string } | null = null
       let errorOccurred = false
+      // F-10: frames the client could not interpret are counted and reported,
+      // never dropped in silence (a truncated chunk = missing answer text).
+      let droppedFrames = 0
+      let firstDropReason: string | null = null
 
       // Parse SSE with event names
       const processSSEChunk = (block: string) => {
@@ -204,8 +208,14 @@ export default function ReportsPage() {
                 if (isNewConv) pendingConvId = payload.conversationId
               } else if (currentEvent === 'done' && payload.message) {
                 donePayload = { message: payload.message, conversationId: payload.conversationId }
+              } else {
+                droppedFrames++
+                firstDropReason ??= `evento "${currentEvent || '(nessuno)'}" con payload inatteso`
               }
-            } catch { /* ignore */ }
+            } catch (e) {
+              droppedFrames++
+              firstDropReason ??= `JSON non valido: ${e instanceof Error ? e.message : String(e)}`
+            }
             currentEvent = ''
             lastEventWasError = false
           }
@@ -224,6 +234,12 @@ export default function ReportsPage() {
         }
       }
       if (buffer.trim()) processSSEChunk(buffer)
+
+      if (droppedFrames > 0) {
+        const warn = `${droppedFrames} frammento/i della risposta non interpretati (${firstDropReason}): il testo potrebbe essere incompleto.`
+        if (import.meta.env.DEV) console.warn('[reports] SSE frames dropped:', droppedFrames, firstDropReason)
+        toast.warning(warn)
+      }
 
       // TS 5.4 narrows closure-assigned vars to null — use explicit cast to restore union type
       type DonePayload = { message: ReportMessage; conversationId?: string }
@@ -307,9 +323,14 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url)
   }
 
+  // F-04: the messages column carries `report-print-area`; the print CSS below
+  // hides everything else via visibility (display:none on an ancestor would
+  // hide the area too — the old rule printed a blank page).
   const handlePrint = () => {
-    const conv = active ?? (activeId ? null : null)
-    document.title = conv?.title ?? 'Report ITSM'
+    const previousTitle = document.title
+    document.title = active?.title ?? 'Report ITSM'
+    const restore = () => { document.title = previousTitle; window.removeEventListener('afterprint', restore) }
+    window.addEventListener('afterprint', restore)
     window.print()
   }
 
@@ -383,7 +404,7 @@ export default function ReportsPage() {
           </div>
         ) : (
           /* Messages area */
-          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="report-print-area" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             {localMessages.map((msg) => (
               <div
                 key={msg.id}
@@ -573,8 +594,13 @@ export default function ReportsPage() {
 
       <style>{`
         @media print {
-          body > * { display: none !important; }
-          .report-print-area { display: block !important; }
+          body * { visibility: hidden !important; }
+          .report-print-area, .report-print-area * { visibility: visible !important; }
+          .report-print-area {
+            position: absolute !important; left: 0 !important; top: 0 !important;
+            width: 100% !important; height: auto !important; overflow: visible !important;
+            padding: 16px !important; background: #fff !important;
+          }
         }
         .report-markdown p { margin: 0 0 8px; }
         .report-markdown p:last-child { margin-bottom: 0; }

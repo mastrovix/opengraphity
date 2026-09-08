@@ -1,4 +1,4 @@
-import { Queue, Worker, type Job } from 'bullmq'
+import type { Worker, Job } from 'bullmq'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import {
   decryptCredentials,
@@ -8,13 +8,7 @@ import type { SyncSourceConfig } from '@opengraphity/discovery'
 import { logger } from '../lib/logger.js'
 import { reconcileBatch, markStale, type ReconciliationStats } from './reconciliationEngine.js'
 import { publish } from '@opengraphity/events'
-
-// ── Redis connection ──────────────────────────────────────────────────────────
-
-const connection = {
-  host: process.env['REDIS_HOST'] ?? 'localhost',
-  port: parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
-}
+import { createWorker, getQueue } from '../lib/bullmq.js'
 
 function encryptionKey(): string {
   const k = process.env['DISCOVERY_ENCRYPTION_KEY']
@@ -34,7 +28,7 @@ interface SyncJobPayload {
 
 // ── Queue export (used by sync.ts resolver to enqueue) ────────────────────────
 
-export const syncQueue = new Queue<SyncJobPayload>('discovery-sync', { connection })
+export const syncQueue = getQueue<SyncJobPayload>('discovery-sync')
 
 // ── Processor ─────────────────────────────────────────────────────────────────
 
@@ -239,15 +233,8 @@ async function publishSyncEvent(
 // ── Queue & Worker setup ──────────────────────────────────────────────────────
 
 export function startSyncWorker(): Worker<SyncJobPayload> {
-  const worker = new Worker<SyncJobPayload>(
-    'discovery-sync',
-    processSyncJob,
-    { connection, concurrency: 2 },
-  )
-
-  worker.on('failed', (job, err) => {
-    logger.error({ jobId: job?.id, err }, '[sync] Worker job failed')
-  })
+  // createWorker registra on('error') (un blip Redis non abbatte l'API) e on('failed')
+  const worker = createWorker<SyncJobPayload>('discovery-sync', processSyncJob, { concurrency: 2 })
 
   worker.on('completed', (job) => {
     logger.debug({ jobId: job.id }, '[sync] Worker job completed')

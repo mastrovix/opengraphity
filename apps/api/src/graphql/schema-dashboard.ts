@@ -122,5 +122,21 @@ export function dashboardSDL(): string {
     colSpan: Int
     order: Int
   }
+
+  # One entry of the desired layout. Omit \`id\` to create a widget; an \`id\`
+  # must belong to the dashboard. Order = position in the list.
+  input DashboardLayoutWidgetInput {
+    id: ID
+    reportTemplateId: ID!
+    reportSectionId: ID!
+    colSpan: Int!
+  }
+
+  extend type Mutation {
+    # Replaces the whole report-widget layout of a dashboard in ONE transaction:
+    # creates the entries without id, updates colSpan/order of the kept ones,
+    # deletes every widget not in the list. Nothing is applied on error.
+    saveDashboardLayout(dashboardId: ID!, widgets: [DashboardLayoutWidgetInput!]!): DashboardConfig!
+  }
   `
 }

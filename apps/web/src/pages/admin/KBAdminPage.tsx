@@ -19,9 +19,11 @@ import { styleForCategory } from '@/lib/workflowStepStyle'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
+// `kbArticles` accepts exactly search/category/status (+ paging), ordered by
+// updated_at DESC server-side: no sortField/filters JSON exists for it (E-03).
 const GET_ARTICLES = gql`
-  query AdminKBArticles($page: Int, $pageSize: Int, $status: String) {
-    kbArticles(page: $page, pageSize: $pageSize, status: $status) {
+  query AdminKBArticles($page: Int, $pageSize: Int, $status: String, $category: String, $search: String) {
+    kbArticles(page: $page, pageSize: $pageSize, status: $status, category: $category, search: $search) {
       items {
         id title slug body category tags status authorName views helpfulCount
         createdAt updatedAt publishedAt workflowInstanceId currentStep
@@ -144,6 +146,42 @@ interface ArticleForm {
   title: string; body: string; category: string; tags: string
 }
 
+/** The subset of the FilterBuilder that `kbArticles` can actually honour. */
+interface KBListFilter { status?: string; category?: string; search?: string }
+
+/**
+ * Maps a FilterBuilder group onto the real `kbArticles` arguments. Anything
+ * the API cannot express (OR chains, operators other than equals/contains,
+ * the same field twice) throws — the UI shows the reason instead of a filter
+ * badge that silently changes nothing.
+ */
+function kbFilterFromGroup(group: FilterGroup | null): KBListFilter {
+  const out: KBListFilter = {}
+  if (!group) return out
+  group.rules.forEach((rule, i) => {
+    const isLast = i === group.rules.length - 1
+    if (!isLast && rule.logic !== 'AND') throw new Error('La ricerca articoli supporta solo condizioni in AND')
+    const value = typeof rule.value === 'string' ? rule.value.trim() : ''
+    if (!value) throw new Error(`Valore mancante per il filtro "${rule.field}"`)
+    switch (rule.field) {
+      case 'status':
+      case 'category':
+        if (rule.operator !== 'equals') throw new Error(`Il filtro "${rule.field}" supporta solo "uguale a"`)
+        if (out[rule.field]) throw new Error(`Il filtro "${rule.field}" può comparire una sola volta`)
+        out[rule.field] = value
+        break
+      case 'title':
+        if (rule.operator !== 'contains') throw new Error('Il filtro "Titolo" supporta solo "contiene"')
+        if (out.search) throw new Error('Il filtro "Titolo" può comparire una sola volta')
+        out.search = value
+        break
+      default:
+        throw new Error(`Filtro non supportato dalla ricerca articoli: ${rule.field}`)
+    }
+  })
+  return out
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // KB categories loaded dynamically via kbCategories query inside component
@@ -194,24 +232,33 @@ export function KBAdminPage() {
   const publishingRef = useRef(false)
 
   // ── Queries ──
-  const [sortField, setSortField] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
-  const handleSort = (f: string, d: 'asc' | 'desc') => { setSortField(f); setSortDir(d) }
+  // Only the fields `kbArticles` can filter on (status/category "equals",
+  // title "contains") — see kbFilterFromGroup.
+  const [listFilter, setListFilter] = useState<KBListFilter>({})
   const KB_FILTER_FIELDS: FieldConfig[] = [
     { key: 'status', label: 'Stato', type: 'enum',
       options: kbSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
-    { key: 'category', label: 'Categoria', type: 'enum', options: [
-      { value: 'hardware', label: 'Hardware' }, { value: 'software', label: 'Software' },
-      { value: 'network', label: 'Network' }, { value: 'security', label: 'Security' },
-      { value: 'how-to', label: 'How-to' }, { value: 'faq', label: 'FAQ' }, { value: 'general', label: 'General' },
-    ]},
+    { key: 'category', label: 'Categoria', type: 'enum',
+      options: CATEGORIES.map((c) => ({ value: c, label: c })) },
     { key: 'title', label: 'Titolo', type: 'text' },
-    { key: 'createdAt', label: 'Data creazione', type: 'date' },
   ]
+  function applyListFilter(group: FilterGroup | null) {
+    try {
+      setListFilter(kbFilterFromGroup(group))
+      setPage(0)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
   const { data, loading, refetch } = useQuery<{ kbArticles: { items: KBArticle[]; total: number } }>(
     GET_ARTICLES,
-    { variables: { page: page + 1, pageSize: PAGE_SIZE, sortField, sortDirection: sortDir, filters: filterGroup ? JSON.stringify(filterGroup) : null }, fetchPolicy: 'cache-and-network' },
+    {
+      variables: {
+        page: page + 1, pageSize: PAGE_SIZE,
+        status: listFilter.status ?? null, category: listFilter.category ?? null, search: listFilter.search ?? null,
+      },
+      fetchPolicy: 'cache-and-network',
+    },
   )
 
   // ── Mutations ──
@@ -319,20 +366,22 @@ export function KBAdminPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const isBusy     = creating || updating || transitioning
 
+  // No `sortable`: the API orders by updated_at DESC and paginates server-side,
+  // a client-side sort would only reorder the current page.
   const articleColumns: ColumnDef<KBArticle>[] = [
-    { key: 'title', label: 'Titolo', sortable: true, render: (v) => (
+    { key: 'title', label: 'Titolo', render: (v) => (
       <div style={{ fontWeight: 500, color: '#1a2332', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
     ) },
-    { key: 'category', label: 'Categoria', sortable: true, render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'status', label: 'Status', sortable: true, render: (v) => {
+    { key: 'category', label: 'Categoria', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'status', label: 'Status', render: (v) => {
       const status = String(v)
       const meta = kbStepByName.get(status)
       return <StatusBadge status={status} label={meta?.label} category={meta?.category ?? null} />
     } },
-    { key: 'authorName', label: 'Autore', sortable: true, render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'views', label: 'Views', sortable: true, render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'updatedAt', label: 'Aggiornato', sortable: true, render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{new Date(String(v)).toLocaleDateString()}</span> },
-    { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
+    { key: 'authorName', label: 'Autore', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'views', label: 'Views', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'updatedAt', label: 'Aggiornato', render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{new Date(String(v)).toLocaleDateString()}</span> },
+    { key: 'id', label: 'Azioni', render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <button onClick={() => startEdit(row)} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
         {deleteId === row.id ? (
@@ -471,16 +520,13 @@ export function KBAdminPage() {
         </div>
       )}
 
-      <FilterBuilder fields={KB_FILTER_FIELDS} onApply={g => { setFilterGroup(g); setPage(0) }} />
+      <FilterBuilder fields={KB_FILTER_FIELDS} onApply={applyListFilter} />
 
       {/* ── Table ── */}
       <SortableFilterTable<KBArticle>
         columns={articleColumns}
         data={articles}
         loading={loading}
-        onSort={handleSort}
-        sortField={sortField}
-        sortDir={sortDir}
         emptyComponent={<EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kbAdmin.noArticles')} />}
         label="KB Articles"
       />

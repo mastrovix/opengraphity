@@ -89,14 +89,15 @@ export const REMOVE_CI_RELATIONSHIP = gql`
   }
 `
 
+// teamId null → rimuove l'assegnazione ("— non assegnato —" nel dettaglio CI)
 export const ASSIGN_CI_OWNER = gql`
-  mutation AssignCIOwner($ciId: ID!, $teamId: ID!) {
+  mutation AssignCIOwner($ciId: ID!, $teamId: ID) {
     assignCIOwner(ciId: $ciId, teamId: $teamId) { id }
   }
 `
 
 export const ASSIGN_CI_SUPPORT_GROUP = gql`
-  mutation AssignCISupportGroup($ciId: ID!, $teamId: ID!) {
+  mutation AssignCISupportGroup($ciId: ID!, $teamId: ID) {
     assignCISupportGroup(ciId: $ciId, teamId: $teamId) { id }
   }
 `

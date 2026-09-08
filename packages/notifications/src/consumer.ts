@@ -44,7 +44,19 @@ async function enrichIncidentData(incident: IncidentData): Promise<IncidentData>
   }
 }
 
-async function loadChannels(tenantId: string, eventType: string): Promise<NotificationChannelRow[]> {
+export type ChannelPlatform = 'slack' | 'teams'
+
+/**
+ * Active NotificationChannel rows of the tenant subscribed to `eventType`
+ * (the `event_types` keys are the NotificationEvent names: 'sla_breach',
+ * 'assigned', …). Optionally restricted to the given platforms — the
+ * NotificationRule decides which platforms an event goes to.
+ */
+export async function loadChannels(
+  tenantId: string,
+  eventType: string,
+  platforms?: readonly ChannelPlatform[],
+): Promise<NotificationChannelRow[]> {
   const session = getSession(undefined, 'READ')
   try {
     const result = await session.executeRead((tx) =>
@@ -66,6 +78,7 @@ async function loadChannels(tenantId: string, eventType: string): Promise<Notifi
         }
       })
       .filter((ch) => ch.eventTypes.includes(eventType))
+      .filter((ch) => !platforms || (platforms as readonly string[]).includes(ch.platform))
   } finally {
     await session.close()
   }
@@ -75,9 +88,10 @@ export async function dispatchIncidentNotification(
   tenantId: string,
   eventType: NotificationEvent,
   incident: IncidentData,
+  platforms?: readonly ChannelPlatform[],
 ): Promise<void> {
   const enriched = await enrichIncidentData(incident)
-  const channels = await loadChannels(tenantId, eventType)
+  const channels = await loadChannels(tenantId, eventType, platforms)
   for (const ch of channels) {
     if (ch.platform === 'slack') {
       const blocks = formatSlackIncident(eventType, enriched)

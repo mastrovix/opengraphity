@@ -1,7 +1,13 @@
 /**
  * Email templates for OpenGrafo notifications.
  * All HTML uses inline styles + tables for email client compatibility.
+ *
+ * Every user-controlled value (title, description, excerpt, author, event,
+ * tenant, …) goes through escapeHtml before touching the markup (C-13): a
+ * title like `<a href="https://evil">…` must render as text, not as a link.
  */
+
+import { escapeHtml as e } from '@opengraphity/notifications'
 
 const BRAND     = '#0EA5E9'
 const BRAND_BG  = '#E0F2FE'
@@ -34,7 +40,7 @@ function layout(tenant: string, content: string): string {
 <!-- Header -->
 <tr><td style="background:${DARK};padding:16px 24px;">
 <span style="color:${BRAND};font-size:20px;font-weight:700;">open</span><span style="color:${WHITE};font-size:20px;font-weight:700;">grafo</span>
-<span style="color:${SLATE};font-size:12px;margin-left:12px;">${tenant}</span>
+<span style="color:${SLATE};font-size:12px;margin-left:12px;">${e(tenant)}</span>
 </td></tr>
 <!-- Body -->
 <tr><td style="padding:24px;">${content}</td></tr>
@@ -49,17 +55,17 @@ function layout(tenant: string, content: string): string {
 
 function sevBadge(severity: string): string {
   const c = SEV_COLORS[severity] ?? SLATE
-  return `<span style="display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;color:${WHITE};background:${c};">${severity}</span>`
+  return `<span style="display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;color:${WHITE};background:${c};">${e(severity)}</span>`
 }
 
 function btn(label: string, url: string, color = BRAND): string {
   return `<table cellpadding="0" cellspacing="0" style="margin:16px 0;"><tr><td style="background:${color};border-radius:6px;padding:10px 24px;">
-<a href="${url}" style="color:${WHITE};text-decoration:none;font-size:14px;font-weight:600;">${label}</a>
+<a href="${e(url)}" style="color:${WHITE};text-decoration:none;font-size:14px;font-weight:600;">${e(label)}</a>
 </td></tr></table>`
 }
 
 function label(l: string, v: string): string {
-  return `<tr><td style="padding:4px 0;font-size:13px;color:${SLATE};width:120px;vertical-align:top;">${l}</td><td style="padding:4px 0;font-size:13px;color:${DARK};">${v}</td></tr>`
+  return `<tr><td style="padding:4px 0;font-size:13px;color:${SLATE};width:120px;vertical-align:top;">${e(l)}</td><td style="padding:4px 0;font-size:13px;color:${DARK};">${v}</td></tr>`
 }
 
 // ── Templates ────────────────────────────────────────────────────────────────
@@ -70,12 +76,12 @@ export function incidentCreated(p: { title: string; severity: string; category?:
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${DARK};">Nuovo incident</h2>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
-        ${label('Titolo', `<strong>${p.title}</strong>`)}
+        ${label('Titolo', `<strong>${e(p.title)}</strong>`)}
         ${label('Severità', sevBadge(p.severity))}
-        ${p.category ? label('Categoria', p.category) : ''}
-        ${p.description ? label('Descrizione', p.description.slice(0, 200) + (p.description.length > 200 ? '…' : '')) : ''}
+        ${p.category ? label('Categoria', e(p.category)) : ''}
+        ${p.description ? label('Descrizione', e(p.description.slice(0, 200)) + (p.description.length > 200 ? '…' : '')) : ''}
       </table>
-      ${btn('Vedi incident', `${baseUrl()}/incidents/${p.id}`)}
+      ${btn('Vedi incident', `${baseUrl()}/incidents/${encodeURIComponent(p.id)}`)}
     `),
   }
 }
@@ -86,11 +92,11 @@ export function incidentAssigned(p: { title: string; severity: string; id: strin
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${DARK};">Incident assegnato a te</h2>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
-        ${label('Titolo', `<strong>${p.title}</strong>`)}
+        ${label('Titolo', `<strong>${e(p.title)}</strong>`)}
         ${label('Severità', sevBadge(p.severity))}
-        ${p.assignedBy ? label('Assegnato da', p.assignedBy) : ''}
+        ${p.assignedBy ? label('Assegnato da', e(p.assignedBy)) : ''}
       </table>
-      ${btn('Vedi incident', `${baseUrl()}/incidents/${p.id}`)}
+      ${btn('Vedi incident', `${baseUrl()}/incidents/${encodeURIComponent(p.id)}`)}
     `),
   }
 }
@@ -101,11 +107,11 @@ export function incidentResolved(p: { title: string; id: string; resolvedBy?: st
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${SUCCESS};">Incident risolto</h2>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
-        ${label('Titolo', `<strong>${p.title}</strong>`)}
-        ${p.resolvedBy ? label('Risolto da', p.resolvedBy) : ''}
-        ${p.rootCause ? label('Root cause', p.rootCause.slice(0, 200)) : ''}
+        ${label('Titolo', `<strong>${e(p.title)}</strong>`)}
+        ${p.resolvedBy ? label('Risolto da', e(p.resolvedBy)) : ''}
+        ${p.rootCause ? label('Root cause', e(p.rootCause.slice(0, 200))) : ''}
       </table>
-      ${btn('Vedi incident', `${baseUrl()}/incidents/${p.id}`)}
+      ${btn('Vedi incident', `${baseUrl()}/incidents/${encodeURIComponent(p.id)}`)}
     `),
   }
 }
@@ -116,10 +122,10 @@ export function incidentEscalated(p: { title: string; severity: string; id: stri
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${DANGER};">⚠ Incident escalato</h2>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
-        ${label('Titolo', `<strong>${p.title}</strong>`)}
+        ${label('Titolo', `<strong>${e(p.title)}</strong>`)}
         ${label('Severità', sevBadge(p.severity))}
       </table>
-      ${btn('Vedi incident', `${baseUrl()}/incidents/${p.id}`)}
+      ${btn('Vedi incident', `${baseUrl()}/incidents/${encodeURIComponent(p.id)}`)}
     `),
   }
 }
@@ -131,13 +137,13 @@ export function commentAdded(p: { entityType: string; entityTitle: string; entit
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${DARK};">Nuovo commento</h2>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
-        ${label('Entità', `${p.entityType}: <strong>${p.entityTitle}</strong>`)}
-        ${label('Autore', p.authorName)}
+        ${label('Entità', `${e(p.entityType)}: <strong>${e(p.entityTitle)}</strong>`)}
+        ${label('Autore', e(p.authorName))}
       </table>
       <div style="margin:16px 0;padding:12px 16px;background:${BG};border-left:3px solid ${BRAND};border-radius:4px;font-size:13px;color:${DARK};line-height:1.6;">
-        ${p.excerpt.slice(0, 300)}${p.excerpt.length > 300 ? '…' : ''}
+        ${e(p.excerpt.slice(0, 300))}${p.excerpt.length > 300 ? '…' : ''}
       </div>
-      ${btn('Vedi commento', `${baseUrl()}/${path}/${p.entityId}`)}
+      ${btn('Vedi commento', `${baseUrl()}/${path}/${encodeURIComponent(p.entityId)}`)}
     `),
   }
 }
@@ -149,12 +155,12 @@ export function mentionNotification(p: { entityType: string; entityTitle: string
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${BRAND};">Sei stato menzionato</h2>
       <p style="font-size:14px;color:${DARK};margin:0 0 12px;">
-        <strong>${p.mentionerName}</strong> ti ha menzionato in <strong>${p.entityType} "${p.entityTitle}"</strong>
+        <strong>${e(p.mentionerName)}</strong> ti ha menzionato in <strong>${e(p.entityType)} "${e(p.entityTitle)}"</strong>
       </p>
       <div style="margin:12px 0;padding:12px 16px;background:${BRAND_BG};border-radius:6px;font-size:13px;color:${DARK};line-height:1.6;">
-        ${p.excerpt.slice(0, 300)}${p.excerpt.length > 300 ? '…' : ''}
+        ${e(p.excerpt.slice(0, 300))}${p.excerpt.length > 300 ? '…' : ''}
       </div>
-      ${btn('Vai al commento', `${baseUrl()}/${path}/${p.entityId}`)}
+      ${btn('Vai al commento', `${baseUrl()}/${path}/${encodeURIComponent(p.entityId)}`)}
     `),
   }
 }
@@ -165,11 +171,11 @@ export function changeApprovalRequested(p: { title: string; type: string; id: st
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${WARNING};">Approvazione richiesta</h2>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
-        ${label('Titolo', `<strong>${p.title}</strong>`)}
-        ${label('Tipo', p.type)}
-        ${p.description ? label('Descrizione', p.description.slice(0, 200)) : ''}
+        ${label('Titolo', `<strong>${e(p.title)}</strong>`)}
+        ${label('Tipo', e(p.type))}
+        ${p.description ? label('Descrizione', e(p.description.slice(0, 200))) : ''}
       </table>
-      ${btn('Vedi change', `${baseUrl()}/changes/${p.id}`)}
+      ${btn('Vedi change', `${baseUrl()}/changes/${encodeURIComponent(p.id)}`)}
     `),
   }
 }
@@ -181,10 +187,10 @@ export function slaBreach(p: { entityType: string; entityTitle: string; entityId
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${DANGER};">⚠ SLA violato</h2>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
-        ${label('Entità', `${p.entityType}: <strong>${p.entityTitle}</strong>`)}
-        ${label('Tipo SLA', p.slaType)}
+        ${label('Entità', `${e(p.entityType)}: <strong>${e(p.entityTitle)}</strong>`)}
+        ${label('Tipo SLA', e(p.slaType))}
       </table>
-      ${btn('Vedi dettagli', `${baseUrl()}/${path}/${p.entityId}`)}
+      ${btn('Vedi dettagli', `${baseUrl()}/${path}/${encodeURIComponent(p.entityId)}`)}
     `),
   }
 }
@@ -196,19 +202,19 @@ export function watcherNotification(p: { entityType: string; entityTitle: string
     html: layout(tenant, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${DARK};">Aggiornamento</h2>
       <p style="font-size:14px;color:${DARK};margin:0 0 16px;">
-        ${p.event}
+        ${e(p.event)}
       </p>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
-        ${label('Entità', `${p.entityType}: <strong>${p.entityTitle}</strong>`)}
+        ${label('Entità', `${e(p.entityType)}: <strong>${e(p.entityTitle)}</strong>`)}
       </table>
-      ${btn('Vedi dettagli', `${baseUrl()}/${path}/${p.entityId}`)}
+      ${btn('Vedi dettagli', `${baseUrl()}/${path}/${encodeURIComponent(p.entityId)}`)}
     `),
   }
 }
 
 export function digestDaily(p: { openIncidents: number; resolvedToday: number; ongoingChanges: number; slaBreaches: number; recentEvents: string[] }, tenant: string) {
   const eventsList = p.recentEvents.length > 0
-    ? p.recentEvents.map(e => `<li style="padding:4px 0;font-size:13px;color:${DARK};">${e}</li>`).join('')
+    ? p.recentEvents.map(ev => `<li style="padding:4px 0;font-size:13px;color:${DARK};">${e(ev)}</li>`).join('')
     : `<li style="padding:4px 0;font-size:13px;color:${SLATE};">Nessun evento recente</li>`
 
   return {

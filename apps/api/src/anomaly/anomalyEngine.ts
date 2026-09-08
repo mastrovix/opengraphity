@@ -1,15 +1,21 @@
-import { Queue, Worker, type Job } from 'bullmq'
+import type { Worker, Job } from 'bullmq'
 import { randomUUID } from 'crypto'
 import { getSession } from '@opengraphity/neo4j'
 import { sendSlackMessage } from '@opengraphity/notifications'
 import { logger } from '../lib/logger.js'
+import { createWorker, getQueue } from '../lib/bullmq.js'
 import { ANOMALY_RULES, type AnomalyRule } from './rules.js'
 
-// ── Redis connection ──────────────────────────────────────────────────────────
+export const ANOMALY_SCANNER_QUEUE = 'anomaly-scanner'
 
-const connection = {
-  host: process.env['REDIS_HOST'] ?? 'localhost',
-  port: parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
+/**
+ * Job payload. The hourly `scan` job carries no tenantId and scans every
+ * tenant; a manual `scan-manual` (runAnomalyScanner mutation) carries the
+ * caller's tenantId and scans ONLY that tenant (C-18) — before, one click
+ * from any tenant scanned the whole platform.
+ */
+export interface AnomalyScanJobData {
+  tenantId?: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -161,7 +167,7 @@ async function loadSlackWebhookForTenant(tenantId: string): Promise<string | nul
     const res = await session.executeRead(tx =>
       tx.run(`
         MATCH (t:Tenant {id: $tenantId})-[:HAS_CHANNEL]->(c:NotificationChannel)
-        WHERE c.platform = 'slack' AND c.active = true
+        WHERE c.platform = 'slack' AND c.active = true AND c.tenant_id = $tenantId
         RETURN c.webhook_url AS webhookUrl LIMIT 1
       `, { tenantId }),
     )
@@ -216,44 +222,60 @@ async function sendSlackAlert(
 
 // ── Job processor ──────────────────────────────────────────────────────────────
 
-async function anomalyScannerProcessor(_job: Job) {
-  const tenants = await loadTenants()
-  logger.info({ count: tenants.length }, 'anomaly-engine: scanning tenants')
+/** Runs every rule for one tenant. Returns the number of rules that failed. */
+async function scanTenant(tenantId: string): Promise<number> {
+  const newByRule = new Map<string, number>()
+  let ruleFailures = 0
 
-  for (const tenant of tenants) {
-    const newByRule = new Map<string, number>()
-
-    for (const rule of ANOMALY_RULES) {
-      try {
-        const hits = await runRule(rule, tenant.id)
-        const created = await upsertAnomalies(rule, tenant.id, hits)
-        await autoResolveStale(rule, tenant.id, hits.map(h => h.entityId))
-
-        newByRule.set(rule.key, created)
-        if (hits.length > 0 || created > 0) {
-          logger.info({ ruleKey: rule.key, tenantId: tenant.id, hits: hits.length, created }, 'anomaly-engine: rule done')
-        }
-      } catch (err) {
-        logger.error({ err, ruleKey: rule.key, tenantId: tenant.id }, 'anomaly-engine: rule failed')
-      }
-    }
-
-    // Persist scan metadata
-    await persistScanStatus(tenant.id)
-
-    // Slack notification for new anomalies
+  for (const rule of ANOMALY_RULES) {
     try {
-      const totalNew = [...newByRule.values()].reduce((a, b) => a + b, 0)
-      if (totalNew > 0) {
-        const webhookUrl = await loadSlackWebhookForTenant(tenant.id)
-        if (webhookUrl) {
-          await sendSlackAlert(webhookUrl, tenant.id, newByRule)
-          logger.info({ tenantId: tenant.id, totalNew }, 'anomaly-engine: slack alert sent')
-        }
+      const hits = await runRule(rule, tenantId)
+      const created = await upsertAnomalies(rule, tenantId, hits)
+      await autoResolveStale(rule, tenantId, hits.map(h => h.entityId))
+
+      newByRule.set(rule.key, created)
+      if (hits.length > 0 || created > 0) {
+        logger.info({ ruleKey: rule.key, tenantId, hits: hits.length, created }, 'anomaly-engine: rule done')
       }
     } catch (err) {
-      logger.error({ err, tenantId: tenant.id }, 'anomaly-engine: slack notification failed')
+      ruleFailures++
+      logger.error({ err, ruleKey: rule.key, tenantId }, 'anomaly-engine: rule failed')
     }
+  }
+
+  // Persist scan metadata
+  await persistScanStatus(tenantId)
+
+  // Slack notification for new anomalies
+  try {
+    const totalNew = [...newByRule.values()].reduce((a, b) => a + b, 0)
+    if (totalNew > 0) {
+      const webhookUrl = await loadSlackWebhookForTenant(tenantId)
+      if (webhookUrl) {
+        await sendSlackAlert(webhookUrl, tenantId, newByRule)
+        logger.info({ tenantId, totalNew }, 'anomaly-engine: slack alert sent')
+      }
+    }
+  } catch (err) {
+    logger.error({ err, tenantId }, 'anomaly-engine: slack notification failed')
+  }
+
+  return ruleFailures
+}
+
+export async function anomalyScannerProcessor(job: Job<AnomalyScanJobData>): Promise<void> {
+  const requested = job.data?.tenantId
+  const tenants = requested ? [{ id: requested }] : await loadTenants()
+  logger.info({ count: tenants.length, tenantId: requested ?? null, jobName: job.name }, 'anomaly-engine: scanning tenants')
+
+  let failures = 0
+  for (const tenant of tenants) {
+    failures += await scanTenant(tenant.id)
+  }
+  if (failures > 0) {
+    // Visible failure: the scan status was persisted for the rules that ran,
+    // but a job with broken rules must not show up as completed.
+    throw new Error(`anomaly-engine: ${failures} rule(s) failed across ${tenants.length} tenant(s) — see log`)
   }
 }
 
@@ -275,21 +297,28 @@ async function persistScanStatus(tenantId: string): Promise<void> {
 
 // ── Queue & Worker ─────────────────────────────────────────────────────────────
 
-export const anomalyScannerQueue = new Queue('anomaly-scanner', { connection })
+export function getAnomalyScannerQueue() {
+  return getQueue<AnomalyScanJobData>(ANOMALY_SCANNER_QUEUE)
+}
 
-export function startAnomalyScanner() {
-  const worker = new Worker('anomaly-scanner', anomalyScannerProcessor, { connection })
-
-  worker.on('failed', (job, err) => {
-    logger.error({ jobId: job?.id, err }, 'anomaly-scanner worker failed')
+/** Enqueues a scan of ONE tenant (manual trigger). Deduped per tenant per minute. */
+export async function enqueueTenantScan(tenantId: string): Promise<void> {
+  await getAnomalyScannerQueue().add('scan-manual', { tenantId }, {
+    jobId:            `manual-${tenantId}-${Math.floor(Date.now() / 60_000)}`,
+    removeOnComplete: true,
   })
+}
 
-  // Repeating job: every hour
-  anomalyScannerQueue.add(
+/** Async: the repeatable job registration is awaited (startup error, not a swallowed rejection). */
+export async function startAnomalyScanner(): Promise<Worker<AnomalyScanJobData>> {
+  const worker = createWorker<AnomalyScanJobData>(ANOMALY_SCANNER_QUEUE, anomalyScannerProcessor)
+
+  // Repeating job: every hour, all tenants
+  await getAnomalyScannerQueue().add(
     'scan',
     {},
-    { repeat: { every: 60 * 60_000 }, jobId: 'anomaly-scanner-scan' },
-  ).catch((err: unknown) => logger.error({ err }, 'anomaly-engine: failed to add repeating job'))
+    { repeat: { every: 60 * 60_000 }, jobId: 'anomaly-scanner-scan', removeOnComplete: true },
+  )
 
   logger.info('anomaly-scanner started (interval: 1h)')
   return worker

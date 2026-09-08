@@ -1,9 +1,10 @@
-import { Worker, Queue, type Job } from 'bullmq'
-import { getRedisOptions } from '@opengraphity/events'
+import type { Worker, Job } from 'bullmq'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import * as incidentService from '../services/incidentService.js'
 import { logger } from '../lib/logger.js'
+import { ValidationError } from '../lib/errors.js'
+import { createWorker, getQueue } from '../lib/bullmq.js'
 import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
@@ -32,6 +33,35 @@ interface WebhookRetryData {
 
 // SSRF protection: shared assertSafeOutboundUrl (lib/safeUrl.ts → @opengraphity/events).
 
+// ── auto_close dispatch per entity type (A-12) ────────────────────────────────
+
+/**
+ * Publishes the domain "closed" event for the entity after its workflow
+ * transition. Only incidents have a closing service today: for every other
+ * entity type the job fails with an explicit ValidationError instead of
+ * publishing `incident.closed` for a problem/change (which is what happened
+ * before — wrong event, wrong payload loader).
+ */
+async function publishAutoClose(entityType: string, entityId: string, tenantId: string): Promise<void> {
+  switch (entityType) {
+    case 'incident':
+      await incidentService.closeIncident(entityId, { tenantId, userId: 'system' })
+      return
+    case 'problem':
+    case 'change':
+    case 'service_request':
+      throw new ValidationError(
+        `[workflow-jobs] auto_close is not implemented for entity type "${entityType}" (entity ${entityId}): ` +
+        'no closing service exists for it — only incidentService.closeIncident. Remove the schedule_job(auto_close) ' +
+        'action from that workflow or implement the service.',
+      )
+    default:
+      throw new ValidationError(`[workflow-jobs] auto_close: unknown entity type "${entityType}" (entity ${entityId})`)
+  }
+}
+
+const AUTO_CLOSE_SUPPORTED = new Set(['incident'])
+
 // ── Processor ─────────────────────────────────────────────────────────────────
 
 async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
@@ -41,6 +71,7 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
   switch (job.name) {
     case 'auto_close': {
       // 1. Transizione workflow → terminal step 'closed-like' in Neo4j
+      let entityType: string
       const session = getSession(undefined, 'WRITE')
       try {
         const { getWorkflowSteps } = await import('../lib/workflowHelpers.js')
@@ -51,11 +82,20 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
           MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
           RETURN wi.entity_type AS entityType
         `, { instanceId, tenantId }))
-        const entityType = wiRes.records[0]?.get('entityType') as string | undefined
-        if (!entityType) {
+        const found = wiRes.records[0]?.get('entityType') as string | undefined
+        if (!found) {
           logger.warn({ instanceId, entityId }, '[workflow-jobs] auto_close: workflow instance not found')
           return
         }
+        entityType = found
+
+        // Dispatch check BEFORE the transition: failing after it would leave
+        // the entity closed with no event, and every retry would then fail
+        // on the (already done) transition.
+        if (!AUTO_CLOSE_SUPPORTED.has(entityType)) {
+          await publishAutoClose(entityType, entityId, tenantId)  // throws ValidationError
+        }
+
         const steps = await getWorkflowSteps(session, tenantId, entityType)
         const target =
           steps.find((s) => s.category === 'closed') ??
@@ -78,9 +118,9 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         await session.close()
       }
 
-      // 2. Pubblica evento domain incident.closed (notifiche, audit)
-      await incidentService.closeIncident(entityId, { tenantId, userId: 'system' })
-      logger.info({ entityId }, '[workflow-jobs] auto_close completed')
+      // 2. Pubblica evento domain <entity>.closed (notifiche, audit)
+      await publishAutoClose(entityType, entityId, tenantId)
+      logger.info({ entityId, entityType }, '[workflow-jobs] auto_close completed')
       break
     }
 
@@ -173,6 +213,13 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         `, { triggerId, tenantId, now: new Date().toISOString() })
 
         const successCount = results.filter(r => r.success).length
+        const failed = results.find(r => !r.success)
+        if (failed) {
+          // Partial failure must be visible: the job fails (BullMQ retry
+          // policy decides what happens next) instead of a green job that
+          // silently ran zero actions.
+          throw new Error(`[trigger_timer] action "${failed.action}" failed for trigger ${triggerId} on ${entityId}: ${failed.error ?? 'unknown error'} (${successCount}/${results.length} actions ran)`)
+        }
         logger.info({ triggerId, entityId, triggerName: trigger['name'], actionsRun: successCount }, '[trigger_timer] executed')
       } finally {
         await session.close()
@@ -239,45 +286,42 @@ async function processNotificationJob(job: Job): Promise<void> {
   }
 }
 
+export const NOTIFICATION_JOBS_QUEUE = 'notification-jobs'
+export const WORKFLOW_JOBS_QUEUE     = 'workflow-jobs'
+
 export function startNotificationJobWorker(): Worker {
-  const worker = new Worker('notification-jobs', processNotificationJob, {
-    connection:  getRedisOptions(),
-    concurrency: 3,
-  })
-  worker.on('failed', (job, err) => {
-    logger.error({ jobName: job?.name, err: err.message }, '[notification-jobs] job failed')
-  })
-  logger.info('[notification-jobs] worker started')
-  return worker
+  getQueue(NOTIFICATION_JOBS_QUEUE)  // register the producer singleton (metrics + scheduleEscalationCheck)
+  return createWorker(NOTIFICATION_JOBS_QUEUE, processNotificationJob, { concurrency: 3 })
 }
 
-// Export queue factory for creating escalation jobs from incident creation
-export function scheduleEscalationCheck(incidentId: string, tenantId: string, ruleId: string, delayMinutes: number) {
-  const queue = new Queue('notification-jobs', { connection: getRedisOptions() })
-  void queue.add('escalation_check', { incidentId, tenantId, ruleId }, { delay: delayMinutes * 60 * 1000 })
+/**
+ * Enqueues a delayed escalation check. Awaited by the caller: a failed
+ * enqueue (Redis down) must surface where the incident is created, not
+ * vanish as an unhandled rejection (A-13).
+ */
+export async function scheduleEscalationCheck(incidentId: string, tenantId: string, ruleId: string, delayMinutes: number): Promise<void> {
+  await getQueue(NOTIFICATION_JOBS_QUEUE).add(
+    'escalation_check',
+    { incidentId, tenantId, ruleId },
+    { delay: delayMinutes * 60 * 1000, jobId: `escalation:${incidentId}:${ruleId}`, removeOnComplete: true },
+  )
 }
 
 // ── Worker ────────────────────────────────────────────────────────────────────
 
-export function startWorkflowJobWorker(): Worker {
-  const worker = new Worker<WorkflowJobData>('workflow-jobs', processWorkflowJob, {
-    connection:  getRedisOptions(),
+export function startWorkflowJobWorker(): Worker<WorkflowJobData> {
+  getQueue(WORKFLOW_JOBS_QUEUE)  // producer singleton (packages/workflow actions + triggerEngine timers)
+  return createWorker<WorkflowJobData>(WORKFLOW_JOBS_QUEUE, processWorkflowJob, {
     concurrency: 5,
+    onFailed: (job, err) => {
+      if (job?.name === 'webhook_retry' && (job.attemptsMade ?? 0) >= (job.opts?.attempts ?? 1)) {
+        logger.error({
+          jobName:  job.name,
+          host:     loggableUrl(String((job.data as Record<string, unknown>)['url'] ?? '')),
+          attempts: job.attemptsMade,
+          err:      err.message,
+        }, '[webhook_retry] all retries exhausted')
+      }
+    },
   })
-
-  worker.on('failed', (job, err) => {
-    if (job?.name === 'webhook_retry' && (job.attemptsMade ?? 0) >= (job.opts?.attempts ?? 1)) {
-      logger.error({
-        jobName:  job.name,
-        host:     loggableUrl(String((job.data as unknown as Record<string, unknown>)['url'] ?? '')),
-        attempts: job.attemptsMade,
-        err:      err.message,
-      }, '[webhook_retry] all retries exhausted')
-    } else {
-      logger.error({ jobName: job?.name, entityId: job?.data.entityId, err: err.message }, '[workflow-jobs] job failed')
-    }
-  })
-
-  logger.info('[workflow-jobs] worker started')
-  return worker
 }

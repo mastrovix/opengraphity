@@ -33,7 +33,6 @@ import {
   ShieldCheck,
   Share2,
   Bell,
-  CircleUser,
   UserCircle,
   Tag,
   CheckSquare,
@@ -77,8 +76,10 @@ const CONFIG_ITEM_DEFS = [
   { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
   { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },
   { to: '/workflow',                  labelKey: 'sidebar.workflowDesigner', icon: Route    },
-  { to: '/profile',                   labelKey: 'sidebar.profile',          icon: UserCircle },
 ]
+
+// Personal page, every role (E-13): language + Slack link.
+const PROFILE_ITEM = { to: '/profile', labelKey: 'sidebar.profile', icon: UserCircle }
 
 const ITSM_ITEM_DEFS = [
   { to: '/incidents', labelKey: 'sidebar.incidents', icon: AlertCircle    },
@@ -117,7 +118,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { t } = useTranslation()
   const { pathname } = useLocation()
   const [configOpen, setConfigOpen] = useState(
-    () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/settings/itil-designer') || pathname.startsWith('/settings/enum-designer') || pathname.startsWith('/workflow') || pathname.startsWith('/profile'),
+    () => pathname.startsWith('/settings/ci-types') || pathname.startsWith('/settings/itil-designer') || pathname.startsWith('/settings/enum-designer') || pathname.startsWith('/workflow'),
   )
   const [itsmOpen, setItsmOpen] = useState(
     () => ITSM_ITEM_DEFS.some(({ to }) => pathname.startsWith(to)),
@@ -139,7 +140,10 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   )
 
   // Same source of truth as the pages and the RequireRole route guard:
-  // `me.role` from the DB, not the Keycloak realm role.
+  // `me.role` from the DB, not the Keycloak realm role. Groups whose every
+  // route is wrapped in `admin(...)` in main.tsx (Teams & Users,
+  // Configuration, Admin) are hidden from everyone else — no menu entry may
+  // lead to a "forbidden" page.
   const { isAdmin } = useMe()
   const settingsActive = pathname.startsWith('/settings')
   const { ciTypes } = useMetamodel()
@@ -441,8 +445,17 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           </div>
         )}
 
-        {/* Teams & Users */}
-        {!collapsed && (
+        {/* Profile — personal, every role */}
+        <NavItem
+          to={PROFILE_ITEM.to}
+          label={t(PROFILE_ITEM.labelKey)}
+          icon={PROFILE_ITEM.icon}
+          collapsed={collapsed}
+          isActive={pathname.startsWith(PROFILE_ITEM.to)}
+        />
+
+        {/* Teams & Users — admin only (routes are admin(...) in main.tsx) */}
+        {isAdmin && !collapsed && (
           <div style={{ marginBottom: 2 }}>
             <div
               onClick={() => setTeamsOpen((p) => !p)}
@@ -477,8 +490,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           </div>
         )}
 
-        {/* Configuration — collapsible */}
-        {collapsed ? (
+        {/* Configuration — collapsible, admin only (routes are admin(...) in main.tsx) */}
+        {!isAdmin ? null : collapsed ? (
           <NavLink
             to="/workflow"
             title={t('sidebar.configuration')}
@@ -595,12 +608,6 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Activity size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
                         {t('sidebar.bullBoard')}
-                      </span>
-                    </NavLink>
-                    <NavLink to="/settings/profile" style={({ isActive }) => subItemStyle(isActive)}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CircleUser size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />
-                        {t('sidebar.profile')}
                       </span>
                     </NavLink>
                   </div>

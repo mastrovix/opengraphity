@@ -3,29 +3,42 @@ import { setContext } from '@apollo/client/link/context'
 import { onError } from '@apollo/client/link/error'
 import { keycloak } from './keycloak'
 import { notifyError } from './notify'
+import i18n from '@/i18n/i18n'
 
 const httpLink = createHttpLink({
   uri: (import.meta.env['VITE_API_URL'] as string | undefined) ?? '/graphql',
 })
 
+interface PortalGraphQLError { message: string; extensions?: { code?: string } }
+
+/**
+ * Polling: only the ticket list/detail pages opt in (see TicketListPage /
+ * TicketDetailPage `pollInterval`). No global default — `me`, KB, catalog
+ * and field rules must not re-fetch every 30s in every open tab.
+ */
+export const TICKET_POLL_INTERVAL_MS = 30_000
+
 const errorLink = onError((errResponse) => {
-  const graphQLErrors = (errResponse as { graphQLErrors?: Array<{ message: string }> }).graphQLErrors
+  const graphQLErrors = (errResponse as { graphQLErrors?: PortalGraphQLError[] }).graphQLErrors
   const networkError  = (errResponse as { networkError?: { message: string } }).networkError
   if (graphQLErrors) {
-    for (const { message } of graphQLErrors) {
-      if (message.toLowerCase().includes('unauthorized')) {
-        keycloak.login()
+    for (const err of graphQLErrors) {
+      // Only a real auth failure (expired/absent token) re-logins. Matching on
+      // the message text also caught "Unauthorized: token/tenant mismatch"
+      // (a FORBIDDEN-class error) and looped the user through Keycloak forever.
+      if (err.extensions?.code === 'UNAUTHORIZED') {
+        void keycloak.login()
       } else {
         // Never swallow: the portal has no per-page error handling, so an
         // ignored error would just render "no tickets / not found".
-        console.error('[portal] GraphQL error:', message)
-        notifyError(message)
+        console.error('[portal] GraphQL error:', err.extensions?.code ?? '', err.message)
+        notifyError(err.message)
       }
     }
   }
   if (networkError) {
     console.error('[portal] Network error:', networkError.message)
-    notifyError('Errore di connessione al server')
+    notifyError(i18n.t('errors.network'))
   }
 })
 
@@ -44,8 +57,7 @@ export const apolloClient = new ApolloClient({
   cache: new InMemoryCache(),
   defaultOptions: {
     watchQuery: {
-      pollInterval: 30_000,   // 30s polling — no SSE in portal
-      fetchPolicy:  'cache-and-network',
+      fetchPolicy: 'cache-and-network',
     },
   },
 })

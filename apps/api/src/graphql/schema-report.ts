@@ -183,5 +183,11 @@ export function reportSDL(): string {
     nodes: [ReportNodeInput!]!
     edges: [ReportEdgeInput!]!
   }
+
+  extend type Mutation {
+    # Private copy of a readable template INCLUDING sections, nodes and edges
+    # (new ids), created atomically. Schedule is not copied.
+    duplicateReportTemplate(id: ID!, name: String): ReportTemplate!
+  }
   `
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
@@ -55,6 +55,12 @@ interface AnomalyScanStatus {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 10
+
+// Lo scan è un job BullMQ: dopo runAnomalyScanner si interroga anomalyScanStatus
+// finché totalScans supera il valore pre-scan (= scan completato), invece di
+// un setTimeout cieco a 2 s. Oltre il timeout si segnala, non si finge.
+const SCAN_POLL_MS    = 2_000
+const SCAN_TIMEOUT_MS = 120_000
 
 // CI_TYPE_LABEL is used inside components that receive t() — kept as a key lookup
 export const CI_TYPE_KEYS: Record<string, string> = {
@@ -289,7 +295,40 @@ export function AnomalyPage() {
   )
 
   const [resolveAnomaly] = useMutation(RESOLVE_ANOMALY)
-  const [runScanner, { loading: scannerLoading }] = useMutation(RUN_ANOMALY_SCANNER)
+  const [runScanner, { loading: enqueueLoading }] = useMutation<{ runAnomalyScanner: boolean }>(RUN_ANOMALY_SCANNER)
+
+  // Scan in attesa di completamento: totalScans letto PRIMA dell'avvio.
+  const [awaitingScan, setAwaitingScan] = useState<{ baseline: number; startedAt: number } | null>(null)
+  const scannerLoading = enqueueLoading || awaitingScan !== null
+
+  useEffect(() => {
+    if (!awaitingScan) return
+    let cancelled = false
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const res = await refetchScan()
+          if (cancelled) return
+          const totalScans = res.data?.anomalyScanStatus.totalScans ?? 0
+          if (totalScans > awaitingScan.baseline) {
+            setAwaitingScan(null)
+            setPage(0)
+            void refetch()
+            void refetchStats()
+            toast.success(t('pages.anomalies.runScanner') + ': completato')
+          } else if (Date.now() - awaitingScan.startedAt > SCAN_TIMEOUT_MS) {
+            setAwaitingScan(null)
+            toast.error(`Scan non completato entro ${SCAN_TIMEOUT_MS / 1000}s: verifica il worker delle anomalie (i risultati compariranno al prossimo refresh).`)
+          }
+        } catch (err) {
+          if (cancelled) return
+          setAwaitingScan(null)
+          toast.error(err instanceof Error ? err.message : String(err))
+        }
+      })()
+    }, SCAN_POLL_MS)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [awaitingScan, refetch, refetchStats, refetchScan, t])
 
   const stats      = statsData?.anomalyStats
   const scanStatus = scanData?.anomalyScanStatus
@@ -316,13 +355,19 @@ export function AnomalyPage() {
 
   async function handleRunScanner() {
     try {
-      await runScanner()
+      const before = await refetchScan()
+      const baseline = before.data?.anomalyScanStatus.totalScans ?? 0
+      const res = await runScanner()
+      // L'API risponde false quando non riesce ad accodare il job (Redis giù):
+      // non è un successo silenzioso.
+      if (!res.data?.runAnomalyScanner) {
+        toast.error('Impossibile avviare lo scan: coda dei job non disponibile.')
+        return
+      }
+      setAwaitingScan({ baseline, startedAt: Date.now() })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err))
-      return
     }
-    setPage(0)
-    setTimeout(() => { void refetch(); void refetchStats(); void refetchScan() }, 2000)
   }
 
   return (

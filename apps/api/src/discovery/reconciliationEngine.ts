@@ -76,9 +76,18 @@ async function reconcileOne(
   const existing = await findExisting(session, discovered.external_id, source.id, tenantId, label)
 
   if (!existing) {
-    // ── 2a. Create new CI ────────────────────────────────────────────────────
-    await createCI(session, discovered, ciType, label, source, runId, tenantId, now)
-    stats.ciCreated++
+    // ── 2a. Create new CI (MERGE on the discovery key: idempotent) ──────────
+    const created = await createCI(session, discovered, ciType, label, source, runId, tenantId, now)
+    if (created) {
+      stats.ciCreated++
+    } else {
+      // Lost a race with a concurrent sync of the same source (findExisting saw
+      // nothing, MERGE matched the node the other run just created). The node
+      // is touched (last_seen) but its properties are left to the next run,
+      // which goes through the regular update + locked-field conflict path.
+      stats.ciUnchanged++
+      logger.warn({ externalId: discovered.external_id, sourceId: source.id, runId }, '[reconcile] CI created concurrently by another run — skipped property update')
+    }
   } else {
     // ── 2b. Check for conflicts with locked fields ───────────────────────────
     const conflicts = detectConflicts(discovered, existing)
@@ -173,6 +182,24 @@ async function findExisting(
   }
 }
 
+/**
+ * Cypher for the idempotent create. MERGE on the discovery key
+ * (tenant_id, discovery_source_id, discovery_external_id) — the same key
+ * findExisting looks up and the one backed by the `ci_discovery_key_unique`
+ * constraint (packages/neo4j/src/init.ts) — so two runs racing on the same
+ * external id converge on ONE node instead of creating a duplicate.
+ * The type label is added ON CREATE only: a node whose type changed upstream
+ * keeps being matched by the key (like findExisting) rather than duplicated.
+ * Exported for tests.
+ */
+export function createCICypher(label: string): string {
+  return `MERGE (ci:ConfigurationItem {tenant_id: $key.tenant_id, discovery_source_id: $key.discovery_source_id, discovery_external_id: $key.discovery_external_id})
+     ON CREATE SET ci:${label}, ci += $props
+     ON MATCH SET ci.discovery_last_seen = $now, ci.updated_at = $now
+     RETURN ci.id = $props.id AS created`
+}
+
+/** @returns true when this call created the node, false when MERGE matched an existing one. */
 async function createCI(
   session:    Session,
   ci:         DiscoveredCI,
@@ -182,7 +209,7 @@ async function createCI(
   runId:      string,
   tenantId:   string,
   now:        string,
-): Promise<void> {
+): Promise<boolean> {
   const id    = randomUUID()
   const props = normalizeProperties(ci.properties)
   assertDiscoveredPropertyKeys(props, ci.external_id)
@@ -206,14 +233,20 @@ async function createCI(
     created_at: now,
     updated_at: now,
   }
+  const key = {
+    tenant_id:             tenantId,
+    discovery_source_id:   source.id,
+    discovery_external_id: ci.external_id,
+  }
 
   // Properties travel as ONE map parameter — keys never touch the query text.
-  await session.executeWrite(tx => tx.run(
-    `CREATE (ci:ConfigurationItem:${label}) SET ci += $props`,
-    { props: allProps },
-  ))
+  const result = await session.executeWrite(tx => tx.run(createCICypher(label), { key, props: allProps, now }))
+  const rec = result.records[0]
+  if (!rec) throw new Error(`[reconcile] MERGE for CI ${ci.external_id} (source ${source.id}) returned no row`)
+  const created = rec.get('created') === true
 
-  logger.debug({ id, name: ci.name, ciType }, '[reconcile] CI created')
+  if (created) logger.debug({ id, name: ci.name, ciType }, '[reconcile] CI created')
+  return created
 }
 
 function detectConflicts(

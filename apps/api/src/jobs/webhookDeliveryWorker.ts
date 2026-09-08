@@ -7,14 +7,16 @@
  * OutboundWebhook node (tenant-scoped) at delivery time, so no secret sits in
  * Redis and a rotated secret/URL takes effect on queued jobs too.
  */
-import { Worker, type Job } from 'bullmq'
+import type { Worker, Job } from 'bullmq'
 import { createHash, createHmac } from 'crypto'
-import { getRedisOptions } from '@opengraphity/events'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
+import { createWorker, getQueue } from '../lib/bullmq.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
 
 const log = logger.child({ module: 'webhook-delivery' })
+
+export const WEBHOOK_DELIVERY_QUEUE = 'webhook-delivery'
 
 export interface DeliveryJobData {
   webhookId: string
@@ -117,18 +119,14 @@ async function processDelivery(job: Job<DeliveryJobData>): Promise<void> {
 
 // ── Worker ───────────────────────────────────────────────────────────────────
 
-export function startWebhookDeliveryWorker(): Worker {
-  const worker = new Worker<DeliveryJobData>('webhook-delivery', processDelivery, {
-    connection:  getRedisOptions(),
+export function startWebhookDeliveryWorker(): Worker<DeliveryJobData> {
+  getQueue<DeliveryJobData>(WEBHOOK_DELIVERY_QUEUE)  // producer singleton (metrics)
+  return createWorker<DeliveryJobData>(WEBHOOK_DELIVERY_QUEUE, processDelivery, {
     concurrency: 10,
+    onFailed: (job, err) => {
+      log.error({ jobId: job?.id, webhookId: (job?.data as DeliveryJobData | undefined)?.webhookId, attemptsMade: job?.attemptsMade, err: err.message }, 'Webhook delivery job failed')
+    },
   })
-
-  worker.on('failed', (job, err) => {
-    log.error({ jobId: job?.id, webhookId: (job?.data as DeliveryJobData | undefined)?.webhookId, attemptsMade: job?.attemptsMade, err: err.message }, 'Webhook delivery job failed')
-  })
-
-  log.info('[webhook-delivery] worker started')
-  return worker
 }
 
 // ── Payload template ─────────────────────────────────────────────────────────
@@ -191,38 +189,33 @@ export async function enqueueOutboundWebhooks(
 
     if (rows.length === 0) return
 
-    const { Queue } = await import('bullmq')
-    const queue = new Queue('webhook-delivery', { connection: getRedisOptions() })
+    const queue = getQueue<DeliveryJobData>(WEBHOOK_DELIVERY_QUEUE)
     const timestamp = new Date().toISOString()
 
-    try {
-      for (const row of rows) {
-        const w = row.props
-        const template = w['payload_template'] as string | null
-        const body = template
-          ? renderPayloadTemplate(template, { event_type: eventType, timestamp, tenant_id: tenantId, entity: payload, ...payload })
-          : JSON.stringify({ event_type: eventType, entity: payload, timestamp, tenant_id: tenantId })
+    for (const row of rows) {
+      const w = row.props
+      const template = w['payload_template'] as string | null
+      const body = template
+        ? renderPayloadTemplate(template, { event_type: eventType, timestamp, tenant_id: tenantId, entity: payload, ...payload })
+        : JSON.stringify({ event_type: eventType, entity: payload, timestamp, tenant_id: tenantId })
 
-        const retryOnFail = (w['retry_on_failure'] as boolean) ?? true
-        const jobId = deliveryJobId(w['id'] as string, eventType, payload, eventId)
+      const retryOnFail = (w['retry_on_failure'] as boolean) ?? true
+      const jobId = deliveryJobId(w['id'] as string, eventType, payload, eventId)
 
-        const data: DeliveryJobData = {
-          webhookId: w['id'] as string,
-          tenantId,
-          eventType,
-          eventId:   eventId ?? jobId,
-          body,
-        }
-        await queue.add('deliver', data, {
-          jobId,
-          attempts: retryOnFail ? 5 : 1,
-          backoff:  { type: 'exponential', delay: 10_000 },
-          removeOnComplete: { age: 24 * 3600, count: 5000 },
-          removeOnFail:     { age: 7 * 24 * 3600 },
-        })
+      const data: DeliveryJobData = {
+        webhookId: w['id'] as string,
+        tenantId,
+        eventType,
+        eventId:   eventId ?? jobId,
+        body,
       }
-    } finally {
-      await queue.close()
+      await queue.add('deliver', data, {
+        jobId,
+        attempts: retryOnFail ? 5 : 1,
+        backoff:  { type: 'exponential', delay: 10_000 },
+        removeOnComplete: { age: 24 * 3600, count: 5000 },
+        removeOnFail:     { age: 7 * 24 * 3600 },
+      })
     }
     log.info({ tenantId, eventType, count: rows.length }, 'Outbound webhook jobs enqueued')
   } finally {

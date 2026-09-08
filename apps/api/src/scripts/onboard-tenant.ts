@@ -9,8 +9,17 @@
  *     --admin-password Acme1234 \
  *     --admin-first-name Mario \
  *     --admin-last-name Rossi \
+ *     [--name "ACME S.p.A."]           (default: slug)
+ *     [--plan starter|pro|enterprise]  (default: starter)
+ *     [--timezone Europe/Rome]         (default: Europe/Rome — must be a valid IANA zone)
  *     [--domain opengrafo.com]
  *     [--pi-ip 192.168.1.119]
+ *
+ * Neo4j side: creates the `:Tenant` node (id = slug; anomaly scanner, email
+ * digest and seed-field-rules enumerate tenants from it), the admin User,
+ * default dashboard/notification rules/enum types and seeds EVERY workflow
+ * the tenant needs to be operational: incident (+ security variant),
+ * problem, KB article, change RFC and service request.
  *
  * Required env vars:
  *   KEYCLOAK_URL, KEYCLOAK_ADMIN_USER (default "admin"), KEYCLOAK_ADMIN_PASSWORD
@@ -20,9 +29,16 @@
 import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
+import type { Tenant } from '@opengraphity/types'
 import { seedNotificationRules } from '../lib/seedNotificationRules.js'
 import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
-import { seedKBWorkflowForTenant } from '@opengraphity/workflow'
+import {
+  seedKBWorkflowForTenant,
+  seedProblemWorkflowForTenant,
+  seedWorkflowDefinition,
+  seedWorkflowForTenant,
+} from '@opengraphity/workflow'
+import { CHANGE_RFC_WORKFLOW, SERVICE_REQUEST_WORKFLOW } from './lib/workflowDefinitions.js'
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
@@ -36,6 +52,9 @@ const { values: args } = parseArgs({
     'domain':           { type: 'string', default: 'opengrafo.com' },
     'admin-role':       { type: 'string', default: 'admin' },
     'pi-ip':            { type: 'string' },
+    'name':             { type: 'string' },
+    'plan':             { type: 'string', default: 'starter' },
+    'timezone':         { type: 'string', default: 'Europe/Rome' },
   },
 })
 
@@ -48,10 +67,37 @@ const domain    = args['domain']!
 const adminRole = args['admin-role']!
 const piIp      = args['pi-ip']
 
+const tenantName = args['name'] ?? slug
+const plan       = args['plan']!
+const timezone   = args['timezone']!
+
 const ALLOWED_ROLES = ['admin', 'user', 'manager'] as const
 if (!ALLOWED_ROLES.includes(adminRole as typeof ALLOWED_ROLES[number])) {
   console.error(`Errore: --admin-role deve essere uno di: ${ALLOWED_ROLES.join(', ')}`)
   process.exit(1)
+}
+
+const ALLOWED_PLANS = ['starter', 'pro', 'enterprise'] as const satisfies readonly Tenant['plan'][]
+if (!ALLOWED_PLANS.includes(plan as Tenant['plan'])) {
+  console.error(`Errore: --plan deve essere uno di: ${ALLOWED_PLANS.join(', ')}`)
+  process.exit(1)
+}
+
+// emailDigestWorker fails loud on an invalid Tenant.timezone: reject it here.
+try {
+  new Intl.DateTimeFormat('en-US', { timeZone: timezone })
+} catch {
+  console.error(`Errore: --timezone "${timezone}" non è una zona IANA valida (es. Europe/Rome)`)
+  process.exit(1)
+}
+
+// Per-plan defaults for TenantSettings (packages/types). Stored flattened on
+// the node (Neo4j has no nested maps): sla_enabled, scripting_enabled,
+// max_users, max_ci.
+const PLAN_SETTINGS: Record<Tenant['plan'], Tenant['settings']> = {
+  starter:    { sla_enabled: true, scripting_enabled: false, max_users: 25,   max_ci: 500 },
+  pro:        { sla_enabled: true, scripting_enabled: true,  max_users: 250,  max_ci: 10_000 },
+  enterprise: { sla_enabled: true, scripting_enabled: true,  max_users: 5000, max_ci: 200_000 },
 }
 
 if (!slug || !email || !password || !firstName || !lastName) {
@@ -334,6 +380,40 @@ async function provisionNeo4j(): Promise<void> {
   const now     = new Date().toISOString()
 
   try {
+    // 6.0 Tenant node — the anchor every per-tenant background job enumerates
+    // (`MATCH (t:Tenant) RETURN t.id`): without it the anomaly scanner and the
+    // email digest never run for this tenant. id = slug (tenant_id everywhere),
+    // slug kept as an explicit property for scripts matching on it.
+    const settings = PLAN_SETTINGS[plan as Tenant['plan']]
+    const tenantResult = await session.executeWrite((tx) =>
+      tx.run(
+        `MERGE (t:Tenant {id: $id})
+         ON CREATE SET
+           t.slug              = $slug,
+           t.name              = $name,
+           t.plan              = $plan,
+           t.timezone          = $timezone,
+           t.sla_enabled       = $slaEnabled,
+           t.scripting_enabled = $scriptingEnabled,
+           t.max_users         = $maxUsers,
+           t.max_ci            = $maxCi,
+           t.created_at        = $now
+         RETURN (t.created_at = $now) AS wasCreated, t.plan AS plan, t.timezone AS timezone`,
+        {
+          id: slug, slug, name: tenantName, plan, timezone, now,
+          slaEnabled: settings.sla_enabled, scriptingEnabled: settings.scripting_enabled,
+          maxUsers: settings.max_users, maxCi: settings.max_ci,
+        },
+      ),
+    )
+    const tenantRow = tenantResult.records[0]
+    if (!tenantRow) throw new Error(`MERGE (:Tenant {id: "${slug}"}) non ha restituito righe — stato inatteso`)
+    if (tenantRow.get('wasCreated') as boolean) {
+      console.log(`  ✓ Tenant Neo4j creato: ${slug} (plan: ${plan}, timezone: ${timezone})`)
+    } else {
+      console.log(`  ↩ Tenant Neo4j già esistente: ${slug} (plan: ${String(tenantRow.get('plan'))}, timezone: ${String(tenantRow.get('timezone'))}) — skip`)
+    }
+
     // 6a. Admin User node — MERGE is inherently idempotent
     const userId = uuidv4()
     const userResult = await session.executeWrite((tx) =>
@@ -438,8 +518,20 @@ async function main() {
 
   console.log('\n▶ Neo4j')
   await provisionNeo4j()
+
+  // Every ticket type needs its WorkflowDefinition before the first create*
+  // (createInstance fails loud without one). All seeds are idempotent MERGEs.
+  console.log('\n▶ Workflow')
+  await seedWorkflowForTenant(slug!)
+  console.log(`  ✓ Incident workflows seeded (base + security)`)
+  await seedProblemWorkflowForTenant(slug!)
+  console.log(`  ✓ Problem workflow seeded`)
   await seedKBWorkflowForTenant(slug!)
   console.log(`  ✓ KB Article workflow seeded`)
+  for (const def of [CHANGE_RFC_WORKFLOW, SERVICE_REQUEST_WORKFLOW]) {
+    const res = await seedWorkflowDefinition(slug!, def)
+    console.log(`  ✓ "${def.name}" ${res.created ? 'seeded' : 'already present — updated'} (defId: ${res.definitionId})`)
+  }
 
   console.log(`
 ╔══════════════════════════════════════════════════════╗

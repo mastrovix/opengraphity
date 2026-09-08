@@ -10,7 +10,10 @@ import type {
 } from '@opengraphity/types'
 import { DEFAULT_SLA_POLICIES, type SLAPolicy } from './policy.js'
 import { selectSLAForEntity } from './selector.js'
-import { createSLAStatus, markResponseMet, getSLAStatus, markResolveMet, pauseSLA, resumeSLA, type SLAPauseType } from './status.js'
+import {
+  createSLAStatus, markResponseMet, getSLAStatus, markResolveMet, pauseSLA, resumeSLA,
+  getEntityCreatedAt, type SLAPauseType,
+} from './status.js'
 import {
   initScheduler,
   scheduleWarning,
@@ -162,12 +165,21 @@ export class SLAEngine extends BaseConsumer<unknown> {
       return
     }
 
+    // The SLA clock starts at the entity's created_at, not at consumer
+    // processing time (a retried job must not push the deadlines forward).
+    // The payload may carry created_at; otherwise read it from the node.
+    const payloadCreatedAt = (payload as { created_at?: unknown }).created_at
+    const startedAt = typeof payloadCreatedAt === 'string' && !Number.isNaN(new Date(payloadCreatedAt).getTime())
+      ? new Date(payloadCreatedAt)
+      : await getEntityCreatedAt(event.tenant_id, payload.id)
+
     const status = await createSLAStatus({
       tenantId:   event.tenant_id,
       entityId:   payload.id,
       entityType,
       severity,
       policy,
+      startedAt,
     })
 
     await Promise.all([
@@ -237,6 +249,24 @@ export class SLAEngine extends BaseConsumer<unknown> {
       ?? (event.payload as { entity_id?: string }).entity_id
     if (!entityId) throw new Error(`${entityType}.assigned event missing entity id`)
     await markResponseMet(event.tenant_id, entityId)
+    // The response target is met: the pending response-breach timer must not
+    // fire a false "response breach" warning (D-01).
+    await cancelSLAJobs(entityId, 'response')
+  }
+
+  /**
+   * Instant the entity was resolved: the resolved/completed events carry it
+   * (`resolved_at` / `completed_at`); the event timestamp is the documented
+   * fallback for the ones that do not.
+   */
+  private resolvedInstant(event: DomainEvent<unknown>): Date {
+    const p = event.payload as { resolved_at?: unknown; completed_at?: unknown }
+    const raw = p.resolved_at ?? p.completed_at ?? event.timestamp
+    const d = new Date(raw as string)
+    if (Number.isNaN(d.getTime())) {
+      throw new Error(`[sla:engine] ${event.type}: resolved_at/completed_at/timestamp is not a valid instant (${JSON.stringify(raw)})`)
+    }
+    return d
   }
 
   private async handleEntityResolved(
@@ -253,9 +283,12 @@ export class SLAEngine extends BaseConsumer<unknown> {
     const existing = await getSLAStatus(event.tenant_id, id)
 
     if (existing) {
-      await markResolveMet(event.tenant_id, id)
+      const updated = await markResolveMet(event.tenant_id, id, this.resolvedInstant(event))
       await cancelSLAJobs(id)
-      console.log(`[sla:engine] SLA closed for ${entityType} ${id}`)
+      console.log(
+        `[sla:engine] SLA closed for ${entityType} ${id}: ` +
+          (updated?.resolve_met ? 'resolved within target' : 'resolved AFTER target (breached)'),
+      )
     } else {
       console.log(`[sla:engine] No SLAStatus found for ${entityType} ${id} — skipping`)
     }

@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq'
 import type { DomainEvent } from '@opengraphity/types'
-import { getRedisOptions } from './connection.js'
+import { getRedisOptions, registerQueue } from './connection.js'
 
 /** One queue per consumer — fan-out by publishing to all */
 const CONSUMER_QUEUES = ['notification-service', 'sla-engine', 'escalation-consumer'] as const
@@ -17,8 +17,14 @@ let _queues: Queue[] | null = null
 function getQueues(): Queue[] {
   if (_queues) return _queues
   const conn = getRedisOptions()
-  _queues = CONSUMER_QUEUES.map(name => new Queue(name, { connection: conn }))
-  return _queues
+  const queues = CONSUMER_QUEUES.map(name => new Queue(name, { connection: conn }))
+  _queues = queues
+  for (const q of queues) {
+    // After closeConnection() a later publish must open fresh queues, not
+    // reuse closed ones.
+    registerQueue(q, () => { if (_queues === queues) _queues = null })
+  }
+  return queues
 }
 
 export async function publish<T>(event: DomainEvent<T>): Promise<void> {

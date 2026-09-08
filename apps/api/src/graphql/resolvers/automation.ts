@@ -5,8 +5,81 @@ import type { GraphQLContext } from '../../context.js'
 import { invalidateTriggerCache } from '../../lib/triggerEngine.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { invalidateRulesCache } from '../../lib/rulesEngine.js'
+import { parseConditions, type ConditionOperator } from '../../lib/conditionEvaluator.js'
+import { parseActions, type ActionType } from '../../lib/actionExecutor.js'
+import { ValidationError } from '../../lib/errors.js'
 
 type Props = Record<string, unknown>
+
+// ── Write-time validation (C-16) ─────────────────────────────────────────────
+// Conditions/actions are stored as JSON strings and parsed by the SAME parsers
+// the runtime uses. Before, corrupt JSON or an unknown event type was accepted
+// and the rule failed only at runtime (log line only): the rule looked enabled
+// while never firing.
+
+export const AUTOMATION_ENTITY_TYPES  = ['incident', 'change', 'problem', 'service_request'] as const
+export const TRIGGER_EVENT_TYPES      = ['on_create', 'on_update', 'on_timer', 'on_sla_breach', 'on_field_change'] as const
+export const RULE_EVENT_TYPES         = ['on_create', 'on_update', 'on_transition'] as const
+export const CONDITION_LOGICS         = ['and', 'or'] as const
+const CONDITION_OPERATORS: readonly ConditionOperator[] = ['equals', 'not_equals', 'is_null', 'is_not_null', 'greater_than', 'less_than', 'contains']
+const ACTION_TYPES: readonly ActionType[] = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority', 'execute_script', 'call_webhook', 'set_sla']
+
+function assertEnum(field: string, value: unknown, allowed: readonly string[]): string {
+  if (typeof value !== 'string' || !allowed.includes(value)) {
+    throw new ValidationError(`Invalid ${field} ${JSON.stringify(value)} — expected one of: ${allowed.join(', ')}`)
+  }
+  return value
+}
+
+/** Validates a conditions JSON string (null/empty = no conditions). Returns the normalised string to store. */
+export function assertConditionsJson(raw: unknown): string | null {
+  if (raw == null || raw === '') return null
+  if (typeof raw !== 'string') throw new ValidationError('conditions must be a JSON string')
+  let conditions
+  try {
+    conditions = parseConditions(raw)
+  } catch (err) {
+    throw new ValidationError(`Invalid conditions: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  conditions.forEach((c, i) => {
+    if (!c || typeof c !== 'object') throw new ValidationError(`Invalid conditions: item ${i} is not an object`)
+    if (typeof c.field !== 'string' || !c.field) throw new ValidationError(`Invalid conditions: item ${i} has no field`)
+    if (!CONDITION_OPERATORS.includes(c.operator)) {
+      throw new ValidationError(`Invalid conditions: item ${i} has unknown operator ${JSON.stringify(c.operator)} — expected one of: ${CONDITION_OPERATORS.join(', ')}`)
+    }
+  })
+  return raw
+}
+
+/** Validates an actions JSON string (null/empty = no actions). Returns the normalised string to store. */
+export function assertActionsJson(raw: unknown): string | null {
+  if (raw == null || raw === '') return null
+  if (typeof raw !== 'string') throw new ValidationError('actions must be a JSON string')
+  let actions
+  try {
+    actions = parseActions(raw)
+  } catch (err) {
+    throw new ValidationError(`Invalid actions: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  actions.forEach((a, i) => {
+    if (!a || typeof a !== 'object') throw new ValidationError(`Invalid actions: item ${i} is not an object`)
+    if (!ACTION_TYPES.includes(a.type)) {
+      throw new ValidationError(`Invalid actions: item ${i} has unknown type ${JSON.stringify(a.type)} — expected one of: ${ACTION_TYPES.join(', ')}`)
+    }
+    if (a.params != null && (typeof a.params !== 'object' || Array.isArray(a.params))) {
+      throw new ValidationError(`Invalid actions: item ${i} params must be an object`)
+    }
+  })
+  return raw
+}
+
+function assertTimerDelay(value: unknown): number | null {
+  if (value == null) return null
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new ValidationError(`Invalid timerDelayMinutes ${JSON.stringify(value)} — expected a non-negative integer`)
+  }
+  return value
+}
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
 
@@ -89,6 +162,14 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
   const { input } = args
   const id  = uuidv4()
   const now = new Date().toISOString()
+  const entityType        = assertEnum('entityType', input['entityType'], AUTOMATION_ENTITY_TYPES)
+  const eventType         = assertEnum('eventType', input['eventType'], TRIGGER_EVENT_TYPES)
+  const conditions        = assertConditionsJson(input['conditions'])
+  const actions           = assertActionsJson(input['actions'])
+  const timerDelayMinutes = assertTimerDelay(input['timerDelayMinutes'])
+  if (eventType === 'on_timer' && (timerDelayMinutes == null || timerDelayMinutes <= 0)) {
+    throw new ValidationError('An on_timer trigger requires timerDelayMinutes > 0')
+  }
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (t:AutoTrigger {
@@ -102,10 +183,10 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
       RETURN properties(t) AS props
     `, {
       id, tenantId: ctx.tenantId,
-      name: input['name'], entityType: input['entityType'], eventType: input['eventType'],
-      conditions: input['conditions'] ?? null,
-      timerDelayMinutes: input['timerDelayMinutes'] ?? null,
-      actions: input['actions'] ?? null,
+      name: input['name'], entityType, eventType,
+      conditions,
+      timerDelayMinutes,
+      actions,
       enabled: input['enabled'] ?? true, now,
     })
     invalidateTriggerCache(ctx.tenantId)
@@ -120,10 +201,16 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
     name: 'name', eventType: 'event_type', conditions: 'conditions',
     timerDelayMinutes: 'timer_delay_minutes', actions: 'actions', enabled: 'enabled',
   }
+  const validators: Record<string, (v: unknown) => unknown> = {
+    eventType:         (v) => assertEnum('eventType', v, TRIGGER_EVENT_TYPES),
+    conditions:        assertConditionsJson,
+    actions:           assertActionsJson,
+    timerDelayMinutes: assertTimerDelay,
+  }
   for (const [gql, neo] of Object.entries(fieldMap)) {
     if (args.input[gql] !== undefined) {
       sets.push(`t.${neo} = $${gql}`)
-      params[gql] = args.input[gql]
+      params[gql] = validators[gql] ? validators[gql](args.input[gql]) : args.input[gql]
     }
   }
   return withSession(async (session) => {
@@ -168,6 +255,11 @@ async function createBusinessRule(_: unknown, args: { input: Props }, ctx: Graph
   const { input } = args
   const id  = uuidv4()
   const now = new Date().toISOString()
+  const entityType     = assertEnum('entityType', input['entityType'], AUTOMATION_ENTITY_TYPES)
+  const eventType      = assertEnum('eventType', input['eventType'], RULE_EVENT_TYPES)
+  const conditionLogic = assertEnum('conditionLogic', input['conditionLogic'] ?? 'and', CONDITION_LOGICS)
+  const conditions     = assertConditionsJson(input['conditions'])
+  const actions        = assertActionsJson(input['actions'])
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (r:BusinessRule {
@@ -183,9 +275,9 @@ async function createBusinessRule(_: unknown, args: { input: Props }, ctx: Graph
     `, {
       id, tenantId: ctx.tenantId,
       name: input['name'], description: input['description'] ?? null,
-      entityType: input['entityType'], eventType: input['eventType'],
-      conditionLogic: input['conditionLogic'] ?? 'and',
-      conditions: input['conditions'] ?? null, actions: input['actions'] ?? null,
+      entityType, eventType,
+      conditionLogic,
+      conditions, actions,
       priority: input['priority'] ?? 100, stopOnMatch: input['stopOnMatch'] ?? false,
       enabled: input['enabled'] ?? true, now,
     })
@@ -202,10 +294,16 @@ async function updateBusinessRule(_: unknown, args: { id: string; input: Props }
     conditionLogic: 'condition_logic', conditions: 'conditions', actions: 'actions',
     priority: 'priority', stopOnMatch: 'stop_on_match', enabled: 'enabled',
   }
+  const validators: Record<string, (v: unknown) => unknown> = {
+    eventType:      (v) => assertEnum('eventType', v, RULE_EVENT_TYPES),
+    conditionLogic: (v) => assertEnum('conditionLogic', v, CONDITION_LOGICS),
+    conditions:     assertConditionsJson,
+    actions:        assertActionsJson,
+  }
   for (const [gql, neo] of Object.entries(fieldMap)) {
     if (args.input[gql] !== undefined) {
       sets.push(`r.${neo} = $${gql}`)
-      params[gql] = args.input[gql]
+      params[gql] = validators[gql] ? validators[gql](args.input[gql]) : args.input[gql]
     }
   }
   return withSession(async (session) => {

@@ -290,7 +290,7 @@ services:
   # event loop. Same image as api, different entrypoint.
   worker:
     image: opengrafo-api:local
-    command: ["node", "apps/api/dist/worker.js"]
+    command: ["node", "--no-node-snapshot", "apps/api/dist/worker.js"]  # isolated-vm su Node >= 20
     environment:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}

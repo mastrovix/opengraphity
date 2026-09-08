@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
+import { useMutationWithToast } from '@/hooks/useMutationWithToast'
+import { lookupOrError } from '@/lib/tokens'
 import { HelpCircle, Plus, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -73,11 +75,42 @@ const CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
 }
 
 function CategoryBadge({ category }: { category: string }) {
-  const s = CATEGORY_COLORS[category] ?? { bg: '#f1f5f9', color: 'var(--color-slate)' }
+  // Unknown category → visible red pill + console error, not a benign grey.
+  const s = lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', { bg: 'var(--color-danger)', color: '#fff' })
   return (
     <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }}>
       {category}
     </Pill>
+  )
+}
+
+/**
+ * Numeric field that saves on blur/Enter only when the value changed, and is
+ * disabled while the save is in flight. Saving on every keystroke sent "1"
+ * then "12" and let the slower response win (E-15).
+ */
+function CommitNumberInput({ value, onCommit, disabled, title, min }: {
+  value: number; onCommit: (v: number) => void; disabled: boolean; title: string; min: number
+}) {
+  const [draft, setDraft] = useState(String(value))
+  useEffect(() => { setDraft(String(value)) }, [value])
+  const commit = () => {
+    const n = parseInt(draft, 10)
+    if (Number.isNaN(n) || n < min) { setDraft(String(value)); return }
+    if (n !== value) onCommit(n)
+  }
+  return (
+    <input
+      type="number"
+      min={min}
+      value={draft}
+      disabled={disabled}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
+      style={{ ...inputStyle, width: 80, opacity: disabled ? 0.6 : 1 }}
+      title={title}
+    />
   )
 }
 
@@ -104,10 +137,6 @@ export function QuestionAdminPage() {
   const questions = allQuestions.filter(q =>
     !filterCat || (q.category ?? '').toLowerCase() === filterCat.toLowerCase()
   )
-  // eslint-disable-next-line no-console
-  console.debug('[QuestionAdmin] filter:', JSON.stringify(filterCat), '| total:', allQuestions.length,
-    '| filtered:', questions.length,
-    '| categories in data:', Array.from(new Set(allQuestions.map(q => q.category))))
   const ciTypes   = (typesData?.ciTypes ?? []).filter(t => t.active)
 
   const selected = questions.find(q => q.id === selectedId) ?? null
@@ -129,37 +158,32 @@ export function QuestionAdminPage() {
   )
   const assignments = assignData?.questionCITypeAssignments ?? []
 
-  const [createQuestion] = useMutation<{ createAssessmentQuestion: { id: string } }>(CREATE_QUESTION, {
-    onCompleted: async (data) => {
-      toast.success('Domanda creata')
-      await refetchQuestions()
-      if (data?.createAssessmentQuestion?.id) {
-        setSelectedId(data.createAssessmentQuestion.id)
-      }
-      setIsNew(false)
+  // Errors → toast with the server message (useMutationWithToast).
+  const [createQuestion] = useMutationWithToast<{ createAssessmentQuestion: { id: string } }>(CREATE_QUESTION, {
+    successMessage: 'Domanda creata',
+    onSuccess: (data) => {
+      void refetchQuestions().then(() => {
+        if (data?.createAssessmentQuestion?.id) setSelectedId(data.createAssessmentQuestion.id)
+        setIsNew(false)
+      })
     },
-    onError: (e) => { console.error('[createQuestion]', e); toast.error(e.message) },
   })
-  const [updateQuestion] = useMutation(UPDATE_QUESTION, {
-    onCompleted: () => { toast.success('Domanda aggiornata'); void refetchQuestions() },
-    onError: (e) => { console.error('[updateQuestion]', e); toast.error(e.message) },
+  const [updateQuestion] = useMutationWithToast(UPDATE_QUESTION, {
+    successMessage: 'Domanda aggiornata', refetch: refetchQuestions,
   })
-  const [deleteQuestion] = useMutation(DELETE_QUESTION, {
-    onCompleted: () => { toast.success('Domanda eliminata'); setSelectedId(null); void refetchQuestions() },
-    onError: (e) => { console.error('[deleteQuestion]', e); toast.error(e.message) },
+  const [deleteQuestion] = useMutationWithToast(DELETE_QUESTION, {
+    successMessage: 'Domanda eliminata', onSuccess: () => setSelectedId(null), refetch: refetchQuestions,
   })
-  const [assignToCIType] = useMutation(ASSIGN_QUESTION_TO_CITYPE, {
-    onCompleted: () => { void refetchAssignments() },
-    onError: (e) => { console.error('[assignToCIType]', e); toast.error(e.message) },
+  const [assignToCIType, { loading: assigning }] = useMutationWithToast(ASSIGN_QUESTION_TO_CITYPE, {
+    refetch: refetchAssignments,
   })
-  const [removeFromCIType] = useMutation(REMOVE_QUESTION_FROM_CITYPE, {
-    onCompleted: () => { void refetchAssignments() },
-    onError: (e) => { console.error('[removeFromCIType]', e); toast.error(e.message) },
+  const [removeFromCIType, { loading: removing }] = useMutationWithToast(REMOVE_QUESTION_FROM_CITYPE, {
+    refetch: refetchAssignments,
   })
-  const [setCore] = useMutation(SET_QUESTION_CORE, {
-    onCompleted: () => { void refetchQuestions(); void refetchAssignments() },
-    onError: (e) => { console.error('[setQuestionCore]', e); toast.error(e.message) },
+  const [setCore] = useMutationWithToast(SET_QUESTION_CORE, {
+    onSuccess: () => { void refetchQuestions(); void refetchAssignments() },
   })
+  const assignmentBusy = assigning || removing
 
   const handleNew = () => {
     setSelectedId(null)
@@ -349,6 +373,7 @@ export function QuestionAdminPage() {
                           <input
                             type="checkbox"
                             checked={assigned}
+                            disabled={assignmentBusy}
                             onChange={e => {
                               if (e.target.checked) {
                                 void assignToCIType({ variables: { questionId: selectedId, ciTypeId: ct.id, weight: 1, sortOrder: 0 } })
@@ -360,24 +385,18 @@ export function QuestionAdminPage() {
                           <span style={{ flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{ct.label}</span>
                           {assigned && (
                             <>
-                              <input
-                                type="number"
+                              <CommitNumberInput
                                 value={assign.weight}
-                                onChange={e => {
-                                  const w = parseInt(e.target.value, 10) || 1
-                                  void assignToCIType({ variables: { questionId: selectedId, ciTypeId: ct.id, weight: w, sortOrder: assign.sortOrder } })
-                                }}
-                                style={{ ...inputStyle, width: 80 }}
+                                min={1}
+                                disabled={assignmentBusy}
+                                onCommit={w => void assignToCIType({ variables: { questionId: selectedId, ciTypeId: ct.id, weight: w, sortOrder: assign.sortOrder } })}
                                 title="Weight"
                               />
-                              <input
-                                type="number"
+                              <CommitNumberInput
                                 value={assign.sortOrder}
-                                onChange={e => {
-                                  const s = parseInt(e.target.value, 10) || 0
-                                  void assignToCIType({ variables: { questionId: selectedId, ciTypeId: ct.id, weight: assign.weight, sortOrder: s } })
-                                }}
-                                style={{ ...inputStyle, width: 80 }}
+                                min={0}
+                                disabled={assignmentBusy}
+                                onCommit={s => void assignToCIType({ variables: { questionId: selectedId, ciTypeId: ct.id, weight: assign.weight, sortOrder: s } })}
                                 title="Sort order"
                               />
                             </>

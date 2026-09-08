@@ -39,15 +39,28 @@ const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail:
 
 type Row = Record<string, unknown>
 
+// runQueryOne serve due volte: lookup del gruppo e, per i gruppi dinamici, il
+// count senza LIMIT (`total` = conteggio reale, indipendente dalle righe).
+let groupProps: Row | null = null
+let countTotal: number | null = null
+
+function installQueryOne() {
+  vi.mocked(runQueryOne).mockImplementation(async (_s, cypher) => {
+    if ((cypher as string).includes('count(m)')) return { total: countTotal ?? 0 } as never
+    return (groupProps ? { props: groupProps } : null) as never
+  })
+}
+
 function primeGroup(props: Row | null) {
-  vi.mocked(runQueryOne).mockResolvedValue(props ? { props } : null)
+  groupProps = props
 }
 
-function primeMembers(rows: { props: Row; nodeLabels: string[] }[]) {
+function primeMembers(rows: { props: Row; nodeLabels: string[] }[], total = rows.length) {
   vi.mocked(runQuery).mockResolvedValue(rows as never)
+  countTotal = total
 }
 
-/** Cypher e params dell'unica chiamata runQuery (la member query). */
+/** Cypher e params della member query (prima e unica chiamata runQuery). */
 function memberQueryCall(): { cypher: string; params: Record<string, unknown> } {
   expect(vi.mocked(runQuery)).toHaveBeenCalledTimes(1)
   const call = vi.mocked(runQuery).mock.calls[0]!
@@ -65,7 +78,9 @@ describe('ciGroupMembers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(runQuery).mockResolvedValue([])
-    vi.mocked(runQueryOne).mockResolvedValue(null)
+    groupProps = null
+    countTotal = null
+    installQueryOne()
   })
 
   it('gruppo inesistente → GraphQLError NOT_FOUND, nessuna member query', async () => {
@@ -93,9 +108,27 @@ describe('ciGroupMembers', () => {
     expect(cypher).toContain('m.tenant_id = $tenantId')
     expect(params).toMatchObject({ groupId: 'g1', tenantId: 'tenant-1' })
 
-    expect(result).toHaveLength(2)
-    expect(result[0]).toMatchObject({ id: 'ci-1', name: 'billing-db', type: 'database' })
-    expect(result[1]).toMatchObject({ id: 'ci-2', name: 'srv-billing-01', type: 'server' })
+    // manual: nessun LIMIT → nessuna count query, total = righe
+    expect(runQueryOne).toHaveBeenCalledTimes(1)
+    expect(result.items).toHaveLength(2)
+    expect(result.items[0]).toMatchObject({ id: 'ci-1', name: 'billing-db', type: 'database' })
+    expect(result.items[1]).toMatchObject({ id: 'ci-2', name: 'srv-billing-01', type: 'server' })
+    expect(result).toMatchObject({ total: 2, truncated: false })
+  })
+
+  it('dynamic → total dal count senza LIMIT, truncated quando il taglio è visibile', async () => {
+    primeGroup({ id: 'g-big', membership_type: 'dynamic', criteria_ci_types: 'server' })
+    primeMembers([serverRow('ci-1', 'a'), serverRow('ci-2', 'b')], 731)
+
+    const result = await ciGroupMembers(null, { groupId: 'g-big' }, ctx)
+
+    expect(result.items).toHaveLength(2)
+    expect(result).toMatchObject({ total: 731, truncated: true })
+    // la count query riusa gli stessi criteri (stesso WHERE, stessi params)
+    const countCall = vi.mocked(runQueryOne).mock.calls.find((c) => (c[1] as string).includes('count(m)'))!
+    expect(countCall[1]).toContain('m:Server')
+    expect(countCall[1]).not.toContain('LIMIT')
+    expect(countCall[2]).toMatchObject({ tenantId: 'tenant-1' })
   })
 
   it('dynamic → label whitelist dai criteri, type sconosciuti ignorati silenziosamente', async () => {
@@ -123,7 +156,8 @@ describe('ciGroupMembers', () => {
       status:       'active',
       nameContains: 'prod',
     })
-    expect(result).toEqual([expect.objectContaining({ id: 'ci-9', type: 'server' })])
+    expect(result.items).toEqual([expect.objectContaining({ id: 'ci-9', type: 'server' })])
+    expect(result).toMatchObject({ total: 1, truncated: false })
   })
 
   it('dynamic con ciTypes vuoto → tutte le label CI, ma MAI DynamicCIGroup (no gruppi di gruppi)', async () => {

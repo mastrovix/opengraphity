@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
 import { QueryError } from '@/components/QueryError'
 import { DetailField } from '@/components/ui/DetailField'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Users, User, Plus, X } from 'lucide-react'
-import { toast } from 'sonner'
-import { lookupStyle } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
+import { RoleBadge } from '@/components/ui/badges'
+import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
 
 const UPDATE_USER_TEAMS = gql`
@@ -38,27 +38,6 @@ interface UserData {
   teams:     TeamRef[]
 }
 
-// ── Badges ────────────────────────────────────────────────────────────────────
-
-const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
-  operator: { bg: 'var(--color-info-bg)', color: '#2563eb' },
-  viewer:   { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' },
-}
-
-function RoleBadge({ role }: { role: string }) {
-  const s = lookupStyle(ROLE_STYLES, role, 'ROLE_STYLES')
-  return (
-    <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
-      {role}
-    </Pill>
-  )
-}
-
-// Team type styles removed — teams now shown as removable chips
-
-// TeamTypeBadge removed — teams now shown as removable chips
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function UserDetailPage() {
@@ -73,10 +52,7 @@ export function UserDetailPage() {
   })
   const { data: allTeamsData } = useQuery<{ teams: { id: string; name: string; description: string | null; type: string | null }[] }>(GET_TEAMS)
 
-  const [updateTeams] = useMutation(UPDATE_USER_TEAMS, {
-    onCompleted: () => { toast.success('Team aggiornati'); refetch() },
-    onError: (err) => toast.error(err.message),
-  })
+  const [updateTeams] = useMutationWithToast(UPDATE_USER_TEAMS, { successMessage: 'Team aggiornati', refetch })
 
   const user = data?.user
   const allTeams = allTeamsData?.teams ?? []
@@ -154,7 +130,7 @@ export function UserDetailPage() {
                       </div>
                     </div>
                     <button
-                      onClick={() => updateTeams({ variables: { userId: user.id, teamIds: userTeamIds.filter(tid => tid !== t.id) } })}
+                      onClick={() => void updateTeams({ variables: { userId: user.id, teamIds: userTeamIds.filter(tid => tid !== t.id) } })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
                       title="Rimuovi dal team"
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
@@ -186,7 +162,7 @@ export function UserDetailPage() {
                 ) : availableTeams.map((t, i) => (
                   <div
                     key={t.id}
-                    onClick={() => { updateTeams({ variables: { userId: user.id, teamIds: [...userTeamIds, t.id] } }); setShowAddTeam(false) }}
+                    onClick={() => { void updateTeams({ variables: { userId: user.id, teamIds: [...userTeamIds, t.id] } }); setShowAddTeam(false) }}
                     className="hover-bg"
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', borderBottom: i < availableTeams.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
                   >

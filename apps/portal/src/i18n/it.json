@@ -6,7 +6,8 @@
   "nav": {
     "home": "Home",
     "tickets": "I miei ticket",
-    "kb": "Knowledge Base"
+    "kb": "Knowledge Base",
+    "catalog": "Catalogo"
   },
   "home": {
     "greeting": "Ciao {{name}}, come possiamo aiutarti?",
@@ -85,7 +86,13 @@
       "closed": "Nessun ticket chiuso."
     },
     "prev": "← Precedente",
-    "next": "Successivo →"
+    "next": "Successivo →",
+    "openedOn": "Aperto {{date}}",
+    "updatedOn": "Aggiornato {{date}}",
+    "noMessages": "Nessun messaggio ancora.",
+    "loadError": "Impossibile caricare il ticket: {{message}}",
+    "notFound": "Ticket non trovato o non accessibile.",
+    "rulesError": "Impossibile validare i campi obbligatori: {{message}}"
   },
   "kb": {
     "title": "Knowledge Base",
@@ -102,7 +109,9 @@
     "published": "Pubblicato il",
     "by": "di",
     "views": "visualizzazioni",
-    "breadcrumb": "Knowledge Base"
+    "breadcrumb": "Knowledge Base",
+    "notFound": "Articolo non trovato",
+    "searchButton": "Cerca"
   },
   "common": {
     "loading": "Caricamento...",
@@ -113,5 +122,26 @@
     "save": "Salva",
     "back": "← Indietro",
     "required": "Campo obbligatorio"
+  },
+  "catalog": {
+    "title": "Catalogo servizi",
+    "intro": "Richiedi un servizio dal catalogo. Alcune richieste passano da un'approvazione.",
+    "loadError": "Errore nel caricamento del catalogo: {{message}}",
+    "empty": "Nessun servizio disponibile.",
+    "uncategorized": "Altro",
+    "requiresApproval": "Richiede approvazione",
+    "approvalNotice": "Questa richiesta sarà sottoposta ad approvazione.",
+    "details": "Dettagli (opzionale)",
+    "detailsPlaceholder": "Aggiungi dettagli utili per l'evasione…",
+    "submit": "Invia richiesta",
+    "submitting": "Invio…"
+  },
+  "notFound": {
+    "title": "Pagina non trovata",
+    "description": "L'indirizzo {{path}} non esiste nel portale.",
+    "home": "Torna alla home"
+  },
+  "errors": {
+    "network": "Errore di connessione al server"
   }
 }

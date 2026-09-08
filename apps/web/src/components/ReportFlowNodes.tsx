@@ -187,8 +187,9 @@ export function ReportEdgeComponent({
             cursor: 'default',
           }}
         >
+          {/* `||` not `??`: an empty saved label must still fall back to the relationship type */}
           {(data as { label?: string; relationshipType?: string } | undefined)?.label
-            ?? (data as { label?: string; relationshipType?: string } | undefined)?.relationshipType}
+            || (data as { label?: string; relationshipType?: string } | undefined)?.relationshipType}
         </div>
       </EdgeLabelRenderer>
     </>

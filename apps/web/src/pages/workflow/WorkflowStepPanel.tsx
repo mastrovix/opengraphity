@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -72,9 +72,30 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
   const [isOpen,     setIsOpen]     = useState(step.isOpen ?? !step.isTerminal)
   const [category,   setCategory]   = useState(step.category ?? '')
 
-  // Parse initial actions (computed once from props — stable until save)
-  const allEnterActions: AnyAction[]  = step.enterActions ? (JSON.parse(step.enterActions) as AnyAction[]) : []
-  const initExitActions: AnyAction[]  = step.exitActions  ? (JSON.parse(step.exitActions)  as AnyAction[]) : []
+  // Parse initial actions (computed once from props — stable until save).
+  // Un JSON corrotto su enter/exit_actions NON deve far cadere l'intera pagina
+  // del designer: il pannello mostra l'errore e blocca il Salva (che
+  // riscriverebbe le azioni perdendo quelle illeggibili).
+  const { allEnterActions, initExitActions, actionsParseError } = useMemo(() => {
+    const parseList = (raw: string | null, field: string): AnyAction[] | string => {
+      if (!raw) return []
+      try {
+        const parsed: unknown = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return `${field}: atteso un array JSON, trovato ${typeof parsed}`
+        return parsed as AnyAction[]
+      } catch (e) {
+        return `${field}: ${e instanceof Error ? e.message : String(e)}`
+      }
+    }
+    const enter = parseList(step.enterActions, 'enter_actions')
+    const exit  = parseList(step.exitActions,  'exit_actions')
+    const errors = [enter, exit].filter((r): r is string => typeof r === 'string')
+    return {
+      allEnterActions:   Array.isArray(enter) ? enter : [],
+      initExitActions:   Array.isArray(exit)  ? exit  : [],
+      actionsParseError: errors.length > 0 ? errors.join(' · ') : null,
+    }
+  }, [step.enterActions, step.exitActions])
   const existingNR = allEnterActions.find((a) => a.type === 'notify_rule') as NotifyRuleAction | undefined
   const initEnterActions = allEnterActions.filter((a) => a.type !== 'notify_rule')
 
@@ -139,7 +160,7 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
     && notifySeverity === (existingNR?.params.severity   ?? 'info')
     && JSON.stringify(notifyChannels) === JSON.stringify(existingNR?.params.channels ?? ['in_app'])
     && notifyTarget   === (existingNR?.params.target     ?? 'all')
-  const saveDisabled = loading || (propsUnchanged && notifyUnchanged)
+  const saveDisabled = loading || actionsParseError !== null || (propsUnchanged && notifyUnchanged)
 
   const handleSave = () => {
     const enterActions = buildEnterActions()
@@ -569,6 +590,21 @@ export function WorkflowStepPanel({ step, definitionId: _defId, onClose, onSaved
   return (
     <div style={panelStyle}>
       <PanelHeader title="Modifica Step" onClose={onClose} />
+
+      {actionsParseError && (
+        <div
+          role="alert"
+          style={{
+            padding: '8px 10px', marginBottom: 8, borderRadius: 6,
+            background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)',
+            color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', lineHeight: 1.4,
+          }}
+        >
+          <strong>Azioni dello step corrotte</strong> — {actionsParseError}. Correggi il dato salvato
+          (enter/exit_actions dello step <code>{step.name}</code>) prima di modificarlo: il salvataggio è disabilitato
+          per non perdere le azioni illeggibili.
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}>

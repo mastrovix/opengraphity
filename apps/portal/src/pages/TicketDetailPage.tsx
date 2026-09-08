@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
@@ -8,6 +8,9 @@ import { ADD_TICKET_COMMENT, REOPEN_TICKET } from '@/graphql/mutations'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { CommentBubble } from '@/components/CommentBubble'
 import { downloadAttachment } from '@/lib/attachments'
+import { notifyError } from '@/lib/notify'
+import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
+import { fmtDateTimeLong, fmtRelative } from '@/lib/format'
 
 interface EntityComment {
   id: string; body: string; isInternal: boolean
@@ -22,22 +25,6 @@ interface Ticket {
   comments:    EntityComment[]
   attachments: Attachment[]
   history:     HistoryEntry[]
-}
-
-function fmtDate(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat('it-IT', {
-      day: '2-digit', month: 'long', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    }).format(new Date(iso))
-  } catch { return iso }
-}
-
-function fmtRelative(iso: string): string {
-  try {
-    const diff = Math.round((new Date(iso).getTime() - Date.now()) / 3_600_000)
-    return new Intl.RelativeTimeFormat('it', { numeric: 'auto' }).format(diff, 'hour')
-  } catch { return iso }
 }
 
 function formatBytes(b: number): string {
@@ -56,7 +43,11 @@ export function TicketDetailPage() {
   const showCreatedMsg       = !!(location.state as { created?: boolean } | null)?.created
 
   const { data: meData }     = useQuery<{ me: { id: string } | null }>(GET_ME)
-  const { data, refetch }    = useQuery<{ myTicket: Ticket }>(GET_MY_TICKET, { variables: { id }, skip: !id })
+  // Detail page polls (comments/status from the IT team); nothing else does.
+  const { data, loading, error, refetch } = useQuery<{ myTicket: Ticket }>(
+    GET_MY_TICKET,
+    { variables: { id }, skip: !id, pollInterval: TICKET_POLL_INTERVAL_MS },
+  )
 
   const ticket   = data?.myTicket
   const myUserId = meData?.me?.id ?? ''
@@ -69,15 +60,35 @@ export function TicketDetailPage() {
 
   const [addComment, { loading: commenting }] = useMutation(ADD_TICKET_COMMENT, {
     onCompleted: () => { setReply(''); void refetch() },
-    onError: (e: { message: string }) => alert(e.message),
+    onError: (e: { message: string }) => notifyError(e.message),
   })
 
   const [reopenTicket, { loading: reopening }] = useMutation(REOPEN_TICKET, {
     onCompleted: () => void refetch(),
-    onError: (e: { message: string }) => alert(e.message),
+    onError: (e: { message: string }) => notifyError(e.message),
   })
 
-  if (!ticket) return <div style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>{t('common.loading')}</div>
+  // Error (e.g. ForbiddenError on someone else's ticket) must not look like an
+  // endless "Loading…": show it, with a way back to the list.
+  if (error) {
+    return (
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: 24 }}>
+        <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '12px 16px', borderRadius: 8, fontSize: 14, marginBottom: 16 }}>
+          {t('ticket.loadError', { message: error.message })}
+        </div>
+        <Link to="/tickets" style={{ color: '#0EA5E9', fontSize: 14 }}>{t('common.back')}</Link>
+      </div>
+    )
+  }
+  if (loading && !ticket) return <div style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>{t('common.loading')}</div>
+  if (!ticket) {
+    return (
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: 24, textAlign: 'center', color: '#64748B' }}>
+        <p style={{ marginBottom: 16 }}>{t('ticket.notFound')}</p>
+        <Link to="/tickets" style={{ color: '#0EA5E9', fontSize: 14 }}>{t('common.back')}</Link>
+      </div>
+    )
+  }
 
   const isClosed   = ticket.status === 'closed'
   const isResolved = ticket.status === 'resolved'
@@ -132,7 +143,7 @@ export function TicketDetailPage() {
         <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 10, color: '#94A3B8', flexWrap: 'wrap' }}>
           <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
           <span>·</span>
-          <span>{t('ticket.createdAt')}: {fmtDate(ticket.createdAt)}</span>
+          <span>{t('ticket.createdAt')}: {fmtDateTimeLong(ticket.createdAt)}</span>
           <span>·</span>
           <span>{t('ticket.updatedAt')}: {fmtRelative(ticket.updatedAt)}</span>
           {ticket.assignedTeam && (
@@ -198,7 +209,7 @@ export function TicketDetailPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 80 }}>
         {timeline.length === 0 && (
           <p style={{ color: '#94A3B8', fontSize: 10, textAlign: 'center', padding: '24px 0' }}>
-            Nessun messaggio ancora.
+            {t('ticket.noMessages')}
           </p>
         )}
 
@@ -253,7 +264,7 @@ export function TicketDetailPage() {
               {ticket.attachments.map(a => (
                 <button
                   key={a.id}
-                  onClick={() => downloadAttachment(a.downloadUrl, a.filename).catch(() => alert(t('ticket.downloadFailed')))}
+                  onClick={() => downloadAttachment(a.downloadUrl, a.filename).catch(() => notifyError(t('ticket.downloadFailed')))}
                   style={{
                     display:         'flex',
                     alignItems:      'center',

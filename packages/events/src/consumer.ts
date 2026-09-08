@@ -14,6 +14,49 @@ function backoffStrategy(attemptsMade: number): number {
   return RETRY_DELAYS[idx] ?? 300_000
 }
 
+// ── Exhausted-event accounting (D-33) ─────────────────────────────────────────
+// An event that failed its LAST attempt is lost for good (no DLQ). Besides the
+// log line, expose a counter and a hook so the API can surface it as a metric
+// (`events_failed_total{queue,type}`) or an alert. The metric wiring itself
+// lives in apps/api, not here.
+
+export interface FailedEventInfo {
+  queue:     string
+  eventType: string
+  eventId:   string | undefined
+  attempts:  number
+  error:     Error
+}
+
+let failedEventCount = 0
+const failedEventListeners = new Set<(info: FailedEventInfo) => void>()
+
+/** Total events that exhausted all retry attempts since process start. */
+export function getFailedEventCount(): number {
+  return failedEventCount
+}
+
+/**
+ * Registers a callback invoked every time an event exhausts its attempts.
+ * Returns an unsubscribe function. A throwing listener is logged, never
+ * allowed to break the worker.
+ */
+export function onEventFailed(cb: (info: FailedEventInfo) => void): () => void {
+  failedEventListeners.add(cb)
+  return () => { failedEventListeners.delete(cb) }
+}
+
+function recordExhaustedEvent(info: FailedEventInfo): void {
+  failedEventCount += 1
+  for (const cb of failedEventListeners) {
+    try {
+      cb(info)
+    } catch (err) {
+      console.error(`[consumer:${info.queue}] onEventFailed listener threw:`, err)
+    }
+  }
+}
+
 export abstract class BaseConsumer<T> {
   private worker: Worker | null = null
   private redis: Redis | null = null
@@ -55,9 +98,23 @@ export abstract class BaseConsumer<T> {
     )
 
     this.worker.on('failed', (job: Job | undefined, err: Error) => {
+      const event = job?.data as DomainEvent<T> | undefined
+      const attemptsMade = job?.attemptsMade ?? 0
+      const maxAttempts  = job?.opts.attempts ?? 1
+      const exhausted    = !job || attemptsMade >= maxAttempts
       console.error(
-        `[consumer:${this.queueName}] Job failed: ${job?.name ?? '?'} — ${err.message}`,
+        `[consumer:${this.queueName}] Job failed: ${job?.name ?? '?'} ` +
+          `(attempt ${attemptsMade}/${maxAttempts}${exhausted ? ', EXHAUSTED — event lost' : ''}) — ${err.message}`,
       )
+      if (exhausted) {
+        recordExhaustedEvent({
+          queue:     this.queueName,
+          eventType: event?.type ?? job?.name ?? 'unknown',
+          eventId:   event?.id,
+          attempts:  attemptsMade,
+          error:     err,
+        })
+      }
     })
 
     console.log(`[consumer:${this.queueName}] Started — concurrency: 10`)

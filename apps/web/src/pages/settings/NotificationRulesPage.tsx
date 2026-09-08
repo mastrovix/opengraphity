@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
+import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Plus, Bell } from 'lucide-react'
@@ -72,39 +73,39 @@ export default function NotificationRulesPage() {
   const { t } = useTranslation()
   const [showDialog, setShowDialog] = useState(false)
 
-  const { data, loading } = useQuery<{ notificationRules: NotificationRule[] }>(
+  const { data, loading, refetch } = useQuery<{ notificationRules: NotificationRule[] }>(
     GET_NOTIFICATION_RULES,
     { fetchPolicy: 'cache-and-network' },
   )
 
-  const refetchQ = [{ query: GET_NOTIFICATION_RULES }]
-
-  const [updateRule] = useMutation<{ updateNotificationRule: NotificationRule }>(
+  // Errors → toast with the server message; success → refetch() of the
+  // active query (E-08).
+  const [updateRule] = useMutationWithToast<{ updateNotificationRule: NotificationRule }>(
     UPDATE_NOTIFICATION_RULE,
-    { refetchQueries: refetchQ },
+    { refetch },
   )
 
-  const [createRule, { loading: creating }] = useMutation<{ createNotificationRule: NotificationRule }>(
+  const [createRule, { loading: creating }] = useMutationWithToast<{ createNotificationRule: NotificationRule }>(
     CREATE_NOTIFICATION_RULE,
-    { refetchQueries: refetchQ },
+    { refetch, onSuccess: () => setShowDialog(false) },
   )
 
-  const [deleteRule] = useMutation<{ deleteNotificationRule: boolean }>(
+  const [deleteRule] = useMutationWithToast<{ deleteNotificationRule: boolean }>(
     DELETE_NOTIFICATION_RULE,
-    { refetchQueries: refetchQ },
+    { refetch },
   )
 
   const handleUpdate = useCallback((id: string, input: UpdateInput) => {
-    updateRule({ variables: { id, input } })
+    void updateRule({ variables: { id, input } })
   }, [updateRule])
 
   const handleCreate = useCallback((input: CreateInput) => {
-    createRule({ variables: { input } }).then(() => setShowDialog(false))
+    void createRule({ variables: { input } })
   }, [createRule])
 
   const handleDelete = useCallback((id: string) => {
     if (window.confirm(t('notificationRules.deleteRule') + '?')) {
-      deleteRule({ variables: { id } })
+      void deleteRule({ variables: { id } })
     }
   }, [deleteRule, t])
 
