@@ -47,7 +47,7 @@ RUN pnpm --filter @opengraphity/portal build
 
 # ── Stage 2: nginx ────────────────────────────────────────────────────────────
 # Same image as the front-door nginx (infra/docker-compose.yml), pinned by digest.
-FROM nginx:1.28.3-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236 AS runtime
+FROM nginx:1.31.5-alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3 AS runtime
 
 COPY --from=builder /app/apps/portal/dist /usr/share/nginx/html
 
