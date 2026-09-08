@@ -814,11 +814,14 @@
     "failed": "Export failed"
   },
   "detail": {
+    "ticketNumber": "Ticket number",
     "sections": {
       "description": "Description",
       "details": "Details",
       "comments": "Comments",
-      "information": "Information"
+      "information": "Information",
+      "incidentInformation": "Incident Information",
+      "problemInformation": "Problem Information"
     },
     "noDescription": "No description.",
     "noCommentsYet": "No comments yet.",

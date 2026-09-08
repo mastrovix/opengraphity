@@ -488,18 +488,17 @@ export function IncidentDetailPage() {
         {/* Left column */}
         <div>
 
-          {/* Descrizione */}
-          <SectionCard title={t('detail.sections.description')} defaultOpen>
-            {incident.description ? (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{incident.description}</p>
-            ) : (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
-            )}
-          </SectionCard>
-
-          {/* Dettagli */}
-          <SectionCard title={t('detail.sections.details')} defaultOpen>
+          {/* Dettagli (descrizione in testa) */}
+          <SectionCard title={t('detail.sections.incidentInformation')} defaultOpen>
             <div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{incident.number}</span>} />
+                <DetailField label={t('detail.sections.description')} value={
+                  incident.description
+                    ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{incident.description}</p>
+                    : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
+                } />
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                   <DetailField label="Priorità" value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
                   {incident.impact && incident.urgency && <DetailField label="Impatto / Urgenza" value={`${incident.impact} / ${incident.urgency}`} />}

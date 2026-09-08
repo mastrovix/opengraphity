@@ -32,6 +32,7 @@ export function ChangeInfoCard({
   return (
     <SectionCard title="Change Information" collapsible defaultOpen>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+        <DetailField label="Numero ticket" value={change.code} />
         <DetailField label="Titolo" value={change.title} />
         {change.why  && <DescriptionField label="Perché" value={change.why} />}
         {change.what && <DescriptionField label="Cosa"   value={change.what} />}

@@ -40,7 +40,7 @@ import { FileDown, Loader2, Trash2 } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
-import { Card, formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
+import { formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
 import { lookupOrError } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -339,9 +339,14 @@ export function ProblemDetailPage() {
         <div>
 
           {/* Dettagli */}
-          <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('detail.sections.details')}</h3>
+          <SectionCard title={t('detail.sections.problemInformation')} defaultOpen>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{problem.number}</span>} />
+              <DetailField label={t('detail.sections.description')} value={
+                problem.description
+                  ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{problem.description}</p>
+                  : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
+              } />
               <DetailField label={t('detail.priority')} value={
                 <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
               } />
@@ -437,19 +442,10 @@ export function ProblemDetailPage() {
               {problem.updatedAt && <DetailField label={t('detail.updatedAt')} value={timeAgo(problem.updatedAt)} />}
               {problem.resolvedAt && <DetailField label={t('detail.resolvedAt')} value={formatDate(problem.resolvedAt)} />}
             </div>
-          </Card>
-
-          {/* Descrizione */}
-          <SectionCard title={t('detail.sections.description')} defaultOpen>
-            {problem.description ? (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>{problem.description}</p>
-            ) : (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
-            )}
           </SectionCard>
 
           {/* Root Cause */}
-          <SectionCard title="Root Cause" defaultOpen>
+          <SectionCard title="Root Cause" collapsible defaultOpen={false}>
                 <Textarea
                   value={editRootCause ?? (problem.rootCause ?? '')}
                   onChange={(e) => setEditRootCause(e.target.value)}
@@ -467,7 +463,7 @@ export function ProblemDetailPage() {
           </SectionCard>
 
           {/* Workaround */}
-          <SectionCard title="Workaround" defaultOpen>
+          <SectionCard title="Workaround" collapsible defaultOpen={false}>
                 <Textarea
                   value={editWorkaround ?? (problem.workaround ?? '')}
                   onChange={(e) => setEditWorkaround(e.target.value)}
@@ -485,7 +481,6 @@ export function ProblemDetailPage() {
           </SectionCard>
 
           <AffectedCIList
-            defaultOpen
             affectedCIs={problem.affectedCIs}
             ciResults={ciResults}
             rules={ciRules}
@@ -521,11 +516,10 @@ export function ProblemDetailPage() {
           />
 
           {/* Allegati */}
-          <AttachmentsSection entityType="problem" entityId={problem.id} />
+          <AttachmentsSection entityType="problem" entityId={problem.id} defaultOpen={false} />
 
           {/* Commenti */}
           <CommentsSection
-            defaultOpen
             comments={problem.comments}
             adding={addingComment}
             onAdd={(text) => addComment({ variables: { problemId: problem.id, text } })}
