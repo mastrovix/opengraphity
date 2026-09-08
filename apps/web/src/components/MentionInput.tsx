@@ -105,6 +105,7 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
             <div
               key={u.id}
               role="option"
+              tabIndex={-1}
               aria-selected={i === selectedIdx}
               onMouseDown={(e) => { e.preventDefault(); insertMention(u) }}
               style={{

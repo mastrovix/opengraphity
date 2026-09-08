@@ -118,7 +118,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
       URL.revokeObjectURL(url)
     } catch (err) {
       // The real cause (401, 404, network) must reach the user, not a generic label.
-      toast.error(`${t('attachments.downloadFailed')}: ${errorMessage(err)}`)
+      toast.error(t('toast.attachments.downloadFailed', { error: errorMessage(err) }))
     }
   }
 

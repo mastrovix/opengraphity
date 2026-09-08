@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import i18n from '@/i18n/i18n'
 import { clientLogger } from '../lib/clientLogger'
 
 interface Props {
@@ -27,13 +28,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.hasError) {
+      // Class component: niente hook, si usa i18n.t direttamente.
       return this.props.fallback ?? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-trigger-sla-breach)' }}>
-          <h2>Qualcosa è andato storto</h2>
+        <div role="alert" style={{ padding: 40, textAlign: 'center', color: 'var(--color-trigger-sla-breach)' }}>
+          <h2>{i18n.t('errorBoundary.title')}</h2>
           <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
             {this.state.error?.message}
           </p>
           <button
+            type="button"
             onClick={() => this.setState({ hasError: false })}
             style={{
               marginTop:    16,
@@ -45,7 +48,7 @@ export class ErrorBoundary extends Component<Props, State> {
               cursor:       'pointer',
             }}
           >
-            Riprova
+            {i18n.t('errorBoundary.retry')}
           </button>
         </div>
       )

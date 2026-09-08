@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { colors, fontWeight, lookupOrError } from '@/lib/tokens'
@@ -65,6 +65,7 @@ export function NewRuleDialog({
   saving:  boolean
 }) {
   const { t } = useTranslation()
+  const titleId = useId()
   const [eventTypeSelect, setEventTypeSelect]   = useState('')
   const [customEventType, setCustomEventType]   = useState('')
   const [titleKey,         setTitleKey]          = useState('')
@@ -106,7 +107,9 @@ export function NewRuleDialog({
   }
 
   return (
-    /* Backdrop */
+    // Backdrop: il click fuori dal pannello chiude il dialogo (scorciatoia solo-mouse;
+    // da tastiera si usa il bottone "Chiudi" nell'header). Stesso pattern di components/Modal.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, bottone Chiudi per la tastiera
     <div
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
@@ -114,17 +117,22 @@ export function NewRuleDialog({
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{
-        background: '#fff', borderRadius: 12, padding: 28, width: 480,
-        boxShadow: '0 8px 40px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', gap: 16,
-      }}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        style={{
+          background: '#fff', borderRadius: 12, padding: 28, width: 480,
+          boxShadow: '0 8px 40px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', gap: 16,
+        }}
+      >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 'var(--font-size-section-title)', fontWeight: fontWeight.bold, color: 'var(--color-slate-dark)' }}>
+          <span id={titleId} style={{ fontSize: 'var(--font-size-section-title)', fontWeight: fontWeight.bold, color: 'var(--color-slate-dark)' }}>
             {t('notificationRules.addRule')}
           </span>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}>
-            <X size={18} />
+          <button type="button" onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}>
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
@@ -148,6 +156,7 @@ export function NewRuleDialog({
               onChange={(e) => setCustomEventType(e.target.value)}
               placeholder="es. workflow.step.entered"
               style={inputStyle}
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- campo montato quando l'utente sceglie "evento custom": il focus segue la scelta
               autoFocus
             />
           </label>

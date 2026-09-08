@@ -1,6 +1,6 @@
 name: Docker Build
 
-# Verifies the container images build before merge — no push.
+# Verifies that the three container images build before merge — no push.
 on:
   pull_request:
     branches: [main]
@@ -11,26 +11,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  docker-verify:
+  # api and portal compile the whole workspace INSIDE the image (multi-stage
+  # Dockerfiles), so they only need the build context
+  in-container:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            build-args: ""
+          # Browser-facing URLs baked into the portal bundle at build time
+          # (see apps/portal/Dockerfile ARG VITE_*): any valid value verifies
+          # the image builds; a deployment passes its own via compose args
+          - image: portal
+            build-args: |
+              VITE_API_URL=/graphql
+              VITE_KEYCLOAK_URL=http://localhost:8080
+              VITE_KEYCLOAK_CLIENT_ID=opengrafo-portal
+              VITE_TENANT_SLUG=
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      # The api image builds the whole workspace inside the container
-      - name: Build api image
+      - name: Build ${{ matrix.image }} image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/api/Dockerfile
+          file: apps/${{ matrix.image }}/Dockerfile
           push: false
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,scope=api,mode=max
+          build-args: ${{ matrix.build-args }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
-      # The web image only copies a pre-built dist (see apps/web/Dockerfile),
-      # so the bundle must be built on the runner first
+  # The web image only copies a pre-built apps/web/dist (see
+  # apps/web/Dockerfile and the `web` service in infra/docker-compose.yml):
+  # the bundle must be built on the runner first, with the VITE_* values in
+  # the environment of the build (in a real deploy they come from infra/.env)
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_API_URL: /graphql
+      VITE_KEYCLOAK_URL: http://localhost:8080
+      VITE_KEYCLOAK_CLIENT_ID: opengrafo-web
+      VITE_TENANT_SLUG: ""
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
       # Node 20 to match the production images (node:20-slim) — and
       # isolated-vm (native addon) does not compile against Node 22's V8
@@ -38,11 +68,15 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+
       - name: Build web dist
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter "./packages/*" build
           pnpm --filter @opengraphity/web build
+          test -f apps/web/dist/index.html
+
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build web image
         uses: docker/build-push-action@v6

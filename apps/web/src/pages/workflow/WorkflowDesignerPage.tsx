@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { SAVE_WORKFLOW_CHANGES, ADD_WORKFLOW_TRANSITION, REMOVE_WORKFLOW_TRANSITION, REMOVE_WORKFLOW_STEP } from '@/graphql/mutations'
 import type { WorkflowDefinition } from './workflow-types'
@@ -13,6 +14,7 @@ import { WorkflowTransitionPanel } from './WorkflowTransitionPanel'
 import { useWorkflowDesigner, defToWorkflowKey } from './useWorkflowDesigner'
 
 export function WorkflowDesignerPage() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
 
   const { data, loading, refetch } = useQuery<{ workflowDefinitionById: WorkflowDefinition | null }>(
@@ -66,27 +68,27 @@ export function WorkflowDesignerPage() {
     if (!def) return
     const fromStepName = idToName[c.source]
     const toStepName   = idToName[c.target]
-    if (!fromStepName || !toStepName) { toast.error('Step non riconosciuto'); return }
+    if (!fromStepName || !toStepName) { toast.error(t('toast.workflow.stepNotRecognized')); return }
     try {
       await addTransition({ variables: {
         definitionId: def.id, fromStepName, toStepName,
         trigger: 'manual', label: '',
         sourceHandle: c.sourceHandle ?? null, targetHandle: c.targetHandle ?? null,
       } })
-      toast.success('Transizione creata — impostane il trigger nel pannello')
+      toast.success(t('toast.workflow.transitionCreated'))
       await refetch()
     } catch { /* onError handles toast */ }
-  }, [def, idToName, addTransition, refetch])
+  }, [def, idToName, addTransition, refetch, t])
 
   const handleDeleteTransition = useCallback(async (transitionId: string) => {
     if (!def) return
     try {
       await removeTransition({ variables: { definitionId: def.id, transitionId } })
       setSelectedEdgeId(null)
-      toast.success('Transizione eliminata')
+      toast.success(t('toast.workflow.transitionDeleted'))
       await refetch()
     } catch { /* onError handles toast */ }
-  }, [def, removeTransition, refetch, setSelectedEdgeId])
+  }, [def, removeTransition, refetch, setSelectedEdgeId, t])
 
   const [removeStep] = useMutation(REMOVE_WORKFLOW_STEP, { onError: (e) => toast.error(e.message) })
   const handleDeleteStep = useCallback(async (stepName: string) => {
@@ -94,10 +96,10 @@ export function WorkflowDesignerPage() {
     try {
       await removeStep({ variables: { definitionId: def.id, stepName } })
       setSelectedNodeId(null)
-      toast.success('Step eliminato')
+      toast.success(t('toast.workflow.stepDeleted'))
       await refetch()
     } catch { /* onError handles toast */ }
-  }, [def, removeStep, refetch, setSelectedNodeId])
+  }, [def, removeStep, refetch, setSelectedNodeId, t])
 
   const handleSave = async () => {
     if (!def) return
@@ -122,7 +124,7 @@ export function WorkflowDesignerPage() {
       if (code === 'CONFLICT') {
         // Le modifiche locali restano in coda: sta all'utente ricaricare (perdendole)
         // o confrontarle; non sovrascriviamo mai il lavoro dell'altro utente.
-        toast.error('Workflow modificato da un altro utente: ricarica la pagina prima di salvare. Le tue modifiche non sono state applicate.', { duration: 10_000 })
+        toast.error(t('toast.workflow.saveConflict'), { duration: 10_000 })
       } else {
         toast.error(e instanceof Error ? e.message : String(e))
       }
@@ -130,11 +132,11 @@ export function WorkflowDesignerPage() {
     }
     const newVersion = result.data?.saveWorkflowChanges?.version
     if (newVersion == null) {
-      toast.error('Salvataggio senza risposta dal server: ricarica la pagina per verificare lo stato del workflow.')
+      toast.error(t('toast.workflow.saveNoResponse'))
       return
     }
     clearLocalChanges()
-    toast.success(`Workflow salvato — v${newVersion}`)
+    toast.success(t('toast.workflow.saved', { version: newVersion }))
     void refetch()
   }
 

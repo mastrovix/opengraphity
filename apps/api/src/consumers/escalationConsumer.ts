@@ -64,7 +64,7 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
       )
       if (!result.success) {
         logger.error({ instanceId, toStep, error: result.error }, '[escalation] auto-escalation transition failed')
-        return
+        throw new Error(`[escalation] transition to ${toStep} failed for instance ${instanceId}: ${result.error ?? 'unknown'}`)
       }
 
       // Publish the step-entered event so the notification rules fire

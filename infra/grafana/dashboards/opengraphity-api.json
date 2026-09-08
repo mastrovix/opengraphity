@@ -1,0 +1,156 @@
+{
+  "uid": "opengraphity-api",
+  "title": "OpenGraphity API",
+  "description": "Provisioned from infra/grafana/dashboards (metrics: apps/api/src/middleware/metrics.ts). Resolver errors are NOT exported to Prometheus yet (only via the admin GraphQL metrics): the error panel uses HTTP 5xx.",
+  "tags": ["opengraphity", "provisioned"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Richieste/s per status",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (status_code) (rate(http_requests_total[5m]))", "legendFormat": "{{status_code}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Errori HTTP 5xx/s",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.1 }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) or vector(0)", "legendFormat": "5xx" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latenza p95 /graphql",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.5 }, { "color": "red", "value": 2 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{route=\"/graphql\"}[5m])))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Latenza /graphql (p50 / p95 / p99)",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{route=\"/graphql\"}[5m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{route=\"/graphql\"}[5m])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{route=\"/graphql\"}[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Resolver più lenti (p95, top 10)",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "refId": "A", "expr": "topk(10, histogram_quantile(0.95, sum by (le, resolver) (rate(graphql_resolver_duration_seconds_bucket[5m]))))", "legendFormat": "{{resolver}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Code BullMQ (waiting / active / delayed / failed)",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "bullmq_queue_depth{status=~\"waiting|active|delayed|failed\"}", "legendFormat": "{{queue}} {{status}}" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Neo4j: latenza p95 e query lente (> 500 ms)/s",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "query lente/s" }, "properties": [ { "id": "unit", "value": "ops" }, { "id": "custom.axisPlacement", "value": "right" } ] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(neo4j_query_duration_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "refId": "B", "expr": "sum(rate(neo4j_query_duration_seconds_count[5m])) - sum(rate(neo4j_query_duration_seconds_bucket{le=\"0.5\"}[5m]))", "legendFormat": "query lente/s" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Ore dall'ultimo backup verificato",
+      "description": "opengrafo_backup_last_success_timestamp_seconds — rosso oltre 25 h (backup notturno mancato o non verificato)",
+      "gridPos": { "x": 0, "y": 24, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 1,
+          "noValue": "mai",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 20 }, { "color": "red", "value": 25 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "expr": "(time() - max(opengrafo_backup_last_success_timestamp_seconds)) / 3600", "legendFormat": "ore" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Backup per esito (ultime 24 h)",
+      "gridPos": { "x": 8, "y": 24, "w": 16, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (result) (increase(opengrafo_backup_runs_total[24h]))", "legendFormat": "{{result}}" }
+      ]
+    }
+  ]
+}

@@ -150,6 +150,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      // eslint-disable-next-line jsx-a11y/no-autofocus -- passthrough: la scelta (e la sua giustificazione) sta nel call site, es. il bottone sicuro di ConfirmModal
       autoFocus={autoFocus}
       className={className}
       aria-label={ariaLabel}

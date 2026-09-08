@@ -7,6 +7,7 @@
  * tavolozza NON prende un default benigno: si vede (rosso "?"), coerentemente
  * con la regola "niente fallback silenziosi".
  */
+import { useTranslation } from 'react-i18next'
 import { Pill } from '@/components/ui/Pill'
 import { lookupOrError } from '@/lib/tokens'
 import { styleForCategory } from '@/lib/workflowStepStyle'
@@ -32,30 +33,31 @@ export function SeverityBadge({ value }: { value: string | null | undefined }) {
 
 // ── Ruolo utente (admin / operator / viewer / end_user) ─────────────────────
 
-/** Stessi 4 ruoli accettati dall'API (`UserRole` in hooks/useMe.ts). */
-const ROLE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)', label: 'Admin' },
-  operator: { bg: 'var(--color-info-bg)',   color: '#2563eb',                          label: 'Operator' },
-  viewer:   { bg: 'var(--color-slate-bg)',  color: 'var(--color-slate)',               label: 'Viewer' },
-  end_user: { bg: '#f5f3ff',                color: '#6d28d9',                          label: 'End user' },
+/** Stessi 4 ruoli accettati dall'API (`UserRole` in hooks/useMe.ts); etichette in `roles.*`. */
+const ROLE_STYLE: Record<string, { bg: string; color: string; labelKey: string }> = {
+  admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)', labelKey: 'roles.admin' },
+  operator: { bg: 'var(--color-info-bg)',   color: '#2563eb',                          labelKey: 'roles.operator' },
+  viewer:   { bg: 'var(--color-slate-bg)',  color: 'var(--color-slate)',               labelKey: 'roles.viewer' },
+  end_user: { bg: '#f5f3ff',                color: '#6d28d9',                          labelKey: 'roles.end_user' },
 }
 
 export function RoleBadge({ role }: { role: string | null | undefined }) {
+  const { t } = useTranslation()
   if (!role) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
-  const s = lookupOrError(ROLE_STYLE, role, 'ROLE_STYLE', { ...BROKEN, label: role })
+  const s = lookupOrError(ROLE_STYLE, role, 'ROLE_STYLE', { ...BROKEN, labelKey: '' })
   return (
     <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)' }}>
-      {s.label}
+      {s.labelKey ? t(s.labelKey) : role}
     </Pill>
   )
 }
 
 // ── Rischio aggregato della change ───────────────────────────────────────────
 
-const RISK_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  low:    { bg: '#dcfce7', color: '#15803d', label: 'LOW' },
-  medium: { bg: '#fef3c7', color: '#b45309', label: 'MEDIUM' },
-  high:   { bg: '#fee2e2', color: '#b91c1c', label: 'HIGH' },
+const RISK_STYLE: Record<string, { bg: string; color: string; labelKey: string }> = {
+  low:    { bg: '#dcfce7', color: '#15803d', labelKey: 'risk.low' },
+  medium: { bg: '#fef3c7', color: '#b45309', labelKey: 'risk.medium' },
+  high:   { bg: '#fee2e2', color: '#b91c1c', labelKey: 'risk.high' },
 }
 
 /** Stesse soglie del backend (scoring.ts): ≤30 low, ≤60 medium, >60 high. */
@@ -65,11 +67,13 @@ export function riskLevel(score: number): 'low' | 'medium' | 'high' {
 
 /** `compact`: solo il numero (tabelle strette, sidebar). */
 export function RiskBadge({ score, compact = false }: { score: number | null | undefined; compact?: boolean }) {
+  const { t } = useTranslation()
   if (score == null) return <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)' }}>—</span>
-  const p = lookupOrError(RISK_STYLE, riskLevel(score), 'RISK_STYLE', { ...BROKEN, label: '?' })
+  const p = lookupOrError(RISK_STYLE, riskLevel(score), 'RISK_STYLE', { ...BROKEN, labelKey: '' })
+  const label = p.labelKey ? t(p.labelKey) : '?'
   return (
     <Pill bg={p.bg} color={p.color} style={{ fontSize: 'var(--font-size-label)', flexShrink: 0 }}>
-      <span title={`${p.label} · score ${score}`}>{compact ? score : `${p.label} · ${score}`}</span>
+      <span title={`${label} · score ${score}`}>{compact ? score : `${label} · ${score}`}</span>
     </Pill>
   )
 }
@@ -90,12 +94,13 @@ export function PhaseBadge({ phase, label, category, style }: {
 // ── Stato di un task della change ────────────────────────────────────────────
 
 export function StatusLabel({ status }: { status: string | null | undefined }) {
+  const { t } = useTranslation()
   const s = status ?? '—'
   const color =
     s === TASK_STATUS.COMPLETED   ? 'var(--color-success)' :
     s === TASK_STATUS.IN_PROGRESS ? 'var(--color-warning)' :
     s === TASK_STATUS.PENDING     ? 'var(--color-danger)' :
     s === 'failed' || s === REVIEW_RESULT.REJECTED ? 'var(--color-danger)' : '#d1d5db'
-  const label = s === TASK_STATUS.PENDING ? 'TO BE COMPLETED' : s.replace(/_/g, ' ')
+  const label = s === TASK_STATUS.PENDING ? t('taskStatus.toBeCompleted') : s.replace(/_/g, ' ')
   return <strong title={s} style={{ color, textTransform: 'uppercase' }}>{label}</strong>
 }

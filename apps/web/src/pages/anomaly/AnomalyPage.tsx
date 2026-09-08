@@ -201,10 +201,10 @@ export function AnomalyPage() {
   const ANOMALY_FILTER_FIELDS: FieldConfig[] = [
     { key: 'title',      label: t('common.title'),                    type: 'text' },
     { key: 'severity',   label: t('pages.anomalies.severity'),        type: 'enum', options: [
-      { value: 'critical', label: 'Critical' },
-      { value: 'high',     label: 'High'     },
-      { value: 'medium',   label: 'Medium'   },
-      { value: 'low',      label: 'Low'      },
+      { value: 'critical', label: t('pages.anomalies.severities.critical') },
+      { value: 'high',     label: t('pages.anomalies.severities.high')     },
+      { value: 'medium',   label: t('pages.anomalies.severities.medium')   },
+      { value: 'low',      label: t('pages.anomalies.severities.low')      },
     ]},
     { key: 'status',     label: t('pages.anomalies.status'),          type: 'enum', options: [
       { value: 'open',           label: t('pages.anomalies.statusOpen')          },
@@ -275,10 +275,10 @@ export function AnomalyPage() {
             setPage(0)
             void refetch()
             void refetchStats()
-            toast.success(t('pages.anomalies.runScanner') + ': completato')
+            toast.success(t('toast.anomaly.scanCompleted'))
           } else if (Date.now() - awaitingScan.startedAt > SCAN_TIMEOUT_MS) {
             setAwaitingScan(null)
-            toast.error(`Scan non completato entro ${SCAN_TIMEOUT_MS / 1000}s: verifica il worker delle anomalie (i risultati compariranno al prossimo refresh).`)
+            toast.error(t('toast.anomaly.scanTimeout', { seconds: SCAN_TIMEOUT_MS / 1000 }))
           }
         } catch (err) {
           if (cancelled) return
@@ -321,7 +321,7 @@ export function AnomalyPage() {
       // L'API risponde false quando non riesce ad accodare il job (Redis giù):
       // non è un successo silenzioso.
       if (!res.data?.runAnomalyScanner) {
-        toast.error('Impossibile avviare lo scan: coda dei job non disponibile.')
+        toast.error(t('toast.anomaly.scanEnqueueFailed'))
         return
       }
       setAwaitingScan({ baseline, startedAt: Date.now() })
@@ -364,10 +364,10 @@ export function AnomalyPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <StatCard label={t('pages.anomalies.statsOpen')} value={stats.open}     accent={colors.danger}                     />
-            <StatCard label="Critical"                       value={stats.critical} accent={colors.severity.critical.text}     />
-            <StatCard label="High"                           value={stats.high}     accent={colors.severity.high.text}         />
-            <StatCard label="Medium"                         value={stats.medium}   accent={colors.severity.medium.text}       />
-            <StatCard label="Low"                            value={stats.low}      accent={colors.severity.low.text}          />
+            <StatCard label={t('pages.anomalies.severities.critical')} value={stats.critical} accent={colors.severity.critical.text} />
+            <StatCard label={t('pages.anomalies.severities.high')}     value={stats.high}     accent={colors.severity.high.text}     />
+            <StatCard label={t('pages.anomalies.severities.medium')}   value={stats.medium}   accent={colors.severity.medium.text}   />
+            <StatCard label={t('pages.anomalies.severities.low')}      value={stats.low}      accent={colors.severity.low.text}      />
           </div>
           {(stats.falsePositive > 0 || stats.acceptedRisk > 0) && (
             <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, paddingLeft: 2 }}>

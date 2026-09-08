@@ -122,9 +122,9 @@ export function ProblemListPage() {
               icon={<Sparkles size={13} />}
               onClick={() => {
                 void runCandidates().then((res) => {
-                  if (res.error) toast.error(`Analisi fallita: ${res.error.message}`)
+                  if (res.error) toast.error(t('toast.problem.analysisFailed', { error: res.error.message }))
                   else if (res.data) setCandidates(res.data.problemCandidates)
-                  else toast.error('Analisi fallita: nessuna risposta')
+                  else toast.error(t('toast.problem.analysisNoResponse'))
                 })
               }}
             >

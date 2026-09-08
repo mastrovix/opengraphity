@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutGrid } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
@@ -43,6 +44,8 @@ interface ReportListViewProps {
 
 export function ReportListView(props: ReportListViewProps) {
   const { t: tr } = useTranslation()
+  const uid = useId()
+  const ids = { name: `${uid}-name`, desc: `${uid}-desc`, vis: `${uid}-vis` }
   const {
     templates, teams, menuRef, menuOpenId, setMenuOpenId,
     showNewDialog, setShowNewDialog,
@@ -65,6 +68,7 @@ export function ReportListView(props: ReportListViewProps) {
             </p>
           </div>
           <button
+            type="button"
             onClick={() => setShowNewDialog(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
           >
@@ -100,6 +104,9 @@ export function ReportListView(props: ReportListViewProps) {
                     {/* Menu */}
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       <button
+                        type="button"
+                        aria-haspopup="menu"
+                        aria-expanded={isMenuOpen}
                         onClick={e => { e.stopPropagation(); setMenuOpenId(isMenuOpen ? null : t.id) }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 5px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', lineHeight: 1, borderRadius: 4 }}
                       >&#x22EE;</button>
@@ -114,7 +121,7 @@ export function ReportListView(props: ReportListViewProps) {
                             { label: '\u29C9 Duplica',               action: () => duplicateTemplate(t), danger: false },
                             { label: '\uD83D\uDDD1 Elimina',        action: () => handleDeleteTemplate(t.id), danger: true },
                           ].map(item => (
-                            <button key={item.label} onClick={item.action} className="hover-bg" style={{
+                            <button key={item.label} type="button" onClick={item.action} className="hover-bg" style={{
                               display: 'block', width: '100%', textAlign: 'left',
                               padding: '10px 14px', border: 'none',
                               cursor: 'pointer', fontSize: 'var(--font-size-card-title)',
@@ -142,10 +149,12 @@ export function ReportListView(props: ReportListViewProps) {
                 {/* Card footer */}
                 <div style={{ padding: '8px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 6 }}>
                   <button
+                    type="button"
                     onClick={() => handleExecuteAndGoToDetail(t)}
                     style={{ ...btnGhost, flex: 1, fontSize: 'var(--font-size-body)', padding: '4px 10px' }}
                   >&#x25B6; {tr('pages.reportBuilder.execute')}</button>
                   <button
+                    type="button"
                     onClick={() => goToDetail(t)}
                     style={{ ...btnPrimary, flex: 1, fontSize: 'var(--font-size-body)', padding: '4px 10px' }}
                   >&#x270F; {tr('pages.reportBuilder.modify')}</button>
@@ -174,16 +183,16 @@ export function ReportListView(props: ReportListViewProps) {
           }
         >
             <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Nome *</label>
-              <input value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} placeholder="Nome report..." />
+              <label htmlFor={ids.name} style={labelStyle}>Nome *</label>
+              <input id={ids.name} value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} placeholder="Nome report..." />
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Descrizione</label>
-              <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} />
+              <label htmlFor={ids.desc} style={labelStyle}>Descrizione</label>
+              <textarea id={ids.desc} value={newDesc} onChange={e => setNewDesc(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} />
             </div>
             <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Visibilit&agrave;</label>
-              <select value={newVis} onChange={e => setNewVis(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+              <label htmlFor={ids.vis} style={labelStyle}>Visibilit&agrave;</label>
+              <select id={ids.vis} value={newVis} onChange={e => setNewVis(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
                 <option value="private">Privato</option>
                 <option value="groups">Gruppi selezionati</option>
                 <option value="all">Tutti</option>
@@ -191,7 +200,7 @@ export function ReportListView(props: ReportListViewProps) {
             </div>
             {newVis === 'groups' && teams.length > 0 && (
               <div style={{ marginBottom: 14 }}>
-                <label style={labelStyle}>Team</label>
+                <div style={labelStyle}>Team</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {teams.map((team: { id: string; name: string }) => (
                     <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>

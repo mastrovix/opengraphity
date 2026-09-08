@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/hooks/useConfirm'
 import { toast } from 'sonner'
 import type { WFTransition, PendingTransitionChange } from './workflow-types'
@@ -16,6 +17,7 @@ interface EdgePanelProps {
 }
 
 export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLocally, onDelete }: EdgePanelProps) {
+  const { t } = useTranslation()
   const confirm = useConfirm()
   const [label,         setLabel]         = useState(transition.label)
   const [trigger,       setTrigger]       = useState(transition.trigger)
@@ -99,6 +101,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
       )}
 
       <button
+        type="button"
         onClick={() => {
           const change: PendingTransitionChange = {
             transitionId:  transition.id,
@@ -111,7 +114,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
           }
           onSaveLocally(change)
           onSaved({ label, trigger, requiresInput, inputField: change.inputField, condition: change.condition, timerHours: change.timerHours })
-          toast.success('Modifica salvata localmente')
+          toast.success(t('toast.workflow.savedLocally'))
         }}
         disabled={unchanged}
         style={saveButtonStyle(unchanged)}
@@ -121,6 +124,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
 
       {onDelete && (
         <button
+          type="button"
           onClick={() => {
             void confirm({ title: `Eliminare la transizione ${transition.fromStepName} → ${transition.toStepName}?`, danger: true }).then((ok) => {
               if (ok) onDelete(transition.id)

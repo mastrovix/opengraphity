@@ -93,7 +93,9 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
               </button>
             ))}
           </div>
-          <Input type="text" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={`Cerca ${active.label.toLowerCase()} per numero o titolo...`} autoFocus
+          <Input type="text" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={`Cerca ${active.label.toLowerCase()} per numero o titolo...`}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca montato dopo il click su "Collega ticket"
+            autoFocus
             style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', width: '100%', boxSizing: 'border-box' }} />
           <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
             {results.length === 0 ? (

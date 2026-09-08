@@ -84,14 +84,14 @@ export function CITypeDesignerPage() {
     setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [] })
   }
 
-  const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success('Tipo creato') }, onError: (e) => toast.error(e.message) })
-  const [updateType]    = useMutation(UPDATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success('Salvato') }, onError: (e) => toast.error(e.message) })
-  const [deleteType]    = useMutation(DELETE_CI_TYPE,    { onCompleted: () => { void refetch(); setSelectedId(null); toast.success('Tipo eliminato') }, onError: (e) => toast.error(e.message) })
-  const [addField]      = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetch();     setAddingField(false); setEditingFieldId(null); toast.success('Campo aggiunto') }, onError: (e) => toast.error(e.message) })
-  const [addBaseField]  = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetchBase(); setShowBaseFieldModal(false); toast.success('Campo base aggiunto') }, onError: (e) => toast.error(e.message) })
-  const [removeField]   = useMutation(REMOVE_CI_FIELD,   { onCompleted: () => { void refetch(); toast.success('Campo rimosso') }, onError: (e) => toast.error(e.message) })
-  const [addRelation]   = useMutation(ADD_CI_RELATION,   { onCompleted: () => { void refetch(); setShowRelModal(false); toast.success('Relazione aggiunta') }, onError: (e) => toast.error(e.message) })
-  const [removeRelation] = useMutation(REMOVE_CI_RELATION, { onCompleted: () => { void refetch(); toast.success('Relazione rimossa') }, onError: (e) => toast.error(e.message) })
+  const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.typeCreated')) }, onError: (e) => toast.error(e.message) })
+  const [updateType]    = useMutation(UPDATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.saved')) }, onError: (e) => toast.error(e.message) })
+  const [deleteType]    = useMutation(DELETE_CI_TYPE,    { onCompleted: () => { void refetch(); setSelectedId(null); toast.success(t('toast.citype.typeDeleted')) }, onError: (e) => toast.error(e.message) })
+  const [addField]      = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetch();     setAddingField(false); setEditingFieldId(null); toast.success(t('toast.citype.fieldAdded')) }, onError: (e) => toast.error(e.message) })
+  const [addBaseField]  = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetchBase(); setShowBaseFieldModal(false); toast.success(t('toast.citype.baseFieldAdded')) }, onError: (e) => toast.error(e.message) })
+  const [removeField]   = useMutation(REMOVE_CI_FIELD,   { onCompleted: () => { void refetch(); toast.success(t('toast.citype.fieldRemoved')) }, onError: (e) => toast.error(e.message) })
+  const [addRelation]   = useMutation(ADD_CI_RELATION,   { onCompleted: () => { void refetch(); setShowRelModal(false); toast.success(t('toast.citype.relationAdded')) }, onError: (e) => toast.error(e.message) })
+  const [removeRelation] = useMutation(REMOVE_CI_RELATION, { onCompleted: () => { void refetch(); toast.success(t('toast.citype.relationRemoved')) }, onError: (e) => toast.error(e.message) })
 
   const handleSaveField = async (form: FieldForm) => {
     const targetId = selectedBase ? baseType?.id : selected?.id
@@ -429,7 +429,7 @@ export function CITypeDesignerPage() {
                     </p>
                     {selected.fields.length === 0
                       ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun campo specifico. Aggiungi campi nella tab "Campi".</p>
-                      : <CIDynamicForm ciType={selected} onSubmit={async () => { toast.info('Preview — nessun dato salvato') }} onCancel={() => setActiveTab('fields')} />
+                      : <CIDynamicForm ciType={selected} onSubmit={async () => { toast.info(t('toast.citype.previewNoSave')) }} onCancel={() => setActiveTab('fields')} />
                     }
                   </div>
                 )}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { FileDown, Loader2, Sparkles, Network } from 'lucide-react'
@@ -130,6 +130,7 @@ interface User { id: string; name: string; email: string; teams: { id: string; n
 
 export function IncidentDetailPage() {
   const { t }    = useTranslation()
+  const editIds  = { title: useId(), description: useId(), impact: useId(), urgency: useId(), team: useId(), user: useId() }
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -146,8 +147,8 @@ export function IncidentDetailPage() {
   const [exportingPdf, setExportingPdf] = useState(false)
   const [genResolutionDraft, { loading: draftLoading }] = useLazyQuery<{ resolutionDraft: { draft: string } }>(RESOLUTION_DRAFT, { fetchPolicy: 'network-only' })
   const [createKbDraft, { loading: kbDraftLoading }] = useMutation<{ createKbDraftFromIncident: { id: string; slug: string; title: string } }>(CREATE_KB_DRAFT, {
-    onCompleted: (d) => toast.success(`Bozza KB creata: "${d.createKbDraftFromIncident.title}" — la trovi in Knowledge Base Admin`),
-    onError: (err) => toast.error(`Bozza KB fallita: ${err.message}`),
+    onCompleted: (d) => toast.success(t('toast.incident.kbDraftCreated', { title: d.createKbDraftFromIncident.title })),
+    onError: (err) => toast.error(t('toast.incident.kbDraftFailed', { error: err.message })),
   })
 
   const [ciSearch,      setCiSearch]      = useState('')
@@ -189,13 +190,13 @@ export function IncidentDetailPage() {
     onCompleted: (res) => {
       const r = res.executeWorkflowTransition
       if (r.success) {
-        toast.success(`Transizione completata → ${r.instance.currentStep}`)
+        toast.success(t('toast.incident.transitionCompletedTo', { step: r.instance.currentStep }))
         setIsTransitionDialogOpen(false)
         setPendingTransition(null)
         setTransitionNotes('')
         void refetch()
       } else {
-        toast.error(r.error ?? 'Transizione fallita')
+        toast.error(r.error ?? t('toast.incident.transitionFailed'))
       }
     },
     onError: (err) => toast.error(err.message),
@@ -203,7 +204,7 @@ export function IncidentDetailPage() {
 
   const [setMajor, { loading: settingMajor }] = useMutation(SET_INCIDENT_MAJOR, {
     refetchQueries: ['GetIncident'],
-    onCompleted: () => toast.success('Stato Major Incident aggiornato'),
+    onCompleted: () => toast.success(t('toast.incident.majorUpdated')),
     onError: (e) => toast.error(e.message),
   })
 
@@ -211,14 +212,14 @@ export function IncidentDetailPage() {
   const [pathModal, setPathModal] = useState<ImpactedApp | null>(null)
   const [editForm, setEditForm] = useState({ title: '', description: '', impact: 'medium', urgency: 'medium' })
   const [updateIncident, { loading: savingEdit }] = useMutation(UPDATE_INCIDENT, {
-    onCompleted: () => { setEditOpen(false); toast.success('Incident aggiornato') },
+    onCompleted: () => { setEditOpen(false); toast.success(t('toast.incident.updated')) },
     onError: (e) => toast.error(e.message),
     refetchQueries: ['GetIncident'],
   })
 
   const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
     onCompleted: (_data, opts) => {
-      toast.success('Team assegnato')
+      toast.success(t('toast.incident.teamAssigned'))
       setSelectedTeamId('')
       setShowReassign(false)
       setSelectedUserId('')
@@ -227,7 +228,7 @@ export function IncidentDetailPage() {
         void assignToUser({ variables: { id: incidentId, userId: null } })
           .then(() => { setAwaitingUserAssign(true); void refetch() })
           // Un un-assign fallito NON è "in attesa di utente": va detto.
-          .catch((e: { message?: string }) => { toast.error(e.message ?? 'Rimozione assegnatario non riuscita'); void refetch() })
+          .catch((e: { message?: string }) => { toast.error(e.message ?? t('toast.incident.unassignFailed')); void refetch() })
       } else {
         setAwaitingUserAssign(true)
         void refetch()
@@ -240,7 +241,7 @@ export function IncidentDetailPage() {
     onCompleted: (_data, opts) => {
       const userId = (opts?.variables as { userId?: string | null } | undefined)?.userId
       if (userId) {
-        toast.success('Incident preso in carico')
+        toast.success(t('toast.incident.takenOver'))
         setAwaitingUserAssign(false)
         setSelectedUserId('')
         void refetch()
@@ -251,21 +252,21 @@ export function IncidentDetailPage() {
 
   const [addComment, { loading: addingComment }] = useMutation(ADD_INCIDENT_COMMENT, {
     onCompleted: () => {
-      toast.success('Commento aggiunto')
+      toast.success(t('toast.incident.commentAdded'))
       void refetch()
     },
     onError: (err) => toast.error(err.message),
   })
 
   const [addCI] = useMutation(ADD_AFFECTED_CI, {
-    onCompleted: () => { toast.success('CI aggiunto'); setCiSearch(''); void refetch() },
+    onCompleted: () => { toast.success(t('toast.incident.ciAdded')); setCiSearch(''); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
   const ciRules = ciRulesData?.itilCIRelationRules ?? []
 
   const [removeCI] = useMutation(REMOVE_AFFECTED_CI, {
-    onCompleted: () => { toast.success('CI rimosso'); void refetch() },
+    onCompleted: () => { toast.success(t('toast.incident.ciRemoved')); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -279,7 +280,7 @@ export function IncidentDetailPage() {
     // Guard rails come from the workflow definition: if it failed to load we
     // cannot evaluate the gates, so refuse to proceed instead of skipping them.
     if (workflowStepsError) {
-      toast.error('Regole di workflow non caricate: ' + workflowStepsError.message)
+      toast.error(t('toast.incident.workflowRulesNotLoaded', { error: workflowStepsError.message }))
       return
     }
     // Assignment gates are no longer hardcoded per step name. If the target
@@ -290,11 +291,11 @@ export function IncidentDetailPage() {
     const targetMeta = incidentStepByName.get(tr.toStep)
     const currentMeta = incidentStepByName.get(incident?.status ?? '')
     if (targetMeta?.category === 'active' && currentMeta?.isInitial && !incident?.assignedTeam) {
-      toast.error('Seleziona prima un team dalla card Dettagli')
+      toast.error(t('toast.incident.selectTeamFirst'))
       return
     }
     if (targetMeta?.category === 'active' && !currentMeta?.isInitial && !incident?.assignee && incident?.assignedTeam) {
-      toast.error('Seleziona prima un utente dalla card Dettagli')
+      toast.error(t('toast.incident.selectUserFirst'))
       return
     }
     if (tr.requiresInput) {
@@ -358,6 +359,7 @@ export function IncidentDetailPage() {
       <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>
         {t('pages.incidents.notFound')}{' '}
         <button
+          type="button"
           onClick={() => navigate('/incidents')}
           style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
         >
@@ -456,23 +458,24 @@ export function IncidentDetailPage() {
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel>Titolo *</FieldLabel>
-          <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required autoFocus />
+          <FieldLabel htmlFor={editIds.title}>Titolo *</FieldLabel>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: primo campo del modal di modifica aperto dall'utente */}
+          <Input id={editIds.title} value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required autoFocus />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel>Descrizione</FieldLabel>
-          <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} />
+          <FieldLabel htmlFor={editIds.description}>Descrizione</FieldLabel>
+          <Textarea id={editIds.description} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
           <div>
-            <FieldLabel>Impatto</FieldLabel>
-            <Select value={editForm.impact} onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}>
+            <FieldLabel htmlFor={editIds.impact}>Impatto</FieldLabel>
+            <Select id={editIds.impact} value={editForm.impact} onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}>
               {IMPACT_URGENCY_OPTIONS.map((o) => <option key={o} value={o}>{IMPACT_URGENCY_LABEL[o]}</option>)}
             </Select>
           </div>
           <div>
-            <FieldLabel>Urgenza</FieldLabel>
-            <Select value={editForm.urgency} onChange={(e) => setEditForm({ ...editForm, urgency: e.target.value })}>
+            <FieldLabel htmlFor={editIds.urgency}>Urgenza</FieldLabel>
+            <Select id={editIds.urgency} value={editForm.urgency} onChange={(e) => setEditForm({ ...editForm, urgency: e.target.value })}>
               {IMPACT_URGENCY_OPTIONS.map((o) => <option key={o} value={o}>{IMPACT_URGENCY_LABEL[o]}</option>)}
             </Select>
           </div>
@@ -550,6 +553,7 @@ export function IncidentDetailPage() {
                           {t('detail.assignedTo')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignee!.name}</span>
                         </div>
                         <button
+                          type="button"
                           onClick={() => { setShowReassign(true); setAwaitingUserAssign(false) }}
                           style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer', textAlign: 'left' }}
                         >
@@ -562,8 +566,9 @@ export function IncidentDetailPage() {
                   if (!hasTeam || showReassign) {
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.team')}</label>
+                        <label htmlFor={editIds.team} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.team')}</label>
                         <Select
+                          id={editIds.team}
                           value={selectedTeamId}
                           onChange={(e) => setSelectedTeamId(e.target.value)}
                           style={{ padding: '8px 10px', border: '1px solid var(--border)', color: 'var(--text-primary)', background: 'var(--surface)' }}
@@ -573,11 +578,12 @@ export function IncidentDetailPage() {
                         </Select>
                         <div style={{ display: 'flex', gap: 8 }}>
                           {showReassign && (
-                            <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '7px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                            <button type="button" onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '7px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>
                               {t('common.cancel')}
                             </button>
                           )}
                           <button
+                            type="button"
                             disabled={!selectedTeamId || !selectedTeamId.trim() || assigningTeam}
                             onClick={() => {
                               if (!selectedTeamId) return
@@ -599,8 +605,9 @@ export function IncidentDetailPage() {
                       <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
                         {t('detail.team')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
                       </div>
-                      <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.assignedTo')}</label>
+                      <label htmlFor={editIds.user} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.assignedTo')}</label>
                       <Select
+                        id={editIds.user}
                         value={selectedUserId}
                         onChange={(e) => setSelectedUserId(e.target.value)}
                         style={{ padding: '8px 10px', border: '1px solid var(--border)', color: 'var(--text-primary)', background: 'var(--surface)' }}
@@ -609,6 +616,7 @@ export function IncidentDetailPage() {
                         {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </Select>
                       <button
+                        type="button"
                         disabled={!selectedUserId || !selectedUserId.trim() || assigningUser}
                         onClick={() => {
                           if (!selectedUserId) return
@@ -740,6 +748,7 @@ export function IncidentDetailPage() {
         footer={
           <>
             <button
+              type="button"
               onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes(''); setNotesError('') }}
               style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
             >
@@ -750,8 +759,8 @@ export function IncidentDetailPage() {
               disabled={transitioning || transitionNotes.trim().length < 10}
               onClick={() => {
                 if (transitionNotes.trim().length < 10) { setNotesError('Minimo 10 caratteri'); return }
-                if (!incident?.workflowInstance?.id) { toast.error('WorkflowInstance non trovato'); return }
-                if (!pendingTransition?.toStep) { toast.error('Transizione non selezionata'); return }
+                if (!incident?.workflowInstance?.id) { toast.error(t('toast.incident.workflowInstanceMissing')); return }
+                if (!pendingTransition?.toStep) { toast.error(t('toast.incident.transitionNotSelected')); return }
                 void execTransition({
                   variables: {
                     instanceId: incident.workflowInstance.id,
@@ -760,13 +769,13 @@ export function IncidentDetailPage() {
                   },
                   onCompleted: (data) => {
                     if (data.executeWorkflowTransition.success) {
-                      toast.success('Transizione eseguita')
+                      toast.success(t('toast.incident.transitionExecuted'))
                       setIsTransitionDialogOpen(false)
                       setPendingTransition(null)
                       setTransitionNotes('')
                       void refetch()
                     } else {
-                      toast.error(data.executeWorkflowTransition.error ?? 'Errore transizione')
+                      toast.error(data.executeWorkflowTransition.error ?? t('toast.incident.transitionError'))
                     }
                   },
                   onError: (err) => toast.error(err.message),
@@ -791,9 +800,9 @@ export function IncidentDetailPage() {
               disabled={draftLoading}
               onClick={() => {
                 void genResolutionDraft({ variables: { incidentId: incident.id } }).then((res) => {
-                  if (res.error) toast.error(`Bozza AI fallita: ${res.error.message}`)
+                  if (res.error) toast.error(t('toast.incident.aiDraftFailed', { error: res.error.message }))
                   else if (res.data) setTransitionNotes(res.data.resolutionDraft.draft)
-                  else toast.error('Bozza AI fallita: nessuna risposta')
+                  else toast.error(t('toast.incident.aiDraftNoResponse'))
                 })
               }}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: draftLoading ? 'wait' : 'pointer' }}
@@ -806,6 +815,7 @@ export function IncidentDetailPage() {
               placeholder={pendingTransition.inputField === 'rootCause' ? 'Es: Memory leak in payment-service v2.3.1...' : 'Note sulla transizione...'}
               rows={4}
               style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del dialogo di transizione aperto dall'utente
               autoFocus
             />
             {notesError && (

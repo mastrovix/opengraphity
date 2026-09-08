@@ -60,6 +60,7 @@ export function DetailPanel({
         <button
           type="button"
           onClick={onClose}
+          aria-label={t('common.close')}
           style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: colors.slateLight }}
         >
           <X size={18} />

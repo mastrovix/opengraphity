@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useId } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { useWidgetConfig } from './useWidgetConfig'
 import { WidgetTypeSelector } from './WidgetTypeSelector'
@@ -34,21 +35,34 @@ const inputStyle: React.CSSProperties = {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Props) {
+  const { t } = useTranslation()
   const c = useWidgetConfig({ dashboardId, widget, onClose, onSaved })
+  const id = useId()
+  const titleId = id + '-title'
+  const headingId = id + '-heading'
 
   return createPortal(
+    // Il click sull'overlay (fuori dal pannello) chiude il dialogo: scorciatoia
+    // solo-mouse; da tastiera valgono Escape (gestito in useWidgetConfig) e il
+    // bottone "Chiudi" nell'header. Stesso pattern di components/Modal.tsx.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
     <div
       style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 900, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.22)', display: 'flex', flexDirection: 'column' }}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 900, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.22)', display: 'flex', flexDirection: 'column' }}
+      >
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #f3f4f6', flexShrink: 0 }}>
-          <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
-            {c.isEdit ? 'Modifica widget' : 'Nuovo widget personalizzato'}
+          <h2 id={headingId} style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
+            {c.isEdit ? t('pages.dashboard.editWidget') : t('pages.dashboard.newWidget')}
           </h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex', alignItems: 'center' }}>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex', alignItems: 'center' }}>
             <X size={20} color="var(--color-slate-light)" />
           </button>
         </div>
@@ -60,8 +74,16 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
           <div style={{ flex: '0 0 420px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto', borderRight: '1px solid #f3f4f6' }}>
             {/* Title */}
             <div>
-              <label style={labelStyle}>Titolo *</label>
-              <input autoFocus value={c.title} onChange={(e) => c.setTitle(e.target.value)} placeholder="Es. Incident aperti oggi" style={inputStyle} />
+              <label htmlFor={titleId} style={labelStyle}>{t('common.title')} *</label>
+              <input
+                id={titleId}
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo aperto dall'utente (campo principale)
+                autoFocus
+                value={c.title}
+                onChange={(e) => c.setTitle(e.target.value)}
+                placeholder={t('pages.dashboard.titlePlaceholder')}
+                style={inputStyle}
+              />
             </div>
 
             <WidgetTypeSelector widgetType={c.widgetType} color={c.color} onSelect={c.setWidgetType} />
@@ -92,10 +114,11 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
 
         {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 24px', borderTop: '1px solid #f3f4f6', flexShrink: 0, background: '#fff' }}>
-          <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
-            Annulla
+          <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
+            {t('common.cancel')}
           </button>
           <button
+            type="button"
             onClick={() => void c.handleSave()}
             disabled={c.saving || !c.title.trim()}
             style={{
@@ -105,7 +128,7 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
               color: '#fff',
             }}
           >
-            {c.saving ? 'Salvataggio\u2026' : c.isEdit ? 'Aggiorna widget' : 'Crea widget'}
+            {c.saving ? t('pages.dashboard.saving') : c.isEdit ? t('pages.dashboard.updateWidget') : t('pages.dashboard.createWidget')}
           </button>
         </div>
       </div>

@@ -40,11 +40,12 @@ export function saveButtonStyle(disabled: boolean): React.CSSProperties {
 }
 
 export function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
+  const { t } = useTranslation()
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{title}</span>
-      <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}>
-        <X size={16} />
+      <button type="button" onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}>
+        <X size={16} aria-hidden="true" />
       </button>
     </div>
   )

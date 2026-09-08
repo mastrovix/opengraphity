@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { X, Check } from 'lucide-react'
 import {
   inputS, selectS, textareaS, labelS,
@@ -16,10 +16,16 @@ interface EnumTypeOption extends EnumTypeRef { name: string }
 
 // ── FormField ─────────────────────────────────────────────────────────────────
 
-export function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * Etichetta + controllo. Passa `htmlFor` (con lo stesso `id` sul controllo) quando il
+ * figlio è un singolo input; senza `htmlFor` il testo è reso come intestazione di gruppo.
+ */
+export function FormField({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <label style={labelS}>{label}</label>
+      {htmlFor
+        ? <label htmlFor={htmlFor} style={labelS}>{label}</label>
+        : <div style={labelS}>{label}</div>}
       {children}
     </div>
   )
@@ -45,6 +51,7 @@ export function CIFieldInlineEditor({
     }
   )
   const [scriptTab, setScriptTab] = useState<'validation' | 'visibility' | 'default'>('validation')
+  const id = useId()
   const set = (k: keyof FieldForm, v: unknown) => setForm((p) => ({ ...p, [k]: v }))
   const selectedEnum = form.enumTypeId ? enumTypes.find((e) => e.id === form.enumTypeId) : null
 
@@ -53,8 +60,9 @@ export function CIFieldInlineEditor({
       {/* name + label */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div>
-          <label style={labelS}>name (slug) *</label>
+          <label htmlFor={`${id}-name`} style={labelS}>name (slug) *</label>
           <input
+            id={`${id}-name`}
             style={{ ...inputS, background: isSystem || !!initial ? '#f1f5f9' : '#fff' }}
             value={form.name}
             disabled={isSystem || !!initial}
@@ -63,16 +71,17 @@ export function CIFieldInlineEditor({
           />
         </div>
         <div>
-          <label style={labelS}>label *</label>
-          <Input style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} placeholder="Field Label" />
+          <label htmlFor={`${id}-label`} style={labelS}>label *</label>
+          <Input id={`${id}-label`} style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} placeholder="Field Label" />
         </div>
       </div>
 
       {/* type + order + required */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px auto', gap: 12, marginBottom: 12 }}>
         <div>
-          <label style={labelS}>Tipo</label>
+          <label htmlFor={`${id}-type`} style={labelS}>Tipo</label>
           <Select
+            id={`${id}-type`}
             style={{ ...selectS, background: isSystem ? '#f1f5f9' : '#fff' }}
             value={form.fieldType}
             disabled={isSystem}
@@ -82,8 +91,8 @@ export function CIFieldInlineEditor({
           </Select>
         </div>
         <div>
-          <label style={labelS}>Order</label>
-          <Input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
+          <label htmlFor={`${id}-order`} style={labelS}>Order</label>
+          <Input id={`${id}-order`} style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </div>
         <div style={{ paddingTop: 20 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: isSystem ? 'default' : 'pointer' }}>
@@ -96,8 +105,9 @@ export function CIFieldInlineEditor({
       {/* enum dropdown */}
       {form.fieldType === 'enum' && (
         <div style={{ marginBottom: 12 }}>
-          <label style={labelS}>Enum di riferimento *</label>
+          <label htmlFor={`${id}-enum`} style={labelS}>Enum di riferimento *</label>
           <Select
+            id={`${id}-enum`}
             style={selectS}
             value={form.enumTypeId ?? ''}
             onChange={(e) => set('enumTypeId', e.target.value || null)}
@@ -121,8 +131,8 @@ export function CIFieldInlineEditor({
 
       {/* default value */}
       <div style={{ marginBottom: 12 }}>
-        <label style={labelS}>Valore di default</label>
-        <Input style={inputS} value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
+        <label htmlFor={`${id}-default`} style={labelS}>Valore di default</label>
+        <Input id={`${id}-default`} style={inputS} value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
       </div>
 
       {/* scripts (collapsible) */}

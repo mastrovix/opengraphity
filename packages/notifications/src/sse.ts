@@ -42,12 +42,24 @@ class SseManager {
     )
   }
 
+  /** write() su una connessione morta lancia: il client viene rimosso e il broadcast prosegue. */
+  private safeWrite(client: SseClient, payload: string): boolean {
+    try {
+      client.res.write(payload)
+      return true
+    } catch (err) {
+      console.error(`[sse] write failed for client ${client.id} (tenant ${client.tenantId}) — removed: ${err instanceof Error ? err.message : String(err)}`)
+      this.clients.delete(client.id)
+      return false
+    }
+  }
+
   sendToUser(tenantId: string, userId: string, event: InAppNotification): void {
     const payload = `data: ${JSON.stringify(event)}\n\n`
     let sent = 0
     for (const client of this.clients.values()) {
       if (client.tenantId === tenantId && client.userId === userId) {
-        client.res.write(payload)
+        if (!this.safeWrite(client, payload)) continue
         sent++
       }
     }
@@ -61,7 +73,7 @@ class SseManager {
     let sent = 0
     for (const client of this.clients.values()) {
       if (client.tenantId === tenantId) {
-        client.res.write(payload)
+        if (!this.safeWrite(client, payload)) continue
         sent++
       }
     }

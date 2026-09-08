@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { toast } from 'sonner'
@@ -87,6 +87,7 @@ const PLATFORM_BADGE: Record<string, { bg: string; color: string }> = {
 export default function NotificationsPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
+  const fid = useId()
   const { data, refetch } = useQuery<{ notificationChannels: Channel[] }>(GET_NOTIFICATION_CHANNELS)
   const [createChannel] = useMutation(CREATE_NOTIFICATION_CHANNEL)
   const [updateChannel] = useMutation(UPDATE_NOTIFICATION_CHANNEL)
@@ -227,11 +228,12 @@ export default function NotificationsPage() {
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Platform</label>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div id={`${fid}-platform`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Platform</div>
+          <div role="group" aria-labelledby={`${fid}-platform`} style={{ display: 'flex', gap: 8 }}>
             {['slack', 'teams'].map((p) => (
               <button type="button"
                 key={p}
+                aria-pressed={form.platform === p}
                 onClick={() => setForm((f) => ({ ...f, platform: p }))}
                 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? 'var(--color-brand)' : 'var(--border)', background: form.platform === p ? '#eff0ff' : '#fff', color: form.platform === p ? 'var(--color-brand)' : 'var(--color-slate)' }}
               >
@@ -242,8 +244,9 @@ export default function NotificationsPage() {
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Nome</label>
+          <label htmlFor={`${fid}-name`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Nome</label>
           <input
+            id={`${fid}-name`}
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
@@ -253,8 +256,9 @@ export default function NotificationsPage() {
         {form.platform === 'slack' && (
           <>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Webhook URL</label>
+              <label htmlFor={`${fid}-slack-webhook`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Webhook URL</label>
               <input
+                id={`${fid}-slack-webhook`}
                 value={form.webhookUrl}
                 onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
                 placeholder="https://hooks.slack.com/services/..."
@@ -262,10 +266,11 @@ export default function NotificationsPage() {
               />
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
+              <label htmlFor={`${fid}-channel-id`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
                 Channel ID <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>(Bot API)</span>
               </label>
               <input
+                id={`${fid}-channel-id`}
                 value={form.channelId}
                 onChange={(e) => setForm((f) => ({ ...f, channelId: e.target.value }))}
                 placeholder="C0XXXXXXXXX"
@@ -278,8 +283,9 @@ export default function NotificationsPage() {
 
         {form.platform === 'teams' && (
           <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Webhook URL *</label>
+            <label htmlFor={`${fid}-teams-webhook`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Webhook URL *</label>
             <input
+              id={`${fid}-teams-webhook`}
               value={form.webhookUrl}
               onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
               placeholder="https://outlook.office.com/webhook/..."
@@ -288,8 +294,8 @@ export default function NotificationsPage() {
           </div>
         )}
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 8 }}>Eventi da notificare</label>
+        <fieldset style={{ marginBottom: 20, border: 'none', padding: 0, margin: '0 0 20px' }}>
+          <legend style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 8, padding: 0 }}>Eventi da notificare</legend>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {ALL_EVENTS.map((ev) => (
               <label key={ev.value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
@@ -298,7 +304,7 @@ export default function NotificationsPage() {
               </label>
             ))}
           </div>
-        </div>
+        </fieldset>
       </Modal>
     </PageContainer>
   )

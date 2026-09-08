@@ -209,7 +209,7 @@ export function useCustomReports() {
     const res = await duplicateTemplateMutation({ variables: { id: t.id } }).catch(() => null)
     const copy = res?.data?.duplicateReportTemplate
     if (!copy) return  // errore già notificato da onError
-    toast.success(`Report duplicato: "${copy.name}" (${copy.sections.length} sezioni)`)
+    toast.success(tr('toast.report.duplicated', { name: copy.name, count: copy.sections.length }))
     await refetch()
   }
 
@@ -271,7 +271,7 @@ export function useCustomReports() {
         },
       })
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Errore nel salvataggio')
+      toast.error(err instanceof Error ? err.message : tr('toast.report.saveFailed'))
     }
   }
 

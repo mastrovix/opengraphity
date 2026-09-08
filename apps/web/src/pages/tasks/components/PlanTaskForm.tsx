@@ -3,6 +3,7 @@
  * so the parent decides when state resets (e.g. on task change). The form
  * notifies the parent on every edit and on explicit save/complete.
  */
+import { useId } from 'react'
 import { Plus, X } from 'lucide-react'
 import { TASK_STATUS } from '@/lib/taskStatus'
 import type { DeployPlanTaskData, DeployStep } from '@/types/change'
@@ -29,6 +30,7 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
   onSave: () => void
   onComplete: () => void
 }) {
+  const baseId = useId()
   const completed = task.status === TASK_STATUS.COMPLETED
   const allComplete = steps.length >= 1 && steps.every(isStepComplete)
   const updateStep = (i: number, patch: Partial<DeployStep>) => {
@@ -51,36 +53,37 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
             )}
           </div>
           <div style={{ marginBottom: 10 }}>
-            <label style={labelStyle}>Titolo *</label>
+            <label htmlFor={`${baseId}-title-${i}`} style={labelStyle}>Titolo *</label>
             <input
+              id={`${baseId}-title-${i}`}
               type="text" disabled={!canEdit || completed} value={s.title}
               onChange={e => updateStep(i, { title: e.target.value })}
               style={inputStyle}
             />
           </div>
           <div style={{ marginBottom: 10 }}>
-            <label style={labelStyle}>Validazione *</label>
+            <label htmlFor={`${baseId}-val-start-${i}`} style={labelStyle}>Validazione *</label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input type="datetime-local" disabled={!canEdit || completed}
+              <input id={`${baseId}-val-start-${i}`} type="datetime-local" disabled={!canEdit || completed}
                 value={s.validationWindow.start ? toLocal(s.validationWindow.start) : ''}
                 onChange={e => updateStep(i, { validationWindow: { ...s.validationWindow, start: fromLocal(e.target.value) } })}
                 style={{ ...inputStyle, flex: 1 }} />
               <span style={{ color: 'var(--color-slate-light)' }}>→</span>
-              <input type="datetime-local" disabled={!canEdit || completed}
+              <input type="datetime-local" disabled={!canEdit || completed} aria-label="Fine validazione"
                 value={s.validationWindow.end ? toLocal(s.validationWindow.end) : ''}
                 onChange={e => updateStep(i, { validationWindow: { ...s.validationWindow, end: fromLocal(e.target.value) } })}
                 style={{ ...inputStyle, flex: 1 }} />
             </div>
           </div>
           <div>
-            <label style={labelStyle}>Deploy *</label>
+            <label htmlFor={`${baseId}-rel-start-${i}`} style={labelStyle}>Deploy *</label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input type="datetime-local" disabled={!canEdit || completed}
+              <input id={`${baseId}-rel-start-${i}`} type="datetime-local" disabled={!canEdit || completed}
                 value={s.releaseWindow.start ? toLocal(s.releaseWindow.start) : ''}
                 onChange={e => updateStep(i, { releaseWindow: { ...s.releaseWindow, start: fromLocal(e.target.value) } })}
                 style={{ ...inputStyle, flex: 1 }} />
               <span style={{ color: 'var(--color-slate-light)' }}>→</span>
-              <input type="datetime-local" disabled={!canEdit || completed}
+              <input type="datetime-local" disabled={!canEdit || completed} aria-label="Fine deploy"
                 value={s.releaseWindow.end ? toLocal(s.releaseWindow.end) : ''}
                 onChange={e => updateStep(i, { releaseWindow: { ...s.releaseWindow, end: fromLocal(e.target.value) } })}
                 style={{ ...inputStyle, flex: 1 }} />

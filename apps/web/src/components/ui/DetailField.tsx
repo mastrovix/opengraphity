@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface DetailFieldProps {
   label: string
@@ -9,6 +10,8 @@ interface DetailFieldProps {
 }
 
 export function DetailField({ label, value, mono, editable, onSave }: DetailFieldProps) {
+  const { t } = useTranslation()
+  const labelId = useId()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
 
@@ -25,7 +28,7 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-        <div style={{
+        <div id={labelId} style={{
           fontSize:       'var(--font-size-label)',
           fontWeight:     500,
           color:          'var(--color-slate-light)',
@@ -38,9 +41,10 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
           <button
             type="button"
             onClick={startEdit}
+            aria-label={`${t('common.edit')}: ${label}`}
             style={{ fontSize: 'var(--font-size-label)', padding: '1px 7px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}
           >
-            Modifica
+            {t('common.edit')}
           </button>
         )}
       </div>
@@ -51,15 +55,17 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
             value={draft}
             onChange={e => setDraft(e.target.value)}
             rows={3}
+            aria-labelledby={labelId}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- editor inline montato dopo il click su "Modifica": il focus deve seguire l'azione dell'utente
             autoFocus
             style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #0284c7', borderRadius: 6, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'vertical', outline: 'none', lineHeight: 1.6 }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <button type="button" onClick={handleSave} style={{ padding: '5px 14px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer' }}>
-              Salva
+              {t('common.save')}
             </button>
             <button type="button" onClick={() => setEditing(false)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'transparent', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate)' }}>
-              Annulla
+              {t('common.cancel')}
             </button>
           </div>
         </div>

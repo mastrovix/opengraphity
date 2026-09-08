@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
 import { ciPath } from '@/lib/ciPath'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -73,6 +74,9 @@ interface TooltipState {
 export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Props) {
   const svgRef   = useRef<SVGSVGElement>(null)
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const baseId = useId()
+  const ids = { blast: `${baseId}-blast`, depth: `${baseId}-depth`, spread: `${baseId}-spread` }
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const [showBlastRadius, setShowBlastRadius] = useState(false)
   const [maxDepth, setMaxDepth] = useState(5)
@@ -275,18 +279,19 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: '1px solid #f3f4f6' }}>
         <input
           type="checkbox"
-          id="showBlast"
+          id={ids.blast}
           checked={showBlastRadius}
           onChange={e => setShowBlastRadius(e.target.checked)}
           style={{ cursor: 'pointer' }}
         />
-        <label htmlFor="showBlast" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none' }}>
-          Mostra blast radius
+        <label htmlFor={ids.blast} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer', userSelect: 'none' }}>
+          {t('components.ciGraph.showBlastRadius')}
         </label>
         {showBlastRadius && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
-            <label style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Profondità max</label>
+            <label htmlFor={ids.depth} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('components.ciGraph.maxDepth')}</label>
             <select
+              id={ids.depth}
               value={maxDepth}
               onChange={e => setMaxDepth(Number(e.target.value))}
               style={{ fontSize: 'var(--font-size-body)', padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', cursor: 'pointer' }}
@@ -298,8 +303,9 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
-          <label style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Distanza</label>
+          <label htmlFor={ids.spread} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('components.ciGraph.spread')}</label>
           <input
+            id={ids.spread}
             type="range"
             min={0.5}
             max={3}
@@ -329,10 +335,10 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           whiteSpace:   'nowrap',
         }}>
           <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>{tooltip.node.name}</div>
-          <div style={{ color: 'var(--color-slate)' }}>Type: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.type.replace(/_/g, ' ')}</span></div>
-          <div style={{ color: 'var(--color-slate)' }}>Status: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.status}</span></div>
+          <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.type')}: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.type.replace(/_/g, ' ')}</span></div>
+          <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.status')}: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.status}</span></div>
           {tooltip.node.environment && (
-            <div style={{ color: 'var(--color-slate)' }}>Env: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.environment}</span></div>
+            <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.environment')}: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.environment}</span></div>
           )}
         </div>
       )}
@@ -340,9 +346,9 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       {/* Legend */}
       <div style={{ position: 'absolute', bottom: 12, left: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {[
-          { color: 'var(--color-brand)', label: 'Dipendenze (questo CI dipende da)' },
-          { color: 'var(--color-trigger-automatic)', label: 'Dipendenti (dipendono da questo CI)' },
-          { color: 'var(--color-trigger-timer)', label: 'Blast radius (impatto indiretto)' },
+          { color: 'var(--color-brand)', label: t('components.ciGraph.legendDependencies') },
+          { color: 'var(--color-trigger-automatic)', label: t('components.ciGraph.legendDependents') },
+          { color: 'var(--color-trigger-timer)', label: t('components.ciGraph.legendBlast') },
         ].map(({ color, label }) => (
           <div key={color} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0, display: 'inline-block' }} />

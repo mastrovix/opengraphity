@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { derivePriority, priorityCode, IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, type ImpactUrgency } from '@/lib/priority'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
@@ -32,7 +33,9 @@ const PRIORITY_STYLES: Record<string, { bg: string; border: string; color: strin
 }
 
 export function CreateProblemPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
+  const ids = { title: useId(), description: useId(), ciSearch: useId(), teamSearch: useId() }
 
   const [title,       setTitle]       = useState('')
   const [impact,      setImpact]      = useState<ImpactUrgency>('medium')
@@ -69,7 +72,7 @@ export function CreateProblemPage() {
   const canSubmit     = title.trim().length > 0 && description.trim().length > 0
 
   const [assignToTeam] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
-    onError: (err) => toast.error(`Team assignment: ${err.message}`),
+    onError: (err) => toast.error(t('toast.problem.teamAssignmentFailed', { error: err.message })),
   })
 
   const [createProblem, { loading }] = useMutation<{ createProblem: { id: string } }>(CREATE_PROBLEM, {
@@ -78,7 +81,7 @@ export function CreateProblemPage() {
       if (selectedTeam) {
         await assignToTeam({ variables: { problemId: data.createProblem.id, teamId: selectedTeam.id } })
       }
-      toast.success('Problem creato')
+      toast.success(t('toast.problem.created'))
       navigate('/problems', { state: { refresh: true } })
     },
     onError: (err) => toast.error(err.message),
@@ -105,6 +108,7 @@ export function CreateProblemPage() {
 
         {/* Header */}
         <button
+          type="button"
           onClick={() => navigate('/problems')}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
@@ -125,16 +129,16 @@ export function CreateProblemPage() {
 
           {/* TITOLO */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.title} style={fieldLabel}>
               Titolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <input
+              id={ids.title}
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="Es. Memory leak nel servizio di autenticazione"
               style={inputBase}
-              autoFocus
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
@@ -144,7 +148,7 @@ export function CreateProblemPage() {
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {([['Impatto', impact, setImpact], ['Urgenza', urgency, setUrgency]] as const).map(([label, val, setVal]) => (
               <div key={label}>
-                <label style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+                <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {IMPACT_URGENCY_OPTIONS.map(o => {
                     const sel = val === o
@@ -162,7 +166,7 @@ export function CreateProblemPage() {
               </div>
             ))}
             <div>
-              <label style={fieldLabel}>Priorità (calcolata)</label>
+              <div style={fieldLabel}>Priorità (calcolata)</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
                 border: `1.5px solid ${(PRIORITY_STYLES[priority]?.border ?? '#e5e7eb')}`,
                 background: PRIORITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
@@ -174,10 +178,11 @@ export function CreateProblemPage() {
 
           {/* DESCRIZIONE */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.description} style={fieldLabel}>
               Descrizione <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <textarea
+              id={ids.description}
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Descrivi il problema e il suo impatto..."
@@ -190,7 +195,7 @@ export function CreateProblemPage() {
 
           {/* CI IMPATTATI */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.ciSearch} style={fieldLabel}>
               CI Impattati{' '}
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
             </label>
@@ -200,6 +205,7 @@ export function CreateProblemPage() {
                 🔍
               </span>
               <input
+                id={ids.ciSearch}
                 type="text"
                 value={ciSearch}
                 onChange={e => setCiSearch(e.target.value)}
@@ -212,17 +218,18 @@ export function CreateProblemPage() {
               {ciResults.length > 0 && ciSearch.length >= 2 && (
                 <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
                   {ciResults.map(ci => (
-                    <div
+                    <button
+                      type="button"
                       key={ci.id}
                       onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
                       className="hover-bg"
-                      style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                      style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
                         {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -248,7 +255,7 @@ export function CreateProblemPage() {
 
           {/* TEAM */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.teamSearch} style={fieldLabel}>
               Team{' '}
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
             </label>
@@ -274,6 +281,7 @@ export function CreateProblemPage() {
                   🔍
                 </span>
                 <input
+                  id={ids.teamSearch}
                   type="text"
                   value={teamSearch}
                   onChange={e => { setTeamSearch(e.target.value); setTeamDropdownOpen(true) }}
@@ -287,16 +295,18 @@ export function CreateProblemPage() {
 
                 {teamDropdownOpen && filteredTeams.length > 0 && (
                   <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
-                    {filteredTeams.map(t => (
-                      <div
-                        key={t.id}
-                        onMouseDown={() => { setSelectedTeam(t); setTeamSearch(''); setTeamDropdownOpen(false) }}
+                    {filteredTeams.map(tm => (
+                      <button
+                        type="button"
+                        key={tm.id}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setSelectedTeam(tm); setTeamSearch(''); setTeamDropdownOpen(false) }}
                         className="hover-bg"
-                        style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                        style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
                       >
                         <Users size={14} color="var(--color-slate-light)" />
-                        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
-                      </div>
+                        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{tm.name}</span>
+                      </button>
                     ))}
                   </div>
                 )}

@@ -336,7 +336,7 @@ function ApprovalCard({
               onClick={() => {
                 if (noteOpen === 'approve') { onApprove(req.id, note); setNoteOpen(null); setNote('') }
                 else if (noteOpen === 'reject') {
-                  if (!note.trim()) { toast.error('Il motivo del rifiuto è obbligatorio'); return }
+                  if (!note.trim()) { toast.error(t('toast.approval.rejectReasonRequired')); return }
                   onReject(req.id, note); setNoteOpen(null); setNote('')
                 }
               }}
@@ -390,15 +390,15 @@ export function ApprovalsPage() {
   )
 
   const [approve] = useMutation(APPROVE, {
-    onCompleted: () => { toast.success('Approvazione registrata'); void refetchMine(); void refetchAll() },
+    onCompleted: () => { toast.success(t('toast.approval.approved')); void refetchMine(); void refetchAll() },
     onError: (e: { message: string }) => toast.error(e.message),
   })
   const [reject] = useMutation(REJECT, {
-    onCompleted: () => { toast.success('Richiesta rifiutata'); void refetchMine(); void refetchAll() },
+    onCompleted: () => { toast.success(t('toast.approval.rejected')); void refetchMine(); void refetchAll() },
     onError: (e: { message: string }) => toast.error(e.message),
   })
   const [cancel] = useMutation(CANCEL, {
-    onCompleted: () => { toast.success('Richiesta annullata'); void refetchMine(); void refetchAll() },
+    onCompleted: () => { toast.success(t('toast.approval.cancelled')); void refetchMine(); void refetchAll() },
     onError: (e: { message: string }) => toast.error(e.message),
   })
 

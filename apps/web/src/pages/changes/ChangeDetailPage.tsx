@@ -7,7 +7,7 @@
  * what they need via props and manage only their own local UI state
  * (e.g. which modal is open inside a row).
  */
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
@@ -62,6 +62,8 @@ export function ChangeDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const changeId = id ?? ''
+  const rejectNoteId = useId()
+  const transitionNotesId = useId()
 
   const { data: changeData, loading, error: changeError, refetch: refetchChange } = useQuery<{ change: ChangeData | null }>(GET_CHANGE, { variables: { id: changeId }, fetchPolicy: 'cache-and-network' })
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
@@ -76,7 +78,7 @@ export function ChangeDetailPage() {
       // La transizione è avvenuta, ma alcune azioni di step (SLA, eventi, timer)
       // sono fallite: va detto, non nascosto.
       const errs = data?.executeChangeTransition?.actionErrors
-      if (errs?.length) toast.warning(`Transizione eseguita, ma ${errs.length} azion${errs.length === 1 ? 'e' : 'i'} non riuscit${errs.length === 1 ? 'a' : 'e'}: ${errs.join(' · ')}`, { duration: 10000 })
+      if (errs?.length) toast.warning(t('toast.change.transitionPartial', { count: errs.length, errors: errs.join(' · ') }), { duration: 10000 })
       await refetchAll()
     },
     onError: (e) => toast.error(e.message),
@@ -91,11 +93,11 @@ export function ChangeDetailPage() {
   }
 
   const [approveApproval, { loading: approving }] = useMutation(APPROVE_CHANGE_APPROVAL, {
-    onCompleted: async () => { toast.success('Approvazione registrata'); await refetchAll() },
+    onCompleted: async () => { toast.success(t('toast.change.approvalRecorded')); await refetchAll() },
     onError: (e) => toast.error(e.message),
   })
   const [rejectApproval] = useMutation(REJECT_CHANGE_APPROVAL, {
-    onCompleted: async () => { toast.success('Approvazione rifiutata'); await refetchAll() },
+    onCompleted: async () => { toast.success(t('toast.change.approvalRejected')); await refetchAll() },
     onError: (e) => toast.error(e.message),
   })
   const [rejectModal, setRejectModal] = useState<{ teamId: string; teamName: string } | null>(null)
@@ -107,11 +109,11 @@ export function ChangeDetailPage() {
   //    problem; la ricerca vive nel componente). Link/unlink aggiornano anche
   //    l'audit trail.
   const [linkTicket] = useMutation(LINK_RESOLVED_TICKET, {
-    onCompleted: async () => { toast.success('Ticket collegato'); await refetchAll() },
+    onCompleted: async () => { toast.success(t('toast.change.ticketLinked')); await refetchAll() },
     onError: (e) => toast.error(e.message),
   })
   const [unlinkTicket] = useMutation(UNLINK_RESOLVED_TICKET, {
-    onCompleted: async () => { toast.success('Ticket scollegato'); await refetchAll() },
+    onCompleted: async () => { toast.success(t('toast.change.ticketUnlinked')); await refetchAll() },
     onError: (e) => toast.error(e.message),
   })
 
@@ -134,7 +136,7 @@ export function ChangeDetailPage() {
   const [exportingPdf, setExportingPdf] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteChange, { loading: deleting }] = useMutation(DELETE_CHANGE, {
-    onCompleted: () => { toast.success('Change eliminata'); navigate('/changes') },
+    onCompleted: () => { toast.success(t('toast.change.deleted')); navigate('/changes') },
     onError: (e) => toast.error(e.message),
   })
 
@@ -154,7 +156,7 @@ export function ChangeDetailPage() {
       void refetchImpacted()
       void refetchAffected()
       void refetchAudit()
-      toast.success('CI rimosso')
+      toast.success(t('toast.change.ciRemoved'))
       setConfirmRemoveCI(null)
     },
     onError: (e) => toast.error(e.message),
@@ -164,7 +166,7 @@ export function ChangeDetailPage() {
       void refetchImpacted()
       void refetchAffected()
       void refetchAudit()
-      toast.success('CI aggiunto agli affected')
+      toast.success(t('toast.change.ciAddedToAffected'))
     },
     onError: (e) => toast.error(e.message),
   })
@@ -204,7 +206,7 @@ export function ChangeDetailPage() {
 
   return (
     <PageContainer style={{ padding: '16px 24px' }}>
-      <button onClick={() => navigate('/changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 12, padding: 0 }}>← Changes</button>
+      <button type="button" onClick={() => navigate('/changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 12, padding: 0 }}>← Changes</button>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{change.code}</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -419,7 +421,7 @@ export function ChangeDetailPage() {
               {impactError && (
                 <div style={{ padding: '10px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-danger, #ef4444)', marginBottom: 8 }}>
                   Errore nel calcolo dei CI impattati: {impactError.message}{' '}
-                  <button onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger, #ef4444)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>Riprova</button>
+                  <button type="button" onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger, #ef4444)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>Riprova</button>
                 </div>
               )}
               {!impactError && impactedCIs.length === 0 && <EmptyState icon={<ChevronRight size={24} />} title="Nessun CI impattato" description={`Nessun CI impattato a profondità ${impactDepth}.`} />}
@@ -443,9 +445,9 @@ export function ChangeDetailPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}>
                           <span style={{ width: 24, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {hasPath && (
-                              <span onClick={() => setExpandedImpactId(prev => prev === rowId ? null : rowId)} style={{ cursor: 'pointer' }}>
+                              <button type="button" aria-expanded={isOpen} aria-label={b.ci.name} onClick={() => setExpandedImpactId(prev => prev === rowId ? null : rowId)} style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', font: 'inherit', color: 'inherit' }}>
                                 <ChevronRight size={14} color="var(--color-slate-light)" style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} />
-                              </span>
+                              </button>
                             )}
                           </span>
                           <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{b.ci.name}</span>
@@ -558,26 +560,30 @@ export function ChangeDetailPage() {
             Il rigetto riporta la change in <strong>assessment</strong> riaprendo i task selezionati e azzera le approvazioni.
           </p>
 
-          <label style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Motivo <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+          <label htmlFor={rejectNoteId} style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Motivo <span style={{ color: 'var(--color-danger)' }}>*</span></label>
           <textarea
+            id={rejectNoteId}
             value={rejectNote}
             onChange={(e) => setRejectNote(e.target.value)}
             rows={3}
             style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 14 }}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal di rigetto aperto dall'utente
             autoFocus
           />
 
-          <label style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Assessment da riaprire</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
-              <input type="radio" name="reopenMode" checked={reopenMode === 'all'} onChange={() => setReopenMode('all')} />
-              Riapri <strong>tutti</strong> gli assessment
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
-              <input type="radio" name="reopenMode" checked={reopenMode === 'some'} onChange={() => setReopenMode('some')} />
-              Riapri <strong>alcuni specifici</strong>
-            </label>
-          </div>
+          <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+            <legend style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6, padding: 0 }}>Assessment da riaprire</legend>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+                <input type="radio" name="reopenMode" checked={reopenMode === 'all'} onChange={() => setReopenMode('all')} />
+                Riapri <strong>tutti</strong> gli assessment
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+                <input type="radio" name="reopenMode" checked={reopenMode === 'some'} onChange={() => setReopenMode('some')} />
+                Riapri <strong>alcuni specifici</strong>
+              </label>
+            </div>
+          </fieldset>
 
           {reopenMode === 'some' && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', maxHeight: 240, overflowY: 'auto' }}>
@@ -628,14 +634,16 @@ export function ChangeDetailPage() {
             </>
           }
         >
-          <FieldLabel style={{ fontWeight: 400 }}>
+          <FieldLabel htmlFor={transitionNotesId} style={{ fontWeight: 400 }}>
             {transitionModal.inputField ?? 'Note'}
           </FieldLabel>
           <textarea
+            id={transitionNotesId}
             value={transitionNotes}
             onChange={(e) => setTransitionNotes(e.target.value)}
             rows={4}
             style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal di transizione aperto dall'utente
             autoFocus
           />
         </Modal>

@@ -11,6 +11,8 @@ import { fieldTypeLabel, operatorsForFieldType, NO_VALUE_OPERATORS } from '@/lib
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n/i18n'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,7 @@ const removeBtn: React.CSSProperties = {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ConditionRowEditor({ condition, entityType, onChange, onRemove, layout = 'row' }: Props) {
+  const { t } = useTranslation()
   const { fields: allFields, error: fieldsError } = useEntityFieldMetas(entityType)
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
   const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: 'cache-first' })
@@ -58,10 +61,10 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
       style={{ ...selectS, ...(stack ? { flex: 1 } : { width: 160 }), ...(unknownField ? { borderColor: 'var(--color-danger)', color: 'var(--color-danger)' } : {}) }}
       value={condition.field}
       onChange={e => onChange({ field: e.target.value, value: '' })}
-      title={unknownField ? `campo "${condition.field}" non presente nel metamodello` : undefined}
+      title={unknownField ? t('conditionEditor.unknownField', { field: condition.field }) : undefined}
     >
-      <option value="">-- Campo --</option>
-      {unknownField && <option value={condition.field}>?{condition.field} (non nel metamodello)</option>}
+      <option value="">{t('conditionEditor.fieldPlaceholder')}</option>
+      {unknownField && <option value={condition.field}>?{condition.field} ({t('conditionEditor.notInMetamodel')})</option>}
       {allFields.map(f => (
         <option key={f.name} value={f.name}>{f.label} ({fieldTypeLabel(f.fieldType)})</option>
       ))}
@@ -73,19 +76,19 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
       style={{ ...selectS, ...(stack ? {} : { width: 110 }), ...(unknownOperator ? { borderColor: 'var(--color-danger)', color: 'var(--color-danger)' } : {}) }}
       value={condition.operator}
       onChange={e => onChange({ operator: e.target.value })}
-      title={unknownOperator ? `operatore "${condition.operator}" non supportato dall'editor` : undefined}
+      title={unknownOperator ? t('conditionEditor.unknownOperator', { operator: condition.operator }) : undefined}
     >
-      {unknownOperator && <option value={condition.operator}>?{condition.operator} (non supportato)</option>}
+      {unknownOperator && <option value={condition.operator}>?{condition.operator} ({t('conditionEditor.unsupported')})</option>}
       {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
     </Select>
   )
 
   const valueInput = !hideValue && renderValueInput(condition, selectedField, onChange, usersData?.users ?? [], teamsData?.teams ?? [])
-  const removeButton = <button style={removeBtn} onClick={onRemove} title="Rimuovi"><X size={14} color="#ef4444" /></button>
+  const removeButton = <button type="button" style={removeBtn} onClick={onRemove} title={t('conditionEditor.remove')} aria-label={t('conditionEditor.remove')}><X size={14} color="#ef4444" /></button>
 
   const errorLine = fieldsError && (
     <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)', marginBottom: 4 }}>
-      Campi non disponibili: {fieldsError}
+      {t('conditionEditor.fieldsUnavailable')}: {fieldsError}
     </div>
   )
 
@@ -121,14 +124,14 @@ function renderValueInput(
   teams: { id: string; name: string }[],
 ) {
   if (!field) {
-    return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+    return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
   // User → dropdown with users
   if (field.fieldType === 'user') {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
-        <option value="">-- Utente --</option>
+        <option value="">{i18n.t('conditionEditor.userPlaceholder')}</option>
         {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
       </Select>
     )
@@ -138,7 +141,7 @@ function renderValueInput(
   if (field.fieldType === 'team') {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
-        <option value="">-- Team --</option>
+        <option value="">{i18n.t('conditionEditor.teamPlaceholder')}</option>
         {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
       </Select>
     )
@@ -148,7 +151,7 @@ function renderValueInput(
   if (field.fieldType === 'enum' && field.enumValues.length > 0) {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
-        <option value="">-- Valore --</option>
+        <option value="">{i18n.t('conditionEditor.valuePlaceholder')}</option>
         {field.enumValues.map(v => <option key={v} value={v}>{v}</option>)}
       </Select>
     )
@@ -158,9 +161,9 @@ function renderValueInput(
   if (field.fieldType === 'boolean') {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
-        <option value="">-- Valore --</option>
-        <option value="true">Sì</option>
-        <option value="false">No</option>
+        <option value="">{i18n.t('conditionEditor.valuePlaceholder')}</option>
+        <option value="true">{i18n.t('common.yes')}</option>
+        <option value="false">{i18n.t('common.no')}</option>
       </Select>
     )
   }
@@ -172,9 +175,9 @@ function renderValueInput(
 
   // Number → numeric input
   if (field.fieldType === 'number') {
-    return <Input type="number" style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+    return <Input type="number" style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
   // String → text input
-  return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder="Valore" value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+  return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
 }

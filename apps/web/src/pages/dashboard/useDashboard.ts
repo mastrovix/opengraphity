@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
+import { errorMessage } from '@/hooks/useMutationWithToast'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import {
@@ -86,6 +88,7 @@ function serverWidgetToPending(w: DashboardWidgetServer, idx: number): PendingWi
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useDashboard() {
+  const { t } = useTranslation()
   const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null)
   const [editMode, setEditMode]                   = useState(false)
   const [pendingWidgets, setPendingWidgets]        = useState<PendingWidget[]>([])
@@ -169,9 +172,9 @@ export function useDashboard() {
     try {
       await deleteCustomWidgetMutation({ variables: { id: widgetId } })
       setCustomWidgets((prev) => prev.filter((w) => w.id !== widgetId))
-      toast.success('Widget rimosso')
+      toast.success(t('toast.widget.removed'))
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Errore')
+      toast.error(t('toast.widget.removeFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -189,7 +192,7 @@ export function useDashboard() {
         }).sort((a, b) => a.position - b.position),
       )
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Errore nel riordinamento')
+      toast.error(t('toast.widget.reorderFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -215,15 +218,15 @@ export function useDashboard() {
 
       const result = await saveLayoutMutation({ variables: { dashboardId: activeDashboardId, widgets: layout } })
       const saved = result.data?.saveDashboardLayout
-      if (!saved) throw new Error('Risposta vuota dal server: layout non confermato')
+      if (!saved) throw new Error(t('toast.dashboard.emptyResponse'))
 
       setPendingWidgets(saved.widgets.map(serverWidgetToPending))
       setEditMode(false)
-      toast.success('Dashboard salvata')
+      toast.success(t('toast.dashboard.saved'))
     } catch (err: unknown) {
       // Atomic on the server: nothing was applied. Stay in edit mode with the
       // untouched pending layout so a retry does not duplicate anything.
-      toast.error(err instanceof Error ? err.message : 'Errore durante il salvataggio')
+      toast.error(t('toast.dashboard.saveFailed', { error: errorMessage(err) }))
     } finally {
       setSaving(false)
     }

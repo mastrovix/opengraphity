@@ -1,3 +1,5 @@
+import { useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Hash, BarChart2, TrendingUp, PieChart, Table, Gauge,
 } from 'lucide-react'
@@ -20,17 +22,23 @@ interface WidgetTypeSelectorProps {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function WidgetTypeSelector({ widgetType, color, onSelect }: WidgetTypeSelectorProps) {
+  const { t } = useTranslation()
+  const labelId = useId()
   return (
     <div>
-      <label style={labelStyle}>Tipo widget</label>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-        {WIDGET_TYPES.map(({ value, label, icon }) => {
+      {/* Titolo di un gruppo di bottoni (non etichetta un singolo controllo) */}
+      <div id={labelId} style={labelStyle}>{t('pages.dashboard.widgetTypeLabel')}</div>
+      <div role="group" aria-labelledby={labelId} style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+        {WIDGET_TYPES.map(({ value, labelKey, descKey, icon }) => {
           const Icon = ICON_MAP[icon]
           const selected = widgetType === value
           return (
             <button
+              type="button"
               key={value}
               onClick={() => onSelect(value)}
+              aria-pressed={selected}
+              title={t(descKey)}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                 padding: '10px 6px', borderRadius: 8, cursor: 'pointer',
@@ -41,7 +49,7 @@ export function WidgetTypeSelector({ widgetType, color, onSelect }: WidgetTypeSe
               }}
             >
               {Icon && <Icon size={20} />}
-              <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 600 }}>{label}</span>
+              <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 600 }}>{t(labelKey)}</span>
             </button>
           )
         })}

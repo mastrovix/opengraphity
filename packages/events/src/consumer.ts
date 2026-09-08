@@ -76,6 +76,7 @@ export abstract class BaseConsumer<T> {
         // first attempt already succeeded must not fire the side effects again
         // (double notification / double SLAStatus). Mark processed only AFTER
         // success, so a genuine failure still retries.
+        if (!event.id) throw new Error(`[consumer:${this.queueName}] event without id cannot be deduplicated (type=${event.type})`)
         const dedupKey = `evt:processed:${this.queueName}:${event.id}`
         if (this.redis && (await this.redis.exists(dedupKey))) {
           console.log(`[consumer:${this.queueName}] Already processed, skipping: ${event.id}`)

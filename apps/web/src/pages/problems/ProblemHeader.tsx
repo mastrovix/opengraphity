@@ -56,7 +56,7 @@ export function ProblemHeader({
   const { byName: stepByName } = useWorkflowSteps('problem')
   return (
     <div style={{ marginBottom: 24 }}>
-      <button onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
+      <button type="button" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
         <ArrowLeft size={14} />
         Indietro
       </button>
@@ -74,7 +74,7 @@ export function ProblemHeader({
       {manualTransitions.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
           {manualTransitions.map((tr) => (
-            <button key={tr.toStep} onClick={() => onTransitionClick(tr)} disabled={transitioning} style={transitionButtonStyle(stepByName.get(tr.toStep)?.category ?? null, transitioning)}>
+            <button type="button" key={tr.toStep} onClick={() => onTransitionClick(tr)} disabled={transitioning} style={transitionButtonStyle(stepByName.get(tr.toStep)?.category ?? null, transitioning)}>
               {tr.label}
             </button>
           ))}

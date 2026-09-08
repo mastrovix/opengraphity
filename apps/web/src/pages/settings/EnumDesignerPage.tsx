@@ -92,6 +92,7 @@ function CreateEnumDialog({
               placeholder={t('pages.dictionary.namePlaceholder')}
               required
               pattern="[a-z][a-z0-9_]*"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo "Nuovo dizionario" aperto dall'utente
               autoFocus
             />
           </div>

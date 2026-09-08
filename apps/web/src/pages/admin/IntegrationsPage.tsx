@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n/i18n'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -61,7 +62,7 @@ const PILL_S: React.CSSProperties = { fontWeight: 400, marginRight: 4 }
 const ROW_ACTIONS: React.CSSProperties = { display: 'flex', gap: 6 }
 
 function fmtDate(d: string | null) { return d ? new Date(d).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
-function copyText(t: string) { void navigator.clipboard.writeText(t); toast.success('Copiato!') }
+function copyText(text: string) { void navigator.clipboard.writeText(text); toast.success(i18n.t('toast.integration.copied')) }
 
 const MODAL_TITLES: Record<string, string> = {
   inbound: 'Nuovo Webhook In', outbound: 'Nuovo Webhook Out', apikey: 'Nuova API Key', secret: 'Credenziale generata',
@@ -89,6 +90,8 @@ export function IntegrationsPage() {
   const inList  = useListQueryState()
   const outList = useListQueryState()
   const keyList = useListQueryState()
+  const uid = useId()
+  const fid = (name: string) => `${uid}-${name}`
 
   const TABS: TabItem<TabKey>[] = [
     { key: 'inbound',  label: t('admin.integrations.webhookIn') },
@@ -163,14 +166,14 @@ export function IntegrationsPage() {
       const token = (res.data as { createInboundWebhook?: { token: string } } | undefined)?.createInboundWebhook?.token
       if (!token) throw new Error('Webhook creato ma token mancante nella risposta')
       setSecret(token); setModal('secret')
-    } catch (e) { toast.error(`Creazione webhook fallita: ${errorMessage(e)}`) }
+    } catch (e) { toast.error(t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
   }
 
   async function handleCreateOutbound() {
     try {
       await createOut({ variables: { input: { ...outForm } } })
-      setModal(null); resetOutForm(); toast.success('Webhook outbound creato')
-    } catch (e) { toast.error(`Creazione webhook fallita: ${errorMessage(e)}`) }
+      setModal(null); resetOutForm(); toast.success(t('toast.integration.outboundCreated'))
+    } catch (e) { toast.error(t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
   }
 
   async function handleCreateApiKey() {
@@ -180,7 +183,7 @@ export function IntegrationsPage() {
       const key = (res.data as { createApiKey?: { key: string } } | undefined)?.createApiKey?.key
       if (!key) throw new Error('API key creata ma chiave mancante nella risposta')
       setSecret(key); setModal('secret')
-    } catch (e) { toast.error(`Creazione API key fallita: ${errorMessage(e)}`) }
+    } catch (e) { toast.error(t('toast.integration.apiKeyCreateFailed', { error: errorMessage(e) })) }
   }
 
   // Toggles: errors are toasted by useMutationWithToast with the server message.
@@ -209,9 +212,9 @@ export function IntegrationsPage() {
       const res = await testOut({ variables: { id } })
       const r = (res.data as { testOutboundWebhook?: { success: boolean; statusCode: number | null; error: string | null } } | undefined)?.testOutboundWebhook
       if (!r) throw new Error('risposta vuota')
-      if (r.success) toast.success(`Test OK — status ${r.statusCode}`)
-      else toast.error(`Test fallito: ${r.error}`)
-    } catch (e) { toast.error(`Test webhook fallito: ${errorMessage(e)}`) }
+      if (r.success) toast.success(t('toast.integration.testOk', { status: r.statusCode }))
+      else toast.error(t('toast.integration.testFailed', { error: r.error }))
+    } catch (e) { toast.error(t('toast.integration.testError', { error: errorMessage(e) })) }
   }
 
   async function handleRegenToken(id: string) {
@@ -220,7 +223,7 @@ export function IntegrationsPage() {
       const token = (res.data as { regenerateWebhookToken?: { token: string } } | undefined)?.regenerateWebhookToken?.token
       if (!token) throw new Error('token mancante nella risposta')
       setSecret(token); setModal('secret')
-    } catch (e) { toast.error(`Rigenerazione token fallita: ${errorMessage(e)}`) }
+    } catch (e) { toast.error(t('toast.integration.tokenRegenFailed', { error: errorMessage(e) })) }
   }
 
   async function handleRegenApiKey(id: string) {
@@ -229,7 +232,7 @@ export function IntegrationsPage() {
       const key = (res.data as { regenerateApiKey?: { key: string } } | undefined)?.regenerateApiKey?.key
       if (!key) throw new Error('chiave mancante nella risposta')
       setSecret(key); setModal('secret')
-    } catch (e) { toast.error(`Rigenerazione chiave fallita: ${errorMessage(e)}`) }
+    } catch (e) { toast.error(t('toast.integration.keyRegenFailed', { error: errorMessage(e) })) }
   }
 
   // ── Render helpers ──────────────────────────────────────────────────────────
@@ -336,15 +339,15 @@ export function IntegrationsPage() {
         {modal === 'inbound' && (
           <ModalPortal modalType="inbound" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Nome</label><Input style={inputS} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
-              <div><label style={labelS}>Entity Type</label>
-                <Select style={selectS} value={inForm.entityType} onChange={e => setInForm({ ...inForm, entityType: e.target.value })}>
+              <div><label htmlFor={fid('in-name')} style={labelS}>Nome</label><Input id={fid('in-name')} style={inputS} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-entity-type')} style={labelS}>Entity Type</label>
+                <Select id={fid('in-entity-type')} style={selectS} value={inForm.entityType} onChange={e => setInForm({ ...inForm, entityType: e.target.value })}>
                   {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
                 </Select>
               </div>
-              <div><label style={labelS}>Field Mapping (JSON)</label><textarea style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} /></div>
-              <div><label style={labelS}>Default Values (JSON)</label><textarea style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} /></div>
-              <div><label style={labelS}>Transform Script</label><textarea style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-field-mapping')} style={labelS}>Field Mapping (JSON)</label><textarea id={fid('in-field-mapping')} style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-default-values')} style={labelS}>Default Values (JSON)</label><textarea id={fid('in-default-values')} style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-transform-script')} style={labelS}>Transform Script</label><textarea id={fid('in-transform-script')} style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
                 <Button onClick={() => void handleCreateInbound()} disabled={!inForm.name}>{t('common.create')}</Button>
@@ -371,16 +374,16 @@ export function IntegrationsPage() {
         {modal === 'outbound' && (
           <ModalPortal modalType="outbound" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Nome</label><Input style={inputS} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
-              <div><label style={labelS}>URL</label><Input style={inputS} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
-              <div><label style={labelS}>Method</label>
-                <Select style={selectS} value={outForm.method} onChange={e => setOutForm({ ...outForm, method: e.target.value })}>
+              <div><label htmlFor={fid('out-name')} style={labelS}>Nome</label><Input id={fid('out-name')} style={inputS} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-url')} style={labelS}>URL</label><Input id={fid('out-url')} style={inputS} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
+              <div><label htmlFor={fid('out-method')} style={labelS}>Method</label>
+                <Select id={fid('out-method')} style={selectS} value={outForm.method} onChange={e => setOutForm({ ...outForm, method: e.target.value })}>
                   {HTTP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                 </Select>
               </div>
-              <div><label style={labelS}>Headers (JSON)</label><textarea style={textareaS} value={outForm.headers} onChange={e => setOutForm({ ...outForm, headers: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-headers')} style={labelS}>Headers (JSON)</label><textarea id={fid('out-headers')} style={textareaS} value={outForm.headers} onChange={e => setOutForm({ ...outForm, headers: e.target.value })} /></div>
               <div>
-                <label style={labelS}>Events</label>
+                <div style={labelS}>Events</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {OUTBOUND_EVENTS.map(ev => (
                     <label key={ev} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
@@ -390,8 +393,8 @@ export function IntegrationsPage() {
                   ))}
                 </div>
               </div>
-              <div><label style={labelS}>Payload Template</label><textarea style={textareaS} value={outForm.payloadTemplate} onChange={e => setOutForm({ ...outForm, payloadTemplate: e.target.value })} /></div>
-              <div><label style={labelS}>Secret</label><Input style={inputS} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-payload-template')} style={labelS}>Payload Template</label><textarea id={fid('out-payload-template')} style={textareaS} value={outForm.payloadTemplate} onChange={e => setOutForm({ ...outForm, payloadTemplate: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-secret')} style={labelS}>Secret</label><Input id={fid('out-secret')} style={inputS} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={outForm.retryOnFailure} onChange={e => setOutForm({ ...outForm, retryOnFailure: e.target.checked })} />
                 Riprova in caso di errore
@@ -422,9 +425,9 @@ export function IntegrationsPage() {
         {modal === 'apikey' && (
           <ModalPortal modalType="apikey" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Nome</label><Input style={inputS} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('key-name')} style={labelS}>Nome</label><Input id={fid('key-name')} style={inputS} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
               <div>
-                <label style={labelS}>Permessi</label>
+                <div style={labelS}>Permessi</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                   {PERMISSIONS.map(p => (
                     <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
@@ -434,8 +437,8 @@ export function IntegrationsPage() {
                   ))}
                 </div>
               </div>
-              <div><label style={labelS}>Rate Limit (req/min)</label><Input style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
-              <div><label style={labelS}>Scadenza</label><Input style={inputS} type="date" value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /></div>
+              <div><label htmlFor={fid('key-rate-limit')} style={labelS}>Rate Limit (req/min)</label><Input id={fid('key-rate-limit')} style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
+              <div><label htmlFor={fid('key-expires-at')} style={labelS}>Scadenza</label><Input id={fid('key-expires-at')} style={inputS} type="date" value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
                 <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name || !keyForm.permissions.length}>{t('common.create')}</Button>

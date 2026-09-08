@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import {
   type ReportTemplate, type Channel,
   SCHEDULE_PRESETS,
@@ -48,28 +49,33 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
     customCron, setCustomCron,
     handleSaveSettings, setView,
   } = props
+  const uid = useId()
+  const ids = {
+    name: `${uid}-name`, desc: `${uid}-desc`, vis: `${uid}-vis`, preset: `${uid}-preset`,
+    cron: `${uid}-cron`, channel: `${uid}-channel`, recipients: `${uid}-recipients`,
+  }
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px' }}>
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
-          <button onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
+          <button type="button" onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
           <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Impostazioni &mdash; {selected.name}</h2>
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Nome</label>
-          <input value={settingsName} onChange={e => setSettingsName(e.target.value)} style={inputStyle} />
+          <label htmlFor={ids.name} style={labelStyle}>Nome</label>
+          <input id={ids.name} value={settingsName} onChange={e => setSettingsName(e.target.value)} style={inputStyle} />
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Descrizione</label>
-          <textarea value={settingsDesc} onChange={e => setSettingsDesc(e.target.value)} style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }} />
+          <label htmlFor={ids.desc} style={labelStyle}>Descrizione</label>
+          <textarea id={ids.desc} value={settingsDesc} onChange={e => setSettingsDesc(e.target.value)} style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }} />
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Visibilit&agrave;</label>
-          <select value={settingsVis} onChange={e => setSettingsVis(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+          <label htmlFor={ids.vis} style={labelStyle}>Visibilit&agrave;</label>
+          <select id={ids.vis} value={settingsVis} onChange={e => setSettingsVis(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
             <option value="private">Privato</option>
             <option value="groups">Gruppi selezionati</option>
             <option value="all">Tutti</option>
@@ -78,7 +84,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
 
         {settingsVis === 'groups' && teams.length > 0 && (
           <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>Condividi con team</label>
+            <div style={labelStyle}>Condividi con team</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {teams.map((team: { id: string; name: string }) => (
                 <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
@@ -99,8 +105,8 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
           {settingsSched && (
             <>
               <div style={{ marginBottom: 10 }}>
-                <label style={labelStyle}>Frequenza</label>
-                <select value={schedulePreset}
+                <label htmlFor={ids.preset} style={labelStyle}>Frequenza</label>
+                <select id={ids.preset} value={schedulePreset}
                   onChange={e => { setSchedulePreset(e.target.value); if (e.target.value !== '__custom__') setSettingsSchedCron(e.target.value) }}
                   style={{ ...inputStyle, background: '#fff' }}>
                   {SCHEDULE_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
@@ -108,15 +114,15 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
               </div>
               {schedulePreset === '__custom__' && (
                 <div style={{ marginBottom: 10 }}>
-                  <label style={labelStyle}>Espressione cron</label>
-                  <input value={customCron} onChange={e => { setCustomCron(e.target.value); setSettingsSchedCron(e.target.value) }}
+                  <label htmlFor={ids.cron} style={labelStyle}>Espressione cron</label>
+                  <input id={ids.cron} value={customCron} onChange={e => { setCustomCron(e.target.value); setSettingsSchedCron(e.target.value) }}
                     style={inputStyle} placeholder="0 9 * * *" />
                 </div>
               )}
               {channels.length > 0 && (
                 <div style={{ marginBottom: 10 }}>
-                  <label style={labelStyle}>Canale Slack</label>
-                  <select value={settingsChanId} onChange={e => setSettingsChanId(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+                  <label htmlFor={ids.channel} style={labelStyle}>Canale Slack</label>
+                  <select id={ids.channel} value={settingsChanId} onChange={e => setSettingsChanId(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
                     <option value="">Nessun canale</option>
                     {channels.map((c: Channel) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
@@ -125,16 +131,17 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
 
               {/* Recipients */}
               <div style={{ marginBottom: 10 }}>
-                <label style={labelStyle}>Destinatari email</label>
+                <label htmlFor={ids.recipients} style={labelStyle}>Destinatari email</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', minHeight: 38 }}>
                   {settingsRecipients.map((r) => (
                     <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                       {r}
-                      <button onClick={() => setSettingsRecipients(prev => prev.filter(x => x !== r))}
+                      <button type="button" aria-label={`Rimuovi ${r}`} onClick={() => setSettingsRecipients(prev => prev.filter(x => x !== r))}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: '#0369a1', fontWeight: 600 }}>&times;</button>
                     </span>
                   ))}
                   <input
+                    id={ids.recipients}
                     value={recipientInput}
                     onChange={e => setRecipientInput(e.target.value)}
                     onKeyDown={e => {
@@ -160,7 +167,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
 
               {/* Format */}
               <div>
-                <label style={labelStyle}>Formato report</label>
+                <div style={labelStyle}>Formato report</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['pdf', 'excel'] as const).map((fmt) => (
                     <label key={fmt} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: `1px solid ${settingsFormat === fmt ? 'var(--color-trigger-manual)' : '#d1d5db'}`, background: settingsFormat === fmt ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: settingsFormat === fmt ? 600 : 400, color: settingsFormat === fmt ? 'var(--color-brand)' : 'var(--color-slate)' }}>
@@ -182,10 +189,10 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={() => void handleSaveSettings()} disabled={updating} style={btnPrimary}>
+          <button type="button" onClick={() => void handleSaveSettings()} disabled={updating} style={btnPrimary}>
             {updating ? 'Salvataggio...' : 'Salva impostazioni'}
           </button>
-          <button onClick={() => setView('detail')} style={btnGhost}>Annulla</button>
+          <button type="button" onClick={() => setView('detail')} style={btnGhost}>Annulla</button>
         </div>
       </div>
     </div>

@@ -1,0 +1,16 @@
+# Dashboard provider: every *.json in infra/grafana/dashboards (mounted at
+# /etc/grafana/dashboards by docker-compose.yml) is loaded into the
+# "OpenGraphity" folder and refreshed every 30s. Edits from the UI are not
+# persisted (allowUiUpdates: false): change the JSON in the repo instead.
+apiVersion: 1
+providers:
+  - name: opengraphity
+    orgId: 1
+    folder: OpenGraphity
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

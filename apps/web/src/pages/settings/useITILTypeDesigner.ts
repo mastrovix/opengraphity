@@ -218,7 +218,7 @@ export function useITILTypeDesigner() {
 
   const handleSaveField = (typeId: string, fieldId: string | null, form: FieldFormState) => {
     if (form.fieldType === 'enum' && !form.enumTypeId) {
-      toast.error('Seleziona un enum di riferimento per i campi di tipo enum')
+      toast.error(t('toast.itil.enumRequired'))
       return
     }
     const variables = {

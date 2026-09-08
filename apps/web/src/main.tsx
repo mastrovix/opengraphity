@@ -2,6 +2,7 @@ import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApolloProvider } from '@apollo/client/react'
 import { createBrowserRouter, RouterProvider, useRouteError, Navigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Toaster } from '@/components/ui/sonner'
 import { apolloClient } from '@/lib/apollo'
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -75,6 +76,7 @@ import '@/i18n/i18n'
 
 function RouteError() {
   const error = useRouteError() as { status?: number; statusText?: string }
+  const { t } = useTranslation()
   return (
     <div style={{
       display:        'flex',
@@ -85,15 +87,15 @@ function RouteError() {
       gap:            16,
       background:     'var(--color-slate-bg)',
     }}>
-      <div style={{ fontSize: 48 }}>⚠️</div>
+      <div style={{ fontSize: 48 }} aria-hidden="true">⚠️</div>
       <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
-        {error?.status === 404 ? 'Page not found' : 'Unexpected error'}
+        {error?.status === 404 ? t('routeError.notFound') : t('routeError.unexpected')}
       </h1>
       <p style={{ color: 'var(--color-slate-light)', margin: 0 }}>
-        {error?.statusText ?? 'Something went wrong'}
+        {error?.statusText ?? t('routeError.generic')}
       </p>
       <a href="/dashboard" style={{ color: 'var(--color-brand)', textDecoration: 'none', fontSize: 'var(--font-size-body)' }}>
-        Back to Dashboard
+        {t('routeError.backToDashboard')}
       </a>
     </div>
   )

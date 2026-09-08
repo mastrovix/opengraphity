@@ -85,7 +85,7 @@ export function CMDBPage() {
 
   const pageTitle = typeFromUrl
     ? typeFromUrl.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    : 'CMDB'
+    : t('sidebar.cmdb')
 
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -132,6 +132,7 @@ export function CMDBPage() {
             tipo in URL si va alla sua lista, altrimenti nessun bottone morto. */}
         {typeFromUrl && (
           <button
+            type="button"
             onClick={() => navigate(`/ci/${typeFromUrl}`)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
           >

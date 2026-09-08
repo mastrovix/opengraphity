@@ -36,7 +36,7 @@ let localPipeline: Promise<FeaturePipeline> | null = null
 
 function getLocalPipeline(): Promise<FeaturePipeline> {
   localPipeline ??= (async () => {
-    const { pipeline, env } = await import('@xenova/transformers')
+    const { pipeline, env } = await import('@huggingface/transformers')
     env.cacheDir = config.transformersCache
     logger.info({ model: LOCAL_MODEL, cacheDir: env.cacheDir }, '[embeddings] loading local model')
     const t0 = Date.now()

@@ -1,0 +1,33 @@
+# Prometheus — scrapes the OpenGraphity API (G-15).
+# Metric names: apps/api/src/middleware/metrics.ts
+#   http_requests_total{method,route,status_code}          counter
+#   http_request_duration_seconds{method,route}            histogram
+#   graphql_resolver_duration_seconds{resolver}            histogram
+#   neo4j_query_duration_seconds{operation}                histogram
+#   bullmq_queue_depth{queue,status}                       gauge (30s sampling)
+#   opengrafo_backup_runs_total{result}                    counter (ok | backup_failed | verify_failed)
+#   opengrafo_backup_last_success_timestamp_seconds        gauge
+# The dashboard provisioned in Grafana (infra/grafana/dashboards) reads these.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: opengraphity-api
+    metrics_path: /metrics
+    # Token written at container start from METRICS_TOKEN (docker-compose.yml
+    # `prometheus` entrypoint). Empty file when the variable is empty: the API
+    # then admits the scrape because it comes from the docker network
+    # (metricsAccessAllowed: private socket address, no token configured).
+    authorization:
+      type: Bearer
+      credentials_file: /tmp/metrics_token
+    static_configs:
+      - targets: ["api:4000"]
+        labels:
+          service: api
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

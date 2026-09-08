@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { Gauge, Plus, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
@@ -80,6 +81,12 @@ function Kpi({ label, value, color }: { label: string; value: string; color?: st
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function SLAReportPage() {
+  const { t } = useTranslation()
+  const uid = useId()
+  const ids = {
+    type: `${uid}-type`, entity: `${uid}-entity`, name: `${uid}-name`, desc: `${uid}-desc`,
+    response: `${uid}-response`, resolve: `${uid}-resolve`, partyType: `${uid}-party-type`, partyName: `${uid}-party-name`,
+  }
   const [windowDays, setWindowDays] = useState(30)
   const { data, loading, error, refetch } = useQuery<{ slaReport: SLAReport }>(GET_SLA_REPORT, {
     variables: { windowDays }, fetchPolicy: 'cache-and-network',
@@ -92,7 +99,7 @@ export function SLAReportPage() {
   const [form, setForm] = useState<OLAForm>(EMPTY_OLA)
 
   const [createOLA, { loading: creating }] = useMutation(CREATE_OLA_CONTRACT, {
-    onCompleted: async () => { setModal(null); await refetchOLA(); await refetch(); toast.success('Contratto creato') },
+    onCompleted: async () => { setModal(null); await refetchOLA(); await refetch(); toast.success(t('toast.sla.olaCreated')) },
     onError: (e) => toast.error(e.message),
   })
   const [updateOLA, { loading: updating }] = useMutation(UPDATE_OLA_CONTRACT, {
@@ -134,6 +141,8 @@ export function SLAReportPage() {
           {WINDOWS.map((w) => (
             <button
               key={w}
+              type="button"
+              aria-pressed={windowDays === w}
               onClick={() => setWindowDays(w)}
               style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: windowDays === w ? 'var(--color-brand)' : '#fff', color: windowDays === w ? '#fff' : 'var(--color-slate)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
@@ -278,44 +287,52 @@ export function SLAReportPage() {
       >
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
-            <FieldLabel>Tipo</FieldLabel>
-            <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} disabled={modal?.mode === 'edit'}>
+            <FieldLabel htmlFor={ids.type}>Tipo</FieldLabel>
+            <Select id={ids.type} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} disabled={modal?.mode === 'edit'}>
               <option value="ola">OLA (team interni)</option>
               <option value="uc">UC (fornitore esterno)</option>
             </Select>
           </div>
           <div>
-            <FieldLabel>Ambito</FieldLabel>
-            <Select value={form.entityType} onChange={(e) => setForm({ ...form, entityType: e.target.value })}>
+            <FieldLabel htmlFor={ids.entity}>Ambito</FieldLabel>
+            <Select id={ids.entity} value={form.entityType} onChange={(e) => setForm({ ...form, entityType: e.target.value })}>
               {Object.entries(ENTITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <FieldLabel>Nome *</FieldLabel>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus placeholder="Es. Ripristino rete entro 4h" />
+            <FieldLabel htmlFor={ids.name}>Nome *</FieldLabel>
+            <Input
+              id={ids.name}
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              required
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo OLA/UC aperto dall'utente (Nuovo/Modifica contratto)
+              autoFocus
+              placeholder="Es. Ripristino rete entro 4h"
+            />
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <FieldLabel>Descrizione</FieldLabel>
-            <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} />
+            <FieldLabel htmlFor={ids.desc}>Descrizione</FieldLabel>
+            <Textarea id={ids.desc} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} />
           </div>
           <div>
-            <FieldLabel>Target risposta (min)</FieldLabel>
-            <Input type="number" min={1} value={form.responseMinutes} onChange={(e) => setForm({ ...form, responseMinutes: Number(e.target.value) })} required />
+            <FieldLabel htmlFor={ids.response}>Target risposta (min)</FieldLabel>
+            <Input id={ids.response} type="number" min={1} value={form.responseMinutes} onChange={(e) => setForm({ ...form, responseMinutes: Number(e.target.value) })} required />
           </div>
           <div>
-            <FieldLabel>Target risoluzione (min)</FieldLabel>
-            <Input type="number" min={1} value={form.resolveMinutes} onChange={(e) => setForm({ ...form, resolveMinutes: Number(e.target.value) })} required />
+            <FieldLabel htmlFor={ids.resolve}>Target risoluzione (min)</FieldLabel>
+            <Input id={ids.resolve} type="number" min={1} value={form.resolveMinutes} onChange={(e) => setForm({ ...form, resolveMinutes: Number(e.target.value) })} required />
           </div>
           <div>
-            <FieldLabel>Responsabile</FieldLabel>
-            <Select value={form.partyType} onChange={(e) => setForm({ ...form, partyType: e.target.value })}>
+            <FieldLabel htmlFor={ids.partyType}>Responsabile</FieldLabel>
+            <Select id={ids.partyType} value={form.partyType} onChange={(e) => setForm({ ...form, partyType: e.target.value })}>
               <option value="team">Team interno</option>
               <option value="supplier">Fornitore esterno</option>
             </Select>
           </div>
           <div>
-            <FieldLabel>{form.partyType === 'supplier' ? 'Nome fornitore' : 'Nome team'}</FieldLabel>
-            <Input value={form.partyName} onChange={(e) => setForm({ ...form, partyName: e.target.value })} placeholder={form.partyType === 'supplier' ? 'Es. Acme Cloud Srl' : 'Es. Network Ops'} />
+            <FieldLabel htmlFor={ids.partyName}>{form.partyType === 'supplier' ? 'Nome fornitore' : 'Nome team'}</FieldLabel>
+            <Input id={ids.partyName} value={form.partyName} onChange={(e) => setForm({ ...form, partyName: e.target.value })} placeholder={form.partyType === 'supplier' ? 'Es. Acme Cloud Srl' : 'Es. Network Ops'} />
           </div>
         </div>
       </Modal>

@@ -1,0 +1,47 @@
+{
+  "$comment": "Accepted advisories for scripts/audit-check.mjs (pnpm audit --prod, gate >= high). Every entry needs the GHSA id, the package, the reason it is acceptable and an expiry date: after that date CI goes red again until the entry is renewed with a fresh justification or the dependency is fixed. Entries below the gate are listed for documentation only.",
+  "entries": [
+    {
+      "id": "GHSA-xcpc-8h2w-3j85",
+      "package": "adm-zip",
+      "severity": "high",
+      "reason": "Pinned to 0.5.18 by onnxruntime-node 1.24.3 (dependency of @huggingface/transformers); only used by its postinstall script to unpack the ONNX runtime binaries it downloads at install time, never at runtime. Waiting for an onnxruntime-node release on adm-zip >= 0.6.",
+      "expires": "2026-12-31"
+    },
+    {
+      "id": "GHSA-9q82-xgwf-vj6h",
+      "package": "@apollo/server",
+      "severity": "moderate",
+      "reason": "Fix requires @apollo/server 5 (express 5 / @as-integrations/express adapter migration). CSRF prevention and a CORS allowlist are already enforced in apps/api/src/server.ts.",
+      "expires": "2026-12-31"
+    },
+    {
+      "id": "GHSA-q8mj-m7cp-5q26",
+      "package": "qs",
+      "severity": "moderate",
+      "reason": "express 4.22 pins qs ~6.14; the fixed line (6.15/6.16) is only reachable with express 5. The API parses JSON bodies (GraphQL) — qs only handles the query string of REST routes.",
+      "expires": "2026-12-31"
+    },
+    {
+      "id": "GHSA-x5fp-wj9c-mxmx",
+      "package": "qs",
+      "severity": "moderate",
+      "reason": "Same as GHSA-q8mj-m7cp-5q26: qs pinned by express 4.",
+      "expires": "2026-12-31"
+    },
+    {
+      "id": "GHSA-4mjr-xmp4-gh2g",
+      "package": "qs",
+      "severity": "moderate",
+      "reason": "Same as GHSA-q8mj-m7cp-5q26: qs pinned by express 4.",
+      "expires": "2026-12-31"
+    },
+    {
+      "id": "GHSA-w5hq-g745-h8pq",
+      "package": "uuid",
+      "severity": "moderate",
+      "reason": "Our own uuid is >= 11.1.1; the remaining copies (8.3.2 / 9.0.1 / 11.1.0) are pinned by @apollo/server and @azure/msal-node. The flaw is in v3/v5/v6 with a caller-supplied buffer; those libraries only generate v4 ids.",
+      "expires": "2026-12-31"
+    }
+  ]
+}

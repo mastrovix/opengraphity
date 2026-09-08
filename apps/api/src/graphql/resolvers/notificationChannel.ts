@@ -3,6 +3,12 @@ import { randomUUID } from 'crypto'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { assertSafeOutboundUrl } from '../../lib/safeUrl.js'
+import { ValidationError } from '../../lib/errors.js'
+
+const PLATFORMS = ['slack', 'teams', 'email'] as const
+function assertPlatform(p: string): void {
+  if (!(PLATFORMS as readonly string[]).includes(p)) throw new ValidationError(`platform "${p}" non supportata (ammesse: ${PLATFORMS.join(', ')})`)
+}
 
 function mapChannel(n: Record<string, unknown>) {
   return {
@@ -34,6 +40,7 @@ async function createNotificationChannel(
   { input }: { input: { platform: string; name: string; webhookUrl?: string; channelId?: string; eventTypes: string[] } },
   ctx: GraphQLContext,
 ) {
+  assertPlatform(input.platform)
   // SSRF guard on the tenant-configured webhook (ValidationError → 400).
   if (input.webhookUrl) await assertSafeOutboundUrl(input.webhookUrl)
   return withSession(async (session) => {
@@ -62,6 +69,7 @@ async function updateNotificationChannel(
   { id, input }: { id: string; input: { platform: string; name: string; webhookUrl?: string; channelId?: string; eventTypes: string[] } },
   ctx: GraphQLContext,
 ) {
+  assertPlatform(input.platform)
   if (input.webhookUrl) await assertSafeOutboundUrl(input.webhookUrl)
   return withSession(async (session) => {
     const result = await session.executeWrite((tx) =>

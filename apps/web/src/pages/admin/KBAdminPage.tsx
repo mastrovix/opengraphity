@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useId, useState, useRef } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -86,11 +86,12 @@ interface RestoredArticle { title: string; body: string; category: string; tags:
 
 /** Collapsible version-history panel shown in the edit form. */
 function VersionHistory({ articleId, onRestored }: { articleId: string; onRestored: (a: RestoredArticle) => void }) {
+  const { t } = useTranslation()
   const { data, loading, refetch } = useQuery<{ kbArticleVersions: KBVersion[] }>(GET_KB_VERSIONS, {
     variables: { articleId }, fetchPolicy: 'cache-and-network',
   })
   const [restore, { loading: restoring }] = useMutation<{ restoreKBArticleVersion: RestoredArticle }>(RESTORE_KB_VERSION, {
-    onCompleted: (d) => { toast.success('Versione ripristinata'); void refetch(); onRestored(d.restoreKBArticleVersion) },
+    onCompleted: (d) => { toast.success(t('toast.kb.versionRestored')); void refetch(); onRestored(d.restoreKBArticleVersion) },
     onError: (e: { message: string }) => toast.error(e.message),
   })
   const versions = data?.kbArticleVersions ?? []
@@ -281,7 +282,7 @@ export function KBAdminPage() {
             variables: { instanceId: d.createKBArticle.workflowInstanceId, toStep: forwardFromInitial },
           }).then((res) => {
             if (res.data?.executeWorkflowTransition.success) {
-              toast.success('Articolo inviato per revisione')
+              toast.success(t('toast.kb.sentForReview'))
               void refetch()
             }
           })
@@ -304,13 +305,13 @@ export function KBAdminPage() {
         if (wi && forwardFromInitial) {
           void execTransition({ variables: { instanceId: wi, toStep: forwardFromInitial } }).then((res) => {
             if (res.data?.executeWorkflowTransition.success) {
-              toast.success('Articolo inviato per revisione')
+              toast.success(t('toast.kb.sentForReview'))
               closeForm()
               void refetch()
             }
           })
         } else {
-          toast.error('WorkflowInstance o step di revisione non trovato')
+          toast.error(t('toast.kb.reviewStepNotFound'))
         }
       } else {
         toast.success(t('pages.kbAdmin.updated'))
@@ -345,7 +346,7 @@ export function KBAdminPage() {
 
   function handleSave() {
     const tags = form.tags.split(',').map((s) => s.trim()).filter(Boolean)
-    if (!form.title.trim() || !form.body.trim()) { toast.error('Titolo e corpo sono obbligatori'); return }
+    if (!form.title.trim() || !form.body.trim()) { toast.error(t('toast.kb.titleBodyRequired')); return }
     publishingRef.current = false
     if (editId) {
       void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags } })
@@ -357,7 +358,7 @@ export function KBAdminPage() {
   function handlePublish() {
     if (!editId) return  // only available when editing an existing draft
     const tags = form.tags.split(',').map((s) => s.trim()).filter(Boolean)
-    if (!form.title.trim() || !form.body.trim()) { toast.error('Titolo e corpo sono obbligatori prima di pubblicare'); return }
+    if (!form.title.trim() || !form.body.trim()) { toast.error(t('toast.kb.titleBodyRequiredPublish')); return }
     publishingRef.current = true
     void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags } })
   }
@@ -398,6 +399,8 @@ export function KBAdminPage() {
   ]
 
   const inputStyle: React.CSSProperties = inputS
+  const uid = useId()
+  const ids = { title: `${uid}-title`, category: `${uid}-category`, tags: `${uid}-tags` }
 
   return (
     <PageContainer>
@@ -436,23 +439,23 @@ export function KBAdminPage() {
           {/* Fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
-              <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder="Titolo articolo" />
+              <label htmlFor={ids.title} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
+              <input id={ids.title} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder="Titolo articolo" />
             </div>
             <div>
-              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Categoria *</label>
-              <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
+              <label htmlFor={ids.category} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Categoria *</label>
+              <select id={ids.category} value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
                 {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Tag (separati da virgola)</label>
-              <input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} style={inputStyle} placeholder="vpn, windows, accesso" />
+              <label htmlFor={ids.tags} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Tag (separati da virgola)</label>
+              <input id={ids.tags} value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} style={inputStyle} placeholder="vpn, windows, accesso" />
             </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Contenuto *</label>
+            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Contenuto *</div>
             <RichTextEditor
               key={editId ?? 'new'}
               value={form.body}

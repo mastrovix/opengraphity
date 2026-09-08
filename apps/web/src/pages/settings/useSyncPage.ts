@@ -245,7 +245,7 @@ export function useSyncPage(): UseSyncPageReturn {
       const { data: r } = await testConnMut({ variables: { sourceId } })
       const result = (r as { testSyncConnection?: { ok: boolean; message: string } } | undefined)?.testSyncConnection
       if (result?.ok) toast.success(result.message)
-      else            toast.error(result?.message ?? 'Connection failed')
+      else            toast.error(result?.message ?? t('toast.sync.connectionFailed'))
     } catch (err) {
       toast.error((err as Error).message)
     }
@@ -254,7 +254,7 @@ export function useSyncPage(): UseSyncPageReturn {
   async function handleSaveSchedule(sourceId: string, cron: string | null) {
     try {
       await updateSourceMut({ variables: { id: sourceId, input: { scheduleCron: cron } } })
-      toast.success('Schedule saved')
+      toast.success(t('toast.sync.scheduleSaved'))
     } catch (err) {
       toast.error((err as Error).message)
       throw err
@@ -282,7 +282,7 @@ export function useSyncPage(): UseSyncPageReturn {
   async function handleResolveConflict(conflictId: string, resolution: string) {
     try {
       await resolveConflictMut({ variables: { conflictId, resolution } })
-      toast.success('Conflict resolved')
+      toast.success(t('toast.sync.conflictResolved'))
     } catch (err) {
       toast.error((err as Error).message)
     }

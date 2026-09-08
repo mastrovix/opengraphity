@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Lightbulb } from 'lucide-react'
 import { colors } from '@/lib/tokens'
@@ -22,6 +22,8 @@ export function ResolutionForm({
   const { t } = useTranslation()
   const [resolutionStatus, setResolutionStatus] = useState('')
   const [note, setNote]                         = useState('')
+  const baseId = useId()
+  const ids = { action: `${baseId}-action`, note: `${baseId}-note` }
 
   const suggestionKey = RULE_SUGGESTION_KEYS[anomaly.ruleKey]
   const suggestion    = suggestionKey ? t(suggestionKey) : null
@@ -55,10 +57,11 @@ export function ResolutionForm({
 
       {/* Resolution status dropdown */}
       <div>
-        <FieldLabel style={{ fontSize: 'var(--font-size-table)', letterSpacing: '0.04em', marginBottom: 6 }}>
+        <FieldLabel htmlFor={ids.action} style={{ fontSize: 'var(--font-size-table)', letterSpacing: '0.04em', marginBottom: 6 }}>
           {t('pages.anomalies.actionLabel')}
         </FieldLabel>
         <select
+          id={ids.action}
           value={resolutionStatus}
           onChange={(e) => setResolutionStatus(e.target.value)}
           style={{
@@ -78,10 +81,11 @@ export function ResolutionForm({
 
       {/* Note textarea */}
       <div>
-        <FieldLabel style={{ fontSize: 'var(--font-size-table)', letterSpacing: '0.04em', marginBottom: 6 }}>
+        <FieldLabel htmlFor={ids.note} style={{ fontSize: 'var(--font-size-table)', letterSpacing: '0.04em', marginBottom: 6 }}>
           {t('pages.anomalies.noteLabel')}
         </FieldLabel>
         <Textarea
+          id={ids.note}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder={t('pages.anomalies.notePlaceholder')}

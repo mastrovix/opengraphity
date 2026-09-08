@@ -69,7 +69,12 @@ export class QueryError extends Error {
 
 // ── Records → plain values ───────────────────────────────────────────────────
 
-function toNative(value: unknown): unknown {
+/**
+ * Driver value → JSON-friendly plain value: Integer → number, temporal types
+ * and Duration → their ISO string, recursively through lists and maps.
+ * Exported for the backup (raw driver records, no session wrapper).
+ */
+export function toNative(value: unknown): unknown {
   if (value === null || value === undefined) return value
 
   if (isInt(value as Integer)) return (value as Integer).toNumber()

@@ -1,18 +1,49 @@
+# Promtail — ships container stdout/stderr to Loki (G-15).
+# Containers are discovered through the Docker socket (mounted read-only by
+# docker-compose.yml): no host log path, no file that nobody writes. Every
+# container of the compose project is scraped and labelled by service.
+
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
 
 positions:
-  filename: /tmp/positions.yaml
+  # promtail_data volume: read offsets survive restarts
+  filename: /var/lib/promtail/positions.yaml
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-  - job_name: opengrafo-api
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: opengrafo-api
-          __path__: /var/log/opengrafo/api-log.txt
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          # Only containers started by docker compose (label present, any project)
+          - name: label
+            values: ["com.docker.compose.project"]
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(.*)'
+        target_label: container
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        target_label: project
+      - source_labels: [__meta_docker_container_log_stream]
+        target_label: stream
+      # `job` = compose service name: {job="api"}, {job="worker"}, {job="nginx"} …
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: job
+    pipeline_stages:
+      # api/worker log JSON (pino): expose the level as a label for filtering
+      # ({job="api", level="50"} = error). Other containers are left as-is.
+      - match:
+          selector: '{job=~"api|worker"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+            - labels:
+                level:

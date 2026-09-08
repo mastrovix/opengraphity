@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express'
+import { asyncHandler, restErrorHandler } from './errorHandler.js'
 import { type Router as ExpressRouter } from 'express'
 import { getSession } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
@@ -20,8 +21,9 @@ const router: ExpressRouter = Router()
 router.post(
   '/logs/client',
   authMiddleware,
-  (req: Request, res: Response) => void handleClientLog(req, res),
+  asyncHandler(handleClientLog),
 )
+router.use(restErrorHandler)
 
 async function handleClientLog(req: Request, res: Response): Promise<void> {
   const body = req.body as ClientLogBody

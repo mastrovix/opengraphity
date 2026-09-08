@@ -145,11 +145,14 @@ export function Modal({
     </>
   )
 
+  const dialogProps = { role: 'dialog', 'aria-modal': true, 'aria-labelledby': titleId } as const
+
   return (
+    // Il click sull'overlay (fuori dal pannello) chiude il dialogo: è una
+    // scorciatoia solo-mouse, l'equivalente da tastiera è Escape (gestito nel
+    // keydown globale sopra) e il bottone "Chiudi" nell'header.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
       style={{
         position:       'fixed',
         inset:          0,
@@ -159,22 +162,22 @@ export function Modal({
         alignItems:     'center',
         justifyContent: 'center',
       }}
-      onClick={overlayClosesDialog ? onClose : undefined}
+      onClick={overlayClosesDialog ? (e) => { if (e.target === e.currentTarget) onClose() } : undefined}
     >
       {as === 'form' ? (
         <form
+          {...dialogProps}
           ref={(el) => { panelRef.current = el }}
           style={panelStyle}
-          onClick={(e) => e.stopPropagation()}
           onSubmit={onSubmit}
         >
           {content}
         </form>
       ) : (
         <div
+          {...dialogProps}
           ref={(el) => { panelRef.current = el }}
           style={panelStyle}
-          onClick={(e) => e.stopPropagation()}
         >
           {content}
         </div>

@@ -43,18 +43,18 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
   const [sendMessage, { loading: sending }] = useMutation(SEND_INTERNAL_MESSAGE, {
     onCompleted: () => { setBody(''); void refetch() },
     // Il testo NON viene svuotato su errore: l'utente può ritentare l'invio.
-    onError: (e) => toast.error(`${t('internalChat.sendFailed')}: ${e.message}`),
+    onError: (e) => toast.error(t('toast.internalChat.sendFailed', { error: e.message })),
   })
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody]   = useState('')
   const [editMessage, { loading: editing }] = useMutation(EDIT_INTERNAL_MESSAGE, {
     onCompleted: () => { setEditingId(null); setEditBody(''); void refetch() },
-    onError: (e) => toast.error(`${t('internalChat.editFailed')}: ${e.message}`),
+    onError: (e) => toast.error(t('toast.internalChat.editFailed', { error: e.message })),
   })
   const [deleteMessage] = useMutation(DELETE_INTERNAL_MESSAGE, {
     onCompleted: () => void refetch(),
-    onError: (e) => toast.error(`${t('internalChat.deleteFailed')}: ${e.message}`),
+    onError: (e) => toast.error(t('toast.internalChat.deleteFailed', { error: e.message })),
   })
 
   const messages: Message[] = data?.internalMessages ?? []

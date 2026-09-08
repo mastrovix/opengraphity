@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Share2 } from 'lucide-react'
 import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
 import { fontFamily } from '@/lib/tokens'
@@ -48,6 +49,7 @@ interface Filters {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export function TopologyPage() {
+  const { t } = useTranslation()
   const navigate  = useNavigate()
   const [filters, setFilters] = useState<Filters>({
     type:         '',
@@ -65,7 +67,7 @@ export function TopologyPage() {
     fetchPolicy: 'cache-first',
   })
   const ciTypeOptions = useMemo(
-    () => (ciTypesData?.ciTypes ?? []).filter(t => t.name !== '__base__'),
+    () => (ciTypesData?.ciTypes ?? []).filter(ct => ct.name !== '__base__'),
     [ciTypesData?.ciTypes],
   )
   // Status/environment dal tipo base del metamodello (unica sorgente, F-23)
@@ -138,15 +140,15 @@ export function TopologyPage() {
         flexShrink:      0,
       }}>
         <h1 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
-          Topology Map
+          {t('pages.topology.title')}
         </h1>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* Type filter */}
-          <select value={filters.type} onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))} style={selectStyle}>
-            <option value="">Tutti i tipi</option>
-            {ciTypeOptions.map(t => (
-              <option key={t.name} value={t.name}>{t.label}</option>
+          <select aria-label={t('pages.cmdb.type')} value={filters.type} onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))} style={selectStyle}>
+            <option value="">{t('pages.topology.allTypes')}</option>
+            {ciTypeOptions.map(ct => (
+              <option key={ct.name} value={ct.name}>{ct.label}</option>
             ))}
           </select>
 
@@ -164,37 +166,35 @@ export function TopologyPage() {
 
           {/* Hop depth selector — visible only when a CI is selected */}
           {focusNodeId && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>Profondità</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>{t('pages.topology.depth')}</span>
               <select
                 value={maxHops ?? 'all'}
                 onChange={(e) => setMaxHops(e.target.value === 'all' ? null : Number(e.target.value))}
                 style={selectStyle}
               >
-                <option value={1}>1 hop</option>
-                <option value={2}>2 hop</option>
-                <option value={3}>3 hop</option>
-                <option value={4}>4 hop</option>
-                <option value={5}>5 hop</option>
-                <option value="all">Tutti</option>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={n}>{t('pages.topology.hops', { count: n })}</option>
+                ))}
+                <option value="all">{t('pages.topology.allHops')}</option>
               </select>
-            </div>
+            </label>
           )}
 
           {/* Environment filter */}
-          <select value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
-            <option value="">Tutti gli env</option>
+          <select aria-label={t('pages.cmdb.environment')} value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
+            <option value="">{t('pages.topology.allEnvironments')}</option>
             {baseEnums.environments.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
           </select>
 
           {/* Status filter */}
-          <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
-            <option value="">Tutti gli stati</option>
+          <select aria-label={t('pages.cmdb.status')} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
+            <option value="">{t('pages.topology.allStatuses')}</option>
             {baseEnums.statuses.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
           </select>
           {baseEnums.error && (
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }} title={baseEnums.error}>
-              enum CI non disponibili
+              {t('pages.topology.enumsUnavailable')}
             </span>
           )}
 
@@ -206,7 +206,7 @@ export function TopologyPage() {
               onChange={(e) => setShowLabels(e.target.checked)}
               style={{ cursor: 'pointer' }}
             />
-            Label
+            {t('pages.topology.showLabels')}
           </label>
 
           {/* Incident only toggle */}
@@ -217,7 +217,7 @@ export function TopologyPage() {
               onChange={(e) => setFilters((f) => ({ ...f, onlyIncident: e.target.checked }))}
               style={{ cursor: 'pointer' }}
             />
-            Solo con incident
+            {t('pages.topology.onlyWithIncidents')}
           </label>
         </div>
       </div>
@@ -242,7 +242,7 @@ export function TopologyPage() {
                 color: 'var(--color-slate-dark)',
                 fontFamily,
               }}>
-                Topology Map
+                {t('pages.topology.title')}
               </div>
               <div style={{
                 fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-light)',
@@ -250,8 +250,8 @@ export function TopologyPage() {
                 textAlign: 'center',
               }}>
                 {loading
-                  ? 'Caricamento topologia…'
-                  : 'Esplora le relazioni tra i CI dell\'infrastruttura'}
+                  ? t('pages.topology.loading')
+                  : t('pages.topology.emptyHint')}
               </div>
             </div>
           )}
@@ -263,7 +263,7 @@ export function TopologyPage() {
               color: 'var(--danger)', fontSize: 'var(--font-size-card-title)',
               fontFamily,
             }}>
-              Errore nel caricamento: {error.message}
+              {t('pages.topology.loadError', { error: error.message })}
             </div>
           )}
 
@@ -290,7 +290,7 @@ export function TopologyPage() {
               fontFamily,
               whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}>
-              ⚠️ Grafo troncato a {data.topology.nodeLimit} nodi — usa i filtri per restringere
+              {t('pages.topology.truncated', { limit: data.topology.nodeLimit })}
             </div>
           )}
 
@@ -304,14 +304,14 @@ export function TopologyPage() {
             fontFamily,
             transition:  'right 200ms ease',
           }}>
-            {nodes.length} nodi · {edges.length} relazioni
+            {t('pages.topology.stats', { nodes: nodes.length, edges: edges.length })}
             {focusNodeId && (
               <span style={{ marginLeft: 8 }}>
-                · profondità: {maxHops !== null ? `${maxHops} hop` : 'tutti'}
+                {t('pages.topology.statsDepth', { depth: maxHops !== null ? t('pages.topology.hops', { count: maxHops }) : t('pages.topology.depthAll') })}
               </span>
             )}
-            {totalIncident > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 8 }}>{totalIncident} incident attivi</span>}
-            {totalChange   > 0 && <span style={{ color: '#8b5cf6', marginLeft: 8 }}>{totalChange} change in corso</span>}
+            {totalIncident > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 8 }}>{t('pages.topology.activeIncidents', { count: totalIncident })}</span>}
+            {totalChange   > 0 && <span style={{ color: '#8b5cf6', marginLeft: 8 }}>{t('pages.topology.changesInProgress', { count: totalChange })}</span>}
           </div>
         </div>
 
@@ -336,6 +336,8 @@ export function TopologyPage() {
                 </div>
               </div>
               <button
+                type="button"
+                aria-label={t('common.close')}
                 onClick={() => setSelectedNode(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 'var(--font-size-section-title)', padding: 0 }}
               >
@@ -345,26 +347,27 @@ export function TopologyPage() {
 
             {/* Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <DetailField label="Status">
+              <DetailField label={t('pages.cmdb.status')}>
                 <StatusBadge status={selectedNode.status} />
               </DetailField>
 
               {selectedNode.environment && (
-                <DetailField label="Environment">
+                <DetailField label={t('pages.cmdb.environment')}>
                   <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{selectedNode.environment}</span>
                 </DetailField>
               )}
 
               {selectedNode.ownerGroup && (
-                <DetailField label="Owner Group">
+                <DetailField label={t('pages.cmdb.ownerGroup')}>
                   <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{selectedNode.ownerGroup}</span>
                 </DetailField>
               )}
 
               {/* Incident count */}
-              <DetailField label="Incident aperti">
+              <DetailField label={t('pages.topology.openIncidents')}>
                 {selectedNode.incidentCount > 0 ? (
                   <button
+                    type="button"
                     onClick={() => navigate(`/incidents?ci=${selectedNode.id}`)}
                     style={{
                       fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)',
@@ -379,9 +382,10 @@ export function TopologyPage() {
               </DetailField>
 
               {/* Change count */}
-              <DetailField label="Change in corso">
+              <DetailField label={t('pages.topology.changeInProgress')}>
                 {selectedNode.changeCount > 0 ? (
                   <button
+                    type="button"
                     onClick={() => navigate(`/changes?ci=${selectedNode.id}`)}
                     style={{
                       fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#f97316',
@@ -399,6 +403,7 @@ export function TopologyPage() {
             {/* Actions */}
             <div style={{ marginTop: 20 }}>
               <button
+                type="button"
                 onClick={() => navigate(`/ci/${selectedNode.type}/${selectedNode.id}`)}
                 style={{
                   width:        '100%',
@@ -413,7 +418,7 @@ export function TopologyPage() {
                   fontFamily,
                 }}
               >
-                Vai al dettaglio →
+                {t('pages.topology.goToDetail')}
               </button>
             </div>
           </div>
@@ -448,6 +453,7 @@ interface CIComboboxProps {
  * altri. Ora il totale è visibile ("mostrati N di M") e la ricerca copre tutto.
  */
 function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
+  const { t } = useTranslation()
   const [search, setSearch]   = useState('')
   const [debounced, setDebounced] = useState('')
   const [open, setOpen]       = useState(false)
@@ -505,12 +511,15 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
         cursor:       'text',
         minWidth:     170,
         color:        value ? 'var(--color-slate-dark)' : 'var(--color-slate-light)',
-      }} onClick={() => setOpen(true)}>
+      }}>
+        {/* Nessun onClick sul contenitore: l'input occupa tutta la larghezza e apre la lista al focus */}
         <input
           value={open ? search : selectedName}
           onChange={(e) => { setSearch(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
-          placeholder="Cerca CI…"
+          onClick={() => setOpen(true)}
+          placeholder={t('pages.ci.searchTarget')}
+          aria-label={t('pages.ci.searchTarget')}
           style={{
             border: 'none', outline: 'none', background: 'transparent',
             fontSize: 'var(--font-size-body)', width: '100%', color: 'inherit',
@@ -519,6 +528,8 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
         />
         {value && (
           <button
+            type="button"
+            aria-label={t('common.close')}
             onClick={(e) => { e.stopPropagation(); handleSelect(null) }}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '0 2px', fontSize: 'var(--font-size-body)', lineHeight: 1 }}
           >
@@ -534,32 +545,36 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
           boxShadow:  '0 4px 16px rgba(0,0,0,0.1)',
           maxHeight:  220, overflowY: 'auto', marginTop: 2,
         }}>
-          <div
+          <button
+            type="button"
             onClick={() => handleSelect(null)}
             className="hover-bg"
             style={{
+              display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit',
               padding: '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
               color: 'var(--color-slate-light)',
               borderBottom: '1px solid #f1f5f9',
             }}
           >
-            — Tutti —
-          </div>
+            {t('pages.topology.comboAll')}
+          </button>
           {error && (
             <div style={{ padding: '7px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
-              Errore nella ricerca: {error.message}
+              {t('pages.topology.searchError', { error: error.message })}
             </div>
           )}
           {!error && options.length === 0 && (
             <div style={{ padding: '7px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-              {loading ? 'Ricerca…' : 'Nessun risultato'}
+              {loading ? t('pages.topology.searching') : t('common.noResults')}
             </div>
           )}
           {options.map((o) => (
-            <div
+            <button
+              type="button"
               key={o.id}
               onClick={() => handleSelect(o.id)}
               style={{
+                width: '100%', textAlign: 'left', border: 'none', font: 'inherit',
                 padding:    '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                 background: o.id === value ? 'rgba(2,132,199,0.08)' : 'transparent',
                 color:      o.id === value ? 'var(--color-brand)' : 'var(--color-slate-dark)',
@@ -575,11 +590,11 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
                   {o.environment}
                 </span>
               )}
-            </div>
+            </button>
           ))}
           {total > options.length && (
             <div style={{ padding: '6px 10px', fontSize: 'var(--font-size-label)', color: '#854d0e', background: '#fef9c3', borderTop: '1px solid #fde68a' }}>
-              Mostrati {options.length} di {total} — affina la ricerca per trovare gli altri
+              {t('pages.topology.comboShown', { shown: options.length, total })}
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -45,6 +45,8 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
   const [status, setStatus]             = useState(criteria.status)
   const [nameContains, setNameContains] = useState(criteria.nameContains)
   const [saving, setSaving]             = useState(false)
+  const baseId = useId()
+  const ids = { environment: `${baseId}-env`, status: `${baseId}-status`, name: `${baseId}-name` }
 
   // Selectable types: every active CI type except groups themselves
   const selectableTypes = useMemo(
@@ -146,22 +148,22 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
           <div>
-            <FieldLabel>Environment</FieldLabel>
-            <Select value={environment} onChange={(e) => setEnvironment(e.target.value)}>
+            <FieldLabel htmlFor={ids.environment}>{t('pages.cmdb.environment')}</FieldLabel>
+            <Select id={ids.environment} value={environment} onChange={(e) => setEnvironment(e.target.value)}>
               <option value="">—</option>
               {baseEnums.environments.map((v) => <option key={v} value={v}>{v}</option>)}
             </Select>
           </div>
           <div>
-            <FieldLabel>Status</FieldLabel>
-            <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <FieldLabel htmlFor={ids.status}>{t('pages.cmdb.status')}</FieldLabel>
+            <Select id={ids.status} value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">—</option>
               {baseEnums.statuses.map((v) => <option key={v} value={v}>{v}</option>)}
             </Select>
           </div>
           <div>
-            <FieldLabel>{t('pages.ci.criteriaNameContains')}</FieldLabel>
-            <Input value={nameContains} onChange={(e) => setNameContains(e.target.value)} placeholder="es. web-" />
+            <FieldLabel htmlFor={ids.name}>{t('pages.ci.criteriaNameContains')}</FieldLabel>
+            <Input id={ids.name} value={nameContains} onChange={(e) => setNameContains(e.target.value)} placeholder={t('pages.ci.criteriaNamePlaceholder')} />
           </div>
         </div>
 

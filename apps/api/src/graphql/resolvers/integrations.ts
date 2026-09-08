@@ -1,4 +1,11 @@
 import { NotFoundError } from '../../lib/errors.js'
+
+/** Prima riga di una query scopata per tenant: assente = risorsa inesistente o di un altro tenant. */
+function firstRow<T>(rows: T[], what: string): T {
+  const row = rows[0]
+  if (!row) throw new NotFoundError(what)
+  return row
+}
 import { requireRole } from '../../lib/requireRole.js'
 import { randomBytes, createHash, createHmac } from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
@@ -76,7 +83,7 @@ async function createInboundWebhook(_: unknown, args: { input: Props }, ctx: Gra
         transform_script: $transformScript, enabled: true, receive_count: 0, created_at: $now, updated_at: $now})
       RETURN properties(w) AS props
     `, { id, t: ctx.tenantId, name: input['name'], entityType: input['entityType'], secret: hash(token), fieldMapping: input['fieldMapping'], defaultValues: input['defaultValues'] ?? null, transformScript: input['transformScript'] ?? null, now })
-    return { ...mapInbound(rows[0]!.props), token }
+    return { ...mapInbound(firstRow(rows, 'InboundWebhook').props), token }
   }, true)
 }
 
@@ -88,7 +95,7 @@ async function updateInboundWebhook(_: unknown, args: { id: string; input: Props
   for (const [gql, neo] of Object.entries(map)) { if (input[gql] !== undefined) { sets.push(`w.${neo} = $${gql}`); params[gql] = input[gql] } }
   return withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) SET ${sets.join(', ')} RETURN properties(w) AS props`, params)
-    return mapInbound(rows[0]!.props)
+    return mapInbound(firstRow(rows, 'InboundWebhook').props)
   }, true)
 }
 
@@ -103,7 +110,7 @@ async function regenerateWebhookToken(_: unknown, args: { id: string }, ctx: Gra
     const rows = await runQuery<{ props: Props }>(s, `
       MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) SET w.secret = $secret, w.updated_at = $now RETURN properties(w) AS props
     `, { id: args.id, t: ctx.tenantId, secret: hash(token), now: new Date().toISOString() })
-    return { ...mapInbound(rows[0]!.props), token }
+    return { ...mapInbound(firstRow(rows, 'InboundWebhook').props), token }
   }, true)
 }
 
@@ -135,7 +142,7 @@ async function createOutboundWebhook(_: unknown, args: { input: Props }, ctx: Gr
         send_count: 0, error_count: 0, created_at: $now, updated_at: $now})
       RETURN properties(w) AS props
     `, { id, t: ctx.tenantId, name: input['name'], url: input['url'], method: input['method'] ?? 'POST', headers: input['headers'] ?? null, events: input['events'], payloadTemplate: input['payloadTemplate'] ?? null, secret: input['secret'] ?? null, enabled: input['enabled'] ?? true, retryOnFailure: input['retryOnFailure'] ?? true, now })
-    return mapOutbound(rows[0]!.props)
+    return mapOutbound(firstRow(rows, 'OutboundWebhook').props)
   }, true)
 }
 
@@ -148,7 +155,7 @@ async function updateOutboundWebhook(_: unknown, args: { id: string; input: Prop
   for (const [gql, neo] of Object.entries(map)) { if (input[gql] !== undefined) { sets.push(`w.${neo} = $${gql}`); params[gql] = input[gql] } }
   return withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:OutboundWebhook {id: $id, tenant_id: $t}) SET ${sets.join(', ')} RETURN properties(w) AS props`, params)
-    return mapOutbound(rows[0]!.props)
+    return mapOutbound(firstRow(rows, 'OutboundWebhook').props)
   }, true)
 }
 
@@ -220,7 +227,7 @@ async function updateApiKey(_: unknown, args: { id: string; input: Props }, ctx:
   for (const [gql, neo] of Object.entries(map)) { if (input[gql] !== undefined) { sets.push(`k.${neo} = $${gql}`); params[gql] = input[gql] } }
   return withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `MATCH (k:ApiKey {id: $id, tenant_id: $t}) SET ${sets.join(', ')} RETURN properties(k) AS props`, params)
-    return mapApiKey(rows[0]!.props)
+    return mapApiKey(firstRow(rows, 'ApiKey').props)
   }, true)
 }
 
@@ -237,7 +244,8 @@ async function regenerateApiKey(_: unknown, args: { id: string }, ctx: GraphQLCo
     const rows = await runQuery<{ props: Props }>(s, `
       MATCH (k:ApiKey {id: $id, tenant_id: $t}) SET k.key_hash = $keyHash, k.key_prefix = $keyPrefix, k.updated_at = $now RETURN properties(k) AS props
     `, { id: args.id, t: ctx.tenantId, keyHash: hash(key), keyPrefix: key.slice(0, 16), now: new Date().toISOString() })
-    return { id: args.id, name: rows[0]!.props['name'] as string, key, keyPrefix: key.slice(0, 16), permissions: rows[0]!.props['permissions'] }
+    const row = firstRow(rows, 'ApiKey')
+    return { id: args.id, name: row.props['name'] as string, key, keyPrefix: key.slice(0, 16), permissions: row.props['permissions'] }
   }, true)
 }
 

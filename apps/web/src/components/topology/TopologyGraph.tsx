@@ -1,4 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
 import { lookupOrError } from '@/lib/tokens'
 import { buildTypeIconMap, iconKeyForType } from '@/lib/ciIconPaths'
@@ -456,6 +457,7 @@ interface LegendProps {
 }
 
 export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
+  const { t } = useTranslation()
   const presentNodeTypes = [...new Set(nodes.map((n) => n.type))].sort()
   const presentEdgeTypes = [...new Set(edges.map((e) => e.type))].sort()
 
@@ -471,11 +473,11 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
       fontFamily: GRAPH_FONT,
       boxShadow: '0 2px 8px rgba(0,0,0,0.08)', minWidth: 190,
     }}>
-      <div style={{ fontWeight: 700, color: 'var(--color-slate-dark)', marginBottom: 8 }}>Legenda</div>
+      <div style={{ fontWeight: 700, color: 'var(--color-slate-dark)', marginBottom: 8 }}>{t('components.topologyGraph.legend')}</div>
 
       {presentNodeTypes.length > 0 && (
         <div style={{ marginBottom: 6 }}>
-          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4 }}>NODI</div>
+          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.nodes')}</div>
           {presentNodeTypes.map((type) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               <CIIcon icon={iconKeyForType(typeIconMap, type)} size={14} color={NODE_COLOR} style={{ flexShrink: 0, margin: 1 }} />
@@ -487,7 +489,7 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
 
       {presentEdgeTypes.length > 0 && (
         <div style={{ marginBottom: 6 }}>
-          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4 }}>RELAZIONI</div>
+          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.edges')}</div>
           {presentEdgeTypes.map((type) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               <svg width={20} height={8}>
@@ -500,14 +502,14 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
       )}
 
       <div>
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4 }}>SEGNALI</div>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.signals')}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-          <svg width={16} height={16}><circle cx={8} cy={8} r={5} fill="none" stroke="#dc2626" strokeWidth={2} /></svg>
-          <span style={{ color: 'var(--color-slate)' }}>Incident attivo</span>
+          <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill="none" stroke="#dc2626" strokeWidth={2} /></svg>
+          <span style={{ color: 'var(--color-slate)' }}>{t('components.topologyGraph.activeIncident')}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <svg width={16} height={16}><circle cx={8} cy={8} r={5} fill="none" stroke="#8b5cf6" strokeWidth={1.5} /></svg>
-          <span style={{ color: 'var(--color-slate)' }}>Change in corso</span>
+          <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill="none" stroke="#8b5cf6" strokeWidth={1.5} /></svg>
+          <span style={{ color: 'var(--color-slate)' }}>{t('components.topologyGraph.changeInProgress')}</span>
         </div>
       </div>
     </div>

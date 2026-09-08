@@ -25,11 +25,21 @@ export function Textarea({ style, ...rest }: TextareaHTMLAttributes<HTMLTextArea
   return <textarea {...rest} style={{ ...controlStyle, resize: 'vertical', lineHeight: 1.6, ...style }} />
 }
 
-/** Uppercase field label used above form controls in detail/edit views. */
-export function FieldLabel({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
-  return (
-    <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, ...style }}>
-      {children}
-    </div>
-  )
+const fieldLabelStyle: CSSProperties = {
+  display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)',
+  textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4,
+}
+
+/**
+ * Uppercase field label used above form controls in detail/edit views.
+ *
+ * Pass `htmlFor` (the control's `id`, e.g. from `useId()`) so the label is
+ * announced with the control and clicking it focuses the field; without it the
+ * label is a plain heading and the control needs its own `aria-label`.
+ */
+export function FieldLabel({ children, style, htmlFor }: { children: React.ReactNode; style?: CSSProperties; htmlFor?: string }) {
+  if (htmlFor) {
+    return <label htmlFor={htmlFor} style={{ ...fieldLabelStyle, ...style }}>{children}</label>
+  }
+  return <div style={{ ...fieldLabelStyle, ...style }}>{children}</div>
 }

@@ -183,8 +183,7 @@ export async function updateEnumType(
     const now = new Date().toISOString()
     const result = await session.executeWrite((tx) =>
       tx.run(`
-        MATCH (e:EnumTypeDefinition {id: $id})
-        WHERE e.tenant_id IN [$tenantId, 'system']
+        MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
         SET e.label      = coalesce($label, e.label),
             e.values     = coalesce($values, e.values),
             e.scope      = CASE WHEN $scope IS NOT NULL AND NOT e.is_system THEN $scope ELSE e.scope END,

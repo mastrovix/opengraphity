@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
@@ -57,7 +58,9 @@ const PRIORITY_DOT: Record<string, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function CreateServiceRequestPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
+  const ids = { catalog: useId(), title: useId(), priority: useId(), dueDate: useId(), description: useId() }
 
   const [title, setTitle]           = useState('')
   const [priority, setPriority]     = useState('medium')
@@ -85,7 +88,7 @@ export function CreateServiceRequestPage() {
 
   const [createRequest, { loading }] = useMutation(CREATE_SERVICE_REQUEST, {
     refetchQueries: [{ query: GET_SERVICE_REQUESTS }],
-    onCompleted: () => { toast.success('Service request created'); navigate('/requests') },
+    onCompleted: () => { toast.success(t('toast.request.created')); navigate('/requests') },
     onError:     (err) => toast.error(err.message),
   })
 
@@ -110,6 +113,7 @@ export function CreateServiceRequestPage() {
 
       {/* Back link */}
       <button
+        type="button"
         onClick={() => navigate('/requests')}
         style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 32, padding: 0 }}
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
@@ -135,10 +139,11 @@ export function CreateServiceRequestPage() {
 
           {/* Catalog item (consigliato, ma la richiesta generica resta possibile) */}
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
+            <label htmlFor={ids.catalog} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
               Voce di catalogo <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>(consigliata)</span>
             </label>
             <select
+              id={ids.catalog}
               value={catalogItemId}
               onChange={(e) => onSelectCatalogItem(e.target.value)}
               style={selectBase}
@@ -158,10 +163,11 @@ export function CreateServiceRequestPage() {
 
           {/* Title */}
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
+            <label htmlFor={ids.title} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
               Title <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <input
+              id={ids.title}
               type="text"
               value={title}
               onChange={(e) => { setTitle(e.target.value); if (submitted) setSubmitted(false) }}
@@ -179,12 +185,12 @@ export function CreateServiceRequestPage() {
 
             {/* Priority */}
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
+              <label htmlFor={ids.priority} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
                 Priority <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: lookupOrError(PRIORITY_DOT, priority, 'PRIORITY_DOT', 'var(--color-slate-light)'), pointerEvents: 'none', zIndex: 1 }} />
-                <select value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
+                <select id={ids.priority} value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
                   {priorityLoading
                     ? <option value="">Caricamento…</option>
                     : priorityValues.map(v => (
@@ -197,10 +203,11 @@ export function CreateServiceRequestPage() {
 
             {/* Due date */}
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
+              <label htmlFor={ids.dueDate} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
                 Due Date
               </label>
               <input
+                id={ids.dueDate}
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
@@ -213,10 +220,11 @@ export function CreateServiceRequestPage() {
 
           {/* Description */}
           <div style={{ marginBottom: 0 }}>
-            <label style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
+            <label htmlFor={ids.description} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
               Description
             </label>
             <textarea
+              id={ids.description}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what you need and why…"

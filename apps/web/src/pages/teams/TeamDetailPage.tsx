@@ -106,15 +106,15 @@ export function TeamDetailPage() {
     skip:        !id,
   })
   const [setManager] = useMutation(SET_TEAM_MANAGER, {
-    onCompleted: () => { toast.success('Manager aggiornato'); refetch(); setShowManagerModal(false) },
+    onCompleted: () => { toast.success(t('toast.team.managerUpdated')); refetch(); setShowManagerModal(false) },
     onError: (err) => toast.error(err.message),
   })
   const [removeManager] = useMutation(REMOVE_TEAM_MANAGER, {
-    onCompleted: () => { toast.success('Manager rimosso'); refetch() },
+    onCompleted: () => { toast.success(t('toast.team.managerRemoved')); refetch() },
     onError: (err) => toast.error(err.message),
   })
   const [setChangeManager, { loading: settingCM }] = useMutation(SET_CHANGE_MANAGER_TEAM, {
-    onCompleted: () => { toast.success('Team Change Manager aggiornato'); refetch() },
+    onCompleted: () => { toast.success(t('toast.team.changeManagerUpdated')); refetch() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -245,6 +245,7 @@ export function TeamDetailPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}>
                       <Search size={14} color="var(--color-slate-light)" />
                       <input
+                        // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo di ricerca aperto dall'utente (Modal)
                         autoFocus
                         value={managerSearch}
                         onChange={e => setManagerSearch(e.target.value)}

@@ -1,42 +1,46 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { isITILEntity } from '@/lib/automationOperators'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
+import { errorMessage } from '@/hooks/useMutationWithToast'
 import { CREATE_CUSTOM_WIDGET, UPDATE_CUSTOM_WIDGET } from '@/graphql/mutations'
 import { GET_WIDGET_DATA_PREVIEW, GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
 import type { CustomWidgetData } from './CustomWidgetCard'
 
 // ── Constants ────────────────────────────────────────────────────────────────
+// Le etichette visibili sono chiavi i18n (`labelKey`, `descKey`, `subKey`,
+// `nameKey`): i componenti le traducono nel render con `t(x.labelKey)`.
 
 export const WIDGET_TYPES = [
-  { value: 'counter',     label: 'Counter',   icon: 'Hash',       desc: 'Numero totale' },
-  { value: 'chart_bar',   label: 'Bar Chart', icon: 'BarChart2',  desc: 'Distribuzione' },
-  { value: 'chart_line',  label: 'Line',      icon: 'TrendingUp', desc: 'Trend' },
-  { value: 'chart_pie',   label: 'Pie Chart', icon: 'PieChart',   desc: 'Proporzioni' },
-  { value: 'chart_donut', label: 'Donut',     icon: 'PieChart',   desc: 'Proporzioni' },
-  { value: 'table',       label: 'Tabella',   icon: 'Table',      desc: 'Lista valori' },
-  { value: 'gauge',       label: 'Gauge',     icon: 'Gauge',      desc: '% su 100' },
+  { value: 'counter',     labelKey: 'pages.dashboard.widgetType.counter',    icon: 'Hash',       descKey: 'pages.dashboard.widgetTypeDesc.counter' },
+  { value: 'chart_bar',   labelKey: 'pages.dashboard.widgetType.chartBar',   icon: 'BarChart2',  descKey: 'pages.dashboard.widgetTypeDesc.chartBar' },
+  { value: 'chart_line',  labelKey: 'pages.dashboard.widgetType.chartLine',  icon: 'TrendingUp', descKey: 'pages.dashboard.widgetTypeDesc.chartLine' },
+  { value: 'chart_pie',   labelKey: 'pages.dashboard.widgetType.chartPie',   icon: 'PieChart',   descKey: 'pages.dashboard.widgetTypeDesc.chartPie' },
+  { value: 'chart_donut', labelKey: 'pages.dashboard.widgetType.chartDonut', icon: 'PieChart',   descKey: 'pages.dashboard.widgetTypeDesc.chartDonut' },
+  { value: 'table',       labelKey: 'pages.dashboard.widgetType.table',      icon: 'Table',      descKey: 'pages.dashboard.widgetTypeDesc.table' },
+  { value: 'gauge',       labelKey: 'pages.dashboard.widgetType.gauge',      icon: 'Gauge',      descKey: 'pages.dashboard.widgetTypeDesc.gauge' },
 ] as const
 
 export const ENTITY_TYPES = [
-  { value: 'incident',        label: 'Incident' },
-  { value: 'problem',         label: 'Problem' },
-  { value: 'change',          label: 'Change' },
-  { value: 'service_request', label: 'Service Request' },
-  { value: 'server',          label: 'Server' },
-  { value: 'application',     label: 'Application' },
-  { value: 'database',        label: 'Database' },
-  { value: 'certificate',     label: 'Certificate' },
-  { value: 'network_device',  label: 'Network Device' },
-  { value: 'vm',              label: 'Virtual Machine' },
-  { value: 'business_application', label: 'Business Application' },
+  { value: 'incident',             labelKey: 'pages.dashboard.entity.incident' },
+  { value: 'problem',              labelKey: 'pages.dashboard.entity.problem' },
+  { value: 'change',               labelKey: 'pages.dashboard.entity.change' },
+  { value: 'service_request',      labelKey: 'pages.dashboard.entity.serviceRequest' },
+  { value: 'server',               labelKey: 'pages.dashboard.entity.server' },
+  { value: 'application',          labelKey: 'pages.dashboard.entity.application' },
+  { value: 'database',             labelKey: 'pages.dashboard.entity.database' },
+  { value: 'certificate',          labelKey: 'pages.dashboard.entity.certificate' },
+  { value: 'network_device',       labelKey: 'pages.dashboard.entity.networkDevice' },
+  { value: 'vm',                   labelKey: 'pages.dashboard.entity.vm' },
+  { value: 'business_application', labelKey: 'pages.dashboard.entity.businessApplication' },
 ]
 
 export const METRICS = [
-  { value: 'count',          label: 'Conteggio' },
-  { value: 'count_by_field', label: 'Conteggio per campo' },
-  { value: 'avg_field',      label: 'Media campo' },
-  { value: 'sum_field',      label: 'Somma campo' },
+  { value: 'count',          labelKey: 'pages.dashboard.metric.count' },
+  { value: 'count_by_field', labelKey: 'pages.dashboard.metric.countByField' },
+  { value: 'avg_field',      labelKey: 'pages.dashboard.metric.avgField' },
+  { value: 'sum_field',      labelKey: 'pages.dashboard.metric.sumField' },
 ]
 
 export const ALLOWED_FIELDS: Record<string, string[]> = {
@@ -54,31 +58,35 @@ export const ALLOWED_FIELDS: Record<string, string[]> = {
 }
 
 export const TIME_RANGES = [
-  { value: '24h', label: '24h' },
-  { value: '7d',  label: '7gg' },
-  { value: '30d', label: '30gg' },
-  { value: '90d', label: '90gg' },
-  { value: '1y',  label: '1 anno' },
-  { value: 'all', label: 'Tutto' },
+  { value: '24h', labelKey: 'pages.dashboard.timeRange.24h' },
+  { value: '7d',  labelKey: 'pages.dashboard.timeRange.7d' },
+  { value: '30d', labelKey: 'pages.dashboard.timeRange.30d' },
+  { value: '90d', labelKey: 'pages.dashboard.timeRange.90d' },
+  { value: '1y',  labelKey: 'pages.dashboard.timeRange.1y' },
+  { value: 'all', labelKey: 'pages.dashboard.timeRange.all' },
 ]
 
 export const PRESET_COLORS = [
-  '#0EA5E9', // cyan
-  '#10b981', // green
-  'var(--color-danger)', // red
-  'var(--color-warning)', // amber
-  '#8b5cf6', // purple
-  'var(--color-slate)', // slate
+  { value: '#0EA5E9',              nameKey: 'pages.dashboard.color.cyan' },
+  { value: '#10b981',              nameKey: 'pages.dashboard.color.green' },
+  { value: 'var(--color-danger)',  nameKey: 'pages.dashboard.color.red' },
+  { value: 'var(--color-warning)', nameKey: 'pages.dashboard.color.amber' },
+  { value: '#8b5cf6',              nameKey: 'pages.dashboard.color.purple' },
+  { value: 'var(--color-slate)',   nameKey: 'pages.dashboard.color.slate' },
 ]
 
 export const SIZE_OPTIONS = [
-  { value: 'small',  label: 'Piccolo',  sub: '1/4 larghezza' },
-  { value: 'medium', label: 'Medio',    sub: '1/2 larghezza' },
-  { value: 'large',  label: 'Grande',   sub: 'Larghezza intera' },
+  { value: 'small',  labelKey: 'pages.dashboard.size.small',  subKey: 'pages.dashboard.sizeSub.small' },
+  { value: 'medium', labelKey: 'pages.dashboard.size.medium', subKey: 'pages.dashboard.sizeSub.medium' },
+  { value: 'large',  labelKey: 'pages.dashboard.size.large',  subKey: 'pages.dashboard.sizeSub.large' },
 ]
 
-export const FIELD_TYPE_LABELS: Record<string, string> = {
-  string: 'testo', number: 'numero', date: 'data', boolean: 'booleano', enum: 'enum',
+export const FIELD_TYPE_LABEL_KEYS: Record<string, string> = {
+  string:  'pages.dashboard.fieldType.string',
+  number:  'pages.dashboard.fieldType.number',
+  date:    'pages.dashboard.fieldType.date',
+  boolean: 'pages.dashboard.fieldType.boolean',
+  enum:    'pages.dashboard.fieldType.enum',
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -145,6 +153,7 @@ interface UseWidgetConfigParams {
 }
 
 export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWidgetConfigParams): WidgetConfigState {
+  const { t } = useTranslation()
   const isEdit = !!widget
 
   const [title,        setTitle]        = useState(widget?.title        ?? '')
@@ -236,7 +245,7 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
   }
 
   async function handleSave() {
-    if (!title.trim()) { toast.error('Inserisci un titolo'); return }
+    if (!title.trim()) { toast.error(t('toast.widget.titleRequired')); return }
     setSaving(true)
     try {
       const input = {
@@ -256,15 +265,15 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
       if (isEdit && widget) {
         const res = await updateWidget({ variables: { id: widget.id, input } })
         saved = (res.data as { updateCustomWidget: CustomWidgetData }).updateCustomWidget
-        toast.success('Widget aggiornato')
+        toast.success(t('toast.widget.updated'))
       } else {
         const res = await createWidget({ variables: { input: { ...input, dashboardId } } })
         saved = (res.data as { createCustomWidget: CustomWidgetData }).createCustomWidget
-        toast.success('Widget creato')
+        toast.success(t('toast.widget.created'))
       }
       onSaved(saved)
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Errore')
+      toast.error(t('toast.widget.saveFailed', { error: errorMessage(err) }))
     } finally {
       setSaving(false)
     }

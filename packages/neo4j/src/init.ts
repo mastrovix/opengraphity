@@ -1,4 +1,6 @@
+import { pathToFileURL } from 'node:url'
 import { getDriver, closeDriver } from './driver.js'
+import { runMigrations, type Migration } from './migrations.js'
 import neo4j from 'neo4j-driver'
 
 interface SchemaStatement {
@@ -140,6 +142,11 @@ const CONSTRAINTS: SchemaStatement[] = [
   { label: 'KBArticle.id', cypher: 'CREATE CONSTRAINT kb_article_id_unique IF NOT EXISTS FOR (n:KBArticle) REQUIRE n.id IS UNIQUE' },
   { label: 'Team.id', cypher: 'CREATE CONSTRAINT team_id_unique IF NOT EXISTS FOR (n:Team) REQUIRE n.id IS UNIQUE' },
   { label: 'WorkflowDefinition.id', cypher: 'CREATE CONSTRAINT workflow_definition_id_unique IF NOT EXISTS FOR (n:WorkflowDefinition) REQUIRE n.id IS UNIQUE' },
+  // Versioned migrations (migrations.ts): one marker per migration id, one
+  // global lock node. Both MERGEd on `id`; the constraint makes the MERGE
+  // race-free across two processes migrating at once.
+  { label: 'Migration.id', cypher: 'CREATE CONSTRAINT migration_id_unique IF NOT EXISTS FOR (n:Migration) REQUIRE n.id IS UNIQUE' },
+  { label: 'MigrationLock.id', cypher: 'CREATE CONSTRAINT migration_lock_id_unique IF NOT EXISTS FOR (n:MigrationLock) REQUIRE n.id IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -449,15 +456,48 @@ async function runStatements(statements: SchemaStatement[], kind: string): Promi
   }
 }
 
-async function main(): Promise<void> {
-  console.log('[neo4j:init] Starting schema initialisation...')
+export interface InitSchemaOptions {
+  /**
+   * Versioned data migrations to run AFTER constraints/indexes/counter seeds
+   * (migrations.ts). This package cannot know the application's migrations
+   * (dependency direction): the caller passes them — apps/api does so from
+   * `scripts/migrate.ts --init-schema`. The bare `neo4j:init` CLI runs none.
+   */
+  migrations?: readonly Migration[]
+  log?: (message: string) => void
+}
 
+/**
+ * Prechecks, constraints, indexes, counter seeds, then the given migrations.
+ * Throws on the first failure (the schema is then NOT fully initialised).
+ * Does not close the driver.
+ */
+export async function initSchema(opts: InitSchemaOptions = {}): Promise<void> {
+  const log = opts.log ?? ((m: string) => console.log(m))
+  log('[neo4j:init] Starting schema initialisation...')
+  await runPrechecks()
+  await runStatements(CONSTRAINTS, 'Constraint')
+  await runStatements(INDEXES, 'Index')
+  await runStatements(COUNTER_SEEDS, 'CounterSeed')
+  log('[neo4j:init] Schema initialisation complete.')
+
+  const migrations = opts.migrations ?? []
+  if (migrations.length === 0) {
+    log('[neo4j:init] No migrations passed — run `pnpm --filter @opengraphity/api migrate` for the application data migrations.')
+    return
+  }
+  const session = getDriver().session({ defaultAccessMode: neo4j.session.WRITE })
   try {
-    await runPrechecks()
-    await runStatements(CONSTRAINTS, 'Constraint')
-    await runStatements(INDEXES, 'Index')
-    await runStatements(COUNTER_SEEDS, 'CounterSeed')
-    console.log('[neo4j:init] Schema initialisation complete.')
+    const res = await runMigrations(migrations, { session, log })
+    log(`[neo4j:init] Migrations: ${res.applied.length} applied, ${res.skipped.length} already applied.`)
+  } finally {
+    await session.close()
+  }
+}
+
+async function main(): Promise<void> {
+  try {
+    await initSchema()
   } catch (err) {
     console.error('[neo4j:init] FAILED — schema NOT fully initialised:')
     console.error(err instanceof Error ? err.message : err)
@@ -467,4 +507,9 @@ async function main(): Promise<void> {
   }
 }
 
-main()
+// Direct run only (`node dist/init.js`): the module is also imported by
+// index.ts for `initSchema`, and an import must not initialise anything.
+const isDirectRun = process.argv[1] !== undefined
+  && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (isDirectRun) main()

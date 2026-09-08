@@ -1,3 +1,12 @@
+# ── Template, not a config ────────────────────────────────────────────────────
+# Rendered by the nginx image entrypoint (20-envsubst-on-templates.sh) from
+# /etc/nginx/templates/default.conf.template into /etc/nginx/conf.d/default.conf.
+# envsubst replaces ONLY the variables listed in NGINX_ENVSUBST_FILTER
+# (docker-compose.yml): ${TAILSCALE_HOST}, ${KEYCLOAK_PUBLIC_ORIGIN},
+# ${TAILSCALE_TENANT_HOST}. nginx's own $host, $remote_addr, $upstream_* etc.
+# are left untouched. To check the rendered file:
+#   docker compose -f infra/docker-compose.yml exec nginx cat /etc/nginx/conf.d/default.conf
+#
 # ── Common proxy headers ──────────────────────────────────────────────────────
 # Defined as a reusable snippet via map/include is not available in conf.d,
 # so headers are repeated per location below.
@@ -30,7 +39,7 @@ server {
     # Same policy as the agent app minus 'wasm-unsafe-eval' (the portal ships no
     # wasm). connect-src lists the public Keycloak origins the browser talks to.
     add_header Content-Security-Policy
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:8080 https://macbook-pro-di-vittorio.tailcf0f55.ts.net; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${KEYCLOAK_PUBLIC_ORIGIN} https://${TAILSCALE_HOST}; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
         always;
     add_header X-Content-Type-Options "nosniff"                      always;
     add_header X-Frame-Options        "DENY"                         always;
@@ -111,7 +120,7 @@ server {
     proxy_busy_buffers_size     256k;
 
     add_header Content-Security-Policy
-        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:8080 https://macbook-pro-di-vittorio.tailcf0f55.ts.net; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${KEYCLOAK_PUBLIC_ORIGIN} https://${TAILSCALE_HOST}; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
         always;
     add_header X-Content-Type-Options "nosniff"                         always;
     add_header X-Frame-Options        "DENY"                            always;
@@ -182,9 +191,10 @@ server {
 # ── Accesso remoto Tailscale HTTPS (iPad) — app + Keycloak same-origin ────────
 # tailscale serve termina TLS e inoltra a nginx:80 con X-Forwarded-Proto=https.
 # Keycloak è proxato sotto lo stesso host per evitare mixed content e :8080.
+# ${TAILSCALE_HOST} e ${TAILSCALE_TENANT_HOST} arrivano da infra/.env.
 server {
     listen 80;
-    server_name macbook-pro-di-vittorio.tailcf0f55.ts.net;
+    server_name ${TAILSCALE_HOST};
 
     resolver 127.0.0.11 ipv6=off valid=30s;
 
@@ -207,7 +217,7 @@ server {
     location ~ ^/(realms|resources|admin|js|robots.txt)(/|$) {
         # Keycloak invia i propri security header: NON ereditare la CSP dell'app
         # (bloccherebbe gli script inline del login e, via form-action, il
-        # redirect post-login verso c-one.localhost). Un add_header locale
+        # redirect post-login verso il tenant host). Un add_header locale
         # disattiva l'ereditarietà di quelli a livello server.
         # (Keycloak emette già il proprio Strict-Transport-Security quando
         # X-Forwarded-Proto=https: non duplicarlo qui.)
@@ -223,13 +233,13 @@ server {
     }
 
     # L'host Tailscale non porta lo slug tenant: le location API impostano
-    # X-Forwarded-Host = c-one.localhost (tenant fisso di questo front-door).
+    # X-Forwarded-Host = ${TAILSCALE_TENANT_HOST} (tenant fisso di questo front-door).
     location /api/sse {
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
-        proxy_set_header   Host              c-one.localhost;
-        proxy_set_header   X-Forwarded-Host  c-one.localhost;
+        proxy_set_header   Host              ${TAILSCALE_TENANT_HOST};
+        proxy_set_header   X-Forwarded-Host  ${TAILSCALE_TENANT_HOST};
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto https;
         proxy_set_header   Connection        '';
@@ -242,8 +252,8 @@ server {
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
-        proxy_set_header   Host              c-one.localhost;
-        proxy_set_header   X-Forwarded-Host  c-one.localhost;
+        proxy_set_header   Host              ${TAILSCALE_TENANT_HOST};
+        proxy_set_header   X-Forwarded-Host  ${TAILSCALE_TENANT_HOST};
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto https;
     }
@@ -252,8 +262,8 @@ server {
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
-        proxy_set_header   Host              c-one.localhost;
-        proxy_set_header   X-Forwarded-Host  c-one.localhost;
+        proxy_set_header   Host              ${TAILSCALE_TENANT_HOST};
+        proxy_set_header   X-Forwarded-Host  ${TAILSCALE_TENANT_HOST};
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto https;
     }

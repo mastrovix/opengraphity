@@ -119,6 +119,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
       )}
 
       <button
+        type="button"
         onClick={addRow}
         style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed #94a3b8', borderRadius: 5, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
       >
@@ -362,6 +363,8 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
               <button
+                type="button"
+                aria-expanded={isEditing}
                 onClick={() => {
                   if (isEditing) {
                     setEditingAction(null)
@@ -390,11 +393,13 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 <ActionBadge type={a.type} params={a.params} />
               </button>
               <button
+                type="button"
                 onClick={() => { setEditingAction(null); onRemove(i) }}
                 title={t('workflow.removeAction')}
+                aria-label={t('workflow.removeAction')}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 2, flexShrink: 0, display: 'flex' }}
               >
-                <X size={12} />
+                <X size={12} aria-hidden="true" />
               </button>
             </div>
 
@@ -408,6 +413,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                   {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null))}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
+                      type="button"
                       disabled={blocked}
                       onClick={() => {
                         const updated = draftToAction(editingAction)
@@ -419,7 +425,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                     >
                       Aggiorna
                     </button>
-                    <button onClick={() => setEditingAction(null)} style={cancelBtnStyle}>
+                    <button type="button" onClick={() => setEditingAction(null)} style={cancelBtnStyle}>
                       {t('common.cancel')}
                     </button>
                   </div>
@@ -436,10 +442,10 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
             {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)))}
             <div style={{ display: 'flex', gap: 6 }}>
-              <button disabled={blocked} onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}>
+              <button type="button" disabled={blocked} onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}>
                 {t('common.confirm')}
               </button>
-              <button onClick={() => { setAddingFor(null); setNewAction(emptyDraft()) }} style={cancelBtnStyle}>
+              <button type="button" onClick={() => { setAddingFor(null); setNewAction(emptyDraft()) }} style={cancelBtnStyle}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -447,6 +453,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         )
       })() : (
         <button
+          type="button"
           onClick={() => { setEditingAction(null); setAddingFor(forKey); setNewAction(emptyDraft()) }}
           style={{ padding: '5px 10px', backgroundColor: 'transparent', border: `1px dashed ${ACCENT_COLOR}`, borderRadius: 6, fontSize: 'var(--font-size-body)', color: ACCENT_COLOR, cursor: 'pointer', textAlign: 'left' }}
         >
@@ -482,10 +489,10 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       )}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}>
-        <button style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>Proprietà</button>
-        <button style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>Metadati</button>
-        <button style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>Notifiche</button>
+      <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}>
+        <button type="button" role="tab" aria-selected={activeTab === 'props'}    style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>Proprietà</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'metadata'} style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>Metadati</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'notify'}   style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>Notifiche</button>
       </div>
 
       {activeTab === 'metadata' && (
@@ -569,25 +576,30 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       {activeTab === 'notify' && (
         <>
           <PanelField label="Notifica all'ingresso">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <div
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={notifyEnabled}
+                aria-label="Notifica all'ingresso"
                 onClick={() => setNotifyEnabled((p) => !p)}
                 style={{
                   width: 36, height: 20, borderRadius: 10, cursor: 'pointer',
+                  border: 'none', padding: 0,
                   backgroundColor: notifyEnabled ? ACCENT_COLOR : '#cbd5e1',
                   position: 'relative', transition: 'background 200ms', flexShrink: 0,
                 }}
               >
-                <div style={{
+                <span style={{
                   position: 'absolute', top: 2, left: notifyEnabled ? 18 : 2,
                   width: 16, height: 16, borderRadius: '50%', background: '#fff',
                   transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                 }} />
-              </div>
+              </button>
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                 {notifyEnabled ? 'Attiva' : 'Disattiva'}
               </span>
-            </label>
+            </div>
           </PanelField>
 
           {notifyEnabled && (
@@ -634,6 +646,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       )}
 
       <button
+        type="button"
         onClick={handleSave}
         disabled={saveDisabled}
         style={saveButtonStyle(saveDisabled)}
@@ -643,6 +656,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
       {onDelete && !isInitial && (
         <button
+          type="button"
           onClick={() => {
             void confirm({ title: `Eliminare lo step "${step.label || step.name}"?`, body: 'Verranno rimosse anche le transizioni collegate.', danger: true }).then((ok) => {
               if (ok) onDelete(step.name)

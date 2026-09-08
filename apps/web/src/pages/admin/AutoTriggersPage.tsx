@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -111,25 +112,27 @@ export function AutoTriggersPage() {
   const list  = useListQueryState()
   const modal = useCrudModal<AutoTrigger, FormData>(emptyForm, triggerToForm)
   const { draft: form, patch } = modal
+  const uid = useId()
+  const ids = { name: `${uid}-name`, entityType: `${uid}-entity-type`, eventType: `${uid}-event-type`, timerDelay: `${uid}-timer-delay` }
 
   const { data, loading, refetch } = useQuery<{ autoTriggers: AutoTrigger[] }>(GET_AUTO_TRIGGERS, {
     variables: list.variables,
   })
   const triggers: AutoTrigger[] = data?.autoTriggers ?? []
 
-  const [createTrigger] = useMutation(CREATE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger creato'); void refetch(); modal.close() }, onError: (e) => toast.error(e.message) })
-  const [updateTrigger] = useMutation(UPDATE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger aggiornato'); void refetch(); modal.close() }, onError: (e) => toast.error(e.message) })
-  const [deleteTrigger] = useMutation(DELETE_AUTO_TRIGGER, { onCompleted: () => { toast.success('Trigger eliminato'); void refetch() }, onError: (e) => toast.error(e.message) })
+  const [createTrigger] = useMutation(CREATE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.created')); void refetch(); modal.close() }, onError: (e) => toast.error(e.message) })
+  const [updateTrigger] = useMutation(UPDATE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.updated')); void refetch(); modal.close() }, onError: (e) => toast.error(e.message) })
+  const [deleteTrigger] = useMutation(DELETE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.deleted')); void refetch() }, onError: (e) => toast.error(e.message) })
 
   function openEdit(trigger: AutoTrigger) {
     // Refuse to open the editor on corrupt data: an editor silently opened
     // empty would destroy the original conditions/actions at the next save.
     try { modal.openEdit(trigger) }
-    catch (e) { toast.error(`Impossibile aprire "${trigger.name}": ${errorMessage(e)}. Correggi il dato dal database prima di modificare.`) }
+    catch (e) { toast.error(t('toast.trigger.openFailed', { name: trigger.name, error: errorMessage(e) })) }
   }
 
   function handleSave() {
-    if (!form.name.trim()) { toast.error('Nome obbligatorio'); return }
+    if (!form.name.trim()) { toast.error(t('toast.trigger.nameRequired')); return }
     const common = {
       name: form.name, eventType: form.eventType,
       timerDelayMinutes: form.eventType === 'on_timer' ? form.timerDelayMinutes : null,
@@ -232,20 +235,20 @@ export function AutoTriggersPage() {
         }
       >
           {/* Name */}
-          <label style={labelS}>Nome</label>
-          <Input value={form.name} onChange={e => patch({ name: e.target.value })} placeholder="es. Auto-assign P1 incidents" />
+          <label htmlFor={ids.name} style={labelS}>Nome</label>
+          <Input id={ids.name} value={form.name} onChange={e => patch({ name: e.target.value })} placeholder="es. Auto-assign P1 incidents" />
 
           {/* Entity + Event */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
             <div>
-              <label style={labelS}>Tipo entità</label>
-              <Select style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
+              <label htmlFor={ids.entityType} style={labelS}>Tipo entità</label>
+              <Select id={ids.entityType} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
                 {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
               </Select>
             </div>
             <div>
-              <label style={labelS}>Tipo evento</label>
-              <Select style={selectS} value={form.eventType} onChange={e => patch({ eventType: e.target.value })}>
+              <label htmlFor={ids.eventType} style={labelS}>Tipo evento</label>
+              <Select id={ids.eventType} style={selectS} value={form.eventType} onChange={e => patch({ eventType: e.target.value })}>
                 {EVENT_TYPES.map(et => <option key={et} value={et}>{EVENT_LABELS[et] || et}</option>)}
               </Select>
             </div>
@@ -254,14 +257,14 @@ export function AutoTriggersPage() {
           {/* Timer delay */}
           {form.eventType === 'on_timer' && (
             <div style={{ marginTop: 14 }}>
-              <label style={labelS}>Ritardo timer (minuti)</label>
-              <Input style={{ width: 120 }} type="number" min={0} value={form.timerDelayMinutes} onChange={e => patch({ timerDelayMinutes: Number(e.target.value) })} />
+              <label htmlFor={ids.timerDelay} style={labelS}>Ritardo timer (minuti)</label>
+              <Input id={ids.timerDelay} style={{ width: 120 }} type="number" min={0} value={form.timerDelayMinutes} onChange={e => patch({ timerDelayMinutes: Number(e.target.value) })} />
             </div>
           )}
 
           {/* Conditions */}
           <div style={{ marginTop: 20 }}>
-            <label style={{ ...labelS, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>Condizioni</label>
+            <div style={{ ...labelS, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>Condizioni</div>
             {form.conditions.map((c, i) => (
               <ConditionRowEditor
                 key={i}
@@ -276,7 +279,7 @@ export function AutoTriggersPage() {
 
           {/* Actions */}
           <div style={{ marginTop: 20 }}>
-            <label style={{ ...labelS, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>Azioni</label>
+            <div style={{ ...labelS, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>Azioni</div>
             {form.actions.map((a, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
                 <Select style={{ ...selectS, width: 180 }} value={a.type} onChange={e => setAction(i, { type: e.target.value, params: {} })}>
@@ -296,7 +299,7 @@ export function AutoTriggersPage() {
 
           {/* Enabled toggle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 20 }}>
-            <label style={{ ...labelS, margin: 0 }}>Abilitato</label>
+            <span style={{ ...labelS, margin: 0 }}>Abilitato</span>
             <Toggle checked={form.enabled} onChange={v => patch({ enabled: v })} label={t('admin.triggers.enabledLabel')} />
           </div>
 

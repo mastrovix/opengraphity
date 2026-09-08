@@ -110,7 +110,8 @@ export function WorkflowListPage() {
                 {/* Cards */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {items.map((def) => (
-                    <div
+                    <button
+                      type="button"
                       key={def.id}
                       onClick={() => navigate(`/workflow/${def.id}`)}
                       style={{
@@ -123,6 +124,10 @@ export function WorkflowListPage() {
                         display:       'flex',
                         flexDirection: 'column',
                         gap:           10,
+                        width:         '100%',
+                        textAlign:     'left',
+                        font:          'inherit',
+                        color:         'inherit',
                       }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'
@@ -164,7 +169,7 @@ export function WorkflowListPage() {
                         </Pill>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>v{def.version}</span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>

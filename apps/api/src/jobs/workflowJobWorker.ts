@@ -228,7 +228,7 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
     }
 
     default:
-      logger.warn({ jobName: job.name, entityId }, '[workflow-jobs] unknown job — skipped')
+      throw new Error(`[workflow-jobs] unknown job "${job.name}" (entityId=${entityId})`)
   }
 }
 
@@ -282,7 +282,7 @@ async function processNotificationJob(job: Job): Promise<void> {
     }
 
     default:
-      logger.warn({ jobName: job.name }, '[notification-jobs] unknown job — skipped')
+      throw new Error(`[notification-jobs] unknown job "${job.name}"`)
   }
 }
 

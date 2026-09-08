@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -46,6 +46,7 @@ export function ServiceRequestDetailPage() {
   const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId() }
   const { data, loading, error, refetch } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
 
@@ -54,7 +55,7 @@ export function ServiceRequestDetailPage() {
   const [executeTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition?: { success: boolean; error: string | null } }>(EXECUTE_WORKFLOW_TRANSITION, {
     onCompleted: async (res) => {
       const r = res.executeWorkflowTransition
-      if (r && !r.success) { toast.error(r.error ?? 'Transizione non riuscita'); return }
+      if (r && !r.success) { toast.error(r.error ?? t('toast.request.transitionFailed')); return }
       setTransitionModal(null); setTransitionNotes('')
       await refetch()
     },
@@ -64,7 +65,7 @@ export function ServiceRequestDetailPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [editForm, setEditForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '' })
   const [updateRequest, { loading: savingEdit }] = useMutation(UPDATE_SERVICE_REQUEST, {
-    onCompleted: async () => { setEditOpen(false); await refetch(); toast.success('Richiesta aggiornata') },
+    onCompleted: async () => { setEditOpen(false); await refetch(); toast.success(t('toast.request.updated')) },
     onError: (e) => toast.error(e.message),
   })
   const openEdit = () => {
@@ -97,7 +98,7 @@ export function ServiceRequestDetailPage() {
   if (!sr) return (
     <PageContainer>
       <p style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('pages.requests.notFound')}</p>
-      <button onClick={() => navigate('/requests')} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>{t('detail.backToList')}</button>
+      <button type="button" onClick={() => navigate('/requests')} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>{t('detail.backToList')}</button>
     </PageContainer>
   )
 
@@ -107,6 +108,7 @@ export function ServiceRequestDetailPage() {
     <PageContainer>
       {/* Back */}
       <button
+        type="button"
         onClick={() => navigate('/requests')}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
       >
@@ -163,6 +165,7 @@ export function ServiceRequestDetailPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {sr.availableTransitions.map((tr) => (
                     <button
+                      type="button"
                       key={tr.toStep}
                       disabled={transitioning}
                       onClick={() => {
@@ -208,17 +211,18 @@ export function ServiceRequestDetailPage() {
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel>Titolo *</FieldLabel>
-          <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required autoFocus />
+          <FieldLabel htmlFor={ids.title}>Titolo *</FieldLabel>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: primo campo del modal di modifica aperto dall'utente */}
+          <Input id={ids.title} value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required autoFocus />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel>Descrizione</FieldLabel>
-          <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={3} />
+          <FieldLabel htmlFor={ids.description}>Descrizione</FieldLabel>
+          <Textarea id={ids.description} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={3} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
-            <FieldLabel>Priorità</FieldLabel>
-            <Select value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>
+            <FieldLabel htmlFor={ids.priority}>Priorità</FieldLabel>
+            <Select id={ids.priority} value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>
               <option value="critical">critical</option>
               <option value="high">high</option>
               <option value="medium">medium</option>
@@ -226,42 +230,46 @@ export function ServiceRequestDetailPage() {
             </Select>
           </div>
           <div>
-            <FieldLabel>Scadenza</FieldLabel>
-            <Input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} />
+            <FieldLabel htmlFor={ids.dueDate}>Scadenza</FieldLabel>
+            <Input id={ids.dueDate} type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} />
           </div>
         </div>
       </Modal>
 
       {/* Transition notes modal (for transitions requiring input, e.g. rejection reason) */}
       {transitionModal && sr.workflowInstance && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
-          onClick={() => setTransitionModal(null)}
-        >
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw' }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontSize: 17, fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 12px' }}>{transitionModal.label}</h3>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
-              {transitionModal.inputField === 'rejection_reason' ? 'Motivo del rifiuto' : 'Note'}
-            </label>
-            <textarea
-              value={transitionNotes}
-              onChange={(e) => setTransitionNotes(e.target.value)}
-              rows={4}
-              autoFocus
-              style={{ width: '100%', border: '1px solid var(--color-border-light)', borderRadius: 8, padding: 10, fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setTransitionModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: '#fff', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+        <Modal
+          open
+          onClose={() => setTransitionModal(null)}
+          title={transitionModal.label}
+          width={460}
+          footer={
+            <>
+              <button type="button" onClick={() => setTransitionModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: '#fff', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
               <button
+                type="button"
                 disabled={transitioning || transitionNotes.trim().length === 0}
                 onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionModal.label, transitionNotes)}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
               >
                 Conferma
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <label htmlFor={ids.notes} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
+            {transitionModal.inputField === 'rejection_reason' ? 'Motivo del rifiuto' : 'Note'}
+          </label>
+          <textarea
+            id={ids.notes}
+            value={transitionNotes}
+            onChange={(e) => setTransitionNotes(e.target.value)}
+            rows={4}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal di transizione aperto dall'utente
+            autoFocus
+            style={{ width: '100%', border: '1px solid var(--color-border-light)', borderRadius: 8, padding: 10, fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+          />
+        </Modal>
       )}
     </PageContainer>
   )

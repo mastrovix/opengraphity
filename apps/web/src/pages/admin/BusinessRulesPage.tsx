@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -134,6 +135,8 @@ export function BusinessRulesPage() {
   const list  = useListQueryState()
   const modal = useCrudModal<BusinessRule, RuleDraft>(emptyDraft, ruleToDraft)
   const { draft, patch } = modal
+  const uid = useId()
+  const ids = { name: `${uid}-name`, priority: `${uid}-priority`, description: `${uid}-description`, entityType: `${uid}-entity-type`, eventType: `${uid}-event-type` }
 
   const { data, loading, refetch } = useQuery<{ businessRules: BusinessRule[] }>(GET_BUSINESS_RULES, { variables: list.variables })
   const [createRule]  = useMutation(CREATE_BUSINESS_RULE)
@@ -151,11 +154,11 @@ export function BusinessRulesPage() {
     // Refuse to open the editor on corrupt data: an editor silently opened
     // empty would destroy the original conditions/actions at the next save.
     try { modal.openEdit(r) }
-    catch (e) { toast.error(`Impossibile aprire "${r.name}": ${errorMessage(e)}. Correggi il dato dal database prima di modificare.`) }
+    catch (e) { toast.error(t('toast.rule.openFailed', { name: r.name, error: errorMessage(e) })) }
   }
 
   async function handleSave() {
-    if (!draft.name.trim()) { toast.error('Nome obbligatorio'); return }
+    if (!draft.name.trim()) { toast.error(t('toast.rule.nameRequired')); return }
     const common = {
       name: draft.name, description: draft.description || null, eventType: draft.eventType, conditionLogic: draft.conditionLogic,
       conditions: JSON.stringify(draft.conditions), actions: JSON.stringify(draft.actions),
@@ -164,10 +167,10 @@ export function BusinessRulesPage() {
     try {
       if (modal.editing) {
         await updateRule({ variables: { id: modal.editing.id, input: common } })
-        toast.success('Regola aggiornata')
+        toast.success(t('toast.rule.updated'))
       } else {
         await createRule({ variables: { input: { ...common, entityType: draft.entityType } } })
-        toast.success('Regola creata')
+        toast.success(t('toast.rule.created'))
       }
       modal.close(); void refetch()
     } catch (e: unknown) { toast.error(errorMessage(e)) }
@@ -176,7 +179,7 @@ export function BusinessRulesPage() {
   async function handleDelete(r: BusinessRule) {
     const ok = await confirm({ title: t('admin.rules.deleteTitle'), body: r.name, danger: true })
     if (!ok) return
-    try { await deleteRule({ variables: { id: r.id } }); toast.success('Regola eliminata'); void refetch() }
+    try { await deleteRule({ variables: { id: r.id } }); toast.success(t('toast.rule.deleted')); void refetch() }
     catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
@@ -289,28 +292,28 @@ export function BusinessRulesPage() {
           {/* Basic fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
             <div>
-              <label style={labelS}>Nome *</label>
-              <Input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Assegna priorità alta" />
+              <label htmlFor={ids.name} style={labelS}>Nome *</label>
+              <Input id={ids.name} value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Assegna priorità alta" />
             </div>
             <div>
-              <label style={labelS}>Priorità</label>
-              <Input type="number" value={draft.priority} onChange={e => patch({ priority: +e.target.value })} min={1} />
+              <label htmlFor={ids.priority} style={labelS}>Priorità</label>
+              <Input id={ids.priority} type="number" value={draft.priority} onChange={e => patch({ priority: +e.target.value })} min={1} />
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
-            <label style={labelS}>Descrizione</label>
-            <Textarea value={draft.description} onChange={e => patch({ description: e.target.value })} rows={2} />
+            <label htmlFor={ids.description} style={labelS}>Descrizione</label>
+            <Textarea id={ids.description} value={draft.description} onChange={e => patch({ description: e.target.value })} rows={2} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
             <div>
-              <label style={labelS}>Tipo entità</label>
-              <Select style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
+              <label htmlFor={ids.entityType} style={labelS}>Tipo entità</label>
+              <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
                 {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
               </Select>
             </div>
             <div>
-              <label style={labelS}>Evento</label>
-              <Select style={selectS} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
+              <label htmlFor={ids.eventType} style={labelS}>Evento</label>
+              <Select id={ids.eventType} style={selectS} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
                 {EVENT_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
               </Select>
             </div>
@@ -318,7 +321,7 @@ export function BusinessRulesPage() {
 
           {/* Condition Logic toggle */}
           <div style={{ marginBottom: 16 }}>
-            <label style={labelS}>Logica condizioni</label>
+            <div style={labelS}>Logica condizioni</div>
             <div role="group" aria-label="Logica condizioni" style={{ display: 'flex', gap: 0 }}>
               {(['AND', 'OR'] as const).map(v => (
                 <button key={v} type="button" aria-pressed={draft.conditionLogic === v} onClick={() => patch({ conditionLogic: v })} style={{
@@ -333,7 +336,7 @@ export function BusinessRulesPage() {
 
           {/* Conditions builder */}
           <div style={{ marginBottom: 20 }}>
-            <label style={{ ...labelS, marginBottom: 8 }}>Condizioni</label>
+            <div style={{ ...labelS, marginBottom: 8 }}>Condizioni</div>
             {draft.conditions.map((c, i) => (
               <ConditionRowEditor
                 key={i}
@@ -348,7 +351,7 @@ export function BusinessRulesPage() {
 
           {/* Actions builder */}
           <div style={{ marginBottom: 20 }}>
-            <label style={{ ...labelS, marginBottom: 8 }}>Azioni</label>
+            <div style={{ ...labelS, marginBottom: 8 }}>Azioni</div>
             {draft.actions.map((a, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 8 }}>
                 <Select style={{ ...selectS, width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>

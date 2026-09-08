@@ -44,6 +44,7 @@ export function ReopenModal({ onConfirm, onCancel }: {
         rows={3}
         style={{ ...inputStyle, resize: 'vertical' }}
         placeholder={t('pages.tasks.reopen.placeholder')}
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal aperto dall'utente
         autoFocus
       />
     </Modal>

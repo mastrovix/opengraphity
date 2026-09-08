@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import {
   Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp,
   Table as TableIcon,
@@ -78,6 +79,8 @@ export function ReportChartConfig({
   step3DateFields,
   previewLoading, previewData,
 }: Props) {
+  const uid = useId()
+  const ids = { metric: `${uid}-metric`, metricField: `${uid}-metric-field`, limit: `${uid}-limit`, sortDir: `${uid}-sort-dir` }
   const isKpi        = chartType === 'kpi'
   const isTable      = chartType === 'table'
   const isTimeSeries = chartType === 'line' || chartType === 'area'
@@ -100,12 +103,13 @@ export function ReportChartConfig({
         <div style={{ flex: '0 0 420px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
           <div>
-            <label style={labelStyle}>Tipo di visualizzazione</label>
+            <div style={labelStyle}>Tipo di visualizzazione</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
               {CHART_TYPES.map(ct => (
-                <div key={ct.value} onClick={() => onChartTypeChange(ct.value)} style={{
+                <button key={ct.value} type="button" aria-pressed={chartType === ct.value} onClick={() => onChartTypeChange(ct.value)} style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
                   borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s',
+                  font: 'inherit', textAlign: 'left', width: '100%',
                   border:     chartType === ct.value ? '2px solid #0284c7' : '1px solid #e5e7eb',
                   background: chartType === ct.value ? 'var(--color-brand-light)' : '#fff',
                   color:      chartType === ct.value ? 'var(--color-brand)' : 'var(--color-slate)',
@@ -115,14 +119,14 @@ export function ReportChartConfig({
                     <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600 }}>{ct.label}</div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: chartType === ct.value ? '#22d3ee' : 'var(--color-slate-light)', marginTop: 2 }}>{ct.desc}</div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
 
           {needsGroupBy && resultNodes.length > 0 && (
             <div>
-              <label style={labelStyle}>Raggruppa per</label>
+              <div style={labelStyle}>Raggruppa per</div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 <select value={groupByNodeId} onChange={e => onGroupByNodeIdChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
                   <option value="">Nodo...</option>
@@ -152,15 +156,15 @@ export function ReportChartConfig({
           {!isKpi && !isTable && (
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Metrica</label>
-                <select value={metric} onChange={e => onMetricChange(e.target.value)} style={selectStyle}>
+                <label htmlFor={ids.metric} style={labelStyle}>Metrica</label>
+                <select id={ids.metric} value={metric} onChange={e => onMetricChange(e.target.value)} style={selectStyle}>
                   {METRIC_TYPES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </div>
               {metric !== 'count' && resultNodes.length > 0 && (
                 <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Campo</label>
-                  <select value={metricField} onChange={e => onMetricFieldChange(e.target.value)} style={selectStyle}>
+                  <label htmlFor={ids.metricField} style={labelStyle}>Campo</label>
+                  <select id={ids.metricField} value={metricField} onChange={e => onMetricFieldChange(e.target.value)} style={selectStyle}>
                     <option value="">Seleziona...</option>
                     {resultNodes.flatMap(([, nd]) =>
                       nd.fields.filter(f => f.fieldType === 'number').map(f => (
@@ -176,12 +180,12 @@ export function ReportChartConfig({
           {needsLimit && (
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Mostra i primi N</label>
-                <input type="number" value={limit} onChange={e => onLimitChange(Number(e.target.value))} style={inputStyle} min={1} max={100} />
+                <label htmlFor={ids.limit} style={labelStyle}>Mostra i primi N</label>
+                <input id={ids.limit} type="number" value={limit} onChange={e => onLimitChange(Number(e.target.value))} style={inputStyle} min={1} max={100} />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Ordine</label>
-                <select value={sortDir} onChange={e => onSortDirChange(e.target.value)} style={selectStyle}>
+                <label htmlFor={ids.sortDir} style={labelStyle}>Ordine</label>
+                <select id={ids.sortDir} value={sortDir} onChange={e => onSortDirChange(e.target.value)} style={selectStyle}>
                   <option value="DESC">Decrescente</option>
                   <option value="ASC">Crescente</option>
                 </select>
@@ -191,7 +195,7 @@ export function ReportChartConfig({
 
           {isTable && resultNodes.length > 0 && (
             <div>
-              <label style={labelStyle}>Colonne da mostrare (per nodo risultato)</label>
+              <div style={labelStyle}>Colonne da mostrare (per nodo risultato)</div>
               {tableColumnCount === 0 && (
                 <div style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)', marginBottom: 8 }}>
                   ⚠ Una tabella richiede almeno una colonna: il server rifiuta la sezione senza campi selezionati.
@@ -224,7 +228,7 @@ export function ReportChartConfig({
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <label style={labelStyle}>Anteprima in tempo reale</label>
+          <div style={labelStyle}>Anteprima in tempo reale</div>
           <ReportPreview loading={previewLoading} data={previewData} />
         </div>
       </div>

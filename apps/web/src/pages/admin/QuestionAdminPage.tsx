@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useId, useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
@@ -187,6 +187,9 @@ export function QuestionAdminPage() {
   })
   const assignmentBusy = assigning || removing
 
+  const uid = useId()
+  const ids = { text: `${uid}-text`, category: `${uid}-category` }
+
   const handleNew = () => {
     setSelectedId(null)
     setText('')
@@ -198,8 +201,8 @@ export function QuestionAdminPage() {
   }
 
   const handleSave = () => {
-    if (!text.trim()) { toast.error('Testo obbligatorio'); return }
-    if (options.length === 0) { toast.error('Almeno una opzione'); return }
+    if (!text.trim()) { toast.error(t('toast.question.textRequired')); return }
+    if (options.length === 0) { toast.error(t('toast.question.optionRequired')); return }
     const optInput = options.map(o => ({ label: o.label, score: o.score, sortOrder: o.sortOrder }))
     if (isNew) {
       void createQuestion({ variables: { input: { text: text.trim(), category, isCore, options: optInput } } })
@@ -326,8 +329,9 @@ export function QuestionAdminPage() {
           {(selectedId || isNew) && (
             <>
               <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Testo</label>
+                <label htmlFor={ids.text} style={labelStyle}>Testo</label>
                 <textarea
+                  id={ids.text}
                   value={text}
                   onChange={e => setText(e.target.value)}
                   rows={3}
@@ -337,15 +341,15 @@ export function QuestionAdminPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
-                  <label style={labelStyle}>Categoria</label>
-                  <select value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} style={inputStyle} title="Categoria della domanda">
+                  <label htmlFor={ids.category} style={labelStyle}>Categoria</label>
+                  <select id={ids.category} value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} style={inputStyle} title="Categoria della domanda">
                     {Object.values(QUESTION_CATEGORY).map((v) => (
                       <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Flags</label>
+                  <div style={labelStyle}>Flags</div>
                   <div style={{ display: 'flex', gap: 16, paddingTop: 8 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                       <input type="checkbox" checked={isCore} onChange={e => handleToggleCore(e.target.checked)} />
@@ -364,7 +368,7 @@ export function QuestionAdminPage() {
               {/* CIType assignments — visibile direttamente quando Core è OFF */}
               {!isCore && (
                 <div style={{ marginBottom: 16 }}>
-                  <label style={labelStyle}>Assegnazioni CI Type</label>
+                  <div style={labelStyle}>Assegnazioni CI Type</div>
                   {isNew ? (
                     <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0, padding: '8px 0' }}>
                       Salva la domanda per poterla assegnare a CI Type specifici.
@@ -421,7 +425,7 @@ export function QuestionAdminPage() {
 
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <label style={{ ...labelStyle, marginBottom: 0 }}>Opzioni</label>
+                  <div style={{ ...labelStyle, marginBottom: 0 }}>Opzioni</div>
                   <button type="button" onClick={addOption} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Plus size={12} /> Aggiungi
                   </button>

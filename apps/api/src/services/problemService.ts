@@ -5,6 +5,8 @@ import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
+import { ValidationError } from '../lib/errors.js'
+import { validateStringLength } from '../lib/validation.js'
 import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { logger } from '../lib/logger.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
@@ -56,6 +58,7 @@ export async function createProblem(
   input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string },
   ctx: ServiceCtx,
 ) {
+  validateStringLength(input.title, 'title', 1, 500)
   // ITIL: Priority = f(Impact, Urgency). Impact+urgency take precedence.
   let impact = input.impact, urgency = input.urgency, priority = input.priority
   if (isImpactUrgency(impact) && isImpactUrgency(urgency)) {
@@ -63,7 +66,7 @@ export async function createProblem(
   } else if (priority) {
     const iu = impactUrgencyFromPriority(priority); impact = impact ?? iu.impact; urgency = urgency ?? iu.urgency
   } else {
-    throw new Error('Fornire impact+urgency oppure priority')
+    throw new ValidationError('Fornire impact+urgency oppure priority')
   }
   const id  = uuidv4()
   const now = new Date().toISOString()

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/Modal'
 import { toast } from 'sonner'
 import { CIIcon } from '@/lib/ciIcon'
@@ -21,6 +22,8 @@ export function CreateTypeDialog({
   open: boolean; onClose: () => void
   onSave: (form: { name: string; label: string; icon: string; color: string }) => Promise<void>
 }) {
+  const { t } = useTranslation()
+  const id = useId()
   const [form, setForm] = useState({ name: '', label: '', icon: 'box', color: 'var(--color-brand)' })
   const [saving, setSaving] = useState(false)
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
@@ -32,7 +35,7 @@ export function CreateTypeDialog({
           <button type="button" style={btnSecondary} onClick={onClose}>Annulla</button>
           <button type="button" style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
             onClick={async () => {
-              if (!form.name || !form.label) { toast.error('Nome e label obbligatori'); return }
+              if (!form.name || !form.label) { toast.error(t('toast.citype.nameLabelRequired')); return }
               setSaving(true)
               // onSave rigetta su errore (toast già mostrato): il dialog resta aperto.
               try { await onSave(form); onClose() } catch { /* errore già notificato */ } finally { setSaving(false) }
@@ -41,17 +44,17 @@ export function CreateTypeDialog({
           </button>
         </>
       }>
-      <FormField label="name (slug, snake_case) *">
-        <Input style={inputS} value={form.name} placeholder="es. load_balancer"
+      <FormField label="name (slug, snake_case) *" htmlFor={`${id}-name`}>
+        <Input id={`${id}-name`} style={inputS} value={form.name} placeholder="es. load_balancer"
           onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
       </FormField>
-      <FormField label="label (nome visualizzato) *">
-        <Input style={inputS} value={form.label} placeholder="es. Load Balancer"
+      <FormField label="label (nome visualizzato) *" htmlFor={`${id}-label`}>
+        <Input id={`${id}-label`} style={inputS} value={form.label} placeholder="es. Load Balancer"
           onChange={(e) => set('label', e.target.value)} />
       </FormField>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
-        <FormField label="Icona">
-          <Select style={selectS} value={form.icon} onChange={(e) => set('icon', e.target.value)}>
+        <FormField label="Icona" htmlFor={`${id}-icon`}>
+          <Select id={`${id}-icon`} style={selectS} value={form.icon} onChange={(e) => set('icon', e.target.value)}>
             {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
           </Select>
         </FormField>
@@ -59,9 +62,9 @@ export function CreateTypeDialog({
           <CIIcon icon={form.icon} size={24} color={form.color} />
         </div>
       </div>
-      <FormField label="Colore">
+      <FormField label="Colore" htmlFor={`${id}-color`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)}
+          <input id={`${id}-color`} type="color" value={form.color} onChange={(e) => set('color', e.target.value)}
             style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
           <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{form.color}</span>
         </div>

@@ -108,7 +108,7 @@ export function ImportTab() {
         toast.success(t('pages.import.importDone', { created: data.created, updated: data.updated }))
       }
     } catch (err) {
-      toast.error(`${t('pages.import.requestFailed')}: ${(err as Error).message}`)
+      toast.error(t('toast.import.requestFailed', { error: (err as Error).message }))
     } finally {
       setRunning(null)
     }

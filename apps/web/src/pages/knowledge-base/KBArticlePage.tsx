@@ -142,12 +142,14 @@ export function KBArticlePage() {
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
             <button
+              type="button"
               onClick={() => void rateArticle({ variables: { id: article.id, helpful: true } }).then(() => toast.success(t('pages.kb.thanks')))}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
               <ThumbsUp size={14} color="#22c55e" /> {t('pages.kb.yes')} ({article.helpfulCount})
             </button>
             <button
+              type="button"
               onClick={() => void rateArticle({ variables: { id: article.id, helpful: false } }).then(() => toast.success(t('pages.kb.thanks')))}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >

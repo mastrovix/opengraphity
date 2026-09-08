@@ -293,14 +293,13 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
                   const required = rule?.required ?? false
                   return (
                     <td key={step} style={{ textAlign: 'center', padding: '7px 8px' }}>
-                      <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <input
-                          type="checkbox"
-                          checked={required}
-                          onChange={() => toggle(field.name, step || null, required)}
-                          style={{ accentColor: 'var(--color-brand)', width: 14, height: 14 }}
-                        />
-                      </label>
+                      <input
+                        type="checkbox"
+                        checked={required}
+                        aria-label={`${field.label || field.name} — ${step === '' ? t('fieldRules.requirement.allSteps') : step}`}
+                        onChange={() => toggle(field.name, step || null, required)}
+                        style={{ accentColor: 'var(--color-brand)', width: 14, height: 14, cursor: 'pointer' }}
+                      />
                     </td>
                   )
                 })}

@@ -128,11 +128,13 @@ export function ChangeOverviewSidebar({
               {allAffected.map((a) => {
                 const isCurrent = a.ci.id === currentCIId
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={a.ci.id}
                     onClick={onRowClick}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', marginBottom: 2, borderRadius: 6, cursor: 'pointer',
+                      width: '100%', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left',
                       background: isCurrent ? 'var(--color-brand-light)' : 'transparent',
                       borderLeft: isCurrent ? '3px solid var(--color-brand)' : '3px solid transparent',
                     }}
@@ -140,7 +142,7 @@ export function ChangeOverviewSidebar({
                     <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.ci.name}</span>
                     <CIDots a={a} />
                     {a.riskScore != null && <RiskBadge compact score={a.riskScore} />}
-                  </div>
+                  </button>
                 )
               })}
               <CIDotsLegend />

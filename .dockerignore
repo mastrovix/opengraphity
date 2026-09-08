@@ -1,22 +1,44 @@
-node_modules/
-*/node_modules/
+# Build context = repository root (compose: `context: ..`). Patterns are
+# anchored to the root: `**/x` is needed to match x at any depth (G-06 — the
+# old `*/node_modules/` never covered apps/*/node_modules).
+
+# Dependencies (every builder runs `pnpm install` itself)
+**/node_modules
+
+# VCS, editors, agent worktrees (.claude/worktrees are full repo copies)
 .git/
-*.md
-.env
-.env.*
-# dist/ excluded except for apps/web/dist (used by web Dockerfile)
-apps/api/dist/
-packages/*/dist/
+.claude/
 .vscode/
 .idea/
-backups/
+**/.DS_Store
+
+# Secrets: any .env at any depth (apps/api/.env is used by `pnpm dev`);
+# only the documented example is allowed into the context.
+**/.env*
+!**/.env.example
+
+# Build outputs: the api/portal builders recompile packages/* and the app.
+# EXCEPTION: apps/web/dist stays — apps/web/Dockerfile copies the locally
+# built bundle (see README "Deploy web"); do not add a `**/dist` rule.
+apps/api/dist/
+apps/portal/dist/
+packages/*/dist/
+**/coverage
+
+# Tests, tooling, data, docs
+e2e/
+test-results/
+**/test-results
+**/backups
 *.dump
 infra/
 apps/api/data/
 data/
 docs/
-*.docx
 scripts/
+**/*.md
+*.docx
 keycloak-realm*.json
 docker-compose_pi5.yml
 README_pi5_DEPLOY.md
+apps/api/Dockerfile_pi5

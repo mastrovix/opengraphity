@@ -126,6 +126,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
           {showAdd && (
             <div style={{ marginTop: 4 }}>
               <Input
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- campo di ricerca montato dopo il click su "Aggiungi": il focus segue l'azione dell'utente
                 autoFocus
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

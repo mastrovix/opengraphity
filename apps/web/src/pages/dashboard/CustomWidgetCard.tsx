@@ -1,5 +1,6 @@
 import { useQuery } from '@apollo/client/react'
-import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X } from 'lucide-react'
 import { GET_WIDGET_DATA } from '@/graphql/queries'
 import { lookupOrError } from '@/lib/tokens'
 import { WidgetBody, type WidgetSeriesData } from '@/components/WidgetBody'
@@ -33,8 +34,14 @@ interface Props {
 
 const SIZE_COLSPAN: Record<string, number> = { small: 3, medium: 6, large: 12 }
 
-const TIME_LABEL: Record<string, string> = {
-  '24h': '24h', '7d': '7gg', '30d': '30gg', '90d': '90gg', '1y': '1 anno', all: 'Tutto',
+/** Chiave i18n dell'etichetta di periodo (allineata a TIME_RANGES in useWidgetConfig). */
+const TIME_LABEL_KEY: Record<string, string> = {
+  '24h': 'pages.dashboard.timeRange.24h',
+  '7d':  'pages.dashboard.timeRange.7d',
+  '30d': 'pages.dashboard.timeRange.30d',
+  '90d': 'pages.dashboard.timeRange.90d',
+  '1y':  'pages.dashboard.timeRange.1y',
+  all:   'pages.dashboard.timeRange.all',
 }
 
 // ── Widget type icon ──────────────────────────────────────────────────────────
@@ -52,6 +59,7 @@ function TypeIcon({ type, color }: { type: string; color: string }) {
 // ── CustomWidgetCard ──────────────────────────────────────────────────────────
 
 export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) {
+  const { t } = useTranslation()
   const { data, loading, error } = useQuery<{ widgetData: WidgetSeriesData }>(GET_WIDGET_DATA, {
     variables: { widgetId: widget.id },
     fetchPolicy: 'cache-and-network',
@@ -81,6 +89,8 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
 
   // ── Header ──────────────────────────────────────────────────────────────────
 
+  const timeLabelKey = widget.timeRange ? TIME_LABEL_KEY[widget.timeRange] : undefined
+
   const header = (
     <div style={headerStyle}>
       <TypeIcon type={widget.widgetType} color={widget.color} />
@@ -89,21 +99,25 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
       </span>
       {widget.timeRange && widget.timeRange !== 'all' && (
         <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate-light)' }}>
-          {lookupOrError(TIME_LABEL, widget.timeRange, 'TIME_LABEL', widget.timeRange)}
+          {timeLabelKey ? t(timeLabelKey) : widget.timeRange}
         </span>
       )}
       {editMode && (
         <div style={{ display: 'flex', gap: 4, marginLeft: 4 }}>
           <button
+            type="button"
             onClick={onEdit}
             style={{ width: 20, height: 20, border: '1px solid #d1d5db', background: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-table)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title="Modifica widget"
+            title={t('pages.dashboard.editWidget')}
+            aria-label={t('pages.dashboard.editWidget')}
           >✏</button>
           <button
+            type="button"
             onClick={onRemove}
             style={{ width: 20, height: 20, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title="Rimuovi widget"
-          >×</button>
+            title={t('pages.dashboard.removeWidget')}
+            aria-label={t('pages.dashboard.removeWidget')}
+          ><X size={12} aria-hidden="true" /></button>
         </div>
       )}
     </div>
@@ -121,7 +135,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
   } else if (error || !wData) {
     body = (
       <div style={{ padding: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
-        {error?.message ?? 'Errore nel caricamento dati'}
+        {error?.message ?? t('pages.dashboard.loadError')}
       </div>
     )
   } else {
@@ -130,7 +144,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
         widgetType={widget.widgetType}
         color={widget.color}
         data={wData}
-        caption={widget.filterValue ? `Status: ${widget.filterValue}` : widget.entityType}
+        caption={widget.filterValue ? t('pages.dashboard.statusCaption', { value: widget.filterValue }) : widget.entityType}
       />
     )
   }

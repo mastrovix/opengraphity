@@ -10,8 +10,9 @@ REQUIRED_VARS=(
   NEO4J_PASSWORD
   KEYCLOAK_ADMIN_PASSWORD
   REDIS_PASSWORD
-  MINIO_ROOT_USER
-  MINIO_ROOT_PASSWORD
+  GRAFANA_ADMIN_PASSWORD
+  TAILSCALE_HOST
+  VITE_KEYCLOAK_URL
 )
 
 # Create .env from example if it doesn't exist — and STOP: starting with the
@@ -50,5 +51,7 @@ echo "  GraphQL      http://localhost:4000/graphql"
 echo "  Neo4j        http://localhost:7474"
 echo "  Keycloak     http://localhost:8080"
 echo "  Grafana      http://localhost:3001"
+echo "  Prometheus   http://localhost:9090"
 echo "  Jaeger       http://localhost:16686"
+echo "  (full procedure, upgrade, backup: docs/DEPLOY.md)"
 echo "==================================================="

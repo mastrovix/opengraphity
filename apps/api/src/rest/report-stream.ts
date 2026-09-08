@@ -1,4 +1,5 @@
 import { Router, type Router as ExpressRouter, type Request, type Response } from 'express'
+import { asyncHandler, restErrorHandler } from './errorHandler.js'
 import { getSession } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
 import { streamReportAI } from '../services/reportAI.js'
@@ -7,9 +8,9 @@ import { logger } from '../lib/logger.js'
 
 const router: ExpressRouter = Router()
 
-router.post('/report/stream', authMiddleware, (req: Request, res: Response) => {
-  void handleReportStream(req, res)
-})
+router.post('/report/stream', authMiddleware, asyncHandler(handleReportStream))
+// Errori lanciati prima degli header SSE → risposta JSON via restErrorHandler
+router.use(restErrorHandler)
 
 async function handleReportStream(req: Request, res: Response): Promise<void> {
   const { tenantId, role } = req.user!
@@ -25,7 +26,7 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
     return
   }
 
-  if (!question?.trim()) {
+  if (typeof question !== 'string' || !question.trim()) {
     res.status(400).json({ error: 'question is required' })
     return
   }

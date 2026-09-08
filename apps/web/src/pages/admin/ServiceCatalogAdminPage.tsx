@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { ShoppingCart, Plus } from 'lucide-react'
@@ -39,9 +40,11 @@ export function ServiceCatalogAdminPage() {
   )
   const modal = useCrudModal<CatalogItem, FormState>(EMPTY_FORM, itemToForm)
   const { draft: form, patch } = modal
+  const uid = useId()
+  const ids = { name: `${uid}-name`, description: `${uid}-description`, category: `${uid}-category`, approval: `${uid}-approval` }
 
   const [createItem, { loading: creating }] = useMutation(CREATE_SERVICE_CATALOG_ITEM, {
-    onCompleted: async () => { modal.close(); await refetch(); toast.success('Voce creata') },
+    onCompleted: async () => { modal.close(); await refetch(); toast.success(t('toast.catalog.created')) },
     onError: (e) => toast.error(e.message),
   })
   const [updateItem, { loading: updating }] = useMutation(UPDATE_SERVICE_CATALOG_ITEM, {
@@ -141,20 +144,28 @@ export function ServiceCatalogAdminPage() {
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel>Nome *</FieldLabel>
-          <Input value={form.name} onChange={(e) => patch({ name: e.target.value })} required autoFocus placeholder="Es. Nuovo laptop" />
+          <FieldLabel htmlFor={ids.name}>Nome *</FieldLabel>
+          <Input
+            id={ids.name}
+            value={form.name}
+            onChange={(e) => patch({ name: e.target.value })}
+            required
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo aperto dall'utente (Modal)
+            autoFocus
+            placeholder="Es. Nuovo laptop"
+          />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel>Descrizione</FieldLabel>
-          <Textarea value={form.description} onChange={(e) => patch({ description: e.target.value })} rows={3} placeholder="Cosa include il servizio…" />
+          <FieldLabel htmlFor={ids.description}>Descrizione</FieldLabel>
+          <Textarea id={ids.description} value={form.description} onChange={(e) => patch({ description: e.target.value })} rows={3} placeholder="Cosa include il servizio…" />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel>Categoria</FieldLabel>
-          <Input value={form.category} onChange={(e) => patch({ category: e.target.value })} placeholder="Es. Hardware, Accessi, Software" />
+          <FieldLabel htmlFor={ids.category}>Categoria</FieldLabel>
+          <Input id={ids.category} value={form.category} onChange={(e) => patch({ category: e.target.value })} placeholder="Es. Hardware, Accessi, Software" />
         </div>
         <div>
-          <FieldLabel>Approvazione</FieldLabel>
-          <Select value={form.requiresApproval ? 'yes' : 'no'} onChange={(e) => patch({ requiresApproval: e.target.value === 'yes' })}>
+          <FieldLabel htmlFor={ids.approval}>Approvazione</FieldLabel>
+          <Select id={ids.approval} value={form.requiresApproval ? 'yes' : 'no'} onChange={(e) => patch({ requiresApproval: e.target.value === 'yes' })}>
             <option value="no">Non richiede approvazione</option>
             <option value="yes">Richiede approvazione</option>
           </Select>

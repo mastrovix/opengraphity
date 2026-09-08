@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from '@apollo/client/react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ClipboardList, UserPlus } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
@@ -163,6 +164,7 @@ function groupByChange(tasks: MyTask[]): Array<{ changeId: string; changeCode: s
 }
 
 export function MyTasksPage() {
+  const { t } = useTranslation()
   const { me } = useMe()
   const currentUserId = me?.id ?? null
 
@@ -171,7 +173,7 @@ export function MyTasksPage() {
   })
 
   const [claimTask, { loading: claiming }] = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, {
-    onCompleted: async () => { toast.success('Task presa in carico'); await refetch() },
+    onCompleted: async () => { toast.success(t('toast.task.claimed')); await refetch() },
     onError:     (e) => toast.error(e.message),
   })
 
@@ -183,7 +185,7 @@ export function MyTasksPage() {
   const unassignedGroups = groupByChange(unassigned)
 
   const handleClaim = (task: MyTask) => {
-    if (!currentUserId) { toast.error('Utente non identificato'); return }
+    if (!currentUserId) { toast.error(t('toast.task.userUnknown')); return }
     if (task.kind !== 'assessment' && task.kind !== 'deploy-plan') return
     void claimTask({ variables: { taskId: task.id, userId: currentUserId } })
   }

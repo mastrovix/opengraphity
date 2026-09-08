@@ -5,6 +5,7 @@
  */
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Search } from 'lucide-react'
 import { Modal } from '@/components/Modal'
@@ -19,6 +20,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
   refetchImpacted: () => Promise<unknown>
   refetchAudit:    () => Promise<unknown>
 }) {
+  const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const { data: ciData } = useQuery<{ allCIs: { items: Array<{ id: string; name: string; type: string | null; environment: string | null; ownerGroup: { id: string; name: string } | null; supportGroup: { id: string; name: string } | null }> } }>(
     GET_ALL_CIS, { variables: { search, limit: 20 }, skip: search.length < 2, fetchPolicy: 'network-only' },
@@ -28,7 +30,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
       void refetchImpacted()
       void refetchAffected()
       void refetchAudit()
-      toast.success('CI aggiunto')
+      toast.success(t('toast.change.ciAdded'))
     },
     onError: (e) => toast.error(e.message),
   })
@@ -40,7 +42,9 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-slate-light)' }} />
           <input
             type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Cerca CI per nome..." autoFocus
+            placeholder="Cerca CI per nome..."
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca del modal aperto dall'utente
+            autoFocus
             style={{ width: '100%', padding: '8px 12px 8px 30px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
           />
         </div>

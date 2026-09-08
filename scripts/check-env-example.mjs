@@ -29,8 +29,10 @@ const SCAN_DIRS = [
 
 /** Documented in .env.example but read only by docker-compose / build tooling, never by the code. */
 const COMPOSE_ONLY = new Set([
-  'MINIO_ROOT_USER',
-  'MINIO_ROOT_PASSWORD',
+  'GRAFANA_ADMIN_PASSWORD',   // grafana service: GF_SECURITY_ADMIN_PASSWORD
+  'TAILSCALE_HOST',           // nginx template (infra/nginx/default.conf.template)
+  'KEYCLOAK_PUBLIC_ORIGIN',   // nginx template: CSP connect-src
+  'TAILSCALE_TENANT_HOST',    // nginx template: X-Forwarded-Host of the Tailscale block
 ])
 /** Prefix for the frontend build variables (apps/web, apps/portal — not scanned). */
 const FRONTEND_PREFIX = 'VITE_'

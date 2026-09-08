@@ -96,7 +96,8 @@ export async function dispatchIncidentNotification(
     if (ch.platform === 'slack') {
       const blocks = formatSlackIncident(eventType, enriched)
       await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
-    } else if (ch.platform === 'teams' && ch.webhookUrl) {
+    } else if (ch.platform === 'teams') {
+      if (!ch.webhookUrl) throw new Error(`[notifications] Teams channel ${ch.id} has no webhook_url configured`)
       const card = formatTeamsIncident(eventType, enriched)
       await sendTeamsAdaptiveMessage(ch.webhookUrl, card)
     }

@@ -108,6 +108,7 @@ export function KnowledgeBasePage() {
             {categories.map((cat) => (
               <button
                 key={cat.name}
+                type="button"
                 onClick={() => { setCategory(cat.name); setPage(0) }}
                 style={{
                   padding: '16px 12px', borderRadius: 10, border: '1px solid #e2e8f0',
@@ -132,7 +133,7 @@ export function KnowledgeBasePage() {
           <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('pages.kb.category')}:</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: kbCategoryColor(category), color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
             {kbCategoryIcon(category)} {category}
-            <button onClick={() => { setCategory(''); setPage(0) }} style={{ marginLeft: 4, background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
+            <button type="button" onClick={() => { setCategory(''); setPage(0) }} style={{ marginLeft: 4, background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
           </span>
         </div>
       )}

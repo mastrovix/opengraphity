@@ -77,6 +77,55 @@ Un solo posto per ogni pattern ricorrente. Le primitive vivono in
 4. Testi utente via `t()` (chiavi allineate in `i18n/locales/{it,en}.json`).
 5. Niente `window.confirm`: `useConfirm()`.
 
+## i18n — regole del design system
+
+- **Nessun letterale visibile** in `components/ui/**`, `Modal`, `Pagination`,
+  `EmptyState`, `QueryError`, `PageLoader`, `ExportCsvButton`, `RichTextEditor`,
+  `ErrorBoundary`, nei `RouteError` di `main.tsx` e nei toast: ogni testo passa
+  da `t()` (`useTranslation`) o, fuori da React (util, class component, hook
+  puri), da `i18n.t()` con `import i18n from '@/i18n/i18n'`.
+- **Toast**: `toast.success(t('toast.<dominio>.<nome>', { … }))`. Mai
+  `toast.error('stringa')`; il messaggio del server passa come interpolazione
+  (`{ error: e.message }`) o direttamente (`toast.error(e.message)`), non in un
+  template literal con testo fisso.
+- **Chiavi**: sezione per dominio (`pages.<dir>.*`, `components.<nome>.*`,
+  `toast.<dominio>.*`, `common.*` per i testi ricorrenti). Aggiungere in fondo
+  alla sezione, stesso ordine in `it.json` ed `en.json`, mai riordinare.
+  Plurali con `_one/_other` + `count`; enum visibili con una chiave per valore
+  (`pages.anomalies.severity.critical`), non `t(variabile)` libero.
+- **Date e durate**: `lib/datetime.ts` (`formatDateTime`, `timeAgo`,
+  `formatDuration`) segue la lingua attiva (`i18n.resolvedLanguage`) e le
+  chiavi `time.*`; niente `toLocaleString('it-IT')` nei componenti.
+- **Guardia CI**: `node scripts/check-i18n.mjs` (root) — it/en allineati,
+  chiavi usate esistenti, chiavi inutilizzate (warning), letterali nei toast e
+  nei `<button>` delle directory migrate (`MIGRATED_DIRS` nello script: quando
+  una directory finisce la migrazione, aggiungerla lì).
+
+## Accessibilità — regole del design system
+
+Lint: `jsx-a11y/recommended` + `<button>` senza `type` = errore
+(`apps/web/.eslintrc.cjs`). In pratica:
+
+- **Label ↔ controllo**: `<label htmlFor={id}>` + `id` sul controllo (id da
+  `useId()`), oppure il controllo annidato nella label. `FieldLabel` accetta
+  `htmlFor`. Un titolo di gruppo ("Condizioni", "Azioni") non è una `<label>`:
+  `<div>`/`<span>`, o `<fieldset><legend>` per gruppi di radio/checkbox.
+- **Cliccabile = bottone**: `<button type="button">` (reset di stile inline se
+  serve). Solo dove un bottone non è ammesso (`<tr>`, contenitori con bottoni
+  annidati): `role="button" tabIndex={0} onKeyDown={keyActivate(handler)}`
+  (`lib/a11y.ts`). Mai `<div onClick>` nudo.
+- **`autoFocus`**: ammesso solo su elementi montati in risposta a un'azione
+  dell'utente (dialogo aperto, editor inline dopo "Modifica"), con
+  `// eslint-disable-next-line jsx-a11y/no-autofocus -- <motivo>`; vietato sui
+  form delle pagine caricate da route.
+- **Dialoghi**: `role="dialog" aria-modal aria-labelledby` sul pannello, non
+  sull'overlay; Escape e bottone "Chiudi" sono l'equivalente da tastiera del
+  click sull'overlay (`Modal.tsx` è il riferimento).
+- **Icone**: `aria-hidden="true"` sulle icone decorative; i bottoni solo-icona
+  hanno `aria-label` (o `title`, che `Button variant="icon"` usa come nome).
+- Ogni `eslint-disable` porta il motivo dopo ` -- `; niente disable a livello
+  di file.
+
 Nota: `Button.tsx` vive in `components/` (non in `ui/`) perché in passato
 esisteva `ui/button.tsx` (shadcn) e il filesystem macOS è case-insensitive; il
 percorso è rimasto stabile per i ~30 importer.

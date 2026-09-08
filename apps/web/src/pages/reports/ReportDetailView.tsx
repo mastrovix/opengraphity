@@ -52,7 +52,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
+          <button type="button" onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
           <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>Aggiungi sezione &mdash; {selected.name}</span>
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -67,7 +67,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button onClick={cancelEditSection} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
+          <button type="button" onClick={cancelEditSection} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
           <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>Modifica sezione: {editSection.title}</span>
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -86,7 +86,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ padding: '12px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-        <button onClick={() => setView('list')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button type="button" onClick={() => setView('list')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', gap: 6 }}>
           &larr; Tutti i report
         </button>
         <span style={{ display: 'flex', alignItems: 'center' }}>{getReportIcon(selected)}</span>
@@ -94,19 +94,20 @@ export function ReportDetailView(props: ReportDetailViewProps) {
           <div style={{ fontWeight: 600, fontSize: 'var(--font-size-section-title)', color: 'var(--color-slate-dark)' }}>{selected.name}</div>
           {selected.description && <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{selected.description}</div>}
         </div>
-        <button onClick={() => openSettings(selected)} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>&#x2699; Impostazioni</button>
+        <button type="button" onClick={() => openSettings(selected)} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>&#x2699; Impostazioni</button>
         <button
+          type="button"
           onClick={handleExecuteSelected}
           disabled={execLoading}
           style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}
         >{execLoading ? tr('common.loading') : `\u25B6 ${tr('pages.reportBuilder.execute')}`}</button>
-        <button onClick={() => void handleExportPDF()} disabled={exportingPDF} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
+        <button type="button" onClick={() => void handleExportPDF()} disabled={exportingPDF} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
           {exportingPDF ? '\u2026' : '\u2193 PDF'}
         </button>
-        <button onClick={() => void handleExportExcel()} disabled={exportingExcel} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
+        <button type="button" onClick={() => void handleExportExcel()} disabled={exportingExcel} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
           {exportingExcel ? '\u2026' : '\u2193 Excel'}
         </button>
-        <button onClick={() => setView('add-section')} style={btnPrimary}>+ Sezione</button>
+        <button type="button" onClick={() => setView('add-section')} style={btnPrimary}>+ Sezione</button>
       </div>
 
       {/* Sections */}
@@ -127,9 +128,9 @@ export function ReportDetailView(props: ReportDetailViewProps) {
                   <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: '#e5e7eb', padding: '2px 6px', borderRadius: 4 }}>{sec.chartType}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => startEditSection(sec)}
+                  <button type="button" onClick={() => startEditSection(sec)}
                     style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>&#x270F; Modifica sezione</button>
-                  <button onClick={() => handleRemoveSection(selected.id, sec.id)}
+                  <button type="button" onClick={() => handleRemoveSection(selected.id, sec.id)}
                     style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>&#x1F5D1;</button>
                 </div>
               </div>

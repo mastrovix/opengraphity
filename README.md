@@ -29,11 +29,21 @@ docker compose -f infra/docker-compose.yml up -d --build
 
 The compose file has no default secrets: `docker compose` refuses to start until
 `JWT_SECRET`, `NEO4J_PASSWORD`, `REDIS_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`,
-`MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` are set in `infra/.env`
-(`./infra/start.sh` stops with the same list when it has just created the file).
-Redis runs with `--requirepass`; api and worker reach it through `REDIS_URL` +
-`REDIS_PASSWORD`. Only nginx (`:80`) listens on all interfaces; every other port
-below is bound to `127.0.0.1`.
+`GRAFANA_ADMIN_PASSWORD`, `TAILSCALE_HOST` and `VITE_KEYCLOAK_URL` are set in
+`infra/.env` (`./infra/start.sh` stops with the same list when it has just
+created the file). Redis runs with `--requirepass`; api and worker reach it
+through `REDIS_URL` + `REDIS_PASSWORD`. Only nginx (`:80`) listens on all
+interfaces; every other port below is bound to `127.0.0.1`. GraphQL
+introspection is off by default (`GRAPHQL_INTROSPECTION=true` in `infra/.env`
+enables the Apollo Sandbox locally).
+
+Every third-party image is pinned by tag **and** digest, the API image runs as
+the unprivileged `node` user with production dependencies only, and nginx reads
+the Tailscale hostname from `infra/.env` (`infra/nginx/default.conf.template`).
+**The full procedure — prerequisites, first start, tenant onboarding, upgrade
+(including the one-off volume `chown` when coming from an older root image),
+rollback, backup/restore, exposed ports, production hardening — is in
+[`docs/DEPLOY.md`](docs/DEPLOY.md).**
 
 `infra/.env.example` documents every variable the code reads, with a comment
 each; `node scripts/check-env-example.mjs` (also a CI step) fails when the code
@@ -51,6 +61,7 @@ Wait ~60 seconds for all services to come up, then open:
 | Neo4j                   | http://localhost:7474                |
 | Keycloak                | http://localhost:8080                |
 | Grafana                 | http://localhost:3001                |
+| Prometheus              | http://localhost:9090                |
 | Jaeger                  | http://localhost:16686               |
 
 Or use the helper script:
@@ -81,8 +92,9 @@ docker compose -f infra/docker-compose.yml ps
 # API health check
 curl http://localhost:4000/health
 
-# Neo4j node counts (requires cypher-shell or docker exec; NEO4J_PASSWORD = the value in infra/.env)
-docker exec -it opengraphity-neo4j-1 \
+# Neo4j node counts (requires cypher-shell or docker exec; NEO4J_PASSWORD = the value in infra/.env;
+# the container is <project>-neo4j-1, project = compose directory name → infra-neo4j-1)
+docker exec -it infra-neo4j-1 \
   cypher-shell -u neo4j -p "$NEO4J_PASSWORD" \
   "MATCH (n) RETURN labels(n)[0] AS type, count(n) ORDER BY count(n) DESC"
 ```

@@ -227,6 +227,21 @@ export const neo4jQueryDurationSeconds = createHistogram(
   [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
 )
 
+// Scheduled backup outcome (workers/maintenance.worker.ts): result = ok |
+// backup_failed | verify_failed. Alert on `verify_failed` and on the
+// last-success gauge going stale (> 25h): both mean "no valid backup".
+export const backupRunsTotal = createCounter(
+  'opengrafo_backup_runs_total',
+  'Scheduled Neo4j backups by outcome',
+  ['result'],
+)
+
+export const backupLastSuccessTimestamp = createGauge(
+  'opengrafo_backup_last_success_timestamp_seconds',
+  'Unix time of the last backup that passed verification',
+  [],
+)
+
 export const bullmqQueueDepth = createGauge(
   'bullmq_queue_depth',
   'BullMQ queue depth by status',
@@ -310,6 +325,8 @@ export function metricsHandler(req: Request, res: Response): void {
     graphqlResolverDurationSeconds.collect(),
     neo4jQueryDurationSeconds.collect(),
     bullmqQueueDepth.collect(),
+    backupRunsTotal.collect(),
+    backupLastSuccessTimestamp.collect(),
   ].join('\n\n')
 
   res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')

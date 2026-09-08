@@ -162,47 +162,47 @@ export function ProblemDetailPage() {
   })
 
   const [updateProblem] = useMutation(UPDATE_PROBLEM, {
-    onCompleted: () => { toast.success('Aggiornato'); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.updated')); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
   const [execTransition, { loading: transitioning }] = useMutation<{ executeProblemTransition?: { actionErrors?: string[] | null } }>(EXECUTE_PROBLEM_TRANSITION, {
     onCompleted: (data) => {
       const errs = data?.executeProblemTransition?.actionErrors
-      if (errs?.length) toast.warning(`Transizione eseguita, ma ${errs.length} azion${errs.length === 1 ? 'e' : 'i'} non riuscit${errs.length === 1 ? 'a' : 'e'}: ${errs.join(' · ')}`, { duration: 10000 })
-      else toast.success('Transizione completata')
+      if (errs?.length) toast.warning(t('toast.problem.transitionPartial', { count: errs.length, errors: errs.join(' · ') }), { duration: 10000 })
+      else toast.success(t('toast.problem.transitionCompleted'))
       setIsTransitionDialogOpen(false); setPendingTransition(null); setTransitionNotes(''); void refetch()
     },
     onError: (err) => toast.error(err.message),
   })
 
   const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
-    onCompleted: () => { toast.success('Team assegnato'); setSelectedTeamId(''); setShowReassign(false); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.teamAssigned')); setSelectedTeamId(''); setShowReassign(false); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
   const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_PROBLEM_TO_USER, {
-    onCompleted: () => { toast.success('Utente assegnato'); setSelectedUserId(''); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.userAssigned')); setSelectedUserId(''); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
   const [addCI] = useMutation(ADD_CI_TO_PROBLEM, {
-    onCompleted: () => { toast.success('CI aggiunto'); setCiSearch(''); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.ciAdded')); setCiSearch(''); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
   const [removeCI] = useMutation(REMOVE_CI_FROM_PROBLEM, {
-    onCompleted: () => { toast.success('CI rimosso'); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.ciRemoved')); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
   const [linkIncident] = useMutation(LINK_INCIDENT_TO_PROBLEM, {
-    onCompleted: () => { toast.success('Incident collegato'); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.incidentLinked')); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
   const [unlinkIncident] = useMutation(UNLINK_INCIDENT_FROM_PROBLEM, {
-    onCompleted: () => { toast.success('Incident scollegato'); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.incidentUnlinked')); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
@@ -210,7 +210,7 @@ export function ProblemDetailPage() {
   // niente più linkChangeToProblem (doppione che non marcava auto e non
   // filtrava le change eliminate).
   const [linkResolved] = useMutation(LINK_RESOLVED_TICKET, {
-    onCompleted: () => { toast.success('Change collegata'); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.changeLinked')); void refetch() },
     onError: (err) => toast.error(err.message),
   })
   const relLinkOpts = { onError: (e: { message: string }) => toast.error(e.message), onCompleted: () => { void refetch() } }
@@ -219,12 +219,12 @@ export function ProblemDetailPage() {
   const [unlinkResolved] = useMutation(UNLINK_RESOLVED_TICKET, relLinkOpts)
 
   const [addComment, { loading: addingComment }] = useMutation(ADD_PROBLEM_COMMENT, {
-    onCompleted: () => { toast.success('Commento aggiunto'); void refetch() },
+    onCompleted: () => { toast.success(t('toast.problem.commentAdded')); void refetch() },
     onError: (err) => toast.error(err.message),
   })
 
   const [deleteProblem, { loading: deleting }] = useMutation(DELETE_PROBLEM, {
-    onCompleted: () => { toast.success('Problem eliminato'); navigate('/problems') },
+    onCompleted: () => { toast.success(t('toast.problem.deleted')); navigate('/problems') },
     onError: (err) => toast.error(err.message),
   })
 
@@ -289,7 +289,7 @@ export function ProblemDetailPage() {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>
         {t('pages.problems.notFound')}{' '}
-        <button onClick={() => navigate('/problems')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+        <button type="button" onClick={() => navigate('/problems')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
           {t('detail.backToList')}
         </button>
       </div>
@@ -363,7 +363,7 @@ export function ProblemDetailPage() {
                 problem.assignedTeam && !showReassign ? (
                   <div>
                     <div style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</div>
-                    <button onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>{t('detail.reassign')}</button>
+                    <button type="button" onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>{t('detail.reassign')}</button>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -373,9 +373,9 @@ export function ProblemDetailPage() {
                     </Select>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {showReassign && (
-                        <button onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
+                        <button type="button" onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
                       )}
-                      <button disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
+                      <button type="button" disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
                         {assigningTeam ? t('detail.assigning') : t('detail.assign')}
                       </button>
                     </div>
@@ -409,7 +409,7 @@ export function ProblemDetailPage() {
                           Nessun utente nel gruppo {problem.assignedTeam.name}.
                         </span>
                       )}
-                      <button disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
+                      <button type="button" disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
                         {assigningUser ? t('detail.assigning') : t('detail.assign')}
                       </button>
                     </div>
@@ -565,7 +565,7 @@ export function ProblemDetailPage() {
               <Button
                 disabled={transitioning || transitionNotes.trim().length < 10}
                 onClick={() => {
-                  if (transitionNotes.trim().length < 10) { toast.error('Note troppo brevi (minimo 10 caratteri)'); return }
+                  if (transitionNotes.trim().length < 10) { toast.error(t('toast.problem.notesTooShort')); return }
                   void execTransition({ variables: { problemId: problem.id, toStep: pendingTransition.toStep, notes: transitionNotes.trim() } })
                 }}
                 style={{ padding: '8px 16px', borderRadius: 8, fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
@@ -583,6 +583,7 @@ export function ProblemDetailPage() {
             onChange={(e) => setTransitionNotes(e.target.value)}
             placeholder="Note sulla transizione..."
             rows={4}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del dialogo di transizione aperto dall'utente
             autoFocus
             style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}
           />

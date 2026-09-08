@@ -8,6 +8,12 @@
  * as explicit SSE error events.
  */
 import Anthropic from '@anthropic-ai/sdk'
+
+/** Limite chiesto dal modello: intero in [1, max]; assente/NaN/negativo → default (mai LIMIT NaN o negativo in Cypher). */
+function clampLimit(limit: unknown, def: number, max: number): number {
+  const n = typeof limit === 'number' && Number.isFinite(limit) ? Math.trunc(limit) : def
+  return Math.min(Math.max(1, n), max)
+}
 import { config } from '../lib/config.js'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 import { getSession, runQuery } from '@opengraphity/neo4j'
@@ -63,7 +69,7 @@ function buildTools(tenantId: string) {
                node.severity AS severity, node.category AS categoria,
                team.name AS team, round(score, 2) AS similarita, node.id AS id
         ORDER BY score DESC
-        LIMIT ${Math.min(Math.trunc(limit ?? 5), 15)}
+        LIMIT ${clampLimit(limit, 5, 15)}
       `, { index: vectorIndexName('Incident'), embedding, tenantId })
       return j(rows)
     },
@@ -112,7 +118,7 @@ function buildTools(tenantId: string) {
           AND toLower(ci.name) CONTAINS toLower($query)
         RETURN ci.id AS id, ci.name AS nome, labels(ci)[0] AS tipo,
                ci.environment AS ambiente, ci.status AS stato
-        LIMIT ${Math.min(Math.trunc(limit ?? 8), 20)}
+        LIMIT ${clampLimit(limit, 8, 20)}
       `, { tenantId, labels: ALL_CI_LABELS, query })
       return j(rows)
     },
@@ -171,7 +177,7 @@ function buildTools(tenantId: string) {
       const { stato, solo_aperti, severity, categoria, limit } = input as {
         stato?: string; solo_aperti?: boolean; severity?: string; categoria?: string; limit?: number
       }
-      const n = Math.min(Math.trunc(limit ?? 15), 50)
+      const n = clampLimit(limit, 15, 50)
       const rows = await readQuery<{ totale: unknown; incident: unknown[] }>(`
         MATCH (i:Incident {tenant_id: $tenantId})
         WHERE ($stato IS NULL OR i.status = $stato)
@@ -213,7 +219,7 @@ function buildTools(tenantId: string) {
                ch.change_type AS tipo, ch.risk_level AS rischio,
                ch.planned_start AS inizio_pianificato, cis AS ci_toccati
         ORDER BY ch.created_at DESC
-        LIMIT ${Math.min(Math.trunc(limit ?? 10), 25)}
+        LIMIT ${clampLimit(limit, 10, 25)}
       `, { tenantId })
       return j(rows)
     },

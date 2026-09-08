@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { useEnumValues } from '@/hooks/useEnumValues'
@@ -115,6 +116,8 @@ export function SLAPoliciesPage() {
   // `refetchQueries: [{ query }]` without variables would fill another cache
   // entry and leave the visible list stale (E-08). Errors are toasted by the
   // handlers below (they need the await for the success message).
+  const uid = useId()
+  const fid = (name: string) => `${uid}-${name}`
   const afterWrite = { onCompleted: () => { void refetch() } }
   const [createPolicy] = useMutation(CREATE_SLA_POLICY, afterWrite)
   const [updatePolicy] = useMutation(UPDATE_SLA_POLICY, afterWrite)
@@ -128,7 +131,7 @@ export function SLAPoliciesPage() {
   }, {})
 
   async function handleSave() {
-    if (!form.name.trim()) { toast.error('Il nome e obbligatorio'); return }
+    if (!form.name.trim()) { toast.error(t('toast.sla.nameRequired')); return }
     const common = {
       name: form.name.trim(),
       priority: form.priority || null, category: form.category || null,
@@ -139,10 +142,10 @@ export function SLAPoliciesPage() {
     try {
       if (modal.editing) {
         await updatePolicy({ variables: { id: modal.editing.id, input: common } })
-        toast.success('Policy aggiornata')
+        toast.success(t('toast.sla.updated'))
       } else {
         await createPolicy({ variables: { input: { ...common, entityType: form.entityType } } })
-        toast.success('Policy creata')
+        toast.success(t('toast.sla.created'))
       }
       modal.close()
     } catch (e: unknown) { toast.error(errorMessage(e)) }
@@ -153,14 +156,14 @@ export function SLAPoliciesPage() {
     if (!ok) return
     try {
       await deletePolicy({ variables: { id: p.id } })
-      toast.success('Policy eliminata')
+      toast.success(t('toast.sla.deleted'))
     } catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
   async function handleToggle(p: SLAPolicy) {
     try {
       await updatePolicy({ variables: { id: p.id, input: { enabled: !p.enabled } } })
-      toast.success(p.enabled ? 'Policy disabilitata' : 'Policy abilitata')
+      toast.success(p.enabled ? t('toast.sla.disabled') : t('toast.sla.enabled'))
     } catch (e: unknown) { toast.error(errorMessage(e)) }
   }
 
@@ -256,20 +259,20 @@ export function SLAPoliciesPage() {
       >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
-              <label style={labelS}>Nome *</label>
-              <Input value={form.name} onChange={e => patch({ name: e.target.value })} placeholder="es. SLA Critical Incident" />
+              <label htmlFor={fid('name')} style={labelS}>Nome *</label>
+              <Input id={fid('name')} value={form.name} onChange={e => patch({ name: e.target.value })} placeholder="es. SLA Critical Incident" />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={labelS}>Tipo Entita *</label>
-                <Select style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
+                <label htmlFor={fid('entity-type')} style={labelS}>Tipo Entita *</label>
+                <Select id={fid('entity-type')} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
                   {ENTITY_TYPES.map(et => <option key={et} value={et}>{ENTITY_LABELS[et]}</option>)}
                 </Select>
               </div>
               <div>
-                <label style={labelS}>Priorita</label>
-                <Select style={selectS} value={form.priority} onChange={e => patch({ priority: e.target.value })}>
+                <label htmlFor={fid('priority')} style={labelS}>Priorita</label>
+                <Select id={fid('priority')} style={selectS} value={form.priority} onChange={e => patch({ priority: e.target.value })}>
                   <option value="">Tutte</option>
                   {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
                 </Select>
@@ -278,15 +281,15 @@ export function SLAPoliciesPage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={labelS}>Categoria</label>
-                <Select style={selectS} value={form.category} onChange={e => patch({ category: e.target.value })}>
+                <label htmlFor={fid('category')} style={labelS}>Categoria</label>
+                <Select id={fid('category')} style={selectS} value={form.category} onChange={e => patch({ category: e.target.value })}>
                   <option value="">Tutte</option>
                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </Select>
               </div>
               <div>
-                <label style={labelS}>Team</label>
-                <Select style={selectS} value={form.teamId} onChange={e => patch({ teamId: e.target.value })}>
+                <label htmlFor={fid('team')} style={labelS}>Team</label>
+                <Select id={fid('team')} style={selectS} value={form.teamId} onChange={e => patch({ teamId: e.target.value })}>
                   <option value="">Tutti</option>
                   {teams.map(tm => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
                 </Select>
@@ -295,19 +298,19 @@ export function SLAPoliciesPage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={labelS}>Tempo Risposta (minuti) *</label>
-                <Input type="number" min={1} value={form.responseMinutes} onChange={e => patch({ responseMinutes: Number(e.target.value) })} />
+                <label htmlFor={fid('response-minutes')} style={labelS}>Tempo Risposta (minuti) *</label>
+                <Input id={fid('response-minutes')} type="number" min={1} value={form.responseMinutes} onChange={e => patch({ responseMinutes: Number(e.target.value) })} />
               </div>
               <div>
-                <label style={labelS}>Tempo Risoluzione (minuti) *</label>
-                <Input type="number" min={1} value={form.resolveMinutes} onChange={e => patch({ resolveMinutes: Number(e.target.value) })} />
+                <label htmlFor={fid('resolve-minutes')} style={labelS}>Tempo Risoluzione (minuti) *</label>
+                <Input id={fid('resolve-minutes')} type="number" min={1} value={form.resolveMinutes} onChange={e => patch({ resolveMinutes: Number(e.target.value) })} />
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
               <div>
-                <label style={labelS}>Timezone</label>
-                <Input value={form.timezone} onChange={e => patch({ timezone: e.target.value })} />
+                <label htmlFor={fid('timezone')} style={labelS}>Timezone</label>
+                <Input id={fid('timezone')} value={form.timezone} onChange={e => patch({ timezone: e.target.value })} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 2 }}>
                 <Toggle checked={form.businessHours} onChange={v => patch({ businessHours: v })} label={t('admin.sla.businessHoursLabel')} />

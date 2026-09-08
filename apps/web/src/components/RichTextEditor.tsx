@@ -203,7 +203,7 @@ export function RichTextEditor({
   function insertLink() {
     if (!editor) return
     const prev = editor.getAttributes('link')['href'] as string | undefined
-    const url  = window.prompt('URL del link:', prev ?? 'https://')
+    const url  = window.prompt(t('richText.linkPrompt'), prev ?? 'https://')
     if (!url) return
     if (url === '') {
       editor.chain().focus().unsetLink().run()
@@ -214,7 +214,7 @@ export function RichTextEditor({
 
   function insertImage() {
     if (!editor) return
-    const url = window.prompt('URL immagine:')
+    const url = window.prompt(t('richText.imagePrompt'))
     if (url) editor.chain().focus().setImage({ src: url }).run()
   }
 
@@ -231,44 +231,44 @@ export function RichTextEditor({
       {!readOnly && (
         <div style={{ background: 'var(--color-slate-bg)', borderBottom: '1px solid #e2e8f0', padding: '6px 8px', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
           {/* Text formatting */}
-          <Btn onClick={() => editor.chain().focus().toggleBold().run()}          active={editor.isActive('bold')}          title="Grassetto (Ctrl+B)"><Bold size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().toggleItalic().run()}        active={editor.isActive('italic')}        title="Corsivo (Ctrl+I)"><Italic size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().toggleUnderline().run()}     active={editor.isActive('underline')}     title="Sottolineato (Ctrl+U)"><UnderlineIcon size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().toggleStrike().run()}        active={editor.isActive('strike')}        title="Barrato"><Strikethrough size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleBold().run()}          active={editor.isActive('bold')}          title={t('richText.bold')}><Bold size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleItalic().run()}        active={editor.isActive('italic')}        title={t('richText.italic')}><Italic size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleUnderline().run()}     active={editor.isActive('underline')}     title={t('richText.underline')}><UnderlineIcon size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleStrike().run()}        active={editor.isActive('strike')}        title={t('richText.strike')}><Strikethrough size={14} /></Btn>
 
           <Sep />
 
           {/* Headings */}
-          <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} title="Titolo 1"><Heading1 size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title="Titolo 2"><Heading2 size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} title="Titolo 3"><Heading3 size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} title={t('richText.h1')}><Heading1 size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title={t('richText.h2')}><Heading2 size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} title={t('richText.h3')}><Heading3 size={14} /></Btn>
 
           <Sep />
 
           {/* Lists */}
-          <Btn onClick={() => editor.chain().focus().toggleBulletList().run()}    active={editor.isActive('bulletList')}    title="Elenco puntato"><List size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().toggleOrderedList().run()}   active={editor.isActive('orderedList')}   title="Elenco numerato"><ListOrdered size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleBulletList().run()}    active={editor.isActive('bulletList')}    title={t('richText.bulletList')}><List size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleOrderedList().run()}   active={editor.isActive('orderedList')}   title={t('richText.orderedList')}><ListOrdered size={14} /></Btn>
 
           <Sep />
 
           {/* Block elements */}
-          <Btn onClick={() => editor.chain().focus().toggleBlockquote().run()}    active={editor.isActive('blockquote')}    title="Citazione"><Quote size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().toggleCode().run()}          active={editor.isActive('code')}          title="Codice inline"><Code size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().toggleCodeBlock().run()}     active={editor.isActive('codeBlock')}     title="Blocco codice"><Square size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleBlockquote().run()}    active={editor.isActive('blockquote')}    title={t('richText.blockquote')}><Quote size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleCode().run()}          active={editor.isActive('code')}          title={t('richText.inlineCode')}><Code size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().toggleCodeBlock().run()}     active={editor.isActive('codeBlock')}     title={t('richText.codeBlock')}><Square size={14} /></Btn>
 
           <Sep />
 
           {/* Insert */}
-          <Btn onClick={insertLink}   active={editor.isActive('link')}   title="Inserisci link"><LinkIcon size={14} /></Btn>
-          <Btn onClick={insertImage}  active={false}                     title="Inserisci immagine"><ImageIcon size={14} /></Btn>
-          <Btn onClick={insertTable}  active={editor.isActive('table')}  title="Inserisci tabella"><TableIcon size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().setHorizontalRule().run()} active={false} title="Linea orizzontale"><Minus size={14} /></Btn>
+          <Btn onClick={insertLink}   active={editor.isActive('link')}   title={t('richText.insertLink')}><LinkIcon size={14} /></Btn>
+          <Btn onClick={insertImage}  active={false}                     title={t('richText.insertImage')}><ImageIcon size={14} /></Btn>
+          <Btn onClick={insertTable}  active={editor.isActive('table')}  title={t('richText.insertTable')}><TableIcon size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().setHorizontalRule().run()} active={false} title={t('richText.horizontalRule')}><Minus size={14} /></Btn>
 
           <Sep />
 
           {/* History */}
-          <Btn onClick={() => editor.chain().focus().undo().run()} active={false} title="Annulla (Ctrl+Z)"><Undo size={14} /></Btn>
-          <Btn onClick={() => editor.chain().focus().redo().run()} active={false} title="Ripristina (Ctrl+Y)"><Redo size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().undo().run()} active={false} title={t('richText.undo')}><Undo size={14} /></Btn>
+          <Btn onClick={() => editor.chain().focus().redo().run()} active={false} title={t('richText.redo')}><Redo size={14} /></Btn>
         </div>
       )}
 

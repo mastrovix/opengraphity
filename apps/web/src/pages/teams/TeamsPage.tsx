@@ -86,7 +86,7 @@ export function TeamsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState({ name: '', description: '' })
   const [createTeam, { loading: creating }] = useMutation(CREATE_TEAM, {
-    onCompleted: async () => { setCreateOpen(false); setForm({ name: '', description: '' }); await refetch(); toast.success('Team creato') },
+    onCompleted: async () => { setCreateOpen(false); setForm({ name: '', description: '' }); await refetch(); toast.success(t('toast.team.created')) },
     onError: (e) => toast.error(e.message),
   })
   const submitTeam = (e: React.FormEvent) => {
@@ -129,7 +129,14 @@ export function TeamsPage() {
       >
         <div style={{ marginBottom: 14 }}>
           <FieldLabel>{t('pages.teams.name')} *</FieldLabel>
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus placeholder="Es. Network Operations" />
+          <Input
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            required
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo aperto dall'utente (Modal)
+            autoFocus
+            placeholder="Es. Network Operations"
+          />
         </div>
         <div>
           <FieldLabel>{t('pages.teams.description')}</FieldLabel>

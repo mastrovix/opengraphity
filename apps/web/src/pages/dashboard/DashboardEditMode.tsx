@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   DndContext,
   closestCenter,
@@ -80,6 +81,7 @@ function SortableItem({
   onRemove: (tempId: string) => void
   onUpdateColSpan: (tempId: string, colSpan: number) => void
 }) {
+  const { t } = useTranslation()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: widget.tempId })
 
@@ -91,11 +93,11 @@ function SortableItem({
     >
       <div style={{ border: '2px dashed #0284c7', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
         <div style={{ padding: '8px 12px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span {...listeners} style={{ cursor: 'grab', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', userSelect: 'none' }} title="Trascina">⠿</span>
+          <span {...listeners} style={{ cursor: 'grab', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', userSelect: 'none' }} title={t('pages.dashboard.drag')}>⠿</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {widget.reportSection?.title ?? 'Widget'}
-              {widget.isNew && <span style={{ marginLeft: 6, fontSize: 'var(--font-size-label)', color: 'var(--color-brand)' }}>nuovo</span>}
+              {widget.reportSection?.title ?? t('pages.dashboard.widgetFallback')}
+              {widget.isNew && <span style={{ marginLeft: 6, fontSize: 'var(--font-size-label)', color: 'var(--color-brand)' }}>{t('pages.dashboard.newBadge')}</span>}
             </div>
             {widget.reportTemplate?.name && (
               <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{widget.reportTemplate.name}</div>
@@ -104,12 +106,16 @@ function SortableItem({
           <select
             value={widget.colSpan}
             onChange={(e) => onUpdateColSpan(widget.tempId, Number(e.target.value))}
+            aria-label={t('pages.dashboard.widthColumns')}
             style={{ fontSize: 'var(--font-size-table)', padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)' }}
           >
-            {[2, 3, 4, 6, 12].map((s) => <option key={s} value={s}>{s} col</option>)}
+            {[2, 3, 4, 6, 12].map((s) => <option key={s} value={s}>{t('pages.dashboard.cols', { count: s })}</option>)}
           </select>
           <button
+            type="button"
             onClick={() => onRemove(widget.tempId)}
+            aria-label={t('pages.dashboard.removeWidget')}
+            title={t('pages.dashboard.removeWidget')}
             style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
           >×</button>
         </div>
@@ -138,6 +144,7 @@ export function DashboardEditMode({
   onEditCustomWidget,
   onDeleteCustomWidget,
 }: DashboardEditModeProps) {
+  const { t } = useTranslation()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const visiblePending = pendingWidgets.filter((w) => !w.isDeleted)
   const hasAny = visiblePending.length > 0 || customWidgets.length > 0
@@ -150,8 +157,8 @@ export function DashboardEditMode({
         {!hasAny ? (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', border: '2px dashed #e5e7eb', borderRadius: 12, background: '#fafafa' }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>📊</div>
-            <div style={{ fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>Dashboard vuota</div>
-            Usa il pannello a destra per aggiungere widget personalizzati o report.
+            <div style={{ fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>{t('pages.dashboard.emptyEditTitle')}</div>
+            {t('pages.dashboard.emptyEditHint')}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -195,11 +202,12 @@ export function DashboardEditMode({
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-brand)' }} />
-            <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Widget personalizzati</span>
+            <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.dashboard.customWidgets')}</span>
           </div>
 
           <div style={{ padding: 14 }}>
             <button
+              type="button"
               onClick={onAddCustomWidget}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -209,19 +217,19 @@ export function DashboardEditMode({
               }}
             >
               <Plus size={15} />
-              Crea widget
+              {t('pages.dashboard.createWidget')}
             </button>
 
             {/* Description */}
             <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.6 }}>
-              Counter, grafico, tabella o gauge con dati in tempo reale — senza il report builder.
+              {t('pages.dashboard.customWidgetsDesc')}
             </p>
 
             {/* Existing custom widgets */}
             {customWidgets.length > 0 && (
               <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }}>
-                  Creati ({customWidgets.length})
+                  {t('pages.dashboard.createdCount', { count: customWidgets.length })}
                 </div>
                 {customWidgets.map((w) => {
                   const Icon = lookupOrError(TYPE_ICONS, w.widgetType, 'TYPE_ICONS', BarChart2)
@@ -230,13 +238,17 @@ export function DashboardEditMode({
                       <Icon size={12} color={w.color} />
                       <span style={{ flex: 1, fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.title}</span>
                       <button
+                        type="button"
                         onClick={() => onEditCustomWidget(w)}
-                        title="Modifica"
+                        title={t('common.edit')}
+                        aria-label={t('common.edit')}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--color-slate-light)', display: 'flex', alignItems: 'center' }}
                       ><Pencil size={11} /></button>
                       <button
+                        type="button"
                         onClick={() => onDeleteCustomWidget(w.id)}
-                        title="Elimina"
+                        title={t('common.delete')}
+                        aria-label={t('common.delete')}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#fca5a5', display: 'flex', alignItems: 'center' }}
                       ><Trash2 size={11} /></button>
                     </div>
@@ -251,16 +263,18 @@ export function DashboardEditMode({
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981' }} />
-            <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Aggiungi da report</span>
+            <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.dashboard.addFromReport')}</span>
           </div>
 
           <div style={{ maxHeight: 380, overflowY: 'auto' }}>
             {templates.length === 0 ? (
-              <div style={{ padding: '14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun report disponibile.</div>
+              <div style={{ padding: '14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.dashboard.noReports')}</div>
             ) : (
               templates.map((template) => (
                 <div key={template.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <button
+                    type="button"
+                    aria-expanded={expandedTemplates.has(template.id)}
                     onClick={() => onToggleTemplate(template.id)}
                     style={{ width: '100%', padding: '9px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'left' }}
                   >
@@ -270,15 +284,17 @@ export function DashboardEditMode({
                   {expandedTemplates.has(template.id) && (
                     <div style={{ background: 'var(--color-slate-bg)', paddingBottom: 4 }}>
                       {(template.sections ?? []).length === 0 && (
-                        <div style={{ padding: '6px 14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessuna sezione</div>
+                        <div style={{ padding: '6px 14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('pages.dashboard.noSections')}</div>
                       )}
                       {(template.sections ?? []).map((section) => (
                         <div key={section.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 14px', gap: 8 }}>
                           <span style={{ fontSize: 'var(--font-size-body)', color: '#4b5563', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.title}</span>
                           <button
+                            type="button"
                             onClick={() => onAddWidget(template, section)}
+                            aria-label={t('pages.dashboard.addSection', { name: section.title })}
                             style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #0284c7', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-table)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                          >+ Add</button>
+                          >+ {t('pages.dashboard.add')}</button>
                         </div>
                       ))}
                     </div>

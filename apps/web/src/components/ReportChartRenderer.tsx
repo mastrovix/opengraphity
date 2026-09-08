@@ -1,4 +1,5 @@
 import ReactECharts from 'echarts-for-react'
+import { useTranslation } from 'react-i18next'
 import { BarChart2 } from 'lucide-react'
 import { fontFamily } from '@/lib/tokens'
 import {
@@ -23,11 +24,12 @@ interface Props {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 function EmptyChart() {
+  const { t } = useTranslation()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', minHeight: 200, gap: 8 }}>
       <BarChart2 size={28} color="var(--color-slate)" />
       <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', fontWeight: 500 }}>
-        Grafico non disponibile con i parametri selezionati
+        {t('components.reportChart.unavailable')}
       </span>
     </div>
   )
@@ -51,14 +53,16 @@ function ChartError({ title, message }: { title: string; message: string }) {
 const REPORT_STYLE = { showValueLabels: true } as const
 
 export function ReportChartRenderer({ chartType, data, title, error }: Props) {
-  if (error) return <ChartError title="Errore nel calcolo della sezione" message={error} />
+  const { t, i18n } = useTranslation()
+  const locale = i18n.language
+  if (error) return <ChartError title={t('components.reportChart.computeError')} message={error} />
   if (!data) return <EmptyChart />
 
   let parsed: unknown
   try {
     parsed = JSON.parse(data)
   } catch (e) {
-    return <ChartError title="Dati sezione corrotti" message={e instanceof Error ? e.message : String(e)} />
+    return <ChartError title={t('components.reportChart.corruptData')} message={e instanceof Error ? e.message : String(e)} />
   }
 
   const echartsProps = { style: { height: 320, width: '100%' }, opts: { renderer: 'svg' as const }, theme: 'light' }
@@ -71,7 +75,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', gap: 8 }}>
           <div style={{ fontSize: 56, fontWeight: 800, color: 'var(--color-brand)', lineHeight: 1, fontFamily }}>
-            {d.value?.toLocaleString('it-IT')}
+            {d.value?.toLocaleString(locale)}
           </div>
           <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', fontFamily }}>
             {d.label ?? title}
@@ -86,7 +90,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
     case 'donut': {
       const pts = points()
       const total = pts.reduce((s, p) => s + p.value, 0)
-      return <ReactECharts option={buildPieOption(pts, { ...REPORT_STYLE, donut: true, centerText: total.toLocaleString('it-IT') })} {...echartsProps} />
+      return <ReactECharts option={buildPieOption(pts, { ...REPORT_STYLE, donut: true, centerText: total.toLocaleString(locale) })} {...echartsProps} />
     }
 
     case 'bar':

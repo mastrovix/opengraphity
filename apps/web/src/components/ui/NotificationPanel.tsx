@@ -5,18 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, GitPullRequest, Shield, Clock, Bell, CheckCheck } from 'lucide-react'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import type { InAppNotification } from '@/hooks/useNotifications'
+import { timeAgo } from '@/lib/datetime'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function timeAgo(timestamp: string, t: ReturnType<typeof useTranslation>['t']): string {
-  const diff    = Date.now() - new Date(timestamp).getTime()
-  const minutes = Math.floor(diff / 60_000)
-  if (minutes < 1)  return t('notifications.justNow')
-  if (minutes < 60) return t('notifications.minAgo',   { count: minutes })
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24)   return t('notifications.hoursAgo', { count: hours })
-  return t('notifications.daysAgo', { count: Math.floor(hours / 24) })
-}
 
 function entityPath(notif: InAppNotification): string | null {
   if (!notif.entity_id || !notif.entity_type) return null
@@ -107,7 +98,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
       {/* Timestamp + unread dot */}
       <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
-          {timeAgo(notif.timestamp, t)}
+          {timeAgo(notif.timestamp)}
         </span>
         {!notif.read && (
           <span style={{

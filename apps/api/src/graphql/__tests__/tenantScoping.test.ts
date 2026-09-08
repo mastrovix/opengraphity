@@ -87,3 +87,69 @@ describe('tenant scoping sui MATCH di dominio (tutta l\'API)', () => {
     })
   }
 })
+
+/**
+ * Stessa regola per i MERGE (Ondata 4): un `MERGE (x:Label {…})` senza
+ * tenant_id nella chiave di match può agganciare (o creare) un nodo di un
+ * altro tenant. La mappa proprietà può essere multi-riga (es. anomalyEngine),
+ * quindi qui si scansiona il contenuto intero e non riga per riga. Sono
+ * ammessi, come per i MATCH, `tenant_id` sulla riga di chiusura della mappa o
+ * su quella successiva (tipicamente `ON CREATE SET x.tenant_id = $tenantId`,
+ * usato dai task della change keyed su `change_key` = uuid della change) e il
+ * marcatore `// tenant-ok`.
+ */
+const MERGE_RE = new RegExp(`MERGE \\((\\w+):(${DOMAIN_LABELS.join('|')})\\s*\\{([^}]*)\\}`, 'g')
+
+function scanMergeContent(content: string, displayName: string): Offender[] {
+  const lines = content.split('\n')
+  const out: Offender[] = []
+  MERGE_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = MERGE_RE.exec(content)) !== null) {
+    if (m[3]!.includes('tenant_id')) continue
+    const startLine = content.slice(0, m.index).split('\n').length - 1        // 0-based
+    const endLine = startLine + m[0].split('\n').length - 1
+    const endCol = content.slice(0, m.index + m[0].length).split('\n').pop()!.length
+    if ((lines[endLine] ?? '').slice(endCol).includes('tenant_id')) continue  // WHERE/SET inline dopo la mappa
+    if ((lines[endLine + 1] ?? '').includes('tenant_id')) continue           // ON CREATE SET x.tenant_id = … sulla riga dopo
+    const startText = lines[startLine] ?? ''
+    if (startText.includes('tenant-ok') || (lines[startLine - 1] ?? '').includes('tenant-ok')) continue
+    out.push({ file: displayName, line: startLine + 1, text: startText.trim() })
+  }
+  return out
+}
+
+const scanMerge = (file: string) => scanMergeContent(readFileSync(file, 'utf8'), relative(apiSrc, file))
+
+describe('tenant scoping sui MERGE di dominio (tutta l\'API)', () => {
+  const files = SCOPE.flatMap(listFiles)
+
+  it('l\'euristica accetta chiave/riga-dopo/multi-riga/marcatore e segnala il resto', () => {
+    const sample = [
+      "MERGE (u:User {email: $email, tenant_id: $tenantId})",         // ok: nella chiave
+      "MERGE (t:AssessmentTask {change_key: $changeId + '-owner'})",  // ok: riga successiva
+      "  ON CREATE SET t.id = randomUUID(), t.tenant_id = $tenantId",
+      "MERGE (a:Anomaly {",                                            // ok: mappa multi-riga
+      "  tenant_id: $tenantId, fingerprint: $fp",
+      "})",
+      "// tenant-ok",
+      "MERGE (k:ApiKey {id: $id})",                                    // ok: marcatore
+      "MERGE (x:Incident {id: $id})",                                  // VIOLAZIONE
+      "RETURN x",
+      "MERGE (y:Problem {",                                            // VIOLAZIONE multi-riga
+      "  id: $id",
+      "})",
+    ].join('\n')
+    expect(scanMergeContent(sample, 'sample.ts')).toEqual([
+      { file: 'sample.ts', line: 9, text: 'MERGE (x:Incident {id: $id})' },
+      { file: 'sample.ts', line: 11, text: 'MERGE (y:Problem {' },
+    ])
+  })
+
+  for (const f of files) {
+    it(relative(apiSrc, f), () => {
+      const offenders = scanMerge(f)
+      expect(offenders.map((o) => `${o.file}:${o.line}  ${o.text}`)).toEqual([])
+    })
+  }
+})

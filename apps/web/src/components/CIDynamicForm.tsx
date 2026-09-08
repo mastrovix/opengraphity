@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { CITypeDef, CIFieldDef } from '@/contexts/MetamodelContext'
 import { validateCI, isFieldVisible, getFieldDefault } from '@/lib/ciValidator'
 import { useCIBaseEnums } from '@/lib/ciEnums'
@@ -63,15 +64,19 @@ interface CIDynamicFormProps {
 
 function FieldRenderer({
   field,
+  id,
   value,
   error,
   onChange,
 }: {
   field: CIFieldDef
+  /** id del controllo, associato alla label del campo (a11y) */
+  id: string
   value: unknown
   error?: string
   onChange: (val: unknown) => void
 }) {
+  const { t } = useTranslation()
   const hasError = Boolean(error)
   const borderColor = hasError ? 'var(--color-trigger-sla-breach)' : '#e5e7eb'
 
@@ -81,12 +86,12 @@ function FieldRenderer({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
             type="checkbox"
-            id={field.name}
+            id={id}
             checked={Boolean(value)}
             onChange={e => onChange(e.target.checked)}
             style={{ width: 16, height: 16, cursor: 'pointer' }}
           />
-          <label htmlFor={field.name} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
+          <label htmlFor={id} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
             {field.label}
           </label>
         </div>
@@ -96,6 +101,7 @@ function FieldRenderer({
       return (
         <input
           type="number"
+          id={id}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
           placeholder={field.label}
@@ -108,6 +114,7 @@ function FieldRenderer({
       return (
         <input
           type="date"
+          id={id}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
           style={{ ...inputBase, borderColor }}
@@ -118,12 +125,13 @@ function FieldRenderer({
     case 'enum':
       return (
         <select
+          id={id}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
           style={{ ...selectBase, borderColor }}
           {...focusHandlers(hasError)}
         >
-          <option value="">— seleziona —</option>
+          <option value="">{t('components.ciDynamicForm.selectOption')}</option>
           {field.enumValues.map(opt => (
             <option key={opt} value={opt}>{opt}</option>
           ))}
@@ -134,6 +142,7 @@ function FieldRenderer({
       return (
         <input
           type="text"
+          id={id}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
           placeholder={field.label}
@@ -153,6 +162,10 @@ export function CIDynamicForm({
   onCancel,
   loading = false,
 }: CIDynamicFormProps) {
+  const { t } = useTranslation()
+  // Prefisso unico per gli id label/controllo: la form può essere montata più volte (modal + anteprima designer)
+  const baseId = useId()
+  const fieldId = (name: string) => `${baseId}-${name}`
   const [formValues, setFormValues] = useState<Record<string, unknown>>(initialValues)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [globalError, setGlobalError] = useState<string | undefined>()
@@ -239,7 +252,7 @@ export function CIDynamicForm({
 
     // Name is required by the Create input but isn't a type field
     if (!String(formValues['name'] ?? '').trim()) {
-      setValidationErrors(prev => ({ ...prev, name: 'Il nome è obbligatorio' }))
+      setValidationErrors(prev => ({ ...prev, name: t('components.ciDynamicForm.nameRequired') }))
       setSubmitting(false)
       return
     }
@@ -286,7 +299,7 @@ export function CIDynamicForm({
           color:        'var(--color-trigger-sla-breach)',
           fontSize:     14,
         }}>
-          <strong>Errore sandbox scripting:</strong> {scriptError}
+          <strong>{t('components.ciDynamicForm.scriptError')}</strong> {scriptError}
         </div>
       )}
 
@@ -305,15 +318,17 @@ export function CIDynamicForm({
 
       {/* Base fields (name required + common attributes) */}
       <div>
-        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>
-          Nome<span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 2 }}>*</span>
+        <label htmlFor={fieldId('name')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>
+          {t('pages.cmdb.name')}<span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 2 }}>*</span>
         </label>
+        {/* Niente autoFocus: nel modal di creazione è Modal a spostare il focus sul
+            primo controllo; nelle anteprime del designer tipi non deve rubare il focus. */}
         <input
           type="text"
+          id={fieldId('name')}
           value={String(formValues['name'] ?? '')}
           onChange={e => handleChange('name', e.target.value)}
           style={inputBase}
-          autoFocus
         />
         {validationErrors['name'] && (
           <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
@@ -323,28 +338,28 @@ export function CIDynamicForm({
       </div>
       {baseEnums.error && (
         <div style={{ padding: '8px 14px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
-          <strong>Metamodello:</strong> {baseEnums.error}
+          <strong>{t('components.ciDynamicForm.metamodelError')}</strong> {baseEnums.error}
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div>
-          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>Stato</label>
-          <select value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>
+          <label htmlFor={fieldId('status')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.status')}</label>
+          <select id={fieldId('status')} value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>
             <option value="">—</option>
             {baseEnums.statuses.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>Ambiente</label>
-          <select value={String(formValues['environment'] ?? '')} onChange={e => handleChange('environment', e.target.value)} style={inputBase}>
+          <label htmlFor={fieldId('environment')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.environment')}</label>
+          <select id={fieldId('environment')} value={String(formValues['environment'] ?? '')} onChange={e => handleChange('environment', e.target.value)} style={inputBase}>
             <option value="">—</option>
             {baseEnums.environments.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
       </div>
       <div>
-        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>Descrizione</label>
-        <textarea value={String(formValues['description'] ?? '')} onChange={e => handleChange('description', e.target.value)} rows={2} style={{ ...inputBase, resize: 'vertical' }} />
+        <label htmlFor={fieldId('description')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('common.description')}</label>
+        <textarea id={fieldId('description')} value={String(formValues['description'] ?? '')} onChange={e => handleChange('description', e.target.value)} rows={2} style={{ ...inputBase, resize: 'vertical' }} />
       </div>
 
       {sortedFields.map(field => {
@@ -360,7 +375,7 @@ export function CIDynamicForm({
         return (
           <div key={field.name}>
             {!isCheckbox && (
-              <label style={{
+              <label htmlFor={fieldId(field.name)} style={{
                 display:      'block',
                 fontSize:     13,
                 fontWeight:   500,
@@ -374,6 +389,7 @@ export function CIDynamicForm({
 
             <FieldRenderer
               field={field}
+              id={fieldId(field.name)}
               value={formValues[field.name]}
               error={error}
               onChange={val => handleChange(field.name, val)}
@@ -403,7 +419,7 @@ export function CIDynamicForm({
             color:        'var(--color-slate)',
           }}
         >
-          Annulla
+          {t('common.cancel')}
         </button>
         <button
           type="submit"
@@ -420,7 +436,7 @@ export function CIDynamicForm({
             transition:   'background 150ms',
           }}
         >
-          {submitting ? 'Salvataggio...' : 'Salva'}
+          {submitting ? t('components.ciDynamicForm.saving') : t('common.save')}
         </button>
       </div>
     </form>

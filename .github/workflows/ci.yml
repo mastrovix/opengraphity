@@ -5,15 +5,28 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Weekly re-run of the dependency audit: new advisories appear without any
+  # commit. Only the `audit` job runs on this trigger.
+  schedule:
+    - cron: "0 5 * * 1"   # Mondays 05:00 UTC
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
+
+# VITE_* values baked into the web/portal bundles built here: they only have
+# to be valid URLs — CI never runs the bundles against a Keycloak
+env:
+  VITE_API_URL: /graphql
+  VITE_KEYCLOAK_URL: http://localhost:8080
+  VITE_KEYCLOAK_CLIENT_ID: opengrafo-web
+  VITE_TENANT_SLUG: ""
 
 jobs:
   build-and-test:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +45,7 @@ jobs:
 
       # Shared packages must be built first: apps resolve
       # @opengraphity/* imports against each package's dist/
+      # (includes web-core, consumed by apps/web and apps/portal)
       - name: Build packages
         run: pnpm --filter "./packages/*" build
 
@@ -40,18 +54,77 @@ jobs:
       - name: Check env documentation
         run: node scripts/check-env-example.mjs
 
+      # Locale it/en allineati, chiavi usate esistenti, niente toast/bottoni con letterali
+      - name: Check i18n
+        run: node scripts/check-i18n.mjs
+
       - name: Lint
         run: pnpm lint
 
+      # `pnpm typecheck` = tsc --noEmit in every workspace package: api, web,
+      # portal, web-core and the other packages
       - name: Typecheck
         run: pnpm typecheck
 
-      # API tests are fully mocked (no Neo4j/Redis needed); packages
-      # without a test script are skipped via --if-present
-      - name: Test
-        run: pnpm test
+      # Every package/app with a `test` script except the API, which runs
+      # below with coverage. All suites are mocked (no Neo4j/Redis needed).
+      - name: Test packages, web, portal
+        run: pnpm --recursive --if-present --filter "!@opengraphity/api" test
+
+      # apps/api/vitest.config.ts enforces the coverage floors on src/lib and
+      # src/services: a regression fails this step
+      - name: Test api (with coverage thresholds)
+        run: pnpm --filter @opengraphity/api test:coverage
+
+      - name: Upload api coverage summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-coverage
+          path: apps/api/coverage/coverage-summary.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Build apps
         run: |
           pnpm --filter @opengraphity/api build
           pnpm --filter @opengraphity/web build
+          VITE_KEYCLOAK_CLIENT_ID=opengrafo-portal pnpm --filter @opengraphity/portal build
+
+  # ── Dependency audit (G-11): production dependencies, gate >= high, with the
+  # explicit, expiring allowlist in audit-allowlist.json ──────────────────────
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # The audit reads the lockfile and the registry only: no native builds
+      - name: Install dependencies (no scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: pnpm audit --prod (allowlisted)
+        run: node scripts/audit-check.mjs --level=high
+
+  # ── Secret scanning (G-09): whole history of the push / PR range, rules and
+  # allowlist in .gitleaks.toml ────────────────────────────────────────────────
+  gitleaks:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml

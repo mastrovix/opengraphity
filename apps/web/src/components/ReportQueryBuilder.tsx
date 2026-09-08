@@ -43,13 +43,15 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
           {items.map(e => {
             const isSelected = nodes.length > 0 && (nodeDataMap[nodes[0]?.id] as NodeDataEntry | undefined)?.neo4jLabel === e.neo4jLabel
             return (
-              <div
+              <button
                 key={e.entityType}
+                type="button"
+                aria-pressed={isSelected}
                 onClick={() => onSelectRoot(e)}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                   gap: 10, padding: '20px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
-                  transition: 'all 0.15s',
+                  transition: 'all 0.15s', font: 'inherit',
                   border:     isSelected ? '2px solid #0284c7' : '1px solid #e5e7eb',
                   background: isSelected ? 'var(--color-brand-light)' : '#fff',
                 }}
@@ -58,7 +60,7 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
                 <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                   {e.label}
                 </span>
-              </div>
+              </button>
             )
           })}
         </div>

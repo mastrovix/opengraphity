@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import {
   ReactFlow, Background, Controls,
@@ -75,6 +76,8 @@ const labelStyle: React.CSSProperties = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props) {
+  const { t } = useTranslation()
+  const titleInputId = useId()
   const [wizardStep,    setWizardStep]    = useState<1 | 2 | 3 | 4>(1)
   const [title,         setTitle]         = useState(initialValues?.title ?? '')
   const [chartType,     setChartType]     = useState(initialValues?.chartType ?? 'bar')
@@ -244,7 +247,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       try {
         JSON.parse(n.filters)
       } catch (e) {
-        toast.error(`Filtri della sezione corrotti (nodo "${n.label}"): ${e instanceof Error ? e.message : String(e)}. Correggi il dato salvato prima di modificare la sezione.`)
+        toast.error(t('toast.report.corruptFilters', { node: n.label, error: e instanceof Error ? e.message : String(e) }))
         return
       }
     }
@@ -359,19 +362,23 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       {WIZARD_STEPS.map((s, i) => (
         <div key={s.n} style={{ display: 'flex', alignItems: 'flex-start', flex: i < WIZARD_STEPS.length - 1 ? 1 : 0 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-            <div
+            <button
+              type="button"
+              aria-label={s.label}
+              aria-current={wizardStep === s.n ? 'step' : undefined}
+              disabled={wizardStep <= s.n}
               onClick={() => { if (wizardStep > s.n) setWizardStep(s.n) }}
               style={{
-                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                width: 32, height: 32, borderRadius: '50%', flexShrink: 0, border: 'none', padding: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 'var(--font-size-card-title)', fontWeight: 700,
+                fontSize: 'var(--font-size-card-title)', fontWeight: 700, fontFamily: 'inherit',
                 background: wizardStep > s.n ? '#10b981' : wizardStep === s.n ? 'var(--color-brand)' : '#e5e7eb',
                 color:      wizardStep >= s.n ? '#fff' : 'var(--color-slate-light)',
                 cursor:     wizardStep > s.n ? 'pointer' : 'default',
               }}
             >
               {wizardStep > s.n ? <Check size={16} /> : s.n}
-            </div>
+            </button>
             <span style={{
               fontSize: 'var(--font-size-body)', fontWeight: 500, whiteSpace: 'nowrap',
               color: wizardStep === s.n ? 'var(--color-brand)' : wizardStep > s.n ? '#10b981' : 'var(--color-slate-light)',
@@ -396,17 +403,17 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   ) => (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
       {onBack ? (
-        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+        <button type="button" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
           <ChevronLeft size={18} /> Indietro
         </button>
       ) : <div />}
       <div style={{ display: 'flex', gap: 10 }}>
         {isLastStep && (
-          <button onClick={onCancel} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+          <button type="button" onClick={onCancel} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
             Annulla
           </button>
         )}
-        <button onClick={onNext} disabled={nextDisabled} style={{
+        <button type="button" onClick={onNext} disabled={nextDisabled} style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '10px 24px',
           borderRadius: 8, border: 'none',
           background: nextDisabled ? '#c7d2fe' : 'var(--color-brand)',
@@ -456,7 +463,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           <div style={{ position: 'absolute', top: 0, right: 0, width: 260, height: '100%', background: '#fff', borderLeft: '1px solid #e5e7eb', overflowY: 'auto', padding: 16, zIndex: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)' }}>Connetti a...</span>
-              <button onClick={() => setConnectingNodeId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
+              <button type="button" onClick={() => setConnectingNodeId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
                 <X size={16} />
               </button>
             </div>
@@ -466,9 +473,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>Nessuna connessione trovata</p>
             ) : (
               (reachableData?.reachableEntities ?? []).map((re, i) => (
-                <div key={`${re.neo4jLabel}:${re.relationshipType}:${re.direction}:${i}`}
+                <button key={`${re.neo4jLabel}:${re.relationshipType}:${re.direction}:${i}`}
+                  type="button"
                   onClick={() => connectReachable(re)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid #cffafe', borderRadius: 8, cursor: 'pointer', background: '#fafafe', marginBottom: 6 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid #cffafe', borderRadius: 8, cursor: 'pointer', background: '#fafafe', marginBottom: 6, width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-brand-light)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = '#fafafe' }}
                 >
@@ -477,7 +485,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{re.direction === 'outgoing' ? '→' : '←'} {re.relationshipType}</div>
                   </div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: '#c4b5fd' }}>{re.count}</div>
-                </div>
+                </button>
               ))
             )}
           </div>
@@ -516,10 +524,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         <div style={{ display: 'flex', gap: 24 }}>
           <div style={{ flex: '0 0 300px' }}>
             <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Titolo sezione</label>
-              <input value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} placeholder="Titolo..." />
+              <label htmlFor={titleInputId} style={labelStyle}>Titolo sezione</label>
+              <input id={titleInputId} value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} placeholder="Titolo..." />
               {suggestedTitle && title !== suggestedTitle && (
-                <button onClick={() => setTitle(suggestedTitle)} style={{ marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', padding: 0 }}>
+                <button type="button" onClick={() => setTitle(suggestedTitle)} style={{ marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', padding: 0 }}>
                   Usa: "{suggestedTitle}"
                 </button>
               )}
@@ -553,7 +561,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <label style={labelStyle}>Anteprima finale</label>
+            <div style={labelStyle}>Anteprima finale</div>
             <ReportPreview loading={previewLoading} data={previewData} title={title || undefined} placeholder="Nessuna anteprima disponibile" />
           </div>
         </div>

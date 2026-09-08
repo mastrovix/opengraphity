@@ -66,6 +66,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
           </span>
         )}
         <button
+          type="button"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onToggleResult}
           title={d.isResult ? 'Rimuovi dal risultato' : 'Includi nel risultato'}
@@ -75,6 +76,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
         </button>
         {!d.isRoot && (
           <button
+            type="button"
             className="nodrag nopan"
             onMouseDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); d.onDelete() }}
@@ -83,7 +85,8 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
         )}
       </div>
 
-      <div className="nodrag nopan" onMouseDown={e => e.stopPropagation()} style={{ padding: '6px 12px' }}>
+      {/* role=presentation: il wrapper intercetta solo mousedown per non far partire il drag del nodo React Flow; i controlli interattivi sono i figli */}
+      <div role="presentation" className="nodrag nopan" onMouseDown={e => e.stopPropagation()} style={{ padding: '6px 12px' }}>
         {d.filters.length > 0 && (
           <div style={{ marginBottom: 6 }}>
             {d.filters.map((f: FilterState, i: number) => (
@@ -124,6 +127,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                   />
                 )}
                 <button
+                  type="button"
                   className="nodrag nopan"
                   onMouseDown={e => e.stopPropagation()}
                   onClick={() => d.onRemoveFilter(i)}
@@ -136,6 +140,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
           </div>
         )}
         <button
+          type="button"
           className="nodrag nopan"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onAddFilter}
@@ -144,6 +149,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
           + filtro
         </button>
         <button
+          type="button"
           className="nodrag nopan"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onConnect}

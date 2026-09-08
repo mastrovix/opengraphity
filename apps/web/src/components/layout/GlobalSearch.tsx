@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { apolloClient } from '@/lib/apollo'
+import { keyActivate } from '@/lib/a11y'
 import { ciPath } from '@/lib/ciPath'
 import { layoutPalette as C } from '@/lib/tokens'
 
@@ -335,8 +336,10 @@ export function GlobalSearch() {
                     id={optionId(idx)}
                     data-idx={idx}
                     role="option"
+                    tabIndex={-1}
                     aria-selected={selected}
                     onClick={() => openItem(item)}
+                    onKeyDown={keyActivate(() => openItem(item))}
                     onMouseEnter={() => setSelectedIdx(idx)}
                     style={{
                       display:         'flex',

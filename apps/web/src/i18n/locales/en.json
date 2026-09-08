@@ -22,7 +22,8 @@
     "title": "Title",
     "select": "Select",
     "writeHere": "Write here...",
-    "close": "Close"
+    "close": "Close",
+    "yes": "Yes"
   },
   "bulk": {
     "selected_one": "{{count}} selected",
@@ -201,10 +202,44 @@
       "resolutionResolved": "Resolved — I fixed the problem",
       "resolutionFalsePositive": "False positive — not a real problem",
       "resolutionAcceptedRisk": "Accepted risk — aware, no action needed",
-      "count": "{{count}} anomalies"
+      "count": "{{count}} anomalies",
+      "severities": {
+        "critical": "Critical",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low"
+      }
     },
     "topology": {
-      "title": "Topology Map"
+      "title": "Topology Map",
+      "allTypes": "All types",
+      "depth": "Depth",
+      "hops_one": "{{count}} hop",
+      "hops_other": "{{count}} hops",
+      "allHops": "All",
+      "allEnvironments": "All environments",
+      "allStatuses": "All statuses",
+      "enumsUnavailable": "CI enums unavailable",
+      "showLabels": "Labels",
+      "onlyWithIncidents": "Only with incidents",
+      "loading": "Loading topology…",
+      "emptyHint": "Explore the relationships between infrastructure CIs",
+      "loadError": "Load error: {{error}}",
+      "truncated": "⚠️ Graph truncated to {{limit}} nodes — use the filters to narrow it down",
+      "stats": "{{nodes}} nodes · {{edges}} relationships",
+      "statsDepth": "· depth: {{depth}}",
+      "depthAll": "all",
+      "activeIncidents_one": "{{count}} active incident",
+      "activeIncidents_other": "{{count}} active incidents",
+      "changesInProgress_one": "{{count}} change in progress",
+      "changesInProgress_other": "{{count}} changes in progress",
+      "openIncidents": "Open incidents",
+      "changeInProgress": "Changes in progress",
+      "goToDetail": "Go to detail →",
+      "comboAll": "— All —",
+      "searchError": "Search error: {{error}}",
+      "searching": "Searching…",
+      "comboShown": "Showing {{shown}} of {{total}} — refine the search to find the others"
     },
     "teams": {
       "title": "Teams",
@@ -675,7 +710,25 @@
       "criteriaNTypes": "{{count}} types selected",
       "criteriaNameContains": "Name contains",
       "criteriaPreview": "→ {{count}} matching CIs",
-      "criteriaSaved": "Criteria saved"
+      "criteriaSaved": "Criteria saved",
+      "notFound": "CI not found.",
+      "backTo": "← Back to {{label}}",
+      "notes": "Notes",
+      "supportGroup": "Support Group",
+      "notAssignedOption": "— not assigned —",
+      "membersShownOfTotal": "{{shown}} of {{total}}",
+      "membersTruncated": "List truncated: the server returns at most {{shown}} of {{total}} members. Narrow the group criteria to see them all.",
+      "membersMap": "Members Map",
+      "dependencyMap": "Dependency Map",
+      "graphNodes": "Nodes:",
+      "graphAllNodes": "All ({{count}})",
+      "graphShowingFirst": "Showing the first {{shown}} of {{total}} members — the full list is in the table above.",
+      "relations": "Relationships",
+      "noRelations": "No relationships.",
+      "dependencies": "Dependencies",
+      "dependents": "Dependents",
+      "targetCI": "Target CI",
+      "criteriaNamePlaceholder": "e.g. web-"
     },
     "tasks": {
       "reopen": {
@@ -683,7 +736,158 @@
         "prompt": "Enter the reason for reopening (min 10 characters).",
         "placeholder": "Reason for reopening...",
         "confirm": "Confirm reopen"
+      },
+      "review": {
+        "intro": "Verify the deploy outcome and confirm or reject.",
+        "confirmed": "Confirmed",
+        "rejected": "Rejected"
+      },
+      "validation": {
+        "intro": "Verify the CI in the pre-production environment and record the outcome.",
+        "pass": "Pass",
+        "fail": "Fail"
       }
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "selectDashboard": "Select dashboard",
+      "newDashboard": "New dashboard",
+      "creating": "Creating…",
+      "saving": "Saving…",
+      "deleting": "Deleting…",
+      "confirmDelete": "Confirm deletion",
+      "name": "Name",
+      "namePlaceholder": "E.g. Operations Overview",
+      "visibility": "Visibility",
+      "visibilityPrivate": "Private (only me)",
+      "visibilityTeams": "Shared with teams",
+      "visibilityAll": "Everyone in the tenant",
+      "noTeams": "No teams",
+      "settingsTitle": "Dashboard settings",
+      "setDefault": "Set as default",
+      "badgeAll": "all",
+      "badgeTeam": "team",
+      "customize": "Customize",
+      "settings": "Settings",
+      "emptyHintBefore": "This dashboard is empty. Click",
+      "emptyHintAfter": "to add your reports.",
+      "emptyEditTitle": "Empty dashboard",
+      "emptyEditHint": "Use the panel on the right to add custom widgets or reports.",
+      "drag": "Drag",
+      "widgetFallback": "Widget",
+      "newBadge": "new",
+      "widthColumns": "Width (columns)",
+      "cols_one": "{{count}} col",
+      "cols_other": "{{count}} cols",
+      "removeWidget": "Remove widget",
+      "editWidget": "Edit widget",
+      "newWidget": "New custom widget",
+      "createWidget": "Create widget",
+      "updateWidget": "Update widget",
+      "customWidgets": "Custom widgets",
+      "customWidgetsDesc": "Counter, chart, table or gauge with live data — no report builder needed.",
+      "createdCount": "Created ({{count}})",
+      "addFromReport": "Add from report",
+      "noReports": "No reports available.",
+      "noSections": "No sections",
+      "add": "Add",
+      "addSection": "Add {{name}}",
+      "loadError": "Error loading data",
+      "statusCaption": "Status: {{value}}",
+      "titlePlaceholder": "E.g. Incidents opened today",
+      "widgetTypeLabel": "Widget type",
+      "widgetType": {
+        "counter": "Counter",
+        "chartBar": "Bar Chart",
+        "chartLine": "Line",
+        "chartPie": "Pie Chart",
+        "chartDonut": "Donut",
+        "table": "Table",
+        "gauge": "Gauge"
+      },
+      "widgetTypeDesc": {
+        "counter": "Total number",
+        "chartBar": "Distribution",
+        "chartLine": "Trend",
+        "chartPie": "Proportions",
+        "chartDonut": "Proportions",
+        "table": "List of values",
+        "gauge": "% of 100"
+      },
+      "entityLabel": "Entity",
+      "entity": {
+        "incident": "Incident",
+        "problem": "Problem",
+        "change": "Change",
+        "serviceRequest": "Service Request",
+        "server": "Server",
+        "application": "Application",
+        "database": "Database",
+        "certificate": "Certificate",
+        "networkDevice": "Network Device",
+        "vm": "Virtual Machine",
+        "businessApplication": "Business Application"
+      },
+      "metricLabel": "Metric",
+      "metric": {
+        "count": "Count",
+        "countByField": "Count by field",
+        "avgField": "Field average",
+        "sumField": "Field sum"
+      },
+      "groupByField": "Group by field",
+      "selectField": "-- Select field --",
+      "fieldType": {
+        "string": "text",
+        "number": "number",
+        "date": "date",
+        "boolean": "boolean",
+        "enum": "enum"
+      },
+      "filterOptional": "Filter (optional)",
+      "noFilter": "No filter",
+      "filterValue": "Filter value",
+      "filterValuePlaceholder": "E.g. new",
+      "numberPlaceholder": "E.g. 5",
+      "allValues": "-- All --",
+      "period": "Period",
+      "timeRange": {
+        "24h": "24h",
+        "7d": "7d",
+        "30d": "30d",
+        "90d": "90d",
+        "1y": "1 year",
+        "all": "All"
+      },
+      "sizeLabel": "Size",
+      "size": {
+        "small": "Small",
+        "medium": "Medium",
+        "large": "Large"
+      },
+      "sizeSub": {
+        "small": "1/4 width",
+        "medium": "1/2 width",
+        "large": "Full width"
+      },
+      "colorLabel": "Color",
+      "color": {
+        "cyan": "Cyan",
+        "green": "Green",
+        "red": "Red",
+        "amber": "Amber",
+        "purple": "Purple",
+        "slate": "Slate"
+      },
+      "customColor": "Custom color",
+      "livePreview": "Live preview",
+      "widgetTitlePlaceholder": "Widget title",
+      "configureHint": "Configure the options above to see the preview",
+      "chartLoading": "Loading chart…",
+      "preview": "Preview",
+      "total": "Total:",
+      "categories": "Categories:",
+      "previewHint": "The preview updates automatically while you configure the widget (600ms debounce)."
     }
   },
   "filter": {
@@ -728,11 +932,7 @@
   "notifications": {
     "title": "Notifications",
     "markAllRead": "Mark all as read",
-    "empty": "No notifications",
-    "justNow": "Just now",
-    "minAgo": "{{count}} min ago",
-    "hoursAgo": "{{count}}h ago",
-    "daysAgo": "{{count}}d ago"
+    "empty": "No notifications"
   },
   "notificationRules": {
     "title": "Notification Rules",
@@ -755,7 +955,13 @@
       "custom": "Custom"
     },
     "customRule": "Custom rule",
-    "systemRule": "System rule"
+    "systemRule": "System rule",
+    "severity": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    }
   },
   "workflow": {
     "addAction": "Add action",
@@ -845,7 +1051,6 @@
     "uploaded": "File uploaded",
     "uploadFailed": "Upload failed",
     "download": "Download",
-    "downloadFailed": "Download failed",
     "deleted": "Attachment deleted",
     "confirmDelete": "Delete this attachment?"
   },
@@ -970,9 +1175,6 @@
     "edited": "edited",
     "placeholder": "Write a message... (Ctrl+Enter to send)",
     "send": "Send",
-    "sendFailed": "Message not sent",
-    "editFailed": "Edit failed",
-    "deleteFailed": "Delete failed",
     "confirmDelete": "Delete this message?"
   },
   "admin": {
@@ -1017,6 +1219,340 @@
     },
     "notificationChannels": {
       "deleteTitle": "Delete this channel?"
+    }
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo_one": "{{count}} min ago",
+    "minutesAgo_other": "{{count}} min ago",
+    "hoursAgo_one": "{{count}} hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago",
+    "lessThanMinute": "< 1 min",
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days"
+  },
+  "routeError": {
+    "notFound": "Page not found",
+    "unexpected": "Unexpected error",
+    "generic": "Something went wrong",
+    "backToDashboard": "Back to Dashboard"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "retry": "Retry"
+  },
+  "roles": {
+    "admin": "Admin",
+    "operator": "Operator",
+    "viewer": "Viewer",
+    "end_user": "End user"
+  },
+  "risk": {
+    "low": "LOW",
+    "medium": "MEDIUM",
+    "high": "HIGH"
+  },
+  "taskStatus": {
+    "toBeCompleted": "TO BE COMPLETED"
+  },
+  "richText": {
+    "bold": "Bold (Ctrl+B)",
+    "italic": "Italic (Ctrl+I)",
+    "underline": "Underline (Ctrl+U)",
+    "strike": "Strikethrough",
+    "h1": "Heading 1",
+    "h2": "Heading 2",
+    "h3": "Heading 3",
+    "bulletList": "Bullet list",
+    "orderedList": "Numbered list",
+    "blockquote": "Quote",
+    "inlineCode": "Inline code",
+    "codeBlock": "Code block",
+    "insertLink": "Insert link",
+    "insertImage": "Insert image",
+    "insertTable": "Insert table",
+    "horizontalRule": "Horizontal rule",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Y)",
+    "linkPrompt": "Link URL:",
+    "imagePrompt": "Image URL:"
+  },
+  "conditionEditor": {
+    "fieldPlaceholder": "-- Field --",
+    "unknownField": "field \"{{field}}\" not in the metamodel",
+    "notInMetamodel": "not in the metamodel",
+    "unknownOperator": "operator \"{{operator}}\" not supported by the editor",
+    "unsupported": "unsupported",
+    "remove": "Remove",
+    "fieldsUnavailable": "Fields unavailable",
+    "value": "Value",
+    "userPlaceholder": "-- User --",
+    "teamPlaceholder": "-- Team --",
+    "valuePlaceholder": "-- Value --"
+  },
+  "toast": {
+    "internalChat": {
+      "sendFailed": "Message not sent: {{error}}",
+      "editFailed": "Edit failed: {{error}}",
+      "deleteFailed": "Delete failed: {{error}}"
+    },
+    "attachments": {
+      "downloadFailed": "Download failed: {{error}}"
+    },
+    "trigger": {
+      "created": "Trigger created",
+      "updated": "Trigger updated",
+      "deleted": "Trigger deleted",
+      "openFailed": "Cannot open \"{{name}}\": {{error}}. Fix the record in the database before editing.",
+      "nameRequired": "Name is required"
+    },
+    "rule": {
+      "created": "Rule created",
+      "updated": "Rule updated",
+      "deleted": "Rule deleted",
+      "openFailed": "Cannot open \"{{name}}\": {{error}}. Fix the record in the database before editing.",
+      "nameRequired": "Name is required"
+    },
+    "sla": {
+      "created": "Policy created",
+      "updated": "Policy updated",
+      "deleted": "Policy deleted",
+      "enabled": "Policy enabled",
+      "disabled": "Policy disabled",
+      "nameRequired": "Name is required",
+      "olaCreated": "Contract created"
+    },
+    "catalog": {
+      "created": "Item created"
+    },
+    "question": {
+      "textRequired": "Text is required",
+      "optionRequired": "At least one option is required"
+    },
+    "kb": {
+      "versionRestored": "Version restored",
+      "sentForReview": "Article sent for review",
+      "reviewStepNotFound": "WorkflowInstance or review step not found",
+      "titleBodyRequired": "Title and body are required",
+      "titleBodyRequiredPublish": "Title and body are required before publishing"
+    },
+    "queue": {
+      "retryQueued": "Job queued for retry"
+    },
+    "integration": {
+      "copied": "Copied!",
+      "webhookCreateFailed": "Webhook creation failed: {{error}}",
+      "outboundCreated": "Outbound webhook created",
+      "apiKeyCreateFailed": "API key creation failed: {{error}}",
+      "testOk": "Test OK — status {{status}}",
+      "testFailed": "Test failed: {{error}}",
+      "testError": "Webhook test failed: {{error}}",
+      "tokenRegenFailed": "Token regeneration failed: {{error}}",
+      "keyRegenFailed": "Key regeneration failed: {{error}}"
+    },
+    "team": {
+      "created": "Team created",
+      "managerUpdated": "Manager updated",
+      "managerRemoved": "Manager removed",
+      "changeManagerUpdated": "Change Manager team updated"
+    },
+    "task": {
+      "claimed": "Task claimed",
+      "userUnknown": "User not identified",
+      "completed": "Task completed",
+      "reopened": "Task reopened",
+      "assignmentUpdated": "Assignment updated",
+      "planSaved": "Plan saved",
+      "reminderSent": "Reminder sent"
+    },
+    "approval": {
+      "rejectReasonRequired": "A rejection reason is required",
+      "approved": "Approval recorded",
+      "rejected": "Request rejected",
+      "cancelled": "Request cancelled"
+    },
+    "report": {
+      "duplicated_one": "Report duplicated: \"{{name}}\" ({{count}} section)",
+      "duplicated_other": "Report duplicated: \"{{name}}\" ({{count}} sections)",
+      "saveFailed": "Error while saving",
+      "corruptFilters": "Corrupt section filters (node \"{{node}}\"): {{error}}. Fix the saved data before editing the section.",
+      "streamError": "Error while generating the answer",
+      "aiOverloaded": "AI service temporarily overloaded. Try again in a few seconds.",
+      "droppedFrames_one": "{{count}} fragment of the answer could not be interpreted ({{reason}}): the text may be incomplete.",
+      "droppedFrames_other": "{{count}} fragments of the answer could not be interpreted ({{reason}}): the text may be incomplete."
+    },
+    "itil": {
+      "previewNoSave": "Preview — nothing saved",
+      "enumRequired": "Select a reference enum for enum-type fields"
+    },
+    "citype": {
+      "typeCreated": "Type created",
+      "saved": "Saved",
+      "typeDeleted": "Type deleted",
+      "fieldAdded": "Field added",
+      "baseFieldAdded": "Base field added",
+      "fieldRemoved": "Field removed",
+      "relationAdded": "Relation added",
+      "relationRemoved": "Relation removed",
+      "previewNoSave": "Preview — nothing saved",
+      "nameLabelRequired": "Name and label are required"
+    },
+    "import": {
+      "requestFailed": "Import request failed: {{error}}"
+    },
+    "sync": {
+      "connectionFailed": "Connection failed",
+      "scheduleSaved": "Schedule saved",
+      "conflictResolved": "Conflict resolved"
+    },
+    "workflow": {
+      "stepNotRecognized": "Step not recognized",
+      "transitionCreated": "Transition created — set its trigger in the panel",
+      "transitionDeleted": "Transition deleted",
+      "stepDeleted": "Step deleted",
+      "stepAdded": "Step added",
+      "saveConflict": "Workflow modified by another user: reload the page before saving. Your changes were not applied.",
+      "saveNoResponse": "Save returned no response from the server: reload the page to check the workflow state.",
+      "saved": "Workflow saved — v{{version}}",
+      "savedLocally": "Change saved locally"
+    },
+    "ci": {
+      "saved": "Changes saved",
+      "ownerGroupUpdated": "Owner group updated",
+      "ownerGroupRemoved": "Owner group removed",
+      "supportGroupUpdated": "Support group updated",
+      "supportGroupRemoved": "Support group removed"
+    },
+    "anomaly": {
+      "scanCompleted": "Scan completed",
+      "scanTimeout": "Scan not completed within {{seconds}}s: check the anomaly worker (results will show up on the next refresh).",
+      "scanEnqueueFailed": "Unable to start the scan: job queue unavailable."
+    },
+    "dashboard": {
+      "created": "Dashboard created",
+      "createFailed": "Dashboard creation failed: {{error}}",
+      "updated": "Dashboard updated",
+      "updateFailed": "Dashboard update failed: {{error}}",
+      "setDefault": "Dashboard set as default",
+      "deleted": "Dashboard deleted",
+      "deleteFailed": "Dashboard deletion failed: {{error}}",
+      "saved": "Dashboard saved",
+      "saveFailed": "Error while saving: {{error}}",
+      "emptyResponse": "Empty response from server: layout not confirmed"
+    },
+    "widget": {
+      "created": "Widget created",
+      "updated": "Widget updated",
+      "saveFailed": "Widget save failed: {{error}}",
+      "titleRequired": "Enter a title",
+      "removed": "Widget removed",
+      "removeFailed": "Widget removal failed: {{error}}",
+      "reorderFailed": "Reorder failed: {{error}}"
+    },
+    "incident": {
+      "created": "Incident created",
+      "updated": "Incident updated",
+      "teamAssignmentFailed": "Team assignment: {{error}}",
+      "fieldRulesUnavailable": "Cannot validate required fields: {{error}}",
+      "kbDraftCreated": "KB draft created: \"{{title}}\" — find it in Knowledge Base Admin",
+      "kbDraftFailed": "KB draft failed: {{error}}",
+      "transitionCompletedTo": "Transition completed → {{step}}",
+      "transitionFailed": "Transition failed",
+      "transitionExecuted": "Transition executed",
+      "transitionError": "Transition error",
+      "transitionNotSelected": "No transition selected",
+      "workflowInstanceMissing": "WorkflowInstance not found",
+      "workflowRulesNotLoaded": "Workflow rules not loaded: {{error}}",
+      "majorUpdated": "Major Incident status updated",
+      "teamAssigned": "Team assigned",
+      "unassignFailed": "Could not remove assignee",
+      "takenOver": "Incident taken over",
+      "commentAdded": "Comment added",
+      "ciAdded": "CI added",
+      "ciRemoved": "CI removed",
+      "selectTeamFirst": "Select a team in the Details card first",
+      "selectUserFirst": "Select a user in the Details card first",
+      "aiDraftFailed": "AI draft failed: {{error}}",
+      "aiDraftNoResponse": "AI draft failed: no response"
+    },
+    "problem": {
+      "created": "Problem created",
+      "updated": "Updated",
+      "deleted": "Problem deleted",
+      "teamAssignmentFailed": "Team assignment: {{error}}",
+      "analysisFailed": "Analysis failed: {{error}}",
+      "analysisNoResponse": "Analysis failed: no response",
+      "transitionCompleted": "Transition completed",
+      "transitionPartial_one": "Transition executed, but {{count}} action failed: {{errors}}",
+      "transitionPartial_other": "Transition executed, but {{count}} actions failed: {{errors}}",
+      "teamAssigned": "Team assigned",
+      "userAssigned": "User assigned",
+      "ciAdded": "CI added",
+      "ciRemoved": "CI removed",
+      "incidentLinked": "Incident linked",
+      "incidentUnlinked": "Incident unlinked",
+      "changeLinked": "Change linked",
+      "commentAdded": "Comment added",
+      "notesTooShort": "Notes too short (minimum 10 characters)"
+    },
+    "change": {
+      "created": "Change {{code}} created",
+      "deleted": "Change deleted",
+      "transitionPartial_one": "Transition executed, but {{count}} action failed: {{errors}}",
+      "transitionPartial_other": "Transition executed, but {{count}} actions failed: {{errors}}",
+      "approvalRecorded": "Approval recorded",
+      "approvalRejected": "Approval rejected",
+      "ticketLinked": "Ticket linked",
+      "ticketUnlinked": "Ticket unlinked",
+      "ciAdded": "CI added",
+      "ciRemoved": "CI removed",
+      "ciAddedToAffected": "CI added to affected"
+    },
+    "request": {
+      "created": "Service request created",
+      "updated": "Request updated",
+      "transitionFailed": "Transition failed"
+    }
+  },
+  "components": {
+    "reportChart": {
+      "unavailable": "Chart not available with the selected parameters",
+      "computeError": "Error computing the section",
+      "corruptData": "Corrupt section data"
+    },
+    "ciDynamicForm": {
+      "selectOption": "— select —",
+      "nameRequired": "Name is required",
+      "scriptError": "Scripting sandbox error:",
+      "metamodelError": "Metamodel:",
+      "saving": "Saving..."
+    },
+    "ciGraph": {
+      "showBlastRadius": "Show blast radius",
+      "maxDepth": "Max depth",
+      "spread": "Spacing",
+      "legendDependencies": "Dependencies (this CI depends on)",
+      "legendDependents": "Dependents (depend on this CI)",
+      "legendBlast": "Blast radius (indirect impact)"
+    },
+    "topologyGraph": {
+      "legend": "Legend",
+      "nodes": "Nodes",
+      "edges": "Relationships",
+      "signals": "Signals",
+      "activeIncident": "Active incident",
+      "changeInProgress": "Change in progress"
+    },
+    "widgetBody": {
+      "label": "Label",
+      "value": "Value",
+      "noData": "No data"
     }
   }
 }

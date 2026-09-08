@@ -1,0 +1,41 @@
+# gitleaks configuration (G-09/G-10) — used by the `gitleaks` job in
+# .github/workflows/ci.yml and by `gitleaks git .` locally.
+#
+# Extends the default rule set; the allowlist below covers ONLY documented
+# placeholders and local-stack defaults that are not secrets. Anything that
+# looks like a real credential (JWT, private key, cloud/API token) must be
+# removed from the history and rotated, not added here.
+title = "OpenGraphity gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders, lockfile hashes and local-stack defaults"
+
+paths = [
+  # Every value is a `change-me-*` placeholder or a localhost URL
+  '''^infra/\.env\.example$''',
+  '''^\.env_pi5\.example$''',
+  # Integrity hashes and resolved URLs, never credentials
+  '''^pnpm-lock\.yaml$''',
+  # Keycloak realm export for the Pi5 lab stack: public clients only (no
+  # client secret) and one demo user with a documented lab password
+  '''^keycloak-realm_pi5\.json$''',
+]
+
+regexes = [
+  # Placeholder convention of infra/.env.example
+  '''change-me-[a-z0-9-]+''',
+  # Default password of the local docker stack (documented in README, e2e/global-setup.ts)
+  '''opengra(ph|f)ity_local''',
+  '''opengrafo_local''',
+  # Public well-known JWKS/issuer URLs used in tests
+  '''http://localhost:8080/realms/[a-z0-9-]+''',
+]
+
+stopwords = [
+  "example",
+  "placeholder",
+  "change-me",
+]

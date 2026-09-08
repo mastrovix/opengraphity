@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { CIDynamicForm } from '@/components/CIDynamicForm'
 import type { CITypeDef } from '@/contexts/MetamodelContext'
 import type { ITILType, Tab } from './useITILTypeDesigner'
@@ -9,6 +10,7 @@ export interface ITILTypePreviewProps {
 }
 
 export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewProps) {
+  const { t } = useTranslation()
   const previewType: CITypeDef = {
     id:               selectedType.id,
     name:             selectedType.name,
@@ -38,7 +40,7 @@ export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewP
         ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun campo. Aggiungi campi nella tab "Campi".</p>
         : <CIDynamicForm
             ciType={previewType}
-            onSubmit={async () => { toast.info('Preview — nessun dato salvato') }}
+            onSubmit={async () => { toast.info(t('toast.itil.previewNoSave')) }}
             onCancel={() => setActiveTab('fields')}
           />
       }

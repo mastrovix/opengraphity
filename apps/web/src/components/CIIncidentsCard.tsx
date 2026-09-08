@@ -33,11 +33,13 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
 
   function renderRow(inc: Incident, faded = false) {
     return (
-      <div
+      <button
+        type="button"
         key={inc.id}
         onClick={() => navigate(`/incidents/${inc.id}`)}
         style={{
-          display: 'flex', alignItems: 'flex-start', gap: 10,
+          display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%',
+          background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left',
           padding: '6px 0', borderBottom: '1px solid #f9fafb',
           cursor: 'pointer', opacity: faded ? 0.5 : 1,
         }}
@@ -52,7 +54,7 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
           </div>
           <div style={{ marginTop: 2 }}><StatusBadge value={inc.status} /></div>
         </div>
-      </div>
+      </button>
     )
   }
 
@@ -72,15 +74,17 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
-      <div
+      <button
+        type="button"
+        aria-expanded={open}
         onClick={() => setOpen(p => !p)}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? '1px solid #e5e7eb' : 'none' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? '1px solid #e5e7eb' : 'none' }}
       >
         <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', display: 'flex', alignItems: 'center' }}>
           Incident <CountBadge count={incidents.length} />
         </span>
         {open ? <ChevronDown size={16} color="var(--color-slate-light)" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
-      </div>
+      </button>
       {open && (
         <div style={{ padding: '0 20px 16px' }}>
           {incidents.length === 0

@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { colors, lookupOrError } from '@/lib/tokens'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
@@ -41,6 +42,7 @@ export function WorkflowToolbar({
   onSave,
   onRefetch,
 }: WorkflowToolbarProps) {
+  const { t } = useTranslation()
   const navigate            = useNavigate()
   const [showAddStep, setShowAddStep] = useState(false)
   const [stepType,    setStepType]    = useState('parallel_fork')
@@ -50,7 +52,7 @@ export function WorkflowToolbar({
   const canSave      = (hasChanges || pendingCount > 0) && !!def
 
   const [addWorkflowStep, { loading: addingStep }] = useMutation(ADD_WORKFLOW_STEP, {
-    onCompleted: () => { toast.success('Step aggiunto'); setShowAddStep(false); setStepLabel(''); setTimerMins(''); onRefetch?.() },
+    onCompleted: () => { toast.success(t('toast.workflow.stepAdded')); setShowAddStep(false); setStepLabel(''); setTimerMins(''); onRefetch?.() },
     onError: (e: { message: string }) => toast.error(e.message),
   })
 
@@ -66,6 +68,7 @@ export function WorkflowToolbar({
     }}>
       <div>
         <button
+          type="button"
           onClick={() => navigate('/workflow')}
           style={{
             display:      'inline-flex',
@@ -112,6 +115,7 @@ export function WorkflowToolbar({
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {def && def.entityType !== 'change' && (
           <button
+            type="button"
             onClick={() => setShowAddStep(true)}
             style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}
           >
@@ -119,6 +123,7 @@ export function WorkflowToolbar({
           </button>
         )}
         <button
+          type="button"
           disabled={!canSave}
           onClick={onSave}
           style={{
@@ -183,7 +188,7 @@ export function WorkflowToolbar({
               <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>TIPO</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SPECIAL_STEP_TYPES.map(s => (
-                  <button key={s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : '#e2e6f0'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : '#fff', color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+                  <button type="button" key={s.type} aria-pressed={stepType === s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : '#e2e6f0'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : '#fff', color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
                     {s.label}
                   </button>
                 ))}

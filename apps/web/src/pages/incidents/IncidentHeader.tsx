@@ -67,6 +67,7 @@ export function IncidentHeader({
     <div style={{ marginBottom: 24 }}>
       {/* Row 1 — back */}
       <button
+        type="button"
         onClick={onBack}
         style={{
           display:      'inline-flex',
@@ -104,6 +105,7 @@ export function IncidentHeader({
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
           {manualTransitions.map((tr) => (
             <button
+              type="button"
               key={tr.toStep}
               onClick={() => onTransitionClick(tr)}
               disabled={transitioning}
@@ -114,6 +116,7 @@ export function IncidentHeader({
           ))}
           {canRequestChange && (
             <button
+              type="button"
               onClick={onRequestChange}
               style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
             >

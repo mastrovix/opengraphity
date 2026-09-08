@@ -3,6 +3,7 @@
  * and lets the viewer send a reminder ping via SEND_TASK_REMINDER.
  */
 import { useQuery, useMutation } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Bell } from 'lucide-react'
 import { GET_TEAM_DETAIL } from '@/graphql/queries'
@@ -13,11 +14,12 @@ export function TeamGatePanel({ teamId, taskId, assigneeId }: {
   taskId: string
   assigneeId?: string | null
 }) {
+  const { t } = useTranslation()
   const { data } = useQuery<{ team: { id: string; name: string; members: Array<{ id: string; name: string; email: string }> } | null }>(
     GET_TEAM_DETAIL, { variables: { id: teamId ?? '' }, skip: !teamId },
   )
   const [sendReminder, { loading: sending }] = useMutation(SEND_TASK_REMINDER, {
-    onCompleted: () => toast.success('Sollecito inviato'),
+    onCompleted: () => toast.success(t('toast.task.reminderSent')),
     onError:     (e) => toast.error(e.message),
   })
   const team = data?.team

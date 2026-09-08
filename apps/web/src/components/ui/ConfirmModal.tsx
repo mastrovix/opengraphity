@@ -41,7 +41,14 @@ export function ConfirmModal({
       footerStyle={{ justifyContent: 'flex-end', gap: 10 }}
       footer={
         <>
-          <Button variant="secondary" size="xs" onClick={onCancel} disabled={loading} autoFocus>
+          <Button
+            variant="secondary"
+            size="xs"
+            onClick={onCancel}
+            disabled={loading}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- dialogo di conferma aperto dall'utente: il focus iniziale va sull'azione sicura (Annulla), non sulla X dell'header
+            autoFocus
+          >
             {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button

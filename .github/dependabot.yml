@@ -1,0 +1,100 @@
+# Dependabot (G-10): weekly update PRs for npm (pnpm workspace), the
+# container base images and the GitHub Actions used by the workflows.
+#
+# npm minor/patch bumps arrive as ONE grouped PR per week; majors stay
+# separate so each one gets its own review (express 5, @apollo/server 5,
+# vite 8 … are deliberate migrations, see audit-allowlist.json).
+version: 2
+
+updates:
+  # ── npm: the whole pnpm workspace (root + apps/* + packages/*) ─────────────
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Rome"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "npm"]
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+      security-patches:
+        applies-to: security-updates
+        update-types: ["minor", "patch"]
+    ignore:
+      # Node 20 is the runtime of the images (node:20-slim) and of CI —
+      # isolated-vm does not compile against Node 22's V8
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  # ── Docker base images (FROM lines) ────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Europe/Rome"
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore(docker)"
+    ignore:
+      # node:20-slim on purpose (see apps/api/Dockerfile)
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "docker"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Europe/Rome"
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore(docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/apps/portal"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Europe/Rome"
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore(docker)"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  # ── Images referenced by infra/docker-compose.yml (neo4j, redis, keycloak…)
+  - package-ecosystem: "docker-compose"
+    directory: "/infra"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Europe/Rome"
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore(docker)"
+    ignore:
+      # Neo4j 5 (vector indexes, APOC plugin) — a major is a migration
+      - dependency-name: "neo4j"
+        update-types: ["version-update:semver-major"]
+
+  # ── GitHub Actions used by .github/workflows/* ─────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Europe/Rome"
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]

@@ -56,9 +56,13 @@ export function ModalOverlay({ title, onClose, children }: {
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
   return (
-    <div role="dialog" aria-modal="true" aria-label={title}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={onClose}>
-      <div ref={containerRef} style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
+    // Il click sull'overlay (fuori dal pannello) chiude il dialogo: scorciatoia
+    // solo-mouse; l'equivalente da tastiera è Escape (keydown sopra) e il bottone "Chiudi".
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div ref={containerRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{title}</h3>
           <button type="button" onClick={onClose} aria-label="Chiudi" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useId, useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
@@ -35,7 +36,9 @@ const inputBase: React.CSSProperties = {
 }
 
 export function CreateChangePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
+  const ids = { title: useId(), why: useId(), what: useId(), owner: useId(), ciSearch: useId() }
   const [searchParams] = useSearchParams()
   const problemId  = searchParams.get('problemId')
   const incidentId = searchParams.get('incidentId')
@@ -92,7 +95,7 @@ export function CreateChangePage() {
   const [createChange, { loading }] = useMutation<{ createChange: { id: string; code: string } }>(CREATE_CHANGE, {
     refetchQueries: [{ query: GET_CHANGES, variables: { phase: null, limit: 50, offset: 0 } }],
     onCompleted: (data) => {
-      toast.success(`Change ${data.createChange.code} creato`)
+      toast.success(t('toast.change.created', { code: data.createChange.code }))
       navigate(`/changes/${data.createChange.id}`, { state: { refresh: true } })
     },
     onError: (err) => {
@@ -127,6 +130,7 @@ export function CreateChangePage() {
     <PageContainer style={{ minHeight: '100%', backgroundColor: 'var(--color-slate-bg)', paddingBottom: 64 }}>
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
         <button
+          type="button"
           onClick={() => navigate('/changes')}
           style={{
             display:       'inline-flex',
@@ -176,16 +180,16 @@ export function CreateChangePage() {
         }}>
           {/* TITOLO */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.title} style={fieldLabel}>
               Titolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <input
+              id={ids.title}
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="Es. Upgrade database produzione a PostgreSQL 16"
               style={inputBase}
-              autoFocus
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
             />
@@ -193,7 +197,7 @@ export function CreateChangePage() {
 
           {/* TIPO DI CHANGE */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>Tipo di change</label>
+            <div style={fieldLabel}>Tipo di change</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {(['standard','normal','emergency'] as const).map(t => {
                 const sel = changeType === t
@@ -216,8 +220,9 @@ export function CreateChangePage() {
 
           {/* WHY (Perché) */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>Perché <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+            <label htmlFor={ids.why} style={fieldLabel}>Perché <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
             <textarea
+              id={ids.why}
               value={why}
               onChange={e => setWhy(e.target.value)}
               placeholder="Perché serve questo change? (motivazione, problema o obiettivo)"
@@ -230,8 +235,9 @@ export function CreateChangePage() {
 
           {/* WHAT (Cosa) */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>Cosa <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+            <label htmlFor={ids.what} style={fieldLabel}>Cosa <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
             <textarea
+              id={ids.what}
               value={what}
               onChange={e => setWhat(e.target.value)}
               placeholder="Cosa verrà cambiato, nel dettaglio?"
@@ -244,8 +250,9 @@ export function CreateChangePage() {
 
           {/* CHANGE OWNER */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>Change Owner</label>
+            <label htmlFor={ids.owner} style={fieldLabel}>Change Owner</label>
             <select
+              id={ids.owner}
               value={ownerId}
               onChange={e => setOwnerId(e.target.value)}
               style={inputBase}
@@ -259,7 +266,7 @@ export function CreateChangePage() {
 
           {/* CI AFFECTED */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.ciSearch} style={fieldLabel}>
               CI Impattati <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
@@ -275,6 +282,7 @@ export function CreateChangePage() {
                 🔍
               </span>
               <input
+                id={ids.ciSearch}
                 type="text"
                 value={ciSearch}
                 onChange={e => setCiSearch(e.target.value)}
@@ -299,11 +307,19 @@ export function CreateChangePage() {
                   zIndex:       20,
                 }}>
                   {ciResults.map(ci => (
-                    <div
+                    <button
+                      type="button"
                       key={ci.id}
                       onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
                       className="hover-bg"
                       style={{
+                        width:        '100%',
+                        background:   'none',
+                        border:       'none',
+                        borderRadius: 0,
+                        font:         'inherit',
+                        color:        'inherit',
+                        textAlign:    'left',
                         padding:      '8px 12px',
                         cursor:       'pointer',
                         display:      'flex',
@@ -324,7 +340,7 @@ export function CreateChangePage() {
                       }}>
                         {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}

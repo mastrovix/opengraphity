@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { BarChart2, BrainCircuit, X } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
 import { EmptyState } from '@/components/EmptyState'
+import { keyActivate } from '@/lib/a11y'
 
 // ── GraphQL ────────────────────────────────────────────────────────────────
 
@@ -159,11 +160,11 @@ export default function ReportsPage() {
             lastEventWasError = currentEvent === 'error'
           } else if (line.startsWith('data: ')) {
             if (lastEventWasError) {
-              let errMsg = 'Errore durante la generazione della risposta'
+              let errMsg = t('toast.report.streamError')
               try {
                 const errorData = JSON.parse(line.slice(6)) as { message?: string }
                 errMsg = errorData.message?.includes('overloaded')
-                  ? 'Servizio AI temporaneamente sovraccarico. Riprova tra qualche secondo.'
+                  ? t('toast.report.aiOverloaded')
                   : (errorData.message ?? errMsg)
               } catch {
                 // Frame di errore malformato: mostriamo comunque un errore generico
@@ -227,9 +228,8 @@ export default function ReportsPage() {
       if (buffer.trim()) processSSEChunk(buffer)
 
       if (droppedFrames > 0) {
-        const warn = `${droppedFrames} frammento/i della risposta non interpretati (${firstDropReason}): il testo potrebbe essere incompleto.`
         if (import.meta.env.DEV) console.warn('[reports] SSE frames dropped:', droppedFrames, firstDropReason)
-        toast.warning(warn)
+        toast.warning(t('toast.report.droppedFrames', { count: droppedFrames, reason: firstDropReason }))
       }
 
       // TS 5.4 narrows closure-assigned vars to null — use explicit cast to restore union type
@@ -273,7 +273,7 @@ export default function ReportsPage() {
       setToolStatus(null)
       abortRef.current = null
     }
-  }, [activeId, isStreaming, refetch])
+  }, [activeId, isStreaming, refetch, t])
 
   const loading = isStreaming
 
@@ -338,6 +338,7 @@ export default function ReportsPage() {
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Report</span>
           <button
+            type="button"
             onClick={handleNewConversation}
             style={{ fontSize: 'var(--font-size-section-title)', fontWeight: 400, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
             title="Nuova conversazione"
@@ -349,9 +350,14 @@ export default function ReportsPage() {
             <EmptyState icon={<BarChart2 size={24} />} title={t('pages.aiAnalysis.noConversation')} description={t('pages.aiAnalysis.startQuestion')} />
           ) : (
             conversations.map((c) => (
+              // role=button + keyActivate: la riga contiene il bottone "Elimina" annidato, quindi non può essere essa stessa un <button>
               <div
                 key={c.id}
+                role="button"
+                tabIndex={0}
+                aria-current={activeId === c.id ? 'true' : undefined}
                 onClick={() => { setActiveId(c.id); setLocalMessages(c.messages) }}
+                onKeyDown={keyActivate(() => { setActiveId(c.id); setLocalMessages(c.messages) })}
                 style={{
                   padding: '8px 10px', borderRadius: 6, cursor: 'pointer', marginBottom: 2,
                   background: activeId === c.id ? '#e5e7eb' : 'transparent',
@@ -368,6 +374,7 @@ export default function ReportsPage() {
                   <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 1 }}>{timeAgo(c.updatedAt)}</div>
                 </div>
                 <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); void handleDelete(c.id) }}
                   style={{ color: '#d1d5db', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 3, flexShrink: 0, display: 'flex', alignItems: 'center' }}
                   title="Elimina"
@@ -541,8 +548,8 @@ export default function ReportsPage() {
         <div style={{ borderTop: '1px solid #e5e7eb', padding: '12px 24px', background: '#fff' }}>
           {hasMessages && (
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-              <button onClick={handlePrint} style={exportBtnStyle}>↓ PDF</button>
-              <button onClick={handleExportCSV} style={exportBtnStyle}>↓ CSV</button>
+              <button type="button" onClick={handlePrint} style={exportBtnStyle}>↓ PDF</button>
+              <button type="button" onClick={handleExportCSV} style={exportBtnStyle}>↓ CSV</button>
             </div>
           )}
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
@@ -566,6 +573,7 @@ export default function ReportsPage() {
               }}
             />
             <button
+              type="button"
               onClick={() => void handleSend(input)}
               disabled={loading || !input.trim()}
               style={{

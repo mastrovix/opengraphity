@@ -110,6 +110,7 @@ export function apiRateLimiter(req: Request, res: Response, next: NextFunction):
   bucket.count++
   if (bucket.count > ctx.rateLimit) {
     const retryAfter = Math.ceil((bucket.resetAt - now) / 1000)
+    res.set('Retry-After', String(retryAfter))
     res.status(429).json({ error: { code: 'RATE_LIMITED', message: `Rate limit exceeded (${ctx.rateLimit}/min)`, retry_after: retryAfter } })
     return
   }

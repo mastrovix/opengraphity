@@ -34,13 +34,21 @@ export function CIChangeList({ ciId }: { ciId: string }) {
 
   function renderRow(ch: ChangeRow, faded = false) {
     return (
-      <div
+      <button
+        type="button"
         key={ch.id}
         onClick={() => navigate(`/changes/${ch.id}`)}
         style={{
           display:      'flex',
           alignItems:   'flex-start',
           gap:          8,
+          width:        '100%',
+          background:   'none',
+          border:       'none',
+          borderRadius: 0,
+          font:         'inherit',
+          color:        'inherit',
+          textAlign:    'left',
           padding:      '6px 0',
           borderBottom: '1px solid #f9fafb',
           cursor:       'pointer',
@@ -73,7 +81,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
           </div>
         </div>
         {ch.aggregateRiskScore != null && <RiskBadge compact score={ch.aggregateRiskScore} />}
-      </div>
+      </button>
     )
   }
 
@@ -106,12 +114,20 @@ export function CIChangeList({ ciId }: { ciId: string }) {
       marginBottom: 16,
       overflow:     'hidden',
     }}>
-      <div
+      <button
+        type="button"
+        aria-expanded={open}
         onClick={() => setOpen(p => !p)}
         style={{
           display:        'flex',
           alignItems:     'center',
           justifyContent: 'space-between',
+          width:          '100%',
+          background:     'none',
+          border:         'none',
+          font:           'inherit',
+          color:          'inherit',
+          textAlign:      'left',
           cursor:         'pointer',
           padding:        '14px 20px',
           borderBottom:   open ? '1px solid #e5e7eb' : 'none',
@@ -130,7 +146,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
           ? <ChevronDown size={16} color="var(--color-slate-light)" />
           : <ChevronRight size={16} color="var(--color-slate-light)" />
         }
-      </div>
+      </button>
       {open && (
         <div style={{ padding: '0 20px 16px' }}>
           {changes.length === 0

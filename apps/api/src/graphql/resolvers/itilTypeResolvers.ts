@@ -205,7 +205,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       await withSession(async session => {
         await session.executeWrite(tx =>
           tx.run(
-            `MATCH (t:CITypeDefinition {id: $id}) WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system'] SET t += $updates`,
+            `MATCH (t:CITypeDefinition {id: $id, tenant_id: $tenantId}) WHERE t.scope = 'itil' SET t += $updates`,
             { id: args.id, updates, tenantId: ctx.tenantId },
           ),
         )
@@ -373,8 +373,8 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             RETURN f.is_system AS isSystem
           `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
         )
-        const isSystem = check.records[0]?.get('isSystem') as boolean | null
-        if (isSystem === null) throw new GraphQLError('Campo non trovato')
+        const isSystem = check.records[0]?.get('isSystem') as boolean | null | undefined
+        if (isSystem == null) throw new GraphQLError('Campo non trovato')
         if (isSystem === true) throw new GraphQLError('I campi di sistema non possono essere eliminati')
 
         await session.executeWrite(tx =>

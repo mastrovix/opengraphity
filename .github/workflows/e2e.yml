@@ -1,0 +1,86 @@
+name: E2E
+
+# Playwright smoke tests (e2e/tests/*.spec.ts) against a RUNNING stack.
+#
+# The suite needs Keycloak with a provisioned tenant realm, Neo4j seeded
+# with the workflow definitions and an admin user: bringing that up from
+# scratch on a runner is not realistic yet (G-10), so this job targets a
+# deployed environment given through repository secrets:
+#   E2E_BASE_URL   e.g. https://staging.example.com  (required)
+#   E2E_USER       Keycloak user, default admin
+#   E2E_PASSWORD   its password (required)
+# Runs on demand and weekly. Without E2E_BASE_URL a manual run fails loudly;
+# the scheduled run is skipped with a warning (no secret ≠ green suite).
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL of the stack under test (overrides the E2E_BASE_URL secret)"
+        required: false
+        type: string
+  schedule:
+    - cron: "30 5 * * 1"   # Mondays 05:30 UTC
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_BASE_URL: ${{ inputs.base_url || secrets.E2E_BASE_URL }}
+      E2E_USER: ${{ secrets.E2E_USER || 'admin' }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+    steps:
+      - name: Check target configuration
+        id: target
+        run: |
+          if [ -z "$E2E_BASE_URL" ] || [ -z "$E2E_PASSWORD" ]; then
+            if [ "${{ github.event_name }}" = "schedule" ]; then
+              echo "::warning::E2E_BASE_URL / E2E_PASSWORD secrets are not configured — scheduled e2e run skipped"
+              echo "configured=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::E2E_BASE_URL (secret or base_url input) and E2E_PASSWORD are required"
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.target.outputs.configured == 'true'
+
+      - uses: pnpm/action-setup@v4
+        if: steps.target.outputs.configured == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.target.outputs.configured == 'true'
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # Only the root devDependencies (@playwright/test) are needed: skip the
+      # native builds (isolated-vm) of the workspace packages
+      - name: Install dependencies
+        if: steps.target.outputs.configured == 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Playwright browsers
+        if: steps.target.outputs.configured == 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run e2e suite
+        if: steps.target.outputs.configured == 'true'
+        run: pnpm test:e2e
+
+      - name: Upload traces and screenshots
+        if: failure() && steps.target.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            e2e/test-results/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

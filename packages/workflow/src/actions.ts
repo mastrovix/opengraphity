@@ -49,7 +49,8 @@ export interface WebhookRetryJobData {
  * legitimately.
  */
 export function resolveTemplate(template: string, ctx: Record<string, unknown>): string {
-  return template.replace(/\{([^}]+)\}/g, (_match, path: string) => {
+  // Solo `{a.b.c}`: le graffe di un body JSON (`{"id":"{incident.id}"}`) non sono placeholder.
+  return template.replace(/\{([A-Za-z_][\w.]*)\}/g, (_match, path: string) => {
     const parts = path.trim().split('.')
     let value: unknown = ctx
     for (const part of parts) {

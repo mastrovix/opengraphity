@@ -27,14 +27,34 @@ Regole comuni (`lib/scriptArgs.ts`, `lib/runScript.ts`):
 |---|---|---|---|
 | `import:incidents` | Import incident da CSV (idempotente su `external_id`). | `import:incidents -- --file f.csv --tenant-id <slug> [--dry-run]` | no |
 | `import:kb` | Import articoli KB da CSV. | `import:kb -- --file f.csv --tenant-id <slug> [--dry-run]` | no |
-| `backup:neo4j` | Dump JSONL + tar.gz dell'intero DB. | `backup:neo4j -- [--output-dir ./backups]` | no |
-| `restore:neo4j` | Restore additivo da archivio (non cancella nulla). | `restore:neo4j -- --input backup.tar.gz [--dry-run]` | no |
-| `migrate:workflow-metadata` | Popola `isInitial/isTerminal/isOpen/category` sugli `WorkflowStep` privi. | `migrate:workflow-metadata` | no |
-| `migrate-enum-references.ts` | Collega `CIFieldDefinition` con enum inline alle `EnumTypeDefinition` (`USES_ENUM`). | `exec tsx … --tenant=<slug> [--include-shared]` | no |
+| `backup:neo4j` | Backup completo in un tar.gz: grafo (nodi+relazioni da **una sola transazione read**, streaming, `elementId`), `manifest.json` (conteggi per label/tipo, constraint/indici, versioni), allegati (`attachments.tar`), export dei realm Keycloak. Pubblicato solo se i conteggi tornano (altrimenti resta `.tar.gz.partial`). Keycloak irraggiungibile = errore. | `backup:neo4j -- [--output-dir ./backups] [--skip-keycloak] [--skip-attachments]` — env: `ATTACHMENT_DIR`, `KEYCLOAK_URL`, `KEYCLOAK_ADMIN_USER`, `KEYCLOAK_ADMIN_PASSWORD` (salvo `--skip-keycloak`) | no |
+| `verify-backup.ts` | Verifica un archivio: manifest, JSONL parseabili e conteggi coerenti, allegati e realm dichiarati, restore `--dry-run` in-process. Exit ≠ 0 su qualsiasi incoerenza. Eseguita dal maintenance worker dopo ogni backup schedulato. | `exec tsx --env-file=.env src/scripts/verify-backup.ts --input backup.tar.gz` | no |
+| `restore:neo4j` | Restore additivo del grafo da archivio (non cancella nulla; **non** ripristina allegati, realm Keycloak, constraint/indici). | `restore:neo4j -- --input backup.tar.gz --yes-restore [--dry-run]` | no |
+| `migrate.ts` | Runner delle **migrazioni versionate** (`scripts/migrations/`, stato in `(:Migration)`, lock globale). | `exec tsx --env-file=.env src/scripts/migrate.ts [--status] [--dry-run] [--to <id>] [--init-schema] [--force]` | no |
+| `migrate:workflow-metadata` | Wrapper: applica solo `20260908_1000_workflow_step_metadata` (metadati `WorkflowStep`). Già applicata → no-op, `--force` per riapplicarla. | `migrate:workflow-metadata -- [--force]` | no |
+| `migrate-ci-labels.ts` | Wrapper B-08: applica solo `20260908_1010_ci_configuration_item_label` (aggiunge `:ConfigurationItem` ai CI tipizzati). `--force` dopo aver registrato un nuovo `CITypeDefinition` con nodi preesistenti. | `exec tsx --env-file=.env src/scripts/migrate-ci-labels.ts [--force]` | no |
+| `migrate-enum-references.ts` | Collega `CIFieldDefinition` con enum inline alle `EnumTypeDefinition` (`USES_ENUM`). **Script manuale, non una migrazione versionata**: richiede `--tenant`. | `exec tsx … --tenant=<slug> [--include-shared]` | no |
 | `backfill-embeddings.ts` | Calcola gli embedding mancanti/obsoleti di incident e KB. Fail-fast. | `node dist/scripts/backfill-embeddings.js` (nel container api) | no |
 | `export-schema.ts` | Esporta l'SDL GraphQL statico in `docs/`. | `exec tsx src/scripts/export-schema.ts` | no |
 | `revert-problem` | One-off: riporta un problem a `under_investigation` via engine. | `revert-problem -- --tenant=<slug> PRB00000001` | no |
 | `scan:anomalies` | Esegue una volta lo scanner anomalie (senza coda). Una regola rotta fa fallire lo scan. | `scan:anomalies -- --tenant=<slug>` | no |
+
+### Migrazioni versionate (`migrations/`)
+
+Una migrazione è un file `migrations/YYYYMMDD_HHMM_nome.ts` che esporta un
+`Migration` (`{ id, description, up(session), autocommit? }` di
+`@opengraphity/neo4j`) registrato in `migrations/index.ts`. Il runner
+(`migrate.ts`) le applica in ordine di id, una volta sola (marker
+`(:Migration {id, applied_at, checksum})`), con lock globale
+`(:MigrationLock)` a scadenza (10 min) e fail-fast con l'id della migrazione
+fallita. Ogni migrazione gira nella sua transazione insieme al marker, salvo
+`autocommit: true` (necessario a `CALL { … } IN TRANSACTIONS`): in quel caso
+deve essere idempotente. Niente rollback: si scrive una nuova migrazione.
+Procedura completa e stato in `docs/OPERATIONS.md`.
+
+`pnpm neo4j:init` (packages/neo4j) crea constraint e indici e NON conosce le
+migrazioni dell'API: per fare tutto in un colpo usare
+`migrate.ts --init-schema` (schema, poi migrazioni).
 
 ## Seed di configurazione (idempotenti, MERGE per chiave naturale)
 
@@ -84,4 +104,5 @@ Ordine consigliato: teams → users → servers → databases → dbinstances �
 | `keycloakAdmin.ts` | Client Keycloak Admin REST (`getAdminToken/get/exists/post/put/setPassword`, `findUserIdByEmail`, `assignRealmRole`) |
 | `password.ts` | `--password-stdin`, generazione password temporanea, stampa una tantum |
 | `importSummary.ts` | Riepilogo a console degli import CSV |
+| `backupManifest.ts` | Formato dell'archivio di backup: tipi del manifest, `validateManifest`, `readJsonl`, `tallyNodes/tallyRels`, `compareCounts` (nessun import Neo4j) |
 | `workflowDefinitions.ts` | Definizioni dei workflow Change RFC e Service Request |

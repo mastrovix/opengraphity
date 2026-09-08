@@ -181,6 +181,7 @@ export function WhatIfPage() {
     }},
     { key: 'id', label: '', width: '44px', render: (_v, row) => (
       <button
+        type="button"
         onClick={e => { e.stopPropagation(); setExpandedGraphId(expandedGraphId === row.id ? null : row.id) }}
         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
         title={t('pages.whatIf.viewPath')}
@@ -218,17 +219,23 @@ export function WhatIfPage() {
           />
           {dropdownOpen && ciOptions.length > 0 && (
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, marginTop: 2, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-              {ciOptions.map(ci => (
-                <div
-                  key={ci.id}
-                  onMouseDown={() => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }}
-                  className="hover-bg"
-                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between', ['--hover-bg' as string]: '#f0f9ff' }}
-                >
-                  <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                  <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{ci.type}</span>
-                </div>
-              ))}
+              {ciOptions.map(ci => {
+                const pick = () => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }
+                return (
+                  // onMouseDown: la selezione deve avvenire prima del blur dell'input che chiude il menu; onClick copre la tastiera
+                  <button
+                    key={ci.id}
+                    type="button"
+                    onMouseDown={pick}
+                    onClick={pick}
+                    className="hover-bg"
+                    style={{ width: '100%', background: 'none', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between', ['--hover-bg' as string]: '#f0f9ff' }}
+                  >
+                    <span style={{ fontWeight: 500 }}>{ci.name}</span>
+                    <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{ci.type}</span>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
@@ -240,6 +247,8 @@ export function WhatIfPage() {
             return (
               <button
                 key={a.key}
+                type="button"
+                aria-pressed={sel}
                 onClick={() => setAction(a.key)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
@@ -268,6 +277,7 @@ export function WhatIfPage() {
 
         {/* Analyze button */}
         <button
+          type="button"
           onClick={handleAnalyze}
           disabled={!selectedCI || loading}
           style={{
@@ -354,7 +364,7 @@ export function WhatIfPage() {
               const count = tab === 'cis' ? result.totalImpacted : tab === 'services' ? result.impactedServices.length : result.impactedTeams.length
               const label = tab === 'cis' ? t('pages.whatIf.tabCIs') : tab === 'services' ? t('pages.whatIf.tabServices') : t('pages.whatIf.tabTeams')
               return (
-                <button key={tab} onClick={() => setResultTab(tab)} style={{
+                <button key={tab} type="button" onClick={() => setResultTab(tab)} style={{
                   padding: '10px 14px', border: 'none', borderBottom: sel ? '2px solid var(--color-brand)' : '2px solid transparent',
                   marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                   color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400,

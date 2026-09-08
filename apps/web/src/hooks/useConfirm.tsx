@@ -2,7 +2,7 @@
  * Promise-based confirmation (E-10), replacing every `window.confirm`:
  *
  *   const confirm = useConfirm()
- *   if (await confirm({ title: t('…'), body: t('…'), danger: true })) { … }
+ *   if (await confirm({ title: labels.title, body: labels.body, danger: true })) { … }
  *
  * `ConfirmProvider` (mounted once in `AppLayout`) renders the single
  * `ConfirmModal`; `useConfirm` outside a provider THROWS with a clear message

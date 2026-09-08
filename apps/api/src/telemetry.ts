@@ -23,7 +23,8 @@ interface SpanTime { 0: number; 1: number }
 interface SpanContext { traceId: string }
 interface ReadableSpanMinimal {
   name: string
-  parentSpanId?: string
+  /** sdk-trace-base >= 2.0: `parentSpanId` was replaced by `parentSpanContext` (undefined on a root span) */
+  parentSpanContext?: { spanId: string }
   spanContext(): SpanContext
   duration: SpanTime
   startTime: SpanTime
@@ -141,8 +142,8 @@ export function initTelemetry(): void {
       const { NodeSDK }                      = await import('@opentelemetry/sdk-node')
       const { getNodeAutoInstrumentations }  = await import('@opentelemetry/auto-instrumentations-node')
       const { OTLPTraceExporter }            = await import('@opentelemetry/exporter-trace-otlp-http')
-      const { Resource }                     = await import('@opentelemetry/resources')
-      const { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } = await import('@opentelemetry/semantic-conventions')
+      const { resourceFromAttributes }       = await import('@opentelemetry/resources')
+      const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = await import('@opentelemetry/semantic-conventions')
       const sdkNode = await import('@opentelemetry/sdk-node')
       const { SimpleSpanProcessor }          = sdkNode.tracing
       const { SpanStatusCode, trace }        = await import('@opentelemetry/api')
@@ -160,7 +161,7 @@ export function initTelemetry(): void {
 
         onEnd(span: ReadableSpanMinimal): void {
           const traceId = span.spanContext().traceId
-          const isRoot  = !span.parentSpanId
+          const isRoot  = !span.parentSpanContext
 
           // Get or create accumulator for this trace
           let acc = traceAccumulators.get(traceId)
@@ -218,9 +219,9 @@ export function initTelemetry(): void {
       const exporter = new OTLPTraceExporter({ url: otelEndpoint })
 
       const sdk = new NodeSDK({
-        resource: new Resource({
-          [SEMRESATTRS_SERVICE_NAME]:    'opengrafo-api',
-          [SEMRESATTRS_SERVICE_VERSION]: '0.17.0',
+        resource: resourceFromAttributes({
+          [ATTR_SERVICE_NAME]:    'opengrafo-api',
+          [ATTR_SERVICE_VERSION]: '0.17.0',
         }),
         spanProcessors: [
           new SimpleSpanProcessor(exporter),

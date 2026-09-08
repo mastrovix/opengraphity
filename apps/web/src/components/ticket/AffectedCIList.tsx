@@ -105,6 +105,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
             <div style={{ marginBottom: 12, position: 'relative' }}>
               <Input type="text" value={search} onChange={(e) => { setSearch(e.target.value); onSearchChange(e.target.value) }}
                 placeholder={allowedTypes.length > 0 ? `Cerca CI (${allowedTypes.join(', ')}) — min. 2 caratteri…` : 'Cerca CI per nome (min. 2 caratteri)...'}
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca montato dopo il click su "Aggiungi CI"
                 autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
               {filteredResults.length > 0 && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>

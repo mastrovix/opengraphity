@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
@@ -41,7 +42,9 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: strin
 // v2 — category field + validation feedback
 
 export function CreateIncidentPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
+  const ids = { category: useId(), ciSearch: useId(), teamSearch: useId() }
 
   const [title,       setTitle]       = useState('')
   const [category,    setCategory]    = useState('')
@@ -82,7 +85,7 @@ export function CreateIncidentPage() {
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onError: (err) => toast.error(`Team assignment: ${err.message}`),
+    onError: (err) => toast.error(t('toast.incident.teamAssignmentFailed', { error: err.message })),
   })
 
   const canSubmit = title.trim() !== '' && description.trim() !== '' && category !== '' && selectedCIs.length > 0
@@ -93,7 +96,7 @@ export function CreateIncidentPage() {
       if (selectedTeam) {
         await assignToTeam({ variables: { id: data.createIncident.id, teamId: selectedTeam.id } })
       }
-      toast.success('Incident creato')
+      toast.success(t('toast.incident.created'))
       navigate('/incidents', { state: { refresh: true } })
     },
     onError: (err) => toast.error(err.message),
@@ -106,6 +109,7 @@ export function CreateIncidentPage() {
 
         {/* Header */}
         <button
+          type="button"
           onClick={() => navigate('/incidents')}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
@@ -138,7 +142,6 @@ export function CreateIncidentPage() {
               onChange={e => { setTitle(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['title']; return n }) }}
               placeholder="Es. Database produzione non raggiungibile"
               style={{ ...inputBase, borderColor: fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
-              autoFocus
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
             />
@@ -146,13 +149,14 @@ export function CreateIncidentPage() {
 
           {/* CATEGORIA */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.category} style={fieldLabel}>
               Categoria <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             {categoryLoading ? (
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
             ) : (
               <select
+                id={ids.category}
                 value={category}
                 onChange={e => { setCategory(e.target.value); setFieldErrors(p => { const n = { ...p }; delete n['category']; return n }) }}
                 style={{ ...inputBase, borderColor: fieldErrors['category'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
@@ -170,7 +174,7 @@ export function CreateIncidentPage() {
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {([['Impatto', impact, setImpact], ['Urgenza', urgency, setUrgency]] as const).map(([label, val, setVal]) => (
               <div key={label}>
-                <label style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+                <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {IMPACT_URGENCY_OPTIONS.map(o => {
                     const sel = val === o
@@ -188,7 +192,7 @@ export function CreateIncidentPage() {
               </div>
             ))}
             <div>
-              <label style={fieldLabel}>Priorità (calcolata)</label>
+              <div style={fieldLabel}>Priorità (calcolata)</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
                 border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? '#e5e7eb')}`,
                 background: SEVERITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
@@ -238,7 +242,7 @@ export function CreateIncidentPage() {
 
           {/* CI IMPATTATI */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.ciSearch} style={fieldLabel}>
               CI Impattati <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
 
@@ -248,6 +252,7 @@ export function CreateIncidentPage() {
                 🔍
               </span>
               <input
+                id={ids.ciSearch}
                 type="text"
                 value={ciSearch}
                 onChange={e => setCiSearch(e.target.value)}
@@ -261,17 +266,18 @@ export function CreateIncidentPage() {
               {ciResults.length > 0 && ciSearch.length >= 2 && (
                 <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
                   {ciResults.map(ci => (
-                    <div
+                    <button
+                      type="button"
                       key={ci.id}
                       onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
                       className="hover-bg"
-                      style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                      style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
                         {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -298,7 +304,7 @@ export function CreateIncidentPage() {
 
           {/* TEAM */}
           <div style={{ marginBottom: 20 }}>
-            <label style={fieldLabel}>
+            <label htmlFor={ids.teamSearch} style={fieldLabel}>
               Team{' '}
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
             </label>
@@ -326,6 +332,7 @@ export function CreateIncidentPage() {
                   🔍
                 </span>
                 <input
+                  id={ids.teamSearch}
                   type="text"
                   value={teamSearch}
                   onChange={e => { setTeamSearch(e.target.value); setTeamDropdownOpen(true) }}
@@ -340,16 +347,18 @@ export function CreateIncidentPage() {
                 {/* Dropdown */}
                 {teamDropdownOpen && filteredTeams.length > 0 && (
                   <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
-                    {filteredTeams.map(t => (
-                      <div
-                        key={t.id}
-                        onMouseDown={() => { setSelectedTeam(t); setTeamSearch(''); setTeamDropdownOpen(false) }}
+                    {filteredTeams.map(tm => (
+                      <button
+                        type="button"
+                        key={tm.id}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setSelectedTeam(tm); setTeamSearch(''); setTeamDropdownOpen(false) }}
                         className="hover-bg"
-                        style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                        style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
                       >
                         <Users size={14} color="var(--color-slate-light)" />
-                        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{t.name}</span>
-                      </div>
+                        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{tm.name}</span>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -374,7 +383,7 @@ export function CreateIncidentPage() {
               onClick={() => {
                 if (!canSubmit || loading) return
                 if (fieldRulesError) {
-                  toast.error(`Impossibile validare i campi obbligatori: ${fieldRulesError.message}`)
+                  toast.error(t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
                   return
                 }
                 const errs: Record<string, string> = {}

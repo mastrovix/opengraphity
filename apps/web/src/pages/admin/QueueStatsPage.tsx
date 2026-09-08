@@ -163,7 +163,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
 
   const [retryJob] = useMutation(RETRY_QUEUE_JOB, {
     onCompleted: () => {
-      toast.success('Job queued for retry')
+      toast.success(t('toast.queue.retryQueued'))
       setRetryingId(null)
       void refetchJobs?.()
       onQueueRefetch()
@@ -267,9 +267,11 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
           {!jobsLoading && jobs.map((job) => (
             <div key={job.id} style={{ borderTop: '1px solid #f1f5f9' }}>
               {/* Job summary row */}
-              <div
+              <button
+                type="button"
+                aria-expanded={expandedJob === job.id}
                 onClick={(e) => { e.stopPropagation(); setExpandedJob(expandedJob === job.id ? null : job.id) }}
-                style={{ padding: '10px 20px 10px 52px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: expandedJob === job.id ? '#f1f5f9' : 'white' }}
+                style={{ width: '100%', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '10px 20px 10px 52px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: expandedJob === job.id ? '#f1f5f9' : 'white' }}
               >
                 <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
                   {expandedJob === job.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -284,7 +286,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
                   {new Date(job.timestamp).toLocaleString()}
                 </span>
-              </div>
+              </button>
 
               {/* Job detail panel */}
               {expandedJob === job.id && (

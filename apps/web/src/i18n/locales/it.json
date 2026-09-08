@@ -22,7 +22,8 @@
     "title": "Titolo",
     "select": "Seleziona",
     "writeHere": "Scrivi qui...",
-    "close": "Chiudi"
+    "close": "Chiudi",
+    "yes": "Sì"
   },
   "bulk": {
     "selected_one": "{{count}} selezionato",
@@ -201,10 +202,44 @@
       "resolutionResolved": "Risolto — ho fixato il problema",
       "resolutionFalsePositive": "Falso positivo — non è un problema reale",
       "resolutionAcceptedRisk": "Rischio accettato — consapevole, non richiede azione",
-      "count": "{{count}} anomalie"
+      "count": "{{count}} anomalie",
+      "severities": {
+        "critical": "Critica",
+        "high": "Alta",
+        "medium": "Media",
+        "low": "Bassa"
+      }
     },
     "topology": {
-      "title": "Mappa Topologica"
+      "title": "Mappa Topologica",
+      "allTypes": "Tutti i tipi",
+      "depth": "Profondità",
+      "hops_one": "{{count}} hop",
+      "hops_other": "{{count}} hop",
+      "allHops": "Tutti",
+      "allEnvironments": "Tutti gli env",
+      "allStatuses": "Tutti gli stati",
+      "enumsUnavailable": "enum CI non disponibili",
+      "showLabels": "Label",
+      "onlyWithIncidents": "Solo con incident",
+      "loading": "Caricamento topologia…",
+      "emptyHint": "Esplora le relazioni tra i CI dell'infrastruttura",
+      "loadError": "Errore nel caricamento: {{error}}",
+      "truncated": "⚠️ Grafo troncato a {{limit}} nodi — usa i filtri per restringere",
+      "stats": "{{nodes}} nodi · {{edges}} relazioni",
+      "statsDepth": "· profondità: {{depth}}",
+      "depthAll": "tutti",
+      "activeIncidents_one": "{{count}} incident attivo",
+      "activeIncidents_other": "{{count}} incident attivi",
+      "changesInProgress_one": "{{count}} change in corso",
+      "changesInProgress_other": "{{count}} change in corso",
+      "openIncidents": "Incident aperti",
+      "changeInProgress": "Change in corso",
+      "goToDetail": "Vai al dettaglio →",
+      "comboAll": "— Tutti —",
+      "searchError": "Errore nella ricerca: {{error}}",
+      "searching": "Ricerca…",
+      "comboShown": "Mostrati {{shown}} di {{total}} — affina la ricerca per trovare gli altri"
     },
     "teams": {
       "title": "Team",
@@ -675,7 +710,25 @@
       "criteriaNTypes": "{{count}} tipi selezionati",
       "criteriaNameContains": "Nome contiene",
       "criteriaPreview": "→ {{count}} CI corrispondenti",
-      "criteriaSaved": "Criteri salvati"
+      "criteriaSaved": "Criteri salvati",
+      "notFound": "CI non trovato.",
+      "backTo": "← Torna a {{label}}",
+      "notes": "Note",
+      "supportGroup": "Gruppo Support",
+      "notAssignedOption": "— non assegnato —",
+      "membersShownOfTotal": "{{shown}} di {{total}}",
+      "membersTruncated": "Elenco troncato: il server restituisce al massimo {{shown}} membri su {{total}}. Restringi i criteri del gruppo per vederli tutti.",
+      "membersMap": "Mappa Membri",
+      "dependencyMap": "Mappa Dipendenze",
+      "graphNodes": "Nodi:",
+      "graphAllNodes": "Tutti ({{count}})",
+      "graphShowingFirst": "Mostra i primi {{shown}} di {{total}} membri — la lista completa è nella tabella sopra.",
+      "relations": "Relazioni",
+      "noRelations": "Nessuna relazione.",
+      "dependencies": "Dipendenze",
+      "dependents": "Dipendenti",
+      "targetCI": "CI Target",
+      "criteriaNamePlaceholder": "es. web-"
     },
     "tasks": {
       "reopen": {
@@ -683,7 +736,158 @@
         "prompt": "Inserisci il motivo della riapertura (min 10 caratteri).",
         "placeholder": "Motivo della riapertura...",
         "confirm": "Conferma riapertura"
+      },
+      "review": {
+        "intro": "Verifica l'esito del deploy e conferma o rigetta.",
+        "confirmed": "Confermato",
+        "rejected": "Rigettato"
+      },
+      "validation": {
+        "intro": "Verifica il CI in ambiente pre-produzione e registra l'esito.",
+        "pass": "Superato",
+        "fail": "Fallito"
       }
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "selectDashboard": "Seleziona dashboard",
+      "newDashboard": "Nuova dashboard",
+      "creating": "Creazione…",
+      "saving": "Salvataggio…",
+      "deleting": "Eliminazione…",
+      "confirmDelete": "Conferma eliminazione",
+      "name": "Nome",
+      "namePlaceholder": "Es. Operations Overview",
+      "visibility": "Visibilità",
+      "visibilityPrivate": "Privata (solo io)",
+      "visibilityTeams": "Condivisa con team",
+      "visibilityAll": "Tutti nel tenant",
+      "noTeams": "Nessun team",
+      "settingsTitle": "Impostazioni dashboard",
+      "setDefault": "Imposta come default",
+      "badgeAll": "tutti",
+      "badgeTeam": "team",
+      "customize": "Personalizza",
+      "settings": "Impostazioni",
+      "emptyHintBefore": "La dashboard è vuota. Clicca",
+      "emptyHintAfter": "per aggiungere i tuoi report.",
+      "emptyEditTitle": "Dashboard vuota",
+      "emptyEditHint": "Usa il pannello a destra per aggiungere widget personalizzati o report.",
+      "drag": "Trascina",
+      "widgetFallback": "Widget",
+      "newBadge": "nuovo",
+      "widthColumns": "Larghezza (colonne)",
+      "cols_one": "{{count}} col",
+      "cols_other": "{{count}} col",
+      "removeWidget": "Rimuovi widget",
+      "editWidget": "Modifica widget",
+      "newWidget": "Nuovo widget personalizzato",
+      "createWidget": "Crea widget",
+      "updateWidget": "Aggiorna widget",
+      "customWidgets": "Widget personalizzati",
+      "customWidgetsDesc": "Counter, grafico, tabella o gauge con dati in tempo reale — senza il report builder.",
+      "createdCount": "Creati ({{count}})",
+      "addFromReport": "Aggiungi da report",
+      "noReports": "Nessun report disponibile.",
+      "noSections": "Nessuna sezione",
+      "add": "Aggiungi",
+      "addSection": "Aggiungi {{name}}",
+      "loadError": "Errore nel caricamento dati",
+      "statusCaption": "Status: {{value}}",
+      "titlePlaceholder": "Es. Incident aperti oggi",
+      "widgetTypeLabel": "Tipo widget",
+      "widgetType": {
+        "counter": "Counter",
+        "chartBar": "Bar Chart",
+        "chartLine": "Line",
+        "chartPie": "Pie Chart",
+        "chartDonut": "Donut",
+        "table": "Tabella",
+        "gauge": "Gauge"
+      },
+      "widgetTypeDesc": {
+        "counter": "Numero totale",
+        "chartBar": "Distribuzione",
+        "chartLine": "Trend",
+        "chartPie": "Proporzioni",
+        "chartDonut": "Proporzioni",
+        "table": "Lista valori",
+        "gauge": "% su 100"
+      },
+      "entityLabel": "Entità",
+      "entity": {
+        "incident": "Incident",
+        "problem": "Problem",
+        "change": "Change",
+        "serviceRequest": "Service Request",
+        "server": "Server",
+        "application": "Application",
+        "database": "Database",
+        "certificate": "Certificate",
+        "networkDevice": "Network Device",
+        "vm": "Virtual Machine",
+        "businessApplication": "Business Application"
+      },
+      "metricLabel": "Metrica",
+      "metric": {
+        "count": "Conteggio",
+        "countByField": "Conteggio per campo",
+        "avgField": "Media campo",
+        "sumField": "Somma campo"
+      },
+      "groupByField": "Campo raggruppamento",
+      "selectField": "-- Seleziona campo --",
+      "fieldType": {
+        "string": "testo",
+        "number": "numero",
+        "date": "data",
+        "boolean": "booleano",
+        "enum": "enum"
+      },
+      "filterOptional": "Filtro (opzionale)",
+      "noFilter": "Nessun filtro",
+      "filterValue": "Valore filtro",
+      "filterValuePlaceholder": "Es. new",
+      "numberPlaceholder": "Es. 5",
+      "allValues": "-- Tutti --",
+      "period": "Periodo",
+      "timeRange": {
+        "24h": "24h",
+        "7d": "7gg",
+        "30d": "30gg",
+        "90d": "90gg",
+        "1y": "1 anno",
+        "all": "Tutto"
+      },
+      "sizeLabel": "Dimensione",
+      "size": {
+        "small": "Piccolo",
+        "medium": "Medio",
+        "large": "Grande"
+      },
+      "sizeSub": {
+        "small": "1/4 larghezza",
+        "medium": "1/2 larghezza",
+        "large": "Larghezza intera"
+      },
+      "colorLabel": "Colore",
+      "color": {
+        "cyan": "Ciano",
+        "green": "Verde",
+        "red": "Rosso",
+        "amber": "Ambra",
+        "purple": "Viola",
+        "slate": "Ardesia"
+      },
+      "customColor": "Colore personalizzato",
+      "livePreview": "Anteprima live",
+      "widgetTitlePlaceholder": "Titolo widget",
+      "configureHint": "Configura le opzioni sopra per vedere l'anteprima",
+      "chartLoading": "Caricamento grafico…",
+      "preview": "Anteprima",
+      "total": "Totale:",
+      "categories": "Categorie:",
+      "previewHint": "La preview si aggiorna automaticamente mentre configuri il widget (con debounce 600ms)."
     }
   },
   "filter": {
@@ -728,11 +932,7 @@
   "notifications": {
     "title": "Notifiche",
     "markAllRead": "Segna tutte come lette",
-    "empty": "Nessuna notifica",
-    "justNow": "Adesso",
-    "minAgo": "{{count}} min fa",
-    "hoursAgo": "{{count}}h fa",
-    "daysAgo": "{{count}}g fa"
+    "empty": "Nessuna notifica"
   },
   "notificationRules": {
     "title": "Regole Notifiche",
@@ -755,7 +955,13 @@
       "custom": "Custom"
     },
     "customRule": "Regola personalizzata",
-    "systemRule": "Regola di sistema"
+    "systemRule": "Regola di sistema",
+    "severity": {
+      "critical": "Critica",
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Bassa"
+    }
   },
   "workflow": {
     "addAction": "Aggiungi azione",
@@ -845,7 +1051,6 @@
     "uploaded": "File caricato",
     "uploadFailed": "Caricamento fallito",
     "download": "Scarica",
-    "downloadFailed": "Download fallito",
     "deleted": "Allegato eliminato",
     "confirmDelete": "Eliminare questo allegato?"
   },
@@ -970,9 +1175,6 @@
     "edited": "modificato",
     "placeholder": "Scrivi un messaggio... (Ctrl+Enter per inviare)",
     "send": "Invia",
-    "sendFailed": "Invio messaggio fallito",
-    "editFailed": "Modifica fallita",
-    "deleteFailed": "Eliminazione fallita",
     "confirmDelete": "Eliminare il messaggio?"
   },
   "admin": {
@@ -1017,6 +1219,340 @@
     },
     "notificationChannels": {
       "deleteTitle": "Eliminare questo canale?"
+    }
+  },
+  "time": {
+    "justNow": "adesso",
+    "minutesAgo_one": "{{count}} min fa",
+    "minutesAgo_other": "{{count}} min fa",
+    "hoursAgo_one": "{{count}} ora fa",
+    "hoursAgo_other": "{{count}} ore fa",
+    "daysAgo_one": "{{count}} giorno fa",
+    "daysAgo_other": "{{count}} giorni fa",
+    "lessThanMinute": "< 1 min",
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "hours_one": "{{count}} ora",
+    "hours_other": "{{count}} ore",
+    "days_one": "{{count}} giorno",
+    "days_other": "{{count}} giorni"
+  },
+  "routeError": {
+    "notFound": "Pagina non trovata",
+    "unexpected": "Errore inatteso",
+    "generic": "Qualcosa è andato storto",
+    "backToDashboard": "Torna alla Dashboard"
+  },
+  "errorBoundary": {
+    "title": "Qualcosa è andato storto",
+    "retry": "Riprova"
+  },
+  "roles": {
+    "admin": "Admin",
+    "operator": "Operatore",
+    "viewer": "Visualizzatore",
+    "end_user": "Utente finale"
+  },
+  "risk": {
+    "low": "BASSO",
+    "medium": "MEDIO",
+    "high": "ALTO"
+  },
+  "taskStatus": {
+    "toBeCompleted": "DA COMPLETARE"
+  },
+  "richText": {
+    "bold": "Grassetto (Ctrl+B)",
+    "italic": "Corsivo (Ctrl+I)",
+    "underline": "Sottolineato (Ctrl+U)",
+    "strike": "Barrato",
+    "h1": "Titolo 1",
+    "h2": "Titolo 2",
+    "h3": "Titolo 3",
+    "bulletList": "Elenco puntato",
+    "orderedList": "Elenco numerato",
+    "blockquote": "Citazione",
+    "inlineCode": "Codice inline",
+    "codeBlock": "Blocco codice",
+    "insertLink": "Inserisci link",
+    "insertImage": "Inserisci immagine",
+    "insertTable": "Inserisci tabella",
+    "horizontalRule": "Linea orizzontale",
+    "undo": "Annulla (Ctrl+Z)",
+    "redo": "Ripristina (Ctrl+Y)",
+    "linkPrompt": "URL del link:",
+    "imagePrompt": "URL immagine:"
+  },
+  "conditionEditor": {
+    "fieldPlaceholder": "-- Campo --",
+    "unknownField": "campo \"{{field}}\" non presente nel metamodello",
+    "notInMetamodel": "non nel metamodello",
+    "unknownOperator": "operatore \"{{operator}}\" non supportato dall'editor",
+    "unsupported": "non supportato",
+    "remove": "Rimuovi",
+    "fieldsUnavailable": "Campi non disponibili",
+    "value": "Valore",
+    "userPlaceholder": "-- Utente --",
+    "teamPlaceholder": "-- Team --",
+    "valuePlaceholder": "-- Valore --"
+  },
+  "toast": {
+    "internalChat": {
+      "sendFailed": "Invio messaggio fallito: {{error}}",
+      "editFailed": "Modifica fallita: {{error}}",
+      "deleteFailed": "Eliminazione fallita: {{error}}"
+    },
+    "attachments": {
+      "downloadFailed": "Download fallito: {{error}}"
+    },
+    "trigger": {
+      "created": "Trigger creato",
+      "updated": "Trigger aggiornato",
+      "deleted": "Trigger eliminato",
+      "openFailed": "Impossibile aprire \"{{name}}\": {{error}}. Correggi il dato dal database prima di modificare.",
+      "nameRequired": "Nome obbligatorio"
+    },
+    "rule": {
+      "created": "Regola creata",
+      "updated": "Regola aggiornata",
+      "deleted": "Regola eliminata",
+      "openFailed": "Impossibile aprire \"{{name}}\": {{error}}. Correggi il dato dal database prima di modificare.",
+      "nameRequired": "Nome obbligatorio"
+    },
+    "sla": {
+      "created": "Policy creata",
+      "updated": "Policy aggiornata",
+      "deleted": "Policy eliminata",
+      "enabled": "Policy abilitata",
+      "disabled": "Policy disabilitata",
+      "nameRequired": "Il nome è obbligatorio",
+      "olaCreated": "Contratto creato"
+    },
+    "catalog": {
+      "created": "Voce creata"
+    },
+    "question": {
+      "textRequired": "Testo obbligatorio",
+      "optionRequired": "Almeno una opzione"
+    },
+    "kb": {
+      "versionRestored": "Versione ripristinata",
+      "sentForReview": "Articolo inviato per revisione",
+      "reviewStepNotFound": "WorkflowInstance o step di revisione non trovato",
+      "titleBodyRequired": "Titolo e corpo sono obbligatori",
+      "titleBodyRequiredPublish": "Titolo e corpo sono obbligatori prima di pubblicare"
+    },
+    "queue": {
+      "retryQueued": "Job rimesso in coda per un nuovo tentativo"
+    },
+    "integration": {
+      "copied": "Copiato!",
+      "webhookCreateFailed": "Creazione webhook fallita: {{error}}",
+      "outboundCreated": "Webhook outbound creato",
+      "apiKeyCreateFailed": "Creazione API key fallita: {{error}}",
+      "testOk": "Test OK — status {{status}}",
+      "testFailed": "Test fallito: {{error}}",
+      "testError": "Test webhook fallito: {{error}}",
+      "tokenRegenFailed": "Rigenerazione token fallita: {{error}}",
+      "keyRegenFailed": "Rigenerazione chiave fallita: {{error}}"
+    },
+    "team": {
+      "created": "Team creato",
+      "managerUpdated": "Manager aggiornato",
+      "managerRemoved": "Manager rimosso",
+      "changeManagerUpdated": "Team Change Manager aggiornato"
+    },
+    "task": {
+      "claimed": "Task presa in carico",
+      "userUnknown": "Utente non identificato",
+      "completed": "Task completato",
+      "reopened": "Task riaperto",
+      "assignmentUpdated": "Assegnazione aggiornata",
+      "planSaved": "Piano salvato",
+      "reminderSent": "Sollecito inviato"
+    },
+    "approval": {
+      "rejectReasonRequired": "Il motivo del rifiuto è obbligatorio",
+      "approved": "Approvazione registrata",
+      "rejected": "Richiesta rifiutata",
+      "cancelled": "Richiesta annullata"
+    },
+    "report": {
+      "duplicated_one": "Report duplicato: \"{{name}}\" ({{count}} sezione)",
+      "duplicated_other": "Report duplicato: \"{{name}}\" ({{count}} sezioni)",
+      "saveFailed": "Errore nel salvataggio",
+      "corruptFilters": "Filtri della sezione corrotti (nodo \"{{node}}\"): {{error}}. Correggi il dato salvato prima di modificare la sezione.",
+      "streamError": "Errore durante la generazione della risposta",
+      "aiOverloaded": "Servizio AI temporaneamente sovraccarico. Riprova tra qualche secondo.",
+      "droppedFrames_one": "{{count}} frammento della risposta non interpretato ({{reason}}): il testo potrebbe essere incompleto.",
+      "droppedFrames_other": "{{count}} frammenti della risposta non interpretati ({{reason}}): il testo potrebbe essere incompleto."
+    },
+    "itil": {
+      "previewNoSave": "Preview — nessun dato salvato",
+      "enumRequired": "Seleziona un enum di riferimento per i campi di tipo enum"
+    },
+    "citype": {
+      "typeCreated": "Tipo creato",
+      "saved": "Salvato",
+      "typeDeleted": "Tipo eliminato",
+      "fieldAdded": "Campo aggiunto",
+      "baseFieldAdded": "Campo base aggiunto",
+      "fieldRemoved": "Campo rimosso",
+      "relationAdded": "Relazione aggiunta",
+      "relationRemoved": "Relazione rimossa",
+      "previewNoSave": "Preview — nessun dato salvato",
+      "nameLabelRequired": "Nome e label obbligatori"
+    },
+    "import": {
+      "requestFailed": "Richiesta di import fallita: {{error}}"
+    },
+    "sync": {
+      "connectionFailed": "Connessione fallita",
+      "scheduleSaved": "Pianificazione salvata",
+      "conflictResolved": "Conflitto risolto"
+    },
+    "workflow": {
+      "stepNotRecognized": "Step non riconosciuto",
+      "transitionCreated": "Transizione creata — impostane il trigger nel pannello",
+      "transitionDeleted": "Transizione eliminata",
+      "stepDeleted": "Step eliminato",
+      "stepAdded": "Step aggiunto",
+      "saveConflict": "Workflow modificato da un altro utente: ricarica la pagina prima di salvare. Le tue modifiche non sono state applicate.",
+      "saveNoResponse": "Salvataggio senza risposta dal server: ricarica la pagina per verificare lo stato del workflow.",
+      "saved": "Workflow salvato — v{{version}}",
+      "savedLocally": "Modifica salvata localmente"
+    },
+    "ci": {
+      "saved": "Modifiche salvate",
+      "ownerGroupUpdated": "Owner group aggiornato",
+      "ownerGroupRemoved": "Owner group rimosso",
+      "supportGroupUpdated": "Support group aggiornato",
+      "supportGroupRemoved": "Support group rimosso"
+    },
+    "anomaly": {
+      "scanCompleted": "Scan completato",
+      "scanTimeout": "Scan non completato entro {{seconds}}s: verifica il worker delle anomalie (i risultati compariranno al prossimo refresh).",
+      "scanEnqueueFailed": "Impossibile avviare lo scan: coda dei job non disponibile."
+    },
+    "dashboard": {
+      "created": "Dashboard creata",
+      "createFailed": "Creazione dashboard fallita: {{error}}",
+      "updated": "Dashboard aggiornata",
+      "updateFailed": "Aggiornamento dashboard fallito: {{error}}",
+      "setDefault": "Dashboard impostata come default",
+      "deleted": "Dashboard eliminata",
+      "deleteFailed": "Eliminazione dashboard fallita: {{error}}",
+      "saved": "Dashboard salvata",
+      "saveFailed": "Errore durante il salvataggio: {{error}}",
+      "emptyResponse": "Risposta vuota dal server: layout non confermato"
+    },
+    "widget": {
+      "created": "Widget creato",
+      "updated": "Widget aggiornato",
+      "saveFailed": "Salvataggio widget fallito: {{error}}",
+      "titleRequired": "Inserisci un titolo",
+      "removed": "Widget rimosso",
+      "removeFailed": "Rimozione widget fallita: {{error}}",
+      "reorderFailed": "Errore nel riordinamento: {{error}}"
+    },
+    "incident": {
+      "created": "Incident creato",
+      "updated": "Incident aggiornato",
+      "teamAssignmentFailed": "Assegnazione team: {{error}}",
+      "fieldRulesUnavailable": "Impossibile validare i campi obbligatori: {{error}}",
+      "kbDraftCreated": "Bozza KB creata: \"{{title}}\" — la trovi in Knowledge Base Admin",
+      "kbDraftFailed": "Bozza KB fallita: {{error}}",
+      "transitionCompletedTo": "Transizione completata → {{step}}",
+      "transitionFailed": "Transizione fallita",
+      "transitionExecuted": "Transizione eseguita",
+      "transitionError": "Errore transizione",
+      "transitionNotSelected": "Transizione non selezionata",
+      "workflowInstanceMissing": "WorkflowInstance non trovato",
+      "workflowRulesNotLoaded": "Regole di workflow non caricate: {{error}}",
+      "majorUpdated": "Stato Major Incident aggiornato",
+      "teamAssigned": "Team assegnato",
+      "unassignFailed": "Rimozione assegnatario non riuscita",
+      "takenOver": "Incident preso in carico",
+      "commentAdded": "Commento aggiunto",
+      "ciAdded": "CI aggiunto",
+      "ciRemoved": "CI rimosso",
+      "selectTeamFirst": "Seleziona prima un team dalla card Dettagli",
+      "selectUserFirst": "Seleziona prima un utente dalla card Dettagli",
+      "aiDraftFailed": "Bozza AI fallita: {{error}}",
+      "aiDraftNoResponse": "Bozza AI fallita: nessuna risposta"
+    },
+    "problem": {
+      "created": "Problem creato",
+      "updated": "Aggiornato",
+      "deleted": "Problem eliminato",
+      "teamAssignmentFailed": "Assegnazione team: {{error}}",
+      "analysisFailed": "Analisi fallita: {{error}}",
+      "analysisNoResponse": "Analisi fallita: nessuna risposta",
+      "transitionCompleted": "Transizione completata",
+      "transitionPartial_one": "Transizione eseguita, ma {{count}} azione non riuscita: {{errors}}",
+      "transitionPartial_other": "Transizione eseguita, ma {{count}} azioni non riuscite: {{errors}}",
+      "teamAssigned": "Team assegnato",
+      "userAssigned": "Utente assegnato",
+      "ciAdded": "CI aggiunto",
+      "ciRemoved": "CI rimosso",
+      "incidentLinked": "Incident collegato",
+      "incidentUnlinked": "Incident scollegato",
+      "changeLinked": "Change collegata",
+      "commentAdded": "Commento aggiunto",
+      "notesTooShort": "Note troppo brevi (minimo 10 caratteri)"
+    },
+    "change": {
+      "created": "Change {{code}} creato",
+      "deleted": "Change eliminata",
+      "transitionPartial_one": "Transizione eseguita, ma {{count}} azione non riuscita: {{errors}}",
+      "transitionPartial_other": "Transizione eseguita, ma {{count}} azioni non riuscite: {{errors}}",
+      "approvalRecorded": "Approvazione registrata",
+      "approvalRejected": "Approvazione rifiutata",
+      "ticketLinked": "Ticket collegato",
+      "ticketUnlinked": "Ticket scollegato",
+      "ciAdded": "CI aggiunto",
+      "ciRemoved": "CI rimosso",
+      "ciAddedToAffected": "CI aggiunto agli affected"
+    },
+    "request": {
+      "created": "Richiesta di servizio creata",
+      "updated": "Richiesta aggiornata",
+      "transitionFailed": "Transizione non riuscita"
+    }
+  },
+  "components": {
+    "reportChart": {
+      "unavailable": "Grafico non disponibile con i parametri selezionati",
+      "computeError": "Errore nel calcolo della sezione",
+      "corruptData": "Dati sezione corrotti"
+    },
+    "ciDynamicForm": {
+      "selectOption": "— seleziona —",
+      "nameRequired": "Il nome è obbligatorio",
+      "scriptError": "Errore sandbox scripting:",
+      "metamodelError": "Metamodello:",
+      "saving": "Salvataggio..."
+    },
+    "ciGraph": {
+      "showBlastRadius": "Mostra blast radius",
+      "maxDepth": "Profondità max",
+      "spread": "Distanza",
+      "legendDependencies": "Dipendenze (questo CI dipende da)",
+      "legendDependents": "Dipendenti (dipendono da questo CI)",
+      "legendBlast": "Blast radius (impatto indiretto)"
+    },
+    "topologyGraph": {
+      "legend": "Legenda",
+      "nodes": "Nodi",
+      "edges": "Relazioni",
+      "signals": "Segnali",
+      "activeIncident": "Incident attivo",
+      "changeInProgress": "Change in corso"
+    },
+    "widgetBody": {
+      "label": "Label",
+      "value": "Valore",
+      "noData": "Nessun dato"
     }
   }
 }

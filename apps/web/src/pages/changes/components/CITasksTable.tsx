@@ -165,9 +165,9 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
         return (
           <div key={a.ci.id} style={{ borderLeft: isOpen ? '3px solid var(--color-brand)' : '3px solid transparent', marginBottom: 2, transition: 'border-color 0.15s' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 8px 4px', borderBottom: '1px solid #f3f4f6' }}>
-              <span onClick={() => setExpandedCIId(prev => prev === a.ci.id ? null : a.ci.id)} style={{ width: 24, flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button type="button" aria-expanded={isOpen} aria-label={a.ci.name} onClick={() => setExpandedCIId(prev => prev === a.ci.id ? null : a.ci.id)} style={{ width: 24, flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit' }}>
                 <ChevronRight size={16} color="var(--color-slate-light)" style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} />
-              </span>
+              </button>
               <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)' }}>{a.ci.name}</span>
               <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.type ?? ''}</span>
               <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.environment ?? ''}</span>

@@ -277,6 +277,7 @@ export async function loadScheduledSyncs(): Promise<void> {
     logger.info({ count: result.records.length }, '[sync] Scheduled syncs loaded')
   } catch (err) {
     logger.error({ err }, '[sync] Failed to load scheduled syncs')
+    throw err
   } finally {
     await session.close()
   }
