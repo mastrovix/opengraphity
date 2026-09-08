@@ -47,7 +47,7 @@ export async function createAssessmentQuestion(
       WITH q
       UNWIND $options AS opt
       CREATE (o:AnswerOption {
-        id: randomUUID(), label: opt.label, score: opt.score, sort_order: opt.sortOrder
+        id: randomUUID(), tenant_id: $tenantId, label: opt.label, score: opt.score, sort_order: opt.sortOrder
       })
       CREATE (q)-[:HAS_OPTION]->(o)
     `, { id, tenantId: ctx.tenantId, text, category, isCore, now, options }))
@@ -95,7 +95,7 @@ export async function updateAssessmentQuestion(
         MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})
         UNWIND $options AS opt
         CREATE (o:AnswerOption {
-          id: randomUUID(), label: opt.label, score: opt.score, sort_order: opt.sortOrder
+          id: randomUUID(), tenant_id: $tenantId, label: opt.label, score: opt.score, sort_order: opt.sortOrder
         })
         CREATE (q)-[:HAS_OPTION]->(o)
       `, { id, tenantId: ctx.tenantId, options }))

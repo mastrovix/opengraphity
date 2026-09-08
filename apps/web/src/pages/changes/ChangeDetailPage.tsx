@@ -217,14 +217,16 @@ export function ChangeDetailPage() {
           >
             {t('detail.exportPdf')}
           </Button>
-          <Button
-            variant="secondary"
-            disabled={deleting}
-            icon={deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-            onClick={() => setConfirmDelete(true)}
-          >
-            Elimina
-          </Button>
+          {isAdmin && (
+            <Button
+              variant="secondary"
+              disabled={deleting}
+              icon={deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Elimina
+            </Button>
+          )}
         </div>
       </div>
       <PhaseChipBar current={currentStep} steps={wfSteps} />

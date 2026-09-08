@@ -104,6 +104,7 @@ async function globalSearch(
       if (r.labels.includes('Incident')) {
         if (res.incidents.length < limit) res.incidents.push(mapIncident(r.props))
       } else if (r.labels.includes('Change')) {
+        if (r.props['deleted'] === true) continue // eliminata logicamente
         if (res.changes.length < limit) res.changes.push(mapChange(r.props))
       } else if (r.labels.includes('Problem')) {
         if (res.problems.length < limit) res.problems.push(mapProblem(r.props))
@@ -151,7 +152,8 @@ async function globalSearch(
     }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
             -[:HAS_ASSESSMENT|HAS_DEPLOY_PLAN|HAS_VALIDATION|HAS_DEPLOYMENT|HAS_REVIEW]->(t)
-      WHERE t.code IS NOT NULL AND toLower(t.code) CONTAINS toLower($q)
+      WHERE coalesce(c.deleted, false) = false
+        AND t.code IS NOT NULL AND toLower(t.code) CONTAINS toLower($q)
       OPTIONAL MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
       RETURN t.id AS id, t.code AS code, labels(t)[0] AS label,
              coalesce(t.status, '') AS status,

@@ -406,12 +406,15 @@ export async function assignIncidentToUser(
       const currentStep = wiResult.records[0]!.get('currentStep') as string
       const initialStep = await getInitialStepName(session, ctx.tenantId, 'incident')
 
-      // Auto-advance while still near the start of the workflow: take the
-      // first manual transition. The workflow decides what "after assignment"
-      // means — the service no longer names specific steps.
-      const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
+      // Auto-advance SOLO dallo step iniziale (come per il team): assegnare
+      // una persona a un incident già avviato non deve far scattare una
+      // transizione arbitraria (transitions[0] potrebbe essere "resolved").
+      // Da qualunque altro step si registra soltanto l'assegnazione (sotto).
+      const transitions = currentStep === initialStep
+        ? await workflowEngine.getAvailableTransitions(session, instanceId)
+        : []
       const next = transitions[0]
-      if (currentStep !== initialStep && next) {
+      if (currentStep === initialStep && next) {
         await workflowEngine.transition(
           session,
           { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato a ${userName}` },

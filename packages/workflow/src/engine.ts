@@ -201,9 +201,12 @@ export class WorkflowEngine {
         } else if (condition === 'has_linked_change') {
           // La guardia richiede che l'entità (es. Problem) abbia una change
           // collegata prima di passare allo step "change requested".
+          // Conta SOLO le change risolutive (RESOLVED_BY) non eliminate: un
+          // arco qualunque o una change cancellata non soddisfano la guardia.
           const linkRes = await session.executeRead((tx) =>
             tx.run(`
-              MATCH (e {id: $entityId, tenant_id: $tenantId})--(c:Change)
+              MATCH (e {id: $entityId, tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {tenant_id: $tenantId})
+              WHERE coalesce(c.deleted, false) = false
               RETURN count(c) AS n
             `, { entityId: wi['entity_id'], tenantId: wi['tenant_id'] }),
           )
@@ -298,7 +301,7 @@ export class WorkflowEngine {
           await tx.run(`
             MATCH (entity {id: $entityId, tenant_id: $tenantId})
             SET entity.status      = 'resolved',
-                entity.root_cause  = $rootCause,
+                entity.root_cause  = coalesce($rootCause, entity.root_cause),
                 entity.resolved_at = $now,
                 entity.updated_at  = $now
           `, {

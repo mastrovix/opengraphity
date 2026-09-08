@@ -277,6 +277,7 @@ async function linkChangeToProblem(
     await session.executeWrite((tx) => tx.run(`
       MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
       MERGE (p)-[:RESOLVED_BY]->(c)
       SET p.updated_at = $now
     `, { problemId: args.problemId, changeId: args.changeId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
@@ -530,7 +531,8 @@ async function problemRelatedChanges(
 ) {
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change)
+      MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
       RETURN properties(c) as props
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => ({

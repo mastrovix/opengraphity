@@ -43,6 +43,7 @@ export async function saveDeployPlan(
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ ciId: string; changeId: string; status: string; currentStep: string }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {id: $taskId})
+      WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, wi.current_step AS currentStep
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
@@ -82,6 +83,7 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ ciId: string; changeId: string; status: string; steps: string | null }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {id: $taskId})
+      WHERE coalesce(c.deleted, false) = false
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, dp.steps AS steps
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })

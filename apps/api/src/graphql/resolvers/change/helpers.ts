@@ -121,9 +121,13 @@ export async function assertCIHasOwnerAndSupport(session: Session, tenantId: str
 
 // ── generic loaders ───────────────────────────────────────────────────────────
 
+/** Predicato condiviso: esclude le change eliminate logicamente (deleteChange). */
+export const CHANGE_NOT_DELETED = 'coalesce(c.deleted, false) = false'
+
 export async function loadChange(session: Session, changeId: string, tenantId: string): Promise<Props | null> {
   const row = await runQueryOne<{ props: Props }>(session, `
     MATCH (c:Change {id: $id, tenant_id: $tenantId})
+    WHERE ${CHANGE_NOT_DELETED}
     RETURN properties(c) AS props
   `, { id: changeId, tenantId })
   return row?.props ?? null
@@ -145,11 +149,11 @@ export async function getQuestionText(session: Session, questionId: string, tena
   return row?.text ?? questionId
 }
 
-export async function getAnswerLabel(session: Session, optionId: string): Promise<string> {
+export async function getAnswerLabel(session: Session, optionId: string, tenantId: string): Promise<string> {
   const row = await runQueryOne<{ label: string }>(session, `
-    MATCH (o:AnswerOption {id: $id})
+    MATCH (o:AnswerOption {id: $id, tenant_id: $tenantId})
     RETURN o.label AS label
-  `, { id: optionId })
+  `, { id: optionId, tenantId })
   return row?.label ?? optionId
 }
 
@@ -158,17 +162,22 @@ export async function getAnswerLabel(session: Session, optionId: string): Promis
 export async function getCurrentStep(session: Session, changeId: string, tenantId: string): Promise<string | null> {
   const row = await runQueryOne<{ step: string }>(session, `
     MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    WHERE ${CHANGE_NOT_DELETED}
     RETURN wi.current_step AS step
   `, { id: changeId, tenantId })
   return row?.step ?? null
 }
 
+/** Istanza di workflow della change; rifiuta le change eliminate (nessuna mutation su una change cancellata). */
 export async function getInstanceId(session: Session, changeId: string, tenantId: string): Promise<string> {
-  const row = await runQueryOne<{ id: string }>(session, `
-    MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-    RETURN wi.id AS id
+  const row = await runQueryOne<{ id: string | null; deleted: boolean }>(session, `
+    MATCH (c:Change {id: $id, tenant_id: $tenantId})
+    OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    RETURN wi.id AS id, coalesce(c.deleted, false) AS deleted
   `, { id: changeId, tenantId })
-  if (!row) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
+  if (!row) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+  if (row.deleted) throw new GraphQLError('La change è stata eliminata: nessuna operazione è più possibile', { extensions: { code: 'CONFLICT' } })
+  if (!row.id) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
   return row.id
 }
 
@@ -345,15 +354,23 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
       const { workflowEngine } = await import('@opengraphity/workflow')
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
       const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: 'scheduled', triggeredBy: 'system', triggerType: 'automatic', notes: 'Standard: pre-approvata' }, { userId: 'system', entityData: {} })
-      if (res.success) await afterEnterStep(session, changeId, tenantId, 'scheduled')
+      // Fail-loud: una standard ferma in approval senza requisiti non si
+      // sbloccherebbe mai (nessun record da approvare).
+      if (!res.success) {
+        throw new GraphQLError(`Change standard: pre-approvazione non riuscita (${res.error ?? 'transizione fallita'})`, { extensions: { code: 'CONFLICT' } })
+      }
+      await afterEnterStep(session, changeId, tenantId, 'scheduled')
     }
   }
   const hook = row?.hook
   if (!hook) return
   const creator = ON_ENTER_CREATORS[hook]
   if (!creator) {
-    logger.warn({ changeId, stepName, hook }, '[afterEnterStep] unknown on_enter_create hook')
-    return
+    // Un hook sconosciuto significa workflow mal configurato: senza i task di
+    // fase la change entrerebbe in deployment/review "vuota" e sembrerebbe
+    // completa. Meglio bloccare.
+    logger.error({ changeId, stepName, hook }, '[afterEnterStep] on_enter_create hook sconosciuto')
+    throw new GraphQLError(`Workflow mal configurato: hook on_enter_create "${hook}" sconosciuto per lo step "${stepName}"`, { extensions: { code: 'CONFLICT' } })
   }
   await creator(session, changeId, tenantId)
 }

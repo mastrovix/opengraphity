@@ -35,6 +35,7 @@ export async function submitAssessmentResponse(
   return withSession(async (session) => {
     const task = await runQueryOne<{ props: Props; changeId: string }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
+      WHERE coalesce(c.deleted, false) = false
       RETURN properties(t) AS props, c.id AS changeId
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!task) throw new GraphQLError(`AssessmentTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
@@ -46,8 +47,9 @@ export async function submitAssessmentResponse(
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
-      MATCH (q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})
-      MATCH (opt:AnswerOption {id: $optionId})
+      // L'opzione DEVE appartenere a questa domanda e a questo tenant:
+      // altrimenti si potrebbe iniettare il punteggio di un'altra domanda.
+      MATCH (q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})-[:HAS_OPTION]->(opt:AnswerOption {id: $optionId})
       OPTIONAL MATCH (t)-[:HAS_RESPONSE]->(old:AssessmentResponse)-[:ANSWERS]->(q)
       DETACH DELETE old
       WITH t, q, opt
@@ -68,7 +70,7 @@ export async function submitAssessmentResponse(
 
     const ciName   = await getCIName(session, task.props['ci_id'] as string, ctx.tenantId)
     const qText    = await getQuestionText(session, args.questionId, ctx.tenantId)
-    const optLabel = await getAnswerLabel(session, args.optionId)
+    const optLabel = await getAnswerLabel(session, args.optionId, ctx.tenantId)
     await writeAudit(session, task.changeId, ctx.tenantId, 'assessment_response_submitted', ctx.userId,
       `${ROLE_LABEL[role]} · ${ciName}: "${qText}" → ${optLabel}`)
 
@@ -94,6 +96,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       ciEnv: string | null
     }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
+      WHERE coalesce(c.deleted, false) = false
       MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
       OPTIONAL MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
         WHERE ct.neo4j_label = labels(ci)[0]
@@ -196,6 +199,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
 async function loadTaskContext(session: Session, taskId: string, tenantId: string) {
   return runQueryOne<{ changeId: string; ciId: string; role: string; taskProps: Props }>(session, `
     MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
+    WHERE coalesce(c.deleted, false) = false
     RETURN c.id AS changeId, t.ci_id AS ciId, t.responder_role AS role, properties(t) AS taskProps
   `, { taskId, tenantId })
 }
@@ -297,6 +301,7 @@ export async function assignDeployPlanTaskToUser(
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ changeId: string; ciId: string }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(t:DeployPlanTask {id: $taskId})
+      WHERE coalesce(c.deleted, false) = false
       RETURN c.id AS changeId, t.ci_id AS ciId
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })

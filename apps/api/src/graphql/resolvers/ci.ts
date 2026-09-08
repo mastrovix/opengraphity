@@ -169,6 +169,7 @@ async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session,
       `MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(n {id: $ciId})
+       WHERE coalesce(c.deleted, false) = false
        RETURN properties(c) AS props
        ORDER BY c.created_at DESC`,
       { ciId: args.ciId, tenantId: ctx.tenantId },

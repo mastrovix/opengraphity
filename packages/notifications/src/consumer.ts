@@ -99,6 +99,7 @@ export async function dispatchChangeNotification(
     const result = await session.executeRead((tx) =>
       tx.run(`
         MATCH (c:Change {id: $id, tenant_id: $tenantId})
+        WHERE coalesce(c.deleted, false) = false
         OPTIONAL MATCH (c)-[:AFFECTS]->(ci:ConfigurationItem)
         OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(u:User)
         OPTIONAL MATCH (c)-[:ASSIGNED_TO_TEAM]->(t:Team)

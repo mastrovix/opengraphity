@@ -25,6 +25,7 @@ export async function reopenAssessmentTask(_: unknown, args: { taskId: string; r
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ changeId: string; ciId: string; role: string }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
+      WHERE coalesce(c.deleted, false) = false
       RETURN c.id AS changeId, t.ci_id AS ciId, t.responder_role AS role
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new GraphQLError(`AssessmentTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
@@ -69,6 +70,7 @@ export async function reopenDeployPlanTask(_: unknown, args: { taskId: string; r
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ changeId: string; ciId: string }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {id: $taskId})
+      WHERE coalesce(c.deleted, false) = false
       RETURN c.id AS changeId, dp.ci_id AS ciId
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
@@ -105,6 +107,7 @@ export async function reopenValidationTest(_: unknown, args: { id: string; reaso
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ changeId: string; ciId: string }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_VALIDATION]->(vt:ValidationTest {id: $id})
+      WHERE coalesce(c.deleted, false) = false
       RETURN c.id AS changeId, vt.ci_id AS ciId
     `, { id: args.id, tenantId: ctx.tenantId })
     if (!tctx) throw new GraphQLError(`ValidationTest ${args.id} non trovata`, { extensions: { code: 'NOT_FOUND' } })
@@ -135,6 +138,7 @@ export async function reopenDeploymentTask(_: unknown, args: { id: string; reaso
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ changeId: string; ciId: string }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOYMENT]->(dt:DeploymentTask {id: $id})
+      WHERE coalesce(c.deleted, false) = false
       RETURN c.id AS changeId, dt.ci_id AS ciId
     `, { id: args.id, tenantId: ctx.tenantId })
     if (!tctx) throw new GraphQLError(`DeploymentTask ${args.id} non trovata`, { extensions: { code: 'NOT_FOUND' } })
@@ -165,6 +169,7 @@ export async function reopenReviewTask(_: unknown, args: { id: string; reason: s
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ changeId: string; ciId: string }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_REVIEW]->(rv:ReviewTask {id: $id})
+      WHERE coalesce(c.deleted, false) = false
       RETURN c.id AS changeId, rv.ci_id AS ciId
     `, { id: args.id, tenantId: ctx.tenantId })
     if (!tctx) throw new GraphQLError(`ReviewTask ${args.id} non trovata`, { extensions: { code: 'NOT_FOUND' } })

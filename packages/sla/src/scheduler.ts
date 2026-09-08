@@ -240,6 +240,19 @@ export async function scheduleOLABreaches(
   }
 }
 
+/**
+ * Rimuove i timer di breach OLA/UC di un'entità (es. change eliminata): gli
+ * id sono quelli generati da scheduleOLABreaches (`ola-<contractId>-<entityId>`).
+ */
+export async function cancelOLABreaches(entityId: string, contractIds: string[]): Promise<void> {
+  const queue = getQueue()
+  for (const contractId of contractIds) {
+    const jobId = `ola-${contractId}-${entityId}`
+    const job = await queue.getJob(jobId)
+    if (job) await job.remove()
+  }
+}
+
 export async function cancelSLAJobs(entityId: string, which: 'resolve' | 'response' | 'both' = 'both'): Promise<void> {
   const queue = getQueue()
 

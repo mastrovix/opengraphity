@@ -30,6 +30,7 @@ export async function completeValidationTest(
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_VALIDATION]->(vt:ValidationTest {ci_id: $ciId})
+      WHERE coalesce(c.deleted, false) = false
       SET vt.status = '${TASK_STATUS.COMPLETED}', vt.result = $result, vt.tested_at = $now
       WITH c, vt
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
@@ -62,6 +63,7 @@ export async function completeDeployment(_: unknown, args: { changeId: string; c
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_DEPLOYMENT]->(dt:DeploymentTask {ci_id: $ciId})
+      WHERE coalesce(c.deleted, false) = false
       SET dt.status = '${TASK_STATUS.COMPLETED}', dt.deployed_at = $now
       WITH c, dt
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
@@ -98,6 +100,7 @@ export async function completeReview(
     const now = new Date().toISOString()
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_REVIEW]->(rv:ReviewTask {ci_id: $ciId})
+      WHERE coalesce(c.deleted, false) = false
       SET rv.status = '${TASK_STATUS.COMPLETED}', rv.result = $result, rv.reviewed_at = $now
       WITH c, rv
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})

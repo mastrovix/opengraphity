@@ -258,6 +258,11 @@ async function setChangeManagerTeam(_: unknown, args: { teamId: string; value: b
       RETURN properties(t) AS props
     `, { teamId: args.teamId, tenantId: ctx.tenantId, value: args.value })
     if (!row) throw new NotFoundError('Team', args.teamId)
+    // Le change già ferme in "approval" senza requisito CM lo ricevono ora.
+    if (args.value) {
+      const { backfillChangeManagerApprovals } = await import('./change/approvalCreation.js')
+      await backfillChangeManagerApprovals(session, ctx.tenantId, args.teamId)
+    }
     void audit(ctx, 'team.change_manager_set', 'Team', args.teamId)
     return mapTeam(row.props)
   }, true)

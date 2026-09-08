@@ -99,6 +99,7 @@ export async function loadProblemDossier(
 
   const changeRows = await runQuery<{ code: string | null; title: string | null; status: string | null }>(session, `
     MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change)
+    WHERE coalesce(c.deleted, false) = false
     OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     RETURN c.code AS code, c.title AS title,
            coalesce(wi.current_step, c.status) AS status

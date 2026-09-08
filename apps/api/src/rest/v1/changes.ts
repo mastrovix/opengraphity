@@ -84,6 +84,7 @@ interface ChangeRow {
 async function loadChangeRow(session: Session, id: string, tenantId: string): Promise<ChangeRow | null> {
   return runQueryOne<ChangeRow>(session, `
     MATCH (c:Change {id: $id, tenant_id: $tenantId})
+    WHERE coalesce(c.deleted, false) = false
     OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     OPTIONAL MATCH (c)-[:REQUESTED_BY]->(req:User)
     OPTIONAL MATCH (c)-[:OWNED_BY]->(owner:User)
@@ -99,7 +100,7 @@ async function loadAffectedCIs(session: Session, changeId: string, tenantId: str
     validation: Props | null; deployment: Props | null; review: Props | null
   }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci)
-    WHERE ci.tenant_id = $tenantId
+    WHERE ci.tenant_id = $tenantId AND coalesce(c.deleted, false) = false
     OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(ownerT:AssessmentTask)
       WHERE ownerT.ci_id = ci.id AND ownerT.responder_role = $ownerRole
     OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(supportT:AssessmentTask)
@@ -160,6 +161,7 @@ router.get('/', requirePermission('changes:read'), async (req: Request, res: Res
 
     const countRow = await runQueryOne<{ total: unknown }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
       OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       ${phaseFilter}
       RETURN count(c) AS total
@@ -167,6 +169,7 @@ router.get('/', requirePermission('changes:read'), async (req: Request, res: Res
 
     const rows = await runQuery<ChangeRow>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
       OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       ${phaseFilter}
       OPTIONAL MATCH (c)-[:REQUESTED_BY]->(req:User)
@@ -263,7 +266,7 @@ router.get('/:id/tasks', requirePermission('changes:read'), async (req: Request,
   const session = getSession()
   try {
     const exists = await runQueryOne<{ id: string }>(session,
-      `MATCH (c:Change {id: $id, tenant_id: $tenantId}) RETURN c.id AS id`,
+      `MATCH (c:Change {id: $id, tenant_id: $tenantId}) WHERE coalesce(c.deleted, false) = false RETURN c.id AS id`,
       { id: req.params['id'], tenantId: req.apiKey!.tenantId })
     if (!exists) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Change not found' } }); return }
 
@@ -274,6 +277,7 @@ router.get('/:id/tasks', requirePermission('changes:read'), async (req: Request,
         team: Props | null; completedBy: Props | null
       }>(session, `
         MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:${src.rel}]->(t:${src.label})
+        WHERE coalesce(c.deleted, false) = false
         OPTIONAL MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
         OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
         OPTIONAL MATCH (t)-[:${src.byRel}]->(u:User)
@@ -345,6 +349,7 @@ router.get('/:id/status', requirePermission('changes:read'), async (req: Request
   try {
     const row = await runQueryOne<{ code: string | null; approvalStatus: string | null; phase: string | null }>(session, `
       MATCH (c:Change {id: $id, tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
       OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       RETURN c.code AS code, c.approval_status AS approvalStatus, wi.current_step AS phase
     `, { id: req.params['id'], tenantId: req.apiKey!.tenantId })

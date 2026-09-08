@@ -91,7 +91,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   const changeResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci {id: ciId})
-    WHERE c.created_at >= $since
+    WHERE c.created_at >= $since AND coalesce(c.deleted, false) = false
     OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     RETURN c.id AS id, c.code AS code, c.title AS title,
            coalesce(wi.current_step, '') AS phase, c.approval_status AS approvalStatus,

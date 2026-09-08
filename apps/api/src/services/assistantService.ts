@@ -143,7 +143,7 @@ function buildTools(tenantId: string) {
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello, business_capability,
              collect(DISTINCT inc.number) AS incident_aperti
         OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci)
-        WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed']
+        WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed'] AND coalesce(ch.deleted, false) = false
         RETURN ci.name AS nome, labels(ci)[0] AS tipo, ci.environment AS ambiente,
                dipendenti_diretti, dipendenti_secondo_livello, business_capability,
                incident_aperti, collect(DISTINCT ch.number) AS change_in_corso
@@ -205,7 +205,7 @@ function buildTools(tenantId: string) {
       const { limit } = input as { limit?: number }
       const rows = await readQuery(`
         MATCH (ch:Change {tenant_id: $tenantId})
-        WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed']
+        WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed'] AND coalesce(ch.deleted, false) = false
         OPTIONAL MATCH (ch)-[:AFFECTS]->(ci)
         WITH ch, collect(DISTINCT ci.name) AS cis
         RETURN ch.number AS numero, ch.title AS titolo, ch.status AS stato,

@@ -110,6 +110,7 @@ export const topologyResolvers = {
             OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
               WHERE ch.tenant_id = $tenantId
                 AND NOT ch.status IN $changeTerminal
+                AND coalesce(ch.deleted, false) = false
             WITH ci,
                  count(DISTINCT i)  AS incidentCount,
                  count(DISTINCT ch) AS changeCount
@@ -181,6 +182,7 @@ export const topologyResolvers = {
           OPTIONAL MATCH (ci)<-[:AFFECTS]-(ch:Change)
             WHERE ch.tenant_id = $tenantId
               AND NOT ch.status IN $changeTerminal
+              AND coalesce(ch.deleted, false) = false
           WITH ci,
                count(DISTINCT i)  AS incidentCount,
                count(DISTINCT ch) AS changeCount

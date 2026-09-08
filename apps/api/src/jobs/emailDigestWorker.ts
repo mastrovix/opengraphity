@@ -49,7 +49,7 @@ async function sendDigestForTenant(tenantId: string): Promise<void> {
       WITH count(i) AS openInc
       OPTIONAL MATCH (r:Incident {tenant_id: $t}) WHERE r.status = $resolvedStep AND r.resolved_at >= $since
       WITH openInc, count(r) AS resolvedToday
-      OPTIONAL MATCH (c:Change {tenant_id: $t})-[:HAS_WORKFLOW]->(wi:WorkflowInstance) WHERE wi.current_step IN $changeOpen
+      OPTIONAL MATCH (c:Change {tenant_id: $t})-[:HAS_WORKFLOW]->(wi:WorkflowInstance) WHERE wi.current_step IN $changeOpen AND coalesce(c.deleted, false) = false
       WITH openInc, resolvedToday, count(c) AS ongoingChanges
       OPTIONAL MATCH (s:SLAStatus {tenant_id: $t}) WHERE s.breached = true AND s.started_at >= $since
       RETURN openInc, resolvedToday, ongoingChanges, count(s) AS slaBreaches

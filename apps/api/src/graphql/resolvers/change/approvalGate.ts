@@ -6,38 +6,52 @@
  *   - 1 approvazione per ciascun OWNER GROUP distinto dei CI affected
  *
  * Ogni requisito è un nodo (c)-[:HAS_APPROVAL]->(:ChangeApproval {kind, team_id,
- * status}). Quando TUTTI sono 'approved' la change avanza automaticamente a
- * "scheduled". Un rifiuto riporta la change ad "assessment" e azzera i record.
- * Le change 'standard' sono pre-approvate: nessun record, nessun gate.
+ * status}). Quando TUTTI sono 'approved' (incluso il Change Manager) la change
+ * avanza automaticamente a "scheduled". Un rifiuto riporta la change ad
+ * "assessment" riaprendo i task scelti. Le change 'standard' sono
+ * pre-approvate: nessun record, nessun gate.
+ *
+ * I requisiti vengono creati/riconciliati in approvalCreation.ts; il gate
+ * (assertAllApprovalsSatisfied) è condiviso con executeChangeTransition.
  */
 import { GraphQLError } from 'graphql'
 import { workflowEngine } from '@opengraphity/workflow'
 import { withSession, runQuery, runQueryOne } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
-import { logger } from '../../../lib/logger.js'
+import { TASK_STATUS } from '../../../lib/taskStatus.js'
 import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
-import { afterEnterStep, getInstanceId } from './helpers.js'
+import { afterEnterStep, getInstanceId, writeAudit } from './helpers.js'
+import { areAllApprovalsSatisfied } from './approvalCreation.js'
+import { deriveChangePriority } from './scoring.js'
+
+type Session = Parameters<typeof runQueryOne>[0]
 
 /** True quando l'utente può agire su un requisito del team: admin o membro. */
-function eligibilityQuery(): string {
-  return `exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(:Team {id: $teamId}))`
+async function assertEligible(session: Session, teamId: string, ctx: GraphQLContext): Promise<void> {
+  if (ctx.role === 'admin') return
+  const row = await runQueryOne<{ ok: boolean }>(session, `
+    RETURN exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(:Team {id: $teamId, tenant_id: $tenantId})) AS ok
+  `, { userId: ctx.userId, tenantId: ctx.tenantId, teamId })
+  if (!row?.ok) throw new GraphQLError('Non sei autorizzato ad approvare per questo team', { extensions: { code: 'FORBIDDEN' } })
 }
 
-async function assertEligible(session: Parameters<typeof runQuery>[0], teamId: string, ctx: GraphQLContext): Promise<void> {
-  if (ctx.role === 'admin') return
-  const row = await runQueryOne<{ ok: boolean }>(session, `RETURN ${eligibilityQuery()} AS ok`, { userId: ctx.userId, tenantId: ctx.tenantId, teamId })
-  if (!row?.ok) throw new GraphQLError('Non sei autorizzato ad approvare per questo team', { extensions: { code: 'FORBIDDEN' } })
+/** La change (non eliminata) deve essere in "approval"; ritorna tipo e nome team. */
+async function assertInApproval(session: Session, changeId: string, teamId: string, tenantId: string): Promise<{ changeType: string; teamName: string }> {
+  const row = await runQueryOne<{ step: string; changeType: string | null; teamName: string | null }>(session, `
+    MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi)-[:CURRENT_STEP]->(s:WorkflowStep)
+    WHERE coalesce(c.deleted, false) = false
+    OPTIONAL MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+    RETURN s.name AS step, c.change_type AS changeType, t.name AS teamName
+  `, { changeId, teamId, tenantId })
+  if (!row) throw new GraphQLError('Change non trovata', { extensions: { code: 'NOT_FOUND' } })
+  if (row.step !== 'approval') throw new GraphQLError('La change non è in fase di approvazione', { extensions: { code: 'BAD_USER_INPUT' } })
+  return { changeType: row.changeType ?? 'normal', teamName: row.teamName ?? teamId }
 }
 
 export async function approveChangeApproval(_: unknown, args: { changeId: string; teamId: string; note?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
-    // La change deve essere nello step approval.
-    const step = await runQueryOne<{ step: string }>(session, `
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi)-[:CURRENT_STEP]->(s:WorkflowStep)
-      RETURN s.name AS step
-    `, { changeId: args.changeId, tenantId: ctx.tenantId })
-    if (step?.step !== 'approval') throw new GraphQLError('La change non è in fase di approvazione', { extensions: { code: 'BAD_USER_INPUT' } })
+    const { teamName } = await assertInApproval(session, args.changeId, args.teamId, ctx.tenantId)
     await assertEligible(session, args.teamId, ctx)
 
     const now = new Date().toISOString()
@@ -49,22 +63,20 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
       RETURN a.id AS id
     `, { changeId: args.changeId, teamId: args.teamId, userId: ctx.userId, now, note: args.note ?? null, tenantId: ctx.tenantId })
     if (!upd) throw new GraphQLError('Requisito di approvazione non trovato o già risolto', { extensions: { code: 'NOT_FOUND' } })
+    await writeAudit(session, args.changeId, ctx.tenantId, 'change_approved', ctx.userId,
+      `${teamName}${args.note?.trim() ? `: ${args.note.trim()}` : ''}`)
 
-    // Tutte approvate? → avanza automaticamente a scheduled.
-    const pending = await runQueryOne<{ n: number }>(session, `
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_APPROVAL]->(a:ChangeApproval)
-      WHERE a.status <> 'approved'
-      RETURN count(a) AS n
-    `, { changeId: args.changeId, tenantId: ctx.tenantId })
-    if (pending && Number(pending.n) === 0) {
+    // Tutti i requisiti soddisfatti (Change Manager incluso)? → avanza a scheduled.
+    // Una transizione fallita qui NON è tollerabile: l'utente vedrebbe
+    // "approvato" con la change ferma per sempre in approval.
+    if (await areAllApprovalsSatisfied(session, args.changeId, ctx.tenantId)) {
       const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
       const res = await workflowEngine.transition(session, { instanceId, toStepName: 'scheduled', triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: 'Approvazioni complete' }, { userId: ctx.userId ?? 'system', entityData: {} })
-      if (res.success) {
-        await afterEnterStep(session, args.changeId, ctx.tenantId, 'scheduled')
-        await evaluateAutoTransitions(session, args.changeId, ctx, afterEnterStep)
-      } else {
-        logger.warn({ changeId: args.changeId, error: res.error }, '[approvalGate] approvazioni complete ma transizione a scheduled non riuscita')
+      if (!res.success) {
+        throw new GraphQLError(`Approvazioni complete ma la change non è avanzata a "scheduled": ${res.error ?? 'transizione fallita'}`, { extensions: { code: 'CONFLICT' } })
       }
+      await afterEnterStep(session, args.changeId, ctx.tenantId, 'scheduled')
+      await evaluateAutoTransitions(session, args.changeId, ctx, afterEnterStep)
     }
     return getChange(null, { id: args.changeId }, ctx)
   }, true)
@@ -78,40 +90,38 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
     throw new GraphQLError('Seleziona quali assessment riaprire (o scegli "tutti")', { extensions: { code: 'BAD_USER_INPUT' } })
   }
   return withSession(async (session) => {
-    const step = await runQueryOne<{ step: string }>(session, `
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi)-[:CURRENT_STEP]->(s:WorkflowStep)
-      RETURN s.name AS step
-    `, { changeId: args.changeId, tenantId: ctx.tenantId })
-    if (step?.step !== 'approval') throw new GraphQLError('La change non è in fase di approvazione', { extensions: { code: 'BAD_USER_INPUT' } })
+    const { changeType, teamName } = await assertInApproval(session, args.changeId, args.teamId, ctx.tenantId)
     await assertEligible(session, args.teamId, ctx)
+    const now = new Date().toISOString()
 
-    // 1) Riapri i task scelti della fase assessment (AssessmentTask +
-    //    DeployPlanTask/planning) portandoli a in_progress e azzerando punteggi:
-    //    così all_assessments_complete torna falso e la change resta in
-    //    assessment finché non vengono ricompilati.
+    // Un'unica transazione: riapre i task scelti (assessment + planning) a
+    // in_progress azzerando i punteggi — così all_assessments_complete torna
+    // falso e la change resta in assessment finché non vengono ricompilati —,
+    // azzera rischio aggregato/rotta/priorità (che da esso derivano) e
+    // cancella i requisiti (verranno ricreati al rientro in approval).
     await session.executeWrite((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_ASSESSMENT|HAS_DEPLOY_PLAN]->(t)
-      WHERE $all OR t.id IN $ids
-      SET t.status = 'in_progress', t.score = null, t.completed_at = null
+      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+      OPTIONAL MATCH (c)-[:HAS_ASSESSMENT|HAS_DEPLOY_PLAN]->(t)
+        WHERE $all OR t.id IN $ids
+      SET t.status = '${TASK_STATUS.IN_PROGRESS}', t.score = null, t.completed_at = null
       WITH c, t
       OPTIONAL MATCH (t)-[cb:COMPLETED_BY]->() DELETE cb
       WITH c, t
       OPTIONAL MATCH (c)-[r:AFFECTS_CI]->(ci {id: t.ci_id}) SET r.risk_score = null, r.ci_phase = 'assessment'
-    `, { changeId: args.changeId, tenantId: ctx.tenantId, all: reopenAll, ids: reopenIds }))
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-      SET c.aggregate_risk_score = null, c.approval_route = null, c.updated_at = $now
-    `, { changeId: args.changeId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
-
-    // 2) Azzera i requisiti di approvazione e riporta la change ad assessment.
-    await runQuery(session, `
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_APPROVAL]->(a:ChangeApproval)
+      WITH DISTINCT c
+      SET c.aggregate_risk_score = null, c.approval_route = null, c.approval_status = null,
+          c.priority = $priority, c.updated_at = $now
+      WITH c
+      OPTIONAL MATCH (c)-[:HAS_APPROVAL]->(a:ChangeApproval)
       DETACH DELETE a
-    `, { changeId: args.changeId, tenantId: ctx.tenantId })
+    `, { changeId: args.changeId, tenantId: ctx.tenantId, all: reopenAll, ids: reopenIds, now, priority: deriveChangePriority(changeType, null) }))
 
     const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
     const res = await workflowEngine.transition(session, { instanceId, toStepName: 'assessment', triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: `Approvazione rifiutata: ${args.note.trim()}` }, { userId: ctx.userId ?? 'system', entityData: {} })
+    // Se fallisce, la change resta in approval con i task riaperti e senza
+    // requisiti: il gate blocca l'approvazione e il rigetto è ripetibile.
     if (!res.success) throw new GraphQLError(res.error ?? 'Rigetto non riuscito', { extensions: { code: 'CONFLICT' } })
+    await writeAudit(session, args.changeId, ctx.tenantId, 'change_rejected', ctx.userId, `${teamName}: ${args.note.trim()}`)
     await afterEnterStep(session, args.changeId, ctx.tenantId, 'assessment')
     return getChange(null, { id: args.changeId }, ctx)
   }, true)

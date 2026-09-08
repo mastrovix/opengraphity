@@ -109,6 +109,7 @@ export async function loadChangeDossier(
     currentStep: string | null
   }>(session, `
     MATCH (c:Change {id: $id, tenant_id: $tenantId})
+    WHERE coalesce(c.deleted, false) = false
     OPTIONAL MATCH (c)-[:REQUESTED_BY]->(req:User)
     OPTIONAL MATCH (c)-[:OWNED_BY]->(owner:User)
     OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)

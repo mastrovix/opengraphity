@@ -14,6 +14,7 @@ import { requireRole } from '../../../lib/requireRole.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
+import { assertAllApprovalsSatisfied } from './approvalCreation.js'
 import {
   writeAudit,
   getNextTaskCodes,
@@ -53,15 +54,44 @@ export async function createChange(
 // Marca la change come deleted: sparisce dagli elenchi e dai ticket collegati.
 // È l'unico modo per rimuovere i collegamenti RESOLVED_BY creati automaticamente.
 export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  // Solo admin: eliminare una change (anche logicamente) rimuove dai flussi
+  // approvazioni, task e collegamenti di tutto il tenant.
+  requireRole(ctx, 'admin')
   const now = new Date().toISOString()
   await withSession(async (session) => {
+    // Unica transazione: marca la change, chiude l'istanza di workflow (così
+    // nessuna transizione/approvazione è più possibile) e scrive l'audit.
     const r = await session.executeWrite((tx) => tx.run(`
       MATCH (c:Change {id: $id, tenant_id: $tenantId})
-      SET c.deleted = true, c.deleted_at = $now, c.updated_at = $now
+      WHERE coalesce(c.deleted, false) = false
+      SET c.deleted = true, c.deleted_at = $now, c.deleted_by = $userId, c.updated_at = $now
+      WITH c
+      OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      SET wi.status = 'cancelled', wi.updated_at = $now
+      WITH c
+      CREATE (c)-[:HAS_AUDIT]->(e:ChangeAuditEntry {
+        id: randomUUID(), tenant_id: $tenantId, timestamp: $now,
+        action: 'change_deleted', detail: 'Eliminazione logica'
+      })
+      WITH c, e
+      OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END | CREATE (e)-[:BY]->(u))
       RETURN c.id AS id
-    `, { id: args.id, tenantId: ctx.tenantId, now }))
-    if (r.records.length === 0) throw new GraphQLError('Change non trovata', { extensions: { code: 'NOT_FOUND' } })
+    `, { id: args.id, tenantId: ctx.tenantId, now, userId: ctx.userId ?? null }))
+    if (r.records.length === 0) throw new GraphQLError('Change non trovata o già eliminata', { extensions: { code: 'NOT_FOUND' } })
   }, true)
+  // I timer di breach OLA/UC schedulati alla creazione non devono più
+  // notificare per una change eliminata. Cleanup post-commit: un errore qui
+  // non annulla l'eliminazione ma viene registrato ad alta severità.
+  try {
+    // Import dinamico: il modulo sla apre la connessione BullMQ/Neo4j al
+    // caricamento, non deve pesare su chi importa le mutation.
+    const { getActiveOLAContractsFor, cancelOLABreaches } = await import('@opengraphity/sla')
+    const contracts = await getActiveOLAContractsFor(ctx.tenantId, 'change')
+    if (contracts.length > 0) await cancelOLABreaches(args.id, contracts.map((c) => c.id))
+  } catch (err) {
+    logger.error({ err, changeId: args.id }, '[deleteChange] cancellazione job OLA non riuscita')
+  }
   // I problem che dipendevano da questa change tornano in analisi.
   const problemIds = await withSession((session) => runQuery<{ id: string }>(session, `
     MATCH (p:Problem {tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
@@ -86,6 +116,7 @@ export async function linkResolvedTicket(_: unknown, args: { changeId: string; e
     const r = await session.executeWrite((tx) => tx.run(`
       MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
       MERGE (e)-[:RESOLVED_BY]->(c)
       SET e.updated_at = $now
       RETURN c.id AS id
@@ -300,14 +331,20 @@ export async function executeChangeTransition(
     const currentStep = stepRow?.step ?? null
     const changeType = (entityProps['change_type'] as string) ?? 'normal'
 
-    // ── CAB role gate: authorization rigor depends on the change type ─────────
-    // Leaving the `approval` step means the change is being approved.
+    // ── Gate di approvazione ──────────────────────────────────────────────────
+    // Uscire da `approval` verso avanti significa approvare la change: oltre
+    // al ruolo admin, TUTTI i requisiti multi-parte (Change Manager + owner
+    // group) devono essere 'approved' — lo stesso gate dell'auto-advance.
+    // Il rigetto (approval → assessment) deve passare da rejectChangeApproval,
+    // che riapre i task: una transizione "nuda" lascerebbe gli assessment
+    // completi e la change rimbalzerebbe subito in approval.
     if (currentStep === 'approval' && args.toStep !== 'approval') {
-      // standard = pre-approved (no gate); normal → Change Manager (admin);
-      // emergency → ECAB (admin). The token role model is admin/operator/
-      // viewer/end_user, so the CAB gate is the admin role.
+      if (args.toStep === 'assessment') {
+        throw new GraphQLError('Per rigettare usa "Rigetta" nella sezione Approvazione (rejectChangeApproval), che riapre gli assessment', { extensions: { code: 'CONFLICT' } })
+      }
       if (changeType !== 'standard') {
         requireRole(ctx, 'admin')
+        await assertAllApprovalsSatisfied(session, args.changeId, ctx.tenantId)
       }
     }
 

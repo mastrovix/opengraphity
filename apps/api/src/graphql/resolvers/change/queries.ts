@@ -174,6 +174,7 @@ export async function change(_: unknown, args: { id: string }, ctx: GraphQLConte
       appUser: Props | null
     }>(session, `
       MATCH (c:Change {id: $id, tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
       OPTIONAL MATCH (c)-[:REQUESTED_BY]->(req:User)
       OPTIONAL MATCH (c)-[:OWNED_BY]->(owner:User)
       OPTIONAL MATCH (c)-[:APPROVED_BY]->(app:User)
@@ -207,7 +208,7 @@ export async function changeAffectedCIs(_: unknown, args: { changeId: string }, 
       review: Props | null
     }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci)
-      WHERE ci.tenant_id = $tenantId
+      WHERE ci.tenant_id = $tenantId AND coalesce(c.deleted, false) = false
       OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(ownerT:AssessmentTask)
         WHERE ownerT.ci_id = ci.id AND ownerT.responder_role = $ownerRole
       OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(supportT:AssessmentTask)
@@ -283,6 +284,7 @@ export async function changeAuditTrail(_: unknown, args: { changeId: string }, c
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props; userProps: Props | null }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_AUDIT]->(e:ChangeAuditEntry)
+      WHERE coalesce(c.deleted, false) = false
       OPTIONAL MATCH (e)-[:BY]->(u:User)
       RETURN properties(e) AS props, properties(u) AS userProps
       ORDER BY e.timestamp DESC
@@ -357,6 +359,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       MATCH (t:AssessmentTask)-[:ASSIGNED_TO]->(u:User {id: $userId, tenant_id: $tenantId})
       WHERE t.tenant_id = $tenantId AND t.status IN ${ASSESSMENT_ACTIVE}
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t)
+      WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
       RETURN DISTINCT
@@ -379,6 +382,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         AND t.status IN ${ASSESSMENT_ACTIVE}
         AND NOT (t)-[:ASSIGNED_TO]->()
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t)
+      WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
       RETURN DISTINCT
@@ -401,7 +405,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       WHERE ci.tenant_id = $tenantId
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_VALIDATION]->(vt:ValidationTest)
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      WHERE vt.ci_id = ci.id
+      WHERE vt.ci_id = ci.id AND coalesce(c.deleted, false) = false
         AND vt.status IN ${ASSESSMENT_ACTIVE}
       RETURN DISTINCT
         vt.id          AS id,
@@ -420,6 +424,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       MATCH (dp:DeployPlanTask)-[:ASSIGNED_TO]->(u:User {id: $userId, tenant_id: $tenantId})
       WHERE dp.tenant_id = $tenantId AND dp.status IN ${ASSESSMENT_ACTIVE}
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp)
+      WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       MATCH (ci {id: dp.ci_id, tenant_id: $tenantId})
       RETURN DISTINCT
@@ -441,6 +446,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         AND dp.status IN ${ASSESSMENT_ACTIVE}
         AND NOT (dp)-[:ASSIGNED_TO]->()
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp)
+      WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       MATCH (ci {id: dp.ci_id, tenant_id: $tenantId})
       RETURN DISTINCT
@@ -462,7 +468,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       WHERE ci.tenant_id = $tenantId
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOYMENT]->(dt:DeploymentTask)
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      WHERE dt.ci_id = ci.id
+      WHERE dt.ci_id = ci.id AND coalesce(c.deleted, false) = false
         AND dt.status IN ${ASSESSMENT_ACTIVE}
       RETURN DISTINCT
         dt.id          AS id,
@@ -483,7 +489,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       WHERE ci.tenant_id = $tenantId
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_REVIEW]->(rv:ReviewTask)
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      WHERE rv.ci_id = ci.id
+      WHERE rv.ci_id = ci.id AND coalesce(c.deleted, false) = false
         AND rv.status IN ${ASSESSMENT_ACTIVE}
       RETURN DISTINCT
         rv.id          AS id,
@@ -563,7 +569,7 @@ export async function changeImpactedCIs(_: unknown, args: { changeId: string; de
       distance: unknown; pathNames: string[]
     }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(affected)
-      WHERE affected.tenant_id = $tenantId
+      WHERE affected.tenant_id = $tenantId AND coalesce(c.deleted, false) = false
       MATCH path = (impacted)-[:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE*1..${depth}]->(affected)
       WHERE impacted.tenant_id = $tenantId
         AND NOT (c)-[:AFFECTS_CI]->(impacted)
@@ -612,6 +618,7 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
         ciId: string; ciName: string; ciType: string; ciEnv: string | null
       }>(session, `
         MATCH (c:Change {tenant_id: $tenantId})-[:${rel}]->(t:${label} {id: $id})
+        WHERE coalesce(c.deleted, false) = false
         MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
         MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
         RETURN coalesce(t.code, '') AS taskCode,

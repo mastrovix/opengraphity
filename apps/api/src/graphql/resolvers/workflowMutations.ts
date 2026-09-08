@@ -349,11 +349,18 @@ export async function executeWorkflowTransition(
         OPTIONAL MATCH (entity)-[:ASSIGNED_TO_TEAM]->(team)
         RETURN properties(entity) AS entityData,
                assignee.id AS assigned_to,
-               team.id     AS assigned_team
+               team.id     AS assigned_team,
+               wi.entity_type AS entityType
       `, { instanceId, tenantId: ctx.tenantId }),
     )
     if (entityDataResult.records.length === 0) {
       throw new GraphQLError(`Workflow instance not found: ${instanceId}`, { extensions: { code: 'NOT_FOUND' } })
+    }
+    // Le change hanno un gate di approvazione multi-parte e side-effect di
+    // fase (task, approvazioni, rischio) che vivono in executeChangeTransition:
+    // la mutation generica NON deve poter aggirarli.
+    if (entityDataResult.records[0].get('entityType') === 'change') {
+      throw new GraphQLError('Le change si transizionano con executeChangeTransition (gate di approvazione e side-effect di fase)', { extensions: { code: 'CONFLICT' } })
     }
     const entityData: Record<string, unknown> = {
       ...((entityDataResult.records[0].get('entityData') as Record<string, unknown> | null) ?? {}),
