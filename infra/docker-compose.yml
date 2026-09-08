@@ -210,7 +210,7 @@ services:
   # through the Docker socket (docker_sd_configs — read-only mount). The API
   # logs to stdout only (pino): the old file scrape of /tmp never saw a line.
   promtail:
-    image: grafana/promtail:2.9.0@sha256:c2c423196c75a2c9c26f6fe0ba7200c3167334b14975747f5dcff678bd1a32e9
+    image: grafana/promtail:3.6.8@sha256:6cfa64ec432b24a912d640e2edb940eeae2666f61861a66c121d763dd7241381
     container_name: opengrafo-promtail
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
