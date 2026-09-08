@@ -134,6 +134,13 @@ export interface WorkflowStepDef {
   type:         WorkflowStepType
   enterActions: WorkflowActionConfig[]
   exitActions:  WorkflowActionConfig[]
+  /**
+   * Proprietà aggiuntive persistite così come sono sul nodo WorkflowStep
+   * (chiavi snake_case: is_initial, is_terminal, is_open, category,
+   * on_enter_create, step_order). Lette da portale, reportAI e dagli hook
+   * di ingresso step delle change: il seed deve poterle dichiarare.
+   */
+  metadata?:    Record<string, string | number | boolean | null>
 }
 
 export interface WorkflowTransitionDef {

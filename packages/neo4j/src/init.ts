@@ -15,6 +15,19 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'User.id',
     cypher: 'CREATE CONSTRAINT user_id_unique IF NOT EXISTS FOR (n:User) REQUIRE n.id IS UNIQUE',
   },
+  // Identity is realm-bound (auth/resolveAuth.ts matches on email + tenant_id):
+  // the same email may exist in several tenants, never twice in one. Neo4j
+  // refuses a uniqueness constraint while a plain index on the same
+  // (label, properties) exists, so the former `user_tenant_email` range index
+  // is dropped first — the constraint's backing index replaces it.
+  {
+    label: 'drop range index user_tenant_email (superseded by user_tenant_email_unique)',
+    cypher: 'DROP INDEX user_tenant_email IF EXISTS',
+  },
+  {
+    label: 'User(tenant_id, email)',
+    cypher: 'CREATE CONSTRAINT user_tenant_email_unique IF NOT EXISTS FOR (n:User) REQUIRE (n.tenant_id, n.email) IS UNIQUE',
+  },
   {
     label: 'ConfigurationItem.id',
     cypher: 'CREATE CONSTRAINT ci_id_unique IF NOT EXISTS FOR (n:ConfigurationItem) REQUIRE n.id IS UNIQUE',
@@ -150,7 +163,7 @@ const INDEXES: SchemaStatement[] = [
   // User
   { label: 'User(email)',               cypher: 'CREATE INDEX user_email IF NOT EXISTS FOR (u:User) ON (u.email)' },
   { label: 'User(tenant_id)',           cypher: 'CREATE INDEX user_tenant IF NOT EXISTS FOR (u:User) ON (u.tenant_id)' },
-  { label: 'User(tenant_id, email)',    cypher: 'CREATE INDEX user_tenant_email IF NOT EXISTS FOR (u:User) ON (u.tenant_id, u.email)' },
+  // User(tenant_id, email) is covered by the user_tenant_email_unique constraint above
   // Team
   { label: 'Team(tenant_id)',           cypher: 'CREATE INDEX team_tenant IF NOT EXISTS FOR (t:Team) ON (t.tenant_id)' },
   { label: 'Team(tenant_id, type)',     cypher: 'CREATE INDEX team_type IF NOT EXISTS FOR (t:Team) ON (t.tenant_id, t.type)' },
@@ -257,14 +270,67 @@ const COUNTER_SEEDS: SchemaStatement[] = [
     SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
 ]
 
+// Uniqueness constraints cannot be created over existing duplicates. Neo4j's
+// own error names the constraint but not the offending rows; these checks run
+// first and fail with the rows and a Cypher to inspect them, so an init failure
+// on a populated DB is never a puzzle.
+interface UniquenessPrecheck {
+  label: string
+  /** Must return one row per duplicate group, with columns exposing the key + count */
+  cypher: string
+  hint: string
+}
+
+const UNIQUENESS_PRECHECKS: UniquenessPrecheck[] = [
+  {
+    label: 'User(tenant_id, email)',
+    cypher: `
+      MATCH (u:User) WHERE u.tenant_id IS NOT NULL AND u.email IS NOT NULL
+      WITH u.tenant_id AS tenant_id, u.email AS email, collect(u.id) AS ids
+      WHERE size(ids) > 1
+      RETURN tenant_id, email, ids ORDER BY tenant_id, email`,
+    hint: 'Merge or delete the duplicate User nodes (keep the one referenced by ' +
+          'ASSIGNED_TO / REPORTED_BY / MEMBER_OF), then rerun neo4j:init.',
+  },
+]
+
+async function runPrechecks(): Promise<void> {
+  const driver = getDriver()
+  const session = driver.session({ defaultAccessMode: neo4j.session.READ })
+  try {
+    for (const check of UNIQUENESS_PRECHECKS) {
+      const result = await session.run(check.cypher)
+      if (result.records.length === 0) {
+        console.log(`[neo4j:init] Precheck ok: no duplicates for ${check.label}`)
+        continue
+      }
+      const rows = result.records
+        .map((r) => JSON.stringify(Object.fromEntries(r.keys.map((k) => [k, r.get(k)]))))
+        .join('\n  ')
+      throw new Error(
+        `Uniqueness constraint on ${check.label} cannot be created: ` +
+        `${result.records.length} duplicate group(s) found:\n  ${rows}\n` +
+        `Inspect with:${check.cypher}\n${check.hint}`,
+      )
+    }
+  } finally {
+    await session.close()
+  }
+}
+
 async function runStatements(statements: SchemaStatement[], kind: string): Promise<void> {
   const driver = getDriver()
   const session = driver.session({ defaultAccessMode: neo4j.session.WRITE })
 
   try {
     for (const stmt of statements) {
-      await session.run(stmt.cypher)
-      console.log(`[neo4j:init] ${kind} created: ${stmt.label}`)
+      try {
+        await session.run(stmt.cypher)
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err)
+        throw new Error(`${kind} failed: ${stmt.label}\n  ${stmt.cypher.trim()}\n  → ${reason}`)
+      }
+      console.log(`[neo4j:init] ${kind} applied: ${stmt.label}`)
     }
   } finally {
     await session.close()
@@ -275,12 +341,14 @@ async function main(): Promise<void> {
   console.log('[neo4j:init] Starting schema initialisation...')
 
   try {
+    await runPrechecks()
     await runStatements(CONSTRAINTS, 'Constraint')
     await runStatements(INDEXES, 'Index')
     await runStatements(COUNTER_SEEDS, 'CounterSeed')
     console.log('[neo4j:init] Schema initialisation complete.')
   } catch (err) {
-    console.error('[neo4j:init] Error during initialisation:', err)
+    console.error('[neo4j:init] FAILED — schema NOT fully initialised:')
+    console.error(err instanceof Error ? err.message : err)
     process.exit(1)
   } finally {
     await closeDriver()

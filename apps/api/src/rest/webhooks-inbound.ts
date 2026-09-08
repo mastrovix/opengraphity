@@ -3,22 +3,26 @@
  * and creates entities in OpenGrafo.
  *
  * POST /api/webhooks/inbound/:hookId
- * Auth: Bearer token (not Keycloak)
+ * Auth: `Authorization: Bearer <token>` ONLY (never query string — it would
+ * land in access logs, proxies and browser history).
  */
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
-import { createHash } from 'crypto'
+import { createHash, timingSafeEqual } from 'crypto'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
+import { ValidationError } from '../lib/errors.js'
 import * as incidentService from '../services/incidentService.js'
 import * as problemService from '../services/problemService.js'
 
 const log = logger.child({ module: 'webhook-inbound' })
 const router: ExpressRouter = Router()
 
-// ── Rate limiting (per hookId, 100/min) ──────────────────────────────────────
+// ── Rate limiting (per hookId, 100/min) — applied AFTER token verification so
+// an unauthenticated caller who only knows the (non-secret) id cannot starve
+// the legitimate sender (A-20). In-memory: per-replica, known limitation.
 
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()
-setInterval(() => { const now = Date.now(); for (const [k, v] of rateBuckets) { if (v.resetAt <= now) rateBuckets.delete(k) } }, 60_000)
+setInterval(() => { const now = Date.now(); for (const [k, v] of rateBuckets) { if (v.resetAt <= now) rateBuckets.delete(k) } }, 60_000).unref()
 
 function checkRate(hookId: string): boolean {
   const now = Date.now()
@@ -28,21 +32,25 @@ function checkRate(hookId: string): boolean {
   return b.count <= 100
 }
 
+/** Constant-time comparison of the presented token's sha256 against the stored hash. */
+export function tokenMatches(token: string, storedHashHex: string): boolean {
+  const presented = createHash('sha256').update(token).digest()
+  if (!/^[0-9a-f]{64}$/i.test(storedHashHex)) return false // corrupt/legacy secret → never matches
+  const stored = Buffer.from(storedHashHex, 'hex')
+  return timingSafeEqual(presented, stored)
+}
+
 // ── Endpoint ─────────────────────────────────────────────────────────────────
 
 router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => {
   const { hookId } = req.params
   if (!hookId) { res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Missing hookId' } }); return }
 
-  if (!checkRate(hookId)) {
-    res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Max 100 requests/min per webhook', retry_after: 60 } })
-    return
-  }
-
   const session = getSession(undefined, 'WRITE')
   try {
     // 1. Load webhook config
     const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
+      // tenant-ok: lookup pre-auth, il tenant è quello del webhook (verificato dal token)
       MATCH (w:InboundWebhook {id: $hookId, enabled: true})
       RETURN properties(w) AS props
     `, { hookId })
@@ -54,19 +62,27 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
     const secret    = wh['secret']     as string
     const entityType = wh['entity_type'] as string
 
-    // 2. Verify token
-    const authHeader = req.headers['authorization'] as string | undefined
-    const queryToken = req.query['token'] as string | undefined
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken
-    if (!token) { res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Missing token' } }); return }
+    // 2. Verify token (header only, constant-time)
+    const authHeader = req.headers['authorization']
+    const token = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''
+    if (!token) { res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Missing Bearer token' } }); return }
+    if (typeof secret !== 'string' || !tokenMatches(token, secret)) {
+      res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid token' } }); return
+    }
 
-    const tokenHash = createHash('sha256').update(token).digest('hex')
-    if (tokenHash !== secret) { res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid token' } }); return }
+    // 3. Rate limit — only authenticated traffic counts
+    if (!checkRate(hookId)) {
+      res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Max 100 requests/min per webhook', retry_after: 60 } })
+      return
+    }
 
-    // 3. Optional transform script. A configured transform that fails means we
+    // 4. Optional transform script. A configured transform that fails means we
     // do NOT understand this payload — creating an entity from the raw payload
     // (or from defaults) would fabricate data and answer 201. Fail instead.
     let payload = req.body as Record<string, unknown>
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new ValidationError('Request body must be a JSON object')
+    }
     const transformScript = wh['transform_script'] as string | null
     if (transformScript) {
       const { runScript } = await import('@opengraphity/scripting')
@@ -75,22 +91,22 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
         { entity: payload, tenantId, userId: 'webhook' },
       )
       if (!result.success) {
-        throw new Error(`Transform script failed: ${result.error ?? 'unknown error'}`)
+        throw new ValidationError(`Transform script failed: ${result.error ?? 'unknown error'}`)
       }
       if (!result.output || typeof result.output !== 'object') {
-        throw new Error(`Transform script returned ${result.output === null ? 'null' : typeof result.output}, expected an object`)
+        throw new ValidationError(`Transform script returned ${result.output === null ? 'null' : typeof result.output}, expected an object`)
       }
       payload = result.output as Record<string, unknown>
     }
 
-    // 4. Apply field mapping (corrupt mapping JSON must fail, not become {})
+    // 5. Apply field mapping (corrupt mapping JSON must fail, not become {})
     const fieldMapping = parseJSON<Record<string, string>>(wh['field_mapping'] as string, 'field_mapping')
     const mapped: Record<string, unknown> = {}
     for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
       if (payload[sourceField] !== undefined) mapped[targetField] = payload[sourceField]
     }
 
-    // 5. Apply default values (explicit webhook config — legitimate defaults)
+    // 6. Apply default values (explicit webhook config — legitimate defaults)
     const defaults = parseJSON<Record<string, unknown>>(wh['default_values'] as string, 'default_values')
     for (const [field, value] of Object.entries(defaults)) {
       if (mapped[field] === undefined || mapped[field] === null) mapped[field] = value
@@ -99,17 +115,17 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
     // A webhook that produces no title is misconfigured — refuse rather than
     // fabricate a placeholder entity.
     if (!mapped['title'] || !String(mapped['title']).trim()) {
-      throw new Error('Mapped payload has no title — check field_mapping/default_values configuration')
+      throw new ValidationError('Mapped payload has no title — check field_mapping/default_values configuration')
     }
 
-    // 6. Create entity
+    // 7. Create entity
     const ctx = { tenantId, userId: 'webhook' }
     let entityId: string
 
     switch (entityType) {
       case 'incident': {
         if (!mapped['severity']) {
-          throw new Error('Mapped payload has no severity — set it via field_mapping or default_values')
+          throw new ValidationError('Mapped payload has no severity — set it via field_mapping or default_values')
         }
         const result = await incidentService.createIncident({
           title:       String(mapped['title']),
@@ -122,7 +138,7 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
       }
       case 'problem': {
         if (!mapped['priority']) {
-          throw new Error('Mapped payload has no priority — set it via field_mapping or default_values')
+          throw new ValidationError('Mapped payload has no priority — set it via field_mapping or default_values')
         }
         const result = await problemService.createProblem({
           title:       String(mapped['title']),
@@ -139,30 +155,38 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
       }
     }
 
-    // 7. Update stats
+    // 8. Update stats
     await runQuery(session, `
-      MATCH (w:InboundWebhook {id: $hookId})
+      MATCH (w:InboundWebhook {id: $hookId, tenant_id: $tenantId})
       SET w.receive_count = coalesce(w.receive_count, 0) + 1,
           w.last_received_at = $now
-    `, { hookId, now: new Date().toISOString() })
+    `, { hookId, tenantId, now: new Date().toISOString() })
 
     log.info({ hookId, entityType, entityId }, 'Inbound webhook processed')
     res.status(201).json({ id: hookId, entity_type: entityType, entity_id: entityId })
 
   } catch (err) {
+    // Typed input/config errors → 400 with the message (the sender can fix
+    // them). Anything else (DB down, script host error) → 500 and a generic
+    // body; the full error stays in the server log.
+    if (err instanceof ValidationError) {
+      log.warn({ hookId, err: err.message }, 'Inbound webhook rejected')
+      res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } })
+      return
+    }
     log.error({ hookId, err }, 'Inbound webhook error')
-    res.status(400).json({ error: { code: 'BAD_REQUEST', message: err instanceof Error ? err.message : 'Processing error' } })
+    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Processing error' } })
   } finally {
     await session.close()
   }
 })
 
-/** Parses stored webhook config JSON. Missing → {}; corrupt → throws (fail-loud). */
+/** Parses stored webhook config JSON. Missing → {}; corrupt → throws (fail-loud, config error → 400). */
 function parseJSON<T>(raw: string | null | undefined, what: string): T {
   if (!raw) return {} as T
   try { return JSON.parse(raw) as T }
   catch (e) {
-    throw new Error(`Corrupt ${what} JSON in webhook config: ${e instanceof Error ? e.message : String(e)}`)
+    throw new ValidationError(`Corrupt ${what} JSON in webhook config: ${e instanceof Error ? e.message : String(e)}`)
   }
 }
 

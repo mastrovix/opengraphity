@@ -97,7 +97,9 @@ async function publishNotifyRuleActions(
   const result = await session.executeRead((tx) =>
     tx.run(
       `MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
+       // tenant-ok: definizione e step seguono l'istanza appena scopata
        MATCH (wd:WorkflowDefinition {id: wi.definition_id})
+       // tenant-ok: idem
        MATCH (s:WorkflowStep {definition_id: wd.id, name: $stepName})
        RETURN s.enter_actions AS enterActions`,
       { instanceId, stepName, tenantId },
@@ -218,14 +220,14 @@ export async function updateWorkflowTransition(
     const steps = wdResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
     const trResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
+        MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
         RETURN from.name AS fromStep, to.name AS toStep,
                tr.id AS id, tr.trigger AS trigger, tr.label AS label,
                tr.requires_input AS requiresInput,
                tr.input_field AS inputField,
                tr.condition AS condition,
                tr.timer_hours AS timerHours
-      `, { defId: definitionId }),
+      `, { defId: definitionId, tenantId: ctx.tenantId }),
     )
     return {
       id:            wd['id']              as string,
@@ -278,7 +280,9 @@ export async function addWorkflowTransition(
     const result = await session.executeWrite((tx) =>
       tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        // tenant-ok: step della definizione appena scopata
         MATCH (from:WorkflowStep {definition_id: $definitionId, name: $fromStepName})
+        // tenant-ok: idem
         MATCH (to:WorkflowStep   {definition_id: $definitionId, name: $toStepName})
         CREATE (from)-[tr:TRANSITIONS_TO {
           id: $id, trigger: $trigger, label: $label,
@@ -345,6 +349,7 @@ async function preflightStepMetadata(
 ): Promise<void> {
   const res = await session.executeRead((tx) => tx.run(`
     MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
+    // tenant-ok: step della definizione dell'istanza scopata
     MATCH (s:WorkflowStep {definition_id: wi.definition_id, name: $toStep})
     RETURN s.on_enter_fields AS fields, s.enter_actions AS enterActions
   `, { instanceId, toStep, tenantId }))
@@ -724,6 +729,7 @@ export async function saveWorkflowChanges(
         tx.run(`
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
           UNWIND $transitions AS tr
+          // tenant-ok: wd già scopata sopra
           MATCH (src:WorkflowStep {definition_id: wd.id})-[t:TRANSITIONS_TO {id: tr.transitionId}]->()
           SET t.label          = coalesce(tr.label, t.label),
               t.trigger        = coalesce(tr.trigger, t.trigger),
@@ -791,21 +797,21 @@ export async function saveWorkflowChanges(
     void audit(ctx, 'workflow.updated', 'WorkflowDefinition', definitionId)
 
     const stepsResult = await session.executeRead((tx) =>
-      tx.run(`MATCH (wd:WorkflowDefinition {id: $definitionId})-[:HAS_STEP]->(s:WorkflowStep) RETURN collect(s) AS steps`,
-        { definitionId }),
+      tx.run(`MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep) RETURN collect(s) AS steps`,
+        { definitionId, tenantId: ctx.tenantId }),
     )
     const savedSteps = stepsResult.records[0]?.get('steps') as Array<{ properties: Record<string, unknown> }> ?? []
 
     const trResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
+        MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
         RETURN from.name AS fromStep, to.name AS toStep,
                tr.id AS id, tr.trigger AS trigger, tr.label AS label,
                tr.requires_input AS requiresInput,
                tr.input_field AS inputField,
                tr.condition AS condition,
                tr.timer_hours AS timerHours
-      `, { defId: definitionId }),
+      `, { defId: definitionId, tenantId: ctx.tenantId }),
     )
 
     return {

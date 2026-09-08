@@ -41,6 +41,7 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
       const res = await session.executeRead((tx) =>
         tx.run(`
           MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+          // tenant-ok: step della definizione dell'istanza dell'entità scopata
           MATCH (cur:WorkflowStep {definition_id: wi.definition_id, name: wi.current_step})
                 -[:TRANSITIONS_TO {trigger: 'sla_breach'}]->(to:WorkflowStep)
           RETURN wi.id AS instanceId, wi.entity_type AS entityType, wi.current_step AS fromStep,

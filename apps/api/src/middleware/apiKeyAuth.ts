@@ -41,6 +41,7 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
   const readSession = getSession()
   try {
     const row = await runQueryOne<{ props: Record<string, unknown> }>(readSession, `
+      // tenant-ok: lookup pre-auth, il tenant è derivato dalla chiave stessa
       MATCH (k:ApiKey {key_hash: $keyHash, enabled: true})
       WHERE k.expires_at IS NULL OR k.expires_at > $now
       RETURN properties(k) AS props
@@ -67,6 +68,7 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
     // 2. Fire-and-forget write: update usage stats (non-blocking)
     const writeSession = getSession(undefined, 'WRITE')
     runQueryOne(writeSession, `
+      // tenant-ok: aggiornamento statistiche della chiave appena autenticata
       MATCH (k:ApiKey {key_hash: $keyHash})
       SET k.last_used_at = $now, k.request_count = coalesce(k.request_count, 0) + 1
       RETURN k.id AS id

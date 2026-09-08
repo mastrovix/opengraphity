@@ -2,6 +2,7 @@ import { NotFoundError } from '../../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../../context.js'
 import { mapDashboardConfig, type Props } from './helpers.js'
+import { assertDashboardAccess, assertDashboardOwnerByWidget, assertReportTemplateAccess } from '../reportAccess.js'
 
 // ── Widget Mutations ─────────────────────────────────────────────────────────
 
@@ -14,6 +15,11 @@ export async function addDashboardWidget(
   const { dashboardId, reportTemplateId, reportSectionId, colSpan } = args.input
   const session = getSession(undefined, 'WRITE')
   try {
+    // Owner/admin of the dashboard, and the referenced report must be readable
+    // by the caller (a widget would otherwise expose someone else's private report).
+    await assertDashboardAccess(session, dashboardId, ctx, 'write')
+    await assertReportTemplateAccess(session, reportTemplateId, ctx, 'read')
+
     // Get max order
     const orderResult = await session.executeRead((tx) =>
       tx.run(
@@ -69,6 +75,8 @@ export async function removeDashboardWidget(
 ) {
   const session = getSession(undefined, 'WRITE')
   try {
+    await assertDashboardOwnerByWidget(session, args.widgetId, 'widget', ctx)
+
     // Get the dashboard before deleting
     const dashResult = await session.executeRead((tx) =>
       tx.run(
@@ -113,6 +121,7 @@ export async function updateDashboardWidget(
 
   const session = getSession(undefined, 'WRITE')
   try {
+    await assertDashboardOwnerByWidget(session, args.widgetId, 'widget', ctx)
     await session.executeWrite((tx) =>
       tx.run(
         `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget {id: $widgetId}) SET ${setParts.join(', ')}`,
@@ -142,6 +151,7 @@ export async function reorderDashboardWidgets(
   const items = args.widgetIds.map((id, i) => ({ id, order: i }))
   const session = getSession(undefined, 'WRITE')
   try {
+    await assertDashboardAccess(session, args.dashboardId, ctx, 'write')
     await session.executeWrite((tx) =>
       tx.run(
         `

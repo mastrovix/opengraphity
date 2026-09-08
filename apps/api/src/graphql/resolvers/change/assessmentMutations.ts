@@ -98,6 +98,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
       WHERE coalesce(c.deleted, false) = false
       MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+      // tenant-ok: tipi base condivisi di sistema
       OPTIONAL MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
         WHERE ct.neo4j_label = labels(ci)[0]
       RETURN properties(t) AS taskProps, c.id AS changeId,

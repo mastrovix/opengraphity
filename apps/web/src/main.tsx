@@ -63,21 +63,15 @@ import { ServiceCatalogAdminPage } from '@/pages/admin/ServiceCatalogAdminPage'
 const SLAReportPage = lazy(() => import('@/pages/reports/SLAReportPage').then(m => ({ default: m.SLAReportPage })))
 import { IntegrationsPage } from '@/pages/admin/IntegrationsPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { PageLoader } from '@/components/PageLoader'
+import { RequireRole } from '@/components/RequireRole'
+import type { UserRole } from '@/hooks/useMe'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
 import '@/i18n/i18n'
-
-/** Fallback shown while a lazy route chunk downloads. */
-function PageLoader() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
-      Caricamento…
-    </div>
-  )
-}
 
 function RouteError() {
   const error = useRouteError() as { status?: number; statusText?: string }
@@ -105,13 +99,21 @@ function RouteError() {
   )
 }
 
-// Le pagine di dettaglio sono keyate su :id: navigando ticket → ticket (link
-// "Ticket collegati") il componente viene rimontato, così stato locale (commento
-// a metà, form di riassegnazione aperto) non migra su un altro ticket.
+// Ogni pagina con parametri di route è keyata su TUTTI i suoi params (:id,
+// :taskId, :typeName/:id, :slug…): navigando entità → entità (link "Ticket
+// collegati", relazioni CI, ecc.) il componente viene rimontato, così lo stato
+// locale (commento a metà, form aperto, edit mode) non migra su un'altra entità.
 function Keyed({ Page }: { Page: React.ComponentType }) {
-  const { id } = useParams()
-  return <Page key={id} />
+  const params = useParams()
+  return <Page key={JSON.stringify(params)} />
 }
+
+// Guard di ruolo (E-01): il ruolo viene da `me.role` (DB) tramite useMe(),
+// la stessa fonte usata dalla Sidebar e dalle pagine.
+const ADMIN_ONLY:     readonly UserRole[] = ['admin']
+const ADMIN_OPERATOR: readonly UserRole[] = ['admin', 'operator']
+const admin    = (el: React.ReactElement) => <RequireRole roles={ADMIN_ONLY}>{el}</RequireRole>
+const approver = (el: React.ReactElement) => <RequireRole roles={ADMIN_OPERATOR}>{el}</RequireRole>
 
 const router = createBrowserRouter([
   {
@@ -130,15 +132,15 @@ const router = createBrowserRouter([
       { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
       { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },
       { path: 'changes/:id',       element: <Keyed Page={ChangeDetailPage} />,        errorElement: <RouteError /> },
-      { path: 'tasks/:taskId',     element: <TaskViewPage />,            errorElement: <RouteError /> },
+      { path: 'tasks/:taskId',     element: <Keyed Page={TaskViewPage} />,            errorElement: <RouteError /> },
       { path: 'my-tasks',          element: <MyTasksPage />,             errorElement: <RouteError /> },
       { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
       { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
-      { path: 'requests/:id',      element: <ServiceRequestDetailPage />,errorElement: <RouteError /> },
+      { path: 'requests/:id',      element: <Keyed Page={ServiceRequestDetailPage} />,errorElement: <RouteError /> },
       { path: 'cmdb',                          element: <CMDBPage />,                    errorElement: <RouteError /> },
       // Dynamic CI routes
       { path: 'ci/:typeName',                  element: <CIListPage />,                  errorElement: <RouteError /> },
-      { path: 'ci/:typeName/:id',              element: <CIDetailPage />,                errorElement: <RouteError /> },
+      { path: 'ci/:typeName/:id',              element: <Keyed Page={CIDetailPage} />,   errorElement: <RouteError /> },
       // Backward-compat redirects
       { path: 'applications',                  element: <Navigate to="/ci/application" replace /> },
       { path: 'applications/:id',              element: <CIDetailRedirect typeName="application" /> },
@@ -153,38 +155,43 @@ const router = createBrowserRouter([
       { path: 'analysis/what-if',               element: <Suspense fallback={<PageLoader />}><WhatIfPage /></Suspense>,                  errorElement: <RouteError /> },
       { path: 'anomalies',                     element: <AnomalyPage />,                 errorElement: <RouteError /> },
       { path: 'topology',                      element: <Suspense fallback={<PageLoader />}><TopologyPage /></Suspense>,                errorElement: <RouteError /> },
-      { path: 'workflow',                      element: <WorkflowListPage />,            errorElement: <RouteError /> },
-      { path: 'workflow/:id',                  element: <Suspense fallback={<PageLoader />}><WorkflowDesignerPage /></Suspense>,        errorElement: <RouteError /> },
-      { path: 'settings/notifications',      element: <NotificationsPage />,       errorElement: <RouteError /> },
-      { path: 'settings/notification-rules', element: <NotificationRulesPage />, errorElement: <RouteError /> },
+      // Workflow designer (list + editor): admin only
+      { path: 'workflow',                      element: admin(<WorkflowListPage />),     errorElement: <RouteError /> },
+      { path: 'workflow/:id',                  element: admin(<Suspense fallback={<PageLoader />}><Keyed Page={WorkflowDesignerPage} /></Suspense>), errorElement: <RouteError /> },
+      // Tenant-wide settings (channels, rules, metamodel designers, sync): admin only.
+      // Personal pages (`profile`, `settings/profile`) stay open to every role.
+      { path: 'settings/notifications',      element: admin(<NotificationsPage />),     errorElement: <RouteError /> },
+      { path: 'settings/notification-rules', element: admin(<NotificationRulesPage />), errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <ProfilePage />,             errorElement: <RouteError /> },
       { path: 'profile',                   element: <UserProfilePage />,         errorElement: <RouteError /> },
-      { path: 'settings/ci-types',         element: <CITypeDesignerPage />,      errorElement: <RouteError /> },
-      { path: 'settings/itil-designer',   element: <ITILTypeDesignerPage />,    errorElement: <RouteError /> },
-      { path: 'settings/enum-designer',  element: <EnumDesignerPage />,        errorElement: <RouteError /> },
-      { path: 'settings/sync',            element: <SyncPage />,                errorElement: <RouteError /> },
+      { path: 'settings/ci-types',         element: admin(<CITypeDesignerPage />),   errorElement: <RouteError /> },
+      { path: 'settings/itil-designer',   element: admin(<ITILTypeDesignerPage />), errorElement: <RouteError /> },
+      { path: 'settings/enum-designer',  element: admin(<EnumDesignerPage />),     errorElement: <RouteError /> },
+      { path: 'settings/sync',            element: admin(<SyncPage />),             errorElement: <RouteError /> },
       { path: 'reports',                   element: <Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>,             errorElement: <RouteError /> },
       { path: 'custom-reports',            element: <Suspense fallback={<PageLoader />}><CustomReportsPage /></Suspense>,       errorElement: <RouteError /> },
-      { path: 'teams',                     element: <TeamsPage />,               errorElement: <RouteError /> },
-      { path: 'teams/:id',                 element: <TeamDetailPage />,          errorElement: <RouteError /> },
-      { path: 'users',                     element: <UsersPage />,               errorElement: <RouteError /> },
-      { path: 'users/:id',                 element: <UserDetailPage />,          errorElement: <RouteError /> },
-      { path: 'logs',                      element: <LogsPage />,                errorElement: <RouteError /> },
-      { path: 'admin/queues',              element: <QueueStatsPage />,          errorElement: <RouteError /> },
-      { path: 'admin/audit',              element: <AuditLogPage />,            errorElement: <RouteError /> },
-      { path: 'admin/monitoring',         element: <Suspense fallback={<PageLoader />}><MonitoringPage /></Suspense>,          errorElement: <RouteError /> },
-      { path: 'admin/knowledge-base',     element: <KBAdminPage />,             errorElement: <RouteError /> },
-      { path: 'admin/triggers',            element: <AutoTriggersPage />,        errorElement: <RouteError /> },
-      { path: 'admin/business-rules',      element: <BusinessRulesPage />,       errorElement: <RouteError /> },
-      { path: 'admin/sla-policies',        element: <SLAPoliciesPage />,         errorElement: <RouteError /> },
-      { path: 'admin/service-catalog',     element: <ServiceCatalogAdminPage />, errorElement: <RouteError /> },
+      // Teams & users: both pages carry admin-only mutations (createTeam,
+      // setTeamManager, createUser, updateUserTeams) → whole page admin only.
+      { path: 'teams',                     element: admin(<TeamsPage />),                   errorElement: <RouteError /> },
+      { path: 'teams/:id',                 element: admin(<Keyed Page={TeamDetailPage} />), errorElement: <RouteError /> },
+      { path: 'users',                     element: admin(<UsersPage />),                   errorElement: <RouteError /> },
+      { path: 'users/:id',                 element: admin(<Keyed Page={UserDetailPage} />), errorElement: <RouteError /> },
+      { path: 'logs',                      element: admin(<LogsPage />),                    errorElement: <RouteError /> },
+      { path: 'admin/queues',              element: admin(<QueueStatsPage />),              errorElement: <RouteError /> },
+      { path: 'admin/audit',              element: admin(<AuditLogPage />),                errorElement: <RouteError /> },
+      { path: 'admin/monitoring',         element: admin(<Suspense fallback={<PageLoader />}><MonitoringPage /></Suspense>), errorElement: <RouteError /> },
+      { path: 'admin/knowledge-base',     element: admin(<KBAdminPage />),                 errorElement: <RouteError /> },
+      { path: 'admin/triggers',            element: admin(<AutoTriggersPage />),            errorElement: <RouteError /> },
+      { path: 'admin/business-rules',      element: admin(<BusinessRulesPage />),           errorElement: <RouteError /> },
+      { path: 'admin/sla-policies',        element: admin(<SLAPoliciesPage />),             errorElement: <RouteError /> },
+      { path: 'admin/service-catalog',     element: admin(<ServiceCatalogAdminPage />),     errorElement: <RouteError /> },
       { path: 'reports/sla',               element: <Suspense fallback={<PageLoader />}><SLAReportPage /></Suspense>, errorElement: <RouteError /> },
-      { path: 'admin/integrations',        element: <IntegrationsPage />,        errorElement: <RouteError /> },
-      { path: 'admin/assessment-questions', element: <QuestionAdminPage />,      errorElement: <RouteError /> },
-      { path: 'approvals',                element: <ApprovalsPage />,           errorElement: <RouteError /> },
+      { path: 'admin/integrations',        element: admin(<IntegrationsPage />),            errorElement: <RouteError /> },
+      { path: 'admin/assessment-questions', element: admin(<QuestionAdminPage />),          errorElement: <RouteError /> },
+      { path: 'approvals',                element: approver(<ApprovalsPage />),            errorElement: <RouteError /> },
       { path: 'knowledge-base',           element: <KnowledgeBasePage />,       errorElement: <RouteError /> },
       { path: 'assistant',                element: <AssistantPage />,           errorElement: <RouteError /> },
-      { path: 'knowledge-base/:slug',     element: <KBArticlePage />,           errorElement: <RouteError /> },
+      { path: 'knowledge-base/:slug',     element: <Keyed Page={KBArticlePage} />, errorElement: <RouteError /> },
     ],
   },
 ])

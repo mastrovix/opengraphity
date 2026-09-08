@@ -4,6 +4,7 @@ import type { GraphQLContext } from '../../context.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { loadFullTemplate, createSectionWithNodesEdges, type SectionInput } from './customReports.js'
+import { assertReportTemplateAccess } from './reportAccess.js'
 
 export const Mutation = {
   async createReportTemplate(
@@ -36,7 +37,7 @@ export const Mutation = {
             updated_at:          $now
           })
           WITH r
-          MATCH (u:User {id: $userId})
+          MATCH (u:User {id: $userId, tenant_id: $tenantId})
           CREATE (r)-[:CREATED_BY]->(u)
         `, {
           id, tenantId: ctx.tenantId, name: args.input.name,
@@ -85,6 +86,7 @@ export const Mutation = {
   ) {
     const session = getSession(undefined, 'WRITE')
     try {
+      await assertReportTemplateAccess(session, args.id, ctx, 'write')
       await session.executeWrite(tx =>
         tx.run(`
           MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})
@@ -143,6 +145,7 @@ export const Mutation = {
   async deleteReportTemplate(_: unknown, args: { id: string }, ctx: GraphQLContext) {
     const session = getSession(undefined, 'WRITE')
     try {
+      await assertReportTemplateAccess(session, args.id, ctx, 'write')
       await session.executeWrite(tx =>
         tx.run(`
           MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})
@@ -166,6 +169,7 @@ export const Mutation = {
     const sectionId = uuidv4()
     const session = getSession(undefined, 'WRITE')
     try {
+      await assertReportTemplateAccess(session, args.templateId, ctx, 'write')
       const orderRes = await session.executeRead(tx =>
         tx.run(`
           MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection)
@@ -197,6 +201,7 @@ export const Mutation = {
       )
       if (!res.records.length) throw new NotFoundError('ReportSection', args.sectionId)
       templateId = res.records[0].get('templateId') as string
+      await assertReportTemplateAccess(session, templateId, ctx, 'write')
       const order = Math.round(Number(res.records[0].get('order') ?? 0))
 
       // Delete old section nodes (DETACH DELETE cascades REPORT_EDGE relationships)
@@ -227,6 +232,7 @@ export const Mutation = {
   ) {
     const session = getSession(undefined, 'WRITE')
     try {
+      await assertReportTemplateAccess(session, args.templateId, ctx, 'write')
       await session.executeWrite(tx =>
         tx.run(`
           MATCH (:ReportTemplate {id: $templateId, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
@@ -247,6 +253,7 @@ export const Mutation = {
   ) {
     const session = getSession(undefined, 'WRITE')
     try {
+      await assertReportTemplateAccess(session, args.templateId, ctx, 'write')
       for (let i = 0; i < args.sectionIds.length; i++) {
         await session.executeWrite(tx =>
           tx.run(`

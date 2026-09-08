@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import { randomUUID } from 'crypto'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
+import { assertSafeOutboundUrl } from '../../lib/safeUrl.js'
 
 function mapChannel(n: Record<string, unknown>) {
   return {
@@ -33,6 +34,8 @@ async function createNotificationChannel(
   { input }: { input: { platform: string; name: string; webhookUrl?: string; channelId?: string; eventTypes: string[] } },
   ctx: GraphQLContext,
 ) {
+  // SSRF guard on the tenant-configured webhook (ValidationError → 400).
+  if (input.webhookUrl) await assertSafeOutboundUrl(input.webhookUrl)
   return withSession(async (session) => {
     const now = new Date().toISOString()
     const id = randomUUID()
@@ -59,6 +62,7 @@ async function updateNotificationChannel(
   { id, input }: { id: string; input: { platform: string; name: string; webhookUrl?: string; channelId?: string; eventTypes: string[] } },
   ctx: GraphQLContext,
 ) {
+  if (input.webhookUrl) await assertSafeOutboundUrl(input.webhookUrl)
   return withSession(async (session) => {
     const result = await session.executeWrite((tx) =>
       tx.run(
@@ -101,6 +105,9 @@ async function testNotificationChannel(_: unknown, { id }: { id: string }, ctx: 
     )
     if (!result.records.length) throw new GraphQLError('NotificationChannel non trovato')
     const ch = mapChannel(result.records[0]!.get('n').properties as Record<string, unknown>)
+    // The notifications package re-checks too (UnsafeUrlError); checking here
+    // first surfaces a proper ValidationError to the caller.
+    if (ch.webhookUrl) await assertSafeOutboundUrl(ch.webhookUrl)
     const { sendTestMessage } = await import('@opengraphity/notifications')
     return sendTestMessage(ch)
   })

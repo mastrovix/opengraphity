@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { v4 as uuidv4 } from 'uuid'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-import type { WorkflowDefinition } from './types.js'
+import type { WorkflowDefinition, WorkflowStepDef } from './types.js'
 
 export type SeedableWorkflow = Omit<WorkflowDefinition, 'id' | 'tenantId'> & { category?: string | null }
 
@@ -34,6 +34,26 @@ export interface SeedOptions {
   skipIfExists?: boolean
   /** Sessione esterna (WRITE); altrimenti ne apre una propria. */
   session?: Session
+}
+
+function toNumber(v: unknown): number {
+  if (typeof v === 'number') return v
+  const n = (v as { toNumber?: () => number } | null)?.toNumber?.()
+  return typeof n === 'number' ? n : 0
+}
+
+const STEP_METADATA_KEY_RE = /^[a-z][a-z0-9_]*$/
+const RESERVED_STEP_KEYS = new Set(['id', 'name', 'label', 'type', 'definition_id', 'tenant_id', 'enter_actions', 'exit_actions', 'created_at', 'updated_at'])
+
+/** Le chiavi dei metadati finiscono in un `SET s += map`: solo snake_case, mai le proprietà strutturali. */
+function assertStepMetadata(defName: string, stepName: string, metadata: WorkflowStepDef['metadata']): Record<string, string | number | boolean | null> {
+  if (!metadata) return {}
+  for (const key of Object.keys(metadata)) {
+    if (!STEP_METADATA_KEY_RE.test(key) || RESERVED_STEP_KEYS.has(key)) {
+      throw new Error(`Seed "${defName}", step "${stepName}": chiave metadata non ammessa "${key}"`)
+    }
+  }
+  return metadata
 }
 
 export async function seedWorkflowDefinition(tenantId: string, def: SeedableWorkflow, opts: SeedOptions = {}): Promise<SeedResult> {
@@ -75,12 +95,14 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         SET s.label = st.label, s.type = st.type,
             s.enter_actions = st.enterActions, s.exit_actions = st.exitActions,
             s.updated_at = $now
+        SET s += st.metadata
         MERGE (wd)-[:HAS_STEP]->(s)
       `, {
         defId, tenantId, now,
         steps: def.steps.map((s) => ({
           id: s.id, name: s.name, label: s.label, type: s.type,
           enterActions: JSON.stringify(s.enterActions), exitActions: JSON.stringify(s.exitActions),
+          metadata: assertStepMetadata(def.name, s.name, s.metadata),
         })),
       })
 
@@ -110,7 +132,7 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         MATCH (:WorkflowStep {definition_id: $defId})-[t:TRANSITIONS_TO]->(:WorkflowStep {definition_id: $defId})
         DELETE t
       `, { defId })
-      await tx.run(`
+      const created = await tx.run(`
         UNWIND $transitions AS tr
         MATCH (from:WorkflowStep {definition_id: $defId, name: tr.fromStepName})
         MATCH (to:WorkflowStep   {definition_id: $defId, name: tr.toStepName})
@@ -118,7 +140,17 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
           id: $defId + '-' + tr.id, trigger: tr.trigger, label: tr.label, condition: tr.condition,
           requires_input: tr.requiresInput, input_field: tr.inputField
         }]->(to)
+        RETURN count(*) AS n
       `, { defId, transitions: def.transitions })
+      // Una transizione verso uno step inesistente sarebbe un CREATE su MATCH
+      // vuoto: nessun errore da Neo4j, workflow silenziosamente monco.
+      const createdN = toNumber(created.records[0]?.get('n'))
+      if (createdN !== def.transitions.length) {
+        const known = new Set(def.steps.map((s) => s.name))
+        const bad = def.transitions.filter((t) => !known.has(t.fromStepName) || !known.has(t.toStepName))
+          .map((t) => `${t.fromStepName}→${t.toStepName}`)
+        throw new Error(`Seed "${def.name}": create ${createdN} transizioni su ${def.transitions.length} — step inesistenti in: ${bad.join(', ') || '(vedi nomi step)'}`)
+      }
 
       // 5. Auto-riparazione: istanze senza CURRENT_STEP ricollegate per nome.
       const relink = await tx.run(`
@@ -128,8 +160,7 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         MERGE (wi)-[:CURRENT_STEP]->(s)
         RETURN count(wi) AS n
       `, { defId })
-      const relinkedRaw = relink.records[0]?.get('n') as { toNumber?: () => number } | number
-      const relinked = typeof relinkedRaw === 'number' ? relinkedRaw : (relinkedRaw?.toNumber?.() ?? 0)
+      const relinked = toNumber(relink.records[0]?.get('n'))
 
       console.log(`[workflow] Seeded "${def.name}" for tenant "${tenantId}": definitionId=${defId} (${existed ? 'aggiornata' : 'creata'}${relinked ? `, ${relinked} istanze ricollegate` : ''})`)
       return { definitionId: defId, created: !existed, relinked }

@@ -12,34 +12,37 @@
  *
  * In all cases: MERGE (f)-[:USES_ENUM]->(e), SET f.enum_values = null
  *
+ * Tenant scoping (multi-tenant DB):
+ *   - By default ONLY fields of CITypeDefinition owned by --tenant are touched.
+ *     Shared types (scope IN ['base','itil'] or tenant_id = 'system') are
+ *     EXCLUDED: linking them to a tenant enum would leak that enum to every
+ *     other tenant and wipe their inline enum_values.
+ *   - With --include-shared the shared fields are migrated too, but they are
+ *     matched ONLY against system enums (is_system = true) and any enum
+ *     auto-created for them is {tenant_id: 'system', is_system: true}.
+ *   - Every write on a field is constrained by the tenant of its parent type.
+ *
  * Usage:
- *   pnpm tsx apps/api/src/scripts/migrate-enum-references.ts --slug <tenant>
+ *   pnpm tsx apps/api/src/scripts/migrate-enum-references.ts --tenant=<slug> [--include-shared]
  *
  * Idempotent: safe to run multiple times.
  */
 
-import { parseArgs } from 'node:util'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { resolveTenantArg, hasFlag } from './lib/scriptArgs.js'
 
-// ── Args ──────────────────────────────────────────────────────────────────────
-
-const { values: args } = parseArgs({
-  options: { 'slug': { type: 'string' } },
-})
-const tenantId = args['slug']
-if (!tenantId) {
-  console.error('Usage: tsx migrate-enum-references.ts --slug <tenant>')
-  process.exit(1)
-}
+const SYSTEM_TENANT = 'system'
+const SHARED_SCOPES = ['base', 'itil']
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface EnumDef {
-  id:     string
-  name:   string
-  label:  string
-  values: string[]
+  id:       string
+  name:     string
+  label:    string
+  values:   string[]
+  isSystem: boolean
 }
 
 interface FieldRecord {
@@ -47,6 +50,10 @@ interface FieldRecord {
   fieldName:    string
   typeName:     string
   typeScope:    string
+  /** tenant_id of the parent CITypeDefinition — every write is constrained by it */
+  typeTenantId: string
+  /** shared type (base/itil/system): enum must be a system enum */
+  shared:       boolean
   enumValues:   string[]
 }
 
@@ -127,8 +134,18 @@ function findMatch(fieldValues: string[], fieldName: string, enums: EnumDef[]): 
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Cypher predicate: is the CITypeDefinition `t` shared across tenants?
+ * (base/itil metamodel, or owned by the system tenant)
+ */
+const SHARED_TYPE_PREDICATE = `(t.scope IN $sharedScopes OR t.tenant_id = $systemTenant)`
+
 async function main() {
-  console.info(`\n▶ Migrating enum fields for tenant: ${tenantId}\n`)
+  const argv = process.argv.slice(2)
+  const tenantId = resolveTenantArg(argv)
+  const includeShared = hasFlag('--include-shared', argv)
+
+  console.info(`\n▶ Migrating enum fields for tenant: ${tenantId}${includeShared ? ' (+ shared base/itil types → system enums)' : ' (shared base/itil types excluded)'}\n`)
 
   const session = getSession(undefined, 'WRITE')
 
@@ -141,26 +158,29 @@ async function main() {
         RETURN e.id     AS id,
                e.name   AS name,
                e.label  AS label,
-               e.values AS values
+               e.values AS values,
+               coalesce(e.is_system, false) AS isSystem
         ORDER BY e.name
       `, { tenantId }),
     )
 
     const enumDefs: EnumDef[] = enumResult.records.map((r) => ({
-      id:     r.get('id')     as string,
-      name:   r.get('name')   as string,
-      label:  r.get('label')  as string,
-      values: r.get('values') as string[],
+      id:       r.get('id')       as string,
+      name:     r.get('name')     as string,
+      label:    r.get('label')    as string,
+      values:   r.get('values')   as string[],
+      isSystem: r.get('isSystem') as boolean,
     }))
 
     console.info(`  Found ${enumDefs.length} EnumTypeDefinition(s):`)
     for (const e of enumDefs) {
-      console.info(`    • ${e.name} [${e.values.join(', ')}]`)
+      console.info(`    • ${e.name}${e.isSystem ? ' (system)' : ''} [${e.values.join(', ')}]`)
     }
     console.info('')
 
-    // 2. Load all CIFieldDefinitions with field_type=enum, with enum_values,
-    //    but WITHOUT an existing USES_ENUM relation
+    // 2. Load CIFieldDefinitions with field_type=enum, with enum_values, but
+    //    WITHOUT an existing USES_ENUM relation. Tenant-owned types always;
+    //    shared types only with --include-shared.
     const fieldResult = await session.executeRead((tx) =>
       tx.run(`
         MATCH (t:CITypeDefinition)-[:HAS_FIELD]->(f:CIFieldDefinition)
@@ -169,14 +189,19 @@ async function main() {
           AND f.enum_values <> '[]'
           AND f.enum_values <> ''
           AND NOT (f)-[:USES_ENUM]->(:EnumTypeDefinition)
-          AND (t.tenant_id = $tenantId OR t.scope IN ['base', 'itil'])
+          AND (
+            (t.tenant_id = $tenantId AND NOT ${SHARED_TYPE_PREDICATE})
+            OR ($includeShared AND ${SHARED_TYPE_PREDICATE})
+          )
         RETURN f.id          AS fieldId,
                f.name        AS fieldName,
                f.enum_values AS enumValuesJson,
                t.name        AS typeName,
-               t.scope       AS typeScope
+               t.scope       AS typeScope,
+               t.tenant_id   AS typeTenantId,
+               ${SHARED_TYPE_PREDICATE} AS shared
         ORDER BY t.name, f.name
-      `, { tenantId }),
+      `, { tenantId, includeShared, sharedScopes: SHARED_SCOPES, systemTenant: SYSTEM_TENANT }),
     )
 
     const fields: FieldRecord[] = fieldResult.records
@@ -185,10 +210,12 @@ async function main() {
         let enumValues: string[] = []
         try { enumValues = JSON.parse(raw) as string[] } catch { /* skip */ }
         return {
-          fieldId:    r.get('fieldId')   as string,
-          fieldName:  r.get('fieldName') as string,
-          typeName:   r.get('typeName')  as string,
-          typeScope:  r.get('typeScope') as string,
+          fieldId:      r.get('fieldId')      as string,
+          fieldName:    r.get('fieldName')    as string,
+          typeName:     r.get('typeName')     as string,
+          typeScope:    r.get('typeScope')    as string,
+          typeTenantId: r.get('typeTenantId') as string,
+          shared:       r.get('shared')       as boolean,
           enumValues,
         }
       })
@@ -202,64 +229,73 @@ async function main() {
     let _alreadyDone = 0
 
     for (const field of fields) {
-      let match = findMatch(field.enumValues, field.fieldName, enumDefs)
+      // A shared field may only reference a system enum (never a tenant enum).
+      const candidates = field.shared ? enumDefs.filter((e) => e.isSystem) : enumDefs
+      let match = findMatch(field.enumValues, field.fieldName, candidates)
 
       if (!match) {
-        // Auto-create a custom EnumTypeDefinition for this unmatched field
+        // Auto-create a custom EnumTypeDefinition for this unmatched field.
+        // Shared field → system enum; tenant field → tenant enum.
         const enumName  = toSnakeCase(field.fieldName)
         const enumLabel = field.fieldName
           .replace(/([A-Z])/g, ' $1')
           .replace(/^./, (c) => c.toUpperCase())
           .trim()
-        const scope     = scopeFromType(field.typeScope)
-        const newId     = uuidv4()
-        const now       = new Date().toISOString()
+        const scope      = scopeFromType(field.typeScope)
+        const enumTenant = field.shared ? SYSTEM_TENANT : tenantId
+        const isSystem   = field.shared
+        const newId      = uuidv4()
+        const now        = new Date().toISOString()
 
         const createResult = await session.executeWrite((tx) =>
           tx.run(`
-            MERGE (e:EnumTypeDefinition {name: $name, tenant_id: $tenantId})
+            MERGE (e:EnumTypeDefinition {name: $name, tenant_id: $enumTenant})
             ON CREATE SET
               e.id         = $id,
               e.label      = $label,
               e.values     = $values,
-              e.is_system  = false,
+              e.is_system  = $isSystem,
               e.scope      = $scope,
               e.created_at = $now,
               e.updated_at = $now
             ON MATCH SET
               e.values     = $values,
               e.updated_at = $now
-            RETURN e.id AS id, e.name AS name, e.label AS label
+            RETURN e.id AS id, e.name AS name, e.label AS label, coalesce(e.is_system, false) AS isSystem
           `, {
-            name: enumName, tenantId, id: newId,
+            name: enumName, enumTenant, id: newId, isSystem,
             label: enumLabel, values: field.enumValues, scope, now,
           }),
         )
 
         const createdRec = createResult.records[0]
+        if (!createdRec) throw new Error(`Enum "${enumName}" (tenant ${enumTenant}): MERGE returned no record`)
         match = {
-          id:     createdRec?.get('id')    as string,
-          name:   createdRec?.get('name')  as string,
-          label:  createdRec?.get('label') as string,
-          values: field.enumValues,
+          id:       createdRec.get('id')       as string,
+          name:     createdRec.get('name')     as string,
+          label:    createdRec.get('label')    as string,
+          values:   field.enumValues,
+          isSystem: createdRec.get('isSystem') as boolean,
         }
 
         // Also add to local enumDefs so subsequent fields can reuse it
         enumDefs.push(match)
-        console.info(`  NEW   ${field.typeName}.${field.fieldName} → created enum "${match.name}" [${field.enumValues.join(', ')}]`)
+        console.info(`  NEW   ${field.typeName}.${field.fieldName} → created ${isSystem ? 'system ' : ''}enum "${match.name}" [${field.enumValues.join(', ')}]`)
         created++
       }
 
-      // Create USES_ENUM relation (MERGE = idempotent) and remove inline enum_values
+      // Create USES_ENUM relation (MERGE = idempotent) and remove inline
+      // enum_values. The field is matched THROUGH its parent type, constrained
+      // by the type's tenant: a field of another tenant is never touched.
       const writeResult = await session.executeWrite((tx) =>
         tx.run(`
-          MATCH (f:CIFieldDefinition {id: $fieldId})
+          MATCH (t:CITypeDefinition {tenant_id: $typeTenantId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
           MATCH (e:EnumTypeDefinition {id: $enumId})
           MERGE (f)-[:USES_ENUM]->(e)
           WITH f
           SET f.enum_values = null
           RETURN f.id AS id
-        `, { fieldId: field.fieldId, enumId: match.id }),
+        `, { fieldId: field.fieldId, typeTenantId: field.typeTenantId, enumId: match.id }),
       )
 
       if (writeResult.records.length) {
@@ -273,19 +309,23 @@ async function main() {
       }
     }
 
-    // 4. Count already-migrated fields (have USES_ENUM but enum_values still present or removed)
+    // 4. Count already-migrated fields within the same scope as step 2
     const alreadyResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (f:CIFieldDefinition)-[:USES_ENUM]->(:EnumTypeDefinition)
+        MATCH (t:CITypeDefinition)-[:HAS_FIELD]->(f:CIFieldDefinition)-[:USES_ENUM]->(:EnumTypeDefinition)
         WHERE f.field_type = 'enum'
-        RETURN count(f) AS total
-      `, {}),
+          AND (
+            (t.tenant_id = $tenantId AND NOT ${SHARED_TYPE_PREDICATE})
+            OR ($includeShared AND ${SHARED_TYPE_PREDICATE})
+          )
+        RETURN count(DISTINCT f) AS total
+      `, { tenantId, includeShared, sharedScopes: SHARED_SCOPES, systemTenant: SYSTEM_TENANT }),
     )
     const totalLinked = (alreadyResult.records[0]?.get('total') as { toNumber(): number })?.toNumber?.() ?? 0
 
     console.info(`
 ╔═══════════════════════════════════════════╗
-║  Migration complete for tenant: ${tenantId!.padEnd(8)} ║
+║  Migration complete for tenant: ${tenantId.padEnd(8)} ║
 ╠═══════════════════════════════════════════╣
 ║  Fields migrated (matched)  : ${String(migrated).padEnd(14)} ║
 ║  Enums auto-created         : ${String(created).padEnd(14)} ║

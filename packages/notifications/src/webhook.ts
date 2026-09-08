@@ -1,4 +1,5 @@
 import { createHmac } from 'crypto'
+import { assertSafeOutboundUrl, loggableUrl } from '@opengraphity/events'
 
 export interface WebhookSubscription {
   id: string
@@ -25,6 +26,11 @@ export async function dispatchWebhook(
     headers['X-OpenGraphity-Signature'] = `sha256=${signPayload(body, sub.secret)}`
   }
 
+  // SSRF guard (scheme, private IPs, DNS) — throws UnsafeUrlError, which is a
+  // configuration error the caller must see, not a skipped delivery.
+  await assertSafeOutboundUrl(sub.url)
+  const host = loggableUrl(sub.url)
+
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 10_000)
 
@@ -40,11 +46,11 @@ export async function dispatchWebhook(
     })
     if (!res.ok) {
       throw new Error(
-        `[webhook] Subscriber rejected event: subscriptionId=${sub.id} url=${sub.url} event=${sub.event} — HTTP ${res.status}`,
+        `[webhook] Subscriber rejected event: subscriptionId=${sub.id} host=${host} event=${sub.event} — HTTP ${res.status}`,
       )
     }
     console.log(
-      `[webhook] Dispatched subscriptionId=${sub.id} url=${sub.url} event=${sub.event} — HTTP ${res.status}`,
+      `[webhook] Dispatched subscriptionId=${sub.id} host=${host} event=${sub.event} — HTTP ${res.status}`,
     )
   } finally {
     clearTimeout(timeoutId)

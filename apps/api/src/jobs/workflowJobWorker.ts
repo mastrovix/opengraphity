@@ -6,6 +6,7 @@ import * as incidentService from '../services/incidentService.js'
 import { logger } from '../lib/logger.js'
 import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
+import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
 
@@ -29,17 +30,7 @@ interface WebhookRetryData {
   entityId: string
 }
 
-// ── SSRF protection (mirrors PRIVATE_IP_RE from packages/workflow/src/actions.ts) ─
-
-const PRIVATE_IP_RE = [
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
-  /^169\.254\./,
-  /^::1$/,
-  /^fc00:/,
-]
+// SSRF protection: shared assertSafeOutboundUrl (lib/safeUrl.ts → @opengraphity/events).
 
 // ── Processor ─────────────────────────────────────────────────────────────────
 
@@ -96,17 +87,10 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
     case 'webhook_retry': {
       const d = job.data as unknown as WebhookRetryData
 
-      // SSRF check
-      let parsedUrl: URL
-      try { parsedUrl = new URL(d.url) } catch {
-        logger.error({ url: d.url }, '[webhook_retry] invalid URL — aborting')
-        break
-      }
-      const hostname = parsedUrl.hostname
-      if (hostname === 'localhost' || PRIVATE_IP_RE.some(re => re.test(hostname))) {
-        logger.error({ url: d.url }, '[webhook_retry] SSRF URL blocked — aborting')
-        break
-      }
+      // SSRF check — a blocked/invalid URL throws: the job fails visibly
+      // (and stops retrying via BullMQ's attempts) instead of a silent break.
+      await assertSafeOutboundUrl(d.url)
+      const host = loggableUrl(d.url)
 
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 15_000)
@@ -120,9 +104,9 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`)
         }
-        logger.info({ url: d.url, status: res.status, attempt: d.attempt }, '[webhook_retry] succeeded')
+        logger.info({ host, status: res.status, attempt: d.attempt }, '[webhook_retry] succeeded')
       } catch (err) {
-        logger.error({ url: d.url, attempt: d.attempt, err }, '[webhook_retry] attempt failed')
+        logger.error({ host, attempt: d.attempt, err }, '[webhook_retry] attempt failed')
         // BullMQ gestisce i retry automaticamente via attempts/backoff config
         throw err  // re-throw so BullMQ knows to retry
       } finally {
@@ -285,7 +269,7 @@ export function startWorkflowJobWorker(): Worker {
     if (job?.name === 'webhook_retry' && (job.attemptsMade ?? 0) >= (job.opts?.attempts ?? 1)) {
       logger.error({
         jobName:  job.name,
-        url:      (job.data as unknown as Record<string, unknown>)['url'],
+        host:     loggableUrl(String((job.data as unknown as Record<string, unknown>)['url'] ?? '')),
         attempts: job.attemptsMade,
         err:      err.message,
       }, '[webhook_retry] all retries exhausted')

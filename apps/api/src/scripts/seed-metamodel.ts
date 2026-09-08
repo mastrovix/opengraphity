@@ -516,8 +516,11 @@ async function main() {
     console.log(`  CI types:           ${typesCount}`)
   } finally {
     await session.close()
-    process.exit(0)
   }
 }
 
-main().catch((err) => { console.error(err); process.exit(1) })
+// Exit 0 SOLO in caso di successo: un errore deve produrre exit ≠ 0 e stack
+// (prima process.exit(0) nel finally mascherava qualsiasi fallimento del seed).
+main()
+  .then(() => process.exit(0))
+  .catch((err) => { console.error(err); process.exit(1) })

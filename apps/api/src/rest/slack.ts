@@ -60,7 +60,7 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
     try {
       // Resolve Slack user → tenant
       const userResult = await session.executeRead((tx) =>
-        tx.run('MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1', { slackUserId }),
+        tx.run('MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1', { slackUserId }), // tenant-ok: pre-auth, il tenant è quello dell'utente Slack collegato
       )
       if (!userResult.records.length) {
         res.json({ response_type: 'ephemeral', text: '⚠️ Collega il tuo account Slack nelle impostazioni profilo.' })
@@ -119,7 +119,7 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
       // Look up by slack_id only — tenantId derived from the user node (slack_id is unique)
       const userResult = await session.executeRead((tx) =>
         tx.run(
-          'MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1',
+          'MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1', // tenant-ok: pre-auth, tenant derivato dall'utente Slack collegato
           { slackUserId },
         ),
       )

@@ -11,6 +11,8 @@ export const GET_USERS = gql`
   }
 `
 
+// Single definition of the "current user" document — consume it via
+// `useMe()` (src/hooks/useMe.ts) so every caller shares one cache entry.
 export const GET_ME = gql`
   query GetMe {
     me {
@@ -18,6 +20,7 @@ export const GET_ME = gql`
       name
       email
       role
+      slackId
       teams { id name }
     }
   }

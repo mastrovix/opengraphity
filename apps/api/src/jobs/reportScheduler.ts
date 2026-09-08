@@ -84,14 +84,14 @@ async function loadDueTemplates(): Promise<TemplateRow[]> {
   }
 }
 
-async function loadTemplateSections(templateId: string): Promise<ReportSectionDef[]> {
+async function loadTemplateSections(templateId: string, tenantId: string): Promise<ReportSectionDef[]> {
   const session = getSession(undefined, 'READ')
   try {
     const secRes = await session.executeRead(tx =>
       tx.run(`
-        MATCH (r:ReportTemplate {id: $templateId})-[:HAS_SECTION]->(s:ReportSection)
+        MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection)
         RETURN properties(s) AS props ORDER BY s.order ASC
-      `, { templateId }),
+      `, { templateId, tenantId }),
     )
 
     const sections: ReportSectionDef[] = []
@@ -114,6 +114,7 @@ async function loadTemplateSections(templateId: string): Promise<ReportSectionDe
 
       const nodeEdgeRes = await session.executeRead(tx =>
         tx.run(`
+          // tenant-ok: sezione letta dal template appena scopato
           MATCH (s:ReportSection {id: $sectionId})
           OPTIONAL MATCH (s)-[:HAS_NODE]->(n:ReportNode)
           OPTIONAL MATCH (n)-[e:REPORT_EDGE]->(m:ReportNode)
@@ -168,15 +169,15 @@ async function loadTemplateSections(templateId: string): Promise<ReportSectionDe
   }
 }
 
-async function loadChannelWebhook(channelId: string): Promise<string | null> {
+async function loadChannelWebhook(channelId: string, tenantId: string): Promise<string | null> {
   const session = getSession(undefined, 'READ')
   try {
     const res = await session.executeRead(tx =>
       tx.run(`
-        MATCH (c:NotificationChannel {id: $channelId})
+        MATCH (c:NotificationChannel {id: $channelId, tenant_id: $tenantId})
         WHERE c.platform = 'slack' AND c.active = true
         RETURN c.webhook_url AS webhookUrl LIMIT 1
-      `, { channelId }),
+      `, { channelId, tenantId }),
     )
     return res.records[0]?.get('webhookUrl') as string | null ?? null
   } finally {
@@ -192,7 +193,7 @@ async function reportSchedulerProcessor(_job: Job) {
 
   for (const tpl of templates) {
     try {
-      const sections = await loadTemplateSections(tpl.id)
+      const sections = await loadTemplateSections(tpl.id, tpl.tenantId)
       const results  = await Promise.all(
         sections.map(sec => executeReportSection(sec, tpl.tenantId)),
       )
@@ -224,8 +225,8 @@ async function reportSchedulerProcessor(_job: Job) {
       try {
         await updateSession.executeWrite(tx =>
           tx.run(
-            `MATCH (r:ReportTemplate {id: $id}) SET r.last_scheduled_run = $now`,
-            { id: tpl.id, now: timestamp },
+            `MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId}) SET r.last_scheduled_run = $now`,
+            { id: tpl.id, tenantId: tpl.tenantId, now: timestamp },
           ),
         )
       } finally {
@@ -234,7 +235,7 @@ async function reportSchedulerProcessor(_job: Job) {
 
       // ── Optional Slack delivery ──────────────────────────────────────────────
       if (tpl.scheduleChannelId) {
-        const webhookUrl = await loadChannelWebhook(tpl.scheduleChannelId)
+        const webhookUrl = await loadChannelWebhook(tpl.scheduleChannelId, tpl.tenantId)
         if (webhookUrl) {
           const blocks: unknown[] = [
             { type: 'header', text: { type: 'plain_text', text: `📊 ${tpl.name}`, emoji: true } },

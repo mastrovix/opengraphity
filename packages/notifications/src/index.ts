@@ -1,3 +1,5 @@
+import { assertSafeOutboundUrl } from '@opengraphity/events'
+
 export * from './sse.js'
 export * from './email.js'
 export * from './teams.js'
@@ -27,11 +29,24 @@ export interface TeamsAdaptiveCard {
   actions?: unknown[]
 }
 
+const OUTBOUND_TIMEOUT_MS = 10_000
+
+/** `fetch` with a hard 10 s timeout — a hung Slack/Teams endpoint must not block the consumer. */
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OUTBOUND_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * Sends a Slack message. Returns true on success and THROWS on any failure
- * (network error, non-2xx, Slack API ok:false, missing config) — a lost
- * notification must fail the calling job, never dissolve into a `false`
- * nobody reads.
+ * (network error, non-2xx, Slack API ok:false, missing config, unsafe URL) —
+ * a lost notification must fail the calling job, never dissolve into a
+ * `false` nobody reads.
  */
 export async function sendSlackMessage(
   webhookUrl: string | null,
@@ -39,7 +54,9 @@ export async function sendSlackMessage(
   blocks: SlackBlock[],
 ): Promise<boolean> {
   if (webhookUrl) {
-    const res = await fetch(webhookUrl, {
+    // Tenant-configured URL → SSRF guard (scheme, private IPs, DNS).
+    await assertSafeOutboundUrl(webhookUrl)
+    const res = await fetchWithTimeout(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ blocks }),
@@ -50,7 +67,7 @@ export async function sendSlackMessage(
   if (channelId) {
     const token = process.env['SLACK_BOT_TOKEN']
     if (!token) throw new Error('SLACK_BOT_TOKEN non configurato')
-    const res = await fetch('https://slack.com/api/chat.postMessage', {
+    const res = await fetchWithTimeout('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ channel: channelId, blocks }),
@@ -64,13 +81,15 @@ export async function sendSlackMessage(
 }
 
 /**
- * Sends a Teams adaptive card. Returns true on success, THROWS on failure.
+ * Sends a Teams adaptive card. Returns true on success, THROWS on failure
+ * (including an unsafe tenant-configured webhook URL).
  */
 export async function sendTeamsAdaptiveMessage(
   webhookUrl: string,
   card: TeamsAdaptiveCard,
 ): Promise<boolean> {
-  const res = await fetch(webhookUrl, {
+  await assertSafeOutboundUrl(webhookUrl)
+  const res = await fetchWithTimeout(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

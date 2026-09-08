@@ -15,6 +15,7 @@ async function loadQuestionWithOptions(session: ReturnType<typeof import('../ci-
   `, { id, tenantId })
   if (!q) return null
   const opts = await runQuery<{ props: Props }>(session, `
+    // tenant-ok: q già caricata scopata sopra
     MATCH (q:AssessmentQuestion {id: $id})-[:HAS_OPTION]->(o:AnswerOption)
     RETURN properties(o) AS props ORDER BY o.sort_order
   `, { id })
@@ -55,6 +56,7 @@ export async function createAssessmentQuestion(
     if (isCore) {
       await session.executeWrite((tx) => tx.run(`
         MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})
+        // tenant-ok: tipi base condivisi di sistema
         MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
         MERGE (ct)-[rel:HAS_QUESTION]->(q)
           ON CREATE SET rel.weight = 1, rel.sort_order = 0
@@ -167,6 +169,7 @@ export async function setQuestionCore(_: unknown, args: { questionId: string; is
       // Attach to all active CITypes that don't yet have the relationship
       await session.executeWrite((tx) => tx.run(`
         MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})
+        // tenant-ok: tipi base condivisi di sistema
         MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
         WHERE NOT (ct)-[:HAS_QUESTION]->(q)
         MERGE (ct)-[rel:HAS_QUESTION]->(q)

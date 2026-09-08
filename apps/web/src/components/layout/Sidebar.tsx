@@ -47,7 +47,7 @@ import {
   ShoppingCart,
   Gauge,
 } from 'lucide-react'
-import { keycloak } from '../../lib/keycloak'
+import { useMe } from '@/hooks/useMe'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
 import { C, navItemStyle, subItemStyle, parentGroupStyle, NavItem } from './SidebarNavItems'
@@ -138,7 +138,9 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     () => ANALYSIS_ITEM_DEFS.some(({ to }) => pathname.startsWith(to)),
   )
 
-  const isAdmin = keycloak.tokenParsed?.['realm_access']?.roles?.includes('admin')
+  // Same source of truth as the pages and the RequireRole route guard:
+  // `me.role` from the DB, not the Keycloak realm role.
+  const { isAdmin } = useMe()
   const settingsActive = pathname.startsWith('/settings')
   const { ciTypes } = useMetamodel()
 

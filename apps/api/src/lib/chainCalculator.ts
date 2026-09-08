@@ -10,6 +10,7 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
+      // tenant-ok: tipo CI condiviso per label
       OPTIONAL MATCH (td:CITypeDefinition {neo4j_label: lbl})
       WITH ci, td, td.chain_families AS families
       WHERE td IS NOT NULL
@@ -32,6 +33,7 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
         WHERE upstream.tenant_id = ci.tenant_id
         WITH upstream, labels(upstream) AS uLabels
         UNWIND uLabels AS uLbl
+        // tenant-ok: tipo CI condiviso per label
         OPTIONAL MATCH (utd:CITypeDefinition {neo4j_label: uLbl})
         WHERE utd.chain_families = '["Application"]'
         RETURN count(utd) > 0 AS hasAppUpstream
@@ -62,6 +64,7 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
       WHERE ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
+      // tenant-ok: tipo CI condiviso per label
       MATCH (td:CITypeDefinition {neo4j_label: lbl})
       WHERE td.chain_families = '["Application"]'
       SET ci.chain = 'Application'
@@ -72,6 +75,7 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
       WHERE ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
+      // tenant-ok: tipo CI condiviso per label
       MATCH (td:CITypeDefinition {neo4j_label: lbl})
       WHERE td.chain_families = '["Infrastructure"]'
       SET ci.chain = 'Infrastructure'

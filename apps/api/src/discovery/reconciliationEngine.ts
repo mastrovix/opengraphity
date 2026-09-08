@@ -9,6 +9,8 @@ import type {
 } from '@opengraphity/discovery'
 import { applyMappingRules, inferCIType, normalizeProperties } from '@opengraphity/discovery'
 import { logger } from '../lib/logger.js'
+import { FIELD_NAME_RE } from '../lib/cypherIdentifiers.js'
+import { ValidationError } from '../lib/errors.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,23 @@ async function reconcileOne(
 
 const SAFE_LABEL_RE = /^[A-Za-z][A-Za-z0-9_]*$/
 
+/**
+ * Discovered property keys come from connectors (cloud tags, CSV headers, JSON
+ * keys). They are never interpolated into Cypher any more (SET ci += $props),
+ * but a key that is not a plain snake_case identifier is still a connector
+ * bug: fail loud so the mapping is fixed upstream instead of polluting the CMDB.
+ * Exported for tests.
+ */
+export function assertDiscoveredPropertyKeys(props: Record<string, unknown>, externalId: string): void {
+  const bad = Object.keys(props).filter(k => !FIELD_NAME_RE.test(k))
+  if (bad.length) {
+    throw new ValidationError(
+      `[reconcile] CI ${externalId}: property keys must match ${FIELD_NAME_RE.source} — ` +
+      `invalid: ${bad.map(k => JSON.stringify(k.slice(0, 60))).join(', ')} (normalize them in the connector mapping)`,
+    )
+  }
+}
+
 function ciTypeToLabel(ciType: string): string {
   // Convert snake_case ci_type to PascalCase Neo4j label
   const label = ciType
@@ -166,6 +185,7 @@ async function createCI(
 ): Promise<void> {
   const id    = randomUUID()
   const props = normalizeProperties(ci.properties)
+  assertDiscoveredPropertyKeys(props, ci.external_id)
   const meta: CIDiscoveryMetadata = {
     discovery_external_id:  ci.external_id,
     discovery_source:       ci.source,
@@ -187,14 +207,10 @@ async function createCI(
     updated_at: now,
   }
 
-  // Build SET clause from properties
-  const setClause = Object.keys(allProps)
-    .map(k => `ci.${k} = $${k}`)
-    .join(', ')
-
+  // Properties travel as ONE map parameter — keys never touch the query text.
   await session.executeWrite(tx => tx.run(
-    `CREATE (ci:ConfigurationItem:${label}) SET ${setClause}`,
-    allProps,
+    `CREATE (ci:ConfigurationItem:${label}) SET ci += $props`,
+    { props: allProps },
   ))
 
   logger.debug({ id, name: ci.name, ciType }, '[reconcile] CI created')
@@ -225,6 +241,7 @@ async function updateCI(
   tenantId:  string,
 ): Promise<boolean> {
   const newProps = normalizeProperties(ci.properties)
+  assertDiscoveredPropertyKeys(newProps, ci.external_id)
   const updates: Record<string, unknown> = {}
   const changedFields: string[] = []
   const oldValues: Record<string, unknown> = {}
@@ -248,10 +265,9 @@ async function updateCI(
 
   if (changedFields.length === 0) return false
 
-  const setClause = Object.keys(updates).map(k => `ci.${k} = $${k}`).join(', ')
   await session.executeWrite(tx => tx.run(
-    `MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId}) SET ${setClause}`,
-    { id: existing.id, tenantId, ...updates },
+    `MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId}) SET ci += $updates`,
+    { id: existing.id, tenantId, updates },
   ))
 
   // Record the change for sync history
@@ -351,6 +367,7 @@ async function syncRelations(
 
     if (rel.direction === 'outgoing') {
       const r = await session.executeWrite(tx => tx.run(
+        // tenant-ok: id dei CI riconciliati in questo run (stesso tenant della sorgente)
         `MATCH (a:ConfigurationItem {id: $fromId}), (b:ConfigurationItem {id: $toId})
          MERGE (a)-[r:${relType}]->(b)
          ON CREATE SET r.created_at = $now, r.discovery_source_id = $sourceId
@@ -360,6 +377,7 @@ async function syncRelations(
       if (r.records.length) created++
     } else {
       const r = await session.executeWrite(tx => tx.run(
+        // tenant-ok: id dei CI riconciliati in questo run (stesso tenant della sorgente)
         `MATCH (a:ConfigurationItem {id: $toId}), (b:ConfigurationItem {id: $fromId})
          MERGE (a)-[r:${relType}]->(b)
          ON CREATE SET r.created_at = $now, r.discovery_source_id = $sourceId

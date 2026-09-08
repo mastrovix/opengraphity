@@ -12,17 +12,24 @@
  *   E — 2 Unauthorized rels (unauthorized_relation)
  *   F — 1 Risk concentration(risk_concentration)
  *   G — Isolated cluster    (isolated_cluster)
+ *
+ * ATTENZIONE: è distruttivo per il tenant indicato (cancella i nodi Anomaly e
+ * AnomalyConfig del tenant e rimuove relazioni da alcuni CI). Per questo:
+ *   - il tenant è obbligatorio (--tenant=<slug>), nessun default;
+ *   - serve la conferma esplicita --yes-delete;
+ *   - è rifiutato con NODE_ENV=production.
+ *
+ * Uso: pnpm --filter @opengraphity/api exec tsx src/scripts/seed-anomaly-scenarios.ts --tenant=c-one --yes-delete
  */
 
 import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
+import { resolveTenantArg, requireConfirmFlag, refuseInProduction } from './lib/scriptArgs.js'
 
-const TENANT = 'c-one'
-
-async function run(session: ReturnType<typeof getSession>, label: string, cypher: string, params: Record<string, unknown> = {}) {
+async function run(session: ReturnType<typeof getSession>, tenantId: string, label: string, cypher: string, params: Record<string, unknown> = {}) {
   console.log(`  → ${label}`)
-  const result = await session.run(cypher, { tenantId: TENANT, ...params })
+  const result = await session.run(cypher, { tenantId, ...params })
   const summary = result.summary.counters
   const c = summary as unknown as Record<string, () => number>
   const dels = (c['relationshipsDeleted']?.() ?? 0) + (c['nodesDeleted']?.() ?? 0)
@@ -33,13 +40,22 @@ async function run(session: ReturnType<typeof getSession>, label: string, cypher
 }
 
 async function main() {
-  // ── 0. CLEAN UP ───────────────────────────────────────────────────────────────
-  console.log('\n=== 0. Pulizia nodi Anomaly e AnomalyConfig ===')
+  refuseInProduction('seed-anomaly-scenarios')
+  const TENANT = resolveTenantArg()
+  // Copre sia la pulizia (0) sia le rimozioni di relazioni (scenari A e D).
+  requireConfirmFlag('--yes-delete')
+  console.log(`\nTenant: ${TENANT}`)
+
+  // ── 0. CLEAN UP (solo il tenant indicato) ─────────────────────────────────────
+  console.log('\n=== 0. Pulizia nodi Anomaly e AnomalyConfig del tenant ===')
   const cleanSession = getSession(undefined, neo4j.session.WRITE)
   try {
-    await cleanSession.run(`MATCH (a:Anomaly) DETACH DELETE a`)
-    await cleanSession.run(`MATCH (c:AnomalyConfig) DETACH DELETE c`)
-    console.log('  → eliminati tutti i nodi Anomaly e AnomalyConfig')
+    await run(cleanSession, TENANT, 'Elimina Anomaly del tenant', `
+      MATCH (a:Anomaly {tenant_id: $tenantId}) DETACH DELETE a
+    `)
+    await run(cleanSession, TENANT, 'Elimina AnomalyConfig del tenant', `
+      MATCH (c:AnomalyConfig {tenant_id: $tenantId}) DETACH DELETE c
+    `)
   } finally {
     await cleanSession.close()
   }
@@ -48,9 +64,9 @@ async function main() {
   console.log('\n=== SCENARIO A — 3 CI Orfani ===')
   const sessionA = getSession(undefined, neo4j.session.WRITE)
   try {
-    // Remove ALL relationships from 3 CI nodes to make them orphans
+    // Remove ALL relationships from 3 CI nodes (of this tenant) to make them orphans
     for (const name of ['APP-100', 'SRV-500', 'DB-300']) {
-      await run(sessionA, `Rimuovi tutte le relazioni da ${name}`, `
+      await run(sessionA, TENANT, `Rimuovi tutte le relazioni da ${name}`, `
         MATCH (ci {name: $name, tenant_id: $tenantId})-[r]-()
         DELETE r
       `, { name })
@@ -64,7 +80,7 @@ async function main() {
   const sessionB = getSession(undefined, neo4j.session.WRITE)
   try {
     // Make SRV-010 a SPOF: ≥5 production apps DEPEND_ON it
-    await run(sessionB, 'SPOF #1: SRV-010 — 7 production apps DEPENDS_ON', `
+    await run(sessionB, TENANT,'SPOF #1: SRV-010 — 7 production apps DEPENDS_ON', `
       MATCH (srv:Server {name: 'SRV-010', tenant_id: $tenantId})
       MATCH (app:Application {tenant_id: $tenantId, environment: 'production'})
       WHERE NOT (app)-[:DEPENDS_ON]->(srv)
@@ -72,7 +88,7 @@ async function main() {
       MERGE (app)-[:DEPENDS_ON]->(srv)
     `)
     // Make SRV-020 a SPOF: 6 apps
-    await run(sessionB, 'SPOF #2: SRV-020 — 6 production apps DEPENDS_ON', `
+    await run(sessionB, TENANT,'SPOF #2: SRV-020 — 6 production apps DEPENDS_ON', `
       MATCH (srv:Server {name: 'SRV-020', tenant_id: $tenantId})
       MATCH (app:Application {tenant_id: $tenantId, environment: 'production'})
       WHERE NOT (app)-[:DEPENDS_ON]->(srv)
@@ -87,7 +103,7 @@ async function main() {
   console.log('\n=== SCENARIO C — Ciclo di Dipendenza ===')
   const sessionC = getSession(undefined, neo4j.session.WRITE)
   try {
-    await run(sessionC, 'Ciclo: APP-001 → APP-050 → APP-150 → APP-001', `
+    await run(sessionC, TENANT,'Ciclo: APP-001 → APP-050 → APP-150 → APP-001', `
       MATCH (a:Application {name: 'APP-001', tenant_id: $tenantId})
       MATCH (b:Application {name: 'APP-050', tenant_id: $tenantId})
       MATCH (c:Application {name: 'APP-150', tenant_id: $tenantId})
@@ -104,7 +120,7 @@ async function main() {
   const sessionD = getSession(undefined, neo4j.session.WRITE)
   try {
     for (const name of ['DB-200', 'DB-201', 'DB-202']) {
-      await run(sessionD, `Rimuovi OWNED_BY da ${name}`, `
+      await run(sessionD, TENANT,`Rimuovi OWNED_BY da ${name}`, `
         MATCH (ci:Database {name: $name, tenant_id: $tenantId})-[r:OWNED_BY]->()
         DELETE r
       `, { name })
@@ -117,12 +133,12 @@ async function main() {
   console.log('\n=== SCENARIO E — 2 Relazioni Non Autorizzate ===')
   const sessionE = getSession(undefined, neo4j.session.WRITE)
   try {
-    await run(sessionE, 'SRV-001 -[:DEPENDS_ON]-> APP-001 (inverso)', `
+    await run(sessionE, TENANT,'SRV-001 -[:DEPENDS_ON]-> APP-001 (inverso)', `
       MATCH (srv:Server {name: 'SRV-001', tenant_id: $tenantId})
       MATCH (app:Application {name: 'APP-001', tenant_id: $tenantId})
       MERGE (srv)-[:DEPENDS_ON]->(app)
     `)
-    await run(sessionE, 'SRV-002 -[:DEPENDS_ON]-> APP-002 (inverso)', `
+    await run(sessionE, TENANT,'SRV-002 -[:DEPENDS_ON]-> APP-002 (inverso)', `
       MATCH (srv:Server {name: 'SRV-002', tenant_id: $tenantId})
       MATCH (app:Application {name: 'APP-002', tenant_id: $tenantId})
       MERGE (srv)-[:DEPENDS_ON]->(app)
@@ -138,7 +154,7 @@ async function main() {
     const now = new Date().toISOString()
     for (let i = 1; i <= 6; i++) {
       const id = uuidv4()
-      await run(sessionF, `Incidente critico #${i} → SRV-010`, `
+      await run(sessionF, TENANT,`Incidente critico #${i} → SRV-010`, `
         MATCH (srv:Server {name: 'SRV-010', tenant_id: $tenantId})
         CREATE (inc:Incident {
           id:          $id,
@@ -160,7 +176,7 @@ async function main() {
   console.log('\n=== SCENARIO G — Cluster Isolato (3 nodi LEGACY) ===')
   const sessionG = getSession(undefined, neo4j.session.WRITE)
   try {
-    await run(sessionG, 'Crea LEGACY-SRV-01, LEGACY-APP-01, LEGACY-DB-01 (cluster)', `
+    await run(sessionG, TENANT,'Crea LEGACY-SRV-01, LEGACY-APP-01, LEGACY-DB-01 (cluster)', `
       MERGE (srv:Server  {name: 'LEGACY-SRV-01', tenant_id: $tenantId})
         ON CREATE SET srv.id = randomUUID(), srv.status = 'active', srv.environment = 'production',
                       srv.description = 'Legacy server — cluster isolato', srv.created_at = datetime()

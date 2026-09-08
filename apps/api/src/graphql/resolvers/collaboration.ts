@@ -156,7 +156,7 @@ async function watchers(_: unknown, args: { entityType: string; entityId: string
 async function isWatching(_: unknown, args: { entityType: string; entityId: string }, ctx: GraphQLContext) {
   return withSession(async (s) => {
     const row = await runQueryOne<{ c: number }>(s, `
-      MATCH (u:User {id: $userId})-[:WATCHES]->(e {id: $entityId, tenant_id: $tenantId})
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})-[:WATCHES]->(e {id: $entityId, tenant_id: $tenantId})
       RETURN count(u) AS c
     `, { userId: ctx.userId, entityId: args.entityId, tenantId: ctx.tenantId })
     return (row?.c ?? 0) > 0

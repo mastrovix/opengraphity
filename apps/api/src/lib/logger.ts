@@ -51,12 +51,23 @@ export const logger = pino(
       service: 'opengrafo-api',
       env:     process.env['NODE_ENV'] ?? 'development',
     },
-    redact: [
-      'req.headers.authorization',
-      'password',
-      'secret',
-      'token',
-    ],
+    // pino redact: `*` matches exactly ONE path segment (no `**`), so each
+    // nesting depth that can carry a secret is listed explicitly. Deeper
+    // objects are NOT covered — never log raw job.data / request bodies.
+    redact: {
+      paths: [
+        'req.headers.authorization', 'req.headers.cookie',
+        'headers.authorization', 'headers.Authorization',
+        '*.headers.authorization', '*.headers.Authorization',
+        'password', '*.password', '*.*.password',
+        'secret', '*.secret', '*.*.secret',
+        'token', '*.token', '*.*.token',
+        'key_hash', '*.key_hash',
+        'apiKey', '*.apiKey', 'api_key', '*.api_key',
+        'webhook_url', '*.webhook_url', 'webhookUrl', '*.webhookUrl',
+      ],
+      censor: '[REDACTED]',
+    },
   },
   pino.multistream(streams),
 )

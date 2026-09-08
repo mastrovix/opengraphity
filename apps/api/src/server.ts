@@ -181,7 +181,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.on('finish', () => {
     httpLogger.info({
       method:    req.method,
-      url:       req.url,
+      url:       req.path, // no query string: tokens/ids must not reach logs (A-05)
       status:    res.statusCode,
       duration:  Date.now() - start,
       userAgent: req.headers['user-agent'],

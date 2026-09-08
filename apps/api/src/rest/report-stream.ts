@@ -12,10 +12,17 @@ router.post('/report/stream', authMiddleware, (req: Request, res: Response) => {
 })
 
 async function handleReportStream(req: Request, res: Response): Promise<void> {
-  const { tenantId, userId } = req.user!
+  const { tenantId, userId, role } = req.user!
   const { question, conversationId: inputConvId } = req.body as {
     question?: string
     conversationId?: string | null
+  }
+
+  // Same policy as GraphQL askReport: the AI tool runs model-generated
+  // (guarded, read-only) Cypher — admin/operator only.
+  if (role !== 'admin' && role !== 'operator') {
+    res.status(403).json({ error: `Role '${role}' is not authorized. Required: admin, operator` })
+    return
   }
 
   if (!question?.trim()) {

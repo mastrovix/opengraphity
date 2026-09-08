@@ -1,8 +1,7 @@
 import type express from 'express'
+import { GraphQLError } from 'graphql'
 import { authLogger } from '../lib/logger.js'
-import { getSession } from '@opengraphity/neo4j'
-import { verifyKeycloakToken } from '../auth/keycloak.js'
-import { buildContext } from '../context.js'
+import { resolveAuth } from '../auth/resolveAuth.js'
 
 // Augment Express Request to carry the resolved auth context
 declare global {
@@ -19,89 +18,24 @@ declare global {
   }
 }
 
-const ITSM_ROLES = ['admin', 'operator', 'viewer'] as const
-
-async function getUserByEmail(email: string): Promise<{ id: string; tenantId: string; role: string } | null> {
-  const session = getSession(undefined, 'READ')
-  try {
-    const result = await session.executeRead((tx) =>
-      tx.run(
-        `MATCH (u:User {email: $email}) RETURN u.id AS id, u.tenant_id AS tenantId, u.role AS role LIMIT 1`,
-        { email },
-      ),
-    )
-    if (!result.records.length) return null
-    const r = result.records[0]
-    return {
-      id:       r.get('id')       as string,
-      tenantId: r.get('tenantId') as string,
-      role:     r.get('role')     as string,
-    }
-  } finally {
-    await session.close()
-  }
-}
-
 export const authMiddleware: express.RequestHandler = (req, res, next) => {
-  void resolveAuth(req, res, next)
+  void handle(req, res, next)
 }
 
-async function resolveAuth(
+async function handle(
   req: express.Request,
   res: express.Response,
   next: express.NextFunction,
 ): Promise<void> {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-
-  if (!token) {
+  const auth = req.headers.authorization
+  if (!auth?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Unauthorized' })
     return
   }
 
-  // Try Keycloak token first. Only the signature/format verification may fall
-  // back to the legacy JWT path: once the token IS a valid Keycloak token,
-  // user-not-found and DB errors are real rejections, not fallback triggers.
-  let decoded: Awaited<ReturnType<typeof verifyKeycloakToken>> | null = null
   try {
-    decoded = await verifyKeycloakToken(token)
-  } catch (err) {
-    // Could be a non-Keycloak (legacy) token, or a real verification failure
-    // (JWKS down, unknown kid, forged token). Log so the latter is not silent.
-    authLogger.warn({ err }, 'Keycloak token verification failed — trying legacy JWT')
-  }
-
-  if (decoded) {
-    let user: Awaited<ReturnType<typeof getUserByEmail>>
-    try {
-      user = await getUserByEmail(decoded.email)
-    } catch (err) {
-      // DB outage is a server error, not an auth failure — surface it as such.
-      res.status(500).json({ error: `Auth lookup failed: ${err instanceof Error ? err.message : String(err)}` })
-      return
-    }
-
-    if (!user) {
-      res.status(401).json({ error: 'Unauthorized: user not found' })
-      return
-    }
-
-    const kcRole = decoded.realm_access?.roles?.find((r) =>
-      (ITSM_ROLES as readonly string[]).includes(r),
-    ) ?? 'viewer'
-
-    req.user = {
-      userId:   user.id,
-      tenantId: user.tenantId,
-      email:    decoded.email ?? decoded.preferred_username,
-      role:     user.role     ?? kcRole,
-    }
-    next()
-    return
-  }
-
-  // Fallback: legacy dev JWT
-  try {
-    const ctx = await buildContext(req)
+    // Same resolver as GraphQL: realm-bound user lookup + host/tenant cross-check
+    const ctx = await resolveAuth(auth.slice(7), req)
     req.user = {
       tenantId: ctx.tenantId,
       userId:   ctx.userId,
@@ -109,7 +43,13 @@ async function resolveAuth(
       role:     ctx.role,
     }
     next()
-  } catch {
-    res.status(401).json({ error: 'Unauthorized' })
+  } catch (err) {
+    if (err instanceof GraphQLError && err.extensions['code'] === 'UNAUTHORIZED') {
+      res.status(401).json({ error: err.message })
+      return
+    }
+    // DB outage / corrupt User node is a server error, not an auth failure — surface it as such.
+    authLogger.error({ err }, 'Auth resolution failed')
+    res.status(500).json({ error: `Auth lookup failed: ${err instanceof Error ? err.message : String(err)}` })
   }
 }

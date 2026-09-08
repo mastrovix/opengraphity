@@ -147,6 +147,7 @@ export function buildCITypesResolver() {
            OPTIONAL MATCH (f)-[:USES_ENUM]->(fEnum:EnumTypeDefinition)
            OPTIONAL MATCH (t)-[:HAS_RELATION]->(rel:CIRelationDefinition)
            OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
+           // tenant-ok: __base__ è il tipo condiviso di sistema
            OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})-[:HAS_FIELD]->(bf:CIFieldDefinition)
            OPTIONAL MATCH (bf)-[:USES_ENUM]->(bfEnum:EnumTypeDefinition)
            RETURN t,
@@ -323,7 +324,7 @@ export function buildMetamodelMutations() {
       requireAdmin(ctx)
       await withSession(async session => {
         const r = await session.executeRead(tx =>
-          tx.run(`MATCH (t:CITypeDefinition {id: $id}) RETURN t.scope AS scope`, { id: args.id }),
+          tx.run(`MATCH (t:CITypeDefinition {id: $id}) WHERE t.tenant_id IN [$tenantId, 'system'] RETURN t.scope AS scope`, { id: args.id, tenantId: ctx.tenantId }),
         )
         if (r.records.length && r.records[0].get('scope') === 'base') {
           throw new GraphQLError('I tipi base non possono essere eliminati')
@@ -363,6 +364,7 @@ export function buildMetamodelMutations() {
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
+            WHERE t.tenant_id IN [$tenantId, 'system']
             CREATE (f:CIFieldDefinition {
               id:                $fieldId,
               name:              $name,
@@ -383,7 +385,7 @@ export function buildMetamodelMutations() {
             CALL {
               WITH f
               MATCH (e:EnumTypeDefinition {id: $enumTypeId})
-              WHERE $enumTypeId IS NOT NULL
+              WHERE $enumTypeId IS NOT NULL AND e.tenant_id IN [$tenantId, 'system']
               MERGE (f)-[:USES_ENUM]->(e)
               RETURN count(e) AS linked
             }

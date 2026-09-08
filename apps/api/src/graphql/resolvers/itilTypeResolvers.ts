@@ -35,12 +35,12 @@ export function mapITILField(f: Props, enumRef?: { id: string; name: string; lab
 
 // ── fetchITILTypeById ─────────────────────────────────────────────────────────
 
-export async function fetchITILTypeById(id: string) {
+export async function fetchITILTypeById(id: string, tenantId: string) {
   return withSession(async session => {
     const r = await session.executeRead(tx =>
       tx.run(`
         MATCH (t:CITypeDefinition {id: $id})
-        WHERE t.scope = 'itil'
+        WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
         OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
         OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
         OPTIONAL MATCH (t)-[:HAS_RELATION]->(rel:CIRelationDefinition)
@@ -49,7 +49,7 @@ export async function fetchITILTypeById(id: string) {
           collect(DISTINCT {f: f, enumTypeId: enumDef.id, enumTypeName: enumDef.name, enumTypeLabel: enumDef.label, enumTypeValues: enumDef.values}) AS fieldData,
           collect(DISTINCT rel) AS relations,
           collect(DISTINCT sr)  AS systemRels
-      `, { id }),
+      `, { id, tenantId }),
     )
     if (!r.records.length) throw new GraphQLError('ITIL type non trovato')
     const rec = r.records[0]
@@ -112,7 +112,7 @@ export function buildITILTypesResolver() {
       const r = await session.executeRead(tx =>
         tx.run(
           `MATCH (t:CITypeDefinition)
-           WHERE t.scope = 'itil' AND t.active = true
+           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system'] AND t.active = true
            OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
            OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
            RETURN t,
@@ -158,18 +158,18 @@ export function buildITILTypesResolver() {
 // ── buildITILTypeFieldsResolver ───────────────────────────────────────────────
 
 export function buildITILTypeFieldsResolver() {
-  return async (_: unknown, args: { typeId: string }, _ctx: GraphQLContext) =>
+  return async (_: unknown, args: { typeId: string }, ctx: GraphQLContext) =>
     withSession(async session => {
       const r = await session.executeRead(tx =>
         tx.run(
           `MATCH (t:CITypeDefinition {id: $typeId})
-           WHERE t.scope = 'itil'
+           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
            MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
            OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
            RETURN f, enumDef.id AS enumTypeId, enumDef.name AS enumTypeName,
                   enumDef.label AS enumTypeLabel, enumDef.values AS enumTypeValues
            ORDER BY f.order`,
-          { typeId: args.typeId },
+          { typeId: args.typeId, tenantId: ctx.tenantId },
         ),
       )
       return r.records.map(rec => {
@@ -205,14 +205,14 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       await withSession(async session => {
         await session.executeWrite(tx =>
           tx.run(
-            `MATCH (t:CITypeDefinition {id: $id}) WHERE t.scope = 'itil' SET t += $updates`,
-            { id: args.id, updates },
+            `MATCH (t:CITypeDefinition {id: $id}) WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system'] SET t += $updates`,
+            { id: args.id, updates, tenantId: ctx.tenantId },
           ),
         )
       }, true)
 
       invalidateSchema(ctx.tenantId)
-      return fetchITILTypeById(args.id)
+      return fetchITILTypeById(args.id, ctx.tenantId)
     },
 
     createITILField: async (
@@ -240,7 +240,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
-            WHERE t.scope = 'itil'
+            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
             CREATE (f:CIFieldDefinition {
               id:                $fieldId,
               name:              $name,
@@ -262,7 +262,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             CALL {
               WITH f
               MATCH (e:EnumTypeDefinition {id: $enumTypeId})
-              WHERE $enumTypeId IS NOT NULL
+              WHERE $enumTypeId IS NOT NULL AND e.tenant_id IN [$tenantId, 'system']
               MERGE (f)-[:USES_ENUM]->(e)
               RETURN count(e) AS linked
             }
@@ -287,7 +287,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       }, true)
 
       invalidateSchema(ctx.tenantId)
-      return fetchITILTypeById(typeId)
+      return fetchITILTypeById(typeId, ctx.tenantId)
     },
 
     updateITILField: async (
@@ -314,7 +314,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
-            WHERE t.scope = 'itil'
+            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
             SET f.label             = $label,
                 f.enum_values       = CASE WHEN f.field_type = 'enum' THEN $enumValues ELSE f.enum_values END,
                 f.required          = CASE WHEN f.is_system = true THEN f.required ELSE $required END,
@@ -332,7 +332,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             CALL {
               WITH f
               MATCH (e:EnumTypeDefinition {id: $enumTypeId})
-              WHERE $enumTypeId IS NOT NULL
+              WHERE $enumTypeId IS NOT NULL AND e.tenant_id IN [$tenantId, 'system']
               MERGE (f)-[:USES_ENUM]->(e)
               RETURN count(e) AS linked
             }
@@ -340,6 +340,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
           `, {
             typeId,
             fieldId,
+            tenantId: ctx.tenantId,
             label:            input['label'],
             required:         input['required']          ?? false,
             fieldType:        input['fieldType'],
@@ -355,7 +356,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       }, true)
 
       invalidateSchema(ctx.tenantId)
-      return fetchITILTypeById(typeId)
+      return fetchITILTypeById(typeId, ctx.tenantId)
     },
 
     deleteITILField: async (
@@ -368,9 +369,9 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         const check = await session.executeRead(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
-            WHERE t.scope = 'itil'
+            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
             RETURN f.is_system AS isSystem
-          `, { typeId: args.typeId, fieldId: args.fieldId }),
+          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
         )
         const isSystem = check.records[0]?.get('isSystem') as boolean | null
         if (isSystem === null) throw new GraphQLError('Campo non trovato')
@@ -379,14 +380,14 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
-            WHERE t.scope = 'itil'
+            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
             DETACH DELETE f
-          `, { typeId: args.typeId, fieldId: args.fieldId }),
+          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
         )
       }, true)
 
       invalidateSchema(ctx.tenantId)
-      return fetchITILTypeById(args.typeId)
+      return fetchITILTypeById(args.typeId, ctx.tenantId)
     },
   }
 }

@@ -174,8 +174,14 @@ async function main() {
     process.stdout.write(`\nDone: ${created} dashboard/s created for tenant=${tenantId}\n`)
   } finally {
     await session.close()
-    process.exit(0)
   }
 }
 
-main().catch((err) => { process.stderr.write(String(err) + '\n'); process.exit(1) })
+// Exit 0 SOLO in caso di successo: un errore deve produrre exit ≠ 0 e stack
+// (prima process.exit(0) nel finally mascherava qualsiasi fallimento del seed).
+main()
+  .then(() => process.exit(0))
+  .catch((err: unknown) => {
+    process.stderr.write((err instanceof Error ? (err.stack ?? err.message) : String(err)) + '\n')
+    process.exit(1)
+  })

@@ -16,13 +16,25 @@
  * transizioni definite nella WorkflowDefinition: se il workflow cambia, lo
  * script fallisce invece di fabbricare uno stato incoerente.
  *
- * Uso (da host): pnpm --filter @opengraphity/api exec tsx src/scripts/seed-demo-incidents.ts
+ * DISTRUTTIVO per il tenant indicato: cancella TUTTI i suoi incident con
+ * workflow, storia, SLA, commenti e i nodi collegati per entity_id
+ * (EntityComment, Attachment, AuditEntry, Notification). Per questo:
+ *   - tenant obbligatorio (--tenant=<slug>), nessun default;
+ *   - conferma esplicita --yes-delete;
+ *   - rifiutato con NODE_ENV=production.
+ * La WorkflowDefinition incident è risolta per (tenant, entity_type, nome)
+ * — nome da INCIDENT_WORKFLOW_BASE — non per UUID cablato.
+ *
+ * Uso (da host): pnpm --filter @opengraphity/api exec tsx src/scripts/seed-demo-incidents.ts --tenant=c-one --yes-delete
  */
 import { getSession } from '@opengraphity/neo4j'
+import { INCIDENT_WORKFLOW_BASE } from '@opengraphity/workflow'
 import { v4 as uuidv4 } from 'uuid'
+import { resolveTenantArg, requireConfirmFlag, refuseInProduction } from './lib/scriptArgs.js'
 
-const TENANT = 'c-one'
-const DEF_ID = '2f47bd00-4cb3-4ae6-bb25-932c324aa914' // incident workflow definition
+/** Nodi che puntano a un incident per proprietà (entity_type/entity_id), non per relazione. */
+const ENTITY_LINKED_LABELS = ['EntityComment', 'Attachment', 'AuditEntry', 'Notification'] as const
+
 const N_CLOSED = 1000
 const N_ASSIGNED = 150
 const N_NEW = 350
@@ -114,8 +126,27 @@ function baseRow(i: number, ci: { id: string; name: string; type: string; teamId
 }
 
 async function main() {
+  refuseInProduction('seed-demo-incidents')
+  const TENANT = resolveTenantArg()
+  requireConfirmFlag('--yes-delete')
+  console.log(`[seed] tenant: ${TENANT}`)
+
   const session = getSession(undefined, 'WRITE')
   try {
+    // ── 0. Risolvi la WorkflowDefinition incident per nome (non per UUID) ───────
+    const defRes = await session.executeRead((tx) => tx.run(`
+      MATCH (wd:WorkflowDefinition {tenant_id:$t, entity_type:$et, name:$name})
+      RETURN wd.id AS id
+    `, { t: TENANT, et: INCIDENT_WORKFLOW_BASE.entityType, name: INCIDENT_WORKFLOW_BASE.name }))
+    if (defRes.records.length === 0) {
+      throw new Error(`Nessuna WorkflowDefinition "${INCIDENT_WORKFLOW_BASE.name}" (entity_type=${INCIDENT_WORKFLOW_BASE.entityType}) per il tenant ${TENANT}: eseguire prima il seed del workflow incident.`)
+    }
+    if (defRes.records.length > 1) {
+      throw new Error(`WorkflowDefinition "${INCIDENT_WORKFLOW_BASE.name}" ambigua per il tenant ${TENANT}: ${defRes.records.length} definizioni con lo stesso nome.`)
+    }
+    const DEF_ID = defRes.records[0]!.get('id') as string
+    console.log(`[seed] workflow "${INCIDENT_WORKFLOW_BASE.name}" → definition_id=${DEF_ID}`)
+
     // ── 1. Valida il percorso contro il workflow reale ──────────────────────────
     const pathEdges = [['new', 'assigned'], ['assigned', 'in_progress'], ['in_progress', 'resolved'], ['resolved', 'closed']]
     const edgeRes = await session.executeRead((tx) => tx.run(`
@@ -129,6 +160,22 @@ async function main() {
     console.log('[seed] percorso workflow validato:', pathEdges.map(([a, b]) => `${a}→${b}`).join(' '))
 
     // ── 2. Cancella gli incident esistenti senza lasciare orfani ────────────────
+    // 2a. Nodi collegati per entity_id (non per relazione: DETACH non li vede).
+    //     Solo quelli che puntano a un incident del tenant, scopati per tenant.
+    const idRes = await session.executeRead((tx) => tx.run(`
+      MATCH (i:Incident {tenant_id:$t}) RETURN collect(i.id) AS ids
+    `, { t: TENANT }))
+    const incidentIds = (idRes.records[0]?.get('ids') as string[] | undefined) ?? []
+    for (const label of ENTITY_LINKED_LABELS) {
+      const r = await session.executeWrite((tx) => tx.run(`
+        MATCH (x:${label} {tenant_id:$t, entity_type:'incident'})
+        WHERE x.entity_id IN $ids
+        DETACH DELETE x
+        RETURN count(x) AS n
+      `, { t: TENANT, ids: incidentIds }))
+      console.log(`[seed] cancellati ${r.records[0]!.get('n')} ${label} collegati agli incident`)
+    }
+    // 2b. Incident con workflow, storia, SLA e commenti legacy.
     const del = await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {tenant_id:$t})
       OPTIONAL MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)

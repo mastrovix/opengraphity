@@ -4,9 +4,15 @@
  * No external dependencies — uses native fetch (Node 18+)
  */
 
-const API = 'http://localhost:4000/graphql';
-const EMAIL = 'admin@demo.opengrafo.io';
-const PASSWORD = 'Demo1234';
+const API = process.env.API_URL ?? 'http://localhost:4000/graphql';
+
+// No credentials in source: a Bearer token (Keycloak access token or API key)
+// MUST be supplied via env. Fail-fast — an anonymous run would only measure 401s.
+const API_TOKEN = process.env.API_TOKEN;
+if (!API_TOKEN) {
+  console.error('API_TOKEN env var is required (e.g. API_TOKEN=$(pnpm --filter @opengraphity/api exec tsx src/scripts/gen-token.ts ...) node scripts/load-test.mjs)');
+  process.exit(1);
+}
 
 // ─── GQL helper ─────────────────────────────────────────────────────────────
 
@@ -48,10 +54,10 @@ function stats(times) {
 // ─── Setup: login + get a real CI id ────────────────────────────────────────
 
 async function setup() {
-  console.log('⚙  Setup: authenticating…');
-  const r = await gql(`mutation { login(email: "${EMAIL}", password: "${PASSWORD}") { token } }`);
-  if (!r.ok) { console.error('  ✗ Login failed:', r.error); process.exit(1); }
-  const token = r.data.login.token;
+  console.log('⚙  Setup: verifying API_TOKEN…');
+  const token = API_TOKEN;
+  const me = await gql(`query { __typename }`, {}, token);
+  if (!me.ok) { console.error('  ✗ API not reachable / token rejected:', me.error); process.exit(1); }
   console.log('  ✓ Authenticated');
 
   console.log('⚙  Setup: fetching a real CI id for topology…');

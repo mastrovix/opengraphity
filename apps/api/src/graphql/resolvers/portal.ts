@@ -116,14 +116,14 @@ async function myTicket(
     // Load public comments
     const commentsResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $id})-[:HAS_ENTITY_COMMENT]->(c:EntityComment {is_internal: false})
-        OPTIONAL MATCH (u:User {id: c.author_id})
+        MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_ENTITY_COMMENT]->(c:EntityComment {is_internal: false})
+        OPTIONAL MATCH (u:User {id: c.author_id, tenant_id: $tenantId})
         RETURN c.id AS id, c.body AS body, c.is_internal AS isInternal,
                c.author_id AS authorId, c.author_name AS authorName,
                c.author_email AS authorEmail,
                c.created_at AS createdAt, c.updated_at AS updatedAt
         ORDER BY c.created_at ASC
-      `, { id }),
+      `, { id, tenantId: ctx.tenantId }),
     )
 
     const comments = commentsResult.records.map((r) => ({
@@ -163,7 +163,7 @@ async function myTicket(
     // Load workflow history
     const historyResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $id})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
               -[:STEP_HISTORY]->(exec:WorkflowStepExecution)
         RETURN exec.from_step AS fromStep, exec.step_name AS toStep,
                exec.entered_at AS triggeredAt, exec.triggered_by AS triggeredBy
@@ -307,7 +307,7 @@ async function addTicketComment(
     const now       = new Date().toISOString()
 
     const userResult = await session.executeRead((tx) =>
-      tx.run(`MATCH (u:User {id: $userId}) RETURN u.name AS name, u.email AS email`, { userId: ctx.userId }),
+      tx.run(`MATCH (u:User {id: $userId, tenant_id: $tenantId}) RETURN u.name AS name, u.email AS email`, { userId: ctx.userId, tenantId: ctx.tenantId }),
     )
     const authorName  = (userResult.records[0]?.get('name')  ?? ctx.userEmail) as string
     const authorEmail = (userResult.records[0]?.get('email') ?? ctx.userEmail) as string

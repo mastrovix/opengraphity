@@ -8,8 +8,42 @@ import { runQuery } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
+import { ValidationError } from './errors.js'
+import { assertSafeOutboundUrl, loggableUrl } from './safeUrl.js'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'action-executor' })
+
+// ── set_field guard ──────────────────────────────────────────────────────────
+
+/**
+ * Properties an automation must never write directly: identity/tenancy
+ * (`id`, `tenant_id`), sequence numbers (`number`, `code`), audit
+ * (`created_at`, `created_by`), and `status`/`workflow_*` — status changes go
+ * through the workflow engine only (`transition_workflow`), otherwise
+ * WorkflowInstance and entity drift apart.
+ */
+export const SET_FIELD_FORBIDDEN = new Set([
+  'id', 'tenant_id', 'number', 'code', 'created_at', 'created_by',
+  'status', 'workflow_step', 'workflow_instance_id', 'updated_at',
+])
+
+const FIELD_NAME_RE = /^[a-z][a-z0-9_]*$/
+
+/**
+ * Validates the `field` param of a `set_field` action. Returns the field name
+ * or throws ValidationError. Exported for tests; pure.
+ */
+export function assertSettableField(raw: unknown): string {
+  const field = typeof raw === 'string' ? raw : ''
+  if (!field) throw new ValidationError('set_field: field is required')
+  if (!FIELD_NAME_RE.test(field)) {
+    throw new ValidationError(`set_field: invalid field name "${field}" (expected ^[a-z][a-z0-9_]*$)`)
+  }
+  if (SET_FIELD_FORBIDDEN.has(field)) {
+    throw new ValidationError(`set_field: field "${field}" is protected and cannot be set by automation${field === 'status' ? ' — use transition_workflow' : ''}`)
+  }
+  return field
+}
 
 export type ActionType =
   | 'set_field'
@@ -97,9 +131,8 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
 
   switch (action.type) {
     case 'set_field': {
-      const field = String(p['field'] ?? '')
+      const field = assertSettableField(p['field'])
       const value = p['value']
-      if (!field) throw new Error('set_field: field is required')
       await withSession(async (session) => {
         await runQuery(session, `
           MATCH (e {id: $entityId, tenant_id: $tenantId})
@@ -229,8 +262,12 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       const method  = String(p['method'] ?? 'POST')
       const headers = (p['headers'] ?? {}) as Record<string, string>
       if (!url) throw new Error('call_webhook: url is required')
+      // SSRF guard + https-only outside development (policy in safeUrl) —
+      // the full entity is posted to this URL, so an internal target would
+      // both hit internal services and exfiltrate data.
+      await assertSafeOutboundUrl(url)
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 15_000)
+      const timer = setTimeout(() => controller.abort(), 10_000)
       try {
         const payload = JSON.stringify({ entity: ctx.entity, entityType: ctx.entityType, source: ctx.source, rule: ctx.sourceName })
         const res = await fetch(url, {
@@ -239,7 +276,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           body:    method !== 'GET' ? payload : undefined,
           signal:  controller.signal,
         })
-        if (!res.ok) throw new Error(`Webhook returned ${res.status}`)
+        if (!res.ok) throw new Error(`Webhook ${loggableUrl(url)} returned ${res.status}`)
       } finally {
         clearTimeout(timer)
       }

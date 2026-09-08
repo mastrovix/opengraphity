@@ -27,6 +27,7 @@ async function loadOptionsForQuestions(session: Session, questionIds: string[]):
   if (questionIds.length === 0) return {}
   const rows = await runQuery<{ questionId: string; props: Props }>(session, `
     UNWIND $ids AS qid
+    // tenant-ok: id provenienti da una query già scopata
     MATCH (q:AssessmentQuestion {id: qid})-[:HAS_OPTION]->(o:AnswerOption)
     RETURN qid AS questionId, properties(o) AS props
     ORDER BY o.sort_order
@@ -653,6 +654,7 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
 export async function questionCITypeAssignments(_: unknown, args: { questionId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const rows = await runQuery<{ ciTypeId: string; ciTypeName: string; weight: unknown; sortOrder: unknown }>(session, `
+      // tenant-ok: tipi base condivisi; la domanda è scopata
       MATCH (ct:CITypeDefinition {active: true, scope: 'base'})-[rel:HAS_QUESTION]->(q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})
       RETURN ct.id AS ciTypeId, ct.name AS ciTypeName,
              rel.weight AS weight, rel.sort_order AS sortOrder

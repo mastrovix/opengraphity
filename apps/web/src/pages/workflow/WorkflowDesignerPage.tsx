@@ -164,6 +164,7 @@ export function WorkflowDesignerPage() {
           <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
             {selectedStep && def && (
               <WorkflowStepPanel
+                key={selectedStep.id}
                 step={selectedStep}
                 definitionId={def.id}
                 onClose={() => setSelectedNodeId(null)}
@@ -174,6 +175,7 @@ export function WorkflowDesignerPage() {
             )}
             {selectedTr && def && (
               <WorkflowTransitionPanel
+                key={selectedTr.id}
                 transition={selectedTr}
                 onClose={() => setSelectedEdgeId(null)}
                 onSaved={(u) => onEdgeSaved(u)}

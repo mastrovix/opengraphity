@@ -3,6 +3,7 @@ import { GraphQLError } from 'graphql'
 import { getSession } from '@opengraphity/neo4j'
 import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
+import { assertDashboardAccess, assertDashboardOwnerByWidget, resolveDashboardIdForWidget } from './reportAccess.js'
 
 // ── Whitelists (injection-safe) ───────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ async function customWidgets(
 ) {
   const session = getSession(undefined, 'READ')
   try {
+    await assertDashboardAccess(session, args.dashboardId, ctx, 'read')
     const result = await session.executeRead((tx) =>
       tx.run(
         `MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})-[:HAS_CUSTOM_WIDGET]->(w:CustomWidget)
@@ -184,6 +186,8 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
 async function widgetData(_: unknown, args: { widgetId: string }, ctx: GraphQLContext) {
   const session = getSession(undefined, 'READ')
   try {
+    const dashboardId = await resolveDashboardIdForWidget(session, args.widgetId, 'customWidget', ctx.tenantId)
+    await assertDashboardAccess(session, dashboardId, ctx, 'read')
     const widgetRes = await session.executeRead((tx) =>
       tx.run(
         `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_CUSTOM_WIDGET]->(w:CustomWidget {id: $id})
@@ -254,6 +258,8 @@ async function createCustomWidget(
 
   const session = getSession(undefined, 'WRITE')
   try {
+    await assertDashboardAccess(session, input.dashboardId, ctx, 'write')
+
     // Get next position
     const posRes = await session.executeRead((tx) =>
       tx.run(
@@ -358,6 +364,7 @@ async function updateCustomWidget(
 
   const session = getSession(undefined, 'WRITE')
   try {
+    await assertDashboardOwnerByWidget(session, args.id, 'customWidget', ctx)
     const res = await session.executeWrite((tx) =>
       tx.run(
         `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_CUSTOM_WIDGET]->(w:CustomWidget {id: $id})
@@ -377,6 +384,7 @@ async function updateCustomWidget(
 async function deleteCustomWidget(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   const session = getSession(undefined, 'WRITE')
   try {
+    await assertDashboardOwnerByWidget(session, args.id, 'customWidget', ctx)
     await session.executeWrite((tx) =>
       tx.run(
         `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_CUSTOM_WIDGET]->(w:CustomWidget {id: $id}) DETACH DELETE w`,
@@ -398,6 +406,7 @@ async function reorderCustomWidgets(
   const items = args.widgetIds.map((id, i) => ({ id, position: i }))
   const session = getSession(undefined, 'WRITE')
   try {
+    await assertDashboardAccess(session, args.dashboardId, ctx, 'write')
     await session.executeWrite((tx) =>
       tx.run(
         `UNWIND $items AS item

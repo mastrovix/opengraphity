@@ -1,83 +1,10 @@
-import jwt from 'jsonwebtoken'
 import type express from 'express'
 import { GraphQLError } from 'graphql'
-import { getSession } from '@opengraphity/neo4j'
-import { verifyKeycloakToken } from './auth/keycloak.js'
-import { authLogger } from './lib/logger.js'
+import { resolveAuth, type GraphQLContext } from './auth/resolveAuth.js'
 
-const _jwtSecret = process.env['JWT_SECRET']
-if (!_jwtSecret) {
-  throw new Error(
-    'JWT_SECRET environment variable is required. ' +
-    'Set it in your .env file or deployment configuration.',
-  )
-}
-const JWT_SECRET: string = _jwtSecret
-
-export interface GraphQLContext {
-  tenantId:  string
-  userId:    string
-  userEmail: string
-  role:      'admin' | 'operator' | 'viewer' | 'end_user'
-}
-
-interface JWTPayload {
-  tenant_id: string
-  user_id:   string
-  email:     string
-  role:      'admin' | 'operator' | 'viewer' | 'end_user'
-}
-
-const ITSM_ROLES = ['admin', 'operator', 'viewer'] as const
-
-/**
- * Extracts the tenant slug from the Host or X-Forwarded-Host header.
- * "c-one.opengrafo.com"  → "c-one"
- * "c-one.localhost:4000" → "c-one"
- * Returns null if there is no subdomain (bare localhost, IP, etc.)
- */
-function extractTenantFromHost(req: express.Request): string | null {
-  const raw = (req.headers['x-forwarded-host'] ?? req.headers['host'] ?? '') as string
-  const host   = raw.split(':')[0]!        // strip port
-  const parts  = host.split('.')
-  const first  = parts[0]!
-
-  if (
-    first === 'localhost' ||
-    first === '127'       ||
-    first.startsWith('192') ||
-    first.startsWith('10')  ||
-    first === ''
-  ) {
-    return null
-  }
-
-  // portal.c-one.localhost → tenant is the second segment, not "portal"
-  if (first === 'portal' && parts.length >= 3) return parts[1]!
-
-  return first
-}
-
-async function getUserByEmail(email: string): Promise<{ id: string; tenantId: string; role: string } | null> {
-  const session = getSession(undefined, 'READ')
-  try {
-    const result = await session.executeRead((tx) =>
-      tx.run(
-        `MATCH (u:User {email: $email}) RETURN u.id AS id, u.tenant_id AS tenantId, u.role AS role LIMIT 1`,
-        { email },
-      ),
-    )
-    if (!result.records.length) return null
-    const r = result.records[0]
-    return {
-      id:       r.get('id')       as string,
-      tenantId: r.get('tenantId') as string,
-      role:     r.get('role')     as string,
-    }
-  } finally {
-    await session.close()
-  }
-}
+// The context shape lives with the resolver in auth/resolveAuth.ts; re-exported
+// here so the many `import type { GraphQLContext } from '../context.js'` keep working.
+export type { GraphQLContext, Role } from './auth/resolveAuth.js'
 
 export async function buildContext(req: express.Request): Promise<GraphQLContext> {
   const auth = req.headers.authorization
@@ -86,63 +13,5 @@ export async function buildContext(req: express.Request): Promise<GraphQLContext
     throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHORIZED' } })
   }
 
-  const token = auth.slice(7)
-
-  // Try Keycloak token first. Only the signature/format verification may fall
-  // back to the legacy JWT path: once the token IS a valid Keycloak token,
-  // every later failure (user not found, tenant mismatch, DB error) is a real
-  // rejection that must propagate — not be masked as "Invalid token".
-  let decoded: Awaited<ReturnType<typeof verifyKeycloakToken>> | null = null
-  try {
-    decoded = await verifyKeycloakToken(token)
-  } catch (err) {
-    authLogger.warn({ err }, 'Keycloak token verification failed, trying legacy JWT')
-  }
-
-  if (decoded) {
-    const user = await getUserByEmail(decoded.email)
-
-    if (!user) {
-      throw new GraphQLError('Unauthorized: user not found', { extensions: { code: 'UNAUTHORIZED' } })
-    }
-
-    // Cross-check: token tenant must match the subdomain the request arrived on
-    const tenantFromHost = extractTenantFromHost(req)
-    if (tenantFromHost && user.tenantId !== tenantFromHost) {
-      authLogger.warn(
-        { userTenant: user.tenantId, hostTenant: tenantFromHost },
-        'Tenant/host mismatch — token rejected',
-      )
-      throw new GraphQLError('Unauthorized: token/tenant mismatch', { extensions: { code: 'UNAUTHORIZED' } })
-    }
-
-    const kcRole = decoded.realm_access?.roles?.find((r) =>
-      (ITSM_ROLES as readonly string[]).includes(r),
-    ) ?? 'viewer'
-
-    return {
-      tenantId:  user.tenantId,
-      userId:    user.id,
-      userEmail: decoded.email ?? decoded.preferred_username,
-      role:      (user.role ?? kcRole) as GraphQLContext['role'],
-    }
-  }
-
-  // Legacy dev JWT — trusts tenant_id/role straight from the payload with no
-  // DB lookup or host/tenant cross-check. Only for local dev, never production:
-  // gated behind an explicit opt-in so a leaked JWT_SECRET can't impersonate.
-  if (process.env['ALLOW_LEGACY_JWT'] !== 'true') {
-    throw new GraphQLError('Invalid token', { extensions: { code: 'UNAUTHORIZED' } })
-  }
-  try {
-    const payload = jwt.verify(token, JWT_SECRET) as JWTPayload
-    return {
-      tenantId:  payload.tenant_id,
-      userId:    payload.user_id,
-      userEmail: payload.email,
-      role:      payload.role,
-    }
-  } catch {
-    throw new GraphQLError('Invalid token', { extensions: { code: 'UNAUTHORIZED' } })
-  }
+  return resolveAuth(auth.slice(7), req)
 }

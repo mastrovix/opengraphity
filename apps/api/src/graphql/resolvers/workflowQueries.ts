@@ -108,8 +108,9 @@ export async function workflowDefinition(
 
     const trResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (wd:WorkflowDefinition {id: $defId})
-        MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
+        MATCH (wd:WorkflowDefinition {id: $defId, tenant_id: $tenantId})
+        // tenant-ok: step vincolati alla definizione appena scopata
+        MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
         RETURN from.name AS fromStep, to.name AS toStep,
                tr.id AS id, tr.trigger AS trigger, tr.label AS label,
                tr.requires_input AS requiresInput,
@@ -118,7 +119,7 @@ export async function workflowDefinition(
                tr.timer_hours AS timerHours,
                tr.source_handle AS sourceHandle,
                tr.target_handle AS targetHandle
-      `, { defId: wd['id'] }),
+      `, { defId: wd['id'], tenantId: ctx.tenantId }),
     )
 
     return {
@@ -182,7 +183,7 @@ export async function workflowDefinitionById(
 
     const trResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
+        MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
         RETURN from.name AS fromStep, to.name AS toStep,
                tr.id AS id, tr.trigger AS trigger, tr.label AS label,
                tr.requires_input AS requiresInput,
@@ -191,7 +192,7 @@ export async function workflowDefinitionById(
                tr.timer_hours AS timerHours,
                tr.source_handle AS sourceHandle,
                tr.target_handle AS targetHandle
-      `, { defId: id }),
+      `, { defId: id, tenantId: ctx.tenantId }),
     )
 
     return {
@@ -257,7 +258,8 @@ export async function workflowDefinitions(
 
       const trResult = await session.executeRead((tx) =>
         tx.run(`
-          MATCH (wd:WorkflowDefinition {id: $defId})
+          MATCH (wd:WorkflowDefinition {id: $defId, tenant_id: $tenantId})
+          // tenant-ok: step vincolati alla definizione appena scopata
           MATCH (from:WorkflowStep {definition_id: $defId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
           RETURN from.name AS fromStep, to.name AS toStep,
                  tr.id AS id, tr.trigger AS trigger, tr.label AS label,
@@ -265,7 +267,7 @@ export async function workflowDefinitions(
                  tr.input_field AS inputField,
                  tr.condition AS condition,
                  tr.timer_hours AS timerHours
-        `, { defId: wd['id'] }),
+        `, { defId: wd['id'], tenantId: ctx.tenantId }),
       )
 
       results.push({

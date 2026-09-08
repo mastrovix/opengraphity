@@ -62,11 +62,15 @@ function RelationList({
   relations,
   navigate,
   onDelete,
+  navigationLockedReason,
 }: {
   relations: CIRelation[]
   navigate: (path: string) => void
   onDelete?: (rel: CIRelation) => void
+  /** When set, rows do not navigate (the page is in edit mode) and show this as tooltip. */
+  navigationLockedReason?: string
 }) {
+  const locked = navigationLockedReason !== undefined
   const grouped = relations.reduce<Record<string, CIRelation[]>>((acc, rel) => {
     (acc[rel.relation] ??= []).push(rel)
     return acc
@@ -79,8 +83,10 @@ function RelationList({
           {rels.map(rel => (
             <div
               key={rel.ci.id}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
-              onClick={() => navigate(ciPath(rel.ci))}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.6 : 1 }}
+              title={navigationLockedReason}
+              aria-disabled={locked || undefined}
+              onClick={() => { if (!locked) navigate(ciPath(rel.ci)) }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -630,6 +636,7 @@ export function CIDetailPage() {
                     <RelationList
                       relations={ci.dependencies as CIRelation[]}
                       navigate={navigate}
+                      navigationLockedReason={editMode ? t('pages.ci.navigationLockedWhileEditing') : undefined}
                       onDelete={rel => setDeleteRel({ sourceId: ci.id, targetId: rel.ci.id, relationType: rel.relation, name: rel.ci.name })}
                     />
                   </div>
@@ -647,6 +654,7 @@ export function CIDetailPage() {
                     <RelationList
                       relations={ci.dependents as CIRelation[]}
                       navigate={navigate}
+                      navigationLockedReason={editMode ? t('pages.ci.navigationLockedWhileEditing') : undefined}
                       onDelete={rel => setDeleteRel({ sourceId: rel.ci.id, targetId: ci.id, relationType: rel.relation, name: rel.ci.name })}
                     />
                   </div>

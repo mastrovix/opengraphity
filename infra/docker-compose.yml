@@ -1,3 +1,9 @@
+# Secrets have NO defaults: `${VAR:?message}` makes `docker compose` refuse to
+# start when a variable is missing or empty in infra/.env (see .env.example).
+# Ports: only nginx listens on all interfaces. Every other service binds to
+# 127.0.0.1 so the host's LAN/Tailscale peers cannot reach Redis, Neo4j, the
+# API (bypassing nginx headers and CSP), Keycloak, MinIO, Loki, Jaeger, Grafana.
+
 services:
 
   # ── Infrastructure ─────────────────────────────────────────────────────────
@@ -5,10 +11,10 @@ services:
   neo4j:
     image: neo4j:5-community
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-opengraphity_local}
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD mancante in infra/.env}"
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
       # Explicit memory bounds — without them Neo4j sizes itself on host RAM
@@ -33,7 +39,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -49,12 +55,12 @@ services:
   minio:
     image: minio/minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     command: server /data --console-address :9001
     environment:
-      MINIO_ROOT_USER: opengraphity
-      MINIO_ROOT_PASSWORD: opengraphity_local
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?MINIO_ROOT_USER mancante in infra/.env}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD mancante in infra/.env}"
     volumes:
       - minio_data:/data
     networks:
@@ -73,13 +79,13 @@ services:
     command: start-dev
     environment:
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: opengrafo_local
+      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD mancante in infra/.env}"
       KC_DB: dev-file
       KC_HTTP_PORT: 8080
       KC_HEALTH_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - keycloak_data:/opt/keycloak/data
     networks:
@@ -96,7 +102,7 @@ services:
   grafana:
     image: grafana/grafana
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
@@ -121,8 +127,8 @@ services:
       - BADGER_DIRECTORY_VALUE=/badger/data
       - BADGER_DIRECTORY_KEY=/badger/key
     ports:
-      - "16686:16686"
-      - "4318:4318"
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4318:4318"
     volumes:
       - jaeger_data:/badger
     mem_limit: 512m
@@ -134,7 +140,7 @@ services:
     image: grafana/loki:2.9.0
     container_name: opengrafo-loki
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - opengrafo-network
@@ -191,7 +197,9 @@ services:
       dockerfile: apps/api/Dockerfile
     image: opengrafo-api:local
     ports:
-      - "4000:4000"
+      # Loopback only: reaching the API without nginx would let a client set
+      # X-Forwarded-Host/-For itself (tenant cross-check + rate limit bypass)
+      - "127.0.0.1:4000:4000"
     environment:
       NODE_ENV: production
       # Embedding inference runs in the dedicated `worker` service (below), so
@@ -205,7 +213,7 @@ services:
       # Neo4j
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-opengraphity_local}
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?NEO4J_PASSWORD mancante in infra/.env}"
 
       # Redis — both forms used by different packages
       REDIS_HOST: redis
@@ -219,13 +227,13 @@ services:
       # Public URL — the origin browsers use; tokens carry this in their `iss` claim
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KEYCLOAK_ADMIN_USER: admin
-      KEYCLOAK_ADMIN_PASSWORD: opengrafo_local
+      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD mancante in infra/.env}"
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-master}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-opengrafo-api}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
 
       # Security
-      JWT_SECRET: ${JWT_SECRET:-docker-dev-jwt-secret-not-for-production}
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET mancante in infra/.env}"
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
       DISCOVERY_ENCRYPTION_KEY: ${DISCOVERY_ENCRYPTION_KEY:-}
 
@@ -288,7 +296,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-opengraphity_local}
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?NEO4J_PASSWORD mancante in infra/.env}"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_URL: redis://redis:6379
@@ -316,7 +324,7 @@ services:
       context: ..
       dockerfile: apps/web/Dockerfile
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     depends_on:
       - api
     networks:
@@ -341,7 +349,7 @@ services:
         # Set to your tenant slug to access portal at localhost:5174 (no subdomain)
         VITE_TENANT_SLUG: ${VITE_TENANT_SLUG:-}
     ports:
-      - "5174:80"
+      - "127.0.0.1:5174:80"
     depends_on:
       - api
     networks:

@@ -6,6 +6,7 @@ import { withSession } from './ci-utils.js'
 import { runQuery } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { assertSafeOutboundUrl } from '../../lib/safeUrl.js'
 
 type Props = Record<string, unknown>
 
@@ -121,6 +122,9 @@ async function outboundWebhooks(_: unknown, args: { filters?: string; sortField?
 
 async function createOutboundWebhook(_: unknown, args: { input: Props }, ctx: GraphQLContext) {
   const { input } = args
+  // SSRF guard at configuration time (ValidationError → BAD_USER_INPUT); the
+  // delivery worker re-checks at send time (DNS may change).
+  await assertSafeOutboundUrl(String(input['url'] ?? ''))
   const id = uuidv4()
   const now = new Date().toISOString()
   return withSession(async (s) => {
@@ -137,6 +141,7 @@ async function createOutboundWebhook(_: unknown, args: { input: Props }, ctx: Gr
 
 async function updateOutboundWebhook(_: unknown, args: { id: string; input: Props }, ctx: GraphQLContext) {
   const { input } = args
+  if (input['url'] !== undefined) await assertSafeOutboundUrl(String(input['url'] ?? ''))
   const sets: string[] = ['w.updated_at = $now']
   const params: Props = { id: args.id, t: ctx.tenantId, now: new Date().toISOString() }
   const map: Record<string, string> = { name: 'name', url: 'url', method: 'method', headers: 'headers', events: 'events', payloadTemplate: 'payload_template', secret: 'secret', enabled: 'enabled', retryOnFailure: 'retry_on_failure' }
@@ -157,6 +162,9 @@ async function testOutboundWebhook(_: unknown, args: { id: string }, ctx: GraphQ
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:OutboundWebhook {id: $id, tenant_id: $t}) RETURN properties(w) AS props`, { id: args.id, t: ctx.tenantId })
     if (!rows[0]) throw new NotFoundError('Webhook')
     const w = rows[0].props
+    // Read-SSRF guard: the response body is echoed back to the caller, so an
+    // internal URL here would leak internal services. Throws ValidationError.
+    await assertSafeOutboundUrl(String(w['url'] ?? ''))
     const body = JSON.stringify({ event_type: 'test', entity: { id: 'test', title: 'Test webhook' }, timestamp: new Date().toISOString(), tenant_id: ctx.tenantId })
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(w['headers'] ? JSON.parse(w['headers'] as string) : {}) }
     if (w['secret']) headers['X-Webhook-Signature'] = createHmac('sha256', w['secret'] as string).update(body).digest('hex')

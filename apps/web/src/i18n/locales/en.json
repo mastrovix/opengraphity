@@ -616,6 +616,7 @@
       "monthDec": "December"
     },
     "ci": {
+      "navigationLockedWhileEditing": "Save or cancel your edits before opening another CI",
       "addRelation": "Add relation",
       "removeRelation": "Remove {{relationType}} relation with {{name}}?",
       "relationAdded": "Relation added",
@@ -671,7 +672,10 @@
     "isNotOneOf": "Is not one of"
   },
   "auth": {
-    "logout": "Logout"
+    "logout": "Logout",
+    "forbiddenTitle": "Access denied",
+    "forbiddenBody": "Your role does not allow opening this page. If you think this is a mistake, contact an administrator.",
+    "backHome": "Back to dashboard"
   },
   "anomaly": {
     "rules": {

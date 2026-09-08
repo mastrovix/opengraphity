@@ -16,30 +16,41 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const apiSrc = join(here, '../..')
 
+// Ogni label di dominio che porta tenant_id. I tipi del metamodello
+// (CITypeDefinition, EnumTypeDefinition) possono essere condivisi con tenant
+// 'system': il pattern ammesso è `WHERE x.tenant_id IN [$tenantId, 'system']`.
 const DOMAIN_LABELS = [
   'Incident', 'Problem', 'Change', 'ServiceRequest', 'KBArticle',
   'Team', 'User',
   'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask', 'ChangeApproval',
-  'WorkflowInstance',
+  'WorkflowInstance', 'WorkflowDefinition', 'WorkflowStep',
+  'NotificationChannel', 'NotificationRule', 'OutboundWebhook', 'InboundWebhook', 'ApiKey',
+  'SyncSource', 'SyncRun',
+  'ReportTemplate', 'ReportSection', 'ReportConversation', 'DashboardConfig', 'DashboardWidget', 'CustomWidget',
+  'Anomaly', 'AnomalyConfig', 'AutoTrigger', 'BusinessRule', 'SLAPolicyNode', 'OLAContract', 'SLAStatus',
+  'Attachment', 'EntityComment', 'AuditEntry', 'ApprovalRequest', 'InternalMessage', 'Notification',
+  'CIGroup', 'ConfigurationItem', 'EnumTypeDefinition', 'CITypeDefinition',
+  'FieldVisibilityRule', 'FieldRequirementRule', 'ITILCIRelationRule', 'ServiceCatalogItem', 'AssessmentQuestion',
 ]
 
-// Perimetro ITSM (i moduli rivisti). Si allarga man mano che si bonifica.
-const SCOPE = [
-  'graphql/resolvers/incident.ts', 'graphql/resolvers/problem.ts', 'graphql/resolvers/service_request.ts',
-  'graphql/resolvers/relatedTickets.ts', 'graphql/resolvers/comments.ts', 'graphql/resolvers/team.ts',
-  'graphql/resolvers/change', 'graphql/resolvers/workflowMutations.ts', 'graphql/resolvers/workflowQueries.ts',
-  'services/incidentService.ts', 'services/problemService.ts', 'services/requestService.ts',
-  'services/changeCreationService.ts', 'services/ticketAssignment.ts', 'services/triageService.ts',
-  'workflow/conditions.ts',
-]
+// Tutta l'API (Ondata 1 della revisione a tappeto). Fuori: script operativi
+// (hanno guardie proprie: --tenant obbligatorio) e test.
+const SCOPE = ['.']
+const EXCLUDED_DIRS = new Set(['__tests__', 'scripts'])
 
 function listFiles(p: string): string[] {
-  const full = join(apiSrc, p)
+  const full = p.startsWith('/') ? p : join(apiSrc, p)
   if (statSync(full).isFile()) return [full]
-  return readdirSync(full)
-    .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
-    .map((f) => join(full, f))
-    .filter((f) => statSync(f).isFile())
+  const out: string[] = []
+  for (const f of readdirSync(full)) {
+    const child = join(full, f)
+    if (statSync(child).isDirectory()) {
+      if (!EXCLUDED_DIRS.has(f)) out.push(...listFiles(child))
+    } else if (f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.endsWith('.d.ts')) {
+      out.push(child)
+    }
+  }
+  return out
 }
 
 const MATCH_RE = new RegExp(`MATCH \\((\\w+):(${DOMAIN_LABELS.join('|')})\\s*\\{([^}]*)\\}`, 'g')
@@ -57,6 +68,7 @@ function scan(file: string): Offender[] {
       if (props.includes('tenant_id')) continue
       const next = lines[i + 1] ?? ''
       const prev = lines[i - 1] ?? ''
+      if (line.slice(m.index + m[0].length).includes('tenant_id')) continue // WHERE inline sulla stessa riga
       if (next.includes('tenant_id')) continue           // WHERE x.tenant_id = … sulla riga dopo
       if (line.includes('tenant-ok') || prev.includes('tenant-ok')) continue
       out.push({ file: relative(apiSrc, file), line: i + 1, text: line.trim() })
@@ -65,9 +77,9 @@ function scan(file: string): Offender[] {
   return out
 }
 
-describe('tenant scoping sui MATCH di dominio (perimetro ITSM)', () => {
+describe('tenant scoping sui MATCH di dominio (tutta l\'API)', () => {
   const files = SCOPE.flatMap(listFiles)
-  it('perimetro non vuoto', () => { expect(files.length).toBeGreaterThan(10) })
+  it('perimetro non vuoto', () => { expect(files.length).toBeGreaterThan(100) })
   for (const f of files) {
     it(relative(apiSrc, f), () => {
       const offenders = scan(f)

@@ -27,8 +27,8 @@ import {
   GET_CHANGE_AFFECTED_CIS,
   GET_CHANGE_AUDIT_TRAIL,
   GET_CHANGE_IMPACTED_CIS,
-  GET_ME,
 } from '@/graphql/queries'
+import { useMe } from '@/hooks/useMe'
 import {
   EXECUTE_CHANGE_TRANSITION,
   ADD_CI_TO_CHANGE,
@@ -66,7 +66,8 @@ export function ChangeDetailPage() {
   const { data: changeData, loading, error: changeError, refetch: refetchChange } = useQuery<{ change: ChangeData | null }>(GET_CHANGE, { variables: { id: changeId }, fetchPolicy: 'cache-and-network' })
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
   const { data: auditData, refetch: refetchAudit } = useQuery<{ changeAuditTrail: ChangeAuditEntryData[] }>(GET_CHANGE_AUDIT_TRAIL, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
-  const { data: meData } = useQuery<{ me: MeData | null }>(GET_ME, { fetchPolicy: 'cache-first' })
+  const { me } = useMe()
+  const meData: { me: MeData | null } = { me }
   const { steps: wfSteps, byName: wfByName, initialStep: wfInitialStep, isTerminal: wfIsTerminal } = useWorkflowSteps('change')
 
   const refetchAll = async () => { await refetchChange(); await refetchAffected(); await refetchAudit() }

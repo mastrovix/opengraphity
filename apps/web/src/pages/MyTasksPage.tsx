@@ -9,7 +9,8 @@ import { Pill } from '@/components/ui/Pill'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { lookupOrError } from '@/lib/tokens'
-import { GET_MY_TASKS, GET_ME } from '@/graphql/queries'
+import { GET_MY_TASKS } from '@/graphql/queries'
+import { useMe } from '@/hooks/useMe'
 import { ASSIGN_ASSESSMENT_TASK_TO_USER } from '@/graphql/mutations'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '@/lib/taskStatus'
 
@@ -162,8 +163,8 @@ function groupByChange(tasks: MyTask[]): Array<{ changeId: string; changeCode: s
 }
 
 export function MyTasksPage() {
-  const { data: meData } = useQuery<{ me: { id: string } | null }>(GET_ME, { fetchPolicy: 'cache-first' })
-  const currentUserId = meData?.me?.id ?? null
+  const { me } = useMe()
+  const currentUserId = me?.id ?? null
 
   const { data, loading, error, refetch } = useQuery<{ myTasks: MyTasksResult }>(GET_MY_TASKS, {
     fetchPolicy: 'cache-and-network',

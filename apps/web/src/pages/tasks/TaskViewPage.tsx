@@ -21,9 +21,9 @@ import {
   GET_CHANGE,
   GET_CHANGE_AFFECTED_CIS,
   GET_QUESTION_CATALOG,
-  GET_ME,
   GET_USERS,
 } from '@/graphql/queries'
+import { useMe } from '@/hooks/useMe'
 import {
   SUBMIT_ASSESSMENT_RESPONSE,
   COMPLETE_ASSESSMENT_TASK,
@@ -71,7 +71,8 @@ export function TaskViewPage() {
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId: task?.changeId ?? '' }, skip: !task, fetchPolicy: 'cache-and-network' })
   const { data: funcCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.FUNCTIONAL }, skip: !task || (task.kind !== 'assessment') })
   const { data: techCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.TECHNICAL }, skip: !task || (task.kind !== 'assessment') })
-  const { data: meData } = useQuery<{ me: MeData | null }>(GET_ME, { fetchPolicy: 'cache-first' })
+  const { me } = useMe()
+  const meData: { me: MeData | null } = { me }
   const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; teams: { id: string }[] }> }>(GET_USERS, { variables: { sortField: 'name', sortDirection: 'asc' }, fetchPolicy: 'cache-first' })
   const { byName: changeStepByName } = useWorkflowSteps('change')
 

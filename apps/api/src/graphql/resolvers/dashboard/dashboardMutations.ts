@@ -4,6 +4,7 @@ import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../../context.js'
 import { audit } from '../../../lib/audit.js'
 import { mapDashboardConfig, type Props } from './helpers.js'
+import { assertDashboardAccess } from '../reportAccess.js'
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -67,8 +68,8 @@ export async function createDashboard(
     const relResult = await session.executeWrite((tx) =>
       tx.run(
         `
-        MATCH (d:DashboardConfig {id: $dashId})
-        MATCH (u:User {id: $userId})
+        MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})
+        MATCH (u:User {id: $userId, tenant_id: $tenantId})
         CREATE (d)-[:CREATED_BY]->(u)
         RETURN u.id AS uid
         `,
@@ -87,7 +88,7 @@ export async function createDashboard(
       await session.executeWrite((tx) =>
         tx.run(
           `
-          MATCH (d:DashboardConfig {id: $dashId})
+          MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})
           UNWIND $teamIds AS teamId
           MATCH (t:Team {id: teamId, tenant_id: $tenantId})
           MERGE (d)-[:SHARED_WITH]->(t)
@@ -162,15 +163,15 @@ export async function updateDashboard(
     if (sharedWithTeamIds != null) {
       await session.executeWrite((tx) =>
         tx.run(
-          `MATCH (d:DashboardConfig {id: $id})-[r:SHARED_WITH]->() DELETE r`,
-          { id: args.id },
+          `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId})-[r:SHARED_WITH]->() DELETE r`,
+          { id: args.id, tenantId: ctx.tenantId },
         ),
       )
       if (sharedWithTeamIds.length > 0) {
         await session.executeWrite((tx) =>
           tx.run(
             `
-            MATCH (d:DashboardConfig {id: $id})
+            MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId})
             UNWIND $teamIds AS teamId
             MATCH (t:Team {id: teamId, tenant_id: $tenantId})
             MERGE (d)-[:SHARED_WITH]->(t)
@@ -227,6 +228,9 @@ export async function cloneDashboard(_: unknown, args: { id: string; newName: st
   const now   = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
   try {
+    // Only the owner or a tenant admin may clone (widgets reference reports).
+    await assertDashboardAccess(session, args.id, ctx, 'write')
+
     // Load source dashboard
     const src = await session.executeRead((tx) =>
       tx.run(

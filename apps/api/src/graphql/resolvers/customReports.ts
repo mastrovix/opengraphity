@@ -6,29 +6,16 @@ import { NotFoundError } from '../../lib/errors.js'
 import { getNavigableEntities, getNavigableRelations } from '../../lib/navigableGraph.js'
 import type { NavigableEntity } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
-import type { ReportSectionDef } from '../../lib/reportQueryBuilder.js'
+import { validateReportSection, type ReportSectionDef } from '../../lib/reportQueryBuilder.js'
+import { getReportWhitelist, STATIC_REPORT_LABELS } from '../../lib/reportWhitelist.js'
+import { assertReportTemplateAccess } from './reportAccess.js'
+import { withSession } from './ci-utils.js'
 
 /**
  * Allowed Neo4j node labels that can be used in reachableEntities queries.
- * This whitelist prevents Cypher label injection from user-supplied input.
+ * Same static set the report builder whitelist is built from (single source).
  */
-const ALLOWED_NEO4J_LABELS = new Set([
-  'ConfigurationItem',
-  'Application',
-  'Server',
-  'Database',
-  'DatabaseInstance',
-  'Certificate',
-  'Incident',
-  'Change',
-  'Problem',
-  'ServiceRequest',
-  'Team',
-  'User',
-  'WorkflowDefinition',
-  'WorkflowInstance',
-  'ReportTemplate',
-])
+const ALLOWED_NEO4J_LABELS: ReadonlySet<string> = new Set(STATIC_REPORT_LABELS)
 
 type Props = Record<string, unknown>
 
@@ -115,9 +102,9 @@ export async function loadFullTemplate(id: string, tenantId: string) {
     // Sections
     const secRes = await session.executeRead(tx =>
       tx.run(`
-        MATCH (r:ReportTemplate {id: $id})-[:HAS_SECTION]->(s:ReportSection)
+        MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection)
         RETURN properties(s) AS props ORDER BY s.order ASC
-      `, { id }),
+      `, { id, tenantId }),
     )
     const sections: ReportSectionDef[] = []
 
@@ -127,6 +114,7 @@ export async function loadFullTemplate(id: string, tenantId: string) {
       // Nodes and edges
       const nodeEdgeRes = await session.executeRead(tx =>
         tx.run(`
+          // tenant-ok: sezione letta dal template appena scopato
           MATCH (s:ReportSection {id: $sectionId})
           OPTIONAL MATCH (s)-[:HAS_NODE]->(n:ReportNode)
           OPTIONAL MATCH (n)-[e:REPORT_EDGE]->(m:ReportNode)
@@ -158,9 +146,9 @@ export async function loadFullTemplate(id: string, tenantId: string) {
     // sharedWith teams
     const teamRes = await session.executeRead(tx =>
       tx.run(`
-        MATCH (r:ReportTemplate {id: $id})-[:SHARED_WITH]->(t:Team)
+        MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})-[:SHARED_WITH]->(t:Team)
         RETURN properties(t) AS props ORDER BY t.name
-      `, { id }),
+      `, { id, tenantId }),
     )
     const sharedWith = teamRes.records.map(tr => {
       const p = tr.get('props') as Props
@@ -170,9 +158,9 @@ export async function loadFullTemplate(id: string, tenantId: string) {
     // createdBy user
     const userRes = await session.executeRead(tx =>
       tx.run(`
-        MATCH (r:ReportTemplate {id: $id})-[:CREATED_BY]->(u:User)
+        MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})-[:CREATED_BY]->(u:User)
         RETURN properties(u) AS props LIMIT 1
-      `, { id }),
+      `, { id, tenantId }),
     )
     const createdBy = userRes.records.length
       ? (() => {
@@ -209,6 +197,32 @@ export interface SectionInput {
   }>
 }
 
+/** Converts a GraphQL SectionInput into the builder's ReportSectionDef shape. */
+export function sectionInputToDef(input: SectionInput, id: string, order = 0): ReportSectionDef {
+  return {
+    id,
+    order,
+    title:         input.title,
+    chartType:     input.chartType,
+    groupByNodeId: input.groupByNodeId ?? null,
+    groupByField:  input.groupByField ?? null,
+    metric:        input.metric,
+    metricField:   input.metricField ?? null,
+    limit:         input.limit ?? null,
+    sortDir:       input.sortDir ?? null,
+    nodes: (input.nodes ?? []).map(n => ({
+      id: n.id, entityType: n.entityType, neo4jLabel: n.neo4jLabel,
+      label: n.label, isResult: n.isResult, isRoot: n.isRoot,
+      positionX: n.positionX, positionY: n.positionY,
+      filters: n.filters ?? null, selectedFields: n.selectedFields ?? [],
+    })),
+    edges: (input.edges ?? []).map(e => ({
+      id: e.id, sourceNodeId: e.sourceNodeId, targetNodeId: e.targetNodeId,
+      relationshipType: e.relationshipType, direction: e.direction, label: e.label,
+    })),
+  }
+}
+
 // ── Create section helper ─────────────────────────────────────────────────────
 
 export async function createSectionWithNodesEdges(
@@ -219,6 +233,10 @@ export async function createSectionWithNodesEdges(
   input: SectionInput,
   tenantId: string,
 ) {
+  // Fail-fast at persistence: a section that would not build must never be
+  // stored, otherwise the scheduler/dashboards would execute it without a user.
+  validateReportSection(sectionInputToDef(input, sectionId, order), await getReportWhitelist(tenantId))
+
   await session.executeWrite(tx =>
     tx.run(`
       MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})
@@ -326,6 +344,7 @@ const Query = {
   },
 
   async reportTemplate(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+    await withSession(s => assertReportTemplateAccess(s, args.id, ctx, 'read'))
     return loadFullTemplate(args.id, ctx.tenantId)
   },
 
@@ -419,6 +438,7 @@ const Query = {
   },
 
   async executeReport(_: unknown, args: { templateId: string }, ctx: GraphQLContext) {
+    await withSession(s => assertReportTemplateAccess(s, args.templateId, ctx, 'read'))
     const template = await loadFullTemplate(args.templateId, ctx.tenantId)
     if (!template) throw new NotFoundError('ReportTemplate', args.templateId)
 
@@ -433,35 +453,14 @@ const Query = {
     args: { input: SectionInput },
     ctx: GraphQLContext,
   ) {
-    const sec: ReportSectionDef = {
-      id:            'preview',
-      order:         0,
-      title:         args.input.title,
-      chartType:     args.input.chartType,
-      groupByNodeId: args.input.groupByNodeId ?? null,
-      groupByField:  args.input.groupByField ?? null,
-      metric:        args.input.metric,
-      metricField:   args.input.metricField ?? null,
-      limit:         args.input.limit ?? null,
-      sortDir:       args.input.sortDir ?? null,
-      nodes: (args.input.nodes ?? []).map(n => ({
-        id: n.id, entityType: n.entityType, neo4jLabel: n.neo4jLabel,
-        label: n.label, isResult: n.isResult, isRoot: n.isRoot,
-        positionX: n.positionX, positionY: n.positionY,
-        filters: n.filters ?? null, selectedFields: n.selectedFields ?? [],
-      })),
-      edges: (args.input.edges ?? []).map(e => ({
-        id: e.id, sourceNodeId: e.sourceNodeId, targetNodeId: e.targetNodeId,
-        relationshipType: e.relationshipType, direction: e.direction, label: e.label,
-      })),
-    }
-    return executeReportSection(sec, ctx.tenantId)
+    // Identifiers are validated inside executeReportSection (buildReportQuery)
+    // against the tenant whitelist; a rejected preview surfaces as section error.
+    return executeReportSection(sectionInputToDef(args.input, 'preview'), ctx.tenantId)
   },
 }
 
 // ── Import Mutation from reportMutations.ts ───────────────────────────────────
 import { Mutation as ReportMutation } from './reportMutations.js'
-import { withSession } from './ci-utils.js'
 
 async function updateReportSchedule(
   _: unknown,
@@ -476,6 +475,7 @@ async function updateReportSchedule(
 ) {
   const now = new Date().toISOString()
   return withSession(async (session) => {
+    await assertReportTemplateAccess(session, args.templateId, ctx, 'write')
     const result = await session.executeWrite((tx) =>
       tx.run(
         `MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})

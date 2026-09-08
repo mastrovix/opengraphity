@@ -1,4 +1,5 @@
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { assertWritablePropertyKey } from '../../lib/cypherIdentifiers.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
@@ -221,6 +222,37 @@ function toSnake(s: string): string {
   return s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
 }
 
+/**
+ * Builds the parameter map for `SET ci += $updates` from base fields plus the
+ * customFields JSON. Every custom key is validated as a snake_case identifier
+ * and must not be a system-managed property (tenant_id, id, created_at, …).
+ * Exported for tests.
+ */
+export function buildCIFieldUpdates(
+  input: { name?: string; status?: string; environment?: string; description?: string; notes?: string; customFields?: string },
+  now: string,
+): Record<string, unknown> {
+  const updates: Record<string, unknown> = { updated_at: now }
+  const baseFields = ['name', 'status', 'environment', 'description', 'notes'] as const
+  for (const f of baseFields) {
+    if (input[f] !== undefined && input[f] !== null) updates[f] = input[f]
+  }
+  if (input.customFields) {
+    let custom: unknown
+    try { custom = JSON.parse(input.customFields) }
+    catch (e) {
+      throw new ValidationError(`customFields is not valid JSON: ${e instanceof Error ? e.message : String(e)}`)
+    }
+    if (!custom || typeof custom !== 'object' || Array.isArray(custom)) {
+      throw new ValidationError('customFields must be a JSON object')
+    }
+    for (const [key, val] of Object.entries(custom as Record<string, unknown>)) {
+      updates[assertWritablePropertyKey(toSnake(key), 'customFields')] = val
+    }
+  }
+  return updates
+}
+
 async function updateCIFields(
   _: unknown,
   args: {
@@ -235,34 +267,17 @@ async function updateCIFields(
   const { id, input } = args
   const now = new Date().toISOString()
 
-  // Build dynamic SET clauses from base fields + customFields JSON
-  const setEntries: Record<string, unknown> = { updated_at: now }
-  const baseFields = ['name', 'status', 'environment', 'description', 'notes'] as const
-  for (const f of baseFields) {
-    if (input[f] !== undefined && input[f] !== null) setEntries[f] = input[f]
-  }
-  if (input.customFields) {
-    const custom = JSON.parse(input.customFields) as Record<string, unknown>
-    for (const [key, val] of Object.entries(custom)) {
-      setEntries[toSnake(key)] = val
-    }
-  }
-
-  // Build Cypher SET pairs: ci.field = $p_field
-  const setPairs = Object.keys(setEntries).map(k => `ci.${k} = $p_${k}`).join(', ')
-  const params: Record<string, unknown> = { id, tenantId: ctx.tenantId }
-  for (const [k, v] of Object.entries(setEntries)) {
-    params[`p_${k}`] = v
-  }
+  const updates = buildCIFieldUpdates(input, now)
 
   return withSession(async (session) => {
+    // Keys never reach the query text: validated names, then `SET ci += $updates`.
     const cypher = `
       MATCH (ci {id: $id, tenant_id: $tenantId})
       WHERE ${ciLabelPredicate('ci')}
-      SET ${setPairs}
+      SET ci += $updates
       RETURN properties(ci) as props
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, params)
+    const rows = await runQuery<{ props: Props }>(session, cypher, { id, tenantId: ctx.tenantId, updates })
     const row = rows[0]
     if (!row) throw new NotFoundError('ConfigurationItem')
     return mapCI(row.props)

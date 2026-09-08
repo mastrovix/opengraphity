@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { Queue } from 'bullmq'
 import pino from 'pino'
-import { publish } from '@opengraphity/events'
+import { publish, assertSafeOutboundUrl, loggableUrl } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import type {
   WorkflowActionConfig,
@@ -35,27 +35,8 @@ export interface WebhookRetryJobData {
   entityId: string
 }
 
-// ── SSRF protection ───────────────────────────────────────────────────────────
-
-const PRIVATE_IP_RE = [
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
-  /^169\.254\./,   // link-local
-  /^::1$/,
-  /^fc00:/,        // IPv6 unique-local
-]
-
-function isSafeWebhookUrl(raw: string): boolean {
-  let parsed: URL
-  try { parsed = new URL(raw) } catch { return false }
-  if (process.env['NODE_ENV'] !== 'development' && parsed.protocol !== 'https:') return false
-  const h = parsed.hostname
-  if (h === 'localhost') return false
-  if (PRIVATE_IP_RE.some((re) => re.test(h))) return false
-  return true
-}
+// SSRF protection: shared `assertSafeOutboundUrl` from @opengraphity/events
+// (scheme, private/loopback literals, DNS resolution) — no local copy.
 
 // ── Template resolver ─────────────────────────────────────────────────────────
 
@@ -338,10 +319,10 @@ export async function runAction(
 
     case 'call_webhook': {
       const p = action.params as unknown as CallWebhookParams
-      if (!isSafeWebhookUrl(p.url ?? '')) {
-        // Misconfigured/blocked URL is a config error, not a silent skip.
-        throw new Error(`call_webhook: URL blocked (SSRF/non-HTTPS): ${p.url}`)
-      }
+      // Misconfigured/blocked URL is a config error, not a silent skip:
+      // UnsafeUrlError propagates with the reason (scheme, private IP, DNS).
+      await assertSafeOutboundUrl(p.url ?? '')
+      const safeHost = loggableUrl(p.url)
       const rawPayload = resolveTemplate(p.payload_template ?? '', buildTemplateCtx(instance, ctx.entityData))
       if (rawPayload.length > 1_000_000) {
         throw new Error(`call_webhook: payload exceeds 1MB (${rawPayload.length} bytes) — not sent`)
@@ -359,7 +340,7 @@ export async function runAction(
             signal:  controller.signal,
           })
           if (res.ok) {
-            log.info({ url: p.url, status: res.status, durationMs: Date.now() - t0 }, 'call_webhook completed')
+            log.info({ host: safeHost, status: res.status, durationMs: Date.now() - t0 }, 'call_webhook completed')
           } else {
             // A non-2xx response is a delivery failure — it must trigger the
             // retry path and surface, not be logged as "completed".
@@ -370,7 +351,7 @@ export async function runAction(
         }
 
         if (failure !== null) {
-          log.error({ url: p.url, durationMs: Date.now() - t0, failure }, 'call_webhook failed — scheduling retry')
+          log.error({ host: safeHost, durationMs: Date.now() - t0, failure }, 'call_webhook failed — scheduling retry')
 
           // Solo se non è già un retry (evita loop). Se anche lo scheduling del
           // retry fallisce, l'errore propaga: il payload andrebbe perso per sempre.

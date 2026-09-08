@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { callReportAI } from '../../services/reportAI.js'
+import { requireRole } from '../../lib/requireRole.js'
 
 interface Props { [key: string]: unknown }
 
@@ -61,6 +62,9 @@ async function askReport(
   args: { question: string; conversationId?: string | null },
   ctx: GraphQLContext,
 ) {
+  // The AI tool executes model-generated Cypher (guarded, read-only): not for viewers/end users.
+  requireRole(ctx, 'admin', 'operator')
+
   const session = getSession(undefined, 'WRITE')
   const now = new Date().toISOString()
 

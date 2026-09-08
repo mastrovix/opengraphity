@@ -1,17 +1,12 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { UserCircle } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { Input } from '@/components/ui/FormControls'
-
-const GET_ME = gql`
-  query Me {
-    me { id email name slackId }
-  }
-`
+import { useMe } from '@/hooks/useMe'
 
 const LINK_SLACK = gql`
   mutation LinkSlack($slackId: String!) {
@@ -29,8 +24,8 @@ export default function ProfilePage() {
   const [input, setInput] = useState('')
   const [saved, setSaved] = useState(false)
 
-  const { data, refetch } = useQuery<{ me: { id: string; email: string; name: string; slackId?: string } }>(GET_ME)
-  const slackId = data?.me?.slackId
+  const { me, refetch } = useMe()
+  const slackId = me?.slackId ?? undefined
 
   const [linkSlack, { loading: linking }] = useMutation(LINK_SLACK, {
     onCompleted: () => { setSaved(true); setInput(''); refetch() },

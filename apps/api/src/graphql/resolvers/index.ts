@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { requireRole } from '../../lib/requireRole.js'
+import { applyAuthorizationPolicy } from '../../lib/authorization.js'
 import { requireEnv, envOrThrowInProd } from '../../lib/env.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { mergeResolvers } from '@graphql-tools/merge'
@@ -373,5 +374,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     DashboardWidget:    { ...dashboardResolvers.DashboardWidget },
   }
 
-  return mergeResolvers([dynamicCI as IResolvers, staticResolvers as IResolvers])
+  const merged = mergeResolvers([dynamicCI as IResolvers, staticResolvers as IResolvers])
+  // Policy di ruolo su ogni campo root (lib/authorization.ts): unica fonte di
+  // verità per "chi può fare cosa"; i requireRole locali restano come seconda linea.
+  return applyAuthorizationPolicy(merged as Parameters<typeof applyAuthorizationPolicy>[0]) as IResolvers
 }

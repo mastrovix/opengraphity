@@ -141,6 +141,7 @@ async function pointWorkflowToStep(
   await tx.run(`
     MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     WHERE wi.current_step <> $stepName
+    // tenant-ok: definizione dell'istanza dell'entità scopata
     MATCH (wd:WorkflowDefinition {id: wi.definition_id})-[:HAS_STEP]->(target:WorkflowStep {name: $stepName})
     OPTIONAL MATCH (wi)-[cur:CURRENT_STEP]->()
     DELETE cur

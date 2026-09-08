@@ -23,9 +23,15 @@ Add the following lines (replace `c-one` with your tenant slug):
 ```bash
 git clone <repo>
 cd opengraphity
-cp infra/.env.example infra/.env   # review and edit secrets
+cp infra/.env.example infra/.env   # then REPLACE every change-me-* placeholder
 docker compose -f infra/docker-compose.yml up -d --build
 ```
+
+The compose file has no default secrets: `docker compose` refuses to start until
+`JWT_SECRET`, `NEO4J_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `MINIO_ROOT_USER` and
+`MINIO_ROOT_PASSWORD` are set in `infra/.env` (`./infra/start.sh` stops with the
+same list when it has just created the file). Only nginx (`:80`) listens on all
+interfaces; every other port below is bound to `127.0.0.1`.
 
 Wait ~60 seconds for all services to come up, then open:
 
@@ -67,9 +73,9 @@ docker compose -f infra/docker-compose.yml ps
 # API health check
 curl http://localhost:4000/health
 
-# Neo4j node counts (requires cypher-shell or docker exec)
+# Neo4j node counts (requires cypher-shell or docker exec; NEO4J_PASSWORD = the value in infra/.env)
 docker exec -it opengraphity-neo4j-1 \
-  cypher-shell -u neo4j -p opengraphity_local \
+  cypher-shell -u neo4j -p "$NEO4J_PASSWORD" \
   "MATCH (n) RETURN labels(n)[0] AS type, count(n) ORDER BY count(n) DESC"
 ```
 

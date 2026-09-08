@@ -108,7 +108,7 @@ async function removeWorkflowStep(
   const PROTECTED = new Set(['start', 'end'])
   return withSession(async (session) => {
     const res = await session.executeRead(tx =>
-      tx.run(`MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName}) RETURN s.type AS type`, { definitionId, stepName }),
+      tx.run(`MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName, tenant_id: $tenantId}) RETURN s.type AS type`, { definitionId, stepName, tenantId: ctx.tenantId }),
     )
     const stepType = res.records[0]?.get('type') as string | null
     if (!stepType || PROTECTED.has(stepType)) throw new ValidationError(`Cannot remove step: ${stepName}`)
@@ -116,6 +116,7 @@ async function removeWorkflowStep(
     await session.executeWrite(tx =>
       tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        // tenant-ok: step della definizione appena scopata
         MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName})
         DETACH DELETE s
         SET wd.version = wd.version + 1, wd.updated_at = $now

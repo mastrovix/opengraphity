@@ -312,7 +312,7 @@ export const syncResolvers = {
           },
         ))
         const row = await runQueryOne<{ p: Props }>(session,
-          `MATCH (n:SyncSource {id: $id}) RETURN properties(n) AS p`, { id },
+          `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`, { id, tenantId: ctx.tenantId },
         )
         const newSource = mapSource(row!.p)
         void audit(ctx, 'sync_source.created', 'SyncSource', id)
@@ -398,7 +398,7 @@ export const syncResolvers = {
         }, { jobId: `sync-${runId}` })
 
         const row = await runQueryOne<{ p: Props }>(session,
-          `MATCH (r:SyncRun {id: $id}) RETURN properties(r) AS p`, { id: runId },
+          `MATCH (r:SyncRun {id: $id, tenant_id: $tenantId}) RETURN properties(r) AS p`, { id: runId, tenantId: ctx.tenantId },
         )
         void audit(ctx, 'sync.triggered', 'SyncRun', runId)
         return mapRun(row!.p)
@@ -562,8 +562,8 @@ export const syncResolvers = {
         if (!connector) return { ok: false, message: `Connector "${source.connectorType}" not registered`, details: null }
 
         const encRow = await runQueryOne<{ enc: string }>(session,
-          `MATCH (n:SyncSource {id: $id}) RETURN n.encrypted_credentials AS enc`,
-          { id: args.sourceId },
+          `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) RETURN n.encrypted_credentials AS enc`,
+          { id: args.sourceId, tenantId: ctx.tenantId },
         )
         const creds = decryptCredentials(encRow!.enc, encryptionKey())
         const syncConfig: import('@opengraphity/discovery').SyncSourceConfig = {

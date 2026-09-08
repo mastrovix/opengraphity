@@ -9,19 +9,42 @@ import { executeReportSection } from '../../lib/reportExecutor.js'
 import type { ReportSectionDef } from '../../lib/reportQueryBuilder.js'
 import { getSession } from '@opengraphity/neo4j'
 import { logger } from '../../lib/logger.js'
+import { ValidationError } from '../../lib/errors.js'
+import { assertReportTemplateAccess } from './reportAccess.js'
 
 const REPORT_DIR = process.env['REPORT_DIR'] ?? path.resolve('./data/reports')
 
 if (!fs.existsSync(REPORT_DIR)) fs.mkdirSync(REPORT_DIR, { recursive: true })
 
-// Cleanup files older than 2 hours every 30 minutes
+/**
+ * Exported files live in REPORT_DIR/<tenantId>/<uuid>.<ext>: the download
+ * route only ever reads from the caller's own tenant directory, so knowing a
+ * filename is not enough to fetch another tenant's report.
+ */
+export const REPORT_PATH_SEGMENT_RE = /^[A-Za-z0-9._-]+$/
+
+export function tenantReportDir(tenantId: string): string {
+  if (!REPORT_PATH_SEGMENT_RE.test(tenantId) || tenantId === '.' || tenantId === '..') {
+    throw new ValidationError(`Tenant id ${JSON.stringify(tenantId)} is not a valid report directory segment`)
+  }
+  return path.join(REPORT_DIR, tenantId)
+}
+
+// Cleanup files older than 2 hours every 30 minutes (per tenant directory)
 setInterval(() => {
   try {
     const threshold = Date.now() - 2 * 60 * 60 * 1000
-    for (const file of fs.readdirSync(REPORT_DIR)) {
-      const fp = path.join(REPORT_DIR, file)
-      const stat = fs.statSync(fp)
-      if (stat.mtimeMs < threshold) fs.unlinkSync(fp)
+    for (const entry of fs.readdirSync(REPORT_DIR, { withFileTypes: true })) {
+      const entryPath = path.join(REPORT_DIR, entry.name)
+      if (!entry.isDirectory()) {
+        // Pre-tenant-directory leftovers (flat layout): expire them the same way.
+        if (fs.statSync(entryPath).mtimeMs < threshold) fs.unlinkSync(entryPath)
+        continue
+      }
+      for (const file of fs.readdirSync(entryPath)) {
+        const fp = path.join(entryPath, file)
+        if (fs.statSync(fp).mtimeMs < threshold) fs.unlinkSync(fp)
+      }
     }
   } catch (err) {
     // Best-effort cleanup, but disk-filling failures must be visible.
@@ -57,7 +80,7 @@ async function loadSectionsForTemplate(templateId: string, tenantId: string): Pr
     const name = tplRes.records[0].get('name') as string
 
     const secRes = await session.executeRead(tx =>
-      tx.run(`MATCH (r:ReportTemplate {id: $id})-[:HAS_SECTION]->(s:ReportSection) RETURN properties(s) AS props ORDER BY s.order ASC`, { id: templateId }),
+      tx.run(`MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection) RETURN properties(s) AS props ORDER BY s.order ASC`, { id: templateId, tenantId }),
     )
     const sections = secRes.records.map(r => mapSection(r.get('props') as Props))
     return { name, sections }
@@ -200,13 +223,22 @@ async function generateExcel(templateName: string, data: SectionData[], filePath
 }
 
 async function exportReport(format: 'pdf' | 'excel', args: { templateId: string }, ctx: GraphQLContext): Promise<string> {
+  const accessSession = getSession(undefined, 'READ')
+  try {
+    await assertReportTemplateAccess(accessSession, args.templateId, ctx, 'read')
+  } finally {
+    await accessSession.close()
+  }
+
   const tpl = await loadSectionsForTemplate(args.templateId, ctx.tenantId)
   if (!tpl) throw new NotFoundError('ReportTemplate', args.templateId)
 
   const data = await fetchSectionData(tpl.sections, ctx.tenantId)
   const ext  = format === 'pdf' ? 'pdf' : 'xlsx'
   const filename = `${uuidv4()}.${ext}`
-  const filePath = path.join(REPORT_DIR, filename)
+  const dir      = tenantReportDir(ctx.tenantId)
+  fs.mkdirSync(dir, { recursive: true })
+  const filePath = path.join(dir, filename)
 
   if (format === 'pdf') {
     await generatePDF(tpl.name, data, filePath)
