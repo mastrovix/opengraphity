@@ -19,7 +19,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     WHERE ${ciLabelPredicate('impacted')}
     AND impacted.tenant_id = $tenantId
     AND NOT impacted.id IN $ciIds
-    WITH impacted, labels(impacted)[0] AS lbl, min(length(path)) AS distance
+    WITH impacted, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS lbl, min(length(path)) AS distance
     RETURN DISTINCT
       impacted.id AS id, impacted.name AS name,
       lbl AS label,

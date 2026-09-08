@@ -97,7 +97,7 @@ async function loadCIImpact(tenantId: string, ciIds: string[]): Promise<CIImpact
       OPTIONAL MATCH (dep)-[:DEPENDS_ON]->(ci)
       WITH ci, count(DISTINCT dep) AS dependentCount
       OPTIONAL MATCH (cap:BusinessCapability {tenant_id: $tenantId})-[*1..4]-(ci)
-      RETURN ci.name AS name, labels(ci)[0] AS type, ci.environment AS environment,
+      RETURN ci.name AS name, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS type, ci.environment AS environment,
              dependentCount, collect(DISTINCT cap.name)[..5] AS capabilities
     `, { tenantId, ciIds: ciIds.slice(0, 5) })
     return rows.map(r => ({

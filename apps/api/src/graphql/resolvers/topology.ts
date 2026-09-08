@@ -120,7 +120,7 @@ export const topologyResolvers = {
             RETURN
               ci.id          AS id,
               ci.name        AS name,
-              labels(ci)[0]  AS type,
+              head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])  AS type,
               coalesce(ci.status, 'active') AS status,
               ci.environment AS environment,
               ci.owner_group AS ownerGroup,
@@ -186,7 +186,7 @@ export const topologyResolvers = {
           RETURN
             ci.id          AS id,
             ci.name        AS name,
-            labels(ci)[0]  AS type,
+            head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])  AS type,
             coalesce(ci.status, 'active') AS status,
             ci.environment AS environment,
             ci.owner_group AS ownerGroup,

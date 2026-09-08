@@ -197,8 +197,8 @@ async function main() {
     // ── 3. Carica CI (con support team) e utenti operativi ──────────────────────
     const ciRes = await session.executeRead((tx) => tx.run(`
       MATCH (ci {tenant_id:$t})-[:SUPPORTED_BY]->(team:Team)
-      WHERE labels(ci)[0] IN ['Server','Database','Application']
-      RETURN ci.id AS id, ci.name AS name, labels(ci)[0] AS type, team.id AS teamId
+      WHERE head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) IN ['Server','Database','Application']
+      RETURN ci.id AS id, ci.name AS name, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS type, team.id AS teamId
     `, { t: TENANT }))
     const cis = ciRes.records.map((r) => ({ id: r.get('id') as string, name: r.get('name') as string, type: r.get('type') as string, teamId: r.get('teamId') as string }))
     if (cis.length === 0) throw new Error('Nessun CI con support team trovato')

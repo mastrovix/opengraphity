@@ -108,7 +108,7 @@ async function problems(
       WITH p, u, t ORDER BY ${problemOrderBy(sortField, sortDirection)}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       OPTIONAL MATCH (p)-[:AFFECTS]->(ci)
-      WITH p, u, t, collect(DISTINCT {props: properties(ci), label: labels(ci)[0]}) AS cis
+      WITH p, u, t, collect(DISTINCT {props: properties(ci), label: head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])}) AS cis
       RETURN properties(p) AS props, properties(u) AS uProps, properties(t) AS tProps, cis
     `, params)
     const countRows = await runQuery<{ total: unknown }>(session, `
@@ -467,7 +467,7 @@ async function problemAffectedCIs(
     const rows = await runQuery<{ props: Props; label: string }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:AFFECTS]->(ci)
       WHERE ci.tenant_id = $tenantId
-      RETURN properties(ci) as props, labels(ci)[0] AS label
+      RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
       const t = ciTypeFromLabels([r.label])

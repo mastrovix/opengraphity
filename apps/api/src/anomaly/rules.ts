@@ -2,7 +2,7 @@
  * Anomaly Detection Rules
  *
  * CI nodes use Neo4j labels (Application, Server, Database, DatabaseInstance, Certificate).
- * The `type` property is null — always use `toLower(labels(ci)[0])` for entitySubtype.
+ * The `type` property is null — always use `toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))` for entitySubtype.
  *
  * Each query MUST RETURN: entityId, entityType, entitySubtype, entityName, description, severity
  */
@@ -35,7 +35,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
       RETURN
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(labels(ci)[0])     AS entitySubtype,
+        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
         'Il CI non ha relazioni con altri nodi nel grafo CMDB' AS description,
         'medium'                   AS severity
@@ -60,7 +60,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
       RETURN
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(labels(ci)[0])     AS entitySubtype,
+        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
         'CI con ' + toString(depCount) + ' dipendenti diretti — potenziale SPOF' AS description,
         'critical'                 AS severity
@@ -81,7 +81,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
       RETURN DISTINCT
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(labels(ci)[0])     AS entitySubtype,
+        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
         'Ciclo di dipendenza di lunghezza ' + toString(cycleLen) + ' rilevato' AS description,
         'high'                     AS severity
@@ -101,7 +101,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
       RETURN
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(labels(ci)[0])     AS entitySubtype,
+        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
         'Il CI non ha un owner o team assegnato' AS description,
         'low'                      AS severity
@@ -159,7 +159,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
       RETURN DISTINCT
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(labels(ci)[0])     AS entitySubtype,
+        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
         'CI in cluster isolato: raggiunge solo ' + toString(reachable) + ' altri nodi CI' AS description,
         'medium'                   AS severity
@@ -183,7 +183,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
       RETURN
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(labels(ci)[0])     AS entitySubtype,
+        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
         'CI con ' + toString(criticalCount) + ' incidenti critici aperti' AS description,
         'high'                     AS severity

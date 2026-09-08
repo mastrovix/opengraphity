@@ -316,11 +316,11 @@ const Query = {
           CALL {
             WITH n
             MATCH (n)-[r]->(d)
-            RETURN type(r) AS relType, labels(d)[0] AS targetLabel, 'outgoing' AS direction
+            RETURN type(r) AS relType, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS targetLabel, 'outgoing' AS direction
             UNION
             WITH n
             MATCH (n)<-[r]-(d)
-            RETURN type(r) AS relType, labels(d)[0] AS targetLabel, 'incoming' AS direction
+            RETURN type(r) AS relType, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS targetLabel, 'incoming' AS direction
           }
           RETURN DISTINCT relType, targetLabel, direction, count(*) AS cnt
           ORDER BY cnt DESC

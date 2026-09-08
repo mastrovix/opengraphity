@@ -69,7 +69,7 @@ export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CIT
           tx.run(
             `MATCH (n {id: $id})-[rel:${relTypes}]->(d)
              WHERE d.tenant_id = $tenantId
-             RETURN properties(d) AS props, labels(d)[0] AS label, type(rel) AS relation
+             RETURN properties(d) AS props, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS label, type(rel) AS relation
              ORDER BY d.name`,
             { id: parent.id, tenantId: ctx.tenantId },
           ),
@@ -93,7 +93,7 @@ export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CIT
           tx.run(
             `MATCH (n {id: $id})<-[rel:${relTypes}]-(d)
              WHERE d.tenant_id = $tenantId
-             RETURN properties(d) AS props, labels(d)[0] AS label, type(rel) AS relation
+             RETURN properties(d) AS props, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS label, type(rel) AS relation
              ORDER BY d.name`,
             { id: parent.id, tenantId: ctx.tenantId },
           ),

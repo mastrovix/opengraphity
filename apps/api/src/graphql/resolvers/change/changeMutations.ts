@@ -268,7 +268,7 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
 
     const row = await runQueryOne<{ ciProps: Props; ciLabel: string }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci {id: $ciId})
-      RETURN properties(ci) AS ciProps, labels(ci)[0] AS ciLabel
+      RETURN properties(ci) AS ciProps, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel
     `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId })
     if (!row) throw new GraphQLError('CI non trovato dopo aggiunta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     row.ciProps['type'] = row.ciProps['type'] as string | undefined ?? row.ciLabel.toLowerCase()

@@ -218,7 +218,7 @@ export async function changeAffectedCIs(_: unknown, args: { changeId: string }, 
       OPTIONAL MATCH (c)-[:HAS_VALIDATION]->(vt:ValidationTest) WHERE vt.ci_id = ci.id
       OPTIONAL MATCH (c)-[:HAS_DEPLOYMENT]->(dt:DeploymentTask) WHERE dt.ci_id = ci.id
       OPTIONAL MATCH (c)-[:HAS_REVIEW]->(rv:ReviewTask) WHERE rv.ci_id = ci.id
-      RETURN properties(ci) AS ciProps, labels(ci)[0] AS ciLabel,
+      RETURN properties(ci) AS ciProps, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel,
              coalesce(r.ci_phase, 'assessment') AS ciPhase,
              r.risk_score AS riskScore,
              properties(ownerT)  AS ownerTask,
@@ -581,8 +581,8 @@ export async function changeImpactedCIs(_: unknown, args: { changeId: string; de
            min(dist) AS distance
       WITH impacted, affected, bestPath, distance
       RETURN DISTINCT
-        properties(impacted) AS impactedProps, labels(impacted)[0] AS impactedLabel,
-        properties(affected) AS affectedProps, labels(affected)[0] AS affectedLabel,
+        properties(impacted) AS impactedProps, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS impactedLabel,
+        properties(affected) AS affectedProps, head([l IN labels(affected) WHERE l <> 'ConfigurationItem']) AS affectedLabel,
         distance,
         [n IN nodes(bestPath) | n.name] AS pathNames
       ORDER BY distance ASC, impactedProps.name ASC
@@ -627,7 +627,7 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
                wi.current_step AS changePhase,
                ('Perché: ' + coalesce(c.why, '—') + ' · Cosa: ' + coalesce(c.what, '—')) AS changeDesc,
                ci.id AS ciId, ci.name AS ciName,
-               coalesce(ci.type, toLower(labels(ci)[0])) AS ciType,
+               coalesce(ci.type, toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))) AS ciType,
                ci.environment AS ciEnv
       `, { id: args.id, tenantId: ctx.tenantId })
       if (row) {

@@ -50,7 +50,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     // Load target
     const tgt = await runQueryOne<{ name: string; lbl: string; env: string | null; status: string | null }>(s1, `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      RETURN ci.name AS name, labels(ci)[0] AS lbl, ci.environment AS env, ci.status AS status
+      RETURN ci.name AS name, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS lbl, ci.environment AS env, ci.status AS status
     `, { ciId, tenantId })
     if (!tgt) throw new GraphQLError(`CI not found: ${ciId}`, { extensions: { code: 'NOT_FOUND' } })
     targetName = tgt.name

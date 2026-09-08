@@ -116,7 +116,7 @@ function buildTools(tenantId: string) {
         MATCH (ci {tenant_id: $tenantId})
         WHERE any(l IN labels(ci) WHERE l IN $labels)
           AND toLower(ci.name) CONTAINS toLower($query)
-        RETURN ci.id AS id, ci.name AS nome, labels(ci)[0] AS tipo,
+        RETURN ci.id AS id, ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo,
                ci.environment AS ambiente, ci.status AS stato
         LIMIT ${clampLimit(limit, 8, 20)}
       `, { tenantId, labels: ALL_CI_LABELS, query })
@@ -139,7 +139,7 @@ function buildTools(tenantId: string) {
         WHERE any(l IN labels(ci) WHERE l IN $labels)
           AND (ci.id = $key OR toLower(ci.name) = toLower($key))
         OPTIONAL MATCH (dep)-[:DEPENDS_ON]->(ci)
-        WITH ci, collect(DISTINCT {nome: dep.name, tipo: labels(dep)[0]}) AS dipendenti_diretti
+        WITH ci, collect(DISTINCT {nome: dep.name, tipo: head([l IN labels(dep) WHERE l <> 'ConfigurationItem'])}) AS dipendenti_diretti
         OPTIONAL MATCH (dep2)-[:DEPENDS_ON*2]->(ci)
         WITH ci, dipendenti_diretti, count(DISTINCT dep2) AS dipendenti_secondo_livello
         OPTIONAL MATCH (cap:BusinessCapability {tenant_id: $tenantId})-[*1..4]-(ci)
@@ -151,7 +151,7 @@ function buildTools(tenantId: string) {
              collect(DISTINCT inc.number) AS incident_aperti
         OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci)
         WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed'] AND coalesce(ch.deleted, false) = false
-        RETURN ci.name AS nome, labels(ci)[0] AS tipo, ci.environment AS ambiente,
+        RETURN ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo, ci.environment AS ambiente,
                dipendenti_diretti, dipendenti_secondo_livello, business_capability,
                incident_aperti, collect(DISTINCT ch.number) AS change_in_corso
       `, { tenantId, labels: ALL_CI_LABELS, key: ci_id_o_nome })

@@ -155,7 +155,7 @@ async function globalSearch(
       WHERE coalesce(c.deleted, false) = false
         AND t.code IS NOT NULL AND toLower(t.code) CONTAINS toLower($q)
       OPTIONAL MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
-      RETURN t.id AS id, t.code AS code, labels(t)[0] AS label,
+      RETURN t.id AS id, t.code AS code, head([l IN labels(t) WHERE l <> 'ConfigurationItem']) AS label,
              coalesce(t.status, '') AS status,
              c.code AS changeCode, c.id AS changeId,
              coalesce(ci.name, coalesce(t.ci_id, '')) AS ciName

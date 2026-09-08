@@ -67,7 +67,7 @@ async function incidents(
       WITH i, u, t ORDER BY ${incidentOrderBy(sortField, sortDirection)}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
-      WITH i, u, t, collect(DISTINCT {props: properties(ci), label: labels(ci)[0]}) AS cis
+      WITH i, u, t, collect(DISTINCT {props: properties(ci), label: head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])}) AS cis
       RETURN properties(i) AS props, properties(u) AS uProps, properties(t) AS tProps, cis
     `, params)
     const countRows = await runQuery<{ total: number }>(session, `
@@ -363,7 +363,7 @@ async function incidentAffectedCIs(
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)
       WHERE ci.tenant_id = $tenantId
-      RETURN properties(ci) as props, labels(ci)[0] AS label
+      RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
       id: parent.id, tenantId: ctx.tenantId,
@@ -399,9 +399,9 @@ async function incidentImpactedApplications(
       WITH app, affected, p
       ORDER BY length(p) ASC
       WITH app, head(collect({affected: affected, p: p})) AS best
-      RETURN properties(app) AS props, labels(app)[0] AS label,
+      RETURN properties(app) AS props, head([l IN labels(app) WHERE l <> 'ConfigurationItem']) AS label,
              length(best.p) AS distance, best.affected.name AS via,
-             [n IN reverse(nodes(best.p)) | {id: n.id, name: n.name, type: labels(n)[0]}] AS path
+             [n IN reverse(nodes(best.p)) | {id: n.id, name: n.name, type: head([l IN labels(n) WHERE l <> 'ConfigurationItem'])}] AS path
       ORDER BY distance ASC, props.name ASC
     `
     const rows = await runQuery<{ props: Props; label: string; distance: number; via: string | null; path: Array<{ id: string; name: string; type: string }> }>(

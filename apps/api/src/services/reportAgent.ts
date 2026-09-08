@@ -39,7 +39,7 @@ async function buildSchemaContext(session: ReturnType<typeof getSession>, tenant
   const nodesResult = await session.executeRead((tx) => tx.run(`
     MATCH (n)
     WHERE n.tenant_id = $tenantId
-    WITH labels(n)[0] AS label, keys(n) AS props
+    WITH head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, keys(n) AS props
     WITH label, [p IN props WHERE p <> 'tenant_id'] AS props
     RETURN DISTINCT label, props
     ORDER BY label
@@ -48,15 +48,15 @@ async function buildSchemaContext(session: ReturnType<typeof getSession>, tenant
     MATCH (a)-[r]->(b)
     WHERE a.tenant_id = $tenantId
     RETURN DISTINCT
-      labels(a)[0] AS from,
+      head([l IN labels(a) WHERE l <> 'ConfigurationItem']) AS from,
       type(r) AS rel,
-      labels(b)[0] AS to
+      head([l IN labels(b) WHERE l <> 'ConfigurationItem']) AS to
     ORDER BY from, rel
   `, { tenantId }))
   const countsResult = await session.executeRead((tx) => tx.run(`
     MATCH (n)
     WHERE n.tenant_id = $tenantId
-    RETURN labels(n)[0] AS label, count(n) AS count
+    RETURN head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, count(n) AS count
     ORDER BY count DESC
   `, { tenantId }))
 

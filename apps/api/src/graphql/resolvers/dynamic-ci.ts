@@ -76,7 +76,7 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
       const [itemsResult, countResult] = await Promise.all([
         s1.executeRead(tx => tx.run(
           `MATCH (n) WHERE ${baseFilter}
-           RETURN properties(n) AS props, labels(n)[0] AS label
+           RETURN properties(n) AS props, head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label
            ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
           params,
         )),
@@ -111,7 +111,7 @@ function buildCIByIdResolver(types: CITypeWithDefinitions[]) {
       const r = await session.executeRead(tx =>
         tx.run(
           `MATCH (n) WHERE (${labelFilter}) AND n.id = $id AND n.tenant_id = $tenantId
-           RETURN properties(n) AS props, labels(n)[0] AS label`,
+           RETURN properties(n) AS props, head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label`,
           { id: args.id, tenantId: ctx.tenantId },
         ),
       )
@@ -133,7 +133,7 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
            WHERE impacted.tenant_id = $tenantId
            WITH impacted, min(length(path)) AS distance, collect(path) AS paths
            WITH impacted, distance, [p IN paths WHERE length(p) = distance | p][0] AS shortestPath
-           RETURN DISTINCT properties(impacted) AS props, labels(impacted)[0] AS label,
+           RETURN DISTINCT properties(impacted) AS props, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS label,
              distance, properties(nodes(shortestPath)[-2]) AS parentProps`,
           { id: args.id, tenantId: ctx.tenantId },
         ),

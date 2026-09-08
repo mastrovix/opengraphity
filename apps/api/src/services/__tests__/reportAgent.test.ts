@@ -16,7 +16,7 @@ const { getSession } = await import('@opengraphity/neo4j')
 
 // ── Fakes ─────────────────────────────────────────────────────────────────
 
-const SCHEMA_QUERY_MARKERS = ['WITH labels(n)[0] AS label, keys(n)', 'MATCH (a)-[r]->(b)', 'count(n) AS count']
+const SCHEMA_QUERY_MARKERS = ["WITH head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, keys(n)", 'MATCH (a)-[r]->(b)', 'count(n) AS count']
 
 /** Schema-context queries get no rows; everything else gets `rows`. */
 function makeSession(rows: Array<Record<string, unknown>> = []) {

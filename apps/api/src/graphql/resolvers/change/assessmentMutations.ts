@@ -101,9 +101,9 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
       // tenant-ok: tipi base condivisi di sistema
       OPTIONAL MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
-        WHERE ct.neo4j_label = labels(ci)[0]
+        WHERE ct.neo4j_label IN labels(ci)
       RETURN properties(t) AS taskProps, c.id AS changeId,
-             ci.id AS ciId, labels(ci)[0] AS ciLabel, ct.id AS ciTypeId,
+             ci.id AS ciId, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel, ct.id AS ciTypeId,
              ci.environment AS ciEnv
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!ctx1) throw new GraphQLError(`AssessmentTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })

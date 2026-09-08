@@ -31,8 +31,8 @@ async function teams(_: unknown, args: { filters?: string; sortField?: string; s
       ${advWhere ? `WHERE ${advWhere}` : ''}
       RETURN properties(t) as props,
         [ (t)<-[:MEMBER_OF]-(m:User) | properties(m) ] as members,
-        [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: labels(oci)[0] } ] as ownedCIs,
-        [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: labels(sci)[0] } ] as supportedCIs,
+        [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: head([l IN labels(oci) WHERE l <> 'ConfigurationItem']) } ] as ownedCIs,
+        [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: head([l IN labels(sci) WHERE l <> 'ConfigurationItem']) } ] as supportedCIs,
         [ (t)-[:MANAGED_BY]->(mgr:User) | properties(mgr) ] as managers
       ORDER BY ${orderBy} ${orderDir}
     `
@@ -112,7 +112,7 @@ async function setCITeamRelation(
       WHERE ${ciLabelPredicate('ci')}
       OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
       DELETE old
-      RETURN properties(ci) as props, labels(ci)[0] AS label
+      RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
       : `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
@@ -122,7 +122,7 @@ async function setCITeamRelation(
       OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
       DELETE old
       MERGE (ci)-[:${relType}]->(t)
-      RETURN properties(ci) as props, labels(ci)[0] AS label
+      RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
       ciId: args.ciId, teamId: args.teamId ?? null, tenantId: ctx.tenantId,
@@ -173,7 +173,7 @@ async function teamOwnedCIs(parent: { id: string; _ownedCIs?: unknown[] }, _: un
     const cypher = `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:OWNED_BY]-(n)
       WHERE n.tenant_id = $tenantId
-      RETURN properties(n) as props, labels(n)[0] AS label
+      RETURN properties(n) as props, head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label
       ORDER BY n.name
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
@@ -190,7 +190,7 @@ async function teamSupportedCIs(parent: { id: string; _supportedCIs?: unknown[] 
     const cypher = `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:SUPPORTED_BY]-(n)
       WHERE n.tenant_id = $tenantId
-      RETURN properties(n) as props, labels(n)[0] AS label
+      RETURN properties(n) as props, head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label
       ORDER BY n.name
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
