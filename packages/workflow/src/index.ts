@@ -1,5 +1,7 @@
-export { WorkflowEngine, workflowEngine } from './engine.js'
+export { WorkflowEngine, workflowEngine, ENTITY_LABELS } from './engine.js'
 export { selectWorkflowForEntity, type SelectedWorkflow } from './selector.js'
+export { seedWorkflowDefinition, type SeedableWorkflow, type SeedResult, type SeedOptions } from './seed-common.js'
 export { seedWorkflowForTenant, INCIDENT_WORKFLOW_BASE, INCIDENT_SECURITY_WORKFLOW } from './seed.js'
+export { seedProblemWorkflowForTenant, PROBLEM_WORKFLOW } from './seed-problem.js'
 export { seedKBWorkflowForTenant, KB_ARTICLE_WORKFLOW_BASE } from './seed-kb.js'
 export * from './types.js'

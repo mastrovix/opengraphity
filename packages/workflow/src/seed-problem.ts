@@ -1,7 +1,5 @@
-import { fileURLToPath } from 'node:url'
-import { v4 as uuidv4 } from 'uuid'
-import { getSession } from '@opengraphity/neo4j'
 import type { WorkflowDefinition } from './types.js'
+import { seedWorkflowDefinition, isMainModule } from './seed-common.js'
 
 export const PROBLEM_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'Problem Management',
@@ -37,96 +35,13 @@ export const PROBLEM_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   ],
 }
 
-async function seedProblemWorkflow(tenantId: string): Promise<void> {
-  const session = getSession(undefined, 'WRITE')
-  const defId   = uuidv4()
-  const now     = new Date().toISOString()
-
-  try {
-    await session.executeWrite(async (tx) => {
-      await tx.run(`
-        MERGE (wd:WorkflowDefinition {tenant_id: $tenantId, name: $name})
-        ON CREATE SET
-          wd.id          = $id,
-          wd.entity_type = $entityType,
-          wd.version     = $version,
-          wd.active      = $active,
-          wd.created_at  = $now,
-          wd.updated_at  = $now
-        ON MATCH SET
-          wd.updated_at  = $now
-        WITH wd
-        OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
-        DETACH DELETE s
-      `, { id: defId, tenantId, name: PROBLEM_WORKFLOW.name, entityType: PROBLEM_WORKFLOW.entityType, version: PROBLEM_WORKFLOW.version, active: PROBLEM_WORKFLOW.active, now })
-
-      const res = await tx.run(
-        `MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, name: $name}) RETURN wd.id AS id`,
-        { tenantId, name: PROBLEM_WORKFLOW.name },
-      )
-      const actualDefId = res.records[0]?.get('id') as string ?? defId
-
-      for (const step of PROBLEM_WORKFLOW.steps) {
-        await tx.run(`
-          MATCH (wd:WorkflowDefinition {id: $defId})
-          CREATE (s:WorkflowStep {
-            id:            $id,
-            tenant_id:     $tenantId,
-            definition_id: $defId,
-            name:          $name,
-            label:         $label,
-            type:          $type,
-            enter_actions: $enterActions,
-            exit_actions:  $exitActions
-          })
-          CREATE (wd)-[:HAS_STEP]->(s)
-        `, {
-          defId:        actualDefId,
-          tenantId,
-          id:           `${tenantId}-${step.id}`,
-          name:         step.name,
-          label:        step.label,
-          type:         step.type,
-          enterActions: JSON.stringify(step.enterActions),
-          exitActions:  JSON.stringify(step.exitActions),
-        })
-      }
-
-      for (const tr of PROBLEM_WORKFLOW.transitions) {
-        await tx.run(`
-          MATCH (from:WorkflowStep {name: $fromName, definition_id: $defId})
-          MATCH (to:WorkflowStep   {name: $toName,   definition_id: $defId})
-          CREATE (from)-[:TRANSITIONS_TO {
-            id:             $id,
-            trigger:        $trigger,
-            label:          $label,
-            condition:      $condition,
-            requires_input: $requiresInput,
-            input_field:    $inputField
-          }]->(to)
-        `, {
-          defId:         actualDefId,
-          fromName:      tr.fromStepName,
-          toName:        tr.toStepName,
-          id:            `${tenantId}-${tr.id}`,
-          trigger:       tr.trigger,
-          label:         tr.label,
-          condition:     tr.condition,
-          requiresInput: tr.requiresInput,
-          inputField:    tr.inputField,
-        })
-      }
-
-      console.log(`[workflow] Seeded "${PROBLEM_WORKFLOW.name}" for tenant "${tenantId}": defId=${actualDefId}`)
-    })
-  } finally {
-    await session.close()
-  }
+export async function seedProblemWorkflowForTenant(tenantId: string): Promise<string> {
+  const r = await seedWorkflowDefinition(tenantId, PROBLEM_WORKFLOW)
+  return r.definitionId
 }
 
-const isMain = process.argv[1] === fileURLToPath(import.meta.url)
-if (isMain) {
-  seedProblemWorkflow('c-one')
+if (isMainModule(import.meta.url)) {
+  seedProblemWorkflowForTenant('c-one')
     .then(() => process.exit(0))
     .catch((e: unknown) => { console.error(e); process.exit(1) })
 }

@@ -22,6 +22,7 @@ vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:     vi.fn().mockResolvedValue({ success: true }),
+    registerCondition: vi.fn(),
   },
 }))
 

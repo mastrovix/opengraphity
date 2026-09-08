@@ -21,6 +21,7 @@ vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:     vi.fn().mockResolvedValue({ success: true }),
+    registerCondition: vi.fn(),
   },
 }))
 
@@ -134,6 +135,7 @@ describe('executeWorkflowTransition — tenant isolation guard', () => {
         triggeredBy: 'user-1',
         triggerType: 'manual',
         notes:       'presa in carico',
+        tenantId:    'tenant-1',
       },
       expect.any(Object),
     )

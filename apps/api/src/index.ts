@@ -2,6 +2,8 @@ import { initTelemetry } from './telemetry.js'
 initTelemetry()
 
 import { startServer } from './server.js'
+// Registra le condizioni di transizione ITSM sul workflow engine (side-effect).
+import './workflow/conditions.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine } from '@opengraphity/sla'
 import { EscalationConsumer } from './consumers/escalationConsumer.js'

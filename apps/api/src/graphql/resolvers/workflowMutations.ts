@@ -331,6 +331,33 @@ export async function removeWorkflowTransition(
   }, true)
 }
 
+/**
+ * Valida i metadati JSON dello step di arrivo (on_enter_fields, enter_actions)
+ * prima di transizionare: se corrotti, la mutation fallisce SENZA aver
+ * avanzato il workflow.
+ */
+async function preflightStepMetadata(
+  session: import('neo4j-driver').Session,
+  instanceId: string,
+  toStep: string,
+  tenantId: string,
+): Promise<void> {
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
+    MATCH (s:WorkflowStep {definition_id: wi.definition_id, name: $toStep})
+    RETURN s.on_enter_fields AS fields, s.enter_actions AS enterActions
+  `, { instanceId, toStep, tenantId }))
+  if (!res.records.length) return // lo step non esiste: sarà l'engine a rifiutare la transizione
+  const rec = res.records[0]
+  for (const [key, label] of [['fields', 'on_enter_fields'], ['enterActions', 'enter_actions']] as const) {
+    const raw = rec.get(key) as string | null
+    if (!raw) continue
+    try { JSON.parse(raw) } catch (e) {
+      throw new GraphQLError(`Workflow mal configurato: ${label} dello step "${toStep}" non è JSON valido (${e instanceof Error ? e.message : String(e)})`, { extensions: { code: 'CONFLICT' } })
+    }
+  }
+}
+
 export async function executeWorkflowTransition(
   _: unknown,
   { instanceId, toStep, notes }: { instanceId: string; toStep: string; notes?: string },
@@ -547,6 +574,11 @@ export async function executeWorkflowTransition(
       }
     }
 
+    // I metadati dello step di arrivo (on_enter_fields, enter_actions) vengono
+    // validati PRIMA della transizione: un JSON corrotto deve bloccare, non
+    // far fallire la mutation dopo che il workflow è già avanzato.
+    await preflightStepMetadata(session, instanceId, toStep, ctx.tenantId)
+
     workflowLogger.debug({ toStep, instanceId }, 'Transitioning workflow step')
     const result = await workflowEngine.transition(
       session,
@@ -556,9 +588,21 @@ export async function executeWorkflowTransition(
         triggeredBy: ctx.userId,
         triggerType: 'manual',
         notes,
+        tenantId:    ctx.tenantId,
       },
       actionCtx,
     )
+    // Side-effect post-commit falliti: la transizione è già persistita, quindi
+    // NON si lancia (l'utente vedrebbe "fallito" con il workflow avanzato) ma
+    // finiscono in actionErrors, come quelli dell'engine.
+    const postErrors: string[] = []
+    const post = async (what: string, fn: () => Promise<unknown>) => {
+      try { await fn() } catch (e) {
+        const msg = `${what}: ${e instanceof Error ? e.message : String(e)}`
+        workflowLogger.error({ instanceId, toStep, err: e }, `[workflow] post-transition side effect failed — ${what}`)
+        postErrors.push(msg)
+      }
+    }
     workflowLogger.debug({ instanceId, success: result.success }, 'Workflow transition result')
 
     if (result.success) {
@@ -600,15 +644,15 @@ export async function executeWorkflowTransition(
         // Generic post-transition: publish an event named after the target
         // step and audit. Field updates (resolved_at, assigned_at, etc.)
         // are driven by the step's `on_enter_fields` metadata, applied below.
-        await incidentService.publishIncidentTransition(incidentId, toStep, { tenantId, userId: ctx.userId })
+        await post('publish incident transition', () => incidentService.publishIncidentTransition(incidentId, toStep, { tenantId, userId: ctx.userId }))
         void audit(ctx, `incident.${toStep}`, 'Incident', incidentId)
 
-        await applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes)
+        await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes))
 
         // Publish workflow.step.entered for any notify_rule enter_actions on this step
         // (SLA pause/resume is driven by the step's own sla_pause/sla_resume
         // enter/exit actions, consumed by the SLA engine — see packages/sla.)
-        await publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'incident', incidentId)
+        await post('notify rules', () => publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'incident', incidentId))
       }
 
       // ── KB Article post-transition ────────────────────────────────────────
@@ -624,8 +668,8 @@ export async function executeWorkflowTransition(
         const kbId     = kbResult.records[0].get('id')     as string
         const tenantId = kbResult.records[0].get('tenantId') as string
         void audit(ctx, `kb_article.${toStep}`, 'KBArticle', kbId)
-        await applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes)
-        await publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'kb_article', kbId)
+        await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes))
+        await post('notify rules', () => publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'kb_article', kbId))
       }
     }
 
@@ -633,12 +677,13 @@ export async function executeWorkflowTransition(
       workflowLogger.error({ instanceId, actionErrors: result.actionErrors },
         '[workflow] transition persisted but step actions failed')
     }
+    const allActionErrors = [...(result.actionErrors ?? []), ...postErrors]
 
     return {
       success:      result.success,
       error:        result.error ?? null,
       instance:     result.instance ?? null,
-      actionErrors: result.actionErrors ?? null,
+      actionErrors: allActionErrors.length > 0 ? allActionErrors : null,
     }
   }, true)
 }

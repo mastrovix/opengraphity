@@ -71,8 +71,14 @@ export function ChangeDetailPage() {
   const { steps: wfSteps, byName: wfByName, initialStep: wfInitialStep, isTerminal: wfIsTerminal } = useWorkflowSteps('change')
 
   const refetchAll = async () => { await refetchChange(); await refetchAffected(); await refetchAudit() }
-  const [executeTransition, { loading: transitioning }] = useMutation(EXECUTE_CHANGE_TRANSITION, {
-    onCompleted: async () => { await refetchAll() },
+  const [executeTransition, { loading: transitioning }] = useMutation<{ executeChangeTransition?: { actionErrors?: string[] | null } }>(EXECUTE_CHANGE_TRANSITION, {
+    onCompleted: async (data) => {
+      // La transizione è avvenuta, ma alcune azioni di step (SLA, eventi, timer)
+      // sono fallite: va detto, non nascosto.
+      const errs = data?.executeChangeTransition?.actionErrors
+      if (errs?.length) toast.warning(`Transizione eseguita, ma ${errs.length} azion${errs.length === 1 ? 'e' : 'i'} non riuscit${errs.length === 1 ? 'a' : 'e'}: ${errs.join(' · ')}`, { duration: 10000 })
+      await refetchAll()
+    },
     onError: (e) => toast.error(e.message),
   })
   const [transitionModal, setTransitionModal] = useState<{ toStep: string; label: string; inputField: string | null } | null>(null)

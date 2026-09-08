@@ -30,6 +30,9 @@ export function changeSDL(): string {
     resolvesProblems:     [LinkedTicketRef!]!
     # Requisiti di approvazione (Change Manager + un owner group per CI affected).
     approvals:            [ChangeApproval!]!
+    # Valorizzato SOLO dal risultato di executeChangeTransition: azioni di step
+    # (SLA, eventi, timer) fallite DOPO che la transizione è stata persistita.
+    actionErrors:         [String!]
   }
 
   # Un requisito di approvazione della change.

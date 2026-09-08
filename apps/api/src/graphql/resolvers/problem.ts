@@ -411,7 +411,7 @@ async function executeProblemTransition(
 
     const result = await workflowEngine.transition(
       session,
-      { instanceId, toStepName: args.toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.notes ?? undefined },
+      { instanceId, toStepName: args.toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.notes ?? undefined, tenantId: ctx.tenantId },
       { userId: ctx.userId, entityData: {} },
     )
 
@@ -433,8 +433,9 @@ async function executeProblemTransition(
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Problem not found')
-    return mapProblem(row.props)
+    if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
+    // Azioni di step fallite dopo il commit: esposte come Problem.actionErrors.
+    return { ...mapProblem(row.props), actionErrors: result.actionErrors?.length ? result.actionErrors : null }
   }, true)
 }
 

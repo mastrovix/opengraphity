@@ -7,6 +7,8 @@ import type {
   TransitionInput,
   TransitionResult,
   ActionContext,
+  ConditionContext,
+  ConditionEvaluator,
 } from './types.js'
 import { runAction } from './actions.js'
 
@@ -17,7 +19,61 @@ function isSession(s: Session | ManagedTransaction): s is Session {
   return typeof (s as Session).executeWrite === 'function'
 }
 
+/**
+ * Label Neo4j ammesse per il sync dello status: entity_type → label.
+ * Allowlist esplicita: la label finisce nel Cypher (non parametrizzabile) e
+ * un match senza label scriverebbe lo status su qualunque nodo con quell'id.
+ */
+export const ENTITY_LABELS: Record<string, string> = {
+  incident:        'Incident',
+  problem:         'Problem',
+  change:          'Change',
+  service_request: 'ServiceRequest',
+  kb_article:      'KBArticle',
+}
+
+/** Neo4j Integer (o numero nativo) → number. */
+function toNumber(raw: unknown): number {
+  if (raw == null) return 0
+  if (typeof raw === 'number') return raw
+  const maybe = raw as { toNumber?: () => number }
+  return typeof maybe.toNumber === 'function' ? maybe.toNumber() : Number(raw)
+}
+
+function fail(error: string): TransitionResult {
+  return { success: false, error } as unknown as TransitionResult
+}
+
+interface RegisteredCondition {
+  evaluate:       ConditionEvaluator
+  failureMessage: string
+}
+
 export class WorkflowEngine {
+  private readonly conditions = new Map<string, RegisteredCondition>()
+
+  constructor() {
+    // Unica condizione built-in: dipende solo dall'input (le note), non dal dominio.
+    this.registerCondition('rootCause != null', async (_s, c) => !!c.notes?.trim(), 'Root cause obbligatoria per questa transizione')
+  }
+
+  // ── Registro condizioni ────────────────────────────────────────────────────
+
+  /** Registra (o sostituisce) l'evaluator di una condizione di transizione. */
+  registerCondition(name: string, evaluate: ConditionEvaluator, failureMessage?: string): void {
+    this.conditions.set(name, { evaluate, failureMessage: failureMessage ?? `Condizione "${name}" non soddisfatta` })
+  }
+
+  hasCondition(name: string): boolean {
+    return this.conditions.has(name)
+  }
+
+  /** Valuta una condizione registrata; lancia se sconosciuta (workflow mal configurato). */
+  async evaluateCondition(session: Session, name: string, ctx: ConditionContext): Promise<boolean> {
+    const reg = this.conditions.get(name)
+    if (!reg) throw new Error(`Condizione di transizione sconosciuta: "${name}" — registrala con registerCondition o correggi il workflow`)
+    return reg.evaluate(session, ctx)
+  }
 
   /**
    * Crea una nuova istanza workflow per un'entità.
@@ -40,7 +96,6 @@ export class WorkflowEngine {
     const now        = new Date().toISOString()
 
     const work = async (tx: ManagedTransaction): Promise<WorkflowInstance> => {
-      // If definitionId is provided, use it directly; otherwise use category-aware selection
       let defQuery: string
       let defParams: Record<string, unknown>
 
@@ -65,14 +120,13 @@ export class WorkflowEngine {
             END AS priority
           WHERE priority < 2
           RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName
-          ORDER BY priority ASC
+          ORDER BY priority ASC, wd.version DESC
           LIMIT 1
         `
         defParams = { tenantId, entityType, category: category ?? null }
       }
 
       const defResult = await tx.run(defQuery, defParams)
-
       if (defResult.records.length === 0) {
         throw new Error(`No active workflow definition for "${entityType}" in tenant "${tenantId}"`)
       }
@@ -82,10 +136,11 @@ export class WorkflowEngine {
       const stepId   = rec.get('stepId')   as string
       const stepName = rec.get('stepName') as string
 
-      // Crea istanza, collega entità e step iniziale, crea primo StepExecution
-      await tx.run(`
+      // Lo start step è cercato DENTRO la definizione scelta: gli id degli step
+      // non sono garantiti unici tra definizioni (seed storici `${tenant}-step-new`).
+      const res = await tx.run(`
         MATCH (entity {id: $entityId, tenant_id: $tenantId})
-        MATCH (startStep:WorkflowStep {id: $stepId})
+        MATCH (wd:WorkflowDefinition {id: $defId})-[:HAS_STEP]->(startStep:WorkflowStep {id: $stepId})
         CREATE (wi:WorkflowInstance {
           id:            $instanceId,
           tenant_id:     $tenantId,
@@ -111,7 +166,11 @@ export class WorkflowEngine {
           trigger_type: 'automatic',
           notes:        null
         })
+        RETURN wi.id AS id
       `, { entityId, tenantId, stepId, instanceId, defId, entityType, stepName, now, execId })
+      if (res.records.length === 0) {
+        throw new Error(`Cannot create workflow instance: entity ${entityType}/${entityId} not found in tenant "${tenantId}"`)
+      }
 
       return {
         id:           instanceId,
@@ -132,22 +191,32 @@ export class WorkflowEngine {
 
   /**
    * Esegue una transizione da step corrente a toStepName.
-   * Aggiorna l'istanza, crea il nuovo StepExecution, sincronizza lo status dell'entità,
-   * ed esegue le azioni exit/enter configurate.
+   *
+   * Garanzie:
+   *  - un trigger 'manual' segue solo archi manuali (archi timer/automatici/
+   *    sla_breach non sono invocabili dall'utente);
+   *  - la condizione dell'arco è valutata per ogni trigger tramite il registro;
+   *  - l'avanzamento è atomico: la scrittura riverifica che CURRENT_STEP sia
+   *    ancora lo step letto (due transizioni concorrenti → una sola vince);
+   *  - lo status dell'entità è sincronizzato nella stessa transazione, con
+   *    label esplicita.
    */
   async transition(
     session: Session,
     input: TransitionInput,
     context: ActionContext,
   ): Promise<TransitionResult> {
-    console.log('[workflow-engine] transition() called with toStepName:', input.toStepName)
+    workflowLogger.debug({ instanceId: input.instanceId, toStep: input.toStepName, trigger: input.triggerType }, '[workflow-engine] transition')
     const now = new Date().toISOString()
 
     try {
-      // 1. Leggi stato corrente + transizione valida
+      // 1. Stato corrente + arco verso lo step richiesto. Se ci sono più archi
+      //    verso lo stesso step (es. manuale + sla_breach) preferisce quello con
+      //    il trigger richiesto.
       const stateResult = await session.executeRead((tx) =>
         tx.run(`
           MATCH (wi:WorkflowInstance {id: $instanceId})
+          WHERE $tenantId IS NULL OR wi.tenant_id = $tenantId
           MATCH (wi)-[:CURRENT_STEP]->(currentStep:WorkflowStep)
           MATCH (currentStep)-[tr:TRANSITIONS_TO]->(nextStep:WorkflowStep {name: $toStepName})
           OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(exec:WorkflowStepExecution)
@@ -155,6 +224,7 @@ export class WorkflowEngine {
           RETURN
             wi,
             currentStep.id           AS currentStepId,
+            currentStep.name         AS currentStepName,
             currentStep.exit_actions AS exitActions,
             nextStep.id                   AS nextStepId,
             nextStep.name                 AS nextStepName,
@@ -162,70 +232,67 @@ export class WorkflowEngine {
             nextStep.enter_actions        AS nextEnterActions,
             nextStep.timer_delay_minutes  AS timerDelayMinutes,
             nextStep.sub_workflow_id      AS subWorkflowId,
+            tr.trigger                    AS trigger,
             tr.condition                  AS condition,
             exec.entered_at               AS enteredAt
+          ORDER BY CASE WHEN tr.trigger = $triggerType THEN 0 ELSE 1 END
           LIMIT 1
-        `, { instanceId: input.instanceId, toStepName: input.toStepName }),
+        `, { instanceId: input.instanceId, toStepName: input.toStepName, triggerType: input.triggerType, tenantId: input.tenantId ?? null }),
       )
 
       if (stateResult.records.length === 0) {
-        return {
-          success: false,
-          error:   `Transizione verso "${input.toStepName}" non valida dallo step corrente`,
-        } as unknown as TransitionResult
+        return fail(`Transizione verso "${input.toStepName}" non valida dallo step corrente`)
       }
 
       const rec               = stateResult.records[0]
       const wi                = rec.get('wi').properties as Record<string, unknown>
+      const currentStepId     = rec.get('currentStepId')      as string
+      const currentStepName   = rec.get('currentStepName')    as string
       const nextStepId        = rec.get('nextStepId')         as string
       const nextStepName      = rec.get('nextStepName')       as string
       const nextStepType      = rec.get('nextStepType')       as string
-      const timerDelayMinutes = rec.get('timerDelayMinutes')  as number | null
+      const timerDelayMinutes = rec.get('timerDelayMinutes')  as unknown
       const subWorkflowId     = rec.get('subWorkflowId')      as string | null
+      const trigger           = rec.get('trigger')            as string | null
       const condition         = rec.get('condition')          as string | null
       const enteredAt         = rec.get('enteredAt')          as string | null
       const exitActionsRaw    = rec.get('exitActions')        as string | null
       const enterActionsRaw   = rec.get('nextEnterActions')   as string | null
 
-      // 2. Verifica condizione. Le guardie sulle transizioni MANUALI le valuta
-      // il motore (rootCause, has_linked_change). Quelle sulle transizioni
-      // AUTOMATICHE (es. all_assessments_complete della change) sono valutate dal
-      // livello che le innesca (evaluateAutoTransitions), che conosce il modello
-      // dei task e fail-safe salta le condizioni sconosciute: qui non le
-      // rivalutiamo, altrimenti verrebbero rifiutate come "sconosciute".
-      if (condition && input.triggerType !== 'automatic') {
-        if (condition === 'rootCause != null') {
-          if (!input.notes) {
-            return { success: false, error: 'Root cause obbligatoria per questa transizione' } as unknown as TransitionResult
-          }
-        } else if (condition === 'has_linked_change') {
-          // La guardia richiede che l'entità (es. Problem) abbia una change
-          // collegata prima di passare allo step "change requested".
-          // Conta SOLO le change risolutive (RESOLVED_BY) non eliminate: un
-          // arco qualunque o una change cancellata non soddisfano la guardia.
-          const linkRes = await session.executeRead((tx) =>
-            tx.run(`
-              MATCH (e {id: $entityId, tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {tenant_id: $tenantId})
-              WHERE coalesce(c.deleted, false) = false
-              RETURN count(c) AS n
-            `, { entityId: wi['entity_id'], tenantId: wi['tenant_id'] }),
-          )
-          const raw = linkRes.records[0]?.get('n') as { toNumber?: () => number } | number | null
-          const n = typeof (raw as { toNumber?: () => number })?.toNumber === 'function'
-            ? (raw as { toNumber(): number }).toNumber()
-            : Number(raw ?? 0)
-          if (n === 0) {
-            return { success: false, error: 'Collega prima una change, poi richiedi la change' } as unknown as TransitionResult
-          }
-        } else {
-          return { success: false, error: `Condizione di transizione sconosciuta: "${condition}"` } as unknown as TransitionResult
-        }
+      // 2. Trigger: un utente non può percorrere archi riservati al sistema.
+      if (input.triggerType === 'manual' && trigger !== 'manual') {
+        return fail(`Transizione verso "${input.toStepName}" riservata al sistema (trigger "${trigger ?? 'n/d'}"), non eseguibile manualmente`)
       }
 
-      // 3. Calcola durata step corrente
-      const durationMs = enteredAt
-        ? Date.now() - new Date(enteredAt).getTime()
-        : null
+      // 3. Condizione dell'arco, valutata per OGNI trigger tramite il registro.
+      if (condition) {
+        const reg = this.conditions.get(condition)
+        if (!reg) {
+          return fail(`Condizione di transizione sconosciuta: "${condition}" — registrala con registerCondition o correggi il workflow`)
+        }
+        const condCtx: ConditionContext = {
+          instanceId:   input.instanceId,
+          entityId:     wi['entity_id']   as string,
+          entityType:   wi['entity_type'] as string,
+          tenantId:     wi['tenant_id']   as string,
+          fromStepName: currentStepName,
+          toStepName:   nextStepName,
+          triggerType:  input.triggerType,
+          notes:        input.notes ?? context.notes,
+          entityData:   context.entityData,
+        }
+        const ok = await reg.evaluate(session, condCtx)
+        if (!ok) return fail(reg.failureMessage)
+      }
+
+      const entityType = wi['entity_type'] as string
+      const label = ENTITY_LABELS[entityType]
+      if (!label) {
+        return fail(`entity_type "${entityType}" non ammesso per il sync dello status (aggiungilo a ENTITY_LABELS)`)
+      }
+
+      // 4. Durata step corrente
+      const durationMs = enteredAt ? Date.now() - new Date(enteredAt).getTime() : null
 
       // Parse delle azioni PRIMA di qualsiasi write: una config corrotta deve
       // far fallire la transizione senza toccare il DB, non dopo (stato misto).
@@ -235,31 +302,30 @@ export class WorkflowEngine {
         exitActions  = JSON.parse(exitActionsRaw  ?? '[]') as WorkflowActionConfig[]
         enterActions = JSON.parse(enterActionsRaw ?? '[]') as WorkflowActionConfig[]
       } catch (e) {
-        return {
-          success: false,
-          error:   `Corrupt step actions JSON (step ${nextStepName}): ${e instanceof Error ? e.message : String(e)}`,
-        } as unknown as TransitionResult
+        return fail(`Corrupt step actions JSON (step ${nextStepName}): ${e instanceof Error ? e.message : String(e)}`)
       }
 
-      // 4+5. Transazione Neo4j UNICA e atomica: avanzamento istanza + storia +
-      // sync dello status sull'entità. Due write separate lasciavano, in caso
-      // di errore sulla seconda, la WI avanzata e l'entità no.
+      // 5. Transazione UNICA e atomica: chiusura execution + avanzamento
+      //    CURRENT_STEP + nuova execution + sync status entità.
+      //    Concorrenza: la PRIMA cosa che fa la statement è scrivere una
+      //    proprietà su wi → lock esclusivo sul nodo. Una seconda transizione
+      //    concorrente si blocca lì finché la prima non committa, e solo dopo
+      //    esegue la MATCH su CURRENT_STEP con lo step letto al punto 1: che
+      //    ormai è cambiato → 0 righe → fallisce senza scrivere. (Senza il
+      //    lock, DELETE su una relazione già cancellata da una tx committata
+      //    NON fallisce in Neo4j e si otterrebbero due CURRENT_STEP.)
       const execId = uuidv4()
       await session.executeWrite(async (tx) => {
-        await tx.run(`
-          // Chiudi StepExecution corrente (se presente).
-          // OPTIONAL: un'istanza senza execution aperta (dati importati/seed,
-          // storia potata) NON deve far fallire silenziosamente l'avanzamento —
-          // wi va sempre legato, l'avanzamento di CURRENT_STEP procede comunque.
+        const res = await tx.run(`
           MATCH (wi:WorkflowInstance {id: $instanceId})
+          SET wi.updated_at = $now
+          WITH wi
+          MATCH (wi)-[r:CURRENT_STEP]->(cur:WorkflowStep {id: $currentStepId})
           OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(exec:WorkflowStepExecution)
             WHERE exec.exited_at IS NULL
           SET exec.exited_at   = $now,
               exec.duration_ms = $durationMs
-
-          WITH wi
-          // Sposta CURRENT_STEP al prossimo step
-          MATCH (wi)-[r:CURRENT_STEP]->()
+          WITH DISTINCT wi, r
           DELETE r
           WITH wi
           MATCH (nextStep:WorkflowStep {id: $nextStepId})
@@ -267,9 +333,7 @@ export class WorkflowEngine {
           SET wi.current_step = $nextStepName,
               wi.updated_at   = $now,
               wi.status       = $wiStatus
-
           WITH wi
-          // Crea nuovo StepExecution
           CREATE (wi)-[:STEP_HISTORY]->(:WorkflowStepExecution {
             id:           $execId,
             tenant_id:    $tenantId,
@@ -282,8 +346,10 @@ export class WorkflowEngine {
             trigger_type: $triggerType,
             notes:        $notes
           })
+          RETURN wi.id AS id
         `, {
           instanceId:   input.instanceId,
+          currentStepId,
           now,
           durationMs,
           nextStepId,
@@ -295,11 +361,14 @@ export class WorkflowEngine {
           triggerType:  input.triggerType,
           notes:        input.notes ?? null,
         })
+        if (res.records.length === 0) {
+          throw new Error(`Transizione concorrente: lo step corrente di ${input.instanceId} non è più "${currentStepName}". Ricarica e riprova.`)
+        }
 
-        // Sync dello status sull'entità — stessa transazione dell'avanzamento WI
+        // Sync dello status sull'entità — stessa transazione, label esplicita.
         if (nextStepName === 'resolved') {
           await tx.run(`
-            MATCH (entity {id: $entityId, tenant_id: $tenantId})
+            MATCH (entity:${label} {id: $entityId, tenant_id: $tenantId})
             SET entity.status      = 'resolved',
                 entity.root_cause  = coalesce($rootCause, entity.root_cause),
                 entity.resolved_at = $now,
@@ -312,7 +381,7 @@ export class WorkflowEngine {
           })
         } else {
           await tx.run(`
-            MATCH (entity {id: $entityId, tenant_id: $tenantId})
+            MATCH (entity:${label} {id: $entityId, tenant_id: $tenantId})
             SET entity.status     = $status,
                 entity.updated_at = $now
           `, {
@@ -324,7 +393,7 @@ export class WorkflowEngine {
         }
       })
 
-      // 6. Esegui exit actions dello step corrente + enter actions del prossimo.
+      // 6. Exit actions dello step corrente + enter actions del prossimo.
       // La transizione è già persistita: un'azione fallita non è più annullabile,
       // ma NON deve sparire — finisce in actionErrors e i chiamanti la mostrano.
       const actionsRun:    string[] = []
@@ -335,7 +404,7 @@ export class WorkflowEngine {
         tenantId:     wi['tenant_id']     as string,
         definitionId: wi['definition_id'] as string,
         entityId:     wi['entity_id']     as string,
-        entityType:   wi['entity_type']   as string,
+        entityType,
         currentStep:  nextStepName,
         status:       nextStepType === 'end' ? 'completed' : 'active',
         createdAt:    wi['created_at']    as string,
@@ -353,19 +422,19 @@ export class WorkflowEngine {
         }
       }
 
-      // Schedule timer job when entering timer_wait step. Failing to schedule
-      // (or a timer step with no automatic exit) leaves the workflow stuck
-      // forever — that is an actionError, not a log line.
-      if (nextStepType === 'timer_wait' && (!timerDelayMinutes || timerDelayMinutes <= 0)) {
+      // Timer job entrando in uno step timer_wait. Non riuscire a schedularlo
+      // (o uno step timer senza uscita automatica) lascia il workflow fermo
+      // per sempre — è un actionError, non una riga di log.
+      const delayMinutes = toNumber(timerDelayMinutes)
+      if (nextStepType === 'timer_wait' && delayMinutes <= 0) {
         const msg = `timer_wait: step "${nextStepName}" has no valid timer_delay_minutes — the workflow will never leave this step`
         workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName, timerDelayMinutes }, `[workflow-engine] ${msg}`)
         actionErrors.push(msg)
-      } else if (nextStepType === 'timer_wait' && timerDelayMinutes && timerDelayMinutes > 0) {
+      } else if (nextStepType === 'timer_wait') {
         try {
           const { Queue } = await import('bullmq')
           const { getRedisOptions } = await import('@opengraphity/events')
           const queue = new Queue('notification-jobs', { connection: getRedisOptions() })
-          // Find the automatic transition from this step to know where to go
           const nextTransRes = await session.executeRead(tx =>
             tx.run(`
               MATCH (step:WorkflowStep {id: $stepId})-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(nextStep:WorkflowStep)
@@ -378,8 +447,8 @@ export class WorkflowEngine {
               instanceId: input.instanceId,
               toStep,
               tenantId:   wi['tenant_id'] as string,
-            }, { delay: timerDelayMinutes * 60 * 1000 })
-            workflowLogger.info({ instanceId: input.instanceId, toStep, delayMinutes: timerDelayMinutes }, '[workflow-engine] timer_wait job scheduled')
+            }, { delay: delayMinutes * 60 * 1000 })
+            workflowLogger.info({ instanceId: input.instanceId, toStep, delayMinutes }, '[workflow-engine] timer_wait job scheduled')
           } else {
             const msg = `timer_wait: step "${nextStepName}" has no automatic transition — the workflow will never leave this step`
             workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName }, `[workflow-engine] ${msg}`)
@@ -393,7 +462,6 @@ export class WorkflowEngine {
         }
       }
 
-      // Schedule sub_workflow creation when entering sub_workflow step
       if (nextStepType === 'sub_workflow') {
         const msg = `sub_workflow step "${nextStepName}" is not implemented — no sub-workflow was created${subWorkflowId ? ` (definitionId ${subWorkflowId})` : ' and no subWorkflowId is configured'}`
         workflowLogger.error({ instanceId: input.instanceId, subWorkflowId }, `[workflow-engine] ${msg}`)
@@ -420,18 +488,16 @@ export class WorkflowEngine {
       } as unknown as TransitionResult
 
     } catch (error: unknown) {
-      return {
-        success: false,
-        error:   error instanceof Error ? error.message : String(error),
-      } as unknown as TransitionResult
+      return fail(error instanceof Error ? error.message : String(error))
     }
   }
 
   /** Transizioni manuali disponibili dallo step corrente */
-  async getAvailableTransitions(session: Session, instanceId: string) {
+  async getAvailableTransitions(session: Session, instanceId: string, tenantId?: string) {
     const result = await session.executeRead((tx) =>
       tx.run(`
         MATCH (wi:WorkflowInstance {id: $instanceId})
+        WHERE $tenantId IS NULL OR wi.tenant_id = $tenantId
         MATCH (wi)-[:CURRENT_STEP]->(current:WorkflowStep)
         MATCH (current)-[tr:TRANSITIONS_TO {trigger: 'manual'}]->(next:WorkflowStep)
         RETURN
@@ -441,7 +507,7 @@ export class WorkflowEngine {
           tr.input_field   AS inputField,
           tr.condition     AS condition
         ORDER BY next.name
-      `, { instanceId }),
+      `, { instanceId, tenantId: tenantId ?? null }),
     )
 
     return result.records.map((r) => ({
@@ -454,13 +520,14 @@ export class WorkflowEngine {
   }
 
   /** Storia completa di un'istanza (step eseguiti) */
-  async getHistory(session: Session, instanceId: string) {
+  async getHistory(session: Session, instanceId: string, tenantId?: string) {
     const result = await session.executeRead((tx) =>
       tx.run(`
         MATCH (wi:WorkflowInstance {id: $instanceId})-[:STEP_HISTORY]->(exec:WorkflowStepExecution)
+        WHERE $tenantId IS NULL OR wi.tenant_id = $tenantId
         RETURN exec
         ORDER BY exec.entered_at ASC
-      `, { instanceId }),
+      `, { instanceId, tenantId: tenantId ?? null }),
     )
 
     return result.records.map((r) => r.get('exec').properties as Record<string, unknown>)

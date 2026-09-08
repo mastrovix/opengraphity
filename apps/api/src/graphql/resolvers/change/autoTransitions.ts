@@ -1,10 +1,13 @@
+import { GraphQLError } from 'graphql'
 import { workflowEngine } from '@opengraphity/workflow'
-import type { ActionContext } from '@opengraphity/workflow'
+import type { ActionContext, ConditionContext } from '@opengraphity/workflow'
 import type { Session as NeoSession } from 'neo4j-driver'
 import { runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
-import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../../../lib/taskStatus.js'
+// Side-effect: registra le condizioni ITSM (all_assessments_complete, …)
+// sull'engine. Il walker le valuta dal registro, come fa l'engine stesso.
+import '../../../workflow/conditions.js'
 
 type Session2 = Parameters<typeof runQuery>[0]
 export type AfterEnterStep = (session: Session2, changeId: string, tenantId: string, stepName: string) => Promise<void>
@@ -12,56 +15,6 @@ export type AfterEnterStep = (session: Session2, changeId: string, tenantId: str
 // Strict driver Session: evaluateAutoTransitions apre transazioni proprie
 // (workflowEngine.transition) e non può girare dentro una tx esterna.
 type Session = NeoSession
-
-// Mapping condition → async evaluator returning true when condition holds.
-// Every condition inspects DB state for the given Change.
-const CONDITIONS: Record<string, (session: Session, changeId: string, tenantId: string) => Promise<boolean>> = {
-  // All assessments completed = for every AFFECTS_CI on this change,
-  // the Functional, Technical and Planning tasks are all in status 'completed'.
-  all_assessments_complete: async (session, changeId, tenantId) => {
-    const row = await runQueryOne<{ pending: number }>(session, `
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
-      WITH c, count(ci) AS ciCount
-      OPTIONAL MATCH (c)-[:HAS_ASSESSMENT]->(at:AssessmentTask)
-        WHERE at.status <> $completedStatus
-      OPTIONAL MATCH (c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask)
-        WHERE dp.status <> $completedStatus
-      WITH ciCount, count(DISTINCT at) + count(DISTINCT dp) AS pending
-      RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
-    `, { changeId, tenantId, completedStatus: TASK_STATUS.COMPLETED })
-    return (row?.pending ?? 1) === 0
-  },
-
-  // All deployments completed = for every AFFECTS_CI, validation passed
-  // AND deployment completed.
-  all_deployments_complete: async (session, changeId, tenantId) => {
-    const row = await runQueryOne<{ pending: number }>(session, `
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
-      WITH c, count(ci) AS ciCount
-      OPTIONAL MATCH (c)-[:HAS_VALIDATION]->(vt:ValidationTest)
-        WHERE vt.status <> $completedStatus OR vt.result <> $passResult
-      OPTIONAL MATCH (c)-[:HAS_DEPLOYMENT]->(dt:DeploymentTask)
-        WHERE dt.status <> $completedStatus
-      WITH ciCount, count(DISTINCT vt) + count(DISTINCT dt) AS pending
-      RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
-    `, { changeId, tenantId, completedStatus: TASK_STATUS.COMPLETED, passResult: VALIDATION_RESULT.PASS })
-    return (row?.pending ?? 1) === 0
-  },
-
-  // All reviews confirmed = for every AFFECTS_CI, review task completed
-  // with the "confirmed" review result.
-  all_reviews_confirmed: async (session, changeId, tenantId) => {
-    const row = await runQueryOne<{ pending: number }>(session, `
-      MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
-      WITH c, count(ci) AS ciCount
-      OPTIONAL MATCH (c)-[:HAS_REVIEW]->(rv:ReviewTask)
-        WHERE rv.status <> $completedStatus OR rv.result <> $confirmedResult
-      WITH ciCount, count(DISTINCT rv) AS pending
-      RETURN CASE WHEN ciCount = 0 THEN 1 ELSE pending END AS pending
-    `, { changeId, tenantId, completedStatus: TASK_STATUS.COMPLETED, confirmedResult: REVIEW_RESULT.CONFIRMED })
-    return (row?.pending ?? 1) === 0
-  },
-}
 
 /**
  * After a domain mutation that may satisfy an automatic transition,
@@ -193,14 +146,18 @@ async function walkAutoTransitions(
   ctx: GraphQLContext,
   afterEnterStep?: AfterEnterStep,
 ): Promise<void> {
-  // Max 10 hops to defend against misconfigured cycles.
-  for (let i = 0; i < 10; i++) {
+  // Ogni step visitato una sola volta: un ciclo di archi automatici (es. due
+  // step che si rimandano senza condizione) è un workflow mal configurato e
+  // deve emergere, non consumare 10 hop scrivendo 10 execution.
+  const visited = new Set<string>()
+  for (;;) {
     const wi = await runQueryOne<{ instanceId: string; step: string; tenantId: string; entityProps: Props }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       RETURN wi.id AS instanceId, wi.current_step AS step, wi.tenant_id AS tenantId,
              properties(c) AS entityProps
     `, { changeId, tenantId: ctx.tenantId })
     if (!wi) return
+    visited.add(wi.step)
 
     const transitions = await runQuery<{ toStep: string; condition: string | null }>(session, `
       MATCH (wi:WorkflowInstance {id: $instanceId})-[:CURRENT_STEP]->(current:WorkflowStep)
@@ -211,16 +168,26 @@ async function walkAutoTransitions(
 
     let fired = false
     for (const tr of transitions) {
-      const evaluator = tr.condition ? CONDITIONS[tr.condition] : null
-      if (tr.condition && !evaluator) {
-        // Misconfigured workflow: unknown condition name. Never crash the
-        // mutation — skip the transition and leave a trace for ops.
-        logger.error({ changeId, condition: tr.condition, toStep: tr.toStep },
-          '[auto-transition] condition sconosciuta — transizione saltata')
-        continue
+      let ok = tr.condition === null
+      if (tr.condition) {
+        const condCtx: ConditionContext = {
+          instanceId: wi.instanceId, entityId: changeId, entityType: 'change', tenantId: ctx.tenantId,
+          fromStepName: wi.step, toStepName: tr.toStep, triggerType: 'automatic', entityData: wi.entityProps,
+        }
+        try {
+          ok = await workflowEngine.evaluateCondition(session, tr.condition, condCtx)
+        } catch (e) {
+          // Condizione non registrata = workflow mal configurato: fail-loud
+          // (prima veniva saltata in silenzio e la change restava ferma).
+          logger.error({ changeId, condition: tr.condition, toStep: tr.toStep, err: e }, '[auto-transition] condizione non valutabile')
+          throw new GraphQLError(e instanceof Error ? e.message : String(e), { extensions: { code: 'CONFLICT' } })
+        }
       }
-      const ok = evaluator ? await evaluator(session, changeId, ctx.tenantId) : (tr.condition === null)
       if (!ok) continue
+      // Sto per rientrare in uno step già attraversato in questo walk: ciclo.
+      if (visited.has(tr.toStep)) {
+        throw new GraphQLError(`Workflow change mal configurato: ciclo di transizioni automatiche ${wi.step} → ${tr.toStep} (step già attraversato)`, { extensions: { code: 'CONFLICT' } })
+      }
 
       const actionCtx: ActionContext = {
         userId:     ctx.userId ?? 'system',

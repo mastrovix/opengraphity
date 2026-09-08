@@ -185,8 +185,13 @@ export function ProblemDetailPage() {
     onError: (err) => toast.error(err.message),
   })
 
-  const [execTransition, { loading: transitioning }] = useMutation(EXECUTE_PROBLEM_TRANSITION, {
-    onCompleted: () => { toast.success('Transizione completata'); setIsTransitionDialogOpen(false); setPendingTransition(null); setTransitionNotes(''); void refetch() },
+  const [execTransition, { loading: transitioning }] = useMutation<{ executeProblemTransition?: { actionErrors?: string[] | null } }>(EXECUTE_PROBLEM_TRANSITION, {
+    onCompleted: (data) => {
+      const errs = data?.executeProblemTransition?.actionErrors
+      if (errs?.length) toast.warning(`Transizione eseguita, ma ${errs.length} azion${errs.length === 1 ? 'e' : 'i'} non riuscit${errs.length === 1 ? 'a' : 'e'}: ${errs.join(' · ')}`, { duration: 10000 })
+      else toast.success('Transizione completata')
+      setIsTransitionDialogOpen(false); setPendingTransition(null); setTransitionNotes(''); void refetch()
+    },
     onError: (err) => toast.error(err.message),
   })
 

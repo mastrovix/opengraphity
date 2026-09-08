@@ -87,6 +87,7 @@ export const EXECUTE_CHANGE_TRANSITION = gql`
   mutation ExecuteChangeTransition($changeId: ID!, $toStep: String!, $notes: String) {
     executeChangeTransition(changeId: $changeId, toStep: $toStep, notes: $notes) {
       id
+      actionErrors
       workflowInstance { id currentStep status }
       availableTransitions { toStep label requiresInput inputField condition }
     }

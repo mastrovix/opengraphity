@@ -33,6 +33,9 @@ export function problemSDL(): string {
     availableTransitions: [WorkflowTransition!]!
     workflowHistory: [WorkflowStepExecution!]!
     comments: [ProblemComment!]!
+    # Valorizzato SOLO dal risultato di executeProblemTransition: azioni di step
+    # fallite DOPO che la transizione è stata persistita.
+    actionErrors: [String!]
   }
 
   type ProblemComment {

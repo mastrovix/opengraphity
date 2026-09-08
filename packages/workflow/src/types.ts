@@ -1,4 +1,31 @@
-export type WorkflowStepType = 'start' | 'standard' | 'end'
+import type { Session } from 'neo4j-driver'
+
+// Unica sorgente per i tipi di step: engine (timer_wait, sub_workflow), API e
+// web (parallel_fork/join) usavano liste diverse dello stesso enum.
+export type WorkflowStepType =
+  | 'start' | 'standard' | 'end'
+  | 'timer_wait' | 'sub_workflow'
+  | 'parallel_fork' | 'parallel_join'
+
+// ── Condizioni di transizione ────────────────────────────────────────────────
+// L'engine non conosce il dominio: le condizioni (has_linked_change,
+// all_assessments_complete, …) sono registrate dal chiamante con
+// workflowEngine.registerCondition e valutate per OGNI trigger, manuale o
+// automatico. Una condizione non registrata rende la transizione non valida.
+
+export interface ConditionContext {
+  instanceId:   string
+  entityId:     string
+  entityType:   string
+  tenantId:     string
+  fromStepName: string
+  toStepName:   string
+  triggerType:  WorkflowTrigger
+  notes?:       string
+  entityData:   Record<string, unknown>
+}
+
+export type ConditionEvaluator = (session: Session, ctx: ConditionContext) => Promise<boolean>
 
 export type WorkflowTrigger =
   | 'manual'       // richiede azione utente
@@ -161,8 +188,15 @@ export interface TransitionInput {
   instanceId:  string
   toStepName:  string
   triggeredBy: string
+  /**
+   * Chi innesca: 'manual' = un utente, e può seguire SOLO archi manuali;
+   * i trigger di sistema (automatic/timer/sla_breach) possono seguire
+   * qualunque arco, perché il codice che li usa nomina lo step esplicitamente.
+   */
   triggerType: WorkflowTrigger
   notes?:      string
+  /** Se presente, l'istanza deve appartenere a questo tenant (difesa in profondità). */
+  tenantId?:   string
 }
 
 export interface TransitionResult {

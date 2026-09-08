@@ -17,10 +17,21 @@ import type { GraphQLContext } from '../../../../context.js'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// L'engine è mockato, ma le condizioni ITSM sono quelle vere (workflow/
+// conditions.ts): evaluateCondition delega al registro reale così i test
+// esercitano le query di condizione.
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
-    createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
-    transition:     vi.fn().mockResolvedValue({ success: true }),
+    createInstance:    vi.fn().mockResolvedValue({ id: 'wi-1' }),
+    transition:        vi.fn().mockResolvedValue({ success: true }),
+    registerCondition: vi.fn(),
+    hasCondition:      vi.fn(),
+    evaluateCondition: vi.fn(async (session: unknown, name: string, ctx: unknown) => {
+      const { CHANGE_CONDITIONS } = await import('../../../../workflow/conditions.js')
+      const c = CHANGE_CONDITIONS[name]
+      if (!c) throw new Error(`Condizione di transizione sconosciuta: "${name}"`)
+      return c.evaluate(session as never, ctx as never)
+    }),
   },
 }))
 
@@ -154,16 +165,15 @@ describe('evaluateAutoTransitions', () => {
     })
   })
 
-  it('condition sconosciuta → logga errore, non fa transition e non crasha', async () => {
+  it('condition sconosciuta → fail-loud (CONFLICT), nessuna transition', async () => {
     mockDb({ transitions: [{ toStep: 'somewhere', condition: 'does_not_exist' }], pending: 0 })
 
-    await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).resolves.toBeUndefined()
+    await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).rejects.toThrow(/sconosciuta/)
 
     expect(workflowEngine.transition).not.toHaveBeenCalled()
     expect(logger.error).toHaveBeenCalledOnce()
-    const [meta, msg] = vi.mocked(logger.error).mock.calls[0]! as [Record<string, unknown>, string]
+    const [meta] = vi.mocked(logger.error).mock.calls[0]! as [Record<string, unknown>, string]
     expect(meta['condition']).toBe('does_not_exist')
-    expect(msg).toContain('condition sconosciuta')
   })
 
   it('transizione automatica senza condition → fired incondizionatamente', async () => {

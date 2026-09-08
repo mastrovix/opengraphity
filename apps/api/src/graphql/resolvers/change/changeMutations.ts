@@ -363,6 +363,7 @@ export async function executeChangeTransition(
       triggeredBy: ctx.userId ?? 'system',
       triggerType: 'manual',
       notes:       args.notes,
+      tenantId:    ctx.tenantId,
     }, actionCtx)
     if (!result.success) throw new GraphQLError(result.error ?? 'Transizione fallita', { extensions: { code: 'CONFLICT' } })
     if (result.actionErrors?.length) {
@@ -376,7 +377,10 @@ export async function executeChangeTransition(
 
     await evaluateAutoTransitions(session, args.changeId, ctx, afterEnterStep)
 
-    return getChange(null, { id: args.changeId }, ctx)
+    // Le azioni di step fallite dopo il commit (SLA, eventi, timer) non vanno
+    // perse: esposte al client come Change.actionErrors (solo su questa mutation).
+    const changed = await getChange(null, { id: args.changeId }, ctx)
+    return changed ? { ...changed, actionErrors: result.actionErrors?.length ? result.actionErrors : null } : null
   }, true)
 }
 

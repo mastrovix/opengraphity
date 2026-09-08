@@ -1,7 +1,5 @@
-import { fileURLToPath } from 'node:url'
-import { v4 as uuidv4 } from 'uuid'
-import { getSession } from '@opengraphity/neo4j'
 import type { WorkflowDefinition } from './types.js'
+import { seedWorkflowDefinition, isMainModule } from './seed-common.js'
 
 export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'Incident Management',
@@ -230,85 +228,18 @@ export const INCIDENT_SECURITY_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenant
 }
 
 // ── Seed functions ───────────────────────────────────────────────────────────
-
-async function seedWorkflowDefinition(
-  tenantId: string,
-  wfDef: Omit<WorkflowDefinition, 'id' | 'tenantId'> & { category?: string },
-): Promise<string> {
-  const session = getSession(undefined, 'WRITE')
-  const defId   = uuidv4()
-  const now     = new Date().toISOString()
-
-  try {
-    await session.executeWrite(async (tx) => {
-      await tx.run(`
-        CREATE (wd:WorkflowDefinition {
-          id:          $id,
-          tenant_id:   $tenantId,
-          name:        $name,
-          entity_type: $entityType,
-          category:    $category,
-          version:     $version,
-          active:      $active,
-          created_at:  $now,
-          updated_at:  $now
-        })
-      `, {
-        id: defId, tenantId,
-        name: wfDef.name, entityType: wfDef.entityType,
-        category: wfDef.category ?? null,
-        version: wfDef.version, active: wfDef.active, now,
-      })
-
-      for (const step of wfDef.steps) {
-        await tx.run(`
-          MATCH (wd:WorkflowDefinition {id: $defId})
-          CREATE (s:WorkflowStep {
-            id: $id, tenant_id: $tenantId, definition_id: $defId,
-            name: $name, label: $label, type: $type,
-            enter_actions: $enterActions, exit_actions: $exitActions
-          })
-          CREATE (wd)-[:HAS_STEP]->(s)
-        `, {
-          defId, tenantId,
-          id: `${tenantId}-${step.id}`, name: step.name, label: step.label, type: step.type,
-          enterActions: JSON.stringify(step.enterActions), exitActions: JSON.stringify(step.exitActions),
-        })
-      }
-
-      for (const tr of wfDef.transitions) {
-        await tx.run(`
-          MATCH (from:WorkflowStep {name: $fromName, definition_id: $defId})
-          MATCH (to:WorkflowStep   {name: $toName,   definition_id: $defId})
-          CREATE (from)-[:TRANSITIONS_TO {
-            id: $id, trigger: $trigger, label: $label, condition: $condition,
-            requires_input: $requiresInput, input_field: $inputField
-          }]->(to)
-        `, {
-          defId, fromName: tr.fromStepName, toName: tr.toStepName,
-          id: `${tenantId}-${tr.id}`, trigger: tr.trigger, label: tr.label,
-          condition: tr.condition, requiresInput: tr.requiresInput, inputField: tr.inputField,
-        })
-      }
-    })
-
-    console.log(`[workflow] Seeded "${wfDef.name}" for tenant "${tenantId}": definitionId=${defId}`)
-    return defId
-  } finally {
-    await session.close()
-  }
-}
+// Idempotenti (vedi seed-common.ts): rieseguibili senza duplicare definizioni
+// né orfanare le istanze in corso.
 
 export async function seedWorkflowForTenant(tenantId: string): Promise<string> {
-  const defId = await seedWorkflowDefinition(tenantId, INCIDENT_WORKFLOW_BASE)
+  const base = await seedWorkflowDefinition(tenantId, INCIDENT_WORKFLOW_BASE)
   // Also seed the security variant
   await seedWorkflowDefinition(tenantId, INCIDENT_SECURITY_WORKFLOW)
-  return defId
+  return base.definitionId
 }
 
 // Eseguibile standalone: pnpm --filter @opengraphity/workflow run seed
-const isMain = process.argv[1] === fileURLToPath(import.meta.url)
-if (isMain) {
+if (isMainModule(import.meta.url)) {
   seedWorkflowForTenant('c-one')
     .then(() => process.exit(0))
     .catch((e: unknown) => { console.error(e); process.exit(1) })

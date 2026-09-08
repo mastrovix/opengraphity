@@ -77,7 +77,7 @@ export const ASSIGN_PROBLEM_TO_USER = gql`
 export const EXECUTE_PROBLEM_TRANSITION = gql`
   mutation ExecuteProblemTransition($problemId: ID!, $toStep: String!, $notes: String) {
     executeProblemTransition(problemId: $problemId, toStep: $toStep, notes: $notes) {
-      id status workflowInstance { id currentStep status }
+      id status actionErrors workflowInstance { id currentStep status }
       availableTransitions { toStep label requiresInput inputField condition }
     }
   }
