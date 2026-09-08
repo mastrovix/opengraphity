@@ -36,6 +36,7 @@ import { monitoringResolvers } from './monitoring.js'
 import { approvalResolvers } from './approval.js'
 import { attachmentResolvers } from './attachments.js'
 import { globalSearchResolvers } from './globalSearch.js'
+import { entityFilterFieldsResolvers } from './entityFilterFields.js'
 import { commentResolvers } from './comments.js'
 import { knowledgeBaseResolvers } from './knowledgeBase.js'
 import { reportExportResolvers } from './reportExport.js'
@@ -289,6 +290,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...approvalResolvers.Query,
       ...attachmentResolvers.Query,
       ...globalSearchResolvers.Query,
+      ...entityFilterFieldsResolvers.Query,
       ...commentResolvers.Query,
       ...knowledgeBaseResolvers.Query,
       ...portalResolvers.Query,

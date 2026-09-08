@@ -2,17 +2,16 @@
  * Campi di un'entità, in due forme:
  *
  *  - `useEntityFields(typeName)`: FieldConfig[] per FilterBuilder, da
- *    introspezione GraphQL (`__type`) — enum e date dallo schema.
+ *    query `entityFilterFields` (scalari/enum dallo schema, senza introspezione).
  *  - `useEntityFieldMetas(entityType)`: FieldMeta[] dal METAMODELLO
  *    (GET_ITIL_TYPES / GET_CI_TYPES) per gli editor di automazione. Prima
  *    esisteva in tre varianti quasi identiche (ConditionRowEditor,
  *    ActionParamsEditor, AutomationPreview).
  */
 import { useMemo } from 'react'
-import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import type { FieldConfig } from '@/components/FilterBuilder'
-import { GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
+import { GET_ITIL_TYPES, GET_CI_TYPES, GET_ENTITY_FILTER_FIELDS } from '@/graphql/queries'
 import { isITILEntity } from '@/lib/automationOperators'
 
 // ── Metamodel field metas (automazione) ──────────────────────────────────────
@@ -73,44 +72,15 @@ export function useEntityFieldLookup(entityType: string): Map<string, FieldMeta>
   return useMemo(() => new Map(fields.map(f => [f.name, f])), [fields])
 }
 
-// ── Introspection (FilterBuilder) ────────────────────────────────────────────
+// ── Campi filtrabili dal server (FilterBuilder) ──────────────────────────────
+// Prima si usava l'introspezione `__type`, che in produzione è disattivata:
+// ora l'API espone `entityFilterFields` (solo scalari ed enum, già "unwrappati").
 
-// ── Introspection query ───────────────────────────────────────────────────────
-
-const INTROSPECT_TYPE = gql`
-  query IntrospectType($name: String!) {
-    __type(name: $name) {
-      fields {
-        name
-        type {
-          kind name
-          enumValues { name }
-          ofType {
-            kind name
-            enumValues { name }
-            ofType {
-              kind name
-              enumValues { name }
-            }
-          }
-        }
-      }
-    }
-  }
-`
-
-// ── Internal types ────────────────────────────────────────────────────────────
-
-interface TypeRef {
-  kind:       string
-  name:       string | null
-  enumValues: { name: string }[] | null
-  ofType:     TypeRef | null
-}
-
-interface IntrospectionField {
-  name: string
-  type: TypeRef
+interface EntityFilterField {
+  name:       string
+  kind:       'SCALAR' | 'ENUM'
+  scalarName: string | null
+  enumValues: string[] | null
 }
 
 // ── Fields to always skip ─────────────────────────────────────────────────────
@@ -136,35 +106,15 @@ function enumLabel(v: string): string {
   return v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-// ── Type resolver: unwrap NON_NULL, detect SCALAR/ENUM, skip LIST/OBJECT ──────
-
-type Resolved =
-  | { kind: 'scalar'; name: string }
-  | { kind: 'enum';   values: string[] }
-  | null
-
-function resolveType(t: TypeRef): Resolved {
-  let cur = t
-  if (cur.kind === 'NON_NULL') {
-    if (!cur.ofType) return null
-    cur = cur.ofType
-  }
-  // Any LIST wrapper → skip (list fields are relations or arrays, not filterable scalars)
-  if (cur.kind === 'LIST' || cur.kind === 'NON_NULL') return null
-  if (cur.kind === 'SCALAR') return { kind: 'scalar', name: cur.name ?? '' }
-  if (cur.kind === 'ENUM')   return { kind: 'enum',   values: (cur.enumValues ?? []).map((e) => e.name) }
-  return null  // OBJECT, INTERFACE, UNION → skip (relations)
-}
-
 // ── Main hook ─────────────────────────────────────────────────────────────────
 
 export function useEntityFields(typeName: string): { fields: FieldConfig[]; error: Error | null } {
-  const { data, error } = useQuery<{ __type: { fields: IntrospectionField[] } | null }>(
-    INTROSPECT_TYPE,
-    { variables: { name: typeName }, fetchPolicy: 'cache-first' },
+  const { data, error } = useQuery<{ entityFilterFields: EntityFilterField[] }>(
+    GET_ENTITY_FILTER_FIELDS,
+    { variables: { typeName }, fetchPolicy: 'cache-first' },
   )
 
-  const rawFields = data?.__type?.fields
+  const rawFields = data?.entityFilterFields
   if (!rawFields) return { fields: [], error: error ?? null }
 
   const result: FieldConfig[] = []
@@ -172,24 +122,21 @@ export function useEntityFields(typeName: string): { fields: FieldConfig[]; erro
   for (const f of rawFields) {
     if (SKIP_FIELDS.has(f.name)) continue
 
-    const resolved = resolveType(f.type)
-    if (!resolved) continue  // object / list → skip
-
     const label = camelToLabel(f.name)
 
     // GraphQL enum — values and labels come directly from the schema
-    if (resolved.kind === 'enum') {
+    if (f.kind === 'ENUM') {
       result.push({
         key:     f.name,
         label,
         type:    'enum',
-        options: resolved.values.map((v) => ({ value: v, label: enumLabel(v) })),
+        options: (f.enumValues ?? []).map((v) => ({ value: v, label: enumLabel(v) })),
       })
       continue
     }
 
     // Scalar
-    const scalarName = resolved.name
+    const scalarName = f.scalarName ?? ''
 
     if (scalarName === 'Boolean' || scalarName === 'ID' || scalarName === 'Int' || scalarName === 'Float') continue
 

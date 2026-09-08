@@ -142,6 +142,8 @@ export function buildBaseSDL(): string {
 
     # Global search (topbar search box) — \`limit\` = max results per category
     globalSearch(query: String!, limit: Int): GlobalSearchResults!
+    """Campi filtrabili (scalari ed enum) di un tipo dello schema — sostituisce l'introspezione lato client."""
+    entityFilterFields(typeName: String!): [EntityFilterField!]!
 
     # Comments
     comments(entityType: String!, entityId: String!, includeInternal: Boolean): [EntityComment!]!
@@ -451,6 +453,13 @@ export function buildBaseSDL(): string {
   ${approvalSDL()}
   ${attachmentsSDL()}
   ${commentsSDL()}
+
+  type EntityFilterField {
+    name:       String!
+    kind:       String!
+    scalarName: String
+    enumValues: [String!]
+  }
 
   type GlobalSearchResults {
     cis:        [CIBase!]!
