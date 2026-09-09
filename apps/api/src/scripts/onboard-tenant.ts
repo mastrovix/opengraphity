@@ -38,6 +38,8 @@ import { getSession } from '@opengraphity/neo4j'
 import type { Tenant } from '@opengraphity/types'
 import { seedNotificationRules } from '../lib/seedNotificationRules.js'
 import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
+import { DEFAULT_EVENT_POLICY_JSON } from '../lib/eventPolicy.js'
+import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE, PLAN_SETTINGS } from '../lib/tenantPlans.js'
 import {
   seedKBWorkflowForTenant,
   seedProblemWorkflowForTenant,
@@ -83,8 +85,8 @@ function parseCliArgs(argv: readonly string[]): Args {
       'admin-role':       { type: 'string', default: 'admin' },
       'pi-ip':            { type: 'string' },
       'name':             { type: 'string' },
-      'plan':             { type: 'string', default: 'starter' },
-      'timezone':         { type: 'string', default: 'Europe/Rome' },
+      'plan':             { type: 'string', default: DEFAULT_TENANT_PLAN },
+      'timezone':         { type: 'string', default: DEFAULT_TENANT_TIMEZONE },
     },
   })
 
@@ -125,14 +127,8 @@ function parseCliArgs(argv: readonly string[]): Args {
   }
 }
 
-// Per-plan defaults for TenantSettings (packages/types). Stored flattened on
-// the node (Neo4j has no nested maps): sla_enabled, scripting_enabled,
-// max_users, max_ci.
-const PLAN_SETTINGS: Record<Tenant['plan'], Tenant['settings']> = {
-  starter:    { sla_enabled: true, scripting_enabled: false, max_users: 25,   max_ci: 500 },
-  pro:        { sla_enabled: true, scripting_enabled: true,  max_users: 250,  max_ci: 10_000 },
-  enterprise: { sla_enabled: true, scripting_enabled: true,  max_users: 5000, max_ci: 200_000 },
-}
+// Per-plan defaults for TenantSettings: lib/tenantPlans.ts (PLAN_SETTINGS),
+// shared with the migration that creates missing :Tenant nodes.
 
 // ── Step 1: Realm ─────────────────────────────────────────────────────────────
 
@@ -285,7 +281,8 @@ async function provisionNeo4j(a: Args): Promise<void> {
     // 6.0 Tenant node — the anchor every per-tenant background job enumerates
     // (`MATCH (t:Tenant) RETURN t.id`): without it the anomaly scanner and the
     // email digest never run for this tenant. id = slug (tenant_id everywhere),
-    // slug kept as an explicit property for scripts matching on it.
+    // slug kept as an explicit property for scripts matching on it. Same
+    // property set as migrations/20260909_1010_event_management_fixup.ts.
     const settings = PLAN_SETTINGS[a.plan]
     const tenantResult = await session.executeWrite((tx) =>
       tx.run(
@@ -299,12 +296,14 @@ async function provisionNeo4j(a: Args): Promise<void> {
            t.scripting_enabled = $scriptingEnabled,
            t.max_users         = $maxUsers,
            t.max_ci            = $maxCi,
+           t.event_policy      = $eventPolicy,
            t.created_at        = $now
          RETURN (t.created_at = $now) AS wasCreated, t.plan AS plan, t.timezone AS timezone`,
         {
           id: slug, slug, name: a.tenantName, plan: a.plan, timezone: a.timezone, now,
           slaEnabled: settings.sla_enabled, scriptingEnabled: settings.scripting_enabled,
           maxUsers: settings.max_users, maxCi: settings.max_ci,
+          eventPolicy: DEFAULT_EVENT_POLICY_JSON,   // Event Management: stessa policy iniziale della migrazione 20260909_1010_event_management_fixup
         },
       ),
     )

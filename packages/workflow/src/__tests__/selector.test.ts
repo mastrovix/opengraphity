@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import type { Session } from 'neo4j-driver'
 
 process.env['LOG_LEVEL'] = 'silent'

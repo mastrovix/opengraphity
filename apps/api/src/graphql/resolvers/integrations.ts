@@ -1,10 +1,49 @@
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { CONNECTOR_KINDS, parseConfigJSON, sourceConfigOf } from '../../services/eventService.js'
 
 /** Prima riga di una query scopata per tenant: assente = risorsa inesistente o di un altro tenant. */
 function firstRow<T>(rows: T[], what: string): T {
   const row = rows[0]
   if (!row) throw new NotFoundError(what)
   return row
+}
+
+/**
+ * Event Management: `connectorKind` è obbligatorio (generic | alertmanager |
+ * grafana | zabbix | datadog | dynatrace) per entityType = event e vietato per gli altri
+ * tipi. Restituisce il valore da persistire in `connector_kind` (null per i
+ * non-event).
+ */
+export function validateConnectorKind(entityType: unknown, connectorKind: unknown): string | null {
+  if (entityType === 'event') {
+    if (typeof connectorKind !== 'string' || !(CONNECTOR_KINDS as readonly string[]).includes(connectorKind)) {
+      throw new ValidationError(`connectorKind is required for entityType "event" and must be one of: ${CONNECTOR_KINDS.join(', ')}. Got: ${JSON.stringify(connectorKind ?? null)}`)
+    }
+    return connectorKind
+  }
+  if (connectorKind != null) {
+    throw new ValidationError(`connectorKind is only allowed for entityType "event" (got entityType ${JSON.stringify(entityType)})`)
+  }
+  return null
+}
+
+/**
+ * La configurazione di mappatura si valida in scrittura, non al primo
+ * payload: fieldMapping / defaultValues / valueMapping devono essere JSON
+ * oggetto e, per entityType = event, coerenti col connettore (chiavi di
+ * field_mapping ammesse, vocabolario di value_mapping). `valueMapping` ha
+ * senso solo per il connettore generic.
+ */
+export function validateInboundConfig(final: { entityType: unknown; connectorKind: string | null; fieldMapping: unknown; defaultValues: unknown; valueMapping: unknown }): void {
+  parseConfigJSON<Record<string, unknown>>(final.fieldMapping, 'fieldMapping')
+  parseConfigJSON<Record<string, unknown>>(final.defaultValues, 'defaultValues')
+  const valueMapping = parseConfigJSON<Record<string, unknown>>(final.valueMapping, 'valueMapping')
+  if (Object.keys(valueMapping).length > 0 && final.connectorKind !== 'generic') {
+    throw new ValidationError(`valueMapping is only supported by the generic connector (connectorKind ${JSON.stringify(final.connectorKind)})`)
+  }
+  if (final.entityType === 'event') {
+    sourceConfigOf({ connector_kind: final.connectorKind, field_mapping: final.fieldMapping, default_values: final.defaultValues, value_mapping: final.valueMapping })
+  }
 }
 import { requireRole } from '../../lib/requireRole.js'
 import { randomBytes, createHash, createHmac } from 'crypto'
@@ -23,12 +62,15 @@ function genApiKey(): string { return `og_live_${randomBytes(32).toString('hex')
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
 
-function mapInbound(p: Props) {
+export function mapInbound(p: Props) {
   return {
     id: p['id'], name: p['name'], entityType: p['entity_type'],
+    connectorKind: p['connector_kind'] ?? null,
     fieldMapping: p['field_mapping'], defaultValues: p['default_values'] ?? null,
+    valueMapping: p['value_mapping'] ?? null,
     transformScript: p['transform_script'] ?? null, enabled: p['enabled'] ?? false,
     lastReceivedAt: p['last_received_at'] ?? null, receiveCount: Number(p['receive_count'] ?? 0),
+    lastError: p['last_error'] ?? null, lastErrorAt: p['last_error_at'] ?? null, errorCount: Number(p['error_count'] ?? 0),
     createdAt: p['created_at'],
   }
 }
@@ -73,16 +115,18 @@ async function inboundWebhooks(_: unknown, args: { filters?: string; sortField?:
 
 async function createInboundWebhook(_: unknown, args: { input: Props }, ctx: GraphQLContext) {
   const { input } = args
+  const connectorKind = validateConnectorKind(input['entityType'], input['connectorKind'])
+  validateInboundConfig({ entityType: input['entityType'], connectorKind, fieldMapping: input['fieldMapping'], defaultValues: input['defaultValues'] ?? null, valueMapping: input['valueMapping'] ?? null })
   const token = genToken()
   const id = uuidv4()
   const now = new Date().toISOString()
   return withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `
-      CREATE (w:InboundWebhook {id: $id, tenant_id: $t, name: $name, entity_type: $entityType,
-        secret: $secret, field_mapping: $fieldMapping, default_values: $defaultValues,
-        transform_script: $transformScript, enabled: true, receive_count: 0, created_at: $now, updated_at: $now})
+      CREATE (w:InboundWebhook {id: $id, tenant_id: $t, name: $name, entity_type: $entityType, connector_kind: $connectorKind,
+        secret: $secret, field_mapping: $fieldMapping, default_values: $defaultValues, value_mapping: $valueMapping,
+        transform_script: $transformScript, enabled: true, receive_count: 0, error_count: 0, created_at: $now, updated_at: $now})
       RETURN properties(w) AS props
-    `, { id, t: ctx.tenantId, name: input['name'], entityType: input['entityType'], secret: hash(token), fieldMapping: input['fieldMapping'], defaultValues: input['defaultValues'] ?? null, transformScript: input['transformScript'] ?? null, now })
+    `, { id, t: ctx.tenantId, name: input['name'], entityType: input['entityType'], connectorKind, secret: hash(token), fieldMapping: input['fieldMapping'], defaultValues: input['defaultValues'] ?? null, valueMapping: input['valueMapping'] ?? null, transformScript: input['transformScript'] ?? null, now })
     return { ...mapInbound(firstRow(rows, 'InboundWebhook').props), token }
   }, true)
 }
@@ -91,9 +135,24 @@ async function updateInboundWebhook(_: unknown, args: { id: string; input: Props
   const { input } = args
   const sets: string[] = ['w.updated_at = $now']
   const params: Props = { id: args.id, t: ctx.tenantId, now: new Date().toISOString() }
-  const map: Record<string, string> = { name: 'name', entityType: 'entity_type', fieldMapping: 'field_mapping', defaultValues: 'default_values', transformScript: 'transform_script', enabled: 'enabled' }
+  const map: Record<string, string> = { name: 'name', entityType: 'entity_type', fieldMapping: 'field_mapping', defaultValues: 'default_values', valueMapping: 'value_mapping', transformScript: 'transform_script', enabled: 'enabled' }
   for (const [gql, neo] of Object.entries(map)) { if (input[gql] !== undefined) { sets.push(`w.${neo} = $${gql}`); params[gql] = input[gql] } }
+  const CONFIG_KEYS = ['entityType', 'connectorKind', 'fieldMapping', 'defaultValues', 'valueMapping'] as const
   return withSession(async (s) => {
+    // Le regole entityType ↔ connectorKind e connettore ↔ mappature valgono
+    // sul risultato finale: se un pezzo cambia serve lo stato attuale degli altri.
+    if (CONFIG_KEYS.some((k) => input[k] !== undefined)) {
+      const current = firstRow(await runQuery<{ entityType: unknown; connectorKind: unknown; fieldMapping: unknown; defaultValues: unknown; valueMapping: unknown }>(s,
+        `MATCH (w:InboundWebhook {id: $id, tenant_id: $t})
+         RETURN w.entity_type AS entityType, w.connector_kind AS connectorKind, w.field_mapping AS fieldMapping, w.default_values AS defaultValues, w.value_mapping AS valueMapping`,
+        { id: args.id, t: ctx.tenantId }), 'InboundWebhook')
+      const pick = <K extends (typeof CONFIG_KEYS)[number]>(k: K) => (input[k] !== undefined ? input[k] : current[k])
+      const entityType    = pick('entityType')
+      const connectorKind = validateConnectorKind(entityType, pick('connectorKind'))
+      validateInboundConfig({ entityType, connectorKind, fieldMapping: pick('fieldMapping'), defaultValues: pick('defaultValues'), valueMapping: pick('valueMapping') })
+      sets.push('w.connector_kind = $connectorKind')
+      params['connectorKind'] = connectorKind
+    }
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) SET ${sets.join(', ')} RETURN properties(w) AS props`, params)
     return mapInbound(firstRow(rows, 'InboundWebhook').props)
   }, true)

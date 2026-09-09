@@ -124,7 +124,7 @@ export const GET_TOPOLOGY = gql`
   query GetTopology($types: [String!], $environment: String, $status: String, $selectedCiId: ID, $maxHops: Int) {
     topology(types: $types, environment: $environment, status: $status, selectedCiId: $selectedCiId, maxHops: $maxHops) {
       nodes {
-        id name type status environment ownerGroup incidentCount changeCount
+        id name type status environment ownerGroup incidentCount changeCount health
       }
       edges {
         source target type
@@ -132,5 +132,12 @@ export const GET_TOPOLOGY = gql`
       truncated
       nodeLimit
     }
+  }
+`
+
+/** Solo id e tipo: serve al reindirizzamento /cis/:id → /ci/:type/:id usato dai link delle notifiche. */
+export const GET_CI_BY_ID_REF = gql`
+  query CIByIdRef($id: ID!) {
+    ciById(id: $id) { id type }
   }
 `

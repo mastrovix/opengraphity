@@ -1,0 +1,177 @@
+/**
+ * Sorgenti di monitoraggio (admin): gli InboundWebhook con entityType = event.
+ * Elenco con strumento, stato (toggle), ultimo ricevuto, contatori, ultimo
+ * errore in chiaro e azioni: modifica, rigenera token (mostrato UNA volta),
+ * invia evento di prova, elimina. Stato vuoto che porta alla procedura guidata.
+ */
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { Radar, Plus, Pencil, KeyRound, Send, Trash2, AlertTriangle } from 'lucide-react'
+import { PageContainer } from '@/components/PageContainer'
+import { ListPageHeader } from '@/components/ListPageHeader'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { EmptyState } from '@/components/EmptyState'
+import { QueryError } from '@/components/QueryError'
+import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
+import { Toggle } from '@/components/ui/Toggle'
+import { useConfirm } from '@/hooks/useConfirm'
+import { errorMessage } from '@/hooks/useMutationWithToast'
+import { GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { UPDATE_MONITORING_SOURCE, DELETE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
+import { timeAgo, formatDateTime } from '@/lib/datetime'
+import { colors } from '@/lib/tokens'
+import type { MonitoringSource } from '@/types/events'
+import { ToolBadge, EnabledPill, SecretBox } from './monitoringShared'
+
+export function MonitoringSourcesPage() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const confirm = useConfirm()
+  const [newToken, setNewToken] = useState<{ name: string; token: string } | null>(null)
+
+  const { data, loading, error, refetch } = useQuery<{ monitoringSources: MonitoringSource[] }>(GET_MONITORING_SOURCES, { fetchPolicy: 'cache-and-network' })
+  const sources = data?.monitoringSources ?? []
+
+  const [updateSource] = useMutation(UPDATE_MONITORING_SOURCE)
+  const [deleteSource] = useMutation(DELETE_MONITORING_SOURCE)
+  const [regenToken]   = useMutation<{ regenerateWebhookToken: { id: string; token: string } }>(REGENERATE_SOURCE_TOKEN)
+  const [sendSample]   = useMutation<{ sendSampleEvent: number }>(SEND_SAMPLE_EVENT)
+
+  async function handleToggle(s: MonitoringSource, enabled: boolean) {
+    try {
+      await updateSource({ variables: { id: s.id, input: { enabled } } })
+      toast.success(t('toast.monitoring.sourceUpdated'))
+      void refetch()
+    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+  }
+
+  async function handleDelete(s: MonitoringSource) {
+    const ok = await confirm({ title: t('monitoring.sources.deleteTitle', { name: s.name }), body: t('monitoring.sources.deleteBody'), danger: true, confirmLabel: t('common.delete') })
+    if (!ok) return
+    try {
+      await deleteSource({ variables: { id: s.id } })
+      toast.success(t('toast.monitoring.sourceDeleted'))
+      void refetch()
+    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+  }
+
+  async function handleRegen(s: MonitoringSource) {
+    const ok = await confirm({ title: t('monitoring.sources.regenTitle'), body: t('monitoring.sources.regenBody'), danger: true, confirmLabel: t('monitoring.sources.regenToken') })
+    if (!ok) return
+    try {
+      const res = await regenToken({ variables: { id: s.id } })
+      const token = res.data?.regenerateWebhookToken.token
+      if (!token) throw new Error('regenerateWebhookToken: token mancante nella risposta')
+      toast.success(t('toast.monitoring.tokenRegenerated'))
+      setNewToken({ name: s.name, token })
+    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+  }
+
+  async function handleSample(s: MonitoringSource) {
+    try {
+      await sendSample({ variables: { sourceId: s.id } })
+      toast.success(t('toast.monitoring.sampleSent'), { action: { label: t('monitoring.wizard.openConsole'), onClick: () => navigate(`/events?sourceId=${s.id}`) } })
+      void refetch()
+    } catch (e) { toast.error(t('toast.monitoring.sampleFailed', { error: errorMessage(e) })) }
+  }
+
+  const columns: ColumnDef<MonitoringSource>[] = [
+    {
+      key: 'name', label: t('monitoring.sources.columns.name'), sortable: true,
+      render: (_v, row) => (
+        <div>
+          <Link to={`/monitoring/sources/${row.id}`} onClick={(e) => e.stopPropagation()} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600 }}>{row.name}</Link>
+          {!row.enabled && <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{t('monitoring.sources.disabledHint')}</div>}
+        </div>
+      ),
+    },
+    { key: 'connectorKind', label: t('monitoring.sources.columns.tool'), width: '180px', sortable: true, render: (_v, row) => <ToolBadge kind={row.connectorKind} /> },
+    {
+      key: 'enabled', label: t('monitoring.sources.columns.status'), width: '140px', sortable: true,
+      render: (_v, row) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <Toggle size="sm" checked={row.enabled} onChange={(v) => void handleToggle(row, v)} label={t('monitoring.sources.toggle', { name: row.name })} />
+          <EnabledPill enabled={row.enabled} />
+        </span>
+      ),
+    },
+    {
+      key: 'lastReceivedAt', label: t('monitoring.sources.columns.lastReceived'), width: '140px', sortable: true,
+      render: (v) => v ? <span title={formatDateTime(String(v))} style={{ color: colors.slate }}>{timeAgo(String(v))}</span> : <span style={{ color: colors.slateLight }}>{t('monitoring.sources.never')}</span>,
+    },
+    { key: 'receiveCount', label: t('monitoring.sources.columns.received'), width: '90px', sortable: true, render: (v) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{String(v)}</span> },
+    {
+      key: 'errorCount', label: t('monitoring.sources.columns.errors'), width: '260px', sortable: true,
+      render: (_v, row) => row.errorCount === 0 && !row.lastError
+        ? <span style={{ color: colors.slateLight }}>{t('monitoring.sources.noErrors')}</span>
+        : (
+          <div style={{ color: '#b91c1c' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+              <AlertTriangle size={13} aria-hidden="true" />{t('monitoring.sources.errorCount', { count: row.errorCount })}
+            </div>
+            {row.lastError && (
+              <div style={{ fontSize: 'var(--font-size-table)', marginTop: 2, wordBreak: 'break-word' }} title={row.lastErrorAt ? formatDateTime(row.lastErrorAt) : undefined}>
+                {t('monitoring.sources.lastError', { error: row.lastError })}
+              </div>
+            )}
+          </div>
+        ),
+    },
+    {
+      key: 'id', label: t('monitoring.sources.columns.actions'), width: '180px',
+      render: (_v, row) => (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <Button variant="icon" size="xs" title={t('monitoring.sources.edit')} aria-label={t('monitoring.sources.editAria', { name: row.name })} onClick={() => navigate(`/monitoring/sources/${row.id}`)}><Pencil size={13} aria-hidden="true" /></Button>
+          <Button variant="icon" size="xs" title={t('monitoring.sources.sendSample')} aria-label={t('monitoring.sources.sendSampleAria', { name: row.name })} onClick={() => void handleSample(row)}><Send size={13} aria-hidden="true" /></Button>
+          <Button variant="icon" size="xs" title={t('monitoring.sources.regenToken')} aria-label={t('monitoring.sources.regenTokenAria', { name: row.name })} onClick={() => void handleRegen(row)}><KeyRound size={13} aria-hidden="true" /></Button>
+          <Button variant="icon" size="xs" title={t('monitoring.sources.delete')} aria-label={t('monitoring.sources.deleteAria', { name: row.name })} onClick={() => void handleDelete(row)} style={{ color: colors.danger }}><Trash2 size={13} aria-hidden="true" /></Button>
+        </div>
+      ),
+    },
+  ]
+
+  return (
+    <PageContainer>
+      <ListPageHeader
+        icon={<Radar size={22} color="var(--color-icon-accent)" />}
+        title={t('monitoring.sources.title')}
+        subtitle={
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
+            {loading && !data ? '—' : `${t('monitoring.sources.count', { count: sources.length })} · ${t('monitoring.sources.subtitle')}`}
+          </p>
+        }
+        actions={<Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => navigate('/monitoring/sources/new')}>{t('monitoring.sources.add')}</Button>}
+      />
+
+      {error && !data ? (
+        <QueryError message={error.message} onRetry={() => void refetch()} />
+      ) : (
+        <SortableFilterTable<MonitoringSource>
+          columns={columns}
+          data={sources}
+          loading={loading && !data}
+          label={t('monitoring.sources.title')}
+          emptyComponent={
+            <EmptyState
+              icon={<Radar size={32} />}
+              title={t('monitoring.sources.empty.title')}
+              description={t('monitoring.sources.empty.description')}
+              action={<Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => navigate('/monitoring/sources/new')}>{t('monitoring.sources.add')}</Button>}
+            />
+          }
+        />
+      )}
+
+      {newToken && (
+        <Modal open onClose={() => setNewToken(null)} title={`${t('monitoring.sources.newTokenTitle')} — ${newToken.name}`} width={560} closeOnOverlay={false}
+          footer={<Button onClick={() => setNewToken(null)}>{t('common.close')}</Button>}>
+          <SecretBox label={t('monitoring.wizard.token')} value={newToken.token} copyLabel={t('monitoring.wizard.copyToken')} hint={t('monitoring.sources.newTokenBody')} />
+        </Modal>
+      )}
+    </PageContainer>
+  )
+}

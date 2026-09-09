@@ -20,7 +20,13 @@ export const WIDGET_TYPES = [
   { value: 'chart_donut', labelKey: 'pages.dashboard.widgetType.chartDonut', icon: 'PieChart',   descKey: 'pages.dashboard.widgetTypeDesc.chartDonut' },
   { value: 'table',       labelKey: 'pages.dashboard.widgetType.table',      icon: 'Table',      descKey: 'pages.dashboard.widgetTypeDesc.table' },
   { value: 'gauge',       labelKey: 'pages.dashboard.widgetType.gauge',      icon: 'Gauge',      descKey: 'pages.dashboard.widgetTypeDesc.gauge' },
+  // Event Management: contatori di eventStats, nessuna entità/metrica da configurare
+  // (entityType/metric vengono salvati con i valori correnti del form ma il widget non li usa).
+  { value: 'active_alarms', labelKey: 'pages.dashboard.widgetType.activeAlarms', icon: 'Radar',  descKey: 'pages.dashboard.widgetTypeDesc.activeAlarms' },
 ] as const
+
+/** Tipi di widget che NON leggono `widgetData` (la sorgente dei dati è fissa): niente anteprima né configurazione dati. */
+export const DATA_FREE_WIDGET_TYPES: readonly string[] = ['active_alarms']
 
 export const ENTITY_TYPES = [
   { value: 'incident',             labelKey: 'pages.dashboard.entity.incident' },
@@ -226,9 +232,10 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [entityType, metric, groupByField, filterField, filterValue, timeRange, needsGroupBy])
 
+  const dataFree = DATA_FREE_WIDGET_TYPES.includes(widgetType)
   const { data: previewRaw, loading: previewLoading } = useQuery(GET_WIDGET_DATA_PREVIEW, {
     variables: previewVars ?? { entityType, metric },
-    skip: !previewVars,
+    skip: !previewVars || dataFree,
     fetchPolicy: 'cache-and-network',
   })
 

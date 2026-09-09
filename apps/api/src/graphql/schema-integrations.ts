@@ -5,12 +5,22 @@ export const integrationsSchema = `
     id: ID!
     name: String!
     entityType: String!
+    """Solo per entityType = event: generic | alertmanager | grafana | zabbix | datadog | dynatrace. Null per gli altri tipi."""
+    connectorKind: String
+    """JSON. Per il connettore generic: { campoNormalizzato: "percorso.puntato.nel.payload" } (title, severity, status, resource, resourceKind, externalId, description, labels, startsAt, endsAt)."""
     fieldMapping: String!
+    """JSON. Valori usati quando il campo non è nel payload; per generic contiene sempre resourceKind (hostname | ip | fqdn | external_id | name)."""
     defaultValues: String
+    """JSON, solo generic: { severity: { valoreSorgente: info|warning|critical }, status: { valoreSorgente: firing|resolved } }, confronto senza maiuscole."""
+    valueMapping: String
     transformScript: String
     enabled: Boolean!
     lastReceivedAt: String
     receiveCount: Int!
+    """Motivo dell'ultimo payload rifiutato (400); null dopo il primo batch accettato."""
+    lastError: String
+    lastErrorAt: String
+    errorCount: Int!
     createdAt: String!
   }
 
@@ -19,8 +29,10 @@ export const integrationsSchema = `
     name: String!
     token: String!
     entityType: String!
+    connectorKind: String
     fieldMapping: String!
     defaultValues: String
+    valueMapping: String
     enabled: Boolean!
     createdAt: String!
   }
@@ -28,16 +40,21 @@ export const integrationsSchema = `
   input CreateInboundWebhookInput {
     name: String!
     entityType: String!
+    """Obbligatorio se entityType = event (generic | alertmanager | grafana | zabbix | datadog | dynatrace); vietato altrimenti."""
+    connectorKind: String
     fieldMapping: String!
     defaultValues: String
+    valueMapping: String
     transformScript: String
   }
 
   input UpdateInboundWebhookInput {
     name: String
     entityType: String
+    connectorKind: String
     fieldMapping: String
     defaultValues: String
+    valueMapping: String
     transformScript: String
     enabled: Boolean
   }

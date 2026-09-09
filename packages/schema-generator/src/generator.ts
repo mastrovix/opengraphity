@@ -219,12 +219,17 @@ export function generateITILEnumsSDL(_itilTypes: CITypeWithDefinitions[]): strin
  * Uses `extend type Query` / `extend type Mutation` to augment the base schema.
  * Generated concrete types use `type` (not `ciType`) to match CIBase interface.
  */
-// Fields already present in CIBase / hardcoded in inputs — must not be duplicated
+// Fields already present in CIBase / hardcoded in inputs — must not be duplicated.
+// `health`, `healthSource`, `lastEventAt` are written ONLY by Event Management
+// (eventService.recomputeCIHealth / setCIHealthOverride): they are read-only
+// here and never appear in the Create/Update inputs.
 const BASE_TYPE_FIELDS  = new Set(['id', 'name', 'type', 'status', 'environment',
   'description', 'chain', 'createdAt', 'updatedAt', 'notes',
-  'ownerGroup', 'supportGroup', 'dependencies', 'dependents'])
+  'ownerGroup', 'supportGroup', 'dependencies', 'dependents',
+  'health', 'healthSource', 'lastEventAt'])
 const BASE_INPUT_FIELDS = new Set(['name', 'status', 'environment', 'description',
-  'notes', 'ownerGroupId', 'supportGroupId'])
+  'notes', 'ownerGroupId', 'supportGroupId',
+  'health', 'healthSource', 'lastEventAt'])
 
 export function generateSDL(types: CITypeWithDefinitions[]): string {
   const parts: string[] = []
@@ -253,6 +258,9 @@ type ${typeName} implements CIBase {
   supportGroup: Team
   dependencies: [CIRelation!]!
   dependents: [CIRelation!]!
+  health: String
+  healthSource: String
+  lastEventAt: String
 ${specificFields}
 }
 

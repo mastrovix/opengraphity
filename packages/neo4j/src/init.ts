@@ -147,6 +147,13 @@ const CONSTRAINTS: SchemaStatement[] = [
   // race-free across two processes migrating at once.
   { label: 'Migration.id', cypher: 'CREATE CONSTRAINT migration_id_unique IF NOT EXISTS FOR (n:Migration) REQUIRE n.id IS UNIQUE' },
   { label: 'MigrationLock.id', cypher: 'CREATE CONSTRAINT migration_lock_id_unique IF NOT EXISTS FOR (n:MigrationLock) REQUIRE n.id IS UNIQUE' },
+  // Event Management (ondata 1): l'ingest fa MERGE su (tenant_id, fingerprint)
+  // — il vincolo rende impossibile il doppione anche con 4 worker concorrenti.
+  // CIAlias: un nome (kind, value) di una sorgente punta a UN solo CI per tenant.
+  { label: 'Event.id', cypher: 'CREATE CONSTRAINT event_id_unique IF NOT EXISTS FOR (n:Event) REQUIRE n.id IS UNIQUE' },
+  { label: 'Event(tenant_id, fingerprint)', cypher: 'CREATE CONSTRAINT event_tenant_fingerprint_unique IF NOT EXISTS FOR (n:Event) REQUIRE (n.tenant_id, n.fingerprint) IS UNIQUE' },
+  { label: 'CIAlias.id', cypher: 'CREATE CONSTRAINT ci_alias_id_unique IF NOT EXISTS FOR (n:CIAlias) REQUIRE n.id IS UNIQUE' },
+  { label: 'CIAlias(tenant_id, kind, value)', cypher: 'CREATE CONSTRAINT ci_alias_tenant_kind_value_unique IF NOT EXISTS FOR (n:CIAlias) REQUIRE (n.tenant_id, n.kind, n.value) IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -296,6 +303,8 @@ const INDEXES: SchemaStatement[] = [
   // Attachments / audit trail — always read per entity
   { label: 'Attachment(tenant_id, entity_id)', cypher: 'CREATE INDEX attachment_tenant_entity IF NOT EXISTS FOR (n:Attachment) ON (n.tenant_id, n.entity_id)' },
   { label: 'AuditEntry(tenant_id, entity_id)', cypher: 'CREATE INDEX audit_entry_tenant_entity IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.entity_id)' },
+  // Event Management: la console lista per (tenant, status) ordinando per last_seen_at.
+  { label: 'Event(tenant_id, status, last_seen_at)', cypher: 'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)' },
   // NOTE — vector indexes are NOT listed here on purpose: their name and
   // dimension depend on the configured embedding provider
   // (`incident_embedding_<dims>` / `kb_embedding_<dims>`, see

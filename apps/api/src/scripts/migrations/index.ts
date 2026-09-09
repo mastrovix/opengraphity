@@ -10,8 +10,14 @@
 import type { Migration } from '@opengraphity/neo4j'
 import { workflowStepMetadata }     from './20260908_1000_workflow_step_metadata.js'
 import { ciConfigurationItemLabel } from './20260908_1010_ci_configuration_item_label.js'
+import { eventManagementBootstrap } from './20260909_1000_event_management_bootstrap.js'
+import { eventManagementFixup }     from './20260909_1010_event_management_fixup.js'
+import { eventManagementNotificationRules } from './20260909_1020_event_management_notification_rules.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
   ciConfigurationItemLabel,
+  eventManagementBootstrap,
+  eventManagementFixup,
+  eventManagementNotificationRules,
 ]

@@ -230,3 +230,64 @@ describe('createInboundWebhook — token in chiaro una sola volta, hash salvato'
     await expectCode(integrationsResolvers.Mutation.regenerateWebhookToken(null, { id: 'iw-altrui' }, admin), 'NOT_FOUND')
   })
 })
+
+describe('inbound webhook di Event Management — connettori, value_mapping, validazione in scrittura, errori esposti', () => {
+  beforeEach(() => vi.clearAllMocks())
+  const GENERIC = {
+    fieldMapping:  JSON.stringify({ title: 'alert.name', severity: 'alert.level', resource: 'host.name', status: 'state', description: 'msg', externalId: 'id' }),
+    defaultValues: JSON.stringify({ resourceKind: 'hostname' }),
+    valueMapping:  JSON.stringify({ severity: { Disaster: 'critical' }, status: { '0': 'resolved', '1': 'firing' } }),
+  }
+
+  it('createInboundWebhook generic: persiste connector_kind, field_mapping, default_values, value_mapping ed error_count 0', async () => {
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-2', name: 'Custom', entity_type: 'event', connector_kind: 'generic', field_mapping: GENERIC.fieldMapping, default_values: GENERIC.defaultValues, value_mapping: GENERIC.valueMapping, enabled: true, receive_count: 0, error_count: 0 } }] as never)
+    const out = await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Custom', entityType: 'event', connectorKind: 'generic', ...GENERIC } }, admin)
+    const { cypher, params } = lastQuery()
+    expect(cypher).toContain('value_mapping: $valueMapping')
+    expect(cypher).toContain('error_count: 0')
+    expect(params).toMatchObject({ connectorKind: 'generic', fieldMapping: GENERIC.fieldMapping, defaultValues: GENERIC.defaultValues, valueMapping: GENERIC.valueMapping })
+    expect(out).toMatchObject({ connectorKind: 'generic', valueMapping: GENERIC.valueMapping })
+  })
+
+  it.each(['alertmanager', 'grafana', 'zabbix', 'datadog', 'dynatrace'] as const)('connectorKind %s è accettato', async (kind) => {
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-3', name: kind, entity_type: 'event', connector_kind: kind, field_mapping: '{}' } }] as never)
+    const out = await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: kind, entityType: 'event', connectorKind: kind, fieldMapping: '{}' } }, admin)
+    expect(out.connectorKind).toBe(kind)
+  })
+
+  it.each([
+    ['connectorKind sconosciuto', { entityType: 'event', connectorKind: 'nagios', fieldMapping: '{}' }, /connectorKind is required for entityType "event" and must be one of: generic, alertmanager, grafana, zabbix, datadog, dynatrace/],
+    ['fieldMapping non JSON', { entityType: 'event', connectorKind: 'generic', fieldMapping: '{nope' }, /Corrupt fieldMapping JSON/],
+    ['fieldMapping con chiave non normalizzata', { entityType: 'event', connectorKind: 'generic', fieldMapping: JSON.stringify({ summary: 'title' }) }, /field_mapping\.summary is not a normalized field/],
+    ['valueMapping fuori vocabolario', { entityType: 'event', connectorKind: 'generic', fieldMapping: '{}', valueMapping: JSON.stringify({ severity: { High: 'fatal' } }) }, /value_mapping\.severity\.High must be one of: info, warning, critical/],
+    ['valueMapping su un connettore preset', { entityType: 'event', connectorKind: 'zabbix', fieldMapping: '{}', valueMapping: JSON.stringify({ status: { '1': 'firing' } }) }, /valueMapping is only supported by the generic connector/],
+    ['defaultValues lista', { entityType: 'incident', fieldMapping: '{}', defaultValues: '[]' }, /defaultValues must be a JSON object/],
+  ])('createInboundWebhook con %s → BAD_USER_INPUT, nessuna scrittura', async (_n, input, pattern) => {
+    await expectCode(integrationsResolvers.Mutation.createInboundWebhook(null, { input }, admin), 'BAD_USER_INPUT', pattern)
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('updateInboundWebhook: la validazione vale sulla configurazione finale (stato attuale + input), value_mapping aggiornato', async () => {
+    vi.mocked(runQuery)
+      .mockResolvedValueOnce([{ entityType: 'event', connectorKind: 'generic', fieldMapping: GENERIC.fieldMapping, defaultValues: GENERIC.defaultValues, valueMapping: null }] as never)
+      .mockResolvedValueOnce([{ props: { id: 'iw-2', name: 'Custom', entity_type: 'event', connector_kind: 'generic', value_mapping: GENERIC.valueMapping } }] as never)
+    const out = await integrationsResolvers.Mutation.updateInboundWebhook(null, { id: 'iw-2', input: { valueMapping: GENERIC.valueMapping } }, admin)
+    expect(out.valueMapping).toBe(GENERIC.valueMapping)
+    const { cypher, params } = lastQuery()
+    expect(cypher).toContain('MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) SET')
+    expect(cypher).toContain('w.value_mapping = $valueMapping')
+    expect(params).toMatchObject({ id: 'iw-2', t: 'tenant-1', valueMapping: GENERIC.valueMapping, connectorKind: 'generic' })
+
+    // cambiare solo il connettore in zabbix con un value_mapping già salvato → rifiutato
+    vi.mocked(runQuery).mockReset()
+    vi.mocked(runQuery).mockResolvedValueOnce([{ entityType: 'event', connectorKind: 'generic', fieldMapping: '{}', defaultValues: null, valueMapping: GENERIC.valueMapping }] as never)
+    await expectCode(integrationsResolvers.Mutation.updateInboundWebhook(null, { id: 'iw-2', input: { connectorKind: 'zabbix' } }, admin), 'BAD_USER_INPUT', /valueMapping is only supported by the generic connector/)
+    expect(runQuery).toHaveBeenCalledTimes(1)   // solo la lettura dello stato attuale
+  })
+
+  it('inboundWebhooks espone lastError / lastErrorAt / errorCount / valueMapping (mapInbound)', async () => {
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-9', name: 'Grafana', entity_type: 'event', connector_kind: 'grafana', field_mapping: '{}', last_error: 'alerts[0].labels.instance (or labels.host) is missing or empty', last_error_at: 'T9', error_count: 4, receive_count: 12 } }] as never)
+    const [row] = await integrationsResolvers.Query.inboundWebhooks(null, {}, admin)
+    expect(row).toMatchObject({ id: 'iw-9', connectorKind: 'grafana', valueMapping: null, lastError: expect.stringMatching(/labels\.instance/), lastErrorAt: 'T9', errorCount: 4, receiveCount: 12 })
+  })
+})

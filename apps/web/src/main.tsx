@@ -1,6 +1,8 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ApolloProvider } from '@apollo/client/react'
+import { ApolloProvider, useQuery } from '@apollo/client/react'
+import { GET_CI_BY_ID_REF } from '@/graphql/queries'
+import { ciPath } from '@/lib/ciPath'
 import { createBrowserRouter, RouterProvider, useRouteError, Navigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Toaster } from '@/components/ui/sonner'
@@ -30,8 +32,27 @@ function CIDetailRedirect({ typeName }: { typeName: string }) {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
 }
+// Le notifiche in-app costruiscono il link come /<entity>s/<id>: per un CI
+// (`ci.health_changed`) arriva /cis/<id> senza il tipo, che serve alla rotta
+// reale /ci/:typeName/:id. Qui si risolve il tipo e si reindirizza.
+function CIByIdRedirect() {
+  const { id } = useParams<{ id: string }>()
+  const { t } = useTranslation()
+  const { data, loading, error } = useQuery<{ ciById: { id: string; type: string } | null }>(GET_CI_BY_ID_REF, { variables: { id } })
+  if (loading) return <PageLoader />
+  if (error) throw error
+  if (!data?.ciById) return <p role="alert" style={{ padding: 24 }}>{t('routeError.notFound')}</p>
+  return <Navigate to={ciPath(data.ciById)} replace />
+}
 const WhatIfPage = lazy(() => import('@/pages/analysis/WhatIfPage').then(m => ({ default: m.WhatIfPage })))
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
+import { EventsPage } from '@/pages/events/EventsPage'
+import { EventDetailPage } from '@/pages/events/EventDetailPage'
+import { EventPolicyPage } from '@/pages/settings/EventPolicyPage'
+import { MonitoringSourcesPage } from '@/pages/monitoring/MonitoringSourcesPage'
+import { CIHealthPage } from '@/pages/monitoring/CIHealthPage'
+import { NewSourceWizard } from '@/pages/monitoring/NewSourceWizard'
+import { EditSourcePage } from '@/pages/monitoring/EditSourcePage'
 const TopologyPage = lazy(() => import('@/pages/topology/TopologyPage').then(m => ({ default: m.TopologyPage })))
 import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
 const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/WorkflowDesignerPage').then(m => ({ default: m.WorkflowDesignerPage })))
@@ -114,8 +135,11 @@ function Keyed({ Page }: { Page: React.ComponentType }) {
 // la stessa fonte usata dalla Sidebar e dalle pagine.
 const ADMIN_ONLY:     readonly UserRole[] = ['admin']
 const ADMIN_OPERATOR: readonly UserRole[] = ['admin', 'operator']
+// Console eventi: staff (admin/operator/viewer), non gli end user del portale.
+const STAFF:          readonly UserRole[] = ['admin', 'operator', 'viewer']
 const admin    = (el: React.ReactElement) => <RequireRole roles={ADMIN_ONLY}>{el}</RequireRole>
 const approver = (el: React.ReactElement) => <RequireRole roles={ADMIN_OPERATOR}>{el}</RequireRole>
+const staff    = (el: React.ReactElement) => <RequireRole roles={STAFF}>{el}</RequireRole>
 
 const router = createBrowserRouter([
   {
@@ -143,6 +167,7 @@ const router = createBrowserRouter([
       // Dynamic CI routes
       { path: 'ci/:typeName',                  element: <CIListPage />,                  errorElement: <RouteError /> },
       { path: 'ci/:typeName/:id',              element: <Keyed Page={CIDetailPage} />,   errorElement: <RouteError /> },
+      { path: 'cis/:id',                       element: <Keyed Page={CIByIdRedirect} />, errorElement: <RouteError /> },
       // Backward-compat redirects
       { path: 'applications',                  element: <Navigate to="/ci/application" replace /> },
       { path: 'applications/:id',              element: <CIDetailRedirect typeName="application" /> },
@@ -156,6 +181,15 @@ const router = createBrowserRouter([
       { path: 'certificates/:id',              element: <CIDetailRedirect typeName="certificate" /> },
       { path: 'analysis/what-if',               element: <Suspense fallback={<PageLoader />}><WhatIfPage /></Suspense>,                  errorElement: <RouteError /> },
       { path: 'anomalies',                     element: <AnomalyPage />,                 errorElement: <RouteError /> },
+      // Event Management (console allarmi): staff; le azioni sono nascoste al viewer nella pagina.
+      { path: 'events',                        element: staff(<EventsPage />),                     errorElement: <RouteError /> },
+      { path: 'events/:id',                    element: staff(<Keyed Page={EventDetailPage} />),   errorElement: <RouteError /> },
+      // Salute dei CI (lista per gravità e impatto): staff; il CTA "Aggiungi sorgente" è solo admin.
+      { path: 'monitoring/health',             element: staff(<CIHealthPage />),                   errorElement: <RouteError /> },
+      // Sorgenti di monitoraggio (webhook in ingresso con entityType = event): solo admin.
+      { path: 'monitoring/sources',            element: admin(<MonitoringSourcesPage />),          errorElement: <RouteError /> },
+      { path: 'monitoring/sources/new',        element: admin(<NewSourceWizard />),                errorElement: <RouteError /> },
+      { path: 'monitoring/sources/:id',        element: admin(<Keyed Page={EditSourcePage} />),    errorElement: <RouteError /> },
       { path: 'topology',                      element: <Suspense fallback={<PageLoader />}><TopologyPage /></Suspense>,                errorElement: <RouteError /> },
       // Workflow designer (list + editor): admin only
       { path: 'workflow',                      element: admin(<WorkflowListPage />),     errorElement: <RouteError /> },
@@ -171,6 +205,7 @@ const router = createBrowserRouter([
       { path: 'settings/itil-designer',   element: admin(<ITILTypeDesignerPage />), errorElement: <RouteError /> },
       { path: 'settings/enum-designer',  element: admin(<EnumDesignerPage />),     errorElement: <RouteError /> },
       { path: 'settings/sync',            element: admin(<SyncPage />),             errorElement: <RouteError /> },
+      { path: 'settings/event-policy',    element: admin(<EventPolicyPage />),      errorElement: <RouteError /> },
       { path: 'reports',                   element: <Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>,             errorElement: <RouteError /> },
       { path: 'custom-reports',            element: <Suspense fallback={<PageLoader />}><CustomReportsPage /></Suspense>,       errorElement: <RouteError /> },
       // Teams & users: both pages carry admin-only mutations (createTeam,

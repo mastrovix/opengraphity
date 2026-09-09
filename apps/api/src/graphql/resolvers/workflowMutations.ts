@@ -661,7 +661,7 @@ export async function executeWorkflowTransition(
 
 export async function saveWorkflowChanges(
   _: unknown,
-  { definitionId, transitions, positions, steps, expectedVersion }: {
+  { definitionId, positions, steps, expectedVersion }: {
     definitionId: string
     transitions: Array<{
       transitionId:  string

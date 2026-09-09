@@ -31,6 +31,10 @@ function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unkn
     supportGroup: null,  // field resolver
     dependencies: [],    // field resolver
     dependents:   [],    // field resolver
+    // Event Management (sola lettura: scritti da eventService)
+    health:       props['health']        ?? null,
+    healthSource: props['health_source'] ?? null,
+    lastEventAt:  neo4jDateToISO(props['last_event_at']),
   }
 
   for (const field of ciType.fields) {

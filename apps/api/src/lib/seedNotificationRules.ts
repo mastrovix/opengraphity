@@ -1,4 +1,4 @@
-import type { Session } from 'neo4j-driver'
+import type { Queryable } from '@opengraphity/neo4j'
 import { v4 as uuidv4 } from 'uuid'
 import { notificationLogger } from './logger.js'
 
@@ -10,7 +10,7 @@ interface RuleDef {
   title_key:  string
 }
 
-const DEFAULT_RULES: RuleDef[] = [
+export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   { event_type: 'incident.created',             severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.created.title'      },
   { event_type: 'incident.assigned',            severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.assigned.title'     },
   { event_type: 'incident.in_progress',         severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.in_progress.title'  },
@@ -35,44 +35,56 @@ const DEFAULT_RULES: RuleDef[] = [
   { event_type: 'sync.completed',               severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.sync.completed.title'        },
   { event_type: 'sync.failed',                  severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.sync.failed.title'           },
   { event_type: 'conflict.created',             severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.sync.conflict.title'         },
+  // Event Management (allarmi dal monitoraggio → salute del CI)
+  { event_type: 'event.received',               severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.received.title'        },
+  { event_type: 'event.resolved',               severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.resolved.title'        },
+  { event_type: 'event.orphan',                 severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.orphan.title'          },
+  { event_type: 'ci.health_changed',            severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.ci.health_changed.title'     },
 ]
 
-export async function seedNotificationRules(tenantId: string, session: Session): Promise<void> {
+export interface SeedNotificationRulesResult { created: number; skipped: number }
+
+/**
+ * Crea le regole di notifica predefinite del tenant (MERGE per
+ * tenant_id + event_type: idempotente, non ritocca quelle esistenti).
+ * Accetta una sessione o una transazione gestita (`Queryable`), così la
+ * chiamano sia l'onboarding sia le migrazioni.
+ */
+export async function seedNotificationRules(tenantId: string, session: Queryable): Promise<SeedNotificationRulesResult> {
   const now = new Date().toISOString()
   let created = 0
   let skipped = 0
 
-  for (const rule of DEFAULT_RULES) {
-    const result = await session.executeWrite((tx) =>
-      tx.run(
-        `MERGE (r:NotificationRule {tenant_id: $tenantId, event_type: $eventType})
-         ON CREATE SET
-           r.id                = $id,
-           r.enabled           = true,
-           r.severity_override = $severity,
-           r.title_key         = $titleKey,
-           r.channels          = $channels,
-           r.target            = $target,
-           r.conditions        = null,
-           r.is_seed           = true,
-           r.created_at        = $now,
-           r.updated_at        = $now
-         RETURN (r.created_at = $now) AS wasCreated`,
-        {
-          tenantId,
-          eventType: rule.event_type,
-          id:        uuidv4(),
-          severity:  rule.severity,
-          titleKey:  rule.title_key,
-          channels:  rule.channels,
-          target:    rule.target,
-          now,
-        },
-      ),
+  for (const rule of DEFAULT_NOTIFICATION_RULES) {
+    const result = await session.run(
+      `MERGE (r:NotificationRule {tenant_id: $tenantId, event_type: $eventType})
+       ON CREATE SET
+         r.id                = $id,
+         r.enabled           = true,
+         r.severity_override = $severity,
+         r.title_key         = $titleKey,
+         r.channels          = $channels,
+         r.target            = $target,
+         r.conditions        = null,
+         r.is_seed           = true,
+         r.created_at        = $now,
+         r.updated_at        = $now
+       RETURN (r.created_at = $now) AS wasCreated`,
+      {
+        tenantId,
+        eventType: rule.event_type,
+        id:        uuidv4(),
+        severity:  rule.severity,
+        titleKey:  rule.title_key,
+        channels:  rule.channels,
+        target:    rule.target,
+        now,
+      },
     )
     const wasCreated = result.records[0]?.get('wasCreated') as boolean
     if (wasCreated) created++; else skipped++
   }
 
-  notificationLogger.info({ created, skipped }, 'NotificationRule seed completato')
+  notificationLogger.info({ tenantId, created, skipped }, 'NotificationRule seed completato')
+  return { created, skipped }
 }

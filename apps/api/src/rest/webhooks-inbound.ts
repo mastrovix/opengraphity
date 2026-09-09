@@ -13,6 +13,8 @@ import { logger } from '../lib/logger.js'
 import { ValidationError } from '../lib/errors.js'
 import * as incidentService from '../services/incidentService.js'
 import * as problemService from '../services/problemService.js'
+import { sourceConfigOf, normalizeWithConfig } from '../services/eventService.js'
+import { enqueueEvents } from '../jobs/eventIngestWorker.js'
 
 const log = logger.child({ module: 'webhook-inbound' })
 const router: ExpressRouter = Router()
@@ -47,6 +49,10 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
   if (!hookId) { res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Missing hookId' } }); return }
 
   const session = getSession(undefined, 'WRITE')
+  // Valorizzato solo dopo l'autenticazione: serve al catch per registrare il
+  // motivo del rifiuto sul webhook (last_error / error_count) — senza tenant
+  // verificato non si scrive nulla.
+  let authenticatedTenantId: string | null = null
   try {
     // 1. Load webhook config
     const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
@@ -69,6 +75,8 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
     if (typeof secret !== 'string' || !tokenMatches(token, secret)) {
       res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid token' } }); return
     }
+
+    authenticatedTenantId = tenantId
 
     // 3. Rate limit — only authenticated traffic counts
     if (!checkRate(hookId)) {
@@ -99,8 +107,36 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
       payload = result.output as Record<string, unknown>
     }
 
+    // 5a. Event Management: il payload (già trasformato) viene normalizzato per
+    // connettore (field_mapping / default_values / value_mapping del webhook,
+    // stessa pipeline di previewInboundEvents e sendSampleEvent) e accodato;
+    // la mappatura piatta qui sotto vale solo per incident/problem.
+    if (entityType === 'event') {
+      const config = sourceConfigOf(wh)
+      const events = normalizeWithConfig(config, payload)
+      if (events.length === 0) {
+        throw new ValidationError('Payload contains no alerts')
+      }
+      const receivedAt = new Date().toISOString()
+      const accepted = await enqueueEvents(tenantId, hookId, events, receivedAt)
+
+      // Un batch accettato azzera l'ultimo errore: l'amministratore vede lo
+      // stato corrente della sorgente, non un rifiuto già superato.
+      await runQuery(session, `
+        MATCH (w:InboundWebhook {id: $hookId, tenant_id: $tenantId})
+        SET w.receive_count = coalesce(w.receive_count, 0) + $n,
+            w.last_received_at = $now,
+            w.last_error = null
+      `, { hookId, tenantId, n: accepted, now: receivedAt })
+
+      log.info({ hookId, connectorKind: config.connectorKind, accepted }, 'Inbound events accepted')
+      res.status(202).json({ id: hookId, entity_type: 'event', accepted })
+      return
+    }
+
     // 5. Apply field mapping (corrupt mapping JSON must fail, not become {})
     const fieldMapping = parseJSON<Record<string, string>>(wh['field_mapping'] as string, 'field_mapping')
+
     const mapped: Record<string, unknown> = {}
     for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
       if (payload[sourceField] !== undefined) mapped[targetField] = payload[sourceField]
@@ -171,6 +207,7 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
     // body; the full error stays in the server log.
     if (err instanceof ValidationError) {
       log.warn({ hookId, err: err.message }, 'Inbound webhook rejected')
+      if (authenticatedTenantId) await recordRejection(session, hookId, authenticatedTenantId, err.message)
       res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } })
       return
     }
@@ -180,6 +217,25 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
     await session.close()
   }
 })
+
+/**
+ * Un payload rifiutato (400) lascia traccia sul webhook: `last_error`,
+ * `last_error_at`, `error_count`. Così l'amministratore vede il motivo in
+ * interfaccia senza leggere i log. Se la scrittura fallisce si logga a livello
+ * error e il 400 (la risposta primaria) resta.
+ */
+async function recordRejection(session: ReturnType<typeof getSession>, hookId: string, tenantId: string, message: string): Promise<void> {
+  try {
+    await runQuery(session, `
+      MATCH (w:InboundWebhook {id: $hookId, tenant_id: $tenantId})
+      SET w.last_error = $message,
+          w.last_error_at = $now,
+          w.error_count = coalesce(w.error_count, 0) + 1
+    `, { hookId, tenantId, message: message.slice(0, 2000), now: new Date().toISOString() })
+  } catch (e) {
+    log.error({ hookId, tenantId, err: e }, 'Could not record inbound webhook rejection')
+  }
+}
 
 /** Parses stored webhook config JSON. Missing → {}; corrupt → throws (fail-loud, config error → 400). */
 function parseJSON<T>(raw: string | null | undefined, what: string): T {

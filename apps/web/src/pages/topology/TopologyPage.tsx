@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Share2 } from 'lucide-react'
 import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
@@ -8,6 +8,8 @@ import { fontFamily } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
 import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
 import TopologyGraph, { TopologyLegend, type TopologyNode } from '@/components/topology/TopologyGraph'
+import { CIHealthBadge } from '@/pages/events/eventShared'
+import type { CIHealth } from '@/types/events'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +53,12 @@ interface Filters {
 export function TopologyPage() {
   const { t } = useTranslation()
   const navigate  = useNavigate()
+  // `?health=1` (voce "Salute CI" della sidebar) accende l'evidenziazione della salute.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const highlightHealth = searchParams.get('health') === '1'
+  const setHighlightHealth = (on: boolean) => {
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); if (on) next.set('health', '1'); else next.delete('health'); return next }, { replace: true })
+  }
   const [filters, setFilters] = useState<Filters>({
     type:         '',
     environment:  '',
@@ -110,6 +118,8 @@ export function TopologyPage() {
   // Stats
   const totalIncident = nodes.reduce((s, n) => s + n.incidentCount, 0)
   const totalChange   = nodes.reduce((s, n) => s + n.changeCount,   0)
+  const totalDown     = nodes.filter((n) => n.health === 'down').length
+  const totalDegraded = nodes.filter((n) => n.health === 'degraded').length
 
   const handleNodeClick = useCallback((node: TopologyNode) => {
     setSelectedNode(node)
@@ -209,6 +219,17 @@ export function TopologyPage() {
             {t('pages.topology.showLabels')}
           </label>
 
+          {/* Health highlight toggle (also driven by ?health=1) */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={highlightHealth}
+              onChange={(e) => setHighlightHealth(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            {t('pages.topology.highlightHealth')}
+          </label>
+
           {/* Incident only toggle */}
           <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
             <input
@@ -276,10 +297,11 @@ export function TopologyPage() {
               highlightNodeId={focusNodeId}
               rootNodeId={focusNodeId}
               ciTypes={ciTypeOptions}
+              highlightHealth={highlightHealth}
             />
           )}
 
-          <TopologyLegend nodes={nodes} edges={edges} ciTypes={ciTypeOptions} />
+          <TopologyLegend nodes={nodes} edges={edges} ciTypes={ciTypeOptions} highlightHealth={highlightHealth} />
 
           {/* Truncation warning */}
           {data?.topology.truncated && (
@@ -312,6 +334,8 @@ export function TopologyPage() {
             )}
             {totalIncident > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 8 }}>{t('pages.topology.activeIncidents', { count: totalIncident })}</span>}
             {totalChange   > 0 && <span style={{ color: '#8b5cf6', marginLeft: 8 }}>{t('pages.topology.changesInProgress', { count: totalChange })}</span>}
+            {highlightHealth && totalDown     > 0 && <span style={{ color: '#dc2626', marginLeft: 8 }}>{t('components.topologyGraph.healthDown')}: {totalDown}</span>}
+            {highlightHealth && totalDegraded > 0 && <span style={{ color: '#d97706', marginLeft: 8 }}>{t('components.topologyGraph.healthDegraded')}: {totalDegraded}</span>}
           </div>
         </div>
 
@@ -350,6 +374,12 @@ export function TopologyPage() {
               <DetailField label={t('pages.cmdb.status')}>
                 <StatusBadge status={selectedNode.status} />
               </DetailField>
+
+              {selectedNode.health && (
+                <DetailField label={t('monitoring.ciHealth.title')}>
+                  <CIHealthBadge health={selectedNode.health as CIHealth} />
+                </DetailField>
+              )}
 
               {selectedNode.environment && (
                 <DetailField label={t('pages.cmdb.environment')}>

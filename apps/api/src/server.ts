@@ -175,6 +175,10 @@ app.use(cors({
   credentials: true,
 }))
 
+// Event Management: un batch Alertmanager da 500 allarmi supera i 100 KB
+// predefiniti; il limite alto vale SOLO per il webhook in ingresso (autenticato
+// con token e rate-limited), il resto dell'API resta al default.
+app.use('/api/webhooks/inbound', express.json({ limit: '2mb' }))
 app.use(express.json())
 
 // ── HTTP request logging ───────────────────────────────────────────────────

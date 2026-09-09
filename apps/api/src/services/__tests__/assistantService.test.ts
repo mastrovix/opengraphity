@@ -158,6 +158,7 @@ describe('streamAssistantChat — streaming', () => {
 
   it('errore del provider → emit.error col messaggio, mai inghiottito', async () => {
     h.toolRunner.mockImplementation(() => ({
+      // eslint-disable-next-line require-yield -- il provider fallisce prima di produrre qualsiasi chunk: è il caso in prova
       async *[Symbol.asyncIterator]() { throw new Error('overloaded_error') },
     }))
     const emit = emitter()

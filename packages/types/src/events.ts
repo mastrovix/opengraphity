@@ -24,6 +24,11 @@ export type ChangeType       = 'standard' | 'normal' | 'emergency'
 export type ChangeRisk       = 'low' | 'medium' | 'high'
 export type ProblemImpact    = 'low' | 'medium' | 'high' | 'critical'
 export type CIStatus         = 'operational' | 'degraded' | 'down' | 'maintenance'
+/**
+ * Salute del CI derivata dal monitoraggio (`ci.health`), separata dal ciclo di
+ * vita (`ci.status`: active/inactive/maintenance/decommissioned).
+ */
+export type CIHealth         = 'operational' | 'degraded' | 'down'
 export type CIDependencyType = 'depends_on' | 'hosted_on' | 'connects_to' | 'backed_up_by' | 'protected_by'
 
 // --- Incident ---
@@ -129,10 +134,39 @@ export interface RequestCompletedPayload {
 
 // --- CI ---
 
-export interface CIStatusChangedPayload {
+/**
+ * `ci.health_changed` — pubblicato da eventService.recomputeCIHealth quando
+ * la salute derivata dal monitoraggio (`ci.health`) cambia. Non riguarda mai
+ * `ci.status` (ciclo di vita). `id` e `ci_id` sono lo stesso valore: `id` è la
+ * chiave che il dispatcher delle notifiche legge come entity_id, `ci_id` il
+ * nome esplicito del contratto Event Management.
+ */
+export interface CIHealthChangedPayload {
   id: string
-  previous_status: CIStatus
-  new_status: CIStatus
+  ci_id: string
+  previous_health: CIHealth | null
+  new_health: CIHealth
+}
+
+// --- Event Management (allarmi dal monitoraggio) ---
+
+export type MonitoringEventStatus   = 'firing' | 'resolved' | 'suppressed' | 'flapping'
+export type MonitoringEventSeverity = 'info' | 'warning' | 'critical'
+
+/** `event.received` (nuovo o ripetuto), `event.resolved`, `event.orphan` (nessun CI riconosciuto). */
+export interface MonitoringEventPayload {
+  id: string
+  fingerprint: string
+  title: string
+  severity: MonitoringEventSeverity
+  status: MonitoringEventStatus
+  resource: string
+  count: number
+  ci_id: string | null
+  source_id: string
+  /** Sempre 'event': il dispatcher delle notifiche lo usa per il link. */
+  entity_type: 'event'
+  entity_id: string
 }
 
 export interface CIDependencyAddedPayload {

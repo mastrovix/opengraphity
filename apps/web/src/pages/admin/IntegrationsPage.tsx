@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
@@ -24,12 +25,12 @@ import { useConfirm } from '@/hooks/useConfirm'
 // Every operation is named: `operationName` shows up in the errorLink logs and
 // the API logs instead of `undefined` (E-06).
 
-const GET_INBOUND_WEBHOOKS = gql`query InboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { inboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name entityType fieldMapping defaultValues transformScript enabled lastReceivedAt receiveCount createdAt } }`
+const GET_INBOUND_WEBHOOKS = gql`query InboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { inboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name entityType connectorKind fieldMapping defaultValues transformScript enabled lastReceivedAt receiveCount createdAt } }`
 const GET_OUTBOUND_WEBHOOKS = gql`query OutboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { outboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name url method headers events payloadTemplate enabled lastSentAt lastStatusCode sendCount errorCount lastError retryOnFailure } }`
 const GET_API_KEYS = gql`query ApiKeys($filters: String, $sortField: String, $sortDirection: String) { apiKeys(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name keyPrefix permissions rateLimit enabled lastUsedAt requestCount createdBy expiresAt createdAt } }`
 
 // ── Row types (mirror of the GraphQL selections above) ─────────────────────
-interface InboundWebhook  { id: string; name: string; entityType: string; fieldMapping: string; defaultValues: string; transformScript: string | null; enabled: boolean; lastReceivedAt: string | null; receiveCount: number; createdAt: string }
+interface InboundWebhook  { id: string; name: string; entityType: string; connectorKind: string | null; fieldMapping: string; defaultValues: string; transformScript: string | null; enabled: boolean; lastReceivedAt: string | null; receiveCount: number; createdAt: string }
 interface OutboundWebhook { id: string; name: string; url: string; method: string; headers: string; events: string[] | string; payloadTemplate: string | null; enabled: boolean; lastSentAt: string | null; lastStatusCode: number | null; sendCount: number; errorCount: number; lastError: string | null; retryOnFailure: boolean }
 interface ApiKeyRow       { id: string; name: string; keyPrefix: string; permissions: string[] | string; rateLimit: number; enabled: boolean; lastUsedAt: string | null; requestCount: number; createdBy: string | null; expiresAt: string | null; createdAt: string }
 
@@ -51,6 +52,9 @@ const REGEN_API_KEY = gql`mutation RegenerateApiKey($id: ID!) { regenerateApiKey
 // ── Constants ───────────────────────────────────────────────────────────────
 
 type TabKey = 'inbound' | 'outbound' | 'apikeys'
+// `event` NON è tra le opzioni: le sorgenti di monitoraggio si creano dalla
+// procedura guidata di Monitoraggio → Sorgenti (senza JSON); qui restano
+// visibili in elenco con il link "gestisci in Monitoraggio".
 const ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request', 'ci'] as const
 const HTTP_METHODS = ['POST', 'PUT', 'PATCH'] as const
 const OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'change.approved', 'change.completed', 'problem.created', 'sla.breached'] as const
@@ -102,6 +106,7 @@ export function IntegrationsPage() {
   const INBOUND_FILTERS: FieldConfig[] = [
     { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
       { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' }, { value: 'problem', label: 'Problem' },
+      { value: 'event', label: t('admin.integrations.entityEvent') },
     ]},
     { key: 'enabled', label: 'Abilitato', type: 'enum', options: [{ value: 'true', label: 'Sì' }, { value: 'false', label: 'No' }] },
     { key: 'name', label: 'Nome', type: 'text' },
@@ -154,6 +159,7 @@ export function IntegrationsPage() {
   const [keyForm, setKeyForm] = useState({ name: '', permissions: [] as string[], rateLimit: 1000, expiresAt: '' })
 
   const resetInForm = () => setInForm({ name: '', entityType: 'incident', fieldMapping: '{}', defaultValues: '{}', transformScript: '' })
+  const inFormValid = Boolean(inForm.name)
   const resetOutForm = () => setOutForm({ name: '', url: '', method: 'POST', headers: '{}', events: [], payloadTemplate: '', secret: '', retryOnFailure: true })
   const resetKeyForm = () => setKeyForm({ name: '', permissions: [], rateLimit: 1000, expiresAt: '' })
 
@@ -246,6 +252,7 @@ export function IntegrationsPage() {
   const inboundColumns: ColumnDef<InboundWebhook>[] = [
     { key: 'name', label: 'Nome', sortable: true },
     { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <Pill bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
+    { key: 'connectorKind', label: t('admin.integrations.connectorKind'), sortable: true, render: (v) => v ? <Pill bg="#f5f3ff" color="#6d28d9" radius={12} style={PILL_S}>{String(v)}</Pill> : '—' },
     { key: 'id', label: 'Endpoint URL', sortable: true, render: (v) => (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace' }}>/api/webhooks/in/{String(v)}</span>
@@ -257,7 +264,11 @@ export function IntegrationsPage() {
     { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleInbound(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
     { key: 'receiveCount', label: 'Ricevuti', sortable: true, render: (v) => String(v ?? 0) },
     { key: 'lastReceivedAt', label: 'Ultimo', sortable: true, render: (v) => fmtDate(v as string | null) },
-    { key: 'createdAt', label: '', render: (_v, row) => (
+    { key: 'createdAt', label: '', render: (_v, row) => row.entityType === 'event' ? (
+      <Link to={`/monitoring/sources/${row.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500, whiteSpace: 'nowrap' }}>
+        {t('admin.integrations.manageInMonitoring')} →
+      </Link>
+    ) : (
       <div style={ROW_ACTIONS}>
         <Button variant="icon" size="xs" title={t('admin.integrations.regenToken')} onClick={() => void handleRegenToken(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
         <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteInbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
@@ -324,6 +335,10 @@ export function IntegrationsPage() {
 
       {/* ── TAB: Webhook In ─────────────────────────────────────────────────── */}
       {tab === 'inbound' && <>
+        <p style={{ margin: '0 0 12px', padding: '8px 12px', background: 'var(--color-brand-light)', borderRadius: 8, fontSize: 'var(--font-size-body)', color: '#0369a1' }}>
+          {t('admin.integrations.eventsNote')}{' '}
+          <Link to="/monitoring/sources" style={{ color: 'var(--color-brand)', fontWeight: 600 }}>{t('admin.integrations.eventsNoteLink')}</Link>.
+        </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetInForm(); setModal('inbound') }}>Nuovo Webhook In</Button>
         </div>
@@ -350,7 +365,7 @@ export function IntegrationsPage() {
               <div><label htmlFor={fid('in-transform-script')} style={labelS}>Transform Script</label><textarea id={fid('in-transform-script')} style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
-                <Button onClick={() => void handleCreateInbound()} disabled={!inForm.name}>{t('common.create')}</Button>
+                <Button onClick={() => void handleCreateInbound()} disabled={!inFormValid}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>

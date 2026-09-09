@@ -42,6 +42,8 @@ const FILES = [
   'mutations/notifications.ts', 'mutations/itil.ts', 'mutations/enum.ts', 'mutations/queue.ts',
   'mutations/rules.ts', 'mutations/automation.ts', 'mutations/sla.ts', 'mutations/collaboration.ts',
   'mutations/catalog.ts',
+  // Event Management (ondata 1)
+  'queries/events.ts', 'mutations/events.ts',
 ]
 
 // Documenti admin esclusi ESPLICITAMENTE, con motivo. Ogni nuova esclusione

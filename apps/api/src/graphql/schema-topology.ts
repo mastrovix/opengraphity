@@ -7,6 +7,8 @@ export function topologySDL(): string {
     name:          String!
     type:          String!
     status:        String!
+    """Salute dal monitoraggio: operational | degraded | down; null se nessun evento ha mai riguardato il CI."""
+    health:        String
     environment:   String
     ownerGroup:    String
     incidentCount: Int!

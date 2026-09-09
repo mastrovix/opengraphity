@@ -20,6 +20,11 @@ export function cmdbSDL(): string {
     notes: String
     ownerGroup: Team
     supportGroup: Team
+    """Salute dal monitoraggio (Event Management): operational | degraded | down. Null finché nessun evento ha riguardato il CI. Sola lettura."""
+    health: String
+    """monitoring | manual (forzatura da setCIHealthOverride)."""
+    healthSource: String
+    lastEventAt: String
   }
 
   type AllCIsResult { items: [CIBase!]!, total: Int! }

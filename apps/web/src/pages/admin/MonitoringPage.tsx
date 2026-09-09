@@ -140,7 +140,7 @@ export function MonitoringPage() {
         <p style={sectionTitle}>{t('pages.monitoring.health.title')}</p>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {/* Overall */}
-          <div style={{ ...statCard, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ ...statCard, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <StatusDot status={health?.status ?? 'unknown'} />
             <div>
               <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.health.uptime')}</div>
@@ -233,7 +233,7 @@ export function MonitoringPage() {
             <tbody>
               {metrics.queues.map((q) => (
                 <tr key={q.name} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '8px 12px 8px 0', fontFamily: 'monospace', fontWeight: 600 }}>{q.name}</td>
+                  <td style={{ padding: '8px 12px 8px 0', fontWeight: 600 }}>{q.name}</td>
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.waiting}</td>
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.active}</td>
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.completed}</td>
@@ -277,7 +277,7 @@ export function MonitoringPage() {
               <tbody>
                 {metrics.neo4j.slowQueries.map((sq, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '6px 0', fontFamily: 'monospace', wordBreak: 'break-all', color: '#374151' }}>
+                    <td style={{ padding: '6px 0', wordBreak: 'break-all', color: '#374151' }}>
                       {sq.query}
                     </td>
                     <td style={{ padding: '6px 12px', color: 'var(--color-danger)', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -323,7 +323,7 @@ export function MonitoringPage() {
                   <tbody>
                     {[...trace.recentTraces].reverse().slice(0, 20).map((tr) => (
                       <tr key={tr.traceId} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={{ padding: '6px 0', fontFamily: 'monospace' }}>
+                        <td style={{ padding: '6px 0' }}>
                           {tr.operationName}
                           {tr.spanCount > 1 && (
                             <span style={{ color: '#9ca3af', marginLeft: 8, fontSize: 'var(--font-size-table)' }}>
@@ -380,19 +380,19 @@ export function MonitoringPage() {
           </div>
           <div style={statCard}>
             <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.version')}</div>
-            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics?.system.nodeVersion ?? '—'}
             </div>
           </div>
           <div style={statCard}>
             <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.pid')}</div>
-            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics?.system.pid ?? '—'}
             </div>
           </div>
           <div style={statCard}>
             <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.health.uptime')}</div>
-            <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+            <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? formatUptime(metrics.system.uptimeSeconds) : '—'}
             </div>
           </div>

@@ -1,14 +1,14 @@
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Hash, BarChart2, TrendingUp, PieChart, Table, Gauge,
+  Hash, BarChart2, TrendingUp, PieChart, Table, Gauge, Radar,
 } from 'lucide-react'
 import { WIDGET_TYPES } from './useWidgetConfig'
 
 // ── Icon lookup ──────────────────────────────────────────────────────────────
 
 const ICON_MAP: Record<string, React.ComponentType<{ size: number }>> = {
-  Hash, BarChart2, TrendingUp, PieChart, Table, Gauge,
+  Hash, BarChart2, TrendingUp, PieChart, Table, Gauge, Radar,
 }
 
 // ── Props ────────────────────────────────────────────────────────────────────

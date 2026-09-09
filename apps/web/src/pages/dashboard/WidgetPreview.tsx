@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { PreviewData } from './useWidgetConfig'
-import { TIME_RANGES } from './useWidgetConfig'
+import { TIME_RANGES, DATA_FREE_WIDGET_TYPES } from './useWidgetConfig'
+import { ActiveAlarmsWidget } from './ActiveAlarmsWidget'
 
 // Stesso corpo della card reale (anteprima ≡ widget); lazy per non portare
 // ECharts nel bundle del modal di configurazione finché non serve.
@@ -23,6 +24,7 @@ interface WidgetPreviewProps {
 export function WidgetPreview({ widgetType, color, title, previewData, previewLoading, timeRange }: WidgetPreviewProps) {
   const { t, i18n } = useTranslation()
   const timeRangeKey = TIME_RANGES.find((r) => r.value === timeRange)?.labelKey
+  const dataFree = DATA_FREE_WIDGET_TYPES.includes(widgetType)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', background: 'var(--color-slate-bg)', minWidth: 0 }}>
@@ -46,7 +48,9 @@ export function WidgetPreview({ widgetType, color, title, previewData, previewLo
         </div>
 
         {/* Card body */}
-        {previewLoading ? (
+        {dataFree ? (
+          <ActiveAlarmsWidget color={color} large />
+        ) : previewLoading ? (
           <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: 28, height: 28, border: `3px solid ${color}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
           </div>
@@ -62,7 +66,7 @@ export function WidgetPreview({ widgetType, color, title, previewData, previewLo
       </div>
 
       {/* Stats */}
-      {previewData && !previewLoading && (
+      {previewData && !previewLoading && !dataFree && (
         <div style={{ marginTop: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', display: 'flex', gap: 16 }}>
           {previewData.value != null && <span>{t('pages.dashboard.total')} <strong>{Math.round(previewData.value).toLocaleString(i18n.language)}</strong></span>}
           {previewData.series.length > 0 && <span>{t('pages.dashboard.categories')} <strong>{previewData.series.length}</strong></span>}

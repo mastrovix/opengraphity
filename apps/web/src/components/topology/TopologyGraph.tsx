@@ -19,6 +19,8 @@ export interface TopologyNode {
   ownerGroup:    string | null
   incidentCount: number
   changeCount:   number
+  /** Salute dal monitoraggio (operational | degraded | down); null = sconosciuta. */
+  health:        string | null
 }
 
 export interface TopologyEdge {
@@ -42,6 +44,8 @@ interface Props {
   highlightNodeId?: string | null
   rootNodeId?:      string | null
   ciTypes?:         CITypeMeta[]
+  /** Colora bordo e sfondo dei nodi dalla salute (down rosso, degraded ambra), con priorità sugli altri colori. */
+  highlightHealth?: boolean
 }
 
 // ── Color constants ───────────────────────────────────────────────────────────
@@ -50,6 +54,26 @@ const NODE_RADIUS  = 16
 const NODE_COLOR   = 'var(--color-slate)'   // ardesia — uguale per tutti i tipi CI
 const EDGE_COLOR   = 'var(--color-trigger-manual)'   // cyan — uguale per tutti i tipi relazione
 const NODE_SELECTED_COLOR = '#f97316'  // arancione — nodo evidenziato
+
+/** Colori della salute (stessa palette di CIHealthBadge in pages/events/eventShared). */
+export const HEALTH_COLOR: Record<string, { stroke: string; fill: string }> = {
+  down:     { stroke: '#dc2626', fill: '#fee2e2' },
+  degraded: { stroke: '#d97706', fill: '#fef3c7' },
+}
+
+/** Bordo del nodo: salute (se evidenziata) > anelli incident/change (bordo assente) > ardesia. */
+function nodeStroke(d: TopologyNode, highlightHealth: boolean): string {
+  const h = highlightHealth && d.health ? HEALTH_COLOR[d.health] : undefined
+  if (h) return h.stroke
+  return (d.incidentCount > 0 || d.changeCount > 0) ? 'none' : NODE_COLOR
+}
+
+/** Sfondo del nodo: root ciano, salute evidenziata (down/degraded) colorata, altrimenti bianco. */
+function nodeFill(d: TopologyNode, rootNodeId: string | null | undefined, highlightHealth: boolean): string {
+  const h = highlightHealth && d.health ? HEALTH_COLOR[d.health] : undefined
+  if (h) return h.fill
+  return d.id === rootNodeId ? EDGE_COLOR : '#ffffff'
+}
 
 const EDGE_DIST: Record<string, number> = {
   HOSTED_ON: 80, DEPENDS_ON: 120, CONNECTS_TO: 100,
@@ -107,8 +131,11 @@ function drawStatusRings(nodeEl: d3.Selection<SVGGElement, SimNode, SVGGElement,
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TopologyGraph({
-  nodes, edges, onNodeClick, showLabels, highlightNodeId, rootNodeId, ciTypes,
+  nodes, edges, onNodeClick, showLabels, highlightNodeId, rootNodeId, ciTypes, highlightHealth = false,
 }: Props) {
+  // Letto dagli effetti che non devono ricostruire il grafo quando cambia.
+  const highlightHealthRef = useRef(highlightHealth)
+  highlightHealthRef.current = highlightHealth
 
   const containerRef = useRef<HTMLDivElement>(null)
   const simRef       = useRef<d3.Simulation<SimNode, SimLink> | null>(null)
@@ -254,14 +281,14 @@ export default function TopologyGraph({
     nodeEl.append('circle')
       .attr('class', 'node-bg')
       .attr('r', r)
-      .attr('fill', (d) => d.id === rootNodeId ? EDGE_COLOR : '#ffffff')
-      .attr('stroke', (d) => (d.incidentCount > 0 || d.changeCount > 0) ? 'none' : NODE_COLOR)
+      .attr('fill', (d) => nodeFill(d, rootNodeId, highlightHealthRef.current))
+      .attr('stroke', (d) => nodeStroke(d, highlightHealthRef.current))
       .attr('stroke-width', 2.5)
       .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
 
     // Layer 5: icon — white on root node (cyan bg), slate on all others
     nodeEl.each(function(d) {
-      const iconColor = d.id === rootNodeId ? '#ffffff' : NODE_COLOR
+      const iconColor = d.id === rootNodeId && !(highlightHealthRef.current && d.health && HEALTH_COLOR[d.health]) ? '#ffffff' : NODE_COLOR
       appendIcon(d3.select(this), iconKeyForType(typeIconMap, d.type), iconColor, 18)
     })
 
@@ -373,24 +400,37 @@ export default function TopologyGraph({
       const f = fresh.get(d.id)
       if (!f) return
       if (d.incidentCount !== f.incidentCount || d.changeCount !== f.changeCount
-        || d.status !== f.status || d.name !== f.name || d.ownerGroup !== f.ownerGroup || d.environment !== f.environment) {
+        || d.status !== f.status || d.name !== f.name || d.ownerGroup !== f.ownerGroup || d.environment !== f.environment
+        || d.health !== f.health) {
         d.incidentCount = f.incidentCount
         d.changeCount   = f.changeCount
         d.status        = f.status
         d.name          = f.name
         d.ownerGroup    = f.ownerGroup
         d.environment   = f.environment
+        d.health        = f.health
         changed = true
       }
     })
     if (!changed) return
     drawStatusRings(nodeEl)
     nodeEl.select<SVGCircleElement>('.node-bg')
-      .attr('stroke', (d) => (d.incidentCount > 0 || d.changeCount > 0) ? 'none' : NODE_COLOR)
+      .attr('fill', (d) => nodeFill(d, rootNodeId, highlightHealthRef.current))
+      .attr('stroke', (d) => nodeStroke(d, highlightHealthRef.current))
       .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
     nodeEl.select<SVGTextElement>('.node-label')
       .text((d) => nodeLabel(d, rootNodeId))
   }, [nodes, rootNodeId])
+
+  // ── Health highlight effect (no rebuild) ──────────────────────────────────
+  // L'interruttore "Evidenzia salute" ricolora bordo e sfondo in place.
+  useEffect(() => {
+    const nodeEl = nodeElRef.current
+    if (!nodeEl) return
+    nodeEl.select<SVGCircleElement>('.node-bg')
+      .attr('fill', (d) => nodeFill(d, rootNodeId, highlightHealth))
+      .attr('stroke', (d) => d.id === highlightNodeId && highlightNodeId !== rootNodeId ? NODE_SELECTED_COLOR : nodeStroke(d, highlightHealth))
+  }, [highlightHealth, rootNodeId, highlightNodeId])
 
   // ── Highlight effect (no rebuild) ─────────────────────────────────────────
   useEffect(() => {
@@ -402,7 +442,7 @@ export default function TopologyGraph({
       nodeEl.style('opacity', 1)
       nodeEl.select<SVGCircleElement>('.node-bg')
         .attr('stroke-width', 2.5)
-        .attr('stroke', (n) => (n.incidentCount > 0 || n.changeCount > 0) ? 'none' : NODE_COLOR)
+        .attr('stroke', (n) => nodeStroke(n, highlightHealthRef.current))
         .attr('r', r)
       linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
       return
@@ -426,7 +466,7 @@ export default function TopologyGraph({
       .attr('stroke-width', (n) => n.id === highlightNodeId ? 4 : 2.5)
       .attr('stroke', (n) => {
         if (n.id === highlightNodeId) return NODE_SELECTED_COLOR
-        return (n.incidentCount > 0 || n.changeCount > 0) ? 'none' : NODE_COLOR
+        return nodeStroke(n, highlightHealthRef.current)
       })
       .attr('r', (n) => n.id === highlightNodeId ? r * 1.5 : r)
     linkEl
@@ -454,9 +494,11 @@ interface LegendProps {
   nodes:    TopologyNode[]
   edges:    TopologyEdge[]
   ciTypes?: CITypeMeta[]
+  /** Mostra la voce "Salute" (down/degraded) quando l'evidenziazione è attiva. */
+  highlightHealth?: boolean
 }
 
-export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
+export function TopologyLegend({ nodes, edges, ciTypes, highlightHealth = false }: LegendProps) {
   const { t } = useTranslation()
   const presentNodeTypes = [...new Set(nodes.map((n) => n.type))].sort()
   const presentEdgeTypes = [...new Set(edges.map((e) => e.type))].sort()
@@ -496,6 +538,18 @@ export function TopologyLegend({ nodes, edges, ciTypes }: LegendProps) {
                 <line x1={0} y1={4} x2={20} y2={4} stroke={EDGE_COLOR} strokeWidth={2} strokeOpacity={0.7} />
               </svg>
               <span style={{ color: 'var(--color-slate)' }}>{typeLabel(type)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {highlightHealth && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.health')}</div>
+          {(['down', 'degraded'] as const).map((h) => (
+            <div key={h} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+              <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill={HEALTH_COLOR[h]!.fill} stroke={HEALTH_COLOR[h]!.stroke} strokeWidth={2} /></svg>
+              <span style={{ color: 'var(--color-slate)' }}>{t(h === 'down' ? 'components.topologyGraph.healthDown' : 'components.topologyGraph.healthDegraded')}</span>
             </div>
           ))}
         </div>

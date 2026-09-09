@@ -1,9 +1,10 @@
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X } from 'lucide-react'
+import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X, Radar } from 'lucide-react'
 import { GET_WIDGET_DATA } from '@/graphql/queries'
 import { lookupOrError } from '@/lib/tokens'
 import { WidgetBody, type WidgetSeriesData } from '@/components/WidgetBody'
+import { ActiveAlarmsWidget, ACTIVE_ALARMS_WIDGET_TYPE } from './ActiveAlarmsWidget'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ const TIME_LABEL_KEY: Record<string, string> = {
 const TYPE_ICON: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
   counter: Hash, chart_bar: BarChart2, chart_line: TrendingUp, chart_pie: PieChart,
   chart_donut: PieChart, table: Table, gauge: Gauge, heatmap: Activity,
+  active_alarms: Radar,
 }
 
 function TypeIcon({ type, color }: { type: string; color: string }) {
@@ -60,9 +62,12 @@ function TypeIcon({ type, color }: { type: string; color: string }) {
 
 export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) {
   const { t } = useTranslation()
+  // "Allarmi attivi" legge eventStats (ActiveAlarmsWidget), non widgetData.
+  const isActiveAlarms = widget.widgetType === ACTIVE_ALARMS_WIDGET_TYPE
   const { data, loading, error } = useQuery<{ widgetData: WidgetSeriesData }>(GET_WIDGET_DATA, {
     variables: { widgetId: widget.id },
     fetchPolicy: 'cache-and-network',
+    skip: isActiveAlarms,
   })
 
   const colSpan = lookupOrError(SIZE_COLSPAN, widget.size, 'SIZE_COLSPAN', 6)
@@ -126,7 +131,9 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
   // ── Body ─────────────────────────────────────────────────────────────────────
 
   let body: React.ReactNode
-  if (loading && !wData) {
+  if (isActiveAlarms) {
+    body = <ActiveAlarmsWidget color={widget.color} />
+  } else if (loading && !wData) {
     body = (
       <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ width: 24, height: 24, border: `3px solid ${widget.color}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />

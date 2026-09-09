@@ -100,7 +100,12 @@
     "mainMenu": "Menu principale",
     "anomalyLoadError": "Errore caricamento anomalie",
     "criticalAnomalies": "{{count}} anomalie critiche",
-    "pendingBadge": "{{count}} in attesa"
+    "pendingBadge": "{{count}} in attesa",
+    "events": "Eventi",
+    "eventPolicy": "Policy eventi",
+    "monitoringSources": "Sorgenti",
+    "ciHealth": "Salute CI",
+    "platformMonitoring": "Platform monitoring"
   },
   "pages": {
     "incidents": {
@@ -239,7 +244,8 @@
       "comboAll": "— Tutti —",
       "searchError": "Errore nella ricerca: {{error}}",
       "searching": "Ricerca…",
-      "comboShown": "Mostrati {{shown}} di {{total}} — affina la ricerca per trovare gli altri"
+      "comboShown": "Mostrati {{shown}} di {{total}} — affina la ricerca per trovare gli altri",
+      "highlightHealth": "Evidenzia salute"
     },
     "teams": {
       "title": "Team",
@@ -422,8 +428,8 @@
       "import": "Importa"
     },
     "monitoring": {
-      "title": "Monitoring",
-      "subtitle": "Salute del sistema, metriche e tracciamento in tempo reale",
+      "title": "Platform monitoring",
+      "subtitle": "Salute della piattaforma OpenGrafo: servizi, metriche e tracce",
       "health": {
         "title": "Salute del Sistema",
         "neo4j": "Neo4j",
@@ -803,7 +809,8 @@
         "chartPie": "Pie Chart",
         "chartDonut": "Donut",
         "table": "Tabella",
-        "gauge": "Gauge"
+        "gauge": "Gauge",
+        "activeAlarms": "Allarmi attivi"
       },
       "widgetTypeDesc": {
         "counter": "Numero totale",
@@ -812,7 +819,8 @@
         "chartPie": "Proporzioni",
         "chartDonut": "Proporzioni",
         "table": "Lista valori",
-        "gauge": "% su 100"
+        "gauge": "% su 100",
+        "activeAlarms": "Allarmi attivi, critici, warning e orfani dal monitoraggio"
       },
       "entityLabel": "Entità",
       "entity": {
@@ -887,7 +895,8 @@
       "preview": "Anteprima",
       "total": "Totale:",
       "categories": "Categorie:",
-      "previewHint": "La preview si aggiorna automaticamente mentre configuri il widget (con debounce 600ms)."
+      "previewHint": "La preview si aggiorna automaticamente mentre configuri il widget (con debounce 600ms).",
+      "activeAlarmsHint": "Questo widget mostra i contatori in tempo reale della console eventi: nessuna entità o metrica da configurare."
     }
   },
   "filter": {
@@ -1125,6 +1134,22 @@
       "breached": {
         "title": "OLA/UC violato"
       }
+    },
+    "event": {
+      "received": {
+        "title": "Nuovo allarme dal monitoraggio"
+      },
+      "resolved": {
+        "title": "Allarme rientrato"
+      },
+      "orphan": {
+        "title": "Allarme senza CI riconosciuto"
+      }
+    },
+    "ci": {
+      "health_changed": {
+        "title": "Salute del CI cambiata"
+      }
     }
   },
   "sla": {
@@ -1208,7 +1233,12 @@
       "regenKey": "Rigenera chiave",
       "test": "Test",
       "copy": "Copia",
-      "copyEndpoint": "Copia endpoint"
+      "copyEndpoint": "Copia endpoint",
+      "entityEvent": "Evento",
+      "connectorKind": "Connettore",
+      "eventsNote": "Le sorgenti di monitoraggio (allarmi da Alertmanager, Grafana, Zabbix, Datadog o altri strumenti) si configurano senza codice in",
+      "eventsNoteLink": "Monitoraggio → Sorgenti",
+      "manageInMonitoring": "Gestisci in Monitoraggio"
     },
     "questions": {
       "deleteTitle": "Eliminare questa domanda?",
@@ -1518,6 +1548,28 @@
       "created": "Richiesta di servizio creata",
       "updated": "Richiesta aggiornata",
       "transitionFailed": "Transizione non riuscita"
+    },
+    "events": {
+      "acknowledged": "Evento preso in carico",
+      "resolved": "Evento risolto",
+      "incidentCreated": "Incident {{number}} creato",
+      "linked": "Evento collegato a {{ci}}",
+      "aliasDeleted": "Alias eliminato",
+      "aliasCreated": "Alias creato",
+      "actionFailed": "Operazione fallita: {{error}}",
+      "policySaved": "Policy eventi salvata",
+      "policySaveFailed": "Salvataggio policy fallito: {{error}}"
+    },
+    "monitoring": {
+      "sourceCreated": "Sorgente creata",
+      "sourceUpdated": "Sorgente aggiornata",
+      "sourceDeleted": "Sorgente eliminata",
+      "tokenRegenerated": "Token rigenerato",
+      "sampleSent": "Evento di prova accodato: aprilo in Eventi",
+      "sampleFailed": "Evento di prova non riuscito: {{error}}",
+      "healthOverridden": "Salute forzata a {{health}}",
+      "overrideRemoved": "Forzatura rimossa: salute ricalcolata dal monitoraggio",
+      "copied": "Copiato!"
     }
   },
   "components": {
@@ -1547,12 +1599,462 @@
       "edges": "Relazioni",
       "signals": "Segnali",
       "activeIncident": "Incident attivo",
-      "changeInProgress": "Change in corso"
+      "changeInProgress": "Change in corso",
+      "health": "Salute",
+      "healthDown": "Giù",
+      "healthDegraded": "Degradato"
     },
     "widgetBody": {
       "label": "Label",
       "value": "Valore",
       "noData": "Nessun dato"
+    }
+  },
+  "events": {
+    "title": "Eventi",
+    "count": "{{count}} eventi",
+    "orphan": "orfano",
+    "status": {
+      "firing": "Attivo",
+      "resolved": "Risolto",
+      "suppressed": "Soppresso",
+      "flapping": "Sfarfallio"
+    },
+    "severity": {
+      "critical": "Critico",
+      "warning": "Avviso",
+      "info": "Info"
+    },
+    "stats": {
+      "firing": "Attivi",
+      "critical": "Critici",
+      "warning": "Avvisi",
+      "orphan": "Orfani",
+      "suppressed": "Soppressi",
+      "flapping": "Sfarfallio",
+      "resolved24h": "Risolti 24h"
+    },
+    "columns": {
+      "status": "Stato",
+      "severity": "Severità",
+      "title": "Evento",
+      "ci": "CI",
+      "source": "Sorgente",
+      "count": "Conteggio",
+      "lastSeen": "Ultimo visto",
+      "incident": "Incident",
+      "actions": "Azioni"
+    },
+    "filters": {
+      "orphanOnly": "Solo orfani",
+      "search": "Ricerca",
+      "searchPlaceholder": "Cerca titolo o risorsa…"
+    },
+    "empty": {
+      "title": "Nessun evento",
+      "description": "Nessun allarme corrisponde ai filtri."
+    },
+    "actions": {
+      "acknowledge": "Prendi in carico",
+      "resolve": "Risolvi",
+      "openIncident": "Apri incident",
+      "linkCI": "Collega a CI",
+      "openIncidentTitle": "Aprire un incident da questo evento?",
+      "emptyResponse": "Incident creato ma risposta vuota",
+      "resolveTitle": "Risolvi evento",
+      "resolveNote": "Nota (facoltativa)",
+      "linkCITitle": "Collega a un CI",
+      "linkCIHint": "La sorgente identifica l'oggetto come {{kind}} \"{{resource}}\".",
+      "searchCI": "Cerca CI",
+      "searchCIPlaceholder": "Nome del CI (min. 2 caratteri)",
+      "searchResults": "Risultati ricerca CI",
+      "rememberAlias": "Ricorda questo nome per la prossima volta (crea alias)"
+    },
+    "detail": {
+      "back": "Torna agli eventi",
+      "notFound": "Evento non trovato",
+      "information": "Informazioni",
+      "description": "Descrizione",
+      "resource": "Risorsa",
+      "fingerprint": "Impronta",
+      "externalId": "ID esterno",
+      "firstSeen": "Primo visto",
+      "lastSeen": "Ultimo visto",
+      "resolvedAt": "Risolto il",
+      "acknowledged": "Presa in carico",
+      "acknowledgedBy": "{{name}} · {{when}}",
+      "notAcknowledged": "Non preso in carico",
+      "labels": "Etichette",
+      "labelsInvalid": "Etichette non leggibili: {{error}}",
+      "noLabels": "Nessuna etichetta.",
+      "labelKey": "Chiave",
+      "labelValue": "Valore",
+      "context": "Contesto",
+      "ciHealth": "Salute"
+    },
+    "aliases": {
+      "title": "Alias del CI {{ci}}",
+      "empty": "Nessun alias: la sorgente non riconoscerà questo CI da sola.",
+      "deleteTitle": "Eliminare l'alias?",
+      "delete": "Elimina alias {{value}}",
+      "kindLabel": "Tipo",
+      "valueLabel": "Valore",
+      "valuePlaceholder": "es. web-01.acme.local",
+      "add": "Aggiungi",
+      "kind": {
+        "hostname": "hostname",
+        "ip": "IP",
+        "fqdn": "FQDN",
+        "external_id": "ID esterno"
+      }
+    },
+    "policy": {
+      "title": "Policy eventi",
+      "subtitle": "Apertura incident, raggruppamento, chiusura automatica, sfarfallio e conservazione degli allarmi.",
+      "severityMapInvalid": "Mappa severità non valida ({{error}}): valori reimpostati ai default, salva per correggere.",
+      "openIncidentFrom": "Apri incident a partire da",
+      "openFrom": {
+        "info": "Info",
+        "warning": "Avviso",
+        "critical": "Critico",
+        "never": "Mai"
+      },
+      "groupBy": "Raggruppa per",
+      "groupByOptions": {
+        "ci": "CI",
+        "fingerprint": "Impronta"
+      },
+      "openDelaySeconds": "Ritardo apertura (secondi)",
+      "suppressUpstreamHops": "Soppressione a monte (hop)",
+      "flapThreshold": "Soglia sfarfallio (transizioni)",
+      "flapWindowMinutes": "Finestra sfarfallio (minuti)",
+      "retentionDays": "Conservazione (giorni)",
+      "autoResolve": "Chiusura automatica quando la sorgente risolve",
+      "severityMap": "Mappa severità → impatto / urgenza",
+      "map": {
+        "severity": "Severità",
+        "impact": "Impatto",
+        "urgency": "Urgenza"
+      },
+      "level": {
+        "low": "Bassa",
+        "medium": "Media",
+        "high": "Alta"
+      }
+    },
+    "health": {
+      "operational": "Operativo",
+      "degraded": "Degradato",
+      "down": "Giù",
+      "unknown": "Sconosciuta"
+    }
+  },
+  "monitoring": {
+    "tools": {
+      "alertmanager": {
+        "name": "Prometheus Alertmanager",
+        "description": "Allarmi da un receiver webhook di Alertmanager: un evento per alert, comprese le risoluzioni."
+      },
+      "grafana": {
+        "name": "Grafana",
+        "description": "Contact point di Grafana Alerting di tipo Webhook."
+      },
+      "zabbix": {
+        "name": "Zabbix",
+        "description": "Media type \"Webhook\" di Zabbix con le macro standard di evento e host."
+      },
+      "datadog": {
+        "name": "Datadog",
+        "description": "Integrazione Webhooks di Datadog collegata ai monitor."
+      },
+      "dynatrace": {
+        "name": "Dynatrace",
+        "description": "Problem notification di Dynatrace (Custom integration) con il payload personalizzato proposto qui."
+      },
+      "generic": {
+        "name": "Altro strumento",
+        "description": "Qualsiasi sistema capace di inviare una richiesta HTTP con un corpo JSON: sei tu a dire a OpenGrafo dove si trova ogni informazione."
+      }
+    },
+    "sources": {
+      "title": "Sorgenti di monitoraggio",
+      "subtitle": "Gli strumenti che inviano allarmi a OpenGrafo. Ogni sorgente ha il proprio endpoint e il proprio token.",
+      "count_one": "{{count}} sorgente",
+      "count_other": "{{count}} sorgenti",
+      "add": "Aggiungi sorgente",
+      "columns": {
+        "name": "Nome",
+        "tool": "Strumento",
+        "status": "Stato",
+        "lastReceived": "Ultimo ricevuto",
+        "received": "Ricevuti",
+        "errors": "Errori",
+        "actions": "Azioni"
+      },
+      "active": "Attiva",
+      "inactive": "Disattiva",
+      "toggle": "Attiva o disattiva {{name}}",
+      "never": "Mai",
+      "noErrors": "Nessuno",
+      "errorCount_one": "{{count}} errore",
+      "errorCount_other": "{{count}} errori",
+      "lastError": "Ultimo motivo: {{error}}",
+      "edit": "Modifica",
+      "editAria": "Modifica {{name}}",
+      "regenToken": "Rigenera token",
+      "regenTokenAria": "Rigenera il token di {{name}}",
+      "delete": "Elimina",
+      "deleteAria": "Elimina {{name}}",
+      "sendSample": "Invia evento di prova",
+      "sendSampleAria": "Invia un evento di prova da {{name}}",
+      "deleteTitle": "Eliminare la sorgente \"{{name}}\"?",
+      "deleteBody": "Lo strumento non potrà più inviare allarmi: endpoint e token smettono di funzionare subito. Gli eventi già ricevuti restano.",
+      "regenTitle": "Rigenerare il token?",
+      "regenBody": "Il token attuale smette di funzionare subito: aggiorna la configurazione dello strumento con quello nuovo.",
+      "newTokenTitle": "Nuovo token",
+      "newTokenBody": "Copialo adesso: per sicurezza non sarà più visibile.",
+      "empty": {
+        "title": "Nessuna sorgente di monitoraggio",
+        "description": "Collega Alertmanager, Grafana, Zabbix, Datadog o qualsiasi altro strumento: la procedura guidata ti accompagna passo passo, senza codice."
+      },
+      "disabledHint": "Disattiva: gli allarmi inviati a questo endpoint vengono rifiutati."
+    },
+    "wizard": {
+      "title": "Aggiungi sorgente",
+      "back": "Torna alle sorgenti",
+      "stepOf": "Passo {{step}} di {{total}}",
+      "progress": "Avanzamento della procedura",
+      "steps": {
+        "tool": "Strumento",
+        "rules": "Nome e regole",
+        "connect": "Collegamento",
+        "test": "Prova"
+      },
+      "toolIntro": "Quale strumento invierà gli allarmi? I passi successivi si adattano alla scelta.",
+      "toolGroup": "Strumento di monitoraggio",
+      "nameLabel": "Nome della sorgente",
+      "namePlaceholder": "es. Prometheus produzione",
+      "nameHint": "Compare nella console eventi accanto a ogni allarme proveniente da questa sorgente.",
+      "knownToolHint": "{{tool}} invia gli allarmi in un formato fisso che OpenGrafo conosce già: non serve alcuna mappatura dei campi.",
+      "create": "Crea sorgente",
+      "creating": "Creazione…",
+      "connectIntro": "La sorgente \"{{name}}\" è pronta. Configura {{tool}} con i dati qui sotto.",
+      "endpoint": "URL dell'endpoint",
+      "token": "Token",
+      "tokenOnce": "Copia il token adesso: per sicurezza non sarà più visibile. Potrai rigenerarlo dall'elenco delle sorgenti.",
+      "snippetTitle": "Configurazione pronta per {{tool}}",
+      "copySnippet": "Copia configurazione",
+      "copyEndpoint": "Copia URL",
+      "copyToken": "Copia token",
+      "testIntro": "Invia un evento di prova attraverso la pipeline reale: comparirà nella console eventi esattamente come un allarme vero.",
+      "sendSample": "Invia evento di prova",
+      "sampleSent_one": "{{count}} evento di prova accodato: aprilo nella console.",
+      "sampleSent_other": "{{count}} eventi di prova accodati: aprili nella console.",
+      "openConsole": "Apri in Eventi",
+      "finish": "Fine",
+      "toolRequired": "Scegli uno strumento per continuare.",
+      "nameRequired": "Inserisci un nome per continuare.",
+      "mappingIncomplete": "Mappa i campi obbligatori (titolo, severità, risorsa) e verifica che l'anteprima mostri un evento.",
+      "createFailed": "La sorgente non è stata creata: {{error}}"
+    },
+    "mapper": {
+      "intro": "Incolla un allarme reale inviato dallo strumento (JSON). OpenGrafo ne elenca i campi: scegli quale usare per ogni informazione.",
+      "payloadLabel": "Allarme di esempio (JSON)",
+      "payloadPlaceholder": "Incolla qui il corpo JSON che invia lo strumento…",
+      "useSample": "Usa esempio",
+      "payloadInvalid": "L'esempio non è un JSON valido: {{error}}",
+      "keysLoading": "Lettura dei campi…",
+      "keysError": "Impossibile leggere i campi: {{error}}",
+      "fieldsTitle": "Quale campo usare per…",
+      "noKeys": "Incolla un allarme di esempio per vederne i campi.",
+      "unmapped": "— non usato —",
+      "fields": {
+        "title": "Titolo",
+        "severity": "Severità",
+        "resource": "Risorsa (host, IP, …)",
+        "status": "Stato",
+        "description": "Descrizione",
+        "externalId": "Identificativo"
+      },
+      "fieldHints": {
+        "title": "Ciò che leggerai come nome dell'allarme.",
+        "severity": "Quanto è grave: tradotta qui sotto in info / warning / critical.",
+        "resource": "Il nome che lo strumento dà all'oggetto: serve a trovare il CI.",
+        "status": "Se l'allarme è aperto o risolto: tradotto qui sotto. Non usato = sempre aperto.",
+        "description": "Testo libero mostrato nel dettaglio dell'evento.",
+        "externalId": "L'identificativo usato dallo strumento: utile per risalire all'allarme."
+      },
+      "resourceKind": "La risorsa è un…",
+      "resourceKinds": {
+        "hostname": "Hostname",
+        "ip": "Indirizzo IP",
+        "fqdn": "FQDN",
+        "external_id": "ID esterno",
+        "name": "Nome del CI"
+      },
+      "resourceKindHint": "Dice a OpenGrafo con quale alias del CI confrontarla.",
+      "translateTitle": "Traduzione dei valori",
+      "translateIntro": "Lo strumento usa parole sue: qui dici cosa significano per OpenGrafo.",
+      "severityValues": "Valori di severità trovati",
+      "statusValues": "Valori di stato trovati",
+      "pickFieldFirst": "Prima scegli il campo qui sopra.",
+      "valueBecomes": "\"{{value}}\" diventa",
+      "chooseTarget": "— scegli —",
+      "addValue": "Aggiungi un altro valore",
+      "addValuePlaceholder": "es. major",
+      "add": "Aggiungi",
+      "remove": "Rimuovi il valore {{value}}",
+      "preview": {
+        "title": "Anteprima",
+        "intro": "Ecco cosa diventa l'allarme incollato con le regole attuali.",
+        "loading": "Calcolo…",
+        "empty": "Mappa titolo, severità e risorsa per vedere l'anteprima.",
+        "error": "Le regole non funzionano ancora: {{error}}",
+        "eventTitle": "Titolo",
+        "severity": "Severità",
+        "resource": "Risorsa",
+        "status": "Stato"
+      }
+    },
+    "edit": {
+      "title": "Modifica sorgente",
+      "back": "Torna alle sorgenti",
+      "notFound": "Sorgente non trovata",
+      "tool": "Strumento",
+      "enabled": "Sorgente attiva",
+      "mappingTitle": "Mappatura dei campi",
+      "tokenTitle": "Token",
+      "tokenHint": "Il token non viene più mostrato dopo la creazione. Se l'hai perso, rigeneralo: quello vecchio smette di funzionare subito.",
+      "droppedFields": "Regole salvate fuori da questo editor verranno perse al salvataggio: {{fields}}"
+    },
+    "ciHealth": {
+      "title": "Salute",
+      "noHealth": "Nessun allarme ha ancora riguardato questo CI: la salute non è nota.",
+      "source": "Origine",
+      "sourceMonitoring": "Monitoraggio",
+      "sourceManual": "Forzatura manuale",
+      "lastEvent": "Ultimo evento",
+      "activeEvents": "Allarmi attivi",
+      "viewEvents": "Vedi nella console",
+      "override": "Forza salute",
+      "overrideHint": "Usala quando il monitoraggio sbaglia o manca: la salute resta quella impostata finché non togli la forzatura.",
+      "overrideNone": "— dal monitoraggio —",
+      "removeOverride": "Rimuovi forzatura",
+      "aliases": "Alias",
+      "aliasesHint": "I nomi con cui gli strumenti di monitoraggio chiamano questo CI (hostname, IP, FQDN, ID esterno). Un allarme la cui risorsa corrisponde a un alias viene agganciato a questo CI da solo.",
+      "recentEvents": "Ultimi eventi",
+      "noEvents": "Nessun evento per questo CI."
+    },
+    "console": {
+      "sourceFilter": "Sorgente",
+      "allSources": "Tutte le sorgenti",
+      "refresh": "Aggiorna",
+      "noSourcesBanner": "Nessuna sorgente di monitoraggio è ancora collegata: nessun allarme può arrivare.",
+      "noSourcesCta": "Aggiungi la prima sorgente",
+      "noSourcesAsk": "Chiedi a un amministratore di collegare uno strumento di monitoraggio.",
+      "ciFilter": "Solo questo CI"
+    },
+    "widget": {
+      "openConsole": "Apri la console eventi",
+      "loadError": "Impossibile caricare i contatori: {{error}}"
+    },
+    "snippets": {
+      "alertmanager": {
+        "intro": "Aggiungi questo receiver ad alertmanager.yml e instrada gli alert verso di esso. \"send_resolved\" permette a OpenGrafo di chiudere l'allarme quando l'alert termina."
+      },
+      "grafana": {
+        "step1": "In Grafana apri Alerting → Contact points → Add contact point e scegli l'integrazione \"Webhook\".",
+        "step2": "URL: incolla l'endpoint qui sopra.",
+        "step3": "Authorization header: schema \"Bearer\", credenziali: il token qui sopra.",
+        "step4": "Verifica che \"Send resolved\" sia attivo, poi collega il contact point a una notification policy."
+      },
+      "zabbix": {
+        "step1": "In Zabbix apri Alerts → Media types → Create media type, tipo \"Webhook\". Basta il media type Webhook standard: non serve alcuno script personalizzato.",
+        "step2": "Parametri: \"URL\" = l'endpoint qui sopra, \"Token\" = il token qui sopra (inviato come header Authorization: Bearer), più i campi qui sotto valorizzati con le macro standard.",
+        "step3": "Campi che OpenGrafo si aspetta nel corpo JSON:",
+        "step4": "Crea un media utente con questo tipo e un'azione che lo attivi su problemi e ripristini."
+      },
+      "datadog": {
+        "step1": "In Datadog apri Integrations → Webhooks → New, chiamalo \"opengrafo\" e incolla l'endpoint qui sopra come URL.",
+        "step2": "Custom headers: Authorization: Bearer con il token qui sopra.",
+        "step3": "Payload: attiva \"Custom payload\" e incolla il modello qui sotto, poi menziona @webhook-opengrafo nei monitor."
+      },
+      "dynatrace": {
+        "step1": "In Dynatrace apri Settings → Integration → Problem notifications → Add notification e scegli \"Custom integration\".",
+        "step2": "Webhook URL: incolla l'endpoint qui sopra. Aggiungi un header HTTP con nome \"Authorization\" e valore \"Bearer\" seguito da uno spazio e dal token qui sopra.",
+        "step3": "Custom payload: sostituisci il modello proposto da Dynatrace con il JSON qui sotto, così com'è. I segnaposto vanno tra virgolette, tranne {ImpactedEntities}, che è già un array JSON.",
+        "step4": "Dynatrace invia di default anche la notifica di chiusura (State = RESOLVED), con cui OpenGrafo risolve l'allarme: se la tua versione mostra un'opzione per le notifiche di problema risolto, lasciala attiva. Salva e usa \"Send test notification\" per verificare."
+      },
+      "generic": {
+        "intro": "Invia una POST con il token come Bearer e un corpo JSON nella stessa forma dell'esempio che hai mappato. Esempio:"
+      }
+    },
+    "health": {
+      "title": "Salute dei CI",
+      "subtitle": "Cosa sta male adesso, dal più grave, con chi ne dipende",
+      "viewOnMap": "Vedi sulla mappa",
+      "refresh": "Aggiorna",
+      "updatedAt": "Aggiornato alle {{time}}",
+      "tiles": {
+        "down": "Giù",
+        "degraded": "Degradati",
+        "operational": "Operativi",
+        "unmonitored": "Senza monitoraggio",
+        "unmonitoredHint": "CI a cui nessuna sorgente ha ancora inviato allarmi",
+        "unmonitoredContext": "mai visti da una sorgente",
+        "toggleHint": "Filtra la tabella su questo stato; un secondo clic toglie il filtro",
+        "dependentsContext_one": "con {{count}} CI dipendente",
+        "dependentsContext_other": "con {{count}} CI dipendenti",
+        "dependentsHint": "Somma dei CI che dipendono direttamente dalle righe di questo stato mostrate in questa pagina, non di tutto il tenant",
+        "noneContext": "nessuno al momento",
+        "operationalContext": "su {{count}} monitorati"
+      },
+      "allGood": "Tutti i CI monitorati sono operativi",
+      "allGoodDetail_one": "{{count}} CI monitorato, nessun allarme attivo che lo degradi",
+      "allGoodDetail_other": "{{count}} CI monitorati, nessun allarme attivo che li degradi",
+      "filters": {
+        "type": "Tipo CI",
+        "allTypes": "Tutti i tipi",
+        "environment": "Ambiente",
+        "allEnvironments": "Tutti gli ambienti",
+        "team": "Squadra",
+        "allTeams": "Tutte le squadre",
+        "search": "Cerca un CI per nome",
+        "searchPlaceholder": "Cerca per nome…"
+      },
+      "columns": {
+        "ci": "CI",
+        "health": "Salute",
+        "alarms": "Allarmi attivi",
+        "impact": "Impatto",
+        "team": "Squadra",
+        "lastEvent": "Ultimo evento",
+        "source": "Origine"
+      },
+      "since": "da {{duration}}",
+      "sinceHint": "Salute attuale in vigore dal {{date}}",
+      "alarmsLink": "Vedi i {{count}} allarmi attivi di {{name}}",
+      "dependents_one": "{{count}} dipendente",
+      "dependents_other": "{{count}} dipendenti",
+      "dependentsHint_one": "{{count}} CI dipende direttamente da questo",
+      "dependentsHint_other": "{{count}} CI dipendono direttamente da questo",
+      "dependentsHigh": "Almeno 5 CI dipendono da questo: un guasto qui si propaga",
+      "sourceMonitoring": "Monitoraggio",
+      "sourceMonitoringHint": "Salute calcolata dagli allarmi delle sorgenti di monitoraggio",
+      "sourceManual": "Manuale",
+      "sourceManualHint": "Salute forzata a mano da un operatore: il monitoraggio non la modifica finché la forzatura non viene tolta",
+      "never": "Mai",
+      "count_one": "{{count}} CI con dati di salute",
+      "count_other": "{{count}} CI con dati di salute",
+      "page": "pagina {{page}} di {{total}}",
+      "openCI": "Apri il dettaglio di {{name}}",
+      "empty": {
+        "title": "Nessun dato di salute ancora",
+        "description": "Collega una sorgente di monitoraggio: gli allarmi che riceve calcolano la salute dei CI.",
+        "cta": "Aggiungi sorgente",
+        "askAdmin": "Chiedi a un amministratore di collegare uno strumento di monitoraggio."
+      },
+      "noMatch": "Nessun CI corrisponde ai filtri"
     }
   }
 }

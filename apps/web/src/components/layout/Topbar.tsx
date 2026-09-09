@@ -48,6 +48,16 @@ function Breadcrumb() {
     new:                t('common.create'),
     anomalies:          t('sidebar.anomalies'),
     topology:           t('pages.topology.title'),
+    events:             t('sidebar.events'),
+    monitoring:         t('sidebar.monitoring'),
+    health:             t('sidebar.ciHealth'),
+    sources:            t('sidebar.monitoringSources'),
+    'event-policy':     t('sidebar.eventPolicy'),
+  }
+  // Etichette per percorso intero, dove il segmento da solo è ambiguo:
+  // /admin/monitoring è "Platform monitoring", /monitoring è il gruppo ITSM.
+  const PATH_LABELS: Record<string, string> = {
+    '/admin/monitoring': t('sidebar.platformMonitoring'),
   }
 
   const formatSegment = (part: string): string => {
@@ -67,7 +77,7 @@ function Breadcrumb() {
       {parts.map((part, i) => {
         const isLast = i === parts.length - 1
         const path   = '/' + parts.slice(0, i + 1).join('/')
-        const label  = formatSegment(part)
+        const label  = PATH_LABELS[path] ?? formatSegment(part)
         return (
           <span key={path} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {i > 0 && <span aria-hidden="true" style={{ color: C.textMuted }}>/</span>}

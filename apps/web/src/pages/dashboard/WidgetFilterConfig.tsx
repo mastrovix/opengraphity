@@ -9,6 +9,8 @@ import {
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface WidgetFilterConfigProps {
+  /** false: nasconde entità/metrica/filtro/periodo (widget con sorgente dati fissa); restano dimensione e colore. */
+  dataConfigurable?: boolean
   entityType:      string
   onEntityChange:  (v: string) => void
   metric:          string
@@ -34,6 +36,7 @@ interface WidgetFilterConfigProps {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function WidgetFilterConfig({
+  dataConfigurable = true,
   entityType, onEntityChange,
   metric, onMetricChange,
   groupByField, onGroupByChange,
@@ -68,6 +71,7 @@ export function WidgetFilterConfig({
 
   return (
     <>
+      {dataConfigurable && <>
       {/* Entity */}
       <div>
         <label htmlFor={ids.entity} style={labelStyle}>{t('pages.dashboard.entityLabel')}</label>
@@ -135,6 +139,7 @@ export function WidgetFilterConfig({
           ))}
         </div>
       </div>
+      </>}
 
       {/* Size — 3 buttons */}
       <div>

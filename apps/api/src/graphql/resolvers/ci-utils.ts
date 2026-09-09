@@ -40,6 +40,10 @@ export function mapBase(props: Props) {
     supportGroup: null,
     dependencies: [],
     dependents:   [],
+    // Event Management (sola lettura: scritti da eventService)
+    health:       (props['health']        ?? null) as string | null,
+    healthSource: (props['health_source'] ?? null) as string | null,
+    lastEventAt:  neo4jDateToISO(props['last_event_at']),
   }
 }
 

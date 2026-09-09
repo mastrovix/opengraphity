@@ -75,6 +75,11 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   'assignQuestionToCIType', 'removeQuestionFromCIType', 'setQuestionCore',
   // operazioni di sistema
   'runAnomalyScanner', 'retryQueueJob', 'updateReportSchedule', 'deleteChange',
+  // Event Management (alias dei CI, policy del tenant, prova di una sorgente).
+  // previewInboundEvents e setCIHealthOverride restano admin/operator (default);
+  // le query events/eventStats/ciHealth/ciHealthOverview restano a ruoli
+  // predefiniti (admin, operator, viewer): la pagina Salute CI è per lo staff.
+  'createCIAlias', 'deleteCIAlias', 'updateEventPolicy', 'sendSampleEvent',
 ])
 
 /**

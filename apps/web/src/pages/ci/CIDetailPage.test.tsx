@@ -4,9 +4,10 @@ import { gql } from '@apollo/client'
 import i18n from '@/i18n/i18n'
 import { CIDetailPage } from './CIDetailPage'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
-import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION } from '@/graphql/queries'
+import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION, GET_CI_HEALTH, GET_CI_ALIASES, GET_EVENTS } from '@/graphql/queries'
+import { SET_CI_HEALTH_OVERRIDE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { teamsMock } from '@/test/mocks/gql'
+import { teamsMock, meMock } from '@/test/mocks/gql'
 
 // Etichette dalla stessa sorgente i18n della pagina (non stringhe copiate a mano).
 const T = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts) as string
@@ -67,13 +68,23 @@ const detailMock: GqlMock = {
 const any = (query: GqlMock['request']['query'], data: Record<string, unknown>): GqlMock =>
   ({ request: { query, variables: () => true }, result: { data }, maxUsageCount: Number.POSITIVE_INFINITY })
 
-const mocks = () => [
-  ciTypesMock, detailMock, teamsMock(),
+// Sezione "Salute" (Event Management): ciHealth + alias + ultimi eventi del CI.
+const healthMock = (health: string | null, healthSource: string | null = health ? 'monitoring' : null): GqlMock => ({
+  request: { query: GET_CI_HEALTH, variables: { ciId: 'srv-1' } },
+  result: { data: { ciHealth: { __typename: 'CIHealthInfo', ciId: 'srv-1', health, healthSource, lastEventAt: health ? '2026-09-09T10:00:00Z' : null, firingEvents: health === 'down' ? 2 : 0 } } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
+const mocks = (health: string | null = null, role = 'operator') => [
+  ciTypesMock, detailMock, teamsMock(), meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }),
   any(GET_BLAST_RADIUS, { blastRadius: [] }),
   any(GET_CI_INCIDENTS, { ciIncidents: [] }),
   any(GET_CI_CHANGES, { ciChanges: [] }),
   any(GET_WORKFLOW_DEFINITION, { workflowDefinition: null }),
   any(GET_ATTACHMENTS, { attachments: [] }),
+  healthMock(health),
+  any(GET_CI_ALIASES, { ciAliases: [{ __typename: 'CIAlias', id: 'al-1', kind: 'hostname', value: 'web-01.acme.local', source: 'manual', createdAt: '2026-09-01T00:00:00Z', ci: { __typename: 'ConfigurationItemRef', id: 'srv-1', name: 'web-01', type: 'server', status: 'active', health } }] }),
+  any(GET_EVENTS, { events: { __typename: 'EventPage', total: 0, items: [] } }),
 ]
 
 function renderPage(opts: { mocks?: GqlMock[]; route?: string; showWarnings?: boolean } = {}) {
@@ -174,5 +185,47 @@ describe('CIDetailPage', () => {
     expect(within(panel).getByText(T('pages.ci.dependents'))).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: /DEPENDS ON \(1\)/ })).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: /HOSTED ON \(1\)/ })).toBeInTheDocument()
+  })
+})
+
+describe('CIDetailPage — sezione Salute (monitoraggio)', () => {
+  const healthCard = () => screen.getByRole('button', { name: /^Health/ })
+
+  it('salute sconosciuta: scheda chiusa, messaggio esplicito, alias elencati', async () => {
+    const { user } = renderPage({ mocks: mocks(null) })
+    await screen.findByRole('heading', { level: 1, name: 'web-01' })
+    await waitFor(() => expect(healthCard()).toHaveAttribute('aria-expanded', 'false'))
+    await user.click(healthCard())
+    expect(await screen.findByText('No alarm has concerned this CI yet: health is unknown.')).toBeInTheDocument()
+    expect(screen.getByText('web-01.acme.local')).toBeInTheDocument()
+    expect(screen.getByText('No events for this CI.')).toBeInTheDocument()
+  })
+
+  it('CI giù: scheda aperta con badge, allarmi attivi con link alla console filtrata, forzatura per operator', async () => {
+    const seen: unknown[] = []
+    const overrideMock: GqlMock = {
+      request: { query: SET_CI_HEALTH_OVERRIDE, variables: (v) => { seen.push(v); return true } },
+      result: { data: { setCIHealthOverride: { __typename: 'CIHealthInfo', ciId: 'srv-1', health: 'degraded', healthSource: 'manual', lastEventAt: null, firingEvents: 2 } } },
+    }
+    const { user } = renderPage({ mocks: [...mocks('down'), overrideMock] })
+    await screen.findByRole('heading', { level: 1, name: 'web-01' })
+    await waitFor(() => expect(healthCard()).toHaveAttribute('aria-expanded', 'true'))
+    expect(screen.getAllByText('Health: Down').length).toBeGreaterThan(0)
+    expect(screen.getByText('Monitoring')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /View in the console/ })).toHaveAttribute('href', '/events?ciId=srv-1')
+
+    await user.selectOptions(screen.getByLabelText('Force health'), 'degraded')
+    await waitFor(() => expect(seen).toEqual([{ ciId: 'srv-1', health: 'degraded' }]))
+  })
+
+  it('viewer: nessun controllo di forzatura né gestione alias', async () => {
+    const { user } = renderPage({ mocks: mocks('operational', 'viewer') })
+    await screen.findByRole('heading', { level: 1, name: 'web-01' })
+    await waitFor(() => expect(healthCard()).toHaveAttribute('aria-expanded', 'true'))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(screen.queryByLabelText('Force health')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
+    await user.click(healthCard())
+    expect(healthCard()).toHaveAttribute('aria-expanded', 'false')
   })
 })

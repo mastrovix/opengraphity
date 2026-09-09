@@ -203,7 +203,10 @@ describe('fail-loud payload/config handling', () => {
       expect.objectContaining({ tenantId: 'tenant-1', userId: 'webhook' }),
     )
     expect(createIncident).not.toHaveBeenCalled()
-    expect(runQuery).not.toHaveBeenCalled()
+    // nessuna statistica di ricezione: l'unica scrittura è il motivo del rifiuto sul webhook
+    expect(runQuery).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.last_error = \$message/)
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).not.toMatch(/receive_count/)
   })
 
   it('transform script returning a non-object → 400', async () => {
@@ -266,7 +269,10 @@ describe('fail-loud payload/config handling', () => {
     const res = await post('hook-1')
     expect(res.status).toBe(400)
     expect((await err(res)).message).toMatch(/CI impattato/)
-    expect(runQuery).not.toHaveBeenCalled()
+    // nessuna statistica di ricezione: l'unica scrittura è il motivo del rifiuto sul webhook
+    expect(runQuery).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.last_error = \$message/)
+    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1', message: expect.stringMatching(/CI impattato/) })
   })
 
   it('unexpected error → 500 with a generic body; details only in the log', async () => {

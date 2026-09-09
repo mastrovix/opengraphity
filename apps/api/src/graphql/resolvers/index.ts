@@ -26,6 +26,7 @@ import { logsResolvers } from './logs.js'
 import { dashboardResolvers } from './dashboard.js'
 import { buildDynamicCIResolvers } from './dynamic-ci.js'
 import { anomalyResolvers } from './anomaly.js'
+import { eventResolvers } from './events.js'
 import { topologyResolvers } from './topology.js'
 import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
@@ -281,6 +282,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...logsResolvers.Query,
       ...dashboardResolvers.Query,
       ...anomalyResolvers.Query,
+      ...eventResolvers.Query,
       ...topologyResolvers.Query,
       ...notificationRuleResolvers.Query,
       ...queueStatsResolvers.Query,
@@ -326,6 +328,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...customReportResolvers.Mutation,
       ...dashboardResolvers.Mutation,
       ...anomalyResolvers.Mutation,
+      ...eventResolvers.Mutation,
       ...similarityResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
       ...syncResolvers.Mutation,
@@ -371,6 +374,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...serviceRequestResolvers.ServiceRequest,
       ...workflowResolvers.ServiceRequest,
     },
+    Event:              eventResolvers.Event,
     ReportConversation: reportResolvers.ReportConversation,
     DashboardConfig:    { ...dashboardResolvers.DashboardConfig },
     DashboardWidget:    { ...dashboardResolvers.DashboardWidget },

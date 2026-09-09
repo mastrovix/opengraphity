@@ -42,6 +42,8 @@ import {
   Sparkles,
   ShoppingCart,
   Gauge,
+  Radar,
+  HeartPulse,
 } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -67,6 +69,16 @@ const ANALYSIS_ITEM_DEFS = [
   { to: '/anomalies',        labelKey: 'sidebar.anomalies',   icon: ShieldAlert  },
   { to: '/topology',         labelKey: 'sidebar.topologyMap', icon: Share2       },
   { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
+]
+
+// Monitoraggio (Event Management): console eventi e pagina Salute CI (staff),
+// sorgenti e policy (admin: le voci sono filtrate per ruolo nel render). La
+// mappa con la salute evidenziata resta raggiungibile da "Vedi sulla mappa".
+const MONITORING_ITEM_DEFS = [
+  { to: '/events',                labelKey: 'sidebar.events',            icon: Radar,      adminOnly: false },
+  { to: '/monitoring/health',     labelKey: 'sidebar.ciHealth',          icon: HeartPulse, adminOnly: false },
+  { to: '/monitoring/sources',    labelKey: 'sidebar.monitoringSources', icon: Plug,       adminOnly: true  },
+  { to: '/settings/event-policy', labelKey: 'sidebar.eventPolicy',       icon: Settings2,  adminOnly: true  },
 ]
 
 const CONFIG_ITEM_DEFS = [
@@ -108,7 +120,7 @@ const SETTINGS_ITEM_DEFS = [
 const ADMIN_NAV_ITEM_DEFS = [
   { to: '/logs',                   labelKey: 'sidebar.logs',           icon: ScrollText  },
   { to: '/admin/audit',            labelKey: 'sidebar.auditLog',       icon: ShieldCheck },
-  { to: '/admin/monitoring',       labelKey: 'sidebar.monitoring',     icon: Activity    },
+  { to: '/admin/monitoring',       labelKey: 'sidebar.platformMonitoring', icon: Activity },
   { to: '/admin/knowledge-base',   labelKey: 'sidebar.kbAdmin',        icon: BookOpen    },
   { to: '/admin/triggers',         labelKey: 'sidebar.autoTriggers',   icon: Zap         },
   { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
@@ -154,6 +166,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const itsmActive      = startsWithAny(pathname, ITSM_ITEM_DEFS)
   const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
   const analysisActive  = startsWithAny(pathname, ANALYSIS_ITEM_DEFS)
+  const monitoringActive = pathname.startsWith('/events') || pathname.startsWith('/monitoring') || pathname.startsWith('/settings/event-policy')
   const cmdbActive      = CMDB_LEGACY_PREFIXES.some((p) => pathname.startsWith(p))
   const teamsActive     = startsWithAny(pathname, TEAMS_ITEM_DEFS)
   const configActive    = startsWithAny(pathname, CONFIG_ITEM_DEFS)
@@ -162,6 +175,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const [itsmOpen, toggleItsm]           = useGroupOpen(itsmActive)
   const [reportingOpen, toggleReporting] = useGroupOpen(reportingActive)
   const [analysisOpen, toggleAnalysis]   = useGroupOpen(analysisActive)
+  const [monitoringOpen, toggleMonitoring] = useGroupOpen(monitoringActive)
   const [cmdbOpen, toggleCmdb]           = useGroupOpen(cmdbActive)
   const [teamsOpen, toggleTeams]         = useGroupOpen(teamsActive)
   const [configOpen, toggleConfig]       = useGroupOpen(configActive)
@@ -277,6 +291,13 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         <SidebarGroup title={t('sidebar.analysis')} icon={Activity} active={analysisActive} open={analysisOpen} onToggle={toggleAnalysis} collapsed={collapsed} collapsedTo="/anomalies">
           {ANALYSIS_ITEM_DEFS.map(({ to, labelKey, icon }) => (
             <SubItem key={to} to={to} label={t(labelKey)} icon={icon} trailing={to === '/anomalies' ? anomalyBadge : undefined} />
+          ))}
+        </SidebarGroup>
+
+        {/* Monitoraggio (Event Management) */}
+        <SidebarGroup title={t('sidebar.monitoring')} icon={Radar} active={monitoringActive} open={monitoringOpen} onToggle={toggleMonitoring} collapsed={collapsed} collapsedTo="/events">
+          {MONITORING_ITEM_DEFS.filter((d) => isAdmin || !d.adminOnly).map(({ to, labelKey, icon }) => (
+            <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={pathname === to || pathname.startsWith(`${to}/`)} />
           ))}
         </SidebarGroup>
 

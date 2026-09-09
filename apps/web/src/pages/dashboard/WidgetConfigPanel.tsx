@@ -2,7 +2,7 @@ import { lazy, Suspense, useId } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
-import { useWidgetConfig } from './useWidgetConfig'
+import { useWidgetConfig, DATA_FREE_WIDGET_TYPES } from './useWidgetConfig'
 import { WidgetTypeSelector } from './WidgetTypeSelector'
 import { WidgetFilterConfig } from './WidgetFilterConfig'
 const WidgetPreview = lazy(() => import('./WidgetPreview').then(m => ({ default: m.WidgetPreview })))
@@ -88,7 +88,13 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
 
             <WidgetTypeSelector widgetType={c.widgetType} color={c.color} onSelect={c.setWidgetType} />
 
+            {DATA_FREE_WIDGET_TYPES.includes(c.widgetType) && (
+              <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, background: 'var(--color-brand-light)', color: '#0369a1', fontSize: 'var(--font-size-body)', lineHeight: 1.5 }}>
+                {t('pages.dashboard.activeAlarmsHint')}
+              </p>
+            )}
             <WidgetFilterConfig
+              dataConfigurable={!DATA_FREE_WIDGET_TYPES.includes(c.widgetType)}
               entityType={c.entityType} onEntityChange={c.handleEntityChange}
               metric={c.metric} onMetricChange={(v) => { c.setMetric(v); c.setGroupByField('') }}
               groupByField={c.groupByField} onGroupByChange={c.setGroupByField}
