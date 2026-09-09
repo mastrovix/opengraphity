@@ -1,27 +1,35 @@
 /**
  * Azioni su un evento (operator/admin): presa in carico, risoluzione con nota,
- * apertura incident, collegamento a un CI. Usato sia nella riga della console
- * sia nel dettaglio: ogni istanza possiede i propri dialoghi, che vengono
- * montati solo quando aperti. Il viewer non vede nulla (il genitore non lo
- * renderizza), la guardia sul ruolo resta comunque nell'API.
+ * apertura incident, collegamento a un CI, rivalutazione della policy di
+ * correlazione. Usato sia nella riga della console sia nel dettaglio: ogni
+ * istanza possiede i propri dialoghi, che vengono montati solo quando aperti.
+ * Il viewer non vede nulla (il genitore non lo renderizza), la guardia sul
+ * ruolo resta comunque nell'API.
+ *
+ * `only` / `exclude` scelgono quali azioni mostrare: il dettaglio mette
+ * "Rivaluta ora" e "Apri incident" nella sezione Correlazione e le toglie
+ * dalla testata, così ogni azione compare una volta sola.
  */
 import { useState, useId, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
-import { Hand, CheckCircle2, AlertCircle, Link2, Loader2 } from 'lucide-react'
+import { Hand, CheckCircle2, AlertCircle, Link2, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { Input, Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_ALL_CIS } from '@/graphql/queries'
-import { ACKNOWLEDGE_EVENT, RESOLVE_EVENT, LINK_EVENT_TO_CI, CREATE_INCIDENT_FROM_EVENT } from '@/graphql/mutations'
+import { ACKNOWLEDGE_EVENT, RESOLVE_EVENT, LINK_EVENT_TO_CI, CREATE_INCIDENT_FROM_EVENT, REEVALUATE_EVENT } from '@/graphql/mutations'
 import { isActiveEvent } from './eventShared'
+import { canReevaluate, isSuppressed } from './eventCorrelation'
 import type { MonitoringEvent } from '@/types/events'
 
 interface CISearchRow { id: string; name: string; type: string; status: string; environment: string }
+
+export type EventActionKind = 'acknowledge' | 'resolve' | 'openIncident' | 'linkCI' | 'reevaluate'
 
 interface Props {
   event:      MonitoringEvent
@@ -29,9 +37,13 @@ interface Props {
   onChanged?: () => void
   /** `xs` nelle righe della tabella, `sm` nel dettaglio. */
   size?:      'xs' | 'sm'
+  /** Mostra solo queste azioni (le altre condizioni restano valide). */
+  only?:      readonly EventActionKind[]
+  /** Nasconde queste azioni. */
+  exclude?:   readonly EventActionKind[]
 }
 
-export function EventActions({ event, onChanged, size = 'xs' }: Props) {
+export function EventActions({ event, onChanged, size = 'xs', only, exclude }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
@@ -39,12 +51,17 @@ export function EventActions({ event, onChanged, size = 'xs' }: Props) {
 
   const [acknowledge, { loading: acking }]     = useMutation(ACKNOWLEDGE_EVENT)
   const [createIncident, { loading: opening }] = useMutation<{ createIncidentFromEvent: { id: string; number: string } }>(CREATE_INCIDENT_FROM_EVENT)
+  const [reevaluate, { loading: reevaluating }] = useMutation<{ reevaluateEvent: MonitoringEvent }>(REEVALUATE_EVENT)
+
+  const shown = (kind: EventActionKind) => (!only || only.includes(kind)) && !exclude?.includes(kind)
 
   const active = isActiveEvent(event)
-  const canAck     = active && !event.acknowledgedAt
-  const canResolve = active
-  const canOpen    = !event.incident
-  const canLink    = !event.ci
+  const canAck        = shown('acknowledge')  && active && !event.acknowledgedAt
+  const canResolve    = shown('resolve')      && active
+  // Un evento silenziato da una change non apre incident nemmeno a mano: prima si rivaluta.
+  const canOpen       = shown('openIncident') && !event.incident && !isSuppressed(event)
+  const canLink       = shown('linkCI')       && !event.ci
+  const canReeval     = shown('reevaluate')   && canReevaluate(event)
 
   // I bottoni vivono dentro una riga cliccabile: il click non deve navigare.
   const stop = (e: MouseEvent<HTMLButtonElement>) => e.stopPropagation()
@@ -54,6 +71,17 @@ export function EventActions({ event, onChanged, size = 'xs' }: Props) {
     try {
       await acknowledge({ variables: { id: event.id } })
       toast.success(t('toast.events.acknowledged'))
+      onChanged?.()
+    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+  }
+
+  async function handleReevaluate(e: MouseEvent<HTMLButtonElement>) {
+    stop(e)
+    try {
+      const res = await reevaluate({ variables: { id: event.id } })
+      const outcome = res.data?.reevaluateEvent.correlation
+      if (!outcome) throw new Error(t('events.actions.emptyResponse'))
+      toast.success(t('toast.events.reevaluated', { outcome: t(`events.correlation.short.${outcome}`) }))
       onChanged?.()
     } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
@@ -72,10 +100,15 @@ export function EventActions({ event, onChanged, size = 'xs' }: Props) {
     } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
-  if (!canAck && !canResolve && !canOpen && !canLink) return null
+  if (!canAck && !canResolve && !canOpen && !canLink && !canReeval) return null
 
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {canReeval && (
+        <Button variant="secondary" size={size} disabled={reevaluating} icon={reevaluating ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={13} aria-hidden="true" />} onClick={(e) => void handleReevaluate(e)}>
+          {t('events.actions.reevaluate')}
+        </Button>
+      )}
       {canAck && (
         <Button variant="secondary" size={size} disabled={acking} icon={acking ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Hand size={13} aria-hidden="true" />} onClick={(e) => void handleAck(e)}>
           {t('events.actions.acknowledge')}

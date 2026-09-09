@@ -10,9 +10,10 @@
  *
  * Progetto: artifact "Event Management OpenGrafo" (9 set 2026).
  * Ondata 1: ricezione, deduplica, salute del CI (`ci.health`, separata dal
- * ciclo di vita `ci.status`), console. Le mutation di
- * correlazione automatica arrivano con l'ondata 3; qui c'è solo l'apertura
- * manuale `createIncidentFromEvent`.
+ * ciclo di vita `ci.status`), console; apertura manuale `createIncidentFromEvent`.
+ * Ondata 3 (services/eventCorrelation.ts): correlazione automatica in incident
+ * (`Event.correlation`, `Incident.correlatedEvents`), silenzio nelle finestre
+ * di change (`Event.suppressedBy`, `Change.suppressedEvents`), `reevaluateEvent`.
  */
 export function eventsSDL(): string {
   return `
@@ -47,6 +48,21 @@ export function eventsSDL(): string {
     ci:             ConfigurationItemRef
     """Incident a cui l'evento è correlato, se esiste."""
     incident:       Incident
+    """Change la cui finestra ha silenziato l'evento (status = suppressed)."""
+    suppressedBy:   Change
+    """Esito dell'ultima valutazione di correlazione: opened | attached | reopened | skipped_orphan | skipped_severity | delayed | suppressed | none."""
+    correlation:    String!
+    correlationAt:  String
+  }
+
+  extend type Incident {
+    """Allarmi di monitoraggio correlati a questo incident."""
+    correlatedEvents: [Event!]!
+  }
+
+  extend type Change {
+    """Eventi silenziati dalla finestra di questa change."""
+    suppressedEvents: [Event!]!
   }
 
   """Riferimento leggero a un CI, senza dipendere dal tipo dinamico."""
@@ -100,6 +116,10 @@ export function eventsSDL(): string {
     orphan:    Boolean
     search:    String
     since:     String
+    """Eventi correlati (CORRELATED_INTO) a questo incident."""
+    incidentId: ID
+    """Eventi silenziati (SUPPRESSED_BY) dalla finestra di questa change."""
+    suppressedByChangeId: ID
   }
 
   input EventPolicyInput {
@@ -233,6 +253,8 @@ export function eventsSDL(): string {
     """Collega un evento orfano a un CI; con createAlias = true la sorgente verrà riconosciuta da sola la prossima volta."""
     linkEventToCI(eventId: ID!, ciId: ID!, createAlias: Boolean): Event!
     createIncidentFromEvent(eventId: ID!): Incident!
+    """Rivaluta ora un evento silenziato o in attesa (admin/operator): utile a fine finestra o dopo aver collegato un CI."""
+    reevaluateEvent(id: ID!): Event!
     createCIAlias(ciId: ID!, kind: CIAliasKind!, value: String!): CIAlias!
     deleteCIAlias(id: ID!): Boolean!
     updateEventPolicy(input: EventPolicyInput!): EventPolicy!

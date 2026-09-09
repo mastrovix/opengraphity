@@ -2,6 +2,8 @@
  * Console degli eventi (Event Management, ondata 1): contatori cliccabili,
  * filtri (stato/severità multipli, solo orfani, ricerca, FilterBuilder),
  * tabella paginata a 50 e azioni per riga per operator/admin.
+ * Ondata 3: la colonna "Incident" mostra l'esito della correlazione
+ * automatica (chip silenziato/in attesa/collega un CI) e l'azione "Rivaluta ora".
  *
  * Aggiornamento: polling ogni 15 s + pulsante Aggiorna (l'SSE arriva con
  * un'ondata successiva). Filtri iniziali dalla query string: `?stat=critical`
@@ -26,16 +28,17 @@ import { Button } from '@/components/Button'
 import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
 import { useEntityFields } from '@/hooks/useEntityFields'
 import { useMe } from '@/hooks/useMe'
-import { GET_EVENTS, GET_EVENT_STATS, GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_EVENTS, GET_EVENT_STATS, GET_MONITORING_SOURCES, GET_EVENT_POLICY } from '@/graphql/queries'
 import { applyFilterGroup } from '@/lib/filterGroup'
 import { timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
 import { colors } from '@/lib/tokens'
 import { EventStatusBadge, EventSeverityBadge } from './eventShared'
+import { EventIncidentCell } from './eventCorrelation'
 import { EventActions } from './EventActions'
 import {
   EVENT_STATUSES, EVENT_SEVERITIES,
-  type MonitoringEvent, type EventStats, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSource,
+  type MonitoringEvent, type EventStats, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSource, type EventPolicy,
 } from '@/types/events'
 
 const PAGE_SIZE       = 50
@@ -201,6 +204,11 @@ export function EventsPage() {
   const sources = sourcesData?.monitoringSources ?? []
   const noSources = sourcesData !== undefined && sources.length === 0
 
+  // Policy di correlazione: serve solo al countdown "apertura tra N s" degli
+  // eventi in attesa; se non arriva il chip dice comunque "In attesa".
+  const { data: policyData } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: 'cache-first' })
+  const policy = policyData?.eventPolicy ?? null
+
   const onChanged = () => { void refetch(); void refetchStats() }
 
   const items = useMemo(() => applyFilterGroup(data?.events.items ?? [], filterGroup), [data, filterGroup])
@@ -230,10 +238,10 @@ export function EventsPage() {
     { key: 'count',      label: t('events.columns.count'),  width: '80px',  sortable: true, render: (v) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{String(v)}</span> },
     { key: 'lastSeenAt', label: t('events.columns.lastSeen'), width: '130px', sortable: true, render: (v) => <span style={{ color: colors.slateLight }}>{timeAgo(String(v))}</span> },
     {
-      key: 'incident', label: t('events.columns.incident'), width: '120px',
-      render: (_v, row) => row.incident
-        ? <Link to={`/incidents/${row.incident.id}`} onClick={(e) => e.stopPropagation()} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 500 }}>{row.incident.number}</Link>
-        : <span style={{ color: colors.slateLight }}>—</span>,
+      // Link all'incident (con icona se l'ha aperto/agganciato il monitoraggio)
+      // oppure il chip che spiega perché non c'è: silenziato, in attesa, CI da collegare.
+      key: 'incident', label: t('events.columns.incident'), width: '150px',
+      render: (_v, row) => <EventIncidentCell event={row} policy={policy} stopRowClick />,
     },
   ]
   if (canAct) {

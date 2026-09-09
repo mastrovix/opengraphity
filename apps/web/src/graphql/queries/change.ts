@@ -1,4 +1,5 @@
 import { gql } from '@apollo/client'
+import { EVENT_FIELDS } from '../fragments'
 
 export const GET_CHANGES = gql`
   query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int) {
@@ -48,8 +49,10 @@ export const GET_CHANGE = gql`
       resolvesIncidents { id number title status severity removable }
       resolvesProblems { id number title status priority removable }
       approvals { kind teamId teamName status approvedByName approvedAt canApprove }
+      suppressedEvents { ...EventFields }
     }
   }
+  ${EVENT_FIELDS}
 `
 
 export const GET_CHANGE_AFFECTED_CIS = gql`

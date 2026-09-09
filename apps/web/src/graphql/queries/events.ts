@@ -1,21 +1,11 @@
 import { gql } from '@apollo/client'
+import { EVENT_FIELDS } from '../fragments'
 
 // ── Event Management (console allarmi) ──────────────────────────────────────
 // Contratto: apps/api/src/graphql/schema-events.ts (eventsSDL). La selezione
-// dell'evento è unica (EVENT_FIELDS) così lista e dettaglio leggono la stessa
-// forma e la cache Apollo normalizza per id.
-
-const EVENT_FIELDS = gql`
-  fragment EventFields on Event {
-    id fingerprint externalId status severity title description
-    resource resourceKind labels count
-    firstSeenAt lastSeenAt resolvedAt acknowledgedAt
-    acknowledgedBy { id name }
-    source { id name connectorKind }
-    ci { id name type status health }
-    incident { id number title status }
-  }
-`
+// dell'evento è unica (EVENT_FIELDS in fragments.ts) così lista, dettaglio,
+// mutation e le liste di incident/change leggono la stessa forma e la cache
+// Apollo normalizza per id.
 
 export const GET_EVENTS = gql`
   query GetEvents($filter: EventFilter, $limit: Int, $offset: Int) {

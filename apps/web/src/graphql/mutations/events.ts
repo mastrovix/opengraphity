@@ -1,41 +1,38 @@
 import { gql } from '@apollo/client'
+import { EVENT_FIELDS } from '../fragments'
 
 // ── Event Management ─────────────────────────────────────────────────────────
 // Le mutation che restituiscono l'evento selezionano la stessa forma della
-// lista (stesso set di campi di EVENT_FIELDS in queries/events.ts) così la
-// cache aggiorna la riga senza refetch.
-
-const EVENT_RESULT = gql`
-  fragment EventResult on Event {
-    id fingerprint externalId status severity title description
-    resource resourceKind labels count
-    firstSeenAt lastSeenAt resolvedAt acknowledgedAt
-    acknowledgedBy { id name }
-    source { id name connectorKind }
-    ci { id name type status }
-    incident { id number title status }
-  }
-`
+// lista (EVENT_FIELDS in fragments.ts) così la cache aggiorna la riga senza
+// refetch.
 
 export const ACKNOWLEDGE_EVENT = gql`
   mutation AcknowledgeEvent($id: ID!) {
-    acknowledgeEvent(id: $id) { ...EventResult }
+    acknowledgeEvent(id: $id) { ...EventFields }
   }
-  ${EVENT_RESULT}
+  ${EVENT_FIELDS}
 `
 
 export const RESOLVE_EVENT = gql`
   mutation ResolveEvent($id: ID!, $note: String) {
-    resolveEvent(id: $id, note: $note) { ...EventResult }
+    resolveEvent(id: $id, note: $note) { ...EventFields }
   }
-  ${EVENT_RESULT}
+  ${EVENT_FIELDS}
 `
 
 export const LINK_EVENT_TO_CI = gql`
   mutation LinkEventToCI($eventId: ID!, $ciId: ID!, $createAlias: Boolean) {
-    linkEventToCI(eventId: $eventId, ciId: $ciId, createAlias: $createAlias) { ...EventResult }
+    linkEventToCI(eventId: $eventId, ciId: $ciId, createAlias: $createAlias) { ...EventFields }
   }
-  ${EVENT_RESULT}
+  ${EVENT_FIELDS}
+`
+
+/** Ondata 3: fa ripassare l'evento dalla policy di correlazione (suppressed/delayed/skipped_orphan). */
+export const REEVALUATE_EVENT = gql`
+  mutation ReevaluateEvent($id: ID!) {
+    reevaluateEvent(id: $id) { ...EventFields }
+  }
+  ${EVENT_FIELDS}
 `
 
 export const CREATE_INCIDENT_FROM_EVENT = gql`

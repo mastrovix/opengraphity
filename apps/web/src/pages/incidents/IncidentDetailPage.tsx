@@ -35,6 +35,8 @@ import { Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { formatDate, timeAgo } from './IncidentCard'
 import { SimilarIncidentsPanel } from '@/components/SimilarIncidentsPanel'
+import { MonitoringAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
+import type { MonitoringEvent } from '@/types/events'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -114,6 +116,8 @@ interface Incident {
   workflowHistory:      WorkflowStepExecution[]
   comments:             Comment[]
   slaStatus:            SlaStatusInfo | null
+  /** Allarmi di monitoraggio correlati (Event Management, ondata 3). */
+  correlatedEvents:     MonitoringEvent[]
 }
 
 interface Comment {
@@ -667,6 +671,9 @@ export function IncidentDetailPage() {
               },
             ]}
           />
+
+          {/* Allarmi di monitoraggio correlati (aperti/agganciati dalla policy eventi) */}
+          <MonitoringAlarmsSection events={incident.correlatedEvents} />
 
           {/* Applicazioni impattate (dal grafo delle dipendenze) */}
           <SectionCard title="Applicazioni impattate" count={incident.impactedApplications.length} collapsible>

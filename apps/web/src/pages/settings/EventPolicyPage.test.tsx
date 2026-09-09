@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { EventPolicyPage } from './EventPolicyPage'
 import { GET_EVENT_POLICY } from '@/graphql/queries'
@@ -74,5 +74,26 @@ describe('EventPolicyPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Invalid severity map/)
     expect(screen.getByLabelText('Critical – Impact')).toHaveValue('high')
     expect(screen.getByLabelText('Info – Urgency')).toHaveValue('low')
+  })
+})
+
+describe('EventPolicyPage — spiegazioni (ondata 3)', () => {
+  it('riquadro "Come funziona" in quattro righe e riga di aiuto sotto ogni campo', async () => {
+    renderWithProviders(<EventPolicyPage />, { mocks: [policyMock()] })
+    const how = await screen.findByRole('region', { name: 'How it works' })
+    const items = within(how).getAllByRole('listitem')
+    expect(items).toHaveLength(4)
+    expect(items[0]).toHaveTextContent(/Threshold → opening/)
+    expect(items[1]).toHaveTextContent(/Grouping/)
+    expect(items[2]).toHaveTextContent(/Auto-resolve/)
+    expect(items[3]).toHaveTextContent(/Silence in a change window/)
+
+    // ogni controllo è descritto dalla sua riga di aiuto (aria-describedby)
+    expect(screen.getByLabelText('Open incident from')).toHaveAccessibleDescription(/Minimum severity from which an alarm opens an incident/)
+    expect(screen.getByLabelText('Open delay (seconds)')).toHaveAccessibleDescription(/0 = open immediately/)
+    expect(screen.getByLabelText('Upstream suppression (hops)')).toHaveAccessibleDescription(/change in its window/)
+    expect(screen.getByLabelText('Group by')).toHaveAccessibleDescription(/one incident per CI/)
+    expect(screen.getByText(/a new alarm reopens it/)).toBeInTheDocument()
+    expect(screen.getByText(/the priority derives from them/)).toBeInTheDocument()
   })
 })

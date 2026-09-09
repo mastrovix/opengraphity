@@ -10,6 +10,36 @@ export const EVENT_STATUSES:    readonly EventStatus[]   = ['firing', 'resolved'
 export const EVENT_SEVERITIES:  readonly EventSeverity[] = ['critical', 'warning', 'info']
 export const CI_ALIAS_KINDS:    readonly CIAliasKind[]   = ['hostname', 'ip', 'fqdn', 'external_id']
 
+/**
+ * Esito della correlazione automatica (ondata 3, `Event.correlation`):
+ * cosa ha fatto la policy con l'evento all'ultima valutazione.
+ * - opened / attached / reopened: incident aperto, agganciato o riaperto;
+ * - skipped_orphan: nessun CI riconosciuto (collegare un CI rivaluta);
+ * - skipped_severity: sotto la soglia `openIncidentFrom`;
+ * - delayed: in attesa del ritardo `openDelaySeconds`;
+ * - suppressed: silenziato da una change in finestra di rilascio;
+ * - auto_resolved: l'incident è stato risolto perché la sorgente ha risolto;
+ * - none: nessuna valutazione (es. policy "mai").
+ */
+export type EventCorrelation =
+  | 'opened' | 'attached' | 'reopened'
+  | 'skipped_orphan' | 'skipped_severity' | 'delayed' | 'suppressed'
+  | 'auto_resolved' | 'none'
+
+export const EVENT_CORRELATIONS: readonly EventCorrelation[] = [
+  'opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'suppressed', 'auto_resolved', 'none',
+]
+
+/** Stati in cui "Rivaluta ora" ha senso: la policy può decidere diversamente. */
+export const REEVALUABLE_CORRELATIONS: readonly EventCorrelation[] = ['suppressed', 'delayed', 'skipped_orphan']
+
+/** Riferimento leggero alla change che ha silenziato l'evento (`Event.suppressedBy`). */
+export interface ChangeRef {
+  id:    string
+  code:  string
+  title: string
+}
+
 export interface ConfigurationItemRef {
   id:     string
   name:   string
@@ -41,6 +71,11 @@ export interface MonitoringEvent {
   source:         { id: string; name: string; connectorKind: string | null } | null
   ci:             ConfigurationItemRef | null
   incident:       { id: string; number: string; title: string; status: string } | null
+  /** Change in finestra di rilascio che ha silenziato l'evento (correlation = suppressed). */
+  suppressedBy:   ChangeRef | null
+  correlation:    EventCorrelation
+  /** Istante dell'ultima valutazione della policy. */
+  correlationAt:  string | null
 }
 
 export interface EventStats {
@@ -193,4 +228,8 @@ export interface EventFilterVars {
   orphan?:   boolean
   search?:   string
   since?:    string
+  /** Eventi correlati a un incident. */
+  incidentId?:           string
+  /** Eventi silenziati da una change. */
+  suppressedByChangeId?: string
 }

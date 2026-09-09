@@ -3,13 +3,17 @@
  * CI riconosciuto con stato (ciclo di vita) e salute (monitoraggio), sorgente,
  * incident correlato, presa in carico,
  * azioni (operator/admin) e la sezione "Alias del CI" (elimina/aggiungi: admin).
+ * Ondata 3: la sezione "Correlazione" spiega in una frase cosa ha fatto la
+ * policy (incident aperto/agganciato, silenziato da una change, in attesa,
+ * CI da collegare, sotto soglia) con i link e i pulsanti "Rivaluta ora" /
+ * "Apri incident".
  */
 import { useId, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Radar, Trash2, Plus, Loader2 } from 'lucide-react'
+import { ArrowLeft, Radar, Trash2, Plus, Loader2, GitBranch } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
@@ -22,14 +26,15 @@ import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { useMe } from '@/hooks/useMe'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { GET_EVENT, GET_CI_ALIASES } from '@/graphql/queries'
+import { GET_EVENT, GET_CI_ALIASES, GET_EVENT_POLICY } from '@/graphql/queries'
 import { CREATE_CI_ALIAS, DELETE_CI_ALIAS } from '@/graphql/mutations'
 import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
 import { colors } from '@/lib/tokens'
 import { EventStatusBadge, EventSeverityBadge, CIHealthBadge, parseLabels } from './eventShared'
+import { correlationSentence } from './eventCorrelation'
 import { EventActions } from './EventActions'
-import { CI_ALIAS_KINDS, type MonitoringEvent, type CIAlias, type CIAliasKind, type ConfigurationItemRef } from '@/types/events'
+import { CI_ALIAS_KINDS, type MonitoringEvent, type CIAlias, type CIAliasKind, type ConfigurationItemRef, type EventPolicy } from '@/types/events'
 
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
@@ -43,6 +48,9 @@ export function EventDetailPage() {
   const { data, loading, error, refetch } = useQuery<{ event: MonitoringEvent | null }>(GET_EVENT, {
     variables: { id }, fetchPolicy: 'cache-and-network',
   })
+  // Policy: dà i numeri alle frasi "in attesa" e "sotto soglia"; senza, la frase resta generica.
+  const { data: policyData } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: 'cache-first' })
+  const policy = policyData?.eventPolicy ?? null
 
   if (loading && !data) return <PageLoader />
   if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
@@ -72,13 +80,39 @@ export function EventDetailPage() {
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{ev.resourceKind} · {ev.resource}</div>
         {canAct && (
           <div style={{ marginTop: 16 }}>
-            <EventActions event={ev} size="sm" onChanged={() => void refetch()} />
+            <EventActions event={ev} size="sm" exclude={['reevaluate', 'openIncident']} onChanged={() => void refetch()} />
           </div>
         )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 24, alignItems: 'start' }}>
         <div>
+          <SectionCard title={t('events.correlation.title')} defaultOpen>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <GitBranch size={16} color={colors.slateLight} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+              <p data-testid="correlation-sentence" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.6 }}>
+                {correlationSentence(t, ev, policy)}
+              </p>
+            </div>
+            {(ev.incident || ev.suppressedBy) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 'var(--font-size-body)' }}>
+                {ev.incident && (
+                  <span>
+                    <span style={{ color: colors.slateLight, marginRight: 6 }}>{t('events.columns.incident')}:</span>
+                    <Link to={`/incidents/${ev.incident.id}`} style={linkStyle}>{ev.incident.number} · {ev.incident.title}</Link>
+                  </span>
+                )}
+                {ev.suppressedBy && (
+                  <span>
+                    <span style={{ color: colors.slateLight, marginRight: 6 }}>{t('events.correlation.suppressedByLabel')}:</span>
+                    <Link to={`/changes/${ev.suppressedBy.id}`} style={linkStyle}>{ev.suppressedBy.code} · {ev.suppressedBy.title}</Link>
+                  </span>
+                )}
+              </div>
+            )}
+            {canAct && <EventActions event={ev} size="xs" only={['reevaluate', 'openIncident']} onChanged={() => void refetch()} />}
+          </SectionCard>
+
           <SectionCard title={t('events.detail.information')} defaultOpen>
             <DetailField label={t('events.detail.description')} value={ev.description} />
             <DetailField label={t('events.detail.resource')} value={`${ev.resource} (${ev.resourceKind})`} />

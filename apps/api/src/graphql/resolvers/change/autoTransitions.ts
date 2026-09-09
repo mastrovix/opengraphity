@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext, ConditionContext } from '@opengraphity/workflow'
 import type { Session as NeoSession } from 'neo4j-driver'
+import { toNumber } from '@opengraphity/neo4j'
 import { runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
@@ -34,6 +35,32 @@ export async function evaluateAutoTransitions(
   // Dopo aver fatto avanzare la change, allinea le entità che essa risolve.
   await syncLinkedProblems(session, changeId, ctx)
   await syncLinkedIncidents(session, changeId, ctx)
+  await syncSuppressedEvents(session, changeId, ctx)
+}
+
+/**
+ * Fine finestra di change (Event Management, ondata 3): se la change non è più
+ * in un passo "di finestra" (deployment / scheduled) e ha ancora allarmi
+ * silenziati, questi vengono rivalutati (tornano firing e vengono correlati,
+ * salvo un'altra change in finestra). Import dinamico: il modulo di
+ * correlazione trascina i servizi incident/eventi, inutili alle mutation della
+ * change che non hanno eventi soppressi.
+ */
+async function syncSuppressedEvents(
+  session: Session,
+  changeId: string,
+  ctx: GraphQLContext,
+): Promise<void> {
+  const row = await runQueryOne<{ step: string; suppressed: unknown }>(session, `
+    MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+    OPTIONAL MATCH (e:Event {tenant_id: $tenantId, status: 'suppressed', suppressed_by_change_id: c.id})
+    RETURN wi.current_step AS step, count(e) AS suppressed
+  `, { changeId, tenantId: ctx.tenantId })
+  if (!row || toNumber(row.suppressed) === 0) return
+  const { CHANGE_WINDOW_STEPS, reevaluateSuppressedEvents } = await import('../../../services/eventCorrelation.js')
+  if (CHANGE_WINDOW_STEPS.includes(row.step)) return
+  const n = await reevaluateSuppressedEvents(ctx.tenantId, changeId, ctx.userId ?? 'system')
+  logger.info({ changeId, step: row.step, reevaluated: n }, '[change] finestra chiusa: eventi soppressi rivalutati')
 }
 
 /**

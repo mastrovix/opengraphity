@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { EventsPage } from './EventsPage'
-import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCES, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
 import type { MonitoringEvent, EventStats } from '@/types/events'
@@ -17,6 +17,7 @@ function eventFixture(over: Partial<MonitoringEvent> & { id: string }): Monitori
     source: { id: 'wh1', name: 'Prometheus', connectorKind: 'alertmanager' },
     ci: { id: 'ci1', name: 'web-01', type: 'server', status: 'active', health: null },
     incident: null,
+    suppressedBy: null, correlation: 'none', correlationAt: null,
     ...over,
   }
 }
@@ -29,8 +30,18 @@ function typed(ev: MonitoringEvent) {
     source:   ev.source   ? { __typename: 'InboundWebhook', ...ev.source } : null,
     ci:       ev.ci       ? { __typename: 'ConfigurationItemRef', ...ev.ci } : null,
     incident: ev.incident ? { __typename: 'Incident', ...ev.incident } : null,
+    suppressedBy: ev.suppressedBy ? { __typename: 'Change', ...ev.suppressedBy } : null,
   }
 }
+
+const policyMock = (): GqlMock => ({
+  request: { query: GET_EVENT_POLICY },
+  result: { data: { eventPolicy: {
+    __typename: 'EventPolicy', openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
+    suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, retentionDays: 30, severityMap: '{}',
+  } } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
 
 const EVENTS: MonitoringEvent[] = [
   eventFixture({ id: 'e1', title: 'CPU high on web-01' }),
@@ -69,8 +80,8 @@ const sourcesMock = (names: string[] = ['Prometheus', 'Zabbix']): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[] } = {}) {
-  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(), eventsMock(EVENTS, seen), fieldsMock(), sourcesMock(opts.sources)] })
+function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: MonitoringEvent[] } = {}) {
+  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(), eventsMock(opts.events ?? EVENTS, seen), fieldsMock(), sourcesMock(opts.sources), policyMock()] })
 }
 
 const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
@@ -129,6 +140,61 @@ describe('EventsPage', () => {
     const { user } = renderPage('viewer')
     await user.click(await screen.findByText('CPU high on web-01'))
     expect(screen.getByTestId('location')).toHaveTextContent('/events/e1')
+  })
+})
+
+describe('EventsPage — correlazione automatica (ondata 3)', () => {
+  const CHG = { id: 'chg1', code: 'CHG-0007', title: 'Freeze DB' }
+  const CORRELATED: MonitoringEvent[] = [
+    eventFixture({ id: 'c1', title: 'Opened by policy', correlation: 'opened', correlationAt: '2026-09-09T08:00:00Z', incident: { id: 'inc1', number: 'INC-0042', title: 'CPU', status: 'new' } }),
+    eventFixture({ id: 'c2', title: 'Silenced by change', status: 'suppressed', correlation: 'suppressed', correlationAt: '2026-09-09T08:00:00Z', suppressedBy: CHG }),
+    eventFixture({ id: 'c3', title: 'Waiting for delay', correlation: 'delayed', correlationAt: new Date(Date.now() - 30_000).toISOString() }),
+    eventFixture({ id: 'c4', title: 'Orphan alarm', ci: null, correlation: 'skipped_orphan', correlationAt: '2026-09-09T08:00:00Z' }),
+    eventFixture({ id: 'c5', title: 'Below threshold', severity: 'warning', correlation: 'skipped_severity', correlationAt: '2026-09-09T08:00:00Z' }),
+  ]
+
+  it('colonna Incident: link con icona "automatico", chip silenziato/in attesa/collega un CI, trattino sotto soglia', async () => {
+    renderPage('operator', undefined, { events: CORRELATED })
+    expect(await screen.findByText('Opened by policy')).toBeInTheDocument()
+    const rows = bodyRows()
+
+    // aperto dalla policy: link all'incident + icona con tooltip
+    expect(within(rows[0]!).getByRole('link', { name: 'INC-0042' })).toHaveAttribute('href', '/incidents/inc1')
+    expect(within(rows[0]!).getByRole('img', { name: 'Incident opened automatically by monitoring' })).toBeInTheDocument()
+
+    // silenziato: chip grigio con il codice della change, link al suo dettaglio
+    expect(within(rows[1]!).getByRole('link', { name: 'Suppressed · CHG-0007' })).toHaveAttribute('href', '/changes/chg1')
+
+    // in attesa: chip con countdown dal ritardo di policy (120 s − 30 s trascorsi)
+    const waiting = within(rows[2]!).getByText('Waiting')
+    expect(waiting).toHaveAttribute('title', expect.stringMatching(/^Opens in (8\d|9\d) s$/))
+
+    // orfano: chip ambra "Collega un CI"
+    expect(within(rows[3]!).getByText('Link a CI')).toBeInTheDocument()
+
+    // sotto soglia: nessun incident, nessun chip
+    expect(within(rows[4]!).getByText('—')).toBeInTheDocument()
+  })
+
+  it('"Rivaluta ora" solo per silenziati / in attesa / orfani; un evento silenziato non offre "Apri incident"', async () => {
+    renderPage('operator', undefined, { events: CORRELATED })
+    expect(await screen.findByText('Opened by policy')).toBeInTheDocument()
+    const rows = bodyRows()
+    await waitFor(() => expect(within(rows[1]!).getByRole('button', { name: 'Re-evaluate now' })).toBeInTheDocument())
+    expect(within(rows[2]!).getByRole('button', { name: 'Re-evaluate now' })).toBeInTheDocument()
+    expect(within(rows[3]!).getByRole('button', { name: 'Re-evaluate now' })).toBeInTheDocument()
+    expect(within(rows[0]!).queryByRole('button', { name: 'Re-evaluate now' })).not.toBeInTheDocument()
+    expect(within(rows[4]!).queryByRole('button', { name: 'Re-evaluate now' })).not.toBeInTheDocument()
+
+    expect(within(rows[1]!).queryByRole('button', { name: 'Open incident' })).not.toBeInTheDocument()
+    expect(within(rows[4]!).getByRole('button', { name: 'Open incident' })).toBeInTheDocument()
+  })
+
+  it('viewer: i chip restano, "Rivaluta ora" no', async () => {
+    renderPage('viewer', undefined, { events: CORRELATED })
+    expect(await screen.findByRole('link', { name: 'Suppressed · CHG-0007' })).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(screen.queryByRole('button', { name: 'Re-evaluate now' })).not.toBeInTheDocument()
   })
 })
 

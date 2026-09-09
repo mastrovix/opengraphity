@@ -4,6 +4,11 @@
  * ondata 2: anteprima della normalizzazione, payload di esempio, chiavi del
  * payload per il mappatore, sorgenti, salute del CI e forzatura manuale).
  *
+ * Ondata 3: `reevaluateEvent`, filtri `incidentId`/`suppressedByChangeId`,
+ * campi `Event.suppressedBy`/`correlation`, `Incident.correlatedEvents`,
+ * `Change.suppressedEvents`; resolveEvent e linkEventToCI rientrano nella
+ * pipeline di correlazione (services/eventCorrelation.ts).
+ *
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le mutation
  * amministrative (alias, policy) sono in ADMIN_ONLY_MUTATIONS (lib/authorization.ts)
  * e hanno un requireRole locale come seconda linea.
@@ -21,15 +26,16 @@ import { toPascalCase } from '@opengraphity/schema-generator'
 import { mapIncident, mapUser } from '../../lib/mappers.js'
 import { validateStringLength } from '../../lib/validation.js'
 import { applyEventPolicyInput, toEventPolicyGQL, type EventPolicyInputGQL } from '../../lib/eventPolicy.js'
-import * as incidentService from '../../services/incidentService.js'
 import {
   CI_ALIAS_KINDS, getEventPolicy, setEventPolicy, mapEventPayload, recomputeCIHealth,
   assertConnectorKind, listPayloadKeys, sourceConfigOf, normalizeWithConfig,
-  type CIAliasKind, type EventSeverity, type NormalizedEvent,
+  type CIAliasKind, type NormalizedEvent,
 } from '../../services/eventService.js'
+import { openIncidentFromEvent, runEventPipeline } from '../../services/eventCorrelation.js'
 import { enqueueEvents } from '../../jobs/eventIngestWorker.js'
 import { sampleInboundPayload as samplePayloadOf } from '../../lib/eventSamples.js'
 import { mapInbound } from './integrations.js'
+import { change as loadChange } from './change/queries.js'
 import type { CIHealth, CIHealthChangedPayload } from '@opengraphity/types'
 
 /** Valori ammessi per la forzatura manuale della salute (setCIHealthOverride). */
@@ -40,8 +46,8 @@ type Props = Record<string, unknown>
 const EVENT_STATUSES   = ['firing', 'resolved', 'suppressed', 'flapping'] as const
 const EVENT_SEVERITIES = ['info', 'warning', 'critical'] as const
 
-/** Severity dell'evento → priorità dell'incident aperto a mano (`createIncidentFromEvent`). */
-const INCIDENT_SEVERITY_FROM_EVENT: Record<EventSeverity, string> = { critical: 'critical', warning: 'medium', info: 'low' }
+/** Stati/esiti per cui `reevaluateEvent` ha senso: il resto è un errore di input, non un no-op. */
+const REEVALUABLE_CORRELATIONS = ['delayed', 'skipped_orphan'] as const
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
 
@@ -63,6 +69,13 @@ export function mapCIRef(row: CIRefRow) {
 }
 
 export function mapEvent(props: Props, ci: CIRefRow) {
+  // `correlation` è non-null nel contratto: la migrazione 20260909_1030 lo
+  // scrive sugli eventi esistenti e ingestEvent su quelli nuovi. Assente =
+  // migrazione non eseguita → errore, non un valore inventato.
+  const correlation = props['correlation']
+  if (typeof correlation !== 'string' || !correlation) {
+    throw new Error(`Event ${toStr(props['id'])} has no correlation field — run the 20260909_1030_event_management_correlation_rules migration`)
+  }
   return {
     id:             toStr(props['id']),
     fingerprint:    toStr(props['fingerprint']),
@@ -79,9 +92,12 @@ export function mapEvent(props: Props, ci: CIRefRow) {
     lastSeenAt:     toStr(props['last_seen_at']),
     resolvedAt:     toStrOrNull(props['resolved_at']),
     acknowledgedAt: toStrOrNull(props['acknowledged_at']),
-    // risolti dai field resolver: acknowledgedBy, source, incident
-    acknowledgedById: toStrOrNull(props['acknowledged_by']),
-    sourceId:         toStrOrNull(props['source_id']),
+    correlation,
+    correlationAt:  toStrOrNull(props['correlation_at']),
+    // risolti dai field resolver: acknowledgedBy, source, incident, suppressedBy
+    acknowledgedById:     toStrOrNull(props['acknowledged_by']),
+    sourceId:             toStrOrNull(props['source_id']),
+    suppressedByChangeId: toStrOrNull(props['suppressed_by_change_id']),
     ci:             mapCIRef(ci),
   }
 }
@@ -131,6 +147,8 @@ interface EventFilter {
   orphan?: boolean | null
   search?: string | null
   since?: string | null
+  incidentId?: string | null
+  suppressedByChangeId?: string | null
 }
 
 async function events(_: unknown, args: { filter?: EventFilter | null; limit?: number | null; offset?: number | null }, ctx: GraphQLContext) {
@@ -152,6 +170,12 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
     conditions.push('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {id: $ciId, tenant_id: $tenantId}) }'); params['ciId'] = f.ciId
   }
   if (f.sourceId) { conditions.push('e.source_id = $sourceId'); params['sourceId'] = f.sourceId }
+  if (f.incidentId) {
+    conditions.push('EXISTS { (e)-[:CORRELATED_INTO]->(:Incident {id: $incidentId, tenant_id: $tenantId}) }'); params['incidentId'] = f.incidentId
+  }
+  if (f.suppressedByChangeId) {
+    conditions.push('EXISTS { (e)-[:SUPPRESSED_BY]->(:Change {id: $suppressedByChangeId, tenant_id: $tenantId}) }'); params['suppressedByChangeId'] = f.suppressedByChangeId
+  }
   if (f.orphan === true)  conditions.push('NOT EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem) }')
   if (f.orphan === false) conditions.push('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem) }')
   if (f.search?.trim()) {
@@ -550,7 +574,8 @@ async function resolveEvent(_: unknown, args: { id: string; note?: string | null
     await session.close()
   }
   if (!row) throw new NotFoundError('Event', args.id)
-  if (row.ciId) await recomputeCIHealth(ctx.tenantId, row.ciId, ctx.userId)
+  // Salute del CI + chiusura automatica dell'incident correlato (se tutti gli allarmi sono rientrati).
+  await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.id, actorId: ctx.userId, now, mode: 'reevaluate' })
   await publishEvent('event.resolved', ctx.tenantId, ctx.userId, mapEventPayload(row.props, row.ciId), now)
   void audit(ctx, 'event.resolved', 'Event', args.id, { note: args.note ?? null })
   return mapEvent(row.props, row)
@@ -602,8 +627,29 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
   }
 
   if (previousCiId && previousCiId !== args.ciId) await recomputeCIHealth(ctx.tenantId, previousCiId, ctx.userId)
-  await recomputeCIHealth(ctx.tenantId, args.ciId, ctx.userId)
-  void audit(ctx, 'event.linked', 'Event', args.eventId, { ciId: args.ciId, previousCiId, aliasCreated })
+  // Con il CI agganciato l'evento viene rivalutato per intero (finestra di
+  // change, salute del nuovo CI, correlazione): è il reevaluateEvent implicito.
+  const pipeline = await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.eventId, actorId: ctx.userId, now, mode: 'reevaluate' })
+  void audit(ctx, 'event.linked', 'Event', args.eventId, { ciId: args.ciId, previousCiId, aliasCreated, correlation: pipeline.outcome })
+  return loadEvent(args.eventId, ctx.tenantId).then((r) => mapEvent(r.props, r))
+}
+
+/**
+ * Rivalutazione esplicita (admin/operator) di un evento silenziato, in attesa
+ * del ritardo o orfano: rilancia soppressione, salute e correlazione senza
+ * ritardo. Su un evento firing "normale" o risolto è un errore di input.
+ */
+async function reevaluateEvent(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin', 'operator')
+  const current = await loadEvent(args.id, ctx.tenantId)
+  const status = toStr(current.props['status'])
+  const correlation = toStr(current.props['correlation'])
+  if (status !== 'suppressed' && !(REEVALUABLE_CORRELATIONS as readonly string[]).includes(correlation)) {
+    throw new ValidationError(`Event ${args.id} is ${status} with correlation "${correlation}": only suppressed, delayed or skipped_orphan events can be re-evaluated`)
+  }
+  const pipeline = await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.id, actorId: ctx.userId, mode: 'reevaluate' })
+  void audit(ctx, 'event.reevaluated', 'Event', args.id, { previousStatus: status, previousCorrelation: correlation, outcome: pipeline.outcome, incidentId: pipeline.incidentId })
+  const row = await loadEvent(args.id, ctx.tenantId)
   return mapEvent(row.props, row)
 }
 
@@ -629,41 +675,9 @@ async function createIncidentFromEvent(_: unknown, args: { eventId: string }, ct
   if (existingIncidentId) {
     throw new ValidationError(`Event ${args.eventId} is already correlated into incident ${existingIncidentId}`)
   }
-  if (!row.ciId) {
-    throw new ValidationError('Evento orfano: collega prima un CI (linkEventToCI) — un incident deve avere almeno un CI impattato')
-  }
-
-  const severity = toStr(p['severity']) as EventSeverity
-  if (!(EVENT_SEVERITIES as readonly string[]).includes(severity)) throw new Error(`Event ${args.eventId} has an invalid severity ${JSON.stringify(severity)}`)
-  const policy = await getEventPolicy(ctx.tenantId)
-  const iu = policy.severity_map[severity]
-
-  const description = [
-    `Evento di monitoraggio: ${toStr(p['title'])}`,
-    `Risorsa: ${toStr(p['resource'])} (${toStr(p['resource_kind'])})`,
-    `Severità: ${severity}`,
-    `Occorrenze: ${toNumber(p['count'])} (prima: ${toStr(p['first_seen_at'])}, ultima: ${toStr(p['last_seen_at'])})`,
-    p['description'] ? `\n${toStr(p['description'])}` : '',
-  ].filter(Boolean).join('\n')
-
-  const incident = await incidentService.createIncident({
-    title:         toStr(p['title']),
-    description,
-    severity:      INCIDENT_SEVERITY_FROM_EVENT[severity],
-    impact:        iu.impact,
-    urgency:       iu.urgency,
-    affectedCIIds: [row.ciId],
-  }, { tenantId: ctx.tenantId, userId: ctx.userId })
-
-  const w = getSession(undefined, 'WRITE')
-  try {
-    await runQuery(w, `
-      MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
-      MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-      MERGE (e)-[:CORRELATED_INTO {created_at: $now, manual: true}]->(i)
-    `, { eventId: args.eventId, incidentId: incident.id, tenantId: ctx.tenantId, now: new Date().toISOString() })
-  } finally { await w.close() }
-
+  // Stessa apertura della correlazione automatica (services/eventCorrelation.ts):
+  // priorità/impatto/urgenza dalla policy, CI impattato, CORRELATED_INTO manual.
+  const incident = await openIncidentFromEvent({ tenantId: ctx.tenantId, props: p, ciId: row.ciId, actorId: ctx.userId, manual: true })
   void audit(ctx, 'event.incident_created', 'Event', args.eventId, { incidentId: incident.id })
   return incident
 }
@@ -728,7 +742,7 @@ async function updateEventPolicy(_: unknown, args: { input: EventPolicyInputGQL 
 
 // ── Campi di Event ───────────────────────────────────────────────────────────
 
-interface EventParent { id: string; acknowledgedById: string | null; sourceId: string | null }
+interface EventParent { id: string; acknowledgedById: string | null; sourceId: string | null; suppressedByChangeId: string | null }
 
 async function eventAcknowledgedBy(parent: EventParent, _: unknown, ctx: GraphQLContext) {
   if (!parent.acknowledgedById) return null
@@ -766,11 +780,47 @@ async function eventIncident(parent: EventParent, _: unknown, ctx: GraphQLContex
   } finally { await session.close() }
 }
 
+/** La change che silenzia l'evento (solo finché `suppressed_by_change_id` è valorizzato). */
+async function eventSuppressedBy(parent: EventParent, _: unknown, ctx: GraphQLContext) {
+  if (!parent.suppressedByChangeId) return null
+  return loadChange(null, { id: parent.suppressedByChangeId }, ctx)
+}
+
+// ── Campi di Incident / Change ───────────────────────────────────────────────
+
+/** Allarmi correlati all'incident (CORRELATED_INTO), dal più recente. */
+async function incidentCorrelatedEvents(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const rows = await runQuery<EventRow>(session, `
+      MATCH (e:Event {tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {id: $id, tenant_id: $tenantId})
+      WITH e ORDER BY e.last_seen_at DESC
+      ${CI_REF}
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => mapEvent(r.props, r))
+  } finally { await session.close() }
+}
+
+/** Eventi silenziati dalla finestra della change (SUPPRESSED_BY, anche storici), dal più recente. */
+async function changeSuppressedEvents(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const rows = await runQuery<EventRow>(session, `
+      MATCH (e:Event {tenant_id: $tenantId})-[:SUPPRESSED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
+      WITH e ORDER BY e.last_seen_at DESC
+      ${CI_REF}
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => mapEvent(r.props, r))
+  } finally { await session.close() }
+}
+
 export const eventResolvers = {
   Query:    { events, event, eventStats, ciAliases, eventPolicy, sampleInboundPayload, payloadKeys, monitoringSources, ciHealth, ciHealthOverview },
   Mutation: {
-    acknowledgeEvent, resolveEvent, linkEventToCI, createIncidentFromEvent, createCIAlias, deleteCIAlias, updateEventPolicy,
+    acknowledgeEvent, resolveEvent, linkEventToCI, createIncidentFromEvent, reevaluateEvent, createCIAlias, deleteCIAlias, updateEventPolicy,
     previewInboundEvents, sendSampleEvent, setCIHealthOverride,
   },
-  Event:    { acknowledgedBy: eventAcknowledgedBy, source: eventSource, incident: eventIncident },
+  Event:    { acknowledgedBy: eventAcknowledgedBy, source: eventSource, incident: eventIncident, suppressedBy: eventSuppressedBy },
+  Incident: { correlatedEvents: incidentCorrelatedEvents },
+  Change:   { suppressedEvents: changeSuppressedEvents },
 }

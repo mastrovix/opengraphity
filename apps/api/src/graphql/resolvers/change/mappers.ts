@@ -2,6 +2,7 @@ import { mapCI } from '../ci-utils.js'
 import { mapUser, mapTeam } from '../../../lib/mappers.js'
 import { deriveChangePriority } from './scoring.js'
 import { toNumber } from '@opengraphity/neo4j'
+import { parseDeploySteps } from '../../../lib/deployWindows.js'
 
 export type Props = Record<string, unknown>
 
@@ -82,41 +83,14 @@ export function mapValidationTest(props: Props) {
   }
 }
 
-type RawWindow = { start?: unknown; end?: unknown }
-type RawStep   = { title?: unknown; validationWindow?: RawWindow; releaseWindow?: RawWindow }
-
-function parseSteps(v: unknown): Array<{ title: string; validationWindow: { start: string; end: string }; releaseWindow: { start: string; end: string } }> {
-  if (typeof v !== 'string' || v.length === 0) return []
-  // Corrupt steps JSON must fail loud: returning [] silently presented a
-  // change as having NO deploy plan while one existed (and was corrupted).
-  let arr: unknown
-  try {
-    arr = JSON.parse(v)
-  } catch (e) {
-    throw new Error(`Corrupt deploy steps JSON: ${e instanceof Error ? e.message : String(e)}`)
-  }
-  if (!Array.isArray(arr)) throw new Error(`Deploy steps payload is not an array (got ${typeof arr})`)
-  return (arr as RawStep[])
-    .filter((s): s is RawStep => typeof s === 'object' && s !== null)
-    .map((s) => ({
-      title: String(s.title ?? ''),
-      validationWindow: {
-        start: String(s.validationWindow?.start ?? ''),
-        end:   String(s.validationWindow?.end   ?? ''),
-      },
-      releaseWindow: {
-        start: String(s.releaseWindow?.start ?? ''),
-        end:   String(s.releaseWindow?.end   ?? ''),
-      },
-    }))
-}
-
 export function mapDeployPlanTask(props: Props) {
   return {
     id:          props['id']            as string,
     code:        (props['code'] ?? '')  as string,
     status:      props['status']        as string,
-    steps:       parseSteps(props['steps']),
+    // Parser condiviso con la soppressione degli allarmi (lib/deployWindows):
+    // JSON corrotto → errore, mai un piano "vuoto" al posto di uno rotto.
+    steps:       parseDeploySteps(props['steps']),
     completedAt: (props['completed_at'] ?? null) as string | null,
     createdAt:   props['created_at']    as string,
     assignedTeam: null,

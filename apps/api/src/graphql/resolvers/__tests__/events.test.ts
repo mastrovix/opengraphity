@@ -3,11 +3,13 @@
  * tre chiavi) e persiste il merge; linkEventToCI sostituisce il RAISED_ON,
  * crea l'alias (valore minuscolo, mai per kind `name`) e ricalcola la salute del CI;
  * resolveEvent marca resolved, ricalcola la salute del CI e pubblica event.resolved;
- * createIncidentFromEvent usa impact/urgency dalla policy; filtri di `events`;
+ * createIncidentFromEvent delega all'apertura condivisa; filtri di `events`;
  * ruoli sulle mutation amministrative. Ondata 2: sampleInboundPayload,
  * payloadKeys, monitoringSources, ciHealth, previewInboundEvents (nessuna
  * scrittura), sendSampleEvent (accoda con la config della sorgente),
- * setCIHealthOverride (manual / ripristino).
+ * setCIHealthOverride (manual / ripristino). Ondata 3: reevaluateEvent,
+ * filtri incidentId/suppressedByChangeId, Event.suppressedBy/correlation,
+ * Incident.correlatedEvents, Change.suppressedEvents (pipeline mockata).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -25,13 +27,18 @@ vi.mock('../../../services/eventService.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../services/eventService.js')>()),
   getEventPolicy: vi.fn(), setEventPolicy: vi.fn().mockResolvedValue(undefined), recomputeCIHealth: vi.fn().mockResolvedValue('down'),
 }))
+// Ondata 3: apertura condivisa e pipeline (soppressione/salute/correlazione)
+// sono testate in services/__tests__/eventCorrelation.test.ts.
+vi.mock('../../../services/eventCorrelation.js', () => ({ openIncidentFromEvent: vi.fn(), runEventPipeline: vi.fn() }))
+vi.mock('../change/queries.js', () => ({ change: vi.fn() }))
 
 const { eventResolvers } = await import('../events.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { getEventPolicy, setEventPolicy, recomputeCIHealth } = await import('../../../services/eventService.js')
+const { openIncidentFromEvent, runEventPipeline } = await import('../../../services/eventCorrelation.js')
+const { change: loadChange } = await import('../change/queries.js')
 const { publishEvent } = await import('../../../lib/publishEvent.js')
 const { audit } = await import('../../../lib/audit.js')
-const { createIncident } = await import('../../../services/incidentService.js')
 const { enqueueEvents } = await import('../../../jobs/eventIngestWorker.js')
 const { SAMPLE_PAYLOADS, GENERIC_SAMPLE_CONFIG } = await import('../../../lib/eventSamples.js')
 const { DEFAULT_EVENT_POLICY } = await import('../../../lib/eventPolicy.js')
@@ -59,15 +66,17 @@ const calls = () => [...vi.mocked(runQueryOne).mock.calls, ...vi.mocked(runQuery
 const callMatching = (re: RegExp) => calls().find((c) => re.test(c.cypher))
 
 const eventRow = (over: Record<string, unknown> = {}, ci: { ciId: string | null; ciName?: string; ciStatus?: string; ciHealth?: string; ciLabels?: string[] } = { ciId: null }) => ({
-  props: { id: 'ev-1', fingerprint: 'fp', status: 'firing', severity: 'critical', title: 'DiskFull', resource: 'DB-01', resource_kind: 'hostname', count: 3, first_seen_at: 'T0', last_seen_at: 'T1', source_id: 'hook-1', labels: '{}', ...over },
+  props: { id: 'ev-1', fingerprint: 'fp', status: 'firing', severity: 'critical', title: 'DiskFull', resource: 'DB-01', resource_kind: 'hostname', count: 3, first_seen_at: 'T0', last_seen_at: 'T1', source_id: 'hook-1', labels: '{}', correlation: 'none', ...over },
   ciId: ci.ciId, ciName: ci.ciName ?? null, ciStatus: ci.ciStatus ?? null, ciHealth: ci.ciHealth ?? null, ciLabels: ci.ciLabels ?? null,
 })
+const pipelineResult = (over: Record<string, unknown> = {}) => ({ outcome: 'none', status: 'firing', suppressedByChangeId: null, incidentId: null, ...over })
 
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
   vi.mocked(getEventPolicy).mockResolvedValue(structuredClone(DEFAULT_EVENT_POLICY))
   vi.mocked(recomputeCIHealth).mockResolvedValue('down')
+  vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
 })
 
 // ── updateEventPolicy ────────────────────────────────────────────────────────
@@ -118,14 +127,20 @@ describe('updateEventPolicy', () => {
 // ── linkEventToCI ────────────────────────────────────────────────────────────
 
 describe('linkEventToCI', () => {
-  it('createAlias su evento hostname → sostituisce il RAISED_ON, MERGE CIAlias con valore minuscolo e ALIAS_OF, ricalcola vecchio e nuovo CI', async () => {
+  /** Il frammento CI_REF viene letto due volte (prima e dopo il collegamento): prima il CI vecchio, poi quello nuovo. */
+  const before = (a: unknown, b: unknown) => { let n = 0; return () => (n++ === 0 ? a : b) }
+
+  it('createAlias su evento hostname → sostituisce il RAISED_ON, MERGE CIAlias con valore minuscolo e ALIAS_OF, ricalcola il vecchio CI e rivaluta l\'evento (pipeline senza ritardo)', async () => {
+    const newRow = eventRow({ correlation: 'opened' }, { ciId: 'ci-new', ciName: 'db-01', ciStatus: 'active', ciHealth: 'down', ciLabels: ['Server'] })
     onCypher([
-      [/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow({}, { ciId: 'ci-old', ciName: 'old' })],
-      [/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/, eventRow({}, { ciId: 'ci-new', ciName: 'db-01', ciStatus: 'active', ciHealth: 'down', ciLabels: ['Server'] })],
+      [/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, before(eventRow({}, { ciId: 'ci-old', ciName: 'old' }), newRow)],
+      [/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/, newRow],
       [/MERGE \(a:CIAlias/, null],
     ])
+    vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult({ outcome: 'opened', incidentId: 'inc-1' }) as never)
     const out = await eventResolvers.Mutation.linkEventToCI(null, { eventId: 'ev-1', ciId: 'ci-new', createAlias: true }, operator)
     expect(out.ci).toEqual({ id: 'ci-new', name: 'db-01', type: 'server', status: 'active', health: 'down' })
+    expect(out.correlation).toBe('opened')
 
     const link = callMatching(/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/)!
     expect(link.cypher).toContain('MATCH (target:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
@@ -138,25 +153,28 @@ describe('linkEventToCI', () => {
     expect(alias.cypher).toContain('MERGE (a)-[:ALIAS_OF]->(ci)')
     expect(alias.params).toMatchObject({ tenantId: 'tenant-1', ciId: 'ci-new', kind: 'hostname', value: 'db-01', userId: 'op-1' })
 
-    expect(vi.mocked(recomputeCIHealth).mock.calls).toEqual([['tenant-1', 'ci-old', 'op-1'], ['tenant-1', 'ci-new', 'op-1']])
-    expect(audit).toHaveBeenCalledWith(operator, 'event.linked', 'Event', 'ev-1', { ciId: 'ci-new', previousCiId: 'ci-old', aliasCreated: true })
+    // il CI vecchio si ricalcola qui; il nuovo dentro la pipeline (dopo la soppressione)
+    expect(vi.mocked(recomputeCIHealth).mock.calls).toEqual([['tenant-1', 'ci-old', 'op-1']])
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 'tenant-1', eventId: 'ev-1', actorId: 'op-1', now: expect.any(String), mode: 'reevaluate' })
+    expect(audit).toHaveBeenCalledWith(operator, 'event.linked', 'Event', 'ev-1', { ciId: 'ci-new', previousCiId: 'ci-old', aliasCreated: true, correlation: 'opened' })
   })
 
-  it('kind `name` → nessun alias anche con createAlias; senza createAlias idem; ricalcolo solo del CI nuovo se orfano', async () => {
+  it('kind `name` → nessun alias anche con createAlias; senza createAlias idem; evento orfano → nessun ricalcolo del CI vecchio, solo pipeline', async () => {
     // la regola del MERGE va per prima: anche quella query contiene il frammento CI_REF
     onCypher([
       [/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/, eventRow({ resource_kind: 'name' }, { ciId: 'ci-1', ciName: 'x', ciLabels: ['Application'] })],
-      [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow({ resource_kind: 'name' })],
+      [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, before(eventRow({ resource_kind: 'name' }), eventRow({ resource_kind: 'name' }, { ciId: 'ci-1', ciName: 'x', ciLabels: ['Application'] }))],
     ])
     const out = await eventResolvers.Mutation.linkEventToCI(null, { eventId: 'ev-1', ciId: 'ci-1', createAlias: true }, operator)
     expect(out.ci).toMatchObject({ id: 'ci-1', type: 'application' })
     expect(callMatching(/CIAlias/)).toBeUndefined()
-    expect(vi.mocked(recomputeCIHealth).mock.calls).toEqual([['tenant-1', 'ci-1', 'op-1']])
+    expect(recomputeCIHealth).not.toHaveBeenCalled()
+    expect(runEventPipeline).toHaveBeenCalledTimes(1)
 
-    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
     onCypher([
       [/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/, eventRow({}, { ciId: 'ci-1', ciName: 'x', ciLabels: ['Server'] })],
-      [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow()],
+      [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, before(eventRow(), eventRow({}, { ciId: 'ci-1', ciName: 'x', ciLabels: ['Server'] }))],
     ])
     await eventResolvers.Mutation.linkEventToCI(null, { eventId: 'ev-1', ciId: 'ci-1' }, operator)
     expect(callMatching(/CIAlias/)).toBeUndefined()
@@ -168,33 +186,36 @@ describe('linkEventToCI', () => {
     onCypher([[/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/, null], [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow()]])
     await expectCode(eventResolvers.Mutation.linkEventToCI(null, { eventId: 'ev-1', ciId: 'ci-x' }, operator), 'NOT_FOUND', /ConfigurationItem ci-x/)
     expect(recomputeCIHealth).not.toHaveBeenCalled()
+    expect(runEventPipeline).not.toHaveBeenCalled()
   })
 })
 
 // ── resolveEvent ─────────────────────────────────────────────────────────────
 
 describe('resolveEvent', () => {
-  it('SET resolved + resolved_at + nota, ricalcolo del CI agganciato, event.resolved pubblicato, audit', async () => {
+  it('SET resolved + resolved_at + nota, pipeline (salute del CI + chiusura automatica dell\'incident), event.resolved pubblicato, audit', async () => {
     onCypher([[/SET e\.status = 'resolved', e\.resolved_at = \$now/, eventRow({ status: 'resolved', resolved_at: 'NOW' }, { ciId: 'ci-1', ciName: 'db', ciLabels: ['Server'] })]])
     const out = await eventResolvers.Mutation.resolveEvent(null, { id: 'ev-1', note: 'falso allarme' }, operator)
     expect(out).toMatchObject({ id: 'ev-1', status: 'resolved', resolvedAt: 'NOW', ci: { id: 'ci-1', type: 'server' } })
     const set = callMatching(/SET e\.status = 'resolved'/)!
     expect(set.cypher).toContain('MATCH (e:Event {id: $id, tenant_id: $tenantId})')
     expect(set.params).toMatchObject({ id: 'ev-1', tenantId: 'tenant-1', userId: 'op-1', note: 'falso allarme' })
-    expect(recomputeCIHealth).toHaveBeenCalledWith('tenant-1', 'ci-1', 'op-1')
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 'tenant-1', eventId: 'ev-1', actorId: 'op-1', now: expect.any(String), mode: 'reevaluate' })
+    expect(recomputeCIHealth).not.toHaveBeenCalled()   // lo fa la pipeline
     expect(publishEvent).toHaveBeenCalledWith('event.resolved', 'tenant-1', 'op-1', expect.objectContaining({ id: 'ev-1', status: 'resolved', ci_id: 'ci-1', entity_type: 'event' }), expect.any(String))
     expect(audit).toHaveBeenCalledWith(operator, 'event.resolved', 'Event', 'ev-1', { note: 'falso allarme' })
   })
 
-  it('evento orfano → nessun ricalcolo; evento inesistente → NOT_FOUND senza pubblicare', async () => {
+  it('evento orfano → pipeline comunque (chiusura automatica); evento inesistente → NOT_FOUND senza pipeline né pubblicazione', async () => {
     onCypher([[/SET e\.status = 'resolved'/, eventRow({ status: 'resolved' })]])
     await eventResolvers.Mutation.resolveEvent(null, { id: 'ev-1' }, operator)
-    expect(recomputeCIHealth).not.toHaveBeenCalled()
+    expect(runEventPipeline).toHaveBeenCalledTimes(1)
     expect(publishEvent).toHaveBeenCalledTimes(1)
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     onCypher([[/SET e\.status = 'resolved'/, null]])
     await expectCode(eventResolvers.Mutation.resolveEvent(null, { id: 'ev-x' }, operator), 'NOT_FOUND')
+    expect(runEventPipeline).not.toHaveBeenCalled()
     expect(publishEvent).not.toHaveBeenCalled()
   })
 })
@@ -202,43 +223,99 @@ describe('resolveEvent', () => {
 // ── createIncidentFromEvent ──────────────────────────────────────────────────
 
 describe('createIncidentFromEvent', () => {
-  it('evento con CI → createIncident con severity mappata, impact/urgency dalla severity_map, il CI come impattato; poi CORRELATED_INTO', async () => {
-    vi.mocked(createIncident).mockResolvedValueOnce({ id: 'inc-1', number: 'INC00000001' } as never)
+  it('evento con CI non ancora correlato → apertura condivisa (openIncidentFromEvent) con attore = utente e manual = true, audit', async () => {
+    vi.mocked(openIncidentFromEvent).mockResolvedValueOnce({ id: 'inc-1', number: 'INC00000001' } as never)
+    const row = eventRow({ severity: 'warning', description: 'dettaglio' }, { ciId: 'ci-1', ciName: 'db', ciLabels: ['Server'] })
     onCypher([
-      [/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH/, eventRow({ severity: 'warning', description: 'dettaglio' }, { ciId: 'ci-1', ciName: 'db', ciLabels: ['Server'] })],
+      [/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH/, row],
       [/CORRELATED_INTO\]->\(i:Incident \{tenant_id: \$tenantId\}\)\s+RETURN i\.id/, null],
-      [/MERGE \(e\)-\[:CORRELATED_INTO/, null],
     ])
     const out = await eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator)
     expect(out).toMatchObject({ id: 'inc-1' })
-    expect(createIncident).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'DiskFull', severity: 'medium', impact: 'medium', urgency: 'medium', affectedCIIds: ['ci-1'] }),
-      { tenantId: 'tenant-1', userId: 'op-1' },
-    )
-    const desc = vi.mocked(createIncident).mock.calls[0]![0].description!
-    expect(desc).toContain('Evento di monitoraggio: DiskFull')
-    expect(desc).toContain('Risorsa: DB-01 (hostname)')
-    expect(desc).toContain('Occorrenze: 3')
-    expect(desc).toContain('dettaglio')
-    const link = callMatching(/MERGE \(e\)-\[:CORRELATED_INTO/)!
-    expect(link.cypher).toContain('MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})')
-    expect(link.params).toMatchObject({ eventId: 'ev-1', incidentId: 'inc-1', tenantId: 'tenant-1' })
+    expect(openIncidentFromEvent).toHaveBeenCalledWith({ tenantId: 'tenant-1', props: row.props, ciId: 'ci-1', actorId: 'op-1', manual: true })
     expect(audit).toHaveBeenCalledWith(operator, 'event.incident_created', 'Event', 'ev-1', { incidentId: 'inc-1' })
   })
 
-  it('severity critical → incident critical con impact/urgency high (policy predefinita)', async () => {
-    vi.mocked(createIncident).mockResolvedValueOnce({ id: 'inc-2' } as never)
-    onCypher([[/OPTIONAL MATCH/, eventRow({ severity: 'critical' }, { ciId: 'ci-1', ciLabels: ['Server'] })], [/RETURN i\.id/, null], [/MERGE \(e\)-\[:CORRELATED_INTO/, null]])
-    await eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator)
-    expect(createIncident).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical', impact: 'high', urgency: 'high' }), expect.anything())
-  })
-
-  it('evento orfano → BAD_USER_INPUT che indica linkEventToCI; già correlato → BAD_USER_INPUT con l\'incident; nessun incident creato', async () => {
+  it('evento orfano → BAD_USER_INPUT (dall\'apertura condivisa); già correlato → BAD_USER_INPUT con l\'incident, senza chiamare l\'apertura', async () => {
+    const { ValidationError } = await import('../../../lib/errors.js')
+    vi.mocked(openIncidentFromEvent).mockRejectedValueOnce(new ValidationError('Evento orfano: collega prima un CI (linkEventToCI) — un incident deve avere almeno un CI impattato'))
     onCypher([[/OPTIONAL MATCH/, eventRow()], [/RETURN i\.id/, null]])
     await expectCode(eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator), 'BAD_USER_INPUT', /orfano.*linkEventToCI/)
+    expect(openIncidentFromEvent).toHaveBeenCalledWith(expect.objectContaining({ ciId: null, manual: true }))
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     onCypher([[/OPTIONAL MATCH/, eventRow({}, { ciId: 'ci-1' })], [/RETURN i\.id/, { incidentId: 'inc-9' }]])
     await expectCode(eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator), 'BAD_USER_INPUT', /already correlated into incident inc-9/)
-    expect(createIncident).not.toHaveBeenCalled()
+    expect(openIncidentFromEvent).not.toHaveBeenCalled()
+  })
+})
+
+// ── reevaluateEvent / campi di correlazione (ondata 3) ───────────────────────
+
+describe('reevaluateEvent', () => {
+  it('evento suppressed → pipeline in modalità reevaluate con l\'attore dell\'utente, audit, restituisce l\'evento riletto', async () => {
+    let reads = 0
+    onCypher([[/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH/, () => (reads++ === 0
+      ? eventRow({ status: 'suppressed', correlation: 'suppressed', suppressed_by_change_id: 'chg-1' }, { ciId: 'ci-1', ciLabels: ['Server'] })
+      : eventRow({ status: 'firing', correlation: 'opened', correlation_at: 'T2' }, { ciId: 'ci-1', ciLabels: ['Server'] }))]])
+    vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult({ outcome: 'opened', incidentId: 'inc-1' }) as never)
+    const out = await eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator)
+    expect(out).toMatchObject({ id: 'ev-1', status: 'firing', correlation: 'opened', correlationAt: 'T2', suppressedByChangeId: null })
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 'tenant-1', eventId: 'ev-1', actorId: 'op-1', mode: 'reevaluate' })
+    expect(audit).toHaveBeenCalledWith(operator, 'event.reevaluated', 'Event', 'ev-1', { previousStatus: 'suppressed', previousCorrelation: 'suppressed', outcome: 'opened', incidentId: 'inc-1' })
+  })
+
+  it.each([['delayed'], ['skipped_orphan']])('evento firing con correlation %s → rivalutabile', async (correlation) => {
+    onCypher([[/OPTIONAL MATCH/, eventRow({ correlation })]])
+    await eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, admin)
+    expect(runEventPipeline).toHaveBeenCalledTimes(1)
+  })
+
+  it('evento firing normale (correlation opened/none) o risolto → BAD_USER_INPUT senza pipeline; inesistente → NOT_FOUND; viewer → FORBIDDEN', async () => {
+    onCypher([[/OPTIONAL MATCH/, eventRow({ correlation: 'opened' })]])
+    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /only suppressed, delayed or skipped_orphan events can be re-evaluated/)
+    onCypher([[/OPTIONAL MATCH/, eventRow({ correlation: 'none' })]])
+    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT')
+    onCypher([[/OPTIONAL MATCH/, eventRow({ status: 'resolved', correlation: 'attached' })]])
+    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT')
+    expect(runEventPipeline).not.toHaveBeenCalled()
+    onCypher([[/OPTIONAL MATCH/, null]])
+    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-x' }, operator), 'NOT_FOUND')
+    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, viewer), 'FORBIDDEN')
+    expect(audit).not.toHaveBeenCalled()
+  })
+})
+
+describe('campi di correlazione', () => {
+  it('mapEvent: correlation e correlationAt esposti; evento senza correlation → errore che indica la migrazione', async () => {
+    const { mapEvent } = await import('../events.js')
+    const row = eventRow({ correlation: 'attached', correlation_at: 'T3', suppressed_by_change_id: 'chg-1' })
+    expect(mapEvent(row.props, row)).toMatchObject({ correlation: 'attached', correlationAt: 'T3', suppressedByChangeId: 'chg-1' })
+    const legacy = eventRow(); delete (legacy.props as Record<string, unknown>)['correlation']
+    expect(() => mapEvent(legacy.props, legacy)).toThrow(/20260909_1030_event_management_correlation_rules/)
+  })
+
+  it('Event.suppressedBy → null senza change; con change carica la change del tenant', async () => {
+    await expect(eventResolvers.Event.suppressedBy({ id: 'ev-1', acknowledgedById: null, sourceId: null, suppressedByChangeId: null }, null, operator)).resolves.toBeNull()
+    expect(loadChange).not.toHaveBeenCalled()
+    vi.mocked(loadChange).mockResolvedValueOnce({ id: 'chg-1', code: 'CHG00000001' } as never)
+    await expect(eventResolvers.Event.suppressedBy({ id: 'ev-1', acknowledgedById: null, sourceId: null, suppressedByChangeId: 'chg-1' }, null, operator)).resolves.toMatchObject({ id: 'chg-1' })
+    expect(loadChange).toHaveBeenCalledWith(null, { id: 'chg-1' }, operator)
+  })
+
+  it('Incident.correlatedEvents e Change.suppressedEvents → query scoped per tenant, ordinate per last_seen_at DESC', async () => {
+    onCypher([[/CORRELATED_INTO\]->\(i:Incident \{id: \$id, tenant_id: \$tenantId\}\)/, [eventRow({ correlation: 'opened' }, { ciId: 'ci-1', ciLabels: ['Server'] })]]])
+    const ev = await eventResolvers.Incident.correlatedEvents({ id: 'inc-1' }, null, operator)
+    expect(ev).toEqual([expect.objectContaining({ id: 'ev-1', correlation: 'opened', ci: expect.objectContaining({ id: 'ci-1' }) })])
+    const q1 = callMatching(/CORRELATED_INTO/)!
+    expect(q1.cypher).toContain('MATCH (e:Event {tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {id: $id, tenant_id: $tenantId})')
+    expect(q1.cypher).toContain('ORDER BY e.last_seen_at DESC')
+    expect(q1.params).toEqual({ id: 'inc-1', tenantId: 'tenant-1' })
+
+    onCypher([[/SUPPRESSED_BY\]->\(c:Change \{id: \$id, tenant_id: \$tenantId\}\)/, [eventRow({ status: 'suppressed', correlation: 'suppressed' })]]])
+    const sup = await eventResolvers.Change.suppressedEvents({ id: 'chg-1' }, null, operator)
+    expect(sup).toEqual([expect.objectContaining({ id: 'ev-1', status: 'suppressed' })])
+    expect(callMatching(/SUPPRESSED_BY/)!.params).toEqual({ id: 'chg-1', tenantId: 'tenant-1' })
   })
 })
 
@@ -250,10 +327,10 @@ describe('events', () => {
       [/RETURN count\(e\) AS total/, { total: 7 }],
       [/ORDER BY e\.last_seen_at DESC/, [eventRow({}, { ciId: 'ci-1', ciName: 'db-01', ciStatus: 'active', ciHealth: 'down', ciLabels: ['Server'] }), eventRow({ id: 'ev-2' })]],
     ])
-    const out = await eventResolvers.Query.events(null, { filter: { status: ['firing'], severity: ['critical', 'warning'], orphan: false, search: ' DB ', since: '2026-09-01T00:00:00Z', sourceId: 'hook-1', ciId: 'ci-1' }, limit: 10, offset: 20 }, operator)
+    const out = await eventResolvers.Query.events(null, { filter: { status: ['firing'], severity: ['critical', 'warning'], orphan: false, search: ' DB ', since: '2026-09-01T00:00:00Z', sourceId: 'hook-1', ciId: 'ci-1', incidentId: 'inc-1', suppressedByChangeId: 'chg-1' }, limit: 10, offset: 20 }, operator)
     expect(out.total).toBe(7)
     expect(out.items).toHaveLength(2)
-    expect(out.items[0]).toMatchObject({ id: 'ev-1', status: 'firing', count: 3, ci: { id: 'ci-1', name: 'db-01', type: 'server', status: 'active', health: 'down' } })
+    expect(out.items[0]).toMatchObject({ id: 'ev-1', status: 'firing', count: 3, correlation: 'none', ci: { id: 'ci-1', name: 'db-01', type: 'server', status: 'active', health: 'down' } })
     expect(out.items[1]!.ci).toBeNull()
     const list = callMatching(/ORDER BY e\.last_seen_at DESC/)!
     expect(list.cypher).toContain('e.tenant_id = $tenantId')
@@ -261,9 +338,11 @@ describe('events', () => {
     expect(list.cypher).toContain('e.severity IN $severity')
     expect(list.cypher).toContain('e.source_id = $sourceId')
     expect(list.cypher).toContain('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {id: $ciId, tenant_id: $tenantId}) }')
+    expect(list.cypher).toContain('EXISTS { (e)-[:CORRELATED_INTO]->(:Incident {id: $incidentId, tenant_id: $tenantId}) }')
+    expect(list.cypher).toContain('EXISTS { (e)-[:SUPPRESSED_BY]->(:Change {id: $suppressedByChangeId, tenant_id: $tenantId}) }')
     expect(list.cypher).toContain('e.last_seen_at >= $since')
     expect(list.cypher).toContain('toLower(e.title) CONTAINS $search')
-    expect(list.params).toMatchObject({ tenantId: 'tenant-1', limit: 10, offset: 20, search: 'db', status: ['firing'] })
+    expect(list.params).toMatchObject({ tenantId: 'tenant-1', limit: 10, offset: 20, search: 'db', status: ['firing'], incidentId: 'inc-1', suppressedByChangeId: 'chg-1' })
   })
 
   it('status/severity fuori enum o since non ISO → BAD_USER_INPUT senza query; limit oltre 500 viene ridotto', async () => {

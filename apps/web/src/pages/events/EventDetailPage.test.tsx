@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { screen, within, waitFor } from '@testing-library/react'
 import { EventDetailPage } from './EventDetailPage'
-import { GET_EVENT, GET_CI_ALIASES } from '@/graphql/queries'
+import { GET_EVENT, GET_CI_ALIASES, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
 
 const CI = { __typename: 'ConfigurationItemRef', id: 'ci1', name: 'web-01', type: 'server', status: 'active', health: 'degraded' }
+const INCIDENT = { __typename: 'Incident', id: 'inc1', number: 'INC-0042', title: 'CPU saturation', status: 'in_progress' }
+const CHANGE = { __typename: 'Change', id: 'chg1', code: 'CHG-0007', title: 'Freeze DB' }
 
-const EVENT = {
+/** Fixture grezzo (come arriva dal mock): gli override dei singoli test possono annullare qualsiasi campo. */
+const EVENT: Record<string, unknown> = {
   __typename: 'Event', id: 'e1', fingerprint: 'fp-abc', externalId: 'ext-1', status: 'firing', severity: 'critical',
   title: 'CPU high on web-01', description: 'CPU > 95% for 10m', resource: 'web-01', resourceKind: 'host',
   labels: JSON.stringify({ job: 'node', instance: 'web-01:9100', nested: { a: 1 } }),
@@ -15,12 +18,13 @@ const EVENT = {
   acknowledgedAt: '2026-09-09T08:10:00Z', acknowledgedBy: { __typename: 'User', id: 'u2', name: 'Anna Bianchi' },
   source: { __typename: 'InboundWebhook', id: 'wh1', name: 'Prometheus', connectorKind: 'alertmanager' },
   ci: CI,
-  incident: { __typename: 'Incident', id: 'inc1', number: 'INC-0042', title: 'CPU saturation', status: 'in_progress' },
+  incident: INCIDENT,
+  suppressedBy: null, correlation: 'opened', correlationAt: '2026-09-09T08:00:05Z',
 }
 
-const eventMock = (): GqlMock => ({
+const eventMock = (over: Record<string, unknown> = {}): GqlMock => ({
   request: { query: GET_EVENT, variables: { id: 'e1' } },
-  result: { data: { event: EVENT } },
+  result: { data: { event: { ...EVENT, ...over } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
@@ -33,9 +37,20 @@ const aliasesMock = (): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-function renderPage(role: string) {
-  return renderWithProviders(<EventDetailPage />, { route: '/events/e1', path: '/events/:id', mocks: [meMock(role), eventMock(), aliasesMock()] })
+const policyMock = (): GqlMock => ({
+  request: { query: GET_EVENT_POLICY },
+  result: { data: { eventPolicy: {
+    __typename: 'EventPolicy', openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
+    suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, retentionDays: 30, severityMap: '{}',
+  } } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
+function renderPage(role: string, over: Record<string, unknown> = {}) {
+  return renderWithProviders(<EventDetailPage />, { route: '/events/e1', path: '/events/:id', mocks: [meMock(role), eventMock(over), aliasesMock(), policyMock()] })
 }
+
+const sentence = () => screen.getByTestId('correlation-sentence')
 
 describe('EventDetailPage', () => {
   it('admin: campi, etichette come tabella, contesto (CI, sorgente, incident) e alias con elimina', async () => {
@@ -55,7 +70,8 @@ describe('EventDetailPage', () => {
     expect(screen.getByText('active')).toBeInTheDocument()            // ciclo di vita
     expect(screen.getByText('Health: Degraded')).toBeInTheDocument()  // salute dal monitoraggio
     expect(screen.getByText('Prometheus (alertmanager)')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'INC-0042 · CPU saturation' })).toHaveAttribute('href', '/incidents/inc1')
+    // l'incident è linkato sia nel contesto sia nella sezione Correlazione
+    for (const link of screen.getAllByRole('link', { name: 'INC-0042 · CPU saturation' })) expect(link).toHaveAttribute('href', '/incidents/inc1')
 
     // alias del CI
     expect(await screen.findByText('10.0.0.7')).toBeInTheDocument()
@@ -75,6 +91,7 @@ describe('EventDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Resolve' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete alias web-01' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Re-evaluate now' })).not.toBeInTheDocument()
   })
 
   it('evento inesistente → stato "non trovato" con ritorno alla lista', async () => {
@@ -82,5 +99,54 @@ describe('EventDetailPage', () => {
     renderWithProviders(<EventDetailPage />, { route: '/events/e1', path: '/events/:id', mocks: [meMock('admin'), missing] })
     expect(await screen.findByText('Event not found')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Back to events' })).toBeInTheDocument()
+  })
+})
+
+describe('EventDetailPage — sezione Correlazione (ondata 3)', () => {
+  it('opened: "incident aperto automaticamente il …", nessun "Rivaluta ora" (esito definitivo)', async () => {
+    renderPage('operator')
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent(/^Incident INC-0042 opened automatically on .+\.$/)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(screen.queryByRole('button', { name: 'Re-evaluate now' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open incident' })).not.toBeInTheDocument()
+  })
+
+  it('attached: agganciato all\'incident esistente', async () => {
+    renderPage('operator', { correlation: 'attached' })
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent(/^Attached to the existing incident INC-0042 on .+\.$/)
+  })
+
+  it('suppressed: frase con la change, link alla change, "Rivaluta ora" sì e "Apri incident" no', async () => {
+    renderPage('operator', { status: 'suppressed', correlation: 'suppressed', incident: null, suppressedBy: CHANGE })
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent('Suppressed by change CHG-0007 until the end of the release window')
+    expect(screen.getByRole('link', { name: 'CHG-0007 · Freeze DB' })).toHaveAttribute('href', '/changes/chg1')
+    expect(await screen.findByRole('button', { name: 'Re-evaluate now' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open incident' })).not.toBeInTheDocument()
+  })
+
+  it('skipped_orphan: invito a collegare un CI, con "Rivaluta ora" e "Apri incident"', async () => {
+    renderPage('operator', { correlation: 'skipped_orphan', incident: null, ci: null, acknowledgedAt: null, acknowledgedBy: null })
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent('No CI recognised: link a CI to re-run the evaluation and open an incident.')
+    expect(await screen.findByRole('button', { name: 'Re-evaluate now' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open incident' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Link to CI' })).toBeInTheDocument()
+    // ogni azione compare una volta sola (testata vs sezione Correlazione)
+    expect(screen.getAllByRole('button', { name: 'Open incident' })).toHaveLength(1)
+  })
+
+  it('delayed: la frase dice il ritardo di policy e il countdown', async () => {
+    renderPage('operator', { correlation: 'delayed', incident: null, correlationAt: new Date(Date.now() - 30_000).toISOString() })
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => expect(sentence()).toHaveTextContent(/after 120 seconds \(opens in (8\d|9\d) s/))
+  })
+
+  it('skipped_severity: soglia della policy in chiaro', async () => {
+    renderPage('operator', { correlation: 'skipped_severity', incident: null, severity: 'warning' })
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => expect(sentence()).toHaveTextContent('Severity Warning is below the policy threshold (opens from: Critical): no incident opened.'))
   })
 })

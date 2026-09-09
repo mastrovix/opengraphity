@@ -82,6 +82,21 @@ async function createTransitionComment(
   `, { incidentId, tenantId, text, userId, now }))
 }
 
+/**
+ * Commento in timeline scritto da un attore di sistema (es. `monitoring`,
+ * services/eventCorrelation.ts). Stesso nodo :Comment delle transizioni
+ * manuali: l'incident non viene toccato con Cypher fuori da questo servizio.
+ */
+export async function addIncidentComment(id: string, ctx: ServiceCtx, text: string): Promise<void> {
+  await withSession(async (session) => {
+    const row = await runQueryOne<{ id: string }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN i.id AS id
+    `, { id, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('Incident', id)
+    await createTransitionComment(session, id, ctx.tenantId, ctx.userId, text)
+  }, true)
+}
+
 // buildEvent removed — using shared publishEvent from lib/publishEvent.ts
 
 

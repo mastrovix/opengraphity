@@ -5,7 +5,8 @@
  * successivo dell'evento (ripetizione / nuovo ciclo / risoluzione), regole di
  * ricalcolo della salute del CI (health_source manual / status maintenance
  * intoccabili, ci.status mai scritto), ingest
- * nuovo / ripetuto / resolved→firing con mock delle query.
+ * nuovo / ripetuto / resolved→firing con mock delle query; la pipeline di
+ * correlazione (ondata 3) è mockata e se ne verifica invocazione ed esito.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -19,13 +20,19 @@ vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
+// Ondata 3: soppressione → salute → correlazione vivono in eventCorrelation.ts
+// (testato a parte); qui si verifica solo che ingestEvent la invochi nel punto
+// giusto e ne rispetti l'esito.
+vi.mock('../eventCorrelation.js', () => ({ runEventPipeline: vi.fn() }))
 
 const svc = await import('../eventService.js')
 const { normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, ingestEvent, matchCI, getEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, parseValueMapping, sourceConfigOf, normalizeWithConfig } = svc
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { publishEvent } = await import('../../lib/publishEvent.js')
+const { runEventPipeline } = await import('../eventCorrelation.js')
 
 const session = { close: vi.fn().mockResolvedValue(undefined) }
+const pipelineResult = (over: Record<string, unknown> = {}) => ({ outcome: 'none', status: 'firing', suppressedByChangeId: null, incidentId: null, ...over })
 
 function expectValidation(fn: () => unknown, pattern: RegExp) {
   const err = (() => { try { fn(); return null } catch (e) { return e as GraphQLError } })()
@@ -49,6 +56,7 @@ const callMatching = (re: RegExp) => calls().find((c) => re.test(c.cypher))
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
+  vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
 })
 
 // ── normalizePayload ─────────────────────────────────────────────────────────
@@ -542,7 +550,7 @@ const EV = { status: 'firing', severity: 'warning', title: 'DiskFull', resource:
 const eventProps = (over: Record<string, unknown> = {}) => ({ id: 'ev-1', fingerprint: 'fp', title: 'DiskFull', severity: 'warning', status: 'firing', resource: 'db-01', count: 1, source_id: 'hook-1', ...over })
 
 describe('ingestEvent', () => {
-  it('evento nuovo senza CI → CREATE con count 1, FROM_SOURCE, event.received + event.orphan, nessun ricalcolo', async () => {
+  it('evento nuovo senza CI → CREATE con count 1 e correlation none, FROM_SOURCE, pipeline in modalità ingest, event.received + event.orphan', async () => {
     onCypher([
       [/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)\s+OPTIONAL MATCH/, null],
       [/CREATE \(e:Event/, { props: eventProps() }],
@@ -552,38 +560,37 @@ describe('ingestEvent', () => {
     expect(out).toMatchObject({ created: true, ciId: null })
     const create = callMatching(/CREATE \(e:Event/)!
     expect(create.cypher).toContain('count: 1, first_seen_at: $now, last_seen_at: $now')
+    expect(create.cypher).toContain("correlation: 'none', correlation_at: null, correlation_due_at: null, suppressed_by_change_id: null")
     expect(create.cypher).toContain('MERGE (e)-[:FROM_SOURCE]->(w)')
     expect(create.params).toMatchObject({ tenantId: 't1', sourceId: 'hook-1', fingerprint: fingerprintOf('hook-1', EV), status: 'firing', severity: 'warning', labels: '{"job":"node"}', now: 'NOW', externalId: null })
     expect(callMatching(/RAISED_ON\]->\(ci\)\s*$/)).toBeUndefined()
+    // la salute non si ricalcola qui: è dentro la pipeline (dopo la soppressione)
     expect(callMatching(/collect\(DISTINCT e\.severity\)/)).toBeUndefined()
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-1', actorId: 'monitoring', now: 'NOW', mode: 'ingest' })
     expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).toEqual(['event.received', 'event.orphan'])
     expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ id: 'ev-1', fingerprint: 'fp', ci_id: null, entity_type: 'event', entity_id: 'ev-1', count: 1 })
   })
 
-  it('evento ripetuto (firing) → SET count 2 e severità più alta, CI già agganciato riusato senza matchCI, ricalcolo del CI, solo event.received', async () => {
+  it('evento ripetuto (firing) → SET count 2 e severità più alta, CI già agganciato riusato senza matchCI, pipeline dopo l\'aggancio, solo event.received', async () => {
     onCypher([
       [/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)\s+OPTIONAL MATCH/, { props: eventProps({ severity: 'critical', count: 1, first_seen_at: 'T0' }), ciId: 'ci-1' }],
       [/SET e\.status = \$status, e\.severity = \$severity, e\.count = toInteger\(\$count\)/, { props: eventProps({ severity: 'critical', count: 2 }) }],
-      [/collect\(DISTINCT e\.severity\)/, { status: 'active', health: 'down', healthSource: 'monitoring', severities: ['critical'] }],
-      [/SET ci\.health/, null],
     ])
     const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
     expect(out).toMatchObject({ created: false, ciId: 'ci-1' })
     const set = callMatching(/SET e\.status = \$status/)!
     expect(set.params).toMatchObject({ status: 'firing', severity: 'critical', count: 2, firstSeenAt: 'T0', lastSeenAt: 'NOW', resolvedAt: null })
     expect(callMatching(/CIAlias/)).toBeUndefined()
-    expect(callMatching(/collect\(DISTINCT e\.severity\)/)!.params).toMatchObject({ ciId: 'ci-1', tenantId: 't1' })
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', eventId: 'ev-1', mode: 'ingest' }))
     expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).toEqual(['event.received'])
   })
 
-  it('resolved → firing: nuovo ciclo (count 1, first_seen = ora), CI riconosciuto per nome → MERGE RAISED_ON scoped per tenant', async () => {
+  it('resolved → firing: nuovo ciclo (count 1, first_seen = ora), CI riconosciuto per nome → MERGE RAISED_ON scoped per tenant, poi pipeline', async () => {
     onCypher([
       [/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)\s+OPTIONAL MATCH/, { props: eventProps({ status: 'resolved', severity: 'critical', count: 7, first_seen_at: 'T0', resolved_at: 'T1' }), ciId: null }],
       [/SET e\.status = \$status/, { props: eventProps({ status: 'firing', count: 1 }) }],
       [/CIAlias/, null], [/toLower\(ci\.name\)/, { ciId: 'ci-9' }],
       [/MERGE \(e\)-\[:RAISED_ON\]->\(ci\)/, null],
-      [/collect\(DISTINCT e\.severity\)/, { status: 'active', health: 'operational', healthSource: null, severities: ['warning'] }],
-      [/SET ci\.health/, null],
     ])
     const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
     expect(out).toMatchObject({ created: false, ciId: 'ci-9' })
@@ -592,21 +599,44 @@ describe('ingestEvent', () => {
     expect(link.cypher).toContain('MATCH (e:Event {id: $eventId, tenant_id: $tenantId})')
     expect(link.cypher).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
     expect(link.params).toMatchObject({ eventId: 'ev-1', ciId: 'ci-9', tenantId: 't1' })
-    expect(publishEvent).toHaveBeenCalledWith('ci.health_changed', 't1', 'monitoring', expect.objectContaining({ ci_id: 'ci-9', new_health: 'degraded' }), expect.any(String))
-    expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).toEqual(['ci.health_changed', 'event.received'])
+    // l'ordine conta: prima l'aggancio del CI, poi la pipeline (che ne ricalcola la salute)
+    const linkOrder = vi.mocked(runQuery).mock.invocationCallOrder[0]!
+    expect(vi.mocked(runEventPipeline).mock.invocationCallOrder[0]!).toBeGreaterThan(linkOrder)
+    expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).toEqual(['event.received'])
   })
 
   it('payload resolved su evento aperto → event.resolved (non event.received), resolved_at = ora', async () => {
+    vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult({ status: 'resolved' }) as never)
     onCypher([
       [/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)\s+OPTIONAL MATCH/, { props: eventProps({ count: 2, first_seen_at: 'T0' }), ciId: 'ci-1' }],
       [/SET e\.status = \$status/, { props: eventProps({ status: 'resolved', count: 2 }) }],
-      [/collect\(DISTINCT e\.severity\)/, { status: 'active', health: 'degraded', healthSource: 'monitoring', severities: [] }],
-      [/SET ci\.health/, null],
     ])
     await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, status: 'resolved' }, receivedAt: 'NOW', actorId: 'am' })
     expect(callMatching(/SET e\.status = \$status/)!.params).toMatchObject({ status: 'resolved', count: 2, resolvedAt: 'NOW' })
-    expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).toEqual(['ci.health_changed', 'event.resolved'])
-    expect(vi.mocked(publishEvent).mock.calls[1]![2]).toBe('am')
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-1', actorId: 'am', now: 'NOW', mode: 'ingest' })
+    expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).toEqual(['event.resolved'])
+    expect(vi.mocked(publishEvent).mock.calls[0]![2]).toBe('am')
+  })
+
+  it('pipeline → suppressed: nessun event.received (l\'avviso è event.suppressed della pipeline), status suppressed nel risultato', async () => {
+    vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult({ outcome: 'suppressed', status: 'suppressed', suppressedByChangeId: 'chg-1' }) as never)
+    onCypher([
+      [/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)\s+OPTIONAL MATCH/, { props: eventProps(), ciId: 'ci-1' }],
+      [/SET e\.status = \$status/, { props: eventProps({ count: 2 }) }],
+    ])
+    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
+    expect(out.props['status']).toBe('suppressed')
+    expect(publishEvent).not.toHaveBeenCalled()
+  })
+
+  it('pipeline che fallisce → l\'ingest fallisce (il job ritenta), nessun evento di dominio pubblicato', async () => {
+    vi.mocked(runEventPipeline).mockRejectedValueOnce(new Error('Tenant t1 has no event_policy'))
+    onCypher([
+      [/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)\s+OPTIONAL MATCH/, { props: eventProps(), ciId: 'ci-1' }],
+      [/SET e\.status = \$status/, { props: eventProps({ count: 2 }) }],
+    ])
+    await expect(ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })).rejects.toThrow(/no event_policy/)
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 
   it('CREATE che non restituisce righe → errore esplicito (mai un evento fabbricato)', async () => {

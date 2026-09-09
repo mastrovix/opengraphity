@@ -46,12 +46,21 @@ vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+// Fine finestra (Event Management, ondata 3): il modulo è importato
+// dinamicamente da syncSuppressedEvents solo quando la change ha eventi
+// soppressi; qui si verifica quando viene invocato.
+vi.mock('../../../../services/eventCorrelation.js', () => ({
+  CHANGE_WINDOW_STEPS: ['deployment', 'scheduled'],
+  reevaluateSuppressedEvents: vi.fn().mockResolvedValue(2),
+}))
+
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { evaluateAutoTransitions } = await import('../autoTransitions.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { runQuery, runQueryOne } = await import('../../ci-utils.js')
 const { logger } = await import('../../../../lib/logger.js')
+const { reevaluateSuppressedEvents } = await import('../../../../services/eventCorrelation.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
@@ -204,5 +213,45 @@ describe('evaluateAutoTransitions', () => {
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
     expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(reevaluateSuppressedEvents).not.toHaveBeenCalled()
+  })
+
+  describe('fine finestra (eventi soppressi dalla change)', () => {
+    /** Nessuna transizione automatica; la lettura "step + eventi soppressi" risponde come indicato. */
+    function mockWindow(step: string, suppressed: number) {
+      vi.mocked(runQueryOne).mockImplementation(async (_s: unknown, query: string) => {
+        if (query.includes('suppressed_by_change_id')) return { step, suppressed } as never
+        if (query.includes('HAS_WORKFLOW')) return { instanceId: 'wi-1', step, tenantId: 'tenant-1', entityProps: { id: 'chg-1' } } as never
+        return { pending: 1 } as never
+      })
+      vi.mocked(runQuery).mockResolvedValue([] as never)
+    }
+
+    it('change uscita da deployment (review) con eventi soppressi → reevaluateSuppressedEvents con tenant, change e attore', async () => {
+      mockWindow('review', 2)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(reevaluateSuppressedEvents).toHaveBeenCalledWith('tenant-1', 'chg-1', 'user-1')
+      const q = vi.mocked(runQueryOne).mock.calls.map((c) => c[1] as string).find((s) => s.includes('suppressed_by_change_id'))!
+      expect(q).toContain("MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})")
+      expect(q).toContain("(e:Event {tenant_id: $tenantId, status: 'suppressed', suppressed_by_change_id: c.id})")
+    })
+
+    it('change chiusa (closed) con eventi soppressi → rivalutazione', async () => {
+      mockWindow('closed', 1)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(reevaluateSuppressedEvents).toHaveBeenCalledOnce()
+    })
+
+    it.each([['deployment'], ['scheduled']])('change ancora in %s → nessuna rivalutazione (finestra aperta)', async (step) => {
+      mockWindow(step, 3)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(reevaluateSuppressedEvents).not.toHaveBeenCalled()
+    })
+
+    it('nessun evento soppresso → nessuna rivalutazione (il modulo non viene nemmeno caricato)', async () => {
+      mockWindow('review', 0)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(reevaluateSuppressedEvents).not.toHaveBeenCalled()
+    })
   })
 })

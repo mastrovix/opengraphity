@@ -118,7 +118,12 @@
       "noResults": "Nessun incident trovato",
       "noResultsDesc": "Apri un nuovo incident o modifica i filtri applicati.",
       "count": "{{count}} incident",
-      "notFound": "Incident non trovato."
+      "notFound": "Incident non trovato.",
+      "monitoringAlarms": {
+        "title": "Allarmi di monitoraggio",
+        "empty": "Nessun allarme di monitoraggio correlato a questo incident.",
+        "openedByMonitoring": "Incident aperto automaticamente dal monitoraggio il {{when}}."
+      }
     },
     "changes": {
       "title": "Change",
@@ -131,7 +136,12 @@
       "createdAt": "Creato il",
       "noResults": "Nessun change trovato",
       "noResultsDesc": "Crea il primo change o modifica i filtri applicati.",
-      "count": "{{count}} change"
+      "count": "{{count}} change",
+      "suppressedAlarms": {
+        "title": "Allarmi silenziati in questa finestra",
+        "note": "Gli allarmi ricevuti durante la finestra di rilascio non aprono incident né cambiano la salute dei CI; a fine finestra vengono rivalutati.",
+        "empty": "Nessun allarme silenziato da questa change."
+      }
     },
     "problems": {
       "title": "Problem",
@@ -1144,6 +1154,12 @@
       },
       "orphan": {
         "title": "Allarme senza CI riconosciuto"
+      },
+      "suppressed": {
+        "title": "Allarme silenziato da una change in finestra"
+      },
+      "correlated": {
+        "title": "Allarme correlato a un incident"
       }
     },
     "ci": {
@@ -1558,7 +1574,8 @@
       "aliasCreated": "Alias creato",
       "actionFailed": "Operazione fallita: {{error}}",
       "policySaved": "Policy eventi salvata",
-      "policySaveFailed": "Salvataggio policy fallito: {{error}}"
+      "policySaveFailed": "Salvataggio policy fallito: {{error}}",
+      "reevaluated": "Evento rivalutato: {{outcome}}"
     },
     "monitoring": {
       "sourceCreated": "Sorgente creata",
@@ -1668,7 +1685,8 @@
       "searchCI": "Cerca CI",
       "searchCIPlaceholder": "Nome del CI (min. 2 caratteri)",
       "searchResults": "Risultati ricerca CI",
-      "rememberAlias": "Ricorda questo nome per la prossima volta (crea alias)"
+      "rememberAlias": "Ricorda questo nome per la prossima volta (crea alias)",
+      "reevaluate": "Rivaluta ora"
     },
     "detail": {
       "back": "Torna agli eventi",
@@ -1740,6 +1758,28 @@
         "low": "Bassa",
         "medium": "Media",
         "high": "Alta"
+      },
+      "howItWorks": {
+        "title": "Come funziona",
+        "thresholdTitle": "Soglia → apertura",
+        "threshold": "un allarme apre un incident solo se la sua severità è almeno quella scelta in «Apri incident a partire da»; sotto la soglia resta in console senza incident.",
+        "groupingTitle": "Raggruppamento",
+        "grouping": "gli allarmi successivi si agganciano all'incident già aperto per lo stesso CI (o per la stessa impronta); il ritardo di apertura assorbe i picchi brevi.",
+        "autoResolveTitle": "Chiusura automatica",
+        "autoResolve": "quando la sorgente risolve tutti gli allarmi, l'incident aperto dal monitoraggio viene risolto; se l'allarme torna, viene riaperto.",
+        "changeWindowTitle": "Silenzio in finestra di change",
+        "changeWindow": "gli allarmi sui CI di una change in finestra di rilascio sono silenziati: niente incident né cambio di salute; a fine finestra vengono rivalutati."
+      },
+      "help": {
+        "openIncidentFrom": "Severità minima da cui un allarme apre un incident. «Mai» = gli allarmi restano solo in console.",
+        "groupBy": "CI: un incident per CI, tutti i suoi allarmi agganciati. Impronta: un incident per ogni allarme distinto.",
+        "openDelaySeconds": "Secondi di attesa prima di aprire: se l'allarme si risolve entro il ritardo, nessun incident. 0 = apertura immediata.",
+        "suppressUpstreamHops": "Fin dove risalire le dipendenze per cercare una change in finestra: 0 = solo il CI dell'allarme; 1 = anche un CI da cui dipende direttamente (es. il database in rilascio silenzia gli allarmi dell'applicazione che lo usa).",
+        "flapThreshold": "Oltre questo numero di transizioni attivo/risolto nella finestra l'allarme è marcato «sfarfallio» e non apre nuovi incident.",
+        "flapWindowMinutes": "Finestra di osservazione in cui contare le transizioni dello sfarfallio.",
+        "retentionDays": "Gli eventi risolti più vecchi di questi giorni vengono eliminati.",
+        "autoResolve": "Quando la sorgente risolve tutti gli allarmi di un incident aperto dal monitoraggio, l'incident viene risolto; un nuovo allarme lo riapre.",
+        "severityMap": "Impatto e urgenza assegnati all'incident aperto automaticamente, in base alla severità dell'allarme: la priorità ne deriva."
       }
     },
     "health": {
@@ -1747,6 +1787,50 @@
       "degraded": "Degradato",
       "down": "Giù",
       "unknown": "Sconosciuta"
+    },
+    "correlation": {
+      "title": "Correlazione",
+      "suppressedByLabel": "Silenziata da",
+      "chip": {
+        "suppressed": "Silenziato · {{code}}",
+        "suppressedUnknown": "Silenziato",
+        "delayed": "In attesa",
+        "delayedIn": "Apertura tra {{seconds}} s",
+        "delayedWaiting": "In attesa del ritardo di apertura della policy",
+        "linkCI": "Collega un CI"
+      },
+      "auto": {
+        "opened": "Incident aperto automaticamente dal monitoraggio",
+        "attached": "Agganciato automaticamente all'incident dal monitoraggio",
+        "reopened": "Incident riaperto automaticamente dal monitoraggio",
+        "auto_resolved": "Incident risolto automaticamente dal monitoraggio"
+      },
+      "text": {
+        "opened": "Incident {{number}} aperto automaticamente il {{when}}.",
+        "attached": "Agganciato all'incident esistente {{number}} il {{when}}.",
+        "reopened": "Incident {{number}} riaperto automaticamente il {{when}}: l'allarme è tornato dopo la risoluzione.",
+        "auto_resolved": "Incident {{number}} risolto automaticamente il {{when}}: la sorgente ha chiuso l'allarme.",
+        "suppressed": "Silenziato dalla change {{code}} fino alla fine della finestra di rilascio: non apre incident né cambia la salute del CI.",
+        "suppressedUnknown": "Silenziato da una change in finestra di rilascio: non apre incident né cambia la salute del CI.",
+        "skipped_orphan": "Nessun CI riconosciuto: collega un CI per far ripartire la valutazione e aprire un incident.",
+        "skipped_severity": "Severità {{severity}} sotto la soglia della policy (apre da: {{from}}): nessun incident aperto.",
+        "skipped_severityNoPolicy": "Severità {{severity}} sotto la soglia della policy: nessun incident aperto.",
+        "delayed": "In attesa: la policy apre gli incident dopo {{seconds}} secondi (apertura tra {{remaining}} s se l'allarme resta attivo).",
+        "delayedNoPolicy": "In attesa del ritardo di apertura previsto dalla policy.",
+        "none": "Nessuna correlazione automatica per questo evento.",
+        "unknown": "Esito di correlazione sconosciuto: {{value}}."
+      },
+      "short": {
+        "opened": "incident aperto",
+        "attached": "agganciato all'incident",
+        "reopened": "incident riaperto",
+        "skipped_orphan": "nessun CI riconosciuto",
+        "skipped_severity": "sotto la soglia della policy",
+        "delayed": "in attesa del ritardo",
+        "suppressed": "silenziato da una change",
+        "auto_resolved": "incident risolto",
+        "none": "nessuna correlazione"
+      }
     }
   },
   "monitoring": {

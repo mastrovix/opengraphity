@@ -118,7 +118,12 @@
       "noResults": "No incidents found",
       "noResultsDesc": "Open a new incident or adjust the applied filters.",
       "count": "{{count}} incidents",
-      "notFound": "Incident not found."
+      "notFound": "Incident not found.",
+      "monitoringAlarms": {
+        "title": "Monitoring alarms",
+        "empty": "No monitoring alarm is correlated to this incident.",
+        "openedByMonitoring": "Incident opened automatically by monitoring on {{when}}."
+      }
     },
     "changes": {
       "title": "Changes",
@@ -131,7 +136,12 @@
       "createdAt": "Created",
       "noResults": "No changes found",
       "noResultsDesc": "Create the first change or adjust the applied filters.",
-      "count": "{{count}} changes"
+      "count": "{{count}} changes",
+      "suppressedAlarms": {
+        "title": "Alarms suppressed in this window",
+        "note": "Alarms received during the release window open no incident and do not change CI health; at the end of the window they are re-evaluated.",
+        "empty": "No alarm suppressed by this change."
+      }
     },
     "problems": {
       "title": "Problems",
@@ -1144,6 +1154,12 @@
       },
       "orphan": {
         "title": "Alert with no matching CI"
+      },
+      "suppressed": {
+        "title": "Alarm silenced by a change window"
+      },
+      "correlated": {
+        "title": "Alarm correlated to an incident"
       }
     },
     "ci": {
@@ -1558,7 +1574,8 @@
       "aliasCreated": "Alias created",
       "actionFailed": "Action failed: {{error}}",
       "policySaved": "Event policy saved",
-      "policySaveFailed": "Policy save failed: {{error}}"
+      "policySaveFailed": "Policy save failed: {{error}}",
+      "reevaluated": "Event re-evaluated: {{outcome}}"
     },
     "monitoring": {
       "sourceCreated": "Source created",
@@ -1668,7 +1685,8 @@
       "searchCI": "Search CI",
       "searchCIPlaceholder": "CI name (min. 2 characters)",
       "searchResults": "CI search results",
-      "rememberAlias": "Remember this name next time (create alias)"
+      "rememberAlias": "Remember this name next time (create alias)",
+      "reevaluate": "Re-evaluate now"
     },
     "detail": {
       "back": "Back to events",
@@ -1740,6 +1758,28 @@
         "low": "Low",
         "medium": "Medium",
         "high": "High"
+      },
+      "howItWorks": {
+        "title": "How it works",
+        "thresholdTitle": "Threshold → opening",
+        "threshold": "an alarm opens an incident only if its severity is at least the one chosen in “Open incident from”; below the threshold it stays in the console without an incident.",
+        "groupingTitle": "Grouping",
+        "grouping": "later alarms attach to the incident already open for the same CI (or the same fingerprint); the open delay absorbs short spikes.",
+        "autoResolveTitle": "Auto-resolve",
+        "autoResolve": "when the source resolves every alarm, the incident opened by monitoring is resolved; if the alarm comes back, it is reopened.",
+        "changeWindowTitle": "Silence in a change window",
+        "changeWindow": "alarms on the CIs of a change in its release window are suppressed: no incident, no health change; at the end of the window they are re-evaluated."
+      },
+      "help": {
+        "openIncidentFrom": "Minimum severity from which an alarm opens an incident. “Never” = alarms stay in the console only.",
+        "groupBy": "CI: one incident per CI, all its alarms attached. Fingerprint: one incident per distinct alarm.",
+        "openDelaySeconds": "Seconds to wait before opening: if the alarm resolves within the delay, no incident. 0 = open immediately.",
+        "suppressUpstreamHops": "How far up the dependency chain to look for a change in its window: 0 = only the alarm's CI; 1 = also a CI it directly depends on (e.g. a database being released silences alarms of the application that uses it).",
+        "flapThreshold": "Above this number of firing/resolved transitions within the window the alarm is marked “flapping” and opens no new incident.",
+        "flapWindowMinutes": "Observation window in which flapping transitions are counted.",
+        "retentionDays": "Resolved events older than this many days are deleted.",
+        "autoResolve": "When the source resolves every alarm of an incident opened by monitoring, the incident is resolved; a new alarm reopens it.",
+        "severityMap": "Impact and urgency assigned to the automatically opened incident, from the alarm severity: the priority derives from them."
       }
     },
     "health": {
@@ -1747,6 +1787,50 @@
       "degraded": "Degraded",
       "down": "Down",
       "unknown": "Unknown"
+    },
+    "correlation": {
+      "title": "Correlation",
+      "suppressedByLabel": "Suppressed by",
+      "chip": {
+        "suppressed": "Suppressed · {{code}}",
+        "suppressedUnknown": "Suppressed",
+        "delayed": "Waiting",
+        "delayedIn": "Opens in {{seconds}} s",
+        "delayedWaiting": "Waiting for the policy open delay",
+        "linkCI": "Link a CI"
+      },
+      "auto": {
+        "opened": "Incident opened automatically by monitoring",
+        "attached": "Attached to the incident automatically by monitoring",
+        "reopened": "Incident reopened automatically by monitoring",
+        "auto_resolved": "Incident resolved automatically by monitoring"
+      },
+      "text": {
+        "opened": "Incident {{number}} opened automatically on {{when}}.",
+        "attached": "Attached to the existing incident {{number}} on {{when}}.",
+        "reopened": "Incident {{number}} reopened automatically on {{when}}: the alarm came back after being resolved.",
+        "auto_resolved": "Incident {{number}} resolved automatically on {{when}}: the source cleared the alarm.",
+        "suppressed": "Suppressed by change {{code}} until the end of the release window: it opens no incident and does not change the CI health.",
+        "suppressedUnknown": "Suppressed by a change in its release window: it opens no incident and does not change the CI health.",
+        "skipped_orphan": "No CI recognised: link a CI to re-run the evaluation and open an incident.",
+        "skipped_severity": "Severity {{severity}} is below the policy threshold (opens from: {{from}}): no incident opened.",
+        "skipped_severityNoPolicy": "Severity {{severity}} is below the policy threshold: no incident opened.",
+        "delayed": "Waiting: the policy opens incidents after {{seconds}} seconds (opens in {{remaining}} s if the alarm stays active).",
+        "delayedNoPolicy": "Waiting for the open delay set by the policy.",
+        "none": "No automatic correlation for this event.",
+        "unknown": "Unknown correlation outcome: {{value}}."
+      },
+      "short": {
+        "opened": "incident opened",
+        "attached": "attached to the incident",
+        "reopened": "incident reopened",
+        "skipped_orphan": "no CI recognised",
+        "skipped_severity": "below the policy threshold",
+        "delayed": "waiting for the delay",
+        "suppressed": "suppressed by a change",
+        "auto_resolved": "incident resolved",
+        "none": "no correlation"
+      }
     }
   },
   "monitoring": {

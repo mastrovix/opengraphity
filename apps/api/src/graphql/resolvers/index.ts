@@ -353,6 +353,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     Incident: {
       ...incidentResolvers.Incident,
       ...workflowResolvers.Incident,
+      ...eventResolvers.Incident,   // correlatedEvents (Event Management)
       linkedIncidents: incidentRelatedIncidents,
       linkedProblems:  incidentRelatedProblems,
       linkedChanges:   incidentRelatedChanges,
@@ -360,6 +361,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     Change: {
       ...workflowResolvers.Change,
       ...changeResolvers.Change,
+      ...eventResolvers.Change,     // suppressedEvents (Event Management)
     },
     Team:               teamResolvers.Team,
     User:               { teams: userTeams },

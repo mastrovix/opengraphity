@@ -13,6 +13,7 @@ import { ciConfigurationItemLabel } from './20260908_1010_ci_configuration_item_
 import { eventManagementBootstrap } from './20260909_1000_event_management_bootstrap.js'
 import { eventManagementFixup }     from './20260909_1010_event_management_fixup.js'
 import { eventManagementNotificationRules } from './20260909_1020_event_management_notification_rules.js'
+import { eventManagementCorrelationRules } from './20260909_1030_event_management_correlation_rules.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -20,4 +21,5 @@ export const MIGRATIONS: readonly Migration[] = [
   eventManagementBootstrap,
   eventManagementFixup,
   eventManagementNotificationRules,
+  eventManagementCorrelationRules,
 ]

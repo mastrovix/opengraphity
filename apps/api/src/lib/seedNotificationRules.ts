@@ -40,6 +40,9 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   { event_type: 'event.resolved',               severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.resolved.title'        },
   { event_type: 'event.orphan',                 severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.orphan.title'          },
   { event_type: 'ci.health_changed',            severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.ci.health_changed.title'     },
+  // Event Management, ondata 3 (correlazione automatica e finestre di change)
+  { event_type: 'event.suppressed',             severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.event.suppressed.title'      },
+  { event_type: 'event.correlated',             severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.correlated.title'      },
 ]
 
 export interface SeedNotificationRulesResult { created: number; skipped: number }

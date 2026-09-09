@@ -3,12 +3,14 @@
  * incident, raggruppamento, ritardo di apertura, chiusura automatica,
  * soppressione a monte, sfarfallio, conservazione e la mappa
  * severità → impatto/urgenza (JSON nel contratto, tre righe di select qui).
+ * Ondata 3: riquadro "Come funziona" in testa e una riga di aiuto sotto ogni
+ * campo, così l'effetto di ogni scelta è detto in parole.
  */
 import { useEffect, useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Radar, Loader2 } from 'lucide-react'
+import { Radar, Loader2, Info } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { PageLoader } from '@/components/PageLoader'
@@ -129,10 +131,20 @@ export function EventPolicyPage() {
     } catch (err) { toast.error(t('toast.events.policySaveFailed', { error: errorMessage(err) })) }
   }
 
+  // Riga di aiuto sotto ogni campo: l'effetto della scelta in parole
+  // (events.policy.help.<campo>), legata al controllo via aria-describedby.
+  const helpId = (key: keyof FormState) => `${fid(key)}-help`
+  const Help = ({ field }: { field: keyof FormState }) => (
+    <p id={helpId(field)} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>
+      {t(`events.policy.help.${field}`)}
+    </p>
+  )
+
   const numberField = (key: keyof FormState, labelKey: string, min = 0) => (
     <div>
       <FieldLabel htmlFor={fid(key)}>{t(labelKey)}</FieldLabel>
-      <Input id={fid(key)} type="number" min={min} value={String(form[key])} onChange={setNum(key)} disabled={saving} />
+      <Input id={fid(key)} type="number" min={min} value={String(form[key])} onChange={setNum(key)} disabled={saving} aria-describedby={helpId(key)} />
+      <Help field={key} />
     </div>
   )
 
@@ -142,6 +154,21 @@ export function EventPolicyPage() {
         <PageTitle icon={<Radar size={22} color="var(--color-icon-accent)" />}>{t('events.policy.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>{t('events.policy.subtitle')}</p>
       </div>
+
+      {/* Come funziona: le quattro regole della correlazione in parole. */}
+      <section aria-labelledby={fid('how')} style={{ maxWidth: 760, marginBottom: 16, padding: '14px 18px', background: 'var(--color-brand-light)', border: '1px solid #bae6fd', borderRadius: 10 }}>
+        <h2 id={fid('how')} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>
+          <Info size={15} aria-hidden="true" color="var(--color-brand)" />
+          {t('events.policy.howItWorks.title')}
+        </h2>
+        <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.55 }}>
+          {(['threshold', 'grouping', 'autoResolve', 'changeWindow'] as const).map((k) => (
+            <li key={k}>
+              <strong>{t(`events.policy.howItWorks.${k}Title`)}</strong> — {t(`events.policy.howItWorks.${k}`)}
+            </li>
+          ))}
+        </ol>
+      </section>
 
       {mapError && (
         <div role="alert" style={{ background: 'var(--color-warning-bg)', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: '#92400e' }}>
@@ -153,29 +180,35 @@ export function EventPolicyPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div>
             <FieldLabel htmlFor={fid('openIncidentFrom')}>{t('events.policy.openIncidentFrom')}</FieldLabel>
-            <Select id={fid('openIncidentFrom')} value={form.openIncidentFrom} onChange={(e) => set('openIncidentFrom', e.target.value)} disabled={saving}>
+            <Select id={fid('openIncidentFrom')} value={form.openIncidentFrom} onChange={(e) => set('openIncidentFrom', e.target.value)} disabled={saving} aria-describedby={helpId('openIncidentFrom')}>
               {OPEN_FROM.map((v) => <option key={v} value={v}>{t(`events.policy.openFrom.${v}`)}</option>)}
             </Select>
+            <Help field="openIncidentFrom" />
           </div>
           <div>
             <FieldLabel htmlFor={fid('groupBy')}>{t('events.policy.groupBy')}</FieldLabel>
-            <Select id={fid('groupBy')} value={form.groupBy} onChange={(e) => set('groupBy', e.target.value)} disabled={saving}>
+            <Select id={fid('groupBy')} value={form.groupBy} onChange={(e) => set('groupBy', e.target.value)} disabled={saving} aria-describedby={helpId('groupBy')}>
               {GROUP_BY.map((v) => <option key={v} value={v}>{t(`events.policy.groupByOptions.${v}`)}</option>)}
             </Select>
+            <Help field="groupBy" />
           </div>
           {numberField('openDelaySeconds', 'events.policy.openDelaySeconds')}
           {numberField('suppressUpstreamHops', 'events.policy.suppressUpstreamHops')}
           {numberField('flapThreshold', 'events.policy.flapThreshold', 1)}
           {numberField('flapWindowMinutes', 'events.policy.flapWindowMinutes', 1)}
           {numberField('retentionDays', 'events.policy.retentionDays', 1)}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 18 }}>
-            <Toggle checked={form.autoResolve} onChange={(v) => set('autoResolve', v)} label={t('events.policy.autoResolve')} disabled={saving} />
-            <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('events.policy.autoResolve')}</span>
+          <div style={{ paddingTop: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Toggle checked={form.autoResolve} onChange={(v) => set('autoResolve', v)} label={t('events.policy.autoResolve')} disabled={saving} />
+              <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('events.policy.autoResolve')}</span>
+            </div>
+            <Help field="autoResolve" />
           </div>
         </div>
 
         <div>
-          <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, marginBottom: 8 }}>{t('events.policy.severityMap')}</div>
+          <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{t('events.policy.severityMap')}</div>
+          <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>{t('events.policy.help.severityMap')}</p>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
               <tr>

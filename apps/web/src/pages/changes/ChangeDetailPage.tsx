@@ -49,6 +49,7 @@ import { AuditTimeline } from './components/AuditTimeline'
 import { AddCIModal } from './components/AddCIModal'
 import { fmtShort, fmtDate } from './components/shared'
 import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
+import { SuppressedAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
 
 interface ImpactedCIRow {
   ci: { id: string; name: string; type: string | null; environment: string | null }
@@ -326,6 +327,9 @@ export function ChangeDetailPage() {
           },
         ]}
       />
+
+      {/* Allarmi silenziati dalla finestra di rilascio (Event Management, ondata 3) */}
+      <SuppressedAlarmsSection events={change.suppressedEvents ?? []} />
 
       {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
         <SectionCard title="Prossimi Step" collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>

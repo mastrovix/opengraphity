@@ -4,7 +4,9 @@
  * Pipeline: webhook in ingresso → `sourceConfigOf` (config del webhook) →
  * `normalizePayload` (per connettore: generic, alertmanager, grafana, zabbix,
  * datadog, dynatrace) → coda `events-ingest` → `ingestEvent` (MERGE per impronta,
- * deduplica) → `matchCI` (alias, poi nome) → `recomputeCIHealth`.
+ * deduplica) → `matchCI` (alias, poi nome) → `runEventPipeline`
+ * (services/eventCorrelation.ts: soppressione in finestra di change →
+ * `recomputeCIHealth` → correlazione in incident / chiusura automatica).
  * `previewInboundEvents` e `sendSampleEvent` usano la stessa normalizzazione.
  *
  * Il monitoraggio scrive SOLO `ci.health` (operational/degraded/down),
@@ -26,6 +28,7 @@ import { ValidationError, NotFoundError } from '../lib/errors.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { logger } from '../lib/logger.js'
 import { parseEventPolicy, type EventPolicy } from '../lib/eventPolicy.js'
+import { runEventPipeline } from './eventCorrelation.js'
 
 const log = logger.child({ module: 'event-service' })
 
@@ -789,8 +792,9 @@ export function mapEventPayload(props: Props, ciId: string | null): MonitoringEv
 }
 
 /**
- * Deduplica per impronta, aggancia il CI, ricalcola la salute del CI, pubblica
- * gli eventi di dominio. Restituisce le proprietà dell'Event e il CI agganciato.
+ * Deduplica per impronta, aggancia il CI, esegue la pipeline di correlazione
+ * (soppressione → salute del CI → incident), pubblica gli eventi di dominio.
+ * Restituisce le proprietà dell'Event (stato finale) e il CI agganciato.
  */
 export async function ingestEvent(input: IngestInput): Promise<{ props: Props; ciId: string | null; created: boolean }> {
   const { tenantId, sourceId, ev } = input
@@ -821,6 +825,7 @@ export async function ingestEvent(input: IngestInput): Promise<{ props: Props; c
           count: 1, first_seen_at: $now, last_seen_at: $now,
           resolved_at: CASE WHEN $status = 'resolved' THEN $now ELSE null END,
           starts_at: $startsAt, ends_at: $endsAt,
+          correlation: 'none', correlation_at: null, correlation_due_at: null, suppressed_by_change_id: null,
           source_id: $sourceId, created_at: $now, updated_at: $now
         })
         WITH e
@@ -876,12 +881,19 @@ export async function ingestEvent(input: IngestInput): Promise<{ props: Props; c
       } finally { await s.close() }
     }
   }
-  if (ciId) await recomputeCIHealth(tenantId, ciId, actorId)
+  // Ondata 3 (services/eventCorrelation.ts): soppressione in finestra di change
+  // → salute del CI → correlazione in incident / chiusura automatica. La
+  // soppressione blocca anche la salute, per questo il ricalcolo vive lì.
+  const pipeline = await runEventPipeline({ tenantId, eventId: String(props['id']), actorId, now, mode: 'ingest' })
+  props['status'] = pipeline.status
 
+  // Un evento silenziato non genera avvisi "ricevuto": l'avviso è event.suppressed (pubblicato dalla pipeline).
   const payload = mapEventPayload(props, ciId)
-  await publishEvent(props['status'] === 'resolved' ? 'event.resolved' : 'event.received', tenantId, actorId, payload, now)
+  if (pipeline.outcome !== 'suppressed') {
+    await publishEvent(props['status'] === 'resolved' ? 'event.resolved' : 'event.received', tenantId, actorId, payload, now)
+  }
   if (!ciId) await publishEvent('event.orphan', tenantId, actorId, payload, now)
 
-  log.info({ tenantId, sourceId, eventId: props['id'], fingerprint, created, ciId, status: props['status'], count: props['count'] }, 'Event ingested')
+  log.info({ tenantId, sourceId, eventId: props['id'], fingerprint, created, ciId, status: props['status'], count: props['count'], correlation: pipeline.outcome }, 'Event ingested')
   return { props, ciId, created }
 }
