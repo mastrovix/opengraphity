@@ -30,7 +30,7 @@ import { Button } from '@/components/Button'
 import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
 import { useEntityFields } from '@/hooks/useEntityFields'
 import { useMe } from '@/hooks/useMe'
-import { GET_EVENTS, GET_EVENT_STATS, GET_MONITORING_SOURCES, GET_EVENT_POLICY } from '@/graphql/queries'
+import { GET_EVENTS, GET_EVENT_STATS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
 import { applyFilterGroup } from '@/lib/filterGroup'
 import { timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
@@ -41,7 +41,7 @@ import { EventActions } from './EventActions'
 import { StormBanner } from './StormBanner'
 import {
   EVENT_STATUSES, EVENT_SEVERITIES,
-  type MonitoringEvent, type EventStats, type EventStatCounts, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSource, type EventPolicy,
+  type MonitoringEvent, type EventStats, type EventStatCounts, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSourceRef, type EventPolicy,
 } from '@/types/events'
 
 const PAGE_SIZE       = 50
@@ -203,9 +203,11 @@ export function EventsPage() {
     pollInterval: POLL_MS,
   })
 
-  // Sorgenti: select del filtro + banner "nessuna sorgente" (nessun allarme può arrivare).
-  const { data: sourcesData } = useQuery<{ monitoringSources: MonitoringSource[] }>(GET_MONITORING_SOURCES, { fetchPolicy: 'cache-and-network' })
-  const sources = sourcesData?.monitoringSources ?? []
+  // Sorgenti: select del filtro + banner "nessuna sorgente" (nessun allarme può
+  // arrivare). Riferimenti leggeri (id, nome, connettore): la configurazione
+  // completa (monitoringSources) è riservata all'admin nella pagina Sorgenti.
+  const { data: sourcesData } = useQuery<{ monitoringSourceRefs: MonitoringSourceRef[] }>(GET_MONITORING_SOURCE_REFS, { fetchPolicy: 'cache-and-network' })
+  const sources = sourcesData?.monitoringSourceRefs ?? []
   const noSources = sourcesData !== undefined && sources.length === 0
 
   // Policy di correlazione: serve solo al countdown "apertura tra N s" degli

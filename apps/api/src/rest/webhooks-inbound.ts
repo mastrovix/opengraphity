@@ -6,11 +6,15 @@
  * Auth: `Authorization: Bearer <token>` ONLY (never query string — it would
  * land in access logs, proxies and browser history).
  */
-import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
+import { Router, json, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { createHash, timingSafeEqual } from 'crypto'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
-import { ValidationError } from '../lib/errors.js'
+import { ServiceUnavailableError, ValidationError } from '../lib/errors.js'
+import { Semaphore } from '../lib/semaphore.js'
+import { consumeWebhookRate, rateLimitOf } from '../lib/webhookRateLimit.js'
+import { webhookRateLimitedTotal } from '../middleware/metrics.js'
+import { restErrorHandler } from './errorHandler.js'
 import * as incidentService from '../services/incidentService.js'
 import * as problemService from '../services/problemService.js'
 import { sourceConfigOf, normalizeWithConfig } from '../services/eventService.js'
@@ -19,20 +23,24 @@ import { enqueueEvents } from '../jobs/eventIngestWorker.js'
 const log = logger.child({ module: 'webhook-inbound' })
 const router: ExpressRouter = Router()
 
-// ── Rate limiting (per hookId, 100/min) — applied AFTER token verification so
-// an unauthenticated caller who only knows the (non-secret) id cannot starve
-// the legitimate sender (A-20). In-memory: per-replica, known limitation.
+// ── Rate limiting — per (tenant, webhook) su Redis, condiviso fra le repliche
+// (lib/webhookRateLimit.ts, M7): limite `rate_limit_per_minute` della sorgente,
+// 429 con header `Retry-After`. Applicato DOPO la verifica del token, così chi
+// conosce solo l'id (non segreto) non può affamare il mittente legittimo (A-20).
 
-const rateBuckets = new Map<string, { count: number; resetAt: number }>()
-setInterval(() => { const now = Date.now(); for (const [k, v] of rateBuckets) { if (v.resetAt <= now) rateBuckets.delete(k) } }, 60_000).unref()
-
-function checkRate(hookId: string): boolean {
-  const now = Date.now()
-  let b = rateBuckets.get(hookId)
-  if (!b || b.resetAt <= now) { b = { count: 0, resetAt: now + 60_000 }; rateBuckets.set(hookId, b) }
-  b.count++
-  return b.count <= 100
-}
+// ── Transform script (B3): ogni esecuzione è un isolate V8 (8 MB, 5 s); senza
+// tetto una raffica di richieste con script satura la replica. Oltre
+// TRANSFORM_SCRIPT_MAX_CONCURRENCY si attende in coda (mai scarto silenzioso);
+// oltre TRANSFORM_SCRIPT_MAX_WAIT_MS → 503 + Retry-After, il mittente ritenta.
+export const TRANSFORM_SCRIPT_MAX_CONCURRENCY = 4
+export const TRANSFORM_SCRIPT_MAX_WAIT_MS = 10_000
+export const TRANSFORM_SCRIPT_RETRY_AFTER_SECONDS = 5
+export const transformScriptSemaphore = new Semaphore({
+  name: 'webhook-transform-script',
+  limit: TRANSFORM_SCRIPT_MAX_CONCURRENCY,
+  waitMs: TRANSFORM_SCRIPT_MAX_WAIT_MS,
+  retryAfterSeconds: TRANSFORM_SCRIPT_RETRY_AFTER_SECONDS,
+})
 
 /** Constant-time comparison of the presented token's sha256 against the stored hash. */
 export function tokenMatches(token: string, storedHashHex: string): boolean {
@@ -44,7 +52,18 @@ export function tokenMatches(token: string, storedHashHex: string): boolean {
 
 // ── Endpoint ─────────────────────────────────────────────────────────────────
 
-router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => {
+/**
+ * Limite del corpo: un batch Alertmanager da 500 allarmi supera i 100 KB
+ * predefiniti. Il parser è montato SULLA route (B4): in Express 4 un router
+ * ha arità 3 e viene saltato quando l'errore nasce a monte, quindi un
+ * `express.json` a livello app farebbe finire JSON malformato / corpo troppo
+ * grande nel gestore predefinito (HTML), non nel `restErrorHandler` in coda a
+ * questo router. Per lo stesso motivo server.ts non deve applicare il proprio
+ * `express.json()` a `/api/webhooks/inbound` (vedi docs/API.md).
+ */
+export const WEBHOOK_BODY_LIMIT = '2mb'
+
+router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), async (req: Request, res: Response) => {
   const { hookId } = req.params
   if (!hookId) { res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Missing hookId' } }); return }
 
@@ -78,9 +97,13 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
 
     authenticatedTenantId = tenantId
 
-    // 3. Rate limit — only authenticated traffic counts
-    if (!checkRate(hookId)) {
-      res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Max 100 requests/min per webhook', retry_after: 60 } })
+    // 3. Rate limit — only authenticated traffic counts. Redis giù → l'errore
+    // propaga (500, il mittente ritenta): mai "limite disattivato".
+    const rate = await consumeWebhookRate(tenantId, hookId, rateLimitOf(wh))
+    if (!rate.allowed) {
+      webhookRateLimitedTotal.inc({ connector: String(wh['connector_kind'] ?? entityType) })
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds))
+      res.status(429).json({ error: { code: 'RATE_LIMITED', message: `Max ${rate.limit} requests/min per webhook`, retry_after: rate.retryAfterSeconds } })
       return
     }
 
@@ -94,10 +117,11 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
     const transformScript = wh['transform_script'] as string | null
     if (transformScript) {
       const { runScript } = await import('@opengraphity/scripting')
-      const result = await runScript(
+      const rawPayload = payload
+      const result = await transformScriptSemaphore.run(() => runScript(
         { id: 'webhook-transform', tenant_id: tenantId, name: 'webhook-transform', trigger: 'webhook' as never, code: transformScript, enabled: true, created_at: '', updated_at: '' },
-        { entity: payload, tenantId, userId: 'webhook' },
-      )
+        { entity: rawPayload, tenantId, userId: 'webhook' },
+      ))
       if (!result.success) {
         throw new ValidationError(`Transform script failed: ${result.error ?? 'unknown error'}`)
       }
@@ -120,13 +144,14 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
       const receivedAt = new Date().toISOString()
       const accepted = await enqueueEvents(tenantId, hookId, events, receivedAt)
 
-      // Un batch accettato azzera l'ultimo errore: l'amministratore vede lo
-      // stato corrente della sorgente, non un rifiuto già superato.
+      // Solo statistiche di ricezione: il 202 dice "accodato", non "riuscito".
+      // `last_error` lo azzera il worker al primo job andato a buon fine e lo
+      // scrive all'ultimo tentativo fallito (jobs/eventIngestWorker.ts): così
+      // la pagina Sorgenti mostra l'esito reale, non l'accettazione.
       await runQuery(session, `
         MATCH (w:InboundWebhook {id: $hookId, tenant_id: $tenantId})
         SET w.receive_count = coalesce(w.receive_count, 0) + $n,
-            w.last_received_at = $now,
-            w.last_error = null
+            w.last_received_at = $now
       `, { hookId, tenantId, n: accepted, now: receivedAt })
 
       log.info({ hookId, connectorKind: config.connectorKind, accepted }, 'Inbound events accepted')
@@ -211,12 +236,27 @@ router.post('/webhooks/inbound/:hookId', async (req: Request, res: Response) => 
       res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } })
       return
     }
+    // Replica satura (semaforo del transform script): non è colpa del payload
+    // (niente last_error sulla sorgente) né un guasto (niente 500) — 503 e il
+    // mittente ritenta dopo Retry-After.
+    if (err instanceof ServiceUnavailableError) {
+      log.warn({ hookId, err: err.message, retryAfter: err.retryAfterSeconds }, 'Inbound webhook deferred: capacity exhausted')
+      res.setHeader('Retry-After', String(err.retryAfterSeconds))
+      res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: err.message, retry_after: err.retryAfterSeconds } })
+      return
+    }
     log.error({ hookId, err }, 'Inbound webhook error')
     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Processing error' } })
   } finally {
     await session.close()
   }
 })
+
+// Errori del body-parser (JSON malformato → 400, corpo oltre il limite di
+// server.ts → 413) arrivano qui come JSON `{ error: { code, message } }` (B4):
+// prima li intercettava "per caso" il restErrorHandler di altri router montati
+// dopo su /api, e un riordino degli app.use li avrebbe fatti diventare HTML.
+router.use(restErrorHandler)
 
 /**
  * Un payload rifiutato (400) lascia traccia sul webhook: `last_error`,

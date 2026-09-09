@@ -16,7 +16,7 @@ const EVENT: Record<string, unknown> = {
   labels: JSON.stringify({ job: 'node', instance: 'web-01:9100', nested: { a: 1 } }),
   count: 5, firstSeenAt: '2026-09-09T08:00:00Z', lastSeenAt: '2026-09-09T08:30:00Z', resolvedAt: null,
   acknowledgedAt: '2026-09-09T08:10:00Z', acknowledgedBy: { __typename: 'User', id: 'u2', name: 'Anna Bianchi' },
-  source: { __typename: 'InboundWebhook', id: 'wh1', name: 'Prometheus', connectorKind: 'alertmanager' },
+  source: { __typename: 'MonitoringSourceRef', id: 'wh1', name: 'Prometheus', connectorKind: 'alertmanager' },
   ci: CI,
   incident: INCIDENT,
   suppressedBy: null, correlation: 'opened', correlationAt: '2026-09-09T08:00:05Z',
@@ -41,7 +41,7 @@ const aliasesMock = (): GqlMock => ({
 const policyMock = (): GqlMock => ({
   request: { query: GET_EVENT_POLICY },
   result: { data: { eventPolicy: {
-    __typename: 'EventPolicy', openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
+    __typename: 'EventPolicy', version: 1, updatedAt: null, openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
     suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, flapStableMinutes: 15,
     stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30, severityMap: '{}',
   } } },

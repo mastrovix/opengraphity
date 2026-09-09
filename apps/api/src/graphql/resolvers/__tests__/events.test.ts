@@ -29,16 +29,36 @@ vi.mock('../../../services/eventService.js', async (importOriginal) => ({
 }))
 // Ondata 3: apertura condivisa e pipeline (soppressione/salute/correlazione)
 // sono testate in services/__tests__/eventCorrelation.test.ts.
-vi.mock('../../../services/eventCorrelation.js', () => ({ openIncidentFromEvent: vi.fn(), runEventPipeline: vi.fn() }))
+vi.mock('../../../services/eventCorrelation.js', () => ({
+  openIncidentFromEvent: vi.fn(), runEventPipeline: vi.fn(),
+  // chiave/identità del gruppo (pure, stesse regole del servizio) e opzioni del lock: createIncidentFromEvent si serializza con la correlazione automatica
+  GROUP_LOCK_OPTS: { ttlSeconds: 30, waitMs: 5_000, pollMs: 100 },
+  groupLockKey: (t: string, g: string, id: string) => `og:events:group:${t}:${g === 'ci' ? 'ci' : 'fp'}:${id}`,
+  groupIdOf: (policy: { group_by: string }, ev: { ciId: string | null; props: Record<string, unknown> }) => (policy.group_by === 'ci' && ev.ciId ? ev.ciId : String(ev.props['fingerprint'] ?? ev.props['id'])),
+}))
+// Il lock Redis (lib/__tests__/redisLock.test.ts) qui esegue subito la sezione critica; si verifica solo chiave e opzioni.
+vi.mock('../../../lib/redisLock.js', () => ({ withRedisLock: vi.fn(async (_k: string, _o: unknown, run: () => Promise<unknown>) => run()) }))
 // Ondata 4: le tempeste (contatori Redis) sono in services/__tests__/eventStorm.test.ts.
 vi.mock('../../../services/eventStorm.js', () => ({ listStormSources: vi.fn().mockResolvedValue([]) }))
 vi.mock('../change/queries.js', () => ({ change: vi.fn() }))
+// reevaluateEvent: i passi terminali dell'incident (per "incident ancora aperto") vengono dal workflow.
+vi.mock('../../../lib/workflowHelpers.js', () => ({
+  getWorkflowSteps: vi.fn().mockResolvedValue([
+    { name: 'new', isInitial: true, isTerminal: false, isOpen: true, category: 'new', stepOrder: 1 },
+    { name: 'resolved', isInitial: false, isTerminal: true, isOpen: false, category: 'resolved', stepOrder: 4 },
+    { name: 'closed', isInitial: false, isTerminal: true, isOpen: false, category: 'closed', stepOrder: 5 },
+  ]),
+}))
 
 const { eventResolvers } = await import('../events.js')
 const { listStormSources } = await import('../../../services/eventStorm.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { getEventPolicy, setEventPolicy, recomputeCIHealth } = await import('../../../services/eventService.js')
 const { openIncidentFromEvent, runEventPipeline } = await import('../../../services/eventCorrelation.js')
+const { withRedisLock } = await import('../../../lib/redisLock.js')
+const { PAYLOAD_MAX_CHARS, SAMPLE_LABEL } = await import('../events.js')
+const { MAX_EVENTS_PER_REQUEST, PAYLOAD_MAX_DEPTH } = await import('../../../services/eventService.js')
+const { authorize } = await import('../../../lib/authorization.js')
 const { change: loadChange } = await import('../change/queries.js')
 const { publishEvent } = await import('../../../lib/publishEvent.js')
 const { audit } = await import('../../../lib/audit.js')
@@ -90,7 +110,28 @@ describe('updateEventPolicy', () => {
     expect(setEventPolicy).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ open_incident_from: 'warning', flap_threshold: 6, auto_resolve: false, group_by: 'ci', retention_days: 90 }))
     expect(out).toMatchObject({ openIncidentFrom: 'warning', flapThreshold: 6, autoResolve: false, groupBy: 'ci', openDelaySeconds: 0, suppressUpstreamHops: 1, flapWindowMinutes: 10, retentionDays: 90 })
     expect(JSON.parse(out.severityMap)).toEqual(DEFAULT_EVENT_POLICY.severity_map)
-    expect(audit).toHaveBeenCalledWith(admin, 'event_policy.updated', 'Tenant', 'tenant-1', expect.anything())
+    // C-4: versione incrementata e updatedAt scritto, nell'audit le due versioni
+    expect(out).toMatchObject({ version: 2, updatedAt: expect.any(String) })
+    expect(setEventPolicy).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ version: 2, updated_at: expect.any(String) }))
+    expect(audit).toHaveBeenCalledWith(admin, 'event_policy.updated', 'Tenant', 'tenant-1', expect.objectContaining({ version: 2, previousVersion: 1 }))
+  })
+
+  it('C-4 — expectedVersion uguale all\'attuale → salva; diverso → BAD_USER_INPUT (modifica concorrente) senza persistere', async () => {
+    vi.mocked(getEventPolicy).mockResolvedValue({ ...structuredClone(DEFAULT_EVENT_POLICY), version: 3, updated_at: '2026-09-09T10:00:00.000Z' })
+    const out = await eventResolvers.Mutation.updateEventPolicy(null, { input: { retentionDays: 30, expectedVersion: 3 } }, admin)
+    expect(out).toMatchObject({ version: 4, retentionDays: 30 })
+    vi.clearAllMocks()
+    vi.mocked(getEventPolicy).mockResolvedValue({ ...structuredClone(DEFAULT_EVENT_POLICY), version: 3, updated_at: '2026-09-09T10:00:00.000Z' })
+    await expectCode(eventResolvers.Mutation.updateEventPolicy(null, { input: { retentionDays: 30, expectedVersion: 2 } }, admin), 'BAD_USER_INPUT', /modified by someone else \(expected version 2, current is 3, updated at 2026-09-09T10:00:00\.000Z\)/)
+    expect(setEventPolicy).not.toHaveBeenCalled()
+  })
+
+  it('I-7 — massimi e coerenza: hops > 10, tempesta con raffreddamento 0 → BAD_USER_INPUT con campo e limite, nulla persistito', async () => {
+    await expectCode(eventResolvers.Mutation.updateEventPolicy(null, { input: { suppressUpstreamHops: 11 } }, admin), 'BAD_USER_INPUT', /suppress_upstream_hops must be at most 10\. Got: 11/)
+    await expectCode(eventResolvers.Mutation.updateEventPolicy(null, { input: { openDelaySeconds: 86_401 } }, admin), 'BAD_USER_INPUT', /open_delay_seconds must be at most 86400/)
+    await expectCode(eventResolvers.Mutation.updateEventPolicy(null, { input: { stormCooldownMinutes: 0 } }, admin), 'BAD_USER_INPUT', /storm_cooldown_minutes must be > 0 when storm_threshold_per_minute is > 0/)
+    await expectCode(eventResolvers.Mutation.updateEventPolicy(null, { input: { flapWindowMinutes: 0 } }, admin), 'BAD_USER_INPUT', /flap_window_minutes must be > 0 when flap_threshold is > 0/)
+    expect(setEventPolicy).not.toHaveBeenCalled()
   })
 
   it('ondata 4 — flapStableMinutes / stormThresholdPerMinute / stormCooldownMinutes: persistiti in snake_case e restituiti; negativi rifiutati', async () => {
@@ -147,6 +188,7 @@ describe('linkEventToCI', () => {
     onCypher([
       [/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, before(eventRow({}, { ciId: 'ci-old', ciName: 'old' }), newRow)],
       [/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/, newRow],
+      [/MATCH \(a:CIAlias \{tenant_id: \$tenantId, kind: \$kind, value: \$value\}\)-\[:ALIAS_OF\]/, null],   // nessun alias esistente
       [/MERGE \(a:CIAlias/, null],
     ])
     vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult({ outcome: 'opened', incidentId: 'inc-1' }) as never)
@@ -162,8 +204,12 @@ describe('linkEventToCI', () => {
     const alias = callMatching(/MERGE \(a:CIAlias/)!
     expect(alias.cypher).toContain("MERGE (a:CIAlias {tenant_id: $tenantId, kind: $kind, value: $value})")
     expect(alias.cypher).toContain("ON CREATE SET a.id = $aliasId, a.source = 'manual'")
+    expect(alias.cypher).toContain('ON MATCH SET a.updated_by = $userId, a.updated_at = $now')   // I-8
     expect(alias.cypher).toContain('MERGE (a)-[:ALIAS_OF]->(ci)')
+    expect(alias.cypher).not.toMatch(/DELETE old/)   // A-4: mai ri-puntato in silenzio
     expect(alias.params).toMatchObject({ tenantId: 'tenant-1', ciId: 'ci-new', kind: 'hostname', value: 'db-01', userId: 'op-1' })
+    // la verifica del duplicato precede ogni scrittura, scoped per tenant
+    expect(callMatching(/MATCH \(a:CIAlias \{tenant_id: \$tenantId, kind: \$kind, value: \$value\}\)-\[:ALIAS_OF\]->\(ci:ConfigurationItem \{tenant_id: \$tenantId\}\)/)!.params).toEqual({ tenantId: 'tenant-1', kind: 'hostname', value: 'db-01' })
 
     // il CI vecchio si ricalcola qui; il nuovo dentro la pipeline (dopo la soppressione)
     expect(vi.mocked(recomputeCIHealth).mock.calls).toEqual([['tenant-1', 'ci-old', 'op-1']])
@@ -200,6 +246,41 @@ describe('linkEventToCI', () => {
     expect(recomputeCIHealth).not.toHaveBeenCalled()
     expect(runEventPipeline).not.toHaveBeenCalled()
   })
+
+  it('A-4 — createAlias con alias già esistente verso un ALTRO CI → BAD_USER_INPUT che cita il CI attuale, nessuna scrittura (né RAISED_ON né alias), nessuna pipeline', async () => {
+    onCypher([
+      [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow()],
+      [/MATCH \(a:CIAlias \{tenant_id: \$tenantId, kind: \$kind, value: \$value\}\)-\[:ALIAS_OF\]/, { ciId: 'ci-other', ciName: 'db-01 (prod)' }],
+    ])
+    await expectCode(eventResolvers.Mutation.linkEventToCI(null, { eventId: 'ev-1', ciId: 'ci-new', createAlias: true }, operator), 'BAD_USER_INPUT', /Alias hostname=db-01 already points to CI "db-01 \(prod\)" \(ci-other\)/)
+    expect(callMatching(/MERGE/)).toBeUndefined()
+    expect(runEventPipeline).not.toHaveBeenCalled()
+    expect(audit).not.toHaveBeenCalled()
+  })
+
+  it('A-4 — alias già esistente verso lo STESSO CI → MERGE idempotente (ON MATCH aggiorna updated_by); senza createAlias nessuna verifica dell\'alias', async () => {
+    const linked = eventRow({}, { ciId: 'ci-1', ciName: 'db-01', ciLabels: ['Server'] })
+    onCypher([
+      [/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/, linked],
+      [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, before(eventRow(), linked)],
+      [/MATCH \(a:CIAlias \{tenant_id: \$tenantId, kind: \$kind, value: \$value\}\)-\[:ALIAS_OF\]/, { ciId: 'ci-1', ciName: 'db-01' }],
+      [/MERGE \(a:CIAlias/, null],
+    ])
+    await eventResolvers.Mutation.linkEventToCI(null, { eventId: 'ev-1', ciId: 'ci-1', createAlias: true }, operator)
+    expect(callMatching(/MERGE \(a:CIAlias/)).toBeDefined()
+    expect(audit).toHaveBeenCalledWith(operator, 'event.linked', 'Event', 'ev-1', expect.objectContaining({ aliasCreated: true }))
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
+    onCypher([[/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/, linked], [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, before(eventRow(), linked)]])
+    await eventResolvers.Mutation.linkEventToCI(null, { eventId: 'ev-1', ciId: 'ci-1', createAlias: false }, operator)
+    expect(callMatching(/CIAlias/)).toBeUndefined()
+  })
+
+  it('I-8 — createAlias con risorsa vuota → BAD_USER_INPUT (stessa validazione di createCIAlias), nessuna scrittura', async () => {
+    onCypher([[/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow({ resource: '   ' })]])
+    await expectCode(eventResolvers.Mutation.linkEventToCI(null, { eventId: 'ev-1', ciId: 'ci-1', createAlias: true }, operator), 'BAD_USER_INPUT', /alias value \(event resource, hostname\) must be at least 1 characters/)
+    expect(callMatching(/MERGE/)).toBeUndefined()
+  })
 })
 
 // ── resolveEvent ─────────────────────────────────────────────────────────────
@@ -211,7 +292,10 @@ describe('resolveEvent', () => {
     expect(out).toMatchObject({ id: 'ev-1', status: 'resolved', resolvedAt: 'NOW', ci: { id: 'ci-1', type: 'server' } })
     const set = callMatching(/SET e\.status = 'resolved'/)!
     expect(set.cypher).toContain('MATCH (e:Event {id: $id, tenant_id: $tenantId})')
-    expect(set.params).toMatchObject({ id: 'ev-1', tenantId: 'tenant-1', userId: 'op-1', note: 'falso allarme' })
+    // I-1: guardia di stato nel WHERE e residui di soppressione/sfarfallio azzerati
+    expect(set.cypher).toContain('WHERE e.status IN $resolvable')
+    expect(set.cypher).toContain('e.suppressed_by_change_id = null, e.flapping_since = null')
+    expect(set.params).toMatchObject({ id: 'ev-1', tenantId: 'tenant-1', userId: 'op-1', note: 'falso allarme', resolvable: ['firing', 'suppressed', 'flapping'] })
     expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 'tenant-1', eventId: 'ev-1', actorId: 'op-1', now: expect.any(String), mode: 'reevaluate' })
     expect(recomputeCIHealth).not.toHaveBeenCalled()   // lo fa la pipeline
     expect(publishEvent).toHaveBeenCalledWith('event.resolved', 'tenant-1', 'op-1', expect.objectContaining({ id: 'ev-1', status: 'resolved', ci_id: 'ci-1', entity_type: 'event' }), expect.any(String))
@@ -225,10 +309,26 @@ describe('resolveEvent', () => {
     expect(publishEvent).toHaveBeenCalledTimes(1)
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
-    onCypher([[/SET e\.status = 'resolved'/, null]])
+    onCypher([[/SET e\.status = 'resolved'/, null], [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, null]])
     await expectCode(eventResolvers.Mutation.resolveEvent(null, { id: 'ev-x' }, operator), 'NOT_FOUND')
     expect(runEventPipeline).not.toHaveBeenCalled()
     expect(publishEvent).not.toHaveBeenCalled()
+  })
+
+  it('I-1 — evento già risolto → BAD_USER_INPUT (non NOT_FOUND), nessuna pipeline né event.resolved né audit; suppressed e flapping si risolvono', async () => {
+    onCypher([[/SET e\.status = 'resolved'/, null], [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow({ status: 'resolved', resolved_at: 'T-1' })]])
+    await expectCode(eventResolvers.Mutation.resolveEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /Event ev-1 is already resolved \(since T-1\): only firing\/suppressed\/flapping events can be resolved/)
+    expect(runEventPipeline).not.toHaveBeenCalled()
+    expect(publishEvent).not.toHaveBeenCalled()
+    expect(audit).not.toHaveBeenCalled()
+
+    for (const status of ['suppressed', 'flapping']) {
+      vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
+      onCypher([[/SET e\.status = 'resolved'/, eventRow({ status: 'resolved', suppressed_by_change_id: null, flapping_since: null })]])
+      const out = await eventResolvers.Mutation.resolveEvent(null, { id: 'ev-1' }, operator)
+      expect(out, status).toMatchObject({ status: 'resolved', suppressedByChangeId: null, flappingSince: null })
+      expect(publishEvent).toHaveBeenCalledTimes(1)
+    }
   })
 })
 
@@ -246,6 +346,27 @@ describe('createIncidentFromEvent', () => {
     expect(out).toMatchObject({ id: 'inc-1' })
     expect(openIncidentFromEvent).toHaveBeenCalledWith({ tenantId: 'tenant-1', props: row.props, ciId: 'ci-1', actorId: 'op-1', manual: true })
     expect(audit).toHaveBeenCalledWith(operator, 'event.incident_created', 'Event', 'ev-1', { incidentId: 'inc-1' })
+    // I-2: serializzata con la correlazione automatica sul lock del gruppo (policy group_by = ci → il CI)
+    expect(withRedisLock).toHaveBeenCalledWith('og:events:group:tenant-1:ci:ci-1', { ttlSeconds: 30, waitMs: 5_000, pollMs: 100 }, expect.any(Function), undefined, expect.stringMatching(/manual incident creation/))
+    // lettura e controllo "già correlato" avvengono dentro il lock: la rilettura dopo l'attesa
+    expect(calls().filter((c) => /OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/.test(c.cypher))).toHaveLength(2)
+  })
+
+  it('I-2 — evento resolved / suppressed / flapping → BAD_USER_INPUT senza apertura; raggruppamento per impronta → lock sull\'impronta', async () => {
+    for (const status of ['resolved', 'suppressed', 'flapping']) {
+      vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+      vi.mocked(getEventPolicy).mockResolvedValue(structuredClone(DEFAULT_EVENT_POLICY))
+      onCypher([[/OPTIONAL MATCH/, eventRow({ status }, { ciId: 'ci-1' })]])
+      await expectCode(eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator), 'BAD_USER_INPUT', new RegExp(`Event ev-1 is ${status}: only a firing event can open an incident`))
+      expect(openIncidentFromEvent).not.toHaveBeenCalled()
+      expect(callMatching(/CORRELATED_INTO/)).toBeUndefined()
+    }
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(getEventPolicy).mockResolvedValue({ ...structuredClone(DEFAULT_EVENT_POLICY), group_by: 'fingerprint' })
+    vi.mocked(openIncidentFromEvent).mockResolvedValueOnce({ id: 'inc-2' } as never)
+    onCypher([[/OPTIONAL MATCH/, eventRow({ fingerprint: 'fp-9' }, { ciId: 'ci-1' })], [/RETURN i\.id/, null]])
+    await eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator)
+    expect(withRedisLock).toHaveBeenCalledWith('og:events:group:tenant-1:fp:fp-9', expect.anything(), expect.any(Function), undefined, expect.any(String))
   })
 
   it('evento orfano → BAD_USER_INPUT (dall\'apertura condivisa); già correlato → BAD_USER_INPUT con l\'incident, senza chiamare l\'apertura', async () => {
@@ -277,19 +398,32 @@ describe('reevaluateEvent', () => {
     expect(audit).toHaveBeenCalledWith(operator, 'event.reevaluated', 'Event', 'ev-1', { previousStatus: 'suppressed', previousCorrelation: 'suppressed', outcome: 'opened', incidentId: 'inc-1' })
   })
 
-  it.each([['delayed'], ['skipped_orphan']])('evento firing con correlation %s → rivalutabile', async (correlation) => {
+  it.each([['delayed'], ['pending'], ['none'], ['skipped_orphan'], ['skipped_severity'], ['suppressed'], ['storm_no_ci']])('evento firing con correlation %s → rivalutabile senza leggere gli incident', async (correlation) => {
     onCypher([[/OPTIONAL MATCH/, eventRow({ correlation })]])
     await eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, admin)
     expect(runEventPipeline).toHaveBeenCalledTimes(1)
+    expect(callMatching(/CORRELATED_INTO/)).toBeUndefined()
   })
 
-  it('evento firing normale (correlation opened/none) o risolto → BAD_USER_INPUT senza pipeline; inesistente → NOT_FOUND; viewer → FORBIDDEN', async () => {
-    onCypher([[/OPTIONAL MATCH/, eventRow({ correlation: 'opened' })]])
-    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /only suppressed, delayed or skipped_orphan events can be re-evaluated/)
-    onCypher([[/OPTIONAL MATCH/, eventRow({ correlation: 'none' })]])
-    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT')
+  it.each([['opened'], ['attached'], ['reopened'], ['storm']])('evento firing %s con incident ancora aperto → rifiuto esplicito (BAD_USER_INPUT con numero e passo dell\'incident), nessuna pipeline; incident chiuso → rivalutabile', async (correlation) => {
+    onCypher([[/OPTIONAL MATCH/, eventRow({ correlation })], [/CORRELATED_INTO/, { incidentId: 'inc-1', number: 'INC00000007', step: 'in_progress' }]])
+    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /already correlated into open incident INC00000007 \(step "in_progress"\): nothing to re-evaluate/)
+    expect(callMatching(/CORRELATED_INTO/)!.params).toMatchObject({ id: 'ev-1', tenantId: 'tenant-1', terminalSteps: ['resolved', 'closed'] })
+    expect(runEventPipeline).not.toHaveBeenCalled()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[/OPTIONAL MATCH/, eventRow({ correlation })], [/CORRELATED_INTO/, null]])
+    await eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator)
+    expect(runEventPipeline).toHaveBeenCalledTimes(1)
+  })
+
+  it('evento risolto o in sfarfallio → BAD_USER_INPUT senza pipeline; inesistente → NOT_FOUND; viewer → FORBIDDEN', async () => {
     onCypher([[/OPTIONAL MATCH/, eventRow({ status: 'resolved', correlation: 'attached' })]])
+    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /only suppressed or firing events can be re-evaluated/)
+    onCypher([[/OPTIONAL MATCH/, eventRow({ status: 'flapping', correlation: 'flapping' })]])
     await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT')
+    onCypher([[/OPTIONAL MATCH/, eventRow({ correlation: 'flapping' })]])   // firing con esito incoerente
+    await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /not re-evaluable/)
     expect(runEventPipeline).not.toHaveBeenCalled()
     onCypher([[/OPTIONAL MATCH/, null]])
     await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-x' }, operator), 'NOT_FOUND')
@@ -391,12 +525,96 @@ describe('events', () => {
     expect(await eventResolvers.Query.event(null, { id: 'ev-1' }, operator)).toMatchObject({ flappingSince: null, transitions24h: 0 })
   })
 
-  it('acknowledgeEvent → SET acknowledged_by dal contesto', async () => {
-    onCypher([[/SET e\.acknowledged_by = \$userId, e\.acknowledged_at = \$now/, eventRow({ acknowledged_by: 'op-1', acknowledged_at: 'NOW' })]])
+  it('acknowledgeEvent → SET acknowledged_by dal contesto, guardia nel WHERE (non risolto, libero o già mio), audit con il precedente', async () => {
+    onCypher([[/SET e\.acknowledged_by = \$userId, e\.acknowledged_at = \$now/, { ...eventRow({ acknowledged_by: 'op-1', acknowledged_at: 'NOW' }), previous: null }]])
     const out = await eventResolvers.Mutation.acknowledgeEvent(null, { id: 'ev-1' }, operator)
     expect(out).toMatchObject({ id: 'ev-1', acknowledgedAt: 'NOW' })
-    expect(callMatching(/acknowledged_by/)!.params).toMatchObject({ id: 'ev-1', tenantId: 'tenant-1', userId: 'op-1' })
-    expect(audit).toHaveBeenCalledWith(operator, 'event.acknowledged', 'Event', 'ev-1')
+    const q = callMatching(/acknowledged_by/)!
+    expect(q.params).toMatchObject({ id: 'ev-1', tenantId: 'tenant-1', userId: 'op-1' })
+    expect(q.cypher).toContain("WHERE e.status <> 'resolved' AND (e.acknowledged_by IS NULL OR e.acknowledged_by = $userId)")
+    expect(audit).toHaveBeenCalledWith(operator, 'event.acknowledged', 'Event', 'ev-1', { previousAcknowledgedBy: null })
+  })
+
+  it('I-3 — acknowledgeEvent: inesistente → NOT_FOUND; risolto → BAD_USER_INPUT; preso in carico da un altro → BAD_USER_INPUT con chi e da quando; ripetuto dallo stesso utente → ok con previousAcknowledgedBy', async () => {
+    onCypher([[/SET e\.acknowledged_by/, null], [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, null]])
+    await expectCode(eventResolvers.Mutation.acknowledgeEvent(null, { id: 'ev-x' }, operator), 'NOT_FOUND', /Event ev-x/)
+    onCypher([[/SET e\.acknowledged_by/, null], [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow({ status: 'resolved' })]])
+    await expectCode(eventResolvers.Mutation.acknowledgeEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /Event ev-1 is already resolved: nothing to acknowledge/)
+    onCypher([
+      [/SET e\.acknowledged_by/, null],
+      [/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow({ acknowledged_by: 'adm-1', acknowledged_at: 'T-2' })],
+      [/MATCH \(u:User \{id: \$id, tenant_id: \$tenantId\}\)\s+RETURN u\.name/, { name: 'Ada' }],
+    ])
+    await expectCode(eventResolvers.Mutation.acknowledgeEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /already acknowledged by Ada \(adm-1\) since T-2/)
+    expect(audit).not.toHaveBeenCalled()
+
+    onCypher([[/SET e\.acknowledged_by/, { ...eventRow({ acknowledged_by: 'op-1', acknowledged_at: 'NOW' }), previous: 'op-1' }]])
+    await eventResolvers.Mutation.acknowledgeEvent(null, { id: 'ev-1' }, operator)
+    expect(audit).toHaveBeenCalledWith(operator, 'event.acknowledged', 'Event', 'ev-1', { previousAcknowledgedBy: 'op-1' })
+  })
+
+  it('X-2 — event(id) inesistente → null; ciAliases → alias del CI scoped per tenant, ordinati per kind/value', async () => {
+    onCypher([[/OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, null]])
+    await expect(eventResolvers.Query.event(null, { id: 'ev-x' }, viewer)).resolves.toBeNull()
+    onCypher([[/MATCH \(a:CIAlias \{tenant_id: \$tenantId\}\)-\[:ALIAS_OF\]->\(ci:ConfigurationItem \{id: \$ciId, tenant_id: \$tenantId\}\)/, [
+      { props: { id: 'al-1', kind: 'hostname', value: 'db-01', source: 'manual', created_at: 'T0' }, ciId: 'ci-1', ciName: 'db', ciStatus: 'active', ciHealth: 'down', ciLabels: ['Server'] },
+    ]]])
+    const out = await eventResolvers.Query.ciAliases(null, { ciId: 'ci-1' }, viewer)
+    expect(out).toEqual([{ id: 'al-1', kind: 'hostname', value: 'db-01', source: 'manual', createdAt: 'T0', ci: { id: 'ci-1', name: 'db', type: 'server', status: 'active', health: 'down' } }])
+    const q = callMatching(/CIAlias/)!
+    expect(q.cypher).toContain('ORDER BY a.kind, a.value')
+    expect(q.params).toEqual({ ciId: 'ci-1', tenantId: 'tenant-1' })
+  })
+
+  it('X-2 — events: offset negativo → 0, limit 0 → 1, since parsabile ma non ISO → normalizzato a ISO UTC (I-5), filtro orphan scoped per tenant (T-1)', async () => {
+    onCypher([[/RETURN count\(e\) AS total/, { total: 0 }], [/ORDER BY e\.last_seen_at DESC/, []]])
+    await eventResolvers.Query.events(null, { filter: { orphan: true, since: 'Sep 9 2026 10:00 UTC' }, limit: 0, offset: -5 }, operator)
+    const list = callMatching(/ORDER BY/)!
+    expect(list.params).toMatchObject({ limit: 1, offset: 0, since: '2026-09-09T10:00:00.000Z' })
+    expect(list.cypher).toContain('NOT EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[/RETURN count\(e\) AS total/, { total: 0 }], [/ORDER BY e\.last_seen_at DESC/, []]])
+    await eventResolvers.Query.events(null, { filter: { orphan: false } }, operator)
+    expect(callMatching(/ORDER BY/)!.cypher).toContain('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
+  })
+
+  it('X-2 — campi di Event: source (MonitoringSourceRef, scoped), incident (CORRELATED_INTO scoped, null se assente), acknowledgedBy (User scoped); null senza id senza query', async () => {
+    const parent = { id: 'ev-1', acknowledgedById: 'u-1', sourceId: 'hook-1', suppressedByChangeId: null }
+    onCypher([
+      [/MATCH \(w:InboundWebhook \{id: \$id, tenant_id: \$tenantId\}\)/, { props: { id: 'hook-1', name: 'Zabbix', connector_kind: 'zabbix', enabled: true, transform_script: 'secret', field_mapping: '{}', last_error: 'payload…' } }],
+      [/CORRELATED_INTO\]->\(i:Incident \{tenant_id: \$tenantId\}\)/, { props: { id: 'inc-1', number: 'INC00000001', title: 'T', tenant_id: 'tenant-1' } }],
+      [/MATCH \(u:User \{id: \$id, tenant_id: \$tenantId\}\)\s+RETURN properties\(u\)/, { props: { id: 'u-1', name: 'Ada', email: 'a@x.io', role: 'operator', tenant_id: 'tenant-1' } }],
+    ])
+    // A-2: solo id/name/connectorKind/enabled, mai script/mappature/lastError
+    expect(await eventResolvers.Event.source(parent, null, viewer)).toEqual({ id: 'hook-1', name: 'Zabbix', connectorKind: 'zabbix', enabled: true })
+    expect(callMatching(/InboundWebhook/)!.params).toEqual({ id: 'hook-1', tenantId: 'tenant-1' })
+    expect(await eventResolvers.Event.incident(parent, null, viewer)).toMatchObject({ id: 'inc-1' })
+    expect(callMatching(/CORRELATED_INTO/)!.params).toEqual({ id: 'ev-1', tenantId: 'tenant-1' })
+    expect(await eventResolvers.Event.acknowledgedBy(parent, null, viewer)).toMatchObject({ id: 'u-1', name: 'Ada' })
+    expect(callMatching(/MATCH \(u:User/)!.params).toEqual({ id: 'u-1', tenantId: 'tenant-1' })
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[/CORRELATED_INTO/, null], [/InboundWebhook/, null]])
+    expect(await eventResolvers.Event.incident({ ...parent, id: 'ev-none' }, null, viewer)).toBeNull()
+    expect(await eventResolvers.Event.source({ ...parent, sourceId: 'gone' }, null, viewer)).toBeNull()
+    expect(await eventResolvers.Event.source({ ...parent, sourceId: null }, null, viewer)).toBeNull()
+    expect(await eventResolvers.Event.acknowledgedBy({ ...parent, acknowledgedById: null }, null, viewer)).toBeNull()
+    expect(calls().filter((c) => /User/.test(c.cypher))).toHaveLength(0)
+    expect(calls().filter((c) => /InboundWebhook/.test(c.cypher))).toHaveLength(1)
+  })
+
+  it('X-2 — viewer: le mutation operative sono negate dalla policy centrale (authorize), la console (events, monitoringSourceRefs) no', () => {
+    for (const f of ['acknowledgeEvent', 'resolveEvent', 'linkEventToCI', 'createIncidentFromEvent']) expect(() => authorize('Mutation', f, 'viewer')).toThrow(new RegExp(f))
+    expect(() => authorize('Query', 'events', 'viewer')).not.toThrow()
+    expect(() => authorize('Query', 'monitoringSourceRefs', 'viewer')).not.toThrow()
+    expect(() => authorize('Query', 'monitoringSources', 'viewer')).toThrow(/monitoringSources/)
+  })
+
+  it('C-2 — mapEvent: labels è String! e un nodo senza labels è un errore esplicito (non una stringa inventata)', async () => {
+    const { mapEvent } = await import('../events.js')
+    const legacy = eventRow(); delete (legacy.props as Record<string, unknown>)['labels']
+    expect(() => mapEvent(legacy.props, legacy)).toThrow(/Event ev-1 has no labels field/)
+    expect(mapEvent(eventRow({ labels: '{"env":"prod"}' }).props, eventRow()).labels).toBe('{"env":"prod"}')
   })
 })
 
@@ -438,26 +656,49 @@ const viewer: GraphQLContext = { ...admin, userId: 'v-1', role: 'viewer' }
 
 describe('sampleInboundPayload / payloadKeys', () => {
   it('sampleInboundPayload → JSON leggibile del campione del connettore; connettore sconosciuto → BAD_USER_INPUT', () => {
-    const raw = eventResolvers.Query.sampleInboundPayload(null, { connectorKind: 'zabbix' })
+    const raw = eventResolvers.Query.sampleInboundPayload(null, { connectorKind: 'zabbix' }, admin)
     expect(JSON.parse(raw)).toEqual(SAMPLE_PAYLOADS.zabbix)
     expect(raw).toContain('\n')
-    expect(() => eventResolvers.Query.sampleInboundPayload(null, { connectorKind: 'nagios' })).toThrow(/connectorKind must be one of: generic, alertmanager, grafana, zabbix, datadog, dynatrace/)
+    expect(() => eventResolvers.Query.sampleInboundPayload(null, { connectorKind: 'nagios' }, admin)).toThrow(/connectorKind must be one of: generic, alertmanager, grafana, zabbix, datadog, dynatrace/)
+    // A-3: strumenti del wizard admin-only (seconda linea oltre alla policy centrale)
+    expect(() => eventResolvers.Query.sampleInboundPayload(null, { connectorKind: 'zabbix' }, operator)).toThrow(/not authorized/)
   })
 
-  it('payloadKeys → percorsi puntati foglia con esempio; JSON non valido o vuoto → BAD_USER_INPUT', () => {
-    const keys = eventResolvers.Query.payloadKeys(null, { payload: JSON.stringify({ alert: { name: 'A', tags: ['x', 'y'] }, n: 1 }) })
+  it('payloadKeys → percorsi puntati foglia con esempio; JSON non valido o vuoto → BAD_USER_INPUT; operator → FORBIDDEN', () => {
+    const keys = eventResolvers.Query.payloadKeys(null, { payload: JSON.stringify({ alert: { name: 'A', tags: ['x', 'y'] }, n: 1 }) }, admin)
     expect(keys).toEqual([{ path: 'alert.name', sample: 'A' }, { path: 'alert.tags.0', sample: 'x' }, { path: 'alert.tags.1', sample: 'y' }, { path: 'n', sample: '1' }])
-    expect(() => eventResolvers.Query.payloadKeys(null, { payload: '{nope' })).toThrow(/payload is not valid JSON/)
-    expect(() => eventResolvers.Query.payloadKeys(null, { payload: '' })).toThrow(GraphQLError)
+    expect(() => eventResolvers.Query.payloadKeys(null, { payload: '{nope' }, admin)).toThrow(/payload is not valid JSON/)
+    expect(() => eventResolvers.Query.payloadKeys(null, { payload: '' }, admin)).toThrow(GraphQLError)
+    expect(() => eventResolvers.Query.payloadKeys(null, { payload: '{}' }, operator)).toThrow(/not authorized/)
+  })
+
+  it(`I-4 — payloadKeys: 300+ chiavi → al massimo 300; JSON più profondo di ${PAYLOAD_MAX_DEPTH} livelli o oltre ${PAYLOAD_MAX_CHARS} caratteri → BAD_USER_INPUT (mai un errore interno)`, () => {
+    const big = JSON.stringify(Object.fromEntries(Array.from({ length: 350 }, (_, i) => [`k${i}`, i])))
+    expect(eventResolvers.Query.payloadKeys(null, { payload: big }, admin)).toHaveLength(300)
+    const deep = '['.repeat(PAYLOAD_MAX_DEPTH + 1) + '1' + ']'.repeat(PAYLOAD_MAX_DEPTH + 1)   // foglia al livello 33
+    let err = (() => { try { eventResolvers.Query.payloadKeys(null, { payload: deep }, admin); return null } catch (e) { return e as GraphQLError } })()
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT'); expect(err!.message).toMatch(/nested deeper than 32 levels/)
+    expect(PAYLOAD_MAX_CHARS).toBe(256 * 1024)
+    err = (() => { try { eventResolvers.Query.payloadKeys(null, { payload: `"${'x'.repeat(PAYLOAD_MAX_CHARS)}"` }, admin); return null } catch (e) { return e as GraphQLError } })()
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT'); expect(err!.message).toMatch(/payload must be at most 262144 characters/)
   })
 })
 
 describe('monitoringSources / ciHealth', () => {
   it('monitoringSources → InboundWebhook del tenant con entity_type event, mappati come mapInbound (valueMapping, lastError, errorCount)', async () => {
     onCypher([[/MATCH \(w:InboundWebhook \{tenant_id: \$tenantId, entity_type: 'event'\}\)/, [{ props: { id: 'src-1', name: 'Zabbix', entity_type: 'event', connector_kind: 'zabbix', field_mapping: '{}', value_mapping: '{"status":{"1":"firing"}}', last_error: 'boom', error_count: 2, receive_count: 5 } }]]])
-    const out = await eventResolvers.Query.monitoringSources(null, null, operator)
+    const out = await eventResolvers.Query.monitoringSources(null, null, admin)
     expect(out).toEqual([expect.objectContaining({ id: 'src-1', entityType: 'event', connectorKind: 'zabbix', valueMapping: '{"status":{"1":"firing"}}', lastError: 'boom', errorCount: 2, receiveCount: 5 })])
     expect(callMatching(/entity_type: 'event'/)!.params).toEqual({ tenantId: 'tenant-1' })
+    // A-1: la configurazione completa è admin-only (seconda linea)
+    await expectCode(eventResolvers.Query.monitoringSources(null, null, operator), 'FORBIDDEN')
+  })
+
+  it('A-1 — monitoringSourceRefs → le stesse sorgenti come riferimenti leggeri (id, name, connectorKind, enabled) a ruoli predefiniti: niente mappature, script o lastError', async () => {
+    onCypher([[/MATCH \(w:InboundWebhook \{tenant_id: \$tenantId, entity_type: 'event'\}\)/, [{ props: { id: 'src-1', name: 'Zabbix', entity_type: 'event', connector_kind: 'zabbix', enabled: true, transform_script: 'secret', last_error: 'boom' } }, { props: { id: 'src-2', name: 'Legacy', entity_type: 'event' } }]]])
+    const out = await eventResolvers.Query.monitoringSourceRefs(null, null, viewer)
+    expect(out).toEqual([{ id: 'src-1', name: 'Zabbix', connectorKind: 'zabbix', enabled: true }, { id: 'src-2', name: 'Legacy', connectorKind: null, enabled: false }])
+    expect(callMatching(/entity_type: 'event'/)!.cypher).toContain('ORDER BY w.name')
   })
 
   it('ciHealth → salute, sorgente, ultimo evento e conteggio firing scoped per tenant; CI inesistente → NOT_FOUND', async () => {
@@ -476,7 +717,7 @@ describe('previewInboundEvents', () => {
   const generic = { connectorKind: 'generic', payload: JSON.stringify(SAMPLE_PAYLOADS.generic), fieldMapping: JSON.stringify(GENERIC_SAMPLE_CONFIG.fieldMapping), defaultValues: JSON.stringify(GENERIC_SAMPLE_CONFIG.defaultValues), valueMapping: JSON.stringify(GENERIC_SAMPLE_CONFIG.valueMapping) }
 
   it('generic con la config di esempio → anteprima normalizzata, labels JSON; nessuna query, nessuna coda, nessun audit', async () => {
-    const out = await eventResolvers.Mutation.previewInboundEvents(null, { input: generic }, operator)
+    const out = await eventResolvers.Mutation.previewInboundEvents(null, { input: generic }, admin)
     expect(out).toEqual([{
       externalId: 'EVT-100234', status: 'firing', severity: 'warning', title: 'CheckoutErrorRate',
       description: 'Service checkout-api is returning HTTP 500 on 12% of requests',
@@ -494,13 +735,21 @@ describe('previewInboundEvents', () => {
     expect(out[0]!.externalId).toBeTruthy()
   })
 
-  it('errori di configurazione o payload → BAD_USER_INPUT con il campo; viewer → FORBIDDEN', async () => {
-    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, payload: '{oops' } }, operator), 'BAD_USER_INPUT', /payload is not valid JSON/)
-    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, connectorKind: 'nagios' } }, operator), 'BAD_USER_INPUT', /connectorKind must be one of/)
-    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, valueMapping: JSON.stringify({ severity: {} }) } }, operator), 'BAD_USER_INPUT', /severity value "major" is not mapped/)
-    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, defaultValues: null } }, operator), 'BAD_USER_INPUT', /resourceKind is missing: set default_values\.resourceKind/)
-    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, fieldMapping: JSON.stringify({ foo: 'bar' }) } }, operator), 'BAD_USER_INPUT', /field_mapping\.foo is not a normalized field/)
+  it('errori di configurazione o payload → BAD_USER_INPUT con il campo; operator e viewer → FORBIDDEN (strumento del wizard admin, A-3)', async () => {
+    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, payload: '{oops' } }, admin), 'BAD_USER_INPUT', /payload is not valid JSON/)
+    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, connectorKind: 'nagios' } }, admin), 'BAD_USER_INPUT', /connectorKind must be one of/)
+    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, valueMapping: JSON.stringify({ severity: {} }) } }, admin), 'BAD_USER_INPUT', /severity value "major" is not mapped/)
+    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, defaultValues: null } }, admin), 'BAD_USER_INPUT', /resourceKind is missing: set default_values\.resourceKind/)
+    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { ...generic, fieldMapping: JSON.stringify({ foo: 'bar' }) } }, admin), 'BAD_USER_INPUT', /field_mapping\.foo is not a normalized field/)
+    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: generic }, operator), 'FORBIDDEN')
     await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: generic }, viewer), 'FORBIDDEN')
+  })
+
+  it(`X-2 — più di ${MAX_EVENTS_PER_REQUEST} alert in un payload alertmanager → BAD_USER_INPUT; payload oltre ${PAYLOAD_MAX_CHARS} caratteri → BAD_USER_INPUT`, async () => {
+    const alert = (SAMPLE_PAYLOADS.alertmanager as { alerts: unknown[] }).alerts[0]
+    const many = JSON.stringify({ alerts: Array.from({ length: MAX_EVENTS_PER_REQUEST + 1 }, () => alert) })
+    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { connectorKind: 'alertmanager', payload: many } }, admin), 'BAD_USER_INPUT', /Too many alerts in one request: 501 \(max 500\)/)
+    await expectCode(eventResolvers.Mutation.previewInboundEvents(null, { input: { connectorKind: 'generic', payload: `"${'x'.repeat(PAYLOAD_MAX_CHARS)}"` } }, admin), 'BAD_USER_INPUT', /payload must be at most 262144 characters/)
   })
 })
 
@@ -515,12 +764,17 @@ describe('sendSampleEvent', () => {
     const [tenantId, sourceId, events, receivedAt] = vi.mocked(enqueueEvents).mock.calls[0]!
     expect(tenantId).toBe('tenant-1'); expect(sourceId).toBe('src-1')
     expect(events).toHaveLength(1)
-    expect(events[0]).toMatchObject({ externalId: '7654321', status: 'firing', severity: 'critical', resource: 'cache-01', resourceKind: 'hostname', labels: expect.objectContaining({ env: 'prod' }) })
+    // I-6: il campione è marcato (labels.sample = "true", conservato dall'ingest in Event.labels) e non tocca last_error
+    expect(events[0]).toMatchObject({ externalId: '7654321', status: 'firing', severity: 'critical', resource: 'cache-01', resourceKind: 'hostname', labels: expect.objectContaining({ env: 'prod', [SAMPLE_LABEL]: 'true' }) })
+    expect(SAMPLE_LABEL).toBe('sample')
     expect(Number.isNaN(Date.parse(receivedAt!))).toBe(false)
     const stats = callMatching(/SET w\.receive_count/)!
     expect(stats.cypher).toContain('MATCH (w:InboundWebhook {id: $id, tenant_id: $tenantId})')
-    expect(stats.cypher).toMatch(/w\.last_error = null/)
+    expect(stats.cypher).not.toMatch(/last_error/)
     expect(stats.params).toMatchObject({ id: 'src-1', tenantId: 'tenant-1', n: 1, now: receivedAt })
+    // P-6: la sessione di lettura è chiusa prima dell'enqueue su Redis, quella di scrittura aperta dopo
+    expect(vi.mocked(getSession).mock.calls).toEqual([[], [undefined, 'WRITE']])
+    expect(session.close).toHaveBeenCalledTimes(2)
     expect(audit).toHaveBeenCalledWith(admin, 'event_source.sample_sent', 'InboundWebhook', 'src-1', { connectorKind: 'datadog', accepted: 1 })
   })
 
@@ -540,6 +794,15 @@ describe('sendSampleEvent', () => {
     await expectCode(eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, admin), 'BAD_USER_INPUT', /Corrupt field_mapping JSON/)
     expect(enqueueEvents).not.toHaveBeenCalled()
     await expectCode(eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, operator), 'FORBIDDEN')
+  })
+
+  it('I-6 — sorgente con last_error preesistente: la prova non lo azzera (resta la diagnosi dell\'ultimo payload reale rifiutato)', async () => {
+    vi.mocked(enqueueEvents).mockResolvedValueOnce(1)
+    onCypher([[/RETURN properties\(w\)/, source({ last_error: 'severity must be one of…', last_error_at: 'T-1', error_count: 3 })], [/SET w\.receive_count/, null]])
+    await eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, admin)
+    const stats = callMatching(/SET w\.receive_count/)!
+    expect(stats.cypher).not.toMatch(/last_error/)
+    expect(stats.cypher).not.toMatch(/error_count/)
   })
 
   it('coda non disponibile → l\'errore propaga, statistiche non toccate', async () => {

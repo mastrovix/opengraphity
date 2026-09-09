@@ -11,16 +11,17 @@ vi.mock('../../lib/logger.js', () => ({
 
 import { httpStatusForError, restErrorHandler, asyncHandler } from '../errorHandler.js'
 import { parsePagination, apiKeyOf, optionalString, requiredString } from '../apiContext.js'
-import { NotFoundError, ValidationError, ForbiddenError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError, ForbiddenError, ServiceUnavailableError } from '../../lib/errors.js'
 import { GraphQLError } from 'graphql'
 
 function fakeRes() {
-  const res = { statusCode: 0, body: undefined as unknown, headersSent: false } as {
-    statusCode: number; body: unknown; headersSent: boolean
-    status: (n: number) => typeof res; json: (b: unknown) => typeof res
+  const res = { statusCode: 0, body: undefined as unknown, headersSent: false, headers: {} as Record<string, string> } as {
+    statusCode: number; body: unknown; headersSent: boolean; headers: Record<string, string>
+    status: (n: number) => typeof res; json: (b: unknown) => typeof res; setHeader: (k: string, v: string) => typeof res
   }
-  res.status = (n: number) => { res.statusCode = n; return res }
-  res.json   = (b: unknown) => { res.body = b; res.headersSent = true; return res }
+  res.status    = (n: number) => { res.statusCode = n; return res }
+  res.json      = (b: unknown) => { res.body = b; res.headersSent = true; return res }
+  res.setHeader = (k: string, v: string) => { res.headers[k] = v; return res }
   return res
 }
 
@@ -33,6 +34,7 @@ describe('httpStatusForError', () => {
     [new ForbiddenError(),                 403, 'FORBIDDEN'],
     [new GraphQLError('x', { extensions: { code: 'CONFLICT' } }),     400, 'TRANSITION_NOT_AVAILABLE'],
     [new GraphQLError('x', { extensions: { code: 'UNAUTHORIZED' } }), 401, 'UNAUTHORIZED'],
+    [new ServiceUnavailableError('busy', 5),                            503, 'SERVICE_UNAVAILABLE'],
   ])('%s → %i %s', (err, status, code) => {
     expect(httpStatusForError(err)).toEqual({ status, code })
   })
@@ -56,6 +58,18 @@ describe('restErrorHandler', () => {
     restErrorHandler(new Error('Neo4j: connection refused at bolt://internal:7687'), req, res as unknown as Response, vi.fn())
     expect(res.statusCode).toBe(500)
     expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } })
+  })
+
+  it('ServiceUnavailableError → 503 con header Retry-After (capacità esaurita, il client ritenta)', () => {
+    const res = fakeRes()
+    restErrorHandler(new ServiceUnavailableError('all slots busy', 5), req, res as unknown as Response, vi.fn())
+    expect(res.statusCode).toBe(503)
+    expect(res.headers['Retry-After']).toBe('5')
+    expect(res.body).toEqual({ error: { code: 'SERVICE_UNAVAILABLE', message: 'all slots busy' } })
+    // gli altri errori tipizzati non portano Retry-After
+    const res2 = fakeRes()
+    restErrorHandler(new ValidationError('bad'), req, res2 as unknown as Response, vi.fn())
+    expect(res2.headers).toEqual({})
   })
 
   it('body-parser style 4xx error keeps its status', () => {

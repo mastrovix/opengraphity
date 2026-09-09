@@ -23,20 +23,30 @@
  * sorgente superano la soglia nello stesso istante): avvio della tempesta e
  * apertura dell'incident passano da UNA sezione critica per (tenant, sorgente)
  * con doppia barriera — lock Redis `og:events:storm-open:<tenant>:<sorgente>`
- * (SET NX EX 30, rilascio guardato dal token del tentativo) attorno a "rileggi
- * la sorgente → avvia se non attiva → apri l'incident se manca → scrivi
- * `storm_incident_id`", e scritture CONDIZIONALI sul grafo (`WHERE
- * w.storm_since IS NULL`, `WHERE w.storm_incident_id IS NULL`) come rete di
- * sicurezza. Chi trova il lock occupato attende (fino a STORM_LOCK_WAIT_MS,
- * polling ogni STORM_LOCK_POLL_MS) che l'incident compaia sulla sorgente (e vi
- * si aggancia) o che il lock si liberi; oltre l'attesa → errore, il job
- * ritenta con backoff e al retry l'incident esiste. Mai incident duplicati.
+ * (lib/redisLock.ts: SET NX EX 30, rilascio guardato dal token del tentativo)
+ * attorno a "rileggi la sorgente → avvia se non attiva → apri l'incident se
+ * manca → scrivi `storm_incident_id`", e scritture CONDIZIONALI sul grafo
+ * (`WHERE w.storm_since IS NULL`, `WHERE w.storm_incident_id IS NULL`) come
+ * rete di sicurezza. Chi trova il lock occupato attende (fino a
+ * STORM_LOCK_WAIT_MS, polling ogni STORM_LOCK_POLL_MS) che l'incident compaia
+ * sulla sorgente (e vi si aggancia) o che il lock si liberi; oltre l'attesa →
+ * errore, il job ritenta con backoff e al retry l'incident esiste. Mai
+ * incident duplicati.
+ *
+ * L'incident di tempesta porta il marcatore `Incident.storm_source_id` (la
+ * sorgente): il raggruppamento per CI/impronta (eventCorrelation.ts) lo
+ * ignora, così finita la tempesta un nuovo allarme su un CI coinvolto apre il
+ * SUO incident invece di riagganciarsi a quello di tempesta. Se l'operatore
+ * chiude l'incident di tempesta mentre la sorgente è ancora in tempesta, gli
+ * allarmi NON si agganciano a un ticket chiuso: `replaceClosedStormIncident`
+ * (sotto lo stesso lock) azzera `storm_incident_id` e ne apre uno nuovo.
  *
  * Niente fallback silenziosi: Redis o il grafo irraggiungibili fanno fallire
  * l'ingest (il job ritenta); una sorgente cancellata non è una tempesta.
  */
-import { randomUUID } from 'node:crypto'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { withRedisLock } from '../lib/redisLock.js'
+import { runPagedPass, type PagedPassResult } from '../lib/pagedPass.js'
 import { getSharedRedis } from '../lib/bullmq.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { audit } from '../lib/audit.js'
@@ -103,6 +113,13 @@ export function stormCounterKey(tenantId: string, sourceId: string, atMs: number
 
 export function stormLockKey(tenantId: string, sourceId: string): string {
   return `og:events:storm-open:${tenantId}:${sourceId}`
+}
+
+/** Inizio (ISO) del minuto che contiene `now`: il marcatore `storm_last_over_at` si scrive una volta per minuto. */
+export function minuteStartOf(now: string): string {
+  const ms = Date.parse(now)
+  if (Number.isNaN(ms)) throw new Error(`minuteStartOf: "${now}" is not an ISO date`)
+  return new Date(Math.floor(ms / 60_000) * 60_000).toISOString()
 }
 
 /** True se dall'ultimo minuto oltre soglia sono passati PIÙ di `cooldownMinutes` minuti. */
@@ -174,48 +191,21 @@ async function refreshStormGauge(): Promise<void> {
 
 // ── Lock per (tenant, sorgente) ──────────────────────────────────────────────
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
-/** DEL solo se il valore è ancora il token di chi rilascia (GET+DEL atomici). */
-const RELEASE_LOCK_LUA = `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`
-
-async function tryAcquireStormLock(key: string, owner: string): Promise<boolean> {
-  return (await getSharedRedis().set(key, owner, 'EX', STORM_LOCK_TTL_SECONDS, 'NX')) === 'OK'
-}
-
 /**
- * Sezione critica per (tenant, sorgente). `run` riceve la sorgente RILETTA
- * sotto lock (null se cancellata). Chi trova il lock occupato attende: a ogni
- * giro rilegge la sorgente e, se `shortcut` sa già rispondere (l'incident di
- * tempesta è comparso), esce senza lock; altrimenti riprova il lock; oltre
- * STORM_LOCK_WAIT_MS → errore (il job ritenta con backoff). Il lock viene
- * rilasciato anche se `run` fallisce; un rilascio fallito viene loggato (il
- * lock scade da solo dopo STORM_LOCK_TTL_SECONDS).
+ * Sezione critica per (tenant, sorgente) su lib/redisLock.ts. `run` riceve la
+ * sorgente RILETTA sotto lock (null se cancellata). Chi trova il lock occupato
+ * a ogni giro rilegge la sorgente e, se `shortcut` sa già rispondere
+ * (l'incident di tempesta è comparso), esce senza lock; oltre
+ * STORM_LOCK_WAIT_MS → errore ritentabile.
  */
 async function withStormLock<T>(tenantId: string, sourceId: string, shortcut: (source: Props) => T | null, run: (source: Props | null) => Promise<T>): Promise<T> {
-  const key = stormLockKey(tenantId, sourceId)
-  const owner = randomUUID()
-  const deadline = Date.now() + STORM_LOCK_WAIT_MS
-  while (!(await tryAcquireStormLock(key, owner))) {
-    const source = await loadSource(tenantId, sourceId)
-    if (source) {
-      const out = shortcut(source)
-      if (out !== null) return out
-    }
-    if (Date.now() >= deadline) {
-      throw new Error(`Storm lock for source ${sourceId} (tenant ${tenantId}) still held by another job after ${STORM_LOCK_WAIT_MS} ms and no storm incident appeared — will retry`)
-    }
-    await sleep(STORM_LOCK_POLL_MS)
-  }
-  try {
-    return await run(await loadSource(tenantId, sourceId))
-  } finally {
-    try {
-      await getSharedRedis().eval(RELEASE_LOCK_LUA, 1, key, owner)
-    } catch (err) {
-      log.error({ err, tenantId, sourceId, key }, `Storm lock release failed (expires on its own in ${STORM_LOCK_TTL_SECONDS} s)`)
-    }
-  }
+  return withRedisLock(
+    stormLockKey(tenantId, sourceId),
+    { ttlSeconds: STORM_LOCK_TTL_SECONDS, waitMs: STORM_LOCK_WAIT_MS, pollMs: STORM_LOCK_POLL_MS },
+    async () => run(await loadSource(tenantId, sourceId)),
+    async () => { const source = await loadSource(tenantId, sourceId); return source ? shortcut(source) : null },
+    `no storm incident appeared on source ${sourceId} (tenant ${tenantId})`,
+  )
 }
 
 // ── Incident di tempesta ─────────────────────────────────────────────────────
@@ -260,6 +250,14 @@ async function openStormIncident(tenantId: string, sourceId: string, sourceName:
   const s = getSession(undefined, 'WRITE')
   let claimed: { id: string } | null
   try {
+    // Marcatore (non stato del workflow): l'incident di tempesta è escluso dal
+    // raggruppamento per CI/impronta. Vale anche per un eventuale duplicato.
+    const marked = await runQueryOne<{ id: string }>(s, `
+      MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+      SET i.storm_source_id = $sourceId
+      RETURN i.id AS id
+    `, { incidentId: incident.id, tenantId, sourceId })
+    if (!marked) throw new Error(`Storm incident ${incident.id} vanished right after creation (tenant ${tenantId})`)
     claimed = await runQueryOne<{ id: string }>(s, `
       MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
       WHERE w.storm_incident_id IS NULL
@@ -337,6 +335,46 @@ async function ensureStorm(tenantId: string, sourceId: string, rate: number, ciI
   })
 }
 
+/**
+ * L'incident di tempesta `closedIncidentId` è in un passo terminale (chiuso a
+ * mano o dal timer) mentre la sorgente è ancora in tempesta: sotto lock,
+ * se la sorgente punta ancora a quell'incident, si azzera `storm_incident_id`
+ * (SET condizionale) e — se l'evento ha un CI — si apre un nuovo incident di
+ * tempesta con `ensureStorm` (mayStart = false: la tempesta esiste già). Un
+ * commento sull'incident chiuso rimanda al nuovo. Chi arriva dopo trova già
+ * il nuovo `storm_incident_id` (shortcut del lock) e vi si aggancia.
+ * Tempesta finita nel frattempo → stato "nessuna tempesta".
+ */
+export async function replaceClosedStormIncident(tenantId: string, sourceId: string, closedIncidentId: string, ciId: string | null, actorId: string, now: string): Promise<StormState> {
+  const replaced = (source: Props): StormState | null => {
+    const state = stormStateOf(source)
+    if (!state.active) return state
+    return state.incidentId && state.incidentId !== closedIncidentId ? state : null
+  }
+  return withStormLock(tenantId, sourceId, replaced, async (source) => {
+    if (!source) throw new Error(`InboundWebhook ${sourceId} vanished while replacing its closed storm incident (tenant ${tenantId})`)
+    const state = stormStateOf(source)
+    const already = replaced(source)
+    if (already) return already
+    const session = getSession(undefined, 'WRITE')
+    try {
+      await runQuery(session, `
+        MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
+        WHERE w.storm_incident_id = $closedIncidentId
+        SET w.storm_incident_id = null, w.updated_at = $now
+      `, { sourceId, tenantId, closedIncidentId, now })
+    } finally { await session.close() }
+    log.warn({ tenantId, sourceId, closedIncidentId, ciId }, 'Storm incident was closed while the source is still storming: detached from the source')
+    void audit({ tenantId, userId: MONITORING_ACTOR, userEmail: MONITORING_ACTOR, role: 'admin' }, 'event_storm.incident_closed_during_storm', 'InboundWebhook', sourceId, { closedIncidentId, sourceName: state.sourceName })
+    if (!ciId) return { ...state, incidentId: null }
+    const rate = Math.max(await currentRate(tenantId, sourceId, Date.parse(now)), 1)
+    const next = { ...state, incidentId: await openStormIncident(tenantId, sourceId, state.sourceName, ciId, rate, state.since ?? now, now) }
+    await (await incidents()).addIncidentComment(closedIncidentId, { tenantId, userId: MONITORING_ACTOR },
+      `La tempesta della sorgente "${state.sourceName}" continua dopo la chiusura di questo incident: i nuovi allarmi vengono agganciati all'incident ${next.incidentId}`)
+    return next
+  })
+}
+
 async function endStorm(tenantId: string, source: Props, actorId: string, now: string): Promise<void> {
   const sourceId = toStr(source['id'])
   const state = stormStateOf(source)
@@ -407,16 +445,17 @@ export async function trackSourceStorm(input: TrackStormInput): Promise<StormSta
         // Sotto lock: se un job concorrente l'ha già avviata, ci si aggancia alla sua.
         return ensureStorm(tenantId, sourceId, rate, input.ciId, actorId, now, true)
       }
-      // Minuto oltre soglia: si segna una volta sola, al superamento.
-      if (rate === threshold) {
-        const s = getSession(undefined, 'WRITE')
-        try {
-          await runQuery(s, `
-            MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
-            SET w.storm_last_over_at = $now
-          `, { sourceId, tenantId, now })
-        } finally { await s.close() }
-      }
+      // Minuto oltre soglia: ogni job oltre soglia lo segna (non solo il
+      // 50°, che potrebbe fallire prima della SET), ma la SET condizionale
+      // scrive UNA volta per minuto.
+      const s = getSession(undefined, 'WRITE')
+      try {
+        await runQuery(s, `
+          MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
+          WHERE w.storm_last_over_at IS NULL OR w.storm_last_over_at < $minuteStart
+          SET w.storm_last_over_at = $now
+        `, { sourceId, tenantId, now, minuteStart: minuteStartOf(now) })
+      } finally { await s.close() }
       lastOverAt = now
     }
   }
@@ -438,42 +477,44 @@ export async function trackSourceStorm(input: TrackStormInput): Promise<StormSta
 
 /**
  * Chiude le tempeste raffreddate delle sorgenti che non ricevono più nulla
- * (l'ingest non passa, quindi nessuno le rivaluta). Un errore su una sorgente
- * non ferma le altre ma fa fallire il job. Riallinea il gauge.
+ * (l'ingest non passa, quindi nessuno le rivaluta). Paginata per id della
+ * sorgente (lib/pagedPass.ts); un errore su una sorgente non ferma le altre
+ * ma fa fallire il job. Riallinea il gauge.
  */
-export async function endCooledStorms(now: string = new Date().toISOString()): Promise<{ active: number; ended: number; failed: number }> {
-  const session = getSession()
-  let sources: Props[]
-  try {
-    // tenant-ok: job di manutenzione su tutti i tenant; ogni sorgente è poi trattata nel suo tenant
-    const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (w:InboundWebhook)
-      WHERE w.storm_since IS NOT NULL
-      RETURN properties(w) AS props
-    `, {})
-    sources = rows.map((r) => r.props)
-  } finally { await session.close() }
-
+export async function endCooledStorms(now: string = new Date().toISOString()): Promise<PagedPassResult & { active: number; ended: number }> {
   let ended = 0
-  let failed = 0
-  for (const source of sources) {
-    const tenantId = toStr(source['tenant_id'])
-    const sourceId = toStr(source['id'])
-    try {
-      const policy = await getEventPolicy(tenantId)
+  const policies = new Map<string, EventPolicy>()
+  const result = await runPagedPass<Props>({
+    fetchPage: async (cursor, limit) => {
+      const session = getSession()
+      try {
+        // tenant-ok: job di manutenzione su tutti i tenant; ogni sorgente è poi trattata nel suo tenant
+        const rows = await runQuery<{ props: Props }>(session, `
+          MATCH (w:InboundWebhook)
+          WHERE w.storm_since IS NOT NULL AND w.id > $cursor
+          RETURN properties(w) AS props
+          ORDER BY w.id LIMIT toInteger($limit)
+        `, { cursor, limit })
+        return rows.map((r) => r.props)
+      } finally { await session.close() }
+    },
+    keyOf: (source) => toStr(source['id']),
+    handle: async (source) => {
+      const tenantId = toStr(source['tenant_id'])
+      let policy = policies.get(tenantId)
+      if (!policy) { policy = await getEventPolicy(tenantId); policies.set(tenantId, policy) }
       const lastOverAt = typeof source['storm_last_over_at'] === 'string' ? source['storm_last_over_at'] : toStr(source['storm_since'])
       if (stormCooledDown(lastOverAt, now, policy.storm_cooldown_minutes)) {
         await endStorm(tenantId, source, MONITORING_ACTOR, now)
         ended++
       }
-    } catch (err) {
-      failed++
-      log.error({ err, tenantId, sourceId }, 'Storm cooldown check failed')
-    }
-  }
+    },
+    onError: (source, err) => log.error({ err, tenantId: toStr(source['tenant_id']), sourceId: toStr(source['id']) }, 'Storm cooldown check failed'),
+  })
   await refreshStormGauge()
-  if (failed > 0) throw new Error(`endCooledStorms: ${failed}/${sources.length} storming sources failed the cooldown check (see logs)`)
-  return { active: sources.length - ended, ended, failed }
+  if (result.truncated) log.warn({ evaluated: result.evaluated }, 'endCooledStorms: page cap reached, remaining storming sources are checked on the next pass')
+  if (result.failed > 0) throw new Error(`endCooledStorms: ${result.failed}/${result.evaluated} storming sources failed the cooldown check (see logs)`)
+  return { ...result, active: result.evaluated - ended, ended }
 }
 
 // ── Console ──────────────────────────────────────────────────────────────────

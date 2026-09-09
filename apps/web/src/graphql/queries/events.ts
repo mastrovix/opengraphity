@@ -46,6 +46,7 @@ export const GET_CI_ALIASES = gql`
 export const GET_EVENT_POLICY = gql`
   query GetEventPolicy {
     eventPolicy {
+      version updatedAt
       openIncidentFrom groupBy openDelaySeconds autoResolve
       suppressUpstreamHops flapThreshold flapWindowMinutes flapStableMinutes
       stormThresholdPerMinute stormCooldownMinutes retentionDays severityMap
@@ -64,6 +65,7 @@ const MONITORING_SOURCE_FIELDS = gql`
   }
 `
 
+/** Sorgenti con la configurazione completa (pagina Sorgenti, solo admin). */
 export const GET_MONITORING_SOURCES = gql`
   query GetMonitoringSources {
     monitoringSources { ...MonitoringSourceFields }
@@ -71,9 +73,28 @@ export const GET_MONITORING_SOURCES = gql`
   ${MONITORING_SOURCE_FIELDS}
 `
 
+/** Le stesse sorgenti come riferimenti leggeri (id, nome, connettore, attiva): filtro della console e banner "nessuna sorgente", a tutto lo staff. */
+export const GET_MONITORING_SOURCE_REFS = gql`
+  query GetMonitoringSourceRefs {
+    monitoringSourceRefs { id name connectorKind enabled }
+  }
+`
+
+/**
+ * Stessa lista più le impostazioni modificabili solo dall'admin
+ * (`rateLimitPerMinute`, M7): query separata così la console eventi e la
+ * lista sorgenti non chiedono un campo che non mostrano.
+ */
+export const GET_MONITORING_SOURCE_SETTINGS = gql`
+  query GetMonitoringSourceSettings {
+    monitoringSources { ...MonitoringSourceFields rateLimitPerMinute }
+  }
+  ${MONITORING_SOURCE_FIELDS}
+`
+
 /** Payload di esempio realistico del connettore: alimenta il mappatore ("usa esempio") e i frammenti di configurazione. */
 export const GET_SAMPLE_INBOUND_PAYLOAD = gql`
-  query GetSampleInboundPayload($connectorKind: String!) {
+  query GetSampleInboundPayload($connectorKind: ConnectorKind!) {
     sampleInboundPayload(connectorKind: $connectorKind)
   }
 `

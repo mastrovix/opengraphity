@@ -262,12 +262,25 @@ export const incidentsAutoOpenedTotal = createCounter('incidents_auto_opened_tot
 export const incidentsAutoResolvedTotal = createCounter('incidents_auto_resolved_total', 'Incidents resolved automatically when every correlated event cleared', [])
 export const incidentsReopenedTotal   = createCounter('incidents_reopened_total',   'Resolved incidents reopened by a returning monitoring event', [])
 export const eventsPurgedTotal        = createCounter('events_purged_total',        'Resolved monitoring events deleted by the purge_events retention job', [])
+/** Payload più vecchio dell'ultimo applicato alla stessa impronta (retry tardivo, riordino): scartato senza toccare l'Event. */
+export const eventsStaleTotal         = createCounter('events_stale_total',         'Monitoring event payloads discarded because older than the last applied one (same fingerprint) by connector kind', ['connector'])
+/** Job events-ingest fallito all'ultimo tentativo: l'allarme è perso e la sorgente porta last_error. */
+export const eventsIngestFailedTotal  = createCounter('events_ingest_failed_total', 'Monitoring event ingest jobs that failed after the last retry by connector kind', ['connector'])
 export const eventStormsActive        = createGauge('event_storms_active',          'Monitoring sources currently in an alert storm', [])
+/**
+ * Richieste al webhook in ingresso rifiutate con 429 (rest/webhooks-inbound.ts).
+ * `connector` = connector_kind per le sorgenti evento, entity_type
+ * (incident | problem) per i webhook che creano ticket: insieme bounded.
+ * Un valore che cresce durante una tempesta dice "alza rate_limit_per_minute
+ * o raggruppa di più nello strumento", non "la sorgente è rotta".
+ */
+export const webhookRateLimitedTotal  = createCounter('webhook_rate_limited_total', 'Inbound webhook requests rejected with 429 by connector kind', ['connector'])
 
 /** Tutte le metriche dell'Event Management, nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsSuppressedTotal, eventsFlappingTotal,
-  incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal, eventStormsActive,
+  incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
+  eventsStaleTotal, eventsIngestFailedTotal, eventStormsActive, webhookRateLimitedTotal,
 ] as const
 
 // ── Route label (A-15) ────────────────────────────────────────────────────────

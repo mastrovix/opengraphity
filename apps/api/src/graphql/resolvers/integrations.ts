@@ -1,5 +1,6 @@
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { CONNECTOR_KINDS, parseConfigJSON, sourceConfigOf } from '../../services/eventService.js'
+import { DEFAULT_WEBHOOK_RATE_LIMIT_PER_MINUTE, rateLimitOf, validateRateLimitPerMinute } from '../../lib/webhookRateLimit.js'
 
 /** Prima riga di una query scopata per tenant: assente = risorsa inesistente o di un altro tenant. */
 function firstRow<T>(rows: T[], what: string): T {
@@ -69,6 +70,8 @@ export function mapInbound(p: Props) {
     fieldMapping: p['field_mapping'], defaultValues: p['default_values'] ?? null,
     valueMapping: p['value_mapping'] ?? null,
     transformScript: p['transform_script'] ?? null, enabled: p['enabled'] ?? false,
+    // Assente sui webhook creati prima del campo → default documentato (M7).
+    rateLimitPerMinute: rateLimitOf(p),
     lastReceivedAt: p['last_received_at'] ?? null, receiveCount: Number(p['receive_count'] ?? 0),
     lastError: p['last_error'] ?? null, lastErrorAt: p['last_error_at'] ?? null, errorCount: Number(p['error_count'] ?? 0),
     createdAt: p['created_at'],
@@ -117,6 +120,10 @@ async function createInboundWebhook(_: unknown, args: { input: Props }, ctx: Gra
   const { input } = args
   const connectorKind = validateConnectorKind(input['entityType'], input['connectorKind'])
   validateInboundConfig({ entityType: input['entityType'], connectorKind, fieldMapping: input['fieldMapping'], defaultValues: input['defaultValues'] ?? null, valueMapping: input['valueMapping'] ?? null })
+  // Omesso → 100 (l'unico default ammesso, vedi lib/webhookRateLimit.ts); dato → validato 1..10000.
+  const rateLimitPerMinute = input['rateLimitPerMinute'] === undefined || input['rateLimitPerMinute'] === null
+    ? DEFAULT_WEBHOOK_RATE_LIMIT_PER_MINUTE
+    : validateRateLimitPerMinute(input['rateLimitPerMinute'], 'rateLimitPerMinute')
   const token = genToken()
   const id = uuidv4()
   const now = new Date().toISOString()
@@ -124,9 +131,10 @@ async function createInboundWebhook(_: unknown, args: { input: Props }, ctx: Gra
     const rows = await runQuery<{ props: Props }>(s, `
       CREATE (w:InboundWebhook {id: $id, tenant_id: $t, name: $name, entity_type: $entityType, connector_kind: $connectorKind,
         secret: $secret, field_mapping: $fieldMapping, default_values: $defaultValues, value_mapping: $valueMapping,
-        transform_script: $transformScript, enabled: true, receive_count: 0, error_count: 0, created_at: $now, updated_at: $now})
+        transform_script: $transformScript, enabled: true, rate_limit_per_minute: toInteger($rateLimitPerMinute),
+        receive_count: 0, error_count: 0, created_at: $now, updated_at: $now})
       RETURN properties(w) AS props
-    `, { id, t: ctx.tenantId, name: input['name'], entityType: input['entityType'], connectorKind, secret: hash(token), fieldMapping: input['fieldMapping'], defaultValues: input['defaultValues'] ?? null, valueMapping: input['valueMapping'] ?? null, transformScript: input['transformScript'] ?? null, now })
+    `, { id, t: ctx.tenantId, name: input['name'], entityType: input['entityType'], connectorKind, secret: hash(token), fieldMapping: input['fieldMapping'], defaultValues: input['defaultValues'] ?? null, valueMapping: input['valueMapping'] ?? null, transformScript: input['transformScript'] ?? null, rateLimitPerMinute, now })
     return { ...mapInbound(firstRow(rows, 'InboundWebhook').props), token }
   }, true)
 }
@@ -137,6 +145,10 @@ async function updateInboundWebhook(_: unknown, args: { id: string; input: Props
   const params: Props = { id: args.id, t: ctx.tenantId, now: new Date().toISOString() }
   const map: Record<string, string> = { name: 'name', entityType: 'entity_type', fieldMapping: 'field_mapping', defaultValues: 'default_values', valueMapping: 'value_mapping', transformScript: 'transform_script', enabled: 'enabled' }
   for (const [gql, neo] of Object.entries(map)) { if (input[gql] !== undefined) { sets.push(`w.${neo} = $${gql}`); params[gql] = input[gql] } }
+  if (input['rateLimitPerMinute'] !== undefined) {
+    sets.push('w.rate_limit_per_minute = toInteger($rateLimitPerMinute)')
+    params['rateLimitPerMinute'] = validateRateLimitPerMinute(input['rateLimitPerMinute'], 'rateLimitPerMinute')
+  }
   const CONFIG_KEYS = ['entityType', 'connectorKind', 'fieldMapping', 'defaultValues', 'valueMapping'] as const
   return withSession(async (s) => {
     // Le regole entityType ↔ connectorKind e connettore ↔ mappature valgono

@@ -13,7 +13,7 @@ vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined) }))
 
-const { buildCreateMutation, buildUpdateMutation, validateCIInput } = await import('../ciMutations.js')
+const { buildCreateMutation, buildUpdateMutation, buildDeleteMutation, validateCIInput } = await import('../ciMutations.js')
 const { withSession } = await import('../ci-utils.js')
 
 const IP_SCRIPT = 'if (!/^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(value)) throw new Error("IP non valido")'
@@ -150,5 +150,27 @@ describe('buildUpdateMutation', () => {
     const update = buildUpdateMutation(ciType(), 'Server', mapCI)
     await expect(update(undefined, { id: 'nope', input: { rack: 'R2' } }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
     expect(runScript).not.toHaveBeenCalled()
+  })
+})
+
+describe('buildDeleteMutation (B7 — Event Management)', () => {
+  it('cancellazione fisica scoped per tenant: gli alias ALIAS_OF del CI vanno via nella stessa scrittura, gli Event RAISED_ON restano orfani (solo la relazione cade)', async () => {
+    const session = fakeSession()
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    const del = buildDeleteMutation('Server')
+
+    await expect(del(undefined, { id: 'ci-1' }, ctx)).resolves.toBe(true)
+    expect(session.executeWrite).toHaveBeenCalledTimes(1)
+    const [cypher, params] = session.run.mock.calls[0]!
+    expect(cypher).toContain('MATCH (n:Server {id: $id, tenant_id: $tenantId})')
+    expect(cypher).toContain('OPTIONAL MATCH (a:CIAlias {tenant_id: $tenantId})-[:ALIAS_OF]->(n)')
+    expect(cypher).toMatch(/DETACH DELETE a, n/)
+    // nessuna cancellazione degli Event: perdono la relazione, non il nodo
+    expect(cypher).not.toMatch(/DELETE\s+e\b/)
+    expect(params).toEqual({ id: 'ci-1', tenantId: 't1' })
+  })
+
+  it('rifiuta un label non sicuro al build time', () => {
+    expect(() => buildDeleteMutation('Server) DETACH DELETE (x')).toThrow()
   })
 })

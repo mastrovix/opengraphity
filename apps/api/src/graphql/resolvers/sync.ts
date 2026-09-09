@@ -435,7 +435,7 @@ export const syncResolvers = {
             'ci.discovery_external_id = $externalId',
             'ci.discovery_last_seen_at = $now',
           ]
-          if (discoveredName) propSets.push('ci.name = $discoveredName')
+          if (discoveredName) propSets.push('ci.name = $discoveredName', 'ci.name_key = toLower($discoveredName)')   // name_key: lib/ciNameKey.ts
           const propsJson = JSON.stringify(discoveredProps)
           const tagsJson  = JSON.stringify(discoveredTags)
 
@@ -462,6 +462,7 @@ export const syncResolvers = {
                id: $newCiId,
                tenant_id: $tenantId,
                name: $name,
+               name_key: toLower($name),
                ci_type: $ciType,
                status: 'active',
                discovery_source: $source,
@@ -493,6 +494,7 @@ export const syncResolvers = {
                id: $newCiId,
                tenant_id: $tenantId,
                name: $name,
+               name_key: toLower($name),
                ci_type: $ciType,
                status: 'active',
                discovery_source: $source,

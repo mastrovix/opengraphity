@@ -137,6 +137,8 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
       const tip = secs !== null && secs > 0 ? t('events.correlation.chip.delayedIn', { seconds: secs }) : t('events.correlation.chip.delayedWaiting')
       return <Pill bg="var(--color-info-bg)" color="#1d4ed8" style={chipFont}><span title={tip}>{t('events.correlation.chip.delayed')}</span></Pill>
     }
+    case 'pending':
+      return <Pill bg="var(--color-info-bg)" color="#1d4ed8" style={chipFont}><span title={t('events.correlation.text.pending')}>{t('events.correlation.chip.pending')}</span></Pill>
     case 'skipped_orphan':
       return <Pill bg="#fef3c7" color="#b45309" style={chipFont}><span title={t('events.correlation.text.skipped_orphan')}>{t('events.correlation.chip.linkCI')}</span></Pill>
     default:
@@ -172,6 +174,7 @@ export function correlationSentence(t: TFunction, ev: CorrelationEvent, policy: 
         : t('events.correlation.text.delayedNoPolicy')
     }
     case 'none': return t('events.correlation.text.none')
+    case 'pending': return t('events.correlation.text.pending')
     case 'flapping': {
       const vars = { count: ev.transitions24h, since: formatDateTime(ev.flappingSince) }
       return policy

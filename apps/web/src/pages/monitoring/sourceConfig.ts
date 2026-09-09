@@ -221,3 +221,23 @@ export function suggestStatus(value: string): EventInputStatus | '' {
   if (['closed', 'recovered', 'cleared', 'normal', '0'].includes(v)) return 'resolved'
   return ''
 }
+
+// ── Rate limit per sorgente (M7) ─────────────────────────────────────────────
+// Speculare a apps/api/src/lib/webhookRateLimit.ts: 100 è l'unico default
+// ammesso (webhook creati prima del campo), l'intervallo è validato anche dal server.
+
+export const DEFAULT_RATE_LIMIT_PER_MINUTE = 100
+export const RATE_LIMIT_MIN = 1
+export const RATE_LIMIT_MAX = 10_000
+
+/** Campo `rateLimitPerMinute` letto da GET_MONITORING_SOURCE_SETTINGS (non fa parte di MonitoringSource). */
+export interface SourceRateLimit {
+  rateLimitPerMinute: number
+}
+
+/** Testo del campo numerico → intero in 1..10000, altrimenti null (il pulsante Salva resta disabilitato). */
+export function parseRateLimit(text: string): number | null {
+  if (!/^\d+$/.test(text.trim())) return null
+  const n = Number(text.trim())
+  return n >= RATE_LIMIT_MIN && n <= RATE_LIMIT_MAX ? n : null
+}

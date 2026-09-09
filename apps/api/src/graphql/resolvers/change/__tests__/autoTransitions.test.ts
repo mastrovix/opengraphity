@@ -46,12 +46,16 @@ vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
-// Fine finestra (Event Management, ondata 3): il modulo è importato
-// dinamicamente da syncSuppressedEvents solo quando la change ha eventi
-// soppressi; qui si verifica quando viene invocato.
+// Fine finestra (Event Management, ondata 3 + revisione): i moduli sono
+// importati dinamicamente da syncSuppressedEvents solo quando la change ha
+// eventi soppressi; la mutation ACCODA il job `reevaluate-change-window`, non
+// rivaluta in linea. Qui si verifica quando (e con che cosa) viene accodato.
 vi.mock('../../../../services/eventCorrelation.js', () => ({
   CHANGE_WINDOW_STEPS: ['deployment', 'scheduled'],
   reevaluateSuppressedEvents: vi.fn().mockResolvedValue(2),
+}))
+vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
+  enqueueChangeWindowReevaluation: vi.fn().mockResolvedValue(undefined),
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────────────
@@ -61,6 +65,7 @@ const { workflowEngine } = await import('@opengraphity/workflow')
 const { runQuery, runQueryOne } = await import('../../ci-utils.js')
 const { logger } = await import('../../../../lib/logger.js')
 const { reevaluateSuppressedEvents } = await import('../../../../services/eventCorrelation.js')
+const { enqueueChangeWindowReevaluation } = await import('../../../../jobs/eventCorrelateWorker.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
@@ -213,45 +218,65 @@ describe('evaluateAutoTransitions', () => {
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
     expect(workflowEngine.transition).not.toHaveBeenCalled()
-    expect(reevaluateSuppressedEvents).not.toHaveBeenCalled()
+    expect(enqueueChangeWindowReevaluation).not.toHaveBeenCalled()
   })
 
-  describe('fine finestra (eventi soppressi dalla change)', () => {
+  describe('fine finestra (eventi soppressi dalla change): la mutation accoda il job, non rivaluta in linea', () => {
+    const ENTERED = '2026-09-09T10:00:00.000Z'
+
     /** Nessuna transizione automatica; la lettura "step + eventi soppressi" risponde come indicato. */
-    function mockWindow(step: string, suppressed: number) {
+    function mockWindow(step: string, suppressed: number, enteredAt: string | null = ENTERED) {
       vi.mocked(runQueryOne).mockImplementation(async (_s: unknown, query: string) => {
-        if (query.includes('suppressed_by_change_id')) return { step, suppressed } as never
+        if (query.includes('suppressed_by_change_id')) return { step, enteredAt, suppressed } as never
         if (query.includes('HAS_WORKFLOW')) return { instanceId: 'wi-1', step, tenantId: 'tenant-1', entityProps: { id: 'chg-1' } } as never
         return { pending: 1 } as never
       })
       vi.mocked(runQuery).mockResolvedValue([] as never)
     }
 
-    it('change uscita da deployment (review) con eventi soppressi → reevaluateSuppressedEvents con tenant, change e attore', async () => {
+    it('change uscita da deployment (review) con eventi soppressi → job accodato con tenant, change ed epoca del passo (updated_at dell\'istanza); NESSUNA rivalutazione in linea', async () => {
       mockWindow('review', 2)
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
-      expect(reevaluateSuppressedEvents).toHaveBeenCalledWith('tenant-1', 'chg-1', 'user-1')
+      expect(enqueueChangeWindowReevaluation).toHaveBeenCalledWith('tenant-1', 'chg-1', Date.parse(ENTERED))
+      expect(reevaluateSuppressedEvents).not.toHaveBeenCalled()
       const q = vi.mocked(runQueryOne).mock.calls.map((c) => c[1] as string).find((s) => s.includes('suppressed_by_change_id'))!
       expect(q).toContain("MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})")
       expect(q).toContain("(e:Event {tenant_id: $tenantId, status: 'suppressed', suppressed_by_change_id: c.id})")
+      expect(q).toContain('wi.updated_at AS enteredAt')
     })
 
-    it('change chiusa (closed) con eventi soppressi → rivalutazione', async () => {
+    it('change chiusa (closed) con eventi soppressi → job accodato', async () => {
       mockWindow('closed', 1)
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
-      expect(reevaluateSuppressedEvents).toHaveBeenCalledOnce()
+      expect(enqueueChangeWindowReevaluation).toHaveBeenCalledOnce()
     })
 
-    it.each([['deployment'], ['scheduled']])('change ancora in %s → nessuna rivalutazione (finestra aperta)', async (step) => {
+    it('accodamento fallito (Redis) → l\'errore propaga (fail-loud, nessun try/catch)', async () => {
+      mockWindow('review', 2)
+      vi.mocked(enqueueChangeWindowReevaluation).mockRejectedValueOnce(new Error('Redis down'))
+      await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).rejects.toThrow('Redis down')
+    })
+
+    it('istanza senza updated_at leggibile → epoca corrente con avviso nel log', async () => {
+      vi.useFakeTimers({ now: Date.parse('2026-09-09T12:00:00.000Z') })
+      try {
+        mockWindow('review', 2, null)
+        await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      } finally { vi.useRealTimers() }
+      expect(enqueueChangeWindowReevaluation).toHaveBeenCalledWith('tenant-1', 'chg-1', Date.parse('2026-09-09T12:00:00.000Z'))
+      expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ changeId: 'chg-1' }), expect.stringMatching(/updated_at non leggibile/))
+    })
+
+    it.each([['deployment'], ['scheduled']])('change ancora in %s → nessun job (finestra aperta)', async (step) => {
       mockWindow(step, 3)
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
-      expect(reevaluateSuppressedEvents).not.toHaveBeenCalled()
+      expect(enqueueChangeWindowReevaluation).not.toHaveBeenCalled()
     })
 
-    it('nessun evento soppresso → nessuna rivalutazione (il modulo non viene nemmeno caricato)', async () => {
+    it('nessun evento soppresso → nessun job (i moduli non vengono nemmeno caricati)', async () => {
       mockWindow('review', 0)
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
-      expect(reevaluateSuppressedEvents).not.toHaveBeenCalled()
+      expect(enqueueChangeWindowReevaluation).not.toHaveBeenCalled()
     })
   })
 })

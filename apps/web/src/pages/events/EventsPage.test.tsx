@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { EventsPage } from './EventsPage'
-import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCES, GET_EVENT_POLICY } from '@/graphql/queries'
+import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
 import type { MonitoringEvent, EventStats, StormSource } from '@/types/events'
@@ -11,7 +11,7 @@ const STATS: EventStats = { firing: 4, critical: 2, warning: 1, orphan: 1, suppr
 function eventFixture(over: Partial<MonitoringEvent> & { id: string }): MonitoringEvent {
   return {
     fingerprint: `fp-${over.id}`, externalId: null, status: 'firing', severity: 'critical',
-    title: `Alert ${over.id}`, description: null, resource: 'web-01', resourceKind: 'host', labels: null,
+    title: `Alert ${over.id}`, description: null, resource: 'web-01', resourceKind: 'hostname', labels: '{}',
     count: 3, firstSeenAt: '2026-09-09T08:00:00Z', lastSeenAt: new Date().toISOString(), resolvedAt: null,
     acknowledgedAt: null, acknowledgedBy: null,
     source: { id: 'wh1', name: 'Prometheus', connectorKind: 'alertmanager' },
@@ -28,7 +28,7 @@ function typed(ev: MonitoringEvent) {
   return {
     __typename: 'Event', ...ev,
     acknowledgedBy: ev.acknowledgedBy ? { __typename: 'User', ...ev.acknowledgedBy } : null,
-    source:   ev.source   ? { __typename: 'InboundWebhook', ...ev.source } : null,
+    source:   ev.source   ? { __typename: 'MonitoringSourceRef', ...ev.source } : null,
     ci:       ev.ci       ? { __typename: 'ConfigurationItemRef', ...ev.ci } : null,
     incident: ev.incident ? { __typename: 'Incident', ...ev.incident } : null,
     suppressedBy: ev.suppressedBy ? { __typename: 'Change', ...ev.suppressedBy } : null,
@@ -38,7 +38,7 @@ function typed(ev: MonitoringEvent) {
 const policyMock = (): GqlMock => ({
   request: { query: GET_EVENT_POLICY },
   result: { data: { eventPolicy: {
-    __typename: 'EventPolicy', openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
+    __typename: 'EventPolicy', version: 1, updatedAt: null, openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
     suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, flapStableMinutes: 15,
     stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30, severityMap: '{}',
   } } },
@@ -73,11 +73,11 @@ const fieldsMock = (): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
+// La console legge i riferimenti leggeri (monitoringSourceRefs), non la configurazione completa (admin).
 const sourcesMock = (names: string[] = ['Prometheus', 'Zabbix']): GqlMock => ({
-  request: { query: GET_MONITORING_SOURCES },
-  result: { data: { monitoringSources: names.map((name, i) => ({
-    __typename: 'InboundWebhook', id: `wh${i + 1}`, name, entityType: 'event', connectorKind: 'alertmanager', fieldMapping: '{}', defaultValues: null, valueMapping: null,
-    enabled: true, lastReceivedAt: null, receiveCount: 0, lastError: null, lastErrorAt: null, errorCount: 0, createdAt: '2026-09-01T00:00:00Z',
+  request: { query: GET_MONITORING_SOURCE_REFS },
+  result: { data: { monitoringSourceRefs: names.map((name, i) => ({
+    __typename: 'MonitoringSourceRef', id: `wh${i + 1}`, name, connectorKind: 'alertmanager', enabled: true,
   })) } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })

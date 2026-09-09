@@ -173,9 +173,12 @@ export function EventPolicyPage() {
   const invalid = Object.keys(errors).length > 0
 
   async function handleSave() {
-    if (!form || invalid) return
+    if (!form || invalid || !data) return
     try {
+      // expectedVersion = la versione letta: se un altro amministratore ha
+      // salvato nel frattempo l'API rifiuta e il toast lo dice (niente lost update).
       await update({ variables: { input: {
+        expectedVersion: data.eventPolicy.version,
         openIncidentFrom: form.openIncidentFrom, groupBy: form.groupBy,
         openDelaySeconds: form.openDelaySeconds, autoResolve: form.autoResolve,
         suppressUpstreamHops: form.suppressUpstreamHops, flapThreshold: form.flapThreshold,

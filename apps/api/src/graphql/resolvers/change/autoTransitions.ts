@@ -39,28 +39,38 @@ export async function evaluateAutoTransitions(
 }
 
 /**
- * Fine finestra di change (Event Management, ondata 3): se la change non è più
- * in un passo "di finestra" (deployment / scheduled) e ha ancora allarmi
- * silenziati, questi vengono rivalutati (tornano firing e vengono correlati,
- * salvo un'altra change in finestra). Import dinamico: il modulo di
- * correlazione trascina i servizi incident/eventi, inutili alle mutation della
- * change che non hanno eventi soppressi.
+ * Fine finestra di change (Event Management, ondata 3 + revisione): se la
+ * change non è più in un passo "di finestra" (deployment / scheduled) e ha
+ * ancora allarmi silenziati, la mutation ACCODA il job
+ * `reevaluate-change-window` (coda events-correlate, id deterministico per
+ * tenant/change/epoca del passo) e torna: la rivalutazione — lunga e
+ * ritentabile — gira nel job, non in linea nella mutation (che non deve né
+ * aspettare minuti né fallire dopo che la transizione è già persistita).
+ * L'accodamento NON è protetto da try/catch: è locale a Redis e se fallisce
+ * deve propagare come ogni altro errore. Import dinamico: il modulo del
+ * worker trascina la pipeline, inutile alle mutation senza eventi soppressi.
  */
 async function syncSuppressedEvents(
   session: Session,
   changeId: string,
   ctx: GraphQLContext,
 ): Promise<void> {
-  const row = await runQueryOne<{ step: string; suppressed: unknown }>(session, `
+  const row = await runQueryOne<{ step: string; enteredAt: string | null; suppressed: unknown }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
     OPTIONAL MATCH (e:Event {tenant_id: $tenantId, status: 'suppressed', suppressed_by_change_id: c.id})
-    RETURN wi.current_step AS step, count(e) AS suppressed
+    RETURN wi.current_step AS step, wi.updated_at AS enteredAt, count(e) AS suppressed
   `, { changeId, tenantId: ctx.tenantId })
   if (!row || toNumber(row.suppressed) === 0) return
-  const { CHANGE_WINDOW_STEPS, reevaluateSuppressedEvents } = await import('../../../services/eventCorrelation.js')
+  const { CHANGE_WINDOW_STEPS } = await import('../../../services/eventCorrelation.js')
   if (CHANGE_WINDOW_STEPS.includes(row.step)) return
-  const n = await reevaluateSuppressedEvents(ctx.tenantId, changeId, ctx.userId ?? 'system')
-  logger.info({ changeId, step: row.step, reevaluated: n }, '[change] finestra chiusa: eventi soppressi rivalutati')
+  const { enqueueChangeWindowReevaluation } = await import('../../../jobs/eventCorrelateWorker.js')
+  // Epoca del passo = ingresso nel passo corrente (WorkflowInstance.updated_at):
+  // stessa uscita dalla finestra → stesso job id (le mutation a raffica non
+  // accodano N job); un'istanza senza data leggibile usa l'istante corrente.
+  const epoch = Date.parse(row.enteredAt ?? '')
+  if (Number.isNaN(epoch)) logger.warn({ changeId, enteredAt: row.enteredAt }, '[change] WorkflowInstance.updated_at non leggibile: job di fine finestra con epoca corrente')
+  await enqueueChangeWindowReevaluation(ctx.tenantId, changeId, Number.isNaN(epoch) ? Date.now() : epoch)
+  logger.info({ changeId, step: row.step, suppressed: toNumber(row.suppressed) }, '[change] finestra chiusa: rivalutazione degli eventi soppressi accodata')
 }
 
 /**

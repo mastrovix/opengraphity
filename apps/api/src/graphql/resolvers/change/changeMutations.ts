@@ -91,6 +91,18 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
   } catch (err) {
     logger.error({ err, changeId: args.id }, '[deleteChange] cancellazione job OLA non riuscita')
   }
+  // Gli eventi di monitoraggio silenziati dalla finestra di questa change
+  // (Event.suppressed_by_change_id) vanno rivalutati subito (T-2): la change
+  // non esiste più, `Event.suppressedBy` tornerebbe null lasciando l'evento
+  // `suppressed` senza dire da chi. Stesso pattern post-commit del cleanup OLA:
+  // un errore qui è registrato ad alta severità, non annulla l'eliminazione;
+  // la passata periodica reevaluateClosedWindows è la rete di sicurezza.
+  try {
+    const { reevaluateSuppressedEvents } = await import('../../../services/eventCorrelation.js')
+    await reevaluateSuppressedEvents(ctx.tenantId, args.id, ctx.userId)
+  } catch (err) {
+    logger.error({ err, changeId: args.id }, '[deleteChange] rivalutazione degli eventi silenziati non riuscita')
+  }
   // I problem che dipendevano da questa change tornano in analisi.
   const problemIds = await withSession((session) => runQuery<{ id: string }>(session, `
     MATCH (p:Problem {tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})

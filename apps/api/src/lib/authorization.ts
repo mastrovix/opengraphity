@@ -40,6 +40,11 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   'notificationChannels', 'notificationRules',
   'autoTriggers', 'businessRules', 'slaPolicies',
   'assessmentQuestionsAdmin', 'questionCITypeAssignments',
+  // Event Management: la configurazione delle sorgenti (mappature, script di
+  // trasformazione, ultimo errore col contenuto del payload) e gli strumenti
+  // del wizard admin. La console usa `monitoringSourceRefs` (riferimenti
+  // leggeri, ruoli predefiniti) e `Event.source` è un MonitoringSourceRef.
+  'monitoringSources', 'payloadKeys', 'sampleInboundPayload',
 ])
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
@@ -75,12 +80,15 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   'assignQuestionToCIType', 'removeQuestionFromCIType', 'setQuestionCore',
   // operazioni di sistema
   'runAnomalyScanner', 'retryQueueJob', 'updateReportSchedule', 'deleteChange',
-  // Event Management (alias dei CI, policy del tenant, prova di una sorgente).
-  // previewInboundEvents, setCIHealthOverride e reevaluateEvent restano
-  // admin/operator (default delle mutation); le query events/eventStats/
-  // ciHealth/ciHealthOverview restano a ruoli predefiniti (admin, operator,
-  // viewer): la pagina Salute CI è per lo staff.
-  'createCIAlias', 'deleteCIAlias', 'updateEventPolicy', 'sendSampleEvent',
+  // Event Management (alias dei CI, policy del tenant, prova di una sorgente,
+  // anteprima del wizard: strumento admin come payloadKeys/sampleInboundPayload).
+  // acknowledgeEvent/resolveEvent/linkEventToCI/createIncidentFromEvent/
+  // setCIHealthOverride/reevaluateEvent restano admin/operator (default delle
+  // mutation); le query events/eventStats/ciHealth/ciHealthOverview/
+  // monitoringSourceRefs restano a ruoli predefiniti (admin, operator, viewer):
+  // console e pagina Salute CI sono per lo staff. Tabella completa pinnata in
+  // lib/__tests__/authorization.test.ts.
+  'createCIAlias', 'deleteCIAlias', 'updateEventPolicy', 'sendSampleEvent', 'previewInboundEvents',
 ])
 
 /**

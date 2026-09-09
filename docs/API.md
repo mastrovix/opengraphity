@@ -419,11 +419,12 @@ pnpm --filter @opengraphity/api import:kb        -- --file samples/import/kb-art
 | | |
 |---|---|
 | Auth | `Authorization: Bearer <token>` **only** — the token is shown once at creation and stored hashed; never in the query string |
-| Rate limit | 100 requests/min per webhook (`429` with `retry_after: 60`), applied after authentication |
-| Body | `application/json`, the payload exactly as the tool sends it; an optional `transformScript` runs first |
+| Rate limit | per source: `rateLimitPerMinute` on the `InboundWebhook` (1..10000, editable in *Monitoring → Sources*; **100** for webhooks created before the field — the only default), counted **after** authentication in a fixed one-minute window shared by every API replica (Redis key `og:webhook:rate:<tenant>:<hookId>:<minute>`, atomic INCR+EXPIRE). Over the limit → `429` with header **`Retry-After: <seconds to the end of the window>`** and body `{ "error": { "code": "RATE_LIMITED", "message": "Max N requests/min per webhook", "retry_after": <seconds> } }`; metric `webhook_rate_limited_total{connector}` |
+| Body | `application/json` up to **2 MB** (`WEBHOOK_BODY_LIMIT`, parser mounted on the route itself so its errors reach the router's `restErrorHandler`), the payload exactly as the tool sends it; an optional `transformScript` runs first. Malformed JSON → `400`, body over 2 MB → `413`, both as `{ "error": { "code": "BAD_REQUEST", "message" } }` (`server.ts` skips its app-level `express.json()` for this path: in Express 4 an error raised outside the router would bypass it and fall to the default HTML handler) |
+| Transform script | at most **4 isolates per replica** run at the same time; further requests wait in a FIFO queue up to **10 s**, then `503` with `Retry-After: 5` and `{ "error": { "code": "SERVICE_UNAVAILABLE", … } }` — nothing was accepted, the sender retries (no `last_error` on the source: the payload is not at fault) |
 | Event limit | at most **500 alerts per request** (Alertmanager/Grafana `alerts[]`); more → `400` |
 | Response (`event`) | **`202 Accepted`** `{ "id": "<hookId>", "entity_type": "event", "accepted": N }` as soon as the N normalised events are queued on `events-ingest`; dedup, CI matching, health and correlation happen asynchronously |
-| Errors | `400 BAD_REQUEST` with the offending field (`alerts[0].labels.severity must be one of: info, warning, critical`), recorded on the webhook as `last_error`/`error_count`; `401` missing/invalid token; `404` unknown or disabled webhook; `500` queue unavailable (Redis down) — the sender must retry, nothing was accepted |
+| Errors | `400 BAD_REQUEST` with the offending field (`alerts[0].labels.severity must be one of: info, warning, critical`), recorded on the webhook as `last_error`/`error_count`; `401` missing/invalid token; `404` unknown or disabled webhook; `413` body too large; `429` rate limited (see above); `503` transform capacity exhausted (see above); `500` queue or Redis unavailable — the sender must retry, nothing was accepted (Redis down never disables the rate limit) |
 
 ```bash
 curl -s -X POST "http://c-one.localhost/api/webhooks/inbound/$HOOK_ID" \

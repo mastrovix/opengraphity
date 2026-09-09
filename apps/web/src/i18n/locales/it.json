@@ -1840,7 +1840,8 @@
         "storm": "Tempesta · {{number}}",
         "stormUnknown": "Tempesta",
         "stormHint": "Raggruppato nell'incident di tempesta della sorgente {{source}}",
-        "storm_no_ci": "Tempesta, nessun CI"
+        "storm_no_ci": "Tempesta, nessun CI",
+        "pending": "In rivalutazione"
       },
       "auto": {
         "opened": "Incident aperto automaticamente dal monitoraggio",
@@ -1866,7 +1867,8 @@
         "flappingNoPolicy": "Allarme instabile: {{count}} passaggi nelle ultime 24 ore, dal {{since}}; nessun incident aperto né chiuso, la correlazione riprende quando resta stabile per i minuti previsti dalla policy.",
         "storm": "Tempesta dalla sorgente {{source}}: raggruppato nell'incident di tempesta {{number}} il {{when}} invece di aprire un incident per questo CI.",
         "stormNoIncident": "Tempesta dalla sorgente {{source}}: valutato il {{when}} durante la tempesta, nessun incident aperto per questo CI.",
-        "storm_no_ci": "Tempesta dalla sorgente {{source}} e nessun CI riconosciuto: nessun incident aperto; collega un CI dopo la tempesta se serve."
+        "storm_no_ci": "Tempesta dalla sorgente {{source}} e nessun CI riconosciuto: nessun incident aperto; collega un CI dopo la tempesta se serve.",
+        "pending": "In attesa di rivalutazione: la correlazione riprende al prossimo passaggio automatico, entro cinque minuti."
       },
       "short": {
         "opened": "incident aperto",
@@ -1880,7 +1882,8 @@
         "none": "nessuna correlazione",
         "flapping": "allarme instabile",
         "storm": "raggruppato nella tempesta",
-        "storm_no_ci": "tempesta, nessun CI"
+        "storm_no_ci": "tempesta, nessun CI",
+        "pending": "in rivalutazione"
       }
     },
     "storm": {
@@ -1982,6 +1985,9 @@
       "nameLabel": "Nome della sorgente",
       "namePlaceholder": "es. Prometheus produzione",
       "nameHint": "Compare nella console eventi accanto a ogni allarme proveniente da questa sorgente.",
+      "rateLimitLabel": "Richieste al minuto accettate",
+      "rateLimitHint": "Oltre questo numero la sorgente riceve 429 con Retry-After e lo strumento ritenta. Da {{min}} a {{max}}; 100 basta per la maggior parte degli strumenti, alzalo se raggruppano poco gli allarmi.",
+      "rateLimitInvalid": "Inserisci un numero intero tra {{min}} e {{max}}.",
       "knownToolHint": "{{tool}} invia gli allarmi in un formato fisso che OpenGrafo conosce già: non serve alcuna mappatura dei campi.",
       "create": "Crea sorgente",
       "creating": "Creazione…",

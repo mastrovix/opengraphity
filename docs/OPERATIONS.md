@@ -347,6 +347,32 @@ di vita `ci.status`) e vengono correlati in incident. Codice:
 Il webhook risponde **202** appena i job sono accodati: se Redis è giù risponde
 500 e lo strumento ritenta (nessun allarme accettato e perso).
 
+### Protezioni del webhook in ingresso
+
+- **Limite per sorgente** (`rate_limit_per_minute` sull'`InboundWebhook`,
+  1..10000, modificabile in *Monitoraggio → Sorgenti → Modifica* e nel passo
+  "Nome e regole" della procedura guidata; **100** per i webhook creati prima
+  del campo, l'unico default): contatore a finestra fissa di un minuto su
+  Redis, chiave `og:webhook:rate:<tenant>:<hookId>:<minuto>` (INCR+EXPIRE
+  atomici, TTL 120 s), quindi **condiviso fra le repliche** dell'API. Oltre il
+  limite: 429 con header `Retry-After` (secondi alla fine del minuto) che
+  Alertmanager/Grafana rispettano, metrica `webhook_rate_limited_total{connector}`.
+  Se cresce durante una tempesta: alzare il limite della sorgente o raggruppare
+  di più nello strumento (`group_by`/`group_interval`), non è un guasto. Redis
+  irraggiungibile → 500 (lo strumento ritenta), mai "limite disattivato".
+- **Transform script**: al massimo **4 isolate V8 per replica** insieme
+  (`TRANSFORM_SCRIPT_MAX_CONCURRENCY` in `rest/webhooks-inbound.ts`); le
+  richieste in più aspettano in coda fino a 10 s, poi 503 con `Retry-After: 5`
+  e codice `SERVICE_UNAVAILABLE`. Nessun allarme è scartato in silenzio: lo
+  strumento ritenta. Un 503 ricorrente significa script troppo lenti (5 s di
+  timeout ciascuno) o troppe sorgenti con script sulla stessa replica.
+- **Corpo**: JSON fino a 2 MB (batch Alertmanager da 500 allarmi); JSON
+  malformato → 400, oltre il limite → 413, sempre in JSON
+  `{ error: { code, message } }`.
+- **Cancellazione di un CI**: è fisica e porta via anche i suoi alias
+  (`CIAlias`); gli `Event` che lo riguardavano restano, senza CI (`orfani`),
+  e possono essere riagganciati a mano (`linkEventToCI`) o rivalutati.
+
 ### Migrazioni
 
 | id | Cosa fa |
@@ -548,8 +574,11 @@ campo (`alerts[0].labels.severity must be one of: …`, `event_value must be
 default_values.resourceKind`). Sistemare `value_mapping`/`default_values` o la
 regola nello strumento; il primo batch accettato azzera `last_error`. 401 =
 token sbagliato (solo header `Authorization: Bearer`), 404 = webhook
-disabilitato o id errato, 429 = più di 100 richieste/min per webhook (batch
-più grandi, fino a 500 allarmi), 500 = Redis giù (lo strumento ritenta).
+disabilitato o id errato, 429 = più richieste/min del limite della sorgente
+(`rate_limit_per_minute`, 100 se mai impostato; header `Retry-After` — alzare
+il limite o mandare batch più grandi, fino a 500 allarmi), 503 = tutti gli
+isolate del transform script occupati (`Retry-After: 5`, lo strumento
+ritenta), 500 = Redis giù (lo strumento ritenta).
 
 **Policy mancante o di versione precedente** (ingest che falliscono con
 `Tenant <id> has no event_policy` o `… missing flap_stable_minutes …`): eseguire

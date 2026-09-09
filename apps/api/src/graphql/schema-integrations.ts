@@ -5,8 +5,8 @@ export const integrationsSchema = `
     id: ID!
     name: String!
     entityType: String!
-    """Solo per entityType = event: generic | alertmanager | grafana | zabbix | datadog | dynatrace. Null per gli altri tipi."""
-    connectorKind: String
+    """Solo per entityType = event (enum ConnectorKind, definito nello schema Event Management). Null per gli altri tipi."""
+    connectorKind: ConnectorKind
     """JSON. Per il connettore generic: { campoNormalizzato: "percorso.puntato.nel.payload" } (title, severity, status, resource, resourceKind, externalId, description, labels, startsAt, endsAt)."""
     fieldMapping: String!
     """JSON. Valori usati quando il campo non è nel payload; per generic contiene sempre resourceKind (hostname | ip | fqdn | external_id | name)."""
@@ -15,6 +15,8 @@ export const integrationsSchema = `
     valueMapping: String
     transformScript: String
     enabled: Boolean!
+    """Richieste al minuto accettate da questa sorgente (1..10000); oltre → 429 con header Retry-After. 100 per i webhook creati prima del campo."""
+    rateLimitPerMinute: Int!
     lastReceivedAt: String
     receiveCount: Int!
     """Motivo dell'ultimo payload rifiutato (400); null dopo il primo batch accettato."""
@@ -29,34 +31,39 @@ export const integrationsSchema = `
     name: String!
     token: String!
     entityType: String!
-    connectorKind: String
+    connectorKind: ConnectorKind
     fieldMapping: String!
     defaultValues: String
     valueMapping: String
     enabled: Boolean!
+    rateLimitPerMinute: Int!
     createdAt: String!
   }
 
   input CreateInboundWebhookInput {
     name: String!
     entityType: String!
-    """Obbligatorio se entityType = event (generic | alertmanager | grafana | zabbix | datadog | dynatrace); vietato altrimenti."""
-    connectorKind: String
+    """Obbligatorio se entityType = event; vietato altrimenti."""
+    connectorKind: ConnectorKind
     fieldMapping: String!
     defaultValues: String
     valueMapping: String
     transformScript: String
+    """Richieste al minuto (1..10000). Omesso → 100, l'unico default ammesso (documentato in lib/webhookRateLimit.ts)."""
+    rateLimitPerMinute: Int
   }
 
   input UpdateInboundWebhookInput {
     name: String
     entityType: String
-    connectorKind: String
+    connectorKind: ConnectorKind
     fieldMapping: String
     defaultValues: String
     valueMapping: String
     transformScript: String
     enabled: Boolean
+    """Richieste al minuto (1..10000)."""
+    rateLimitPerMinute: Int
   }
 
   # ── Outbound Webhooks ───────────────────────────────────────────────────────

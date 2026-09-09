@@ -23,7 +23,7 @@ import { CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations
 import { colors } from '@/lib/tokens'
 import { CONNECTOR_KINDS, type ConnectorKind } from '@/types/events'
 import { GenericMapper } from './GenericMapper'
-import { EMPTY_MAPPING, buildSourceConfig, isMappingComplete, type GenericMapping } from './sourceConfig'
+import { DEFAULT_RATE_LIMIT_PER_MINUTE, EMPTY_MAPPING, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildSourceConfig, isMappingComplete, parseRateLimit, type GenericMapping } from './sourceConfig'
 import { configSnippet, sourceEndpointUrl, ZABBIX_FIELDS } from './configSnippets'
 import { TOOL_META, SecretBox, SnippetBox, hintStyle, sectionTitleStyle } from './monitoringShared'
 
@@ -38,6 +38,9 @@ export function NewSourceWizard() {
   const [stepIdx, setStepIdx] = useState(0)
   const [kind, setKind] = useState<ConnectorKind | null>(null)
   const [name, setName] = useState('')
+  // Testo, non numero: un campo vuoto o "0" mentre si digita non deve diventare un limite.
+  const [rateLimitText, setRateLimitText] = useState(String(DEFAULT_RATE_LIMIT_PER_MINUTE))
+  const rateLimit = parseRateLimit(rateLimitText)
   const [mapping, setMapping] = useState<GenericMapping>(EMPTY_MAPPING)
   const [payload, setPayload] = useState('')
   const [created, setCreated] = useState<CreatedSource | null>(null)
@@ -54,14 +57,15 @@ export function NewSourceWizard() {
   const blocker: string | null =
     step === 'tool'  && !kind ? t('monitoring.wizard.toolRequired')
     : step === 'rules' && !name.trim() ? t('monitoring.wizard.nameRequired')
+    : step === 'rules' && rateLimit === null ? t('monitoring.wizard.rateLimitInvalid', { min: RATE_LIMIT_MIN, max: RATE_LIMIT_MAX })
     : step === 'rules' && isGeneric && !isMappingComplete(mapping) ? t('monitoring.wizard.mappingIncomplete')
     : null
 
   async function handleCreate() {
-    if (!kind) return
+    if (!kind || rateLimit === null) return
     const config = isGeneric ? buildSourceConfig(mapping) : { fieldMapping: '{}' }
     try {
-      const res = await createSource({ variables: { input: { name: name.trim(), entityType: 'event', connectorKind: kind, ...config } } })
+      const res = await createSource({ variables: { input: { name: name.trim(), entityType: 'event', connectorKind: kind, rateLimitPerMinute: rateLimit, ...config } } })
       const src = res.data?.createInboundWebhook
       if (!src?.token) throw new Error('createInboundWebhook: token mancante nella risposta')
       setCreated(src)
@@ -118,6 +122,11 @@ export function NewSourceWizard() {
               <FieldLabel htmlFor="source-name">{t('monitoring.wizard.nameLabel')}</FieldLabel>
               <Input id="source-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('monitoring.wizard.namePlaceholder')} required />
               <p style={{ ...hintStyle, marginTop: 4 }}>{t('monitoring.wizard.nameHint')}</p>
+            </div>
+            <div style={{ maxWidth: 420 }}>
+              <FieldLabel htmlFor="source-rate-limit">{t('monitoring.wizard.rateLimitLabel')}</FieldLabel>
+              <Input id="source-rate-limit" type="number" inputMode="numeric" min={RATE_LIMIT_MIN} max={RATE_LIMIT_MAX} step={1} value={rateLimitText} onChange={(e) => setRateLimitText(e.target.value)} aria-invalid={rateLimit === null} required />
+              <p style={{ ...hintStyle, marginTop: 4 }}>{t('monitoring.wizard.rateLimitHint', { min: RATE_LIMIT_MIN, max: RATE_LIMIT_MAX })}</p>
             </div>
             {isGeneric
               ? <GenericMapper mapping={mapping} onChange={setMapping} payload={payload} onPayloadChange={setPayload} />

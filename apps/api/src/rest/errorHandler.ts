@@ -32,6 +32,9 @@ export function httpStatusForError(err: unknown): { status: number; code: string
     // request the current state does not allow. Kept at 400 with the
     // historical code so existing REST clients keep matching on it.
     case 'CONFLICT':       return { status: 400, code: 'TRANSITION_NOT_AVAILABLE' }
+    // Capacità esaurita (semaforo del transform script, lib/semaphore.ts): il
+    // client ritenta dopo `Retry-After` (impostato da restErrorHandler).
+    case 'SERVICE_UNAVAILABLE': return { status: 503, code: 'SERVICE_UNAVAILABLE' }
     default:               return null
   }
 }
@@ -53,6 +56,8 @@ export const restErrorHandler: ErrorRequestHandler = (err: unknown, req, res, _n
   if (mapped) {
     logger.warn({ code: mapped.code, status: mapped.status, message, method: req.method, url: req.originalUrl }, '[rest] request rejected')
     if (!res.headersSent) {
+      const retryAfter = (err as { retryAfterSeconds?: unknown }).retryAfterSeconds
+      if (typeof retryAfter === 'number' && Number.isFinite(retryAfter)) res.setHeader('Retry-After', String(Math.max(1, Math.ceil(retryAfter))))
       res.status(mapped.status).json({ error: { code: mapped.code, message } } satisfies RestErrorBody)
     }
     return

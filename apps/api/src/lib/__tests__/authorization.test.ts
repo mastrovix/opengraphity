@@ -6,8 +6,9 @@
  * - il wrapper rifiuta prima di chiamare il resolver
  */
 import { describe, it, expect, vi } from 'vitest'
-import { buildSchema, type GraphQLObjectType } from 'graphql'
+import { buildSchema, parse, type GraphQLObjectType, type ObjectTypeExtensionNode } from 'graphql'
 import { buildBaseSDL } from '../../graphql/schema-base.js'
+import { eventsSDL } from '../../graphql/schema-events.js'
 import {
   allowedRoles, authorize, applyAuthorizationPolicy,
   ADMIN_ONLY_QUERIES, ADMIN_ONLY_MUTATIONS, VIEWER_ALLOWED_MUTATIONS,
@@ -56,6 +57,64 @@ describe('policy ↔ schema', () => {
     for (const f of ['logs', 'apiKeys', 'syncSources', 'notificationChannels']) {
       expect(allowedRoles('Query', f)).toEqual(['admin'])
     }
+  })
+})
+
+/**
+ * Event Management (X-1 della revisione): tabella campo → ruoli attesi per
+ * OGNI Query e Mutation di eventsSDL(). Un campo nuovo nello SDL senza riga
+ * qui fa fallire il test (la policy va decisa, non ereditata per caso); una
+ * riga senza campo idem.
+ */
+describe('Event Management: ogni campo root di eventsSDL() ha i ruoli attesi', () => {
+  const STAFF: readonly string[] = ['admin', 'operator', 'viewer']
+  const OPERATORS: readonly string[] = ['admin', 'operator']
+  const ADMIN: readonly string[] = ['admin']
+
+  const EXPECTED_QUERIES: Record<string, readonly string[]> = {
+    events: STAFF, event: STAFF, eventStats: STAFF, ciAliases: STAFF, eventPolicy: STAFF,
+    ciHealth: STAFF, ciHealthOverview: STAFF,
+    // riferimenti leggeri per il filtro della console
+    monitoringSourceRefs: STAFF,
+    // configurazione delle sorgenti e strumenti del wizard (A-1, A-3)
+    monitoringSources: ADMIN, payloadKeys: ADMIN, sampleInboundPayload: ADMIN,
+  }
+  const EXPECTED_MUTATIONS: Record<string, readonly string[]> = {
+    acknowledgeEvent: OPERATORS, resolveEvent: OPERATORS, linkEventToCI: OPERATORS,
+    createIncidentFromEvent: OPERATORS, reevaluateEvent: OPERATORS, setCIHealthOverride: OPERATORS,
+    createCIAlias: ADMIN, deleteCIAlias: ADMIN, updateEventPolicy: ADMIN, sendSampleEvent: ADMIN,
+    previewInboundEvents: ADMIN,
+  }
+
+  const rootFieldsOf = (kind: 'Query' | 'Mutation') =>
+    parse(eventsSDL()).definitions
+      .filter((d): d is ObjectTypeExtensionNode => d.kind === 'ObjectTypeExtension' && d.name.value === kind)
+      .flatMap((d) => (d.fields ?? []).map((f) => f.name.value))
+      .sort()
+
+  it('la tabella copre esattamente i campi di eventsSDL()', () => {
+    expect(rootFieldsOf('Query')).toEqual(Object.keys(EXPECTED_QUERIES).sort())
+    expect(rootFieldsOf('Mutation')).toEqual(Object.keys(EXPECTED_MUTATIONS).sort())
+  })
+
+  it.each(Object.entries(EXPECTED_QUERIES))('Query.%s → %j', (field, roles) => {
+    expect(allowedRoles('Query', field)).toEqual(roles)
+  })
+  it.each(Object.entries(EXPECTED_MUTATIONS))('Mutation.%s → %j', (field, roles) => {
+    expect(allowedRoles('Mutation', field)).toEqual(roles)
+  })
+
+  it('viewer non esegue le mutation operative né legge la configurazione delle sorgenti; end_user niente', () => {
+    for (const f of ['acknowledgeEvent', 'resolveEvent', 'linkEventToCI', 'createIncidentFromEvent']) {
+      expect(() => authorize('Mutation', f, 'viewer')).toThrow(new RegExp(f))
+      expect(() => authorize('Mutation', f, 'end_user')).toThrow(new RegExp(f))
+    }
+    for (const f of ['monitoringSources', 'payloadKeys', 'sampleInboundPayload']) {
+      expect(() => authorize('Query', f, 'viewer')).toThrow(new RegExp(f))
+      expect(() => authorize('Query', f, 'operator')).toThrow(new RegExp(f))
+    }
+    expect(() => authorize('Query', 'monitoringSourceRefs', 'viewer')).not.toThrow()
+    expect(() => authorize('Query', 'events', 'end_user')).toThrow()
   })
 })
 

@@ -7,6 +7,7 @@ import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
 import { toSnakeCase } from '../../lib/mappers.js'
+import { ciNameKey } from '../../lib/ciNameKey.js'
 
 type Props = Record<string, unknown>
 
@@ -97,6 +98,7 @@ export function buildCreateMutation(
       const props: Record<string, unknown> = {
         id, tenant_id: ctx.tenantId,
         name:        input['name'],
+        name_key:    ciNameKey(input['name']),   // riconoscimento per nome degli allarmi (lib/ciNameKey.ts)
         status:      input['status']      ?? 'active',
         environment: input['environment'] ?? null,
         description: input['description'] ?? null,
@@ -186,6 +188,7 @@ export function buildUpdateMutation(
       for (const f of BASE_FIELDS) {
         if (input[f] !== undefined) updates[f] = input[f]
       }
+      if (input['name'] !== undefined) updates['name_key'] = ciNameKey(input['name'])
       for (const field of ciType.fields) {
         if (input[field.name] !== undefined) {
           updates[toSnakeCase(field.name)] = input[field.name]
@@ -211,9 +214,21 @@ export function buildDeleteMutation(
   validateLabel(neo4jLabel)
   return async (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
     withSession(async session => {
+      // Cancellazione FISICA (non soft-delete): il CI sparisce dal grafo.
+      // Event Management (B7), nella stessa transazione:
+      //  - gli alias (CIAlias -[:ALIAS_OF]-> ci) vanno via con il CI, altrimenti
+      //    restano nomi "pendenti" che il vincolo (tenant, kind, value) impedisce
+      //    di riassegnare a un altro CI;
+      //  - gli Event RAISED_ON il CI restano come orfani coerenti: il CI di un
+      //    Event vive SOLO nella relazione (nessuna proprietà ci_id sul nodo,
+      //    vedi eventService.ts), quindi DETACH DELETE basta — l'evento torna
+      //    "senza CI riconosciuto" e un nuovo aggancio (linkEventToCI /
+      //    reevaluateEvent) riparte da zero.
       await session.executeWrite(tx =>
         tx.run(
-          `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) DETACH DELETE n`,
+          `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId})
+           OPTIONAL MATCH (a:CIAlias {tenant_id: $tenantId})-[:ALIAS_OF]->(n)
+           DETACH DELETE a, n`,
           { id: args.id, tenantId: ctx.tenantId },
         ),
       )

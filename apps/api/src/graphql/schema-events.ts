@@ -18,14 +18,56 @@
  * `flapping`), tempeste di allarmi per sorgente (`EventStats.stormSources`,
  * esiti `storm` / `storm_no_ci`), conservazione (`retentionDays` → job
  * `purge_events`), nuove chiavi della policy.
+ *
+ * Revisione (ondata 2 — sicurezza e contratto): i vocabolari chiusi sono enum
+ * generati da lib/eventVocabularies.ts (fonte unica con i servizi: un valore
+ * nuovo nel servizio compare qui, e un valore fuori lista è rifiutato dalla
+ * validazione GraphQL prima del resolver; graphql/__tests__/schemaEvents.test.ts
+ * confronta enum ↔ liste); `Event.source` è un riferimento leggero
+ * (`MonitoringSourceRef`) e la configurazione della sorgente resta admin-only;
+ * i ruoli NON sono scritti nei commenti: la verità è lib/authorization.ts,
+ * pinnata campo per campo in lib/__tests__/authorization.test.ts.
  */
+import { sdlEnum } from '../lib/eventVocabularies.js'
+
 export function eventsSDL(): string {
   return `
   # ── Event Management ────────────────────────────────────────────────────────
 
-  enum EventStatus   { firing resolved suppressed flapping }
-  enum EventSeverity { info warning critical }
-  enum CIAliasKind   { hostname ip fqdn external_id }
+  ${sdlEnum('EventStatus')}
+  ${sdlEnum('EventSeverity')}
+  ${sdlEnum('CIAliasKind')}
+  """Stato che una sorgente può dichiarare in un payload (prima della pipeline)."""
+  ${sdlEnum('EventInputStatus')}
+  """Cosa rappresenta la stringa resource dell'evento."""
+  ${sdlEnum('ResourceKind')}
+  """Chi ha creato l'alias."""
+  ${sdlEnum('CIAliasSource')}
+  """Connettori di monitoraggio supportati. (InboundWebhook.connectorKind, nello schema delle integrazioni, è ancora String: da allineare a questo enum.)"""
+  ${sdlEnum('ConnectorKind')}
+  """Salute del CI vista dal monitoraggio (ci.health), separata dal ciclo di vita ci.status."""
+  ${sdlEnum('CIHealth')}
+  """Origine della salute: calcolata dagli allarmi o forzata a mano."""
+  ${sdlEnum('HealthSource')}
+  """Esito dell'ultima valutazione di correlazione (Event.correlation)."""
+  ${sdlEnum('EventCorrelation')}
+  """Soglia di severità oltre la quale la policy apre un incident (never = mai)."""
+  ${sdlEnum('OpenIncidentFrom')}
+  """Identità del gruppo di correlazione: il CI o l'impronta dell'allarme."""
+  ${sdlEnum('EventGroupBy')}
+
+  """
+  Riferimento leggero a una sorgente di monitoraggio: quanto serve alla console
+  per nominarla e filtrare. La configurazione completa (mappature, script di
+  trasformazione, ultimo errore) è InboundWebhook (query monitoringSources).
+  """
+  type MonitoringSourceRef {
+    id:            ID!
+    name:          String!
+    """Null per un webhook creato prima dell'Event Management (trattato come generic)."""
+    connectorKind: ConnectorKind
+    enabled:       Boolean!
+  }
 
   type Event {
     id:             ID!
@@ -37,25 +79,25 @@ export function eventsSDL(): string {
     description:    String
     """Stringa grezza con cui la sorgente identifica l'oggetto (host, ip, ...)."""
     resource:       String!
-    resourceKind:   String!
-    """Etichette della sorgente, JSON serializzato."""
-    labels:         String
+    resourceKind:   ResourceKind!
+    """Etichette della sorgente, JSON serializzato (sempre presente: l'ingest scrive almeno {}). Un evento di prova (sendSampleEvent) porta sample = "true"."""
+    labels:         String!
     count:          Int!
     firstSeenAt:    String!
     lastSeenAt:     String!
     resolvedAt:     String
     acknowledgedBy: User
     acknowledgedAt: String
-    """Sorgente (webhook in ingresso con entityType = event)."""
-    source:         InboundWebhook
+    """Sorgente (webhook in ingresso con entityType = event), come riferimento leggero."""
+    source:         MonitoringSourceRef
     """CI riconosciuto. Null = evento orfano."""
     ci:             ConfigurationItemRef
     """Incident a cui l'evento è correlato, se esiste."""
     incident:       Incident
     """Change la cui finestra ha silenziato l'evento (status = suppressed)."""
     suppressedBy:   Change
-    """Esito dell'ultima valutazione di correlazione: opened | attached | reopened | skipped_orphan | skipped_severity | delayed | suppressed | flapping | storm | storm_no_ci | none."""
-    correlation:    String!
+    """Esito dell'ultima valutazione di correlazione."""
+    correlation:    EventCorrelation!
     correlationAt:  String
     """Da quando l'evento sfarfalla (status = flapping); null altrimenti."""
     flappingSince:  String
@@ -80,15 +122,15 @@ export function eventsSDL(): string {
     type:   String!
     """Ciclo di vita del CI (active, inactive, maintenance, decommissioned). Il monitoraggio non lo tocca."""
     status: String
-    """Salute derivata dal monitoraggio: operational, degraded, down. Null finché nessun evento ha riguardato il CI."""
-    health: String
+    """Salute derivata dal monitoraggio. Null finché nessun evento ha riguardato il CI."""
+    health: CIHealth
   }
 
   type CIAlias {
     id:        ID!
     kind:      CIAliasKind!
     value:     String!
-    source:    String!
+    source:    CIAliasSource!
     createdAt: String!
     ci:        ConfigurationItemRef!
   }
@@ -118,8 +160,12 @@ export function eventsSDL(): string {
   }
 
   type EventPolicy {
-    openIncidentFrom:     String!
-    groupBy:              String!
+    """Contatore di modifica (parte da 1, +1 a ogni updateEventPolicy): da passare come expectedVersion per non sovrascrivere la modifica di un altro amministratore."""
+    version:              Int!
+    """Istante dell'ultimo updateEventPolicy; null = mai modificata dopo il bootstrap."""
+    updatedAt:            String
+    openIncidentFrom:     OpenIncidentFrom!
+    groupBy:              EventGroupBy!
     openDelaySeconds:     Int!
     autoResolve:          Boolean!
     suppressUpstreamHops: Int!
@@ -144,6 +190,7 @@ export function eventsSDL(): string {
     sourceId:  ID
     orphan:    Boolean
     search:    String
+    """Solo eventi visti da questo istante (data ISO 8601; una data parsabile in altro formato viene normalizzata a ISO prima del confronto)."""
     since:     String
     """Eventi correlati (CORRELATED_INTO) a questo incident."""
     incidentId: ID
@@ -151,9 +198,12 @@ export function eventsSDL(): string {
     suppressedByChangeId: ID
   }
 
+  """Tutti i campi opzionali: quelli assenti restano invariati. Massimi per campo e regole di coerenza (sfarfallio/tempesta) sono validati con messaggi che citano campo e limite."""
   input EventPolicyInput {
-    openIncidentFrom:     String
-    groupBy:              String
+    """Versione letta dal client: se la policy è cambiata nel frattempo il salvataggio è rifiutato (BAD_USER_INPUT), così due amministratori non si sovrascrivono."""
+    expectedVersion:      Int
+    openIncidentFrom:     OpenIncidentFrom
+    groupBy:              EventGroupBy
     openDelaySeconds:     Int
     autoResolve:          Boolean
     suppressUpstreamHops: Int
@@ -176,19 +226,19 @@ export function eventsSDL(): string {
   """Anteprima della normalizzazione: cosa diventerebbe un payload, senza ingerirlo."""
   type NormalizedEventPreview {
     externalId:   String
-    status:       String!
-    severity:     String!
+    status:       EventInputStatus!
+    severity:     EventSeverity!
     title:        String!
     description:  String
     resource:     String!
-    resourceKind: String!
+    resourceKind: ResourceKind!
     """Etichette estratte, JSON serializzato."""
     labels:       String!
   }
 
   input InboundEventPreviewInput {
-    connectorKind: String!
-    """Payload JSON così come lo manderebbe lo strumento."""
+    connectorKind: ConnectorKind!
+    """Payload JSON così come lo manderebbe lo strumento (al massimo 256 kB e 32 livelli di annidamento)."""
     payload:       String!
     """Solo per il connettore generic: mappatura campo normalizzato → percorso puntato nel payload (es. labels.instance), JSON."""
     fieldMapping:  String
@@ -206,8 +256,8 @@ export function eventsSDL(): string {
   """Salute di un CI vista dal monitoraggio, per il dettaglio CI e la topologia."""
   type CIHealthInfo {
     ciId:         ID!
-    health:       String
-    healthSource: String
+    health:       CIHealth
+    healthSource: HealthSource
     lastEventAt:  String
     firingEvents: Int!
   }
@@ -220,9 +270,8 @@ export function eventsSDL(): string {
     name:         String!
     type:         String!
     environment:  String
-    """operational | degraded | down"""
-    health:       String!
-    healthSource: String
+    health:       CIHealth!
+    healthSource: HealthSource
     """Da quando la salute attuale è in vigore (ci.health_since)."""
     healthSince:  String
     lastEventAt:  String
@@ -244,8 +293,7 @@ export function eventsSDL(): string {
   }
 
   input CIHealthFilter {
-    """Sottoinsieme di operational | degraded | down."""
-    health:      [String!]
+    health:      [CIHealth!]
     """Nome del tipo CI del metamodello (server, database, …)."""
     type:        String
     environment: String
@@ -261,31 +309,55 @@ export function eventsSDL(): string {
     eventStats: EventStats!
     ciAliases(ciId: ID!): [CIAlias!]!
     eventPolicy: EventPolicy!
-    """Payload di esempio realistico per il connettore: alimenta anteprime e prove."""
-    sampleInboundPayload(connectorKind: String!): String!
-    """Chiavi con percorso puntato di un payload JSON incollato dall'amministratore (generic)."""
+    """Payload di esempio realistico per il connettore: alimenta anteprime e prove (strumento del wizard delle sorgenti)."""
+    sampleInboundPayload(connectorKind: ConnectorKind!): String!
+    """Chiavi con percorso puntato di un payload JSON incollato dall'amministratore (generic). Payload al massimo 256 kB e 32 livelli."""
     payloadKeys(payload: String!): [PayloadKey!]!
-    """Le sorgenti di monitoraggio: webhook in ingresso con entityType = event."""
+    """Le sorgenti di monitoraggio con la configurazione completa: webhook in ingresso con entityType = event (pagina Sorgenti)."""
     monitoringSources: [InboundWebhook!]!
+    """Le sorgenti di monitoraggio come riferimenti leggeri (id, nome, connettore, attiva): per il filtro della console e il banner "nessuna sorgente"."""
+    monitoringSourceRefs: [MonitoringSourceRef!]!
     ciHealth(ciId: ID!): CIHealthInfo!
     """Pagina Salute CI: i CI con salute, dal più grave e dal più impattante, con i contatori del tenant. limit ≤ 500 (default 100)."""
     ciHealthOverview(filter: CIHealthFilter, limit: Int, offset: Int): CIHealthOverview!
   }
 
   extend type Mutation {
-    """Normalizza un payload senza ingerirlo: anteprima per il mappatore."""
+    """
+    Normalizza un payload senza ingerirlo: anteprima per il mappatore. Non scrive
+    nulla, ma è una Mutation di proposito: è un'operazione di lavoro del wizard
+    (parsing + normalizzazione sul thread principale) invocata a ogni modifica
+    del mapping, e sta con le operazioni "esegui" e non nel piano delle letture
+    cacheabili/polling delle Query. I ruoli sono quelli delle altre operazioni
+    del wizard (lib/authorization.ts).
+    """
     previewInboundEvents(input: InboundEventPreviewInput!): [NormalizedEventPreview!]!
-    """Ingerisce il payload di esempio del connettore attraverso la pipeline reale: l'evento di prova compare in console. Restituisce il numero di eventi accodati."""
+    """
+    Ingerisce il payload di esempio del connettore attraverso la pipeline REALE:
+    l'evento di prova compare in console con sample = "true" nei suoi labels.
+    Attraversa riconoscimento del CI, salute e correlazione come un allarme
+    vero: se esiste un CI con il nome della risorsa del campione può aggiornarne
+    la salute e aprire un incident. Non azzera lastError della sorgente (è la
+    diagnosi dell'ultimo payload reale rifiutato). Restituisce il numero di
+    eventi accodati.
+    """
     sendSampleEvent(sourceId: ID!): Int!
     """Forza la salute a mano (health_source = manual); null toglie la forzatura e ricalcola dal monitoraggio."""
-    setCIHealthOverride(ciId: ID!, health: String): CIHealthInfo!
+    setCIHealthOverride(ciId: ID!, health: CIHealth): CIHealthInfo!
+    """Presa in carico. Rifiutata (BAD_USER_INPUT) su un evento risolto o già preso in carico da un altro utente; ripetuta dallo stesso utente aggiorna l'istante."""
     acknowledgeEvent(id: ID!): Event!
-    """Risoluzione manuale: l'evento resta, la salute del CI viene ricalcolata."""
+    """Risoluzione manuale di un evento firing, suppressed o flapping: l'evento resta, i residui di soppressione/sfarfallio vengono azzerati, la salute del CI viene ricalcolata. Un evento già risolto → BAD_USER_INPUT (non NOT_FOUND)."""
     resolveEvent(id: ID!, note: String): Event!
-    """Collega un evento orfano a un CI; con createAlias = true la sorgente verrà riconosciuta da sola la prossima volta."""
+    """
+    Collega un evento orfano a un CI; con createAlias = true la sorgente verrà
+    riconosciuta da sola la prossima volta. Se l'alias esiste già e punta a un
+    altro CI → BAD_USER_INPUT con il CI attuale (stessa regola di createCIAlias):
+    un alias non viene mai ri-puntato in silenzio.
+    """
     linkEventToCI(eventId: ID!, ciId: ID!, createAlias: Boolean): Event!
+    """Apre a mano un incident dall'evento (solo status firing, non ancora correlato). Serializzata con la correlazione automatica sullo stesso gruppo: due richieste ravvicinate non aprono due incident."""
     createIncidentFromEvent(eventId: ID!): Incident!
-    """Rivaluta ora un evento silenziato o in attesa (admin/operator): utile a fine finestra o dopo aver collegato un CI."""
+    """Rivaluta ora un evento silenziato o in attesa: utile a fine finestra o dopo aver collegato un CI."""
     reevaluateEvent(id: ID!): Event!
     createCIAlias(ciId: ID!, kind: CIAliasKind!, value: String!): CIAlias!
     deleteCIAlias(id: ID!): Boolean!

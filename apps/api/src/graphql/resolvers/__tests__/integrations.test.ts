@@ -216,6 +216,42 @@ describe('createInboundWebhook — token in chiaro una sola volta, hash salvato'
     expect(JSON.stringify({ ...out, token: undefined })).not.toContain('HASH')
   })
 
+  it('rateLimitPerMinute omesso → persistito 100 (unico default ammesso) con toInteger; esposto dal mapper anche sui webhook senza proprietà (M7)', async () => {
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-1', name: 'Zabbix', entity_type: 'incident', field_mapping: '{}' } }] as never)
+    const out = await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Zabbix', entityType: 'incident', fieldMapping: '{}' } }, admin)
+    const { cypher, params } = lastQuery()
+    expect(cypher).toContain('rate_limit_per_minute: toInteger($rateLimitPerMinute)')
+    expect(params['rateLimitPerMinute']).toBe(100)
+    expect(out.rateLimitPerMinute).toBe(100)
+  })
+
+  it('rateLimitPerMinute esplicito → persistito e riletto; fuori 1..10000 → BAD_USER_INPUT senza scrittura', async () => {
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-1', name: 'Zabbix', entity_type: 'incident', field_mapping: '{}', rate_limit_per_minute: 2500 } }] as never)
+    const out = await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Zabbix', entityType: 'incident', fieldMapping: '{}', rateLimitPerMinute: 2500 } }, admin)
+    expect(lastQuery().params['rateLimitPerMinute']).toBe(2500)
+    expect(out.rateLimitPerMinute).toBe(2500)
+
+    vi.mocked(runQuery).mockClear()
+    for (const bad of [0, 10_001, 1.5]) {
+      await expectCode(integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Zabbix', entityType: 'incident', fieldMapping: '{}', rateLimitPerMinute: bad } }, admin), 'BAD_USER_INPUT', /rateLimitPerMinute must be an integer in 1\.\.10000/)
+    }
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('updateInboundWebhook rateLimitPerMinute → SET w.rate_limit_per_minute = toInteger(...) scoped per tenant; valore non valido → BAD_USER_INPUT prima della query', async () => {
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-1', name: 'Zabbix', entity_type: 'incident', field_mapping: '{}', rate_limit_per_minute: 500 } }] as never)
+    const out = await integrationsResolvers.Mutation.updateInboundWebhook(null, { id: 'iw-1', input: { rateLimitPerMinute: 500 } }, admin)
+    const { cypher, params } = lastQuery()
+    expect(cypher).toContain('MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) SET')
+    expect(cypher).toContain('w.rate_limit_per_minute = toInteger($rateLimitPerMinute)')
+    expect(params).toMatchObject({ id: 'iw-1', t: 'tenant-1', rateLimitPerMinute: 500 })
+    expect(out.rateLimitPerMinute).toBe(500)
+
+    vi.mocked(runQuery).mockClear()
+    await expectCode(integrationsResolvers.Mutation.updateInboundWebhook(null, { id: 'iw-1', input: { rateLimitPerMinute: 20_000 } }, admin), 'BAD_USER_INPUT', /rateLimitPerMinute/)
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
   it('regenerateWebhookToken → nuovo token, nuovo hash, scoped per tenant', async () => {
     vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-1', name: 'Zabbix', entity_type: 'incident' } }] as never)
     const out = await integrationsResolvers.Mutation.regenerateWebhookToken(null, { id: 'iw-1' }, admin)

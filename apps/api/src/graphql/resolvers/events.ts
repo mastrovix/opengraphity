@@ -12,8 +12,12 @@
  * (services/eventStorm.ts), nuove chiavi della policy.
  *
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le mutation
- * amministrative (alias, policy) sono in ADMIN_ONLY_MUTATIONS (lib/authorization.ts)
- * e hanno un requireRole locale come seconda linea.
+ * amministrative (alias, policy, prova di una sorgente, anteprima) e le query
+ * di configurazione (sorgenti complete, chiavi/campione del wizard) sono
+ * admin-only in lib/authorization.ts e hanno un requireRole locale come
+ * seconda linea. Revisione (ondata 2): guardie di stato su acknowledge/resolve/
+ * createIncidentFromEvent (serializzata col lock del gruppo di correlazione),
+ * alias mai ri-puntati in silenzio, `Event.source` come riferimento leggero.
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
@@ -27,30 +31,47 @@ import { TYPE_TO_LABEL } from '../../lib/ciLabels.js'
 import { toPascalCase } from '@opengraphity/schema-generator'
 import { mapIncident, mapUser } from '../../lib/mappers.js'
 import { validateStringLength } from '../../lib/validation.js'
+import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
+import { withRedisLock } from '../../lib/redisLock.js'
 import { applyEventPolicyInput, toEventPolicyGQL, type EventPolicyInputGQL } from '../../lib/eventPolicy.js'
+import { CI_ALIAS_KINDS, CI_HEALTHS, EVENT_SEVERITIES, EVENT_STATUSES, type CIAliasKind, type CIHealth } from '../../lib/eventVocabularies.js'
 import {
-  CI_ALIAS_KINDS, getEventPolicy, setEventPolicy, mapEventPayload, recomputeCIHealth,
+  getEventPolicy, setEventPolicy, mapEventPayload, recomputeCIHealth,
   assertConnectorKind, listPayloadKeys, sourceConfigOf, normalizeWithConfig, countTransitionsSince, transitionsOf,
-  type CIAliasKind, type NormalizedEvent,
+  type NormalizedEvent,
 } from '../../services/eventService.js'
-import { openIncidentFromEvent, runEventPipeline } from '../../services/eventCorrelation.js'
+import { GROUP_LOCK_OPTS, groupIdOf, groupLockKey, openIncidentFromEvent, runEventPipeline } from '../../services/eventCorrelation.js'
 import { listStormSources } from '../../services/eventStorm.js'
 import { enqueueEvents } from '../../jobs/eventIngestWorker.js'
 import { sampleInboundPayload as samplePayloadOf } from '../../lib/eventSamples.js'
 import { mapInbound } from './integrations.js'
 import { change as loadChange } from './change/queries.js'
-import type { CIHealth, CIHealthChangedPayload } from '@opengraphity/types'
-
-/** Valori ammessi per la forzatura manuale della salute (setCIHealthOverride). */
-const CI_HEALTHS = ['operational', 'degraded', 'down'] as const
+import type { CIHealthChangedPayload } from '@opengraphity/types'
 
 type Props = Record<string, unknown>
 
-const EVENT_STATUSES   = ['firing', 'resolved', 'suppressed', 'flapping'] as const
-const EVENT_SEVERITIES = ['info', 'warning', 'critical'] as const
+/**
+ * Massimo di un payload incollato nel wizard (payloadKeys, previewInboundEvents).
+ * Il limite dichiarato prima (1 MB) era una promessa falsa: il body parser del
+ * GraphQL (`express.json()` in server.ts, 100 kB di default) lo respingeva
+ * molto prima. 256 kB è realistico per un payload di monitoraggio e va
+ * dichiarato anche come `express.json({ limit })` dell'endpoint GraphQL.
+ */
+export const PAYLOAD_MAX_CHARS = 256 * 1024
 
-/** Stati/esiti per cui `reevaluateEvent` ha senso: il resto è un errore di input, non un no-op. */
-const REEVALUABLE_CORRELATIONS = ['delayed', 'skipped_orphan'] as const
+/** Stati da cui una risoluzione manuale ha senso: tutto ciò che non è già risolto. */
+const RESOLVABLE_STATUSES: readonly string[] = ['firing', 'suppressed', 'flapping']
+
+/**
+ * Esiti di un evento `firing` per cui `reevaluateEvent` ha sempre senso: in
+ * attesa (`delayed`, `pending`), scartato (`skipped_*`), senza esito (`none`),
+ * `suppressed` stantio (firing con esito di soppressione = correlazione
+ * fallita dopo la fine finestra), in tempesta senza incident (`storm_no_ci`).
+ * Un evento già agganciato (`opened`/`attached`/`reopened`/`storm`) è
+ * rivalutabile solo se il suo incident non è più aperto (vedi reevaluateEvent).
+ */
+const REEVALUABLE_CORRELATIONS = ['delayed', 'pending', 'none', 'skipped_orphan', 'skipped_severity', 'suppressed', 'storm_no_ci'] as const
+const CORRELATED_OUTCOMES = ['opened', 'attached', 'reopened', 'storm'] as const
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
 
@@ -79,6 +100,12 @@ export function mapEvent(props: Props, ci: CIRefRow) {
   if (typeof correlation !== 'string' || !correlation) {
     throw new Error(`Event ${toStr(props['id'])} has no correlation field — run the 20260909_1030_event_management_correlation_rules migration`)
   }
+  // `labels` è non-null nel contratto: l'ingest lo scrive sempre (almeno "{}").
+  // Assente = nodo scritto fuori dalla pipeline → errore, non una stringa inventata.
+  const labels = props['labels']
+  if (typeof labels !== 'string') {
+    throw new Error(`Event ${toStr(props['id'])} has no labels field (expected a JSON string): it was not written by the ingest pipeline`)
+  }
   return {
     id:             toStr(props['id']),
     fingerprint:    toStr(props['fingerprint']),
@@ -89,7 +116,7 @@ export function mapEvent(props: Props, ci: CIRefRow) {
     description:    toStrOrNull(props['description']),
     resource:       toStr(props['resource']),
     resourceKind:   toStr(props['resource_kind']),
-    labels:         toStrOrNull(props['labels']),
+    labels,
     count:          toNumber(props['count']),
     firstSeenAt:    toStr(props['first_seen_at']),
     lastSeenAt:     toStr(props['last_seen_at']),
@@ -104,6 +131,20 @@ export function mapEvent(props: Props, ci: CIRefRow) {
     sourceId:             toStrOrNull(props['source_id']),
     suppressedByChangeId: toStrOrNull(props['suppressed_by_change_id']),
     ci:             mapCIRef(ci),
+  }
+}
+
+/**
+ * `MonitoringSourceRef`: i soli campi di un InboundWebhook che la console può
+ * vedere (A-2). Mappature, script e ultimo errore (che può contenere il
+ * payload) restano in `InboundWebhook`, admin-only.
+ */
+export function mapSourceRef(p: Props) {
+  return {
+    id:            toStr(p['id']),
+    name:          toStr(p['name']),
+    connectorKind: toStrOrNull(p['connector_kind']),
+    enabled:       p['enabled'] === true,
   }
 }
 
@@ -181,15 +222,19 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
   if (f.suppressedByChangeId) {
     conditions.push('EXISTS { (e)-[:SUPPRESSED_BY]->(:Change {id: $suppressedByChangeId, tenant_id: $tenantId}) }'); params['suppressedByChangeId'] = f.suppressedByChangeId
   }
-  if (f.orphan === true)  conditions.push('NOT EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem) }')
-  if (f.orphan === false) conditions.push('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem) }')
+  if (f.orphan === true)  conditions.push('NOT EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
+  if (f.orphan === false) conditions.push('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
   if (f.search?.trim()) {
     conditions.push('(toLower(e.title) CONTAINS $search OR toLower(e.resource) CONTAINS $search)')
     params['search'] = f.search.trim().toLowerCase()
   }
   if (f.since) {
-    if (Number.isNaN(Date.parse(f.since))) throw new ValidationError(`since must be an ISO date, got ${JSON.stringify(f.since)}`)
-    conditions.push('e.last_seen_at >= $since'); params['since'] = f.since
+    // `last_seen_at` è ISO e il confronto in Cypher è lessicografico: una data
+    // parsabile ma non ISO ("9/9/2026") passerebbe la validazione e darebbe un
+    // risultato arbitrario senza errore (I-5). Si normalizza sempre a ISO UTC.
+    const ms = Date.parse(f.since)
+    if (Number.isNaN(ms)) throw new ValidationError(`since must be an ISO date, got ${JSON.stringify(f.since)}`)
+    conditions.push('e.last_seen_at >= $since'); params['since'] = new Date(ms).toISOString()
   }
   const where = 'WHERE ' + conditions.join(' AND ')
 
@@ -272,28 +317,43 @@ async function eventPolicy(_: unknown, __: unknown, ctx: GraphQLContext) {
 
 // ── Ondata 2: configurazione senza codice ────────────────────────────────────
 
-function sampleInboundPayload(_: unknown, args: { connectorKind: string }) {
+/** Strumento del wizard delle sorgenti: admin-only (policy centrale + seconda linea qui). */
+function sampleInboundPayload(_: unknown, args: { connectorKind: string }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
   return JSON.stringify(samplePayloadOf(args.connectorKind), null, 2)
 }
 
-/** JSON incollato dall'amministratore → chiavi con percorso puntato (non valido → ValidationError). */
-function payloadKeys(_: unknown, args: { payload: string }) {
-  validateStringLength(args.payload, 'payload', 1, 1_000_000)
+/** JSON incollato dall'amministratore → chiavi con percorso puntato (non valido, troppo grande o troppo profondo → ValidationError). */
+function payloadKeys(_: unknown, args: { payload: string }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  validateStringLength(args.payload, 'payload', 1, PAYLOAD_MAX_CHARS)
   let parsed: unknown
   try { parsed = JSON.parse(args.payload) }
   catch (e) { throw new ValidationError(`payload is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
   return listPayloadKeys(parsed)
 }
 
+const MONITORING_SOURCES_QUERY = `
+  MATCH (w:InboundWebhook {tenant_id: $tenantId, entity_type: 'event'})
+  RETURN properties(w) AS props
+  ORDER BY w.name`
+
+/** Sorgenti con la configurazione completa (pagina Sorgenti): admin-only. */
 async function monitoringSources(_: unknown, __: unknown, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
   const session = getSession()
   try {
-    const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (w:InboundWebhook {tenant_id: $tenantId, entity_type: 'event'})
-      RETURN properties(w) AS props
-      ORDER BY w.name
-    `, { tenantId: ctx.tenantId })
+    const rows = await runQuery<{ props: Props }>(session, MONITORING_SOURCES_QUERY, { tenantId: ctx.tenantId })
     return rows.map((r) => mapInbound(r.props))
+  } finally { await session.close() }
+}
+
+/** Le stesse sorgenti come riferimenti leggeri (filtro della console, banner "nessuna sorgente"): ruoli predefiniti. */
+async function monitoringSourceRefs(_: unknown, __: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const rows = await runQuery<{ props: Props }>(session, MONITORING_SOURCES_QUERY, { tenantId: ctx.tenantId })
+    return rows.map((r) => mapSourceRef(r.props))
   } finally { await session.close() }
 }
 
@@ -440,12 +500,12 @@ function toPreview(ev: NormalizedEvent) {
   }
 }
 
-/** Stessa normalizzazione del webhook, nessuna scrittura: anteprima per il mappatore. */
+/** Stessa normalizzazione del webhook, nessuna scrittura: anteprima per il mappatore (strumento del wizard: admin-only). */
 async function previewInboundEvents(_: unknown, args: { input: PreviewInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin', 'operator')
+  requireRole(ctx, 'admin')
   const { input } = args
   assertConnectorKind(input.connectorKind, 'connectorKind')
-  validateStringLength(input.payload, 'payload', 1, 1_000_000)
+  validateStringLength(input.payload, 'payload', 1, PAYLOAD_MAX_CHARS)
   let payload: unknown
   try { payload = JSON.parse(input.payload) }
   catch (e) { throw new ValidationError(`payload is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
@@ -458,38 +518,51 @@ async function previewInboundEvents(_: unknown, args: { input: PreviewInput }, c
   return normalizeWithConfig(config, payload).map(toPreview)
 }
 
+/** Etichetta che marca un evento di prova (sendSampleEvent) nei `labels`; l'ingest conserva i labels tali e quali (JSON su Event.labels). */
+export const SAMPLE_LABEL = 'sample'
+
 /**
  * Prova end-to-end di una sorgente: il payload di esempio del SUO connettore,
  * normalizzato con la SUA configurazione, accodato come farebbe il webhook.
  * L'eventuale transform_script non si applica (il campione è già nella forma
- * del connettore).
+ * del connettore). Il campione è marcato con `labels.sample = "true"` (I-6):
+ * passa dalla pipeline reale ed è indistinguibile da un allarme vero per il
+ * resto (può riconoscere un CI omonimo e aprire un incident: lo dice l'SDL).
+ * `last_error` NON viene azzerato: è la diagnosi dell'ultimo payload reale
+ * rifiutato, e una prova riuscita non la smentisce. La sessione Neo4j viene
+ * chiusa prima dell'I/O su Redis (P-6) e riaperta per le statistiche.
  */
 async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
-  const session = getSession(undefined, 'WRITE')
+  let wh: Props
+  const read = getSession()
   try {
-    const row = await runQueryOne<{ props: Props }>(session, `
+    const row = await runQueryOne<{ props: Props }>(read, `
       MATCH (w:InboundWebhook {id: $id, tenant_id: $tenantId})
       RETURN properties(w) AS props
     `, { id: args.sourceId, tenantId: ctx.tenantId })
     if (!row) throw new NotFoundError('InboundWebhook', args.sourceId)
-    const wh = row.props
-    if (wh['entity_type'] !== 'event') {
-      throw new ValidationError(`Inbound webhook ${args.sourceId} is not a monitoring source (entityType ${JSON.stringify(wh['entity_type'])})`)
-    }
-    const config = sourceConfigOf(wh)
-    const events = normalizeWithConfig(config, samplePayloadOf(config.connectorKind))
-    const receivedAt = new Date().toISOString()
-    const accepted = await enqueueEvents(ctx.tenantId, args.sourceId, events, receivedAt)
-    await runQuery(session, `
+    wh = row.props
+  } finally { await read.close() }
+  if (wh['entity_type'] !== 'event') {
+    throw new ValidationError(`Inbound webhook ${args.sourceId} is not a monitoring source (entityType ${JSON.stringify(wh['entity_type'])})`)
+  }
+  const config = sourceConfigOf(wh)
+  const events: NormalizedEvent[] = normalizeWithConfig(config, samplePayloadOf(config.connectorKind))
+    .map((ev) => ({ ...ev, labels: { ...ev.labels, [SAMPLE_LABEL]: 'true' } }))
+  const receivedAt = new Date().toISOString()
+  const accepted = await enqueueEvents(ctx.tenantId, args.sourceId, events, receivedAt)
+
+  const write = getSession(undefined, 'WRITE')
+  try {
+    await runQuery(write, `
       MATCH (w:InboundWebhook {id: $id, tenant_id: $tenantId})
       SET w.receive_count = coalesce(w.receive_count, 0) + $n,
-          w.last_received_at = $now,
-          w.last_error = null
+          w.last_received_at = $now
     `, { id: args.sourceId, tenantId: ctx.tenantId, n: accepted, now: receivedAt })
-    void audit(ctx, 'event_source.sample_sent', 'InboundWebhook', args.sourceId, { connectorKind: config.connectorKind, accepted })
-    return accepted
-  } finally { await session.close() }
+  } finally { await write.close() }
+  void audit(ctx, 'event_source.sample_sent', 'InboundWebhook', args.sourceId, { connectorKind: config.connectorKind, accepted })
+  return accepted
 }
 
 /**
@@ -545,24 +618,59 @@ async function setCIHealthOverride(_: unknown, args: { ciId: string; health?: st
 
 // ── Mutation ─────────────────────────────────────────────────────────────────
 
+/** Nome dell'utente del tenant per i messaggi d'errore (id se non trovato). */
+async function userLabel(userId: string, tenantId: string): Promise<string> {
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ name: string | null }>(session, `
+      MATCH (u:User {id: $id, tenant_id: $tenantId})
+      RETURN u.name AS name
+    `, { id: userId, tenantId })
+    return row?.name ? `${row.name} (${userId})` : userId
+  } finally { await session.close() }
+}
+
+/**
+ * Presa in carico. La guardia è nel WHERE (I-3): non un evento risolto, non
+ * uno già preso in carico da un altro utente (lo stesso utente può ripetere:
+ * aggiorna l'istante). Se il WHERE non passa, l'evento viene riletto per
+ * distinguere "non esiste" (NotFound) dal motivo del rifiuto (Validation).
+ */
 async function acknowledgeEvent(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
+  let row: (EventRow & { previous: string | null }) | null
   try {
-    const row = await runQueryOne<EventRow>(session, `
+    row = await runQueryOne<EventRow & { previous: string | null }>(session, `
       MATCH (e:Event {id: $id, tenant_id: $tenantId})
+      WHERE e.status <> 'resolved' AND (e.acknowledged_by IS NULL OR e.acknowledged_by = $userId)
+      WITH e, e.acknowledged_by AS previous
       SET e.acknowledged_by = $userId, e.acknowledged_at = $now, e.updated_at = $now
-      WITH e
-      ${CI_REF}
+      WITH e, previous
+      ${CI_REF}, previous
     `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, now })
-    if (!row) throw new NotFoundError('Event', args.id)
-    void audit(ctx, 'event.acknowledged', 'Event', args.id)
-    return mapEvent(row.props, row)
   } finally {
     await session.close()
   }
+  if (!row) {
+    const current = await loadEvent(args.id, ctx.tenantId)   // NotFound se non esiste
+    const status = toStr(current.props['status'])
+    if (status === 'resolved') throw new ValidationError(`Event ${args.id} is already resolved: nothing to acknowledge`)
+    const by = toStr(current.props['acknowledged_by'])
+    throw new ValidationError(`Event ${args.id} is already acknowledged by ${await userLabel(by, ctx.tenantId)} since ${toStr(current.props['acknowledged_at'])}`)
+  }
+  void audit(ctx, 'event.acknowledged', 'Event', args.id, { previousAcknowledgedBy: row.previous ?? null })
+  return mapEvent(row.props, row)
 }
 
+/**
+ * Risoluzione manuale. Solo da firing/suppressed/flapping (I-1): la doppia
+ * risoluzione riscriverebbe `resolved_at` (contatore resolved24h gonfiato,
+ * conservazione che slitta) e ripubblicherebbe `event.resolved`. Azzera i
+ * residui `suppressed_by_change_id` e `flapping_since` come fanno la fine
+ * finestra e l'uscita dallo sfarfallio: un evento risolto non è più "silenziato
+ * da" né "sfarfalla da". Già risolto → ValidationError, non NotFound.
+ */
 async function resolveEvent(_: unknown, args: { id: string; note?: string | null }, ctx: GraphQLContext) {
   validateStringLength(args.note ?? undefined, 'note', 0, 10000)
   const now = new Date().toISOString()
@@ -571,20 +679,35 @@ async function resolveEvent(_: unknown, args: { id: string; note?: string | null
   try {
     row = await runQueryOne<EventRow>(session, `
       MATCH (e:Event {id: $id, tenant_id: $tenantId})
+      WHERE e.status IN $resolvable
       SET e.status = 'resolved', e.resolved_at = $now, e.resolved_by = $userId,
-          e.resolution_note = $note, e.updated_at = $now
+          e.resolution_note = $note, e.suppressed_by_change_id = null, e.flapping_since = null, e.updated_at = $now
       WITH e
       ${CI_REF}
-    `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, note: args.note ?? null, now })
+    `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, note: args.note ?? null, now, resolvable: RESOLVABLE_STATUSES })
   } finally {
     await session.close()
   }
-  if (!row) throw new NotFoundError('Event', args.id)
+  if (!row) {
+    const current = await loadEvent(args.id, ctx.tenantId)   // NotFound se non esiste
+    throw new ValidationError(`Event ${args.id} is already ${toStr(current.props['status'])} (since ${toStr(current.props['resolved_at'])}): only ${RESOLVABLE_STATUSES.join('/')} events can be resolved`)
+  }
   // Salute del CI + chiusura automatica dell'incident correlato (se tutti gli allarmi sono rientrati).
   await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.id, actorId: ctx.userId, now, mode: 'reevaluate' })
   await publishEvent('event.resolved', ctx.tenantId, ctx.userId, mapEventPayload(row.props, row.ciId), now)
   void audit(ctx, 'event.resolved', 'Event', args.id, { note: args.note ?? null })
   return mapEvent(row.props, row)
+}
+
+/**
+ * Alias già esistente per (kind, value) e CI a cui punta: la regola "un alias
+ * non viene mai ri-puntato in silenzio" (A-4) è la stessa di createCIAlias.
+ */
+async function findAliasOwner(session: Parameters<typeof runQueryOne>[0], tenantId: string, kind: string, value: string) {
+  return runQueryOne<{ ciId: string; ciName: string }>(session, `
+    MATCH (a:CIAlias {tenant_id: $tenantId, kind: $kind, value: $value})-[:ALIAS_OF]->(ci:ConfigurationItem {tenant_id: $tenantId})
+    RETURN ci.id AS ciId, ci.name AS ciName
+  `, { tenantId, kind, value })
 }
 
 async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; createAlias?: boolean | null }, ctx: GraphQLContext) {
@@ -601,6 +724,21 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
     if (!current) throw new NotFoundError('Event', args.eventId)
     previousCiId = current.ciId
 
+    // L'alias viene validato PRIMA di toccare il collegamento: se è rifiutato
+    // la mutation non lascia effetti parziali. Stessa validazione del valore
+    // di createCIAlias (I-8): una risorsa vuota non diventa un alias vuoto.
+    const kind = toStr(current.props['resource_kind'])
+    const wantsAlias = Boolean(args.createAlias) && (CI_ALIAS_KINDS as readonly string[]).includes(kind)
+    let aliasVal: string | null = null
+    if (wantsAlias) {
+      aliasVal = aliasValue(kind as CIAliasKind, toStr(current.props['resource']))
+      validateStringLength(aliasVal, `alias value (event resource, ${kind})`, 1, 500)
+      const owner = await findAliasOwner(session, ctx.tenantId, kind, aliasVal)
+      if (owner && owner.ciId !== args.ciId) {
+        throw new ValidationError(`Alias ${kind}=${aliasVal} already points to CI "${owner.ciName}" (${owner.ciId}): link without createAlias, or delete that alias first`)
+      }
+    }
+
     // Un evento è sollevato su UN CI: il collegamento precedente viene sostituito.
     row = await runQueryOne<EventRow>(session, `
       MATCH (e:Event {id: $id, tenant_id: $tenantId})
@@ -614,18 +752,17 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
     `, { id: args.eventId, ciId: args.ciId, tenantId: ctx.tenantId, now })
     if (!row) throw new NotFoundError('ConfigurationItem', args.ciId)
 
-    const kind = toStr(current.props['resource_kind'])
-    if (args.createAlias && (CI_ALIAS_KINDS as readonly string[]).includes(kind)) {
-      const value = aliasValue(kind as CIAliasKind, toStr(current.props['resource']))
+    if (wantsAlias && aliasVal !== null) {
+      // L'alias, se esiste, punta già a questo CI (verificato sopra): il MERGE
+      // dell'ALIAS_OF è idempotente e ON MATCH registra chi lo ha "toccato"
+      // (un alias di discovery confermato a mano lo dichiara).
       await runQuery(session, `
         MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
         MERGE (a:CIAlias {tenant_id: $tenantId, kind: $kind, value: $value})
         ON CREATE SET a.id = $aliasId, a.source = 'manual', a.created_by = $userId, a.created_at = $now
-        WITH a, ci
-        OPTIONAL MATCH (a)-[old:ALIAS_OF]->(other:ConfigurationItem) WHERE other.id <> $ciId
-        DELETE old
+        ON MATCH SET a.updated_by = $userId, a.updated_at = $now
         MERGE (a)-[:ALIAS_OF]->(ci)
-      `, { ciId: args.ciId, tenantId: ctx.tenantId, kind, value, aliasId: uuidv4(), userId: ctx.userId, now })
+      `, { ciId: args.ciId, tenantId: ctx.tenantId, kind, value: aliasVal, aliasId: uuidv4(), userId: ctx.userId, now })
       aliasCreated = true
     }
   } finally {
@@ -640,18 +777,46 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
   return loadEvent(args.eventId, ctx.tenantId).then((r) => mapEvent(r.props, r))
 }
 
+/** Incident non terminale a cui l'evento è correlato (CORRELATED_INTO), se esiste. */
+async function openIncidentOfEvent(eventId: string, tenantId: string): Promise<{ incidentId: string; number: string | null; step: string } | null> {
+  const session = getSession()
+  try {
+    const terminalSteps = (await getWorkflowSteps(session, tenantId, 'incident')).filter((s) => s.isTerminal).map((s) => s.name)
+    return await runQueryOne<{ incidentId: string; number: string | null; step: string }>(session, `
+      MATCH (e:Event {id: $id, tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {tenant_id: $tenantId})
+      MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+      WHERE NOT wi.current_step IN $terminalSteps
+      RETURN i.id AS incidentId, i.number AS number, wi.current_step AS step
+      ORDER BY i.created_at DESC LIMIT 1
+    `, { id: eventId, tenantId, terminalSteps })
+  } finally { await session.close() }
+}
+
 /**
- * Rivalutazione esplicita (admin/operator) di un evento silenziato, in attesa
- * del ritardo o orfano: rilancia soppressione, salute e correlazione senza
- * ritardo. Su un evento firing "normale" o risolto è un errore di input.
+ * Rivalutazione esplicita (admin/operator) di un evento: rilancia soppressione,
+ * salute e correlazione senza ritardo. Accetta gli eventi silenziati e i
+ * firing senza incident (in attesa, scartati, `pending`/`none`, `suppressed`
+ * stantio, `storm_no_ci`) e i firing già correlati il cui incident è stato
+ * chiuso. Rifiuta con un messaggio esplicito (nessun no-op silenzioso) un
+ * evento risolto, in sfarfallio, o già agganciato a un incident ancora aperto.
  */
 async function reevaluateEvent(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin', 'operator')
   const current = await loadEvent(args.id, ctx.tenantId)
   const status = toStr(current.props['status'])
   const correlation = toStr(current.props['correlation'])
-  if (status !== 'suppressed' && !(REEVALUABLE_CORRELATIONS as readonly string[]).includes(correlation)) {
-    throw new ValidationError(`Event ${args.id} is ${status} with correlation "${correlation}": only suppressed, delayed or skipped_orphan events can be re-evaluated`)
+  if (status !== 'suppressed') {
+    if (status !== 'firing') {
+      throw new ValidationError(`Event ${args.id} is ${status} with correlation "${correlation}": only suppressed or firing events can be re-evaluated`)
+    }
+    if ((CORRELATED_OUTCOMES as readonly string[]).includes(correlation)) {
+      const open = await openIncidentOfEvent(args.id, ctx.tenantId)
+      if (open) {
+        throw new ValidationError(`Event ${args.id} is already correlated into open incident ${open.number ?? open.incidentId} (step "${open.step}"): nothing to re-evaluate`)
+      }
+    } else if (!(REEVALUABLE_CORRELATIONS as readonly string[]).includes(correlation)) {
+      throw new ValidationError(`Event ${args.id} is ${status} with correlation "${correlation}": not re-evaluable`)
+    }
   }
   const pipeline = await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.id, actorId: ctx.userId, mode: 'reevaluate' })
   void audit(ctx, 'event.reevaluated', 'Event', args.id, { previousStatus: status, previousCorrelation: correlation, outcome: pipeline.outcome, incidentId: pipeline.incidentId })
@@ -665,25 +830,49 @@ function aliasValue(kind: CIAliasKind, value: string): string {
   return kind === 'external_id' ? v : v.toLowerCase()
 }
 
-async function createIncidentFromEvent(_: unknown, args: { eventId: string }, ctx: GraphQLContext) {
-  const row = await loadEvent(args.eventId, ctx.tenantId)
-  const p = row.props
-
+/** Incident a cui l'evento è già correlato (CORRELATED_INTO), se esiste. */
+async function correlatedIncidentId(eventId: string, tenantId: string): Promise<string | null> {
   const s = getSession()
-  let existingIncidentId: string | null = null
   try {
     const linked = await runQueryOne<{ incidentId: string }>(s, `
       MATCH (e:Event {id: $id, tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {tenant_id: $tenantId})
       RETURN i.id AS incidentId LIMIT 1
-    `, { id: args.eventId, tenantId: ctx.tenantId })
-    existingIncidentId = linked?.incidentId ?? null
+    `, { id: eventId, tenantId })
+    return linked?.incidentId ?? null
   } finally { await s.close() }
-  if (existingIncidentId) {
-    throw new ValidationError(`Event ${args.eventId} is already correlated into incident ${existingIncidentId}`)
-  }
-  // Stessa apertura della correlazione automatica (services/eventCorrelation.ts):
-  // priorità/impatto/urgenza dalla policy, CI impattato, CORRELATED_INTO manual.
-  const incident = await openIncidentFromEvent({ tenantId: ctx.tenantId, props: p, ciId: row.ciId, actorId: ctx.userId, manual: true })
+}
+
+/**
+ * Apertura manuale (I-2). Solo un evento `firing`: da uno risolto l'incident
+ * nascerebbe morto, da uno silenziato contraddirebbe la finestra di change, da
+ * uno in sfarfallio la sospensione della correlazione. Serializzata con
+ * `withRedisLock` sulla STESSA chiave di gruppo della correlazione automatica
+ * (services/eventCorrelation.ts: `groupLockKey(tenant, group_by, groupIdOf)`):
+ * lettura, controllo "già correlato" e apertura stanno dentro il lock, così
+ * due click ravvicinati — o un click e l'apertura automatica sullo stesso
+ * gruppo — non producono due incident. Scelto il lock esistente e non un SET
+ * condizionale su `correlation`, perché il conflitto da evitare è con la
+ * pipeline, che usa già quel lock.
+ */
+async function createIncidentFromEvent(_: unknown, args: { eventId: string }, ctx: GraphQLContext) {
+  const first = await loadEvent(args.eventId, ctx.tenantId)
+  const policy = await getEventPolicy(ctx.tenantId)
+  const lockKey = groupLockKey(ctx.tenantId, policy.group_by, groupIdOf(policy, { ciId: first.ciId, props: first.props }))
+  const incident = await withRedisLock(lockKey, GROUP_LOCK_OPTS, async () => {
+    // Riletto sotto il lock: lo stato può essere cambiato nell'attesa.
+    const row = await loadEvent(args.eventId, ctx.tenantId)
+    const status = toStr(row.props['status'])
+    if (status !== 'firing') {
+      throw new ValidationError(`Event ${args.eventId} is ${status}: only a firing event can open an incident`)
+    }
+    const existingIncidentId = await correlatedIncidentId(args.eventId, ctx.tenantId)
+    if (existingIncidentId) {
+      throw new ValidationError(`Event ${args.eventId} is already correlated into incident ${existingIncidentId}`)
+    }
+    // Stessa apertura della correlazione automatica (services/eventCorrelation.ts):
+    // priorità/impatto/urgenza dalla policy, CI impattato, CORRELATED_INTO manual.
+    return openIncidentFromEvent({ tenantId: ctx.tenantId, props: row.props, ciId: row.ciId, actorId: ctx.userId, manual: true })
+  }, undefined, 'manual incident creation still pending')
   void audit(ctx, 'event.incident_created', 'Event', args.eventId, { incidentId: incident.id })
   return incident
 }
@@ -737,12 +926,17 @@ async function deleteCIAlias(_: unknown, args: { id: string }, ctx: GraphQLConte
   }
 }
 
+/**
+ * Merge dell'input sulla policy attuale con validazione (massimi, coerenza),
+ * `version` + 1 e `updated_at`; `expectedVersion` diverso dall'attuale →
+ * ValidationError (modifica concorrente di un altro amministratore).
+ */
 async function updateEventPolicy(_: unknown, args: { input: EventPolicyInputGQL }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   const current = await getEventPolicy(ctx.tenantId)
   const next = applyEventPolicyInput(current, args.input ?? {})
   await setEventPolicy(ctx.tenantId, next)
-  void audit(ctx, 'event_policy.updated', 'Tenant', ctx.tenantId, { input: args.input })
+  void audit(ctx, 'event_policy.updated', 'Tenant', ctx.tenantId, { input: args.input, version: next.version, previousVersion: current.version })
   return toEventPolicyGQL(next)
 }
 
@@ -762,6 +956,7 @@ async function eventAcknowledgedBy(parent: EventParent, _: unknown, ctx: GraphQL
   } finally { await session.close() }
 }
 
+/** `Event.source` come MonitoringSourceRef: mai la configurazione completa (A-2). */
 async function eventSource(parent: EventParent, _: unknown, ctx: GraphQLContext) {
   if (!parent.sourceId) return null
   const session = getSession()
@@ -770,7 +965,7 @@ async function eventSource(parent: EventParent, _: unknown, ctx: GraphQLContext)
       MATCH (w:InboundWebhook {id: $id, tenant_id: $tenantId})
       RETURN properties(w) AS props
     `, { id: parent.sourceId, tenantId: ctx.tenantId })
-    return row ? mapInbound(row.props) : null
+    return row ? mapSourceRef(row.props) : null
   } finally { await session.close() }
 }
 
@@ -821,7 +1016,7 @@ async function changeSuppressedEvents(parent: { id: string }, _: unknown, ctx: G
 }
 
 export const eventResolvers = {
-  Query:    { events, event, eventStats, ciAliases, eventPolicy, sampleInboundPayload, payloadKeys, monitoringSources, ciHealth, ciHealthOverview },
+  Query:    { events, event, eventStats, ciAliases, eventPolicy, sampleInboundPayload, payloadKeys, monitoringSources, monitoringSourceRefs, ciHealth, ciHealthOverview },
   Mutation: {
     acknowledgeEvent, resolveEvent, linkEventToCI, createIncidentFromEvent, reevaluateEvent, createCIAlias, deleteCIAlias, updateEventPolicy,
     previewInboundEvents, sendSampleEvent, setCIHealthOverride,

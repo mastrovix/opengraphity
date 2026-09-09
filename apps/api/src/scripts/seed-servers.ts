@@ -54,6 +54,7 @@ async function seed(TENANT_ID: string) {
       `MERGE (c:Server {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,
+         c.name_key    = toLower($name),
          c.environment = $environment,
          c.status      = $status,
          c.description = $description,

@@ -2,7 +2,8 @@
  * POST /api/webhooks/inbound/:hookId con entity_type = event: normalizzazione
  * per connettore, accodamento (202 + accepted), 400 su payload non valido /
  * connector_kind sconosciuto / oltre 500 allarmi, transform script PRIMA
- * della normalizzazione, nessun 202 se la coda fallisce.
+ * della normalizzazione, nessun 202 se la coda fallisce; il 202 non azzera
+ * `last_error` (revisione A4: lo fa il worker al primo job riuscito).
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import express from 'express'
@@ -19,6 +20,8 @@ vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() })
 vi.mock('../../services/problemService.js', () => ({ createProblem: vi.fn() }))
 vi.mock('../../jobs/eventIngestWorker.js', () => ({ enqueueEvents: vi.fn() }))
 vi.mock('@opengraphity/scripting', () => ({ runScript: vi.fn() }))
+// Rate limit su Redis (lib/webhookRateLimit.ts): qui conta sempre 1, il limite non è in gioco.
+vi.mock('../../lib/bullmq.js', () => ({ getSharedRedis: () => ({ eval: vi.fn().mockResolvedValue(1) }) }))
 
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { createIncident } = await import('../../services/incidentService.js')
@@ -53,7 +56,7 @@ const session = { close: vi.fn().mockResolvedValue(undefined) }
 
 beforeAll(async () => {
   const app = express()
-  app.use(express.json({ limit: '2mb' }))
+  // Il parser JSON (2 MB) è sulla route del router: niente express.json a livello app (B4).
   app.use('/api', webhookInboundRouter)
   await new Promise<void>((resolve) => { server = app.listen(0, resolve) })
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/webhooks/inbound`
@@ -126,7 +129,7 @@ describe('entity_type = event', () => {
     expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.last_error = \$message/)
   })
 
-  it('payload rifiutato (400) → last_error, last_error_at ed error_count+1 sul webhook, scoped per tenant; batch accettato → last_error azzerato', async () => {
+  it('payload rifiutato (400) → last_error, last_error_at ed error_count+1 sul webhook, scoped per tenant; batch accettato (202) NON tocca last_error (lo azzera il worker al primo job riuscito)', async () => {
     const res = await post({ alerts: [{ status: 'firing', labels: { alertname: 'A', severity: 'info' } }] })
     expect(res.status).toBe(400)
     const rejection = vi.mocked(runQuery).mock.calls.find(([, c]) => /last_error/.test(c as string))!
@@ -139,7 +142,9 @@ describe('entity_type = event', () => {
     const ok = await post(AM)
     expect(ok.status).toBe(202)
     const stats = vi.mocked(runQuery).mock.calls[0]!
-    expect(stats[1]).toMatch(/w\.last_error = null/)
+    expect(stats[1]).toMatch(/w\.receive_count = coalesce\(w\.receive_count, 0\) \+ \$n/)
+    // il 202 dice "accodato", non "riuscito": l'esito lo scrive jobs/eventIngestWorker.ts
+    expect(stats[1]).not.toMatch(/last_error/)
     expect(stats[1]).not.toMatch(/error_count/)
   })
 
@@ -215,6 +220,24 @@ describe('entity_type = event', () => {
   it('token errato → 401 anche per i webhook evento', async () => {
     const res = await fetch(`${base}/hook-ev`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer nope' }, body: JSON.stringify(AM) })
     expect(res.status).toBe(401)
+    expect(enqueueEvents).not.toHaveBeenCalled()
+  })
+
+  it('batch oltre i 2 MB (WEBHOOK_BODY_LIMIT) → 413 JSON dal restErrorHandler del router (B4), niente lookup né coda', async () => {
+    const res = await fetch(`${base}/hook-ev`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` },
+      body: `{"alerts":[],"pad":"${'x'.repeat(2 * 1024 * 1024 + 64)}"}`,
+    })
+    expect(res.status).toBe(413)
+    expect(await res.json()).toMatchObject({ error: { code: 'BAD_REQUEST', message: expect.stringMatching(/too large/i) } })
+    expect(runQueryOne).not.toHaveBeenCalled()
+    expect(enqueueEvents).not.toHaveBeenCalled()
+  })
+
+  it('JSON malformato → 400 JSON { error: { code: BAD_REQUEST } } (B4)', async () => {
+    const res = await fetch(`${base}/hook-ev`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` }, body: '{"alerts": [' })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ error: { code: 'BAD_REQUEST' } })
     expect(enqueueEvents).not.toHaveBeenCalled()
   })
 })

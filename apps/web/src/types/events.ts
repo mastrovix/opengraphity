@@ -33,10 +33,11 @@ export type EventCorrelation =
   | 'skipped_orphan' | 'skipped_severity' | 'delayed' | 'suppressed'
   | 'auto_resolved' | 'none'
   | 'flapping' | 'storm' | 'storm_no_ci'
+  | 'pending'
 
 export const EVENT_CORRELATIONS: readonly EventCorrelation[] = [
   'opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'suppressed', 'auto_resolved', 'none',
-  'flapping', 'storm', 'storm_no_ci',
+  'flapping', 'storm', 'storm_no_ci', 'pending',
 ]
 
 /** Stati in cui "Rivaluta ora" ha senso: la policy può decidere diversamente. */
@@ -69,15 +70,16 @@ export interface MonitoringEvent {
   description:    string | null
   resource:       string
   resourceKind:   string
-  /** Etichette della sorgente, JSON serializzato. */
-  labels:         string | null
+  /** Etichette della sorgente, JSON serializzato (sempre presente, almeno "{}"); un evento di prova ha sample = "true". */
+  labels:         string
   count:          number
   firstSeenAt:    string
   lastSeenAt:     string
   resolvedAt:     string | null
   acknowledgedAt: string | null
   acknowledgedBy: { id: string; name: string } | null
-  source:         { id: string; name: string; connectorKind: string | null } | null
+  /** Riferimento leggero alla sorgente (`MonitoringSourceRef`): la configurazione completa è `MonitoringSource`, solo admin. */
+  source:         Pick<MonitoringSourceRef, 'id' | 'name' | 'connectorKind'> | null
   ci:             ConfigurationItemRef | null
   incident:       { id: string; number: string; title: string; status: string } | null
   /** Change in finestra di rilascio che ha silenziato l'evento (correlation = suppressed). */
@@ -131,6 +133,10 @@ export interface CIAlias {
 }
 
 export interface EventPolicy {
+  /** Contatore di modifica: si rimanda come `expectedVersion` nell'input per non sovrascrivere la modifica di un altro amministratore. */
+  version:              number
+  /** Istante dell'ultimo salvataggio; null = mai modificata dopo il bootstrap. */
+  updatedAt:            string | null
   openIncidentFrom:     string
   groupBy:              string
   openDelaySeconds:     number
@@ -165,7 +171,19 @@ export const EVENT_INPUT_STATUSES: readonly EventInputStatus[] = ['firing', 'res
 
 export const CI_HEALTHS: readonly CIHealth[] = ['operational', 'degraded', 'down']
 
-/** Sorgente di monitoraggio: `InboundWebhook` con entityType = event (query `monitoringSources`). */
+/**
+ * Riferimento leggero a una sorgente (query `monitoringSourceRefs`, campo
+ * `Event.source`): quanto serve alla console per nominarla e filtrare, a
+ * tutti i ruoli dello staff. La configurazione completa è `MonitoringSource`.
+ */
+export interface MonitoringSourceRef {
+  id:            string
+  name:          string
+  connectorKind: ConnectorKind | null
+  enabled:       boolean
+}
+
+/** Sorgente di monitoraggio: `InboundWebhook` con entityType = event (query `monitoringSources`, solo admin). */
 export interface MonitoringSource {
   id:             string
   name:           string

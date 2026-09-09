@@ -56,9 +56,11 @@ export const DELETE_CI_ALIAS = gql`
   }
 `
 
+/** `input.expectedVersion` = la versione letta: un salvataggio sopra la modifica di un altro admin è rifiutato dall'API. */
 export const UPDATE_EVENT_POLICY = gql`
   mutation UpdateEventPolicy($input: EventPolicyInput!) {
     updateEventPolicy(input: $input) {
+      version updatedAt
       openIncidentFrom groupBy openDelaySeconds autoResolve
       suppressUpstreamHops flapThreshold flapWindowMinutes flapStableMinutes
       stormThresholdPerMinute stormCooldownMinutes retentionDays severityMap
@@ -93,7 +95,7 @@ export const SEND_SAMPLE_EVENT = gql`
 
 /** health = null toglie la forzatura e ricalcola dal monitoraggio. */
 export const SET_CI_HEALTH_OVERRIDE = gql`
-  mutation SetCIHealthOverride($ciId: ID!, $health: String) {
+  mutation SetCIHealthOverride($ciId: ID!, $health: CIHealth) {
     setCIHealthOverride(ciId: $ciId, health: $health) { ciId health healthSource lastEventAt firingEvents }
   }
 `

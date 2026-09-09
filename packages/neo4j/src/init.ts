@@ -305,6 +305,15 @@ const INDEXES: SchemaStatement[] = [
   { label: 'AuditEntry(tenant_id, entity_id)', cypher: 'CREATE INDEX audit_entry_tenant_entity IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.entity_id)' },
   // Event Management: la console lista per (tenant, status) ordinando per last_seen_at.
   { label: 'Event(tenant_id, status, last_seen_at)', cypher: 'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)' },
+  // Tempeste per sorgente (eventStorm.ts: MATCH (e:Event {tenant_id, source_id})) e
+  // rivalutazioni per stato di correlazione (eventCorrelation.ts: delayed/suppressed).
+  { label: 'Event(tenant_id, source_id)', cypher: 'CREATE INDEX event_tenant_source IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.source_id)' },
+  { label: 'Event(tenant_id, correlation)', cypher: 'CREATE INDEX event_tenant_correlation IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.correlation)' },
+  // Riconoscimento del CI per nome negli allarmi (eventService.ts#matchCI):
+  // `name_key` = toLower(name), scritto da chi crea/rinomina il CI
+  // (apps/api/src/lib/ciNameKey.ts) e backfillato dalla migrazione
+  // 20260909_1050_event_management_indexes.
+  { label: 'ConfigurationItem(tenant_id, name_key)', cypher: 'CREATE INDEX ci_tenant_name_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.name_key)' },
   // NOTE — vector indexes are NOT listed here on purpose: their name and
   // dimension depend on the configured embedding provider
   // (`incident_embedding_<dims>` / `kb_embedding_<dims>`, see

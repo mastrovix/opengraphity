@@ -15,6 +15,7 @@ const MAP = { critical: { impact: 'high', urgency: 'high' }, warning: { impact: 
 
 const POLICY = {
   __typename: 'EventPolicy',
+  version: 3, updatedAt: '2026-09-08T10:00:00Z',
   openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
   suppressUpstreamHops: 2, flapThreshold: 4, flapWindowMinutes: 15, flapStableMinutes: 10,
   stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30,
@@ -56,7 +57,8 @@ describe('EventPolicyPage', () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Event policy saved'))
     expect(seen).toHaveLength(1)
-    expect(seen[0]).toMatchObject({ openIncidentFrom: 'warning', retentionDays: 45, groupBy: 'ci', autoResolve: true })
+    // la versione letta viaggia come expectedVersion (modifica concorrente → rifiuto lato API)
+    expect(seen[0]).toMatchObject({ openIncidentFrom: 'warning', retentionDays: 45, groupBy: 'ci', autoResolve: true, expectedVersion: 3 })
     expect(JSON.parse(seen[0]!['severityMap'] as string)).toEqual({ ...MAP, warning: { impact: 'medium', urgency: 'high' } })
     expect(toast.error).not.toHaveBeenCalled()
   })

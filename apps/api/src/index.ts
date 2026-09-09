@@ -28,7 +28,7 @@ import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startWorkflowJobWorker, startNotificationJobWorker } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
-import { startEventCorrelateWorker } from './jobs/eventCorrelateWorker.js'
+import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/eventCorrelateWorker.js'
 import { startEmbeddingWorker } from './jobs/embeddingWorker.js'
 import { startEmailDigestWorker } from './jobs/emailDigestWorker.js'
 import { registerAllConnectors } from './discovery/registerConnectors.js'
@@ -61,10 +61,12 @@ async function main() {
   // Start notification job worker (escalation_check, digest, timer_wait)
   const notificationWorker = startNotificationJobWorker()
   const webhookDeliveryWorker = startWebhookDeliveryWorker()
-  // Event Management: allarmi dal monitoraggio (coda events-ingest) e
-  // correlazione ritardata / rivalutazione delle finestre di change (events-correlate)
+  // Event Management: allarmi dal monitoraggio (coda events-ingest),
+  // correlazione ritardata / fine finestra di change (events-correlate) e
+  // passate periodiche paginate (events-maintenance, concurrency 1)
   const eventIngestWorker = startEventIngestWorker()
   const eventCorrelateWorker = await startEventCorrelateWorker()
+  const eventMaintenanceWorker = await startEventMaintenanceWorker()
   // Embedding worker (semantic similarity). CPU-bound: when a dedicated worker
   // container runs it (EMBEDDING_WORKER_EXTERNAL=true) the API skips it so the
   // ONNX inference does not block the request event loop.
@@ -92,7 +94,7 @@ async function main() {
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Worker[] = [
     anomalyWorker, workflowWorker, syncWorker, maintenanceWorker,
-    notificationWorker, webhookDeliveryWorker, eventIngestWorker, eventCorrelateWorker,
+    notificationWorker, webhookDeliveryWorker, eventIngestWorker, eventCorrelateWorker, eventMaintenanceWorker,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),
   ]

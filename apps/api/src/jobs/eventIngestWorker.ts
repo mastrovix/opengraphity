@@ -2,23 +2,45 @@
  * BullMQ worker per l'ingest degli allarmi (coda "events-ingest").
  *
  * Il webhook in ingresso normalizza e accoda (risponde 202 subito); qui
- * `ingestEvent` fa MERGE per impronta, aggancia il CI e ricalcola lo stato.
- * Job id deterministico per (tenant, impronta, istante di ricezione): una
- * ri-consegna dello stesso batch non raddoppia il conteggio.
+ * `ingestEvent` scrive l'Event con un solo MERGE (transizione di stato in
+ * Cypher), aggancia il CI ed esegue la pipeline di correlazione.
  *
- * Nota: con concurrency 4, un `firing` e un `resolved` della stessa impronta
- * arrivati nella stessa richiesta possono essere elaborati fuori ordine; il
- * caso è raro (Alertmanager manda stati coerenti per batch) ed è accettato
- * nell'ondata 1.
+ * Idempotenza dei retry. Il job id è `ev-<tenant>-<impronta>-<receivedAtMs>`:
+ * `receivedAt` è l'istante di ricezione della richiesta, uguale per tutti i
+ * job della stessa chiamata e per ogni tentativo dello stesso job. L'Event
+ * porta `last_received_at` = receivedAt dell'ultimo payload applicato:
+ * - retry dello stesso job (stessa receivedAt) → `duplicate`: il nodo non
+ *   viene toccato (count, transitions, severità invariati) e la pipeline
+ *   viene rieseguita — è il motivo del retry;
+ * - job più vecchio dell'ultimo applicato (un `firing` ritentato dopo che il
+ *   `resolved` successivo è già passato) → `stale`: scartato, così un retry
+ *   tardivo non può riaprire un ciclo;
+ * - concorrenza (concurrency 4, stessa impronta in due job) → il MERGE
+ *   serializza sul nodo e ogni job applica la propria transizione sullo stato
+ *   già scritto dall'altro: nessun incremento perso.
+ * Una ri-consegna del mittente (nuova richiesta) ha una receivedAt nuova e
+ * conta come una ripetizione legittima dell'allarme.
+ *
+ * Errori visibili (A4): all'ultimo tentativo fallito il worker scrive
+ * `last_error`/`last_error_at`/`error_count` sulla sorgente (InboundWebhook)
+ * con il messaggio e l'impronta, così la pagina Sorgenti lo mostra; il primo
+ * job riuscito dopo un errore lo azzera. Il webhook NON azzera più
+ * `last_error` al 202: un batch accettato non dice nulla sull'esito.
  */
 import type { Worker, Job } from 'bullmq'
+import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
+import { eventsIngestFailedTotal } from '../middleware/metrics.js'
 import { fingerprintOf, ingestEvent, type NormalizedEvent } from '../services/eventService.js'
 
 const log = logger.child({ module: 'event-ingest' })
 
 export const EVENT_INGEST_QUEUE = 'events-ingest'
+
+/** Tentativi per job e ritardo base del backoff esponenziale: 10 s → 20 → 40 → 80 (≈ 2,5 minuti in tutto). */
+export const EVENT_INGEST_ATTEMPTS = 5
+export const EVENT_INGEST_BACKOFF_MS = 10_000
 
 export interface EventIngestJobData {
   tenantId:   string
@@ -35,7 +57,48 @@ export function eventJobId(tenantId: string, fingerprint: string, receivedAt: st
 
 async function processEvent(job: Job<EventIngestJobData>): Promise<void> {
   const { tenantId, sourceId, ev, receivedAt } = job.data
-  await ingestEvent({ tenantId, sourceId, ev, receivedAt })
+  const result = await ingestEvent({ tenantId, sourceId, ev, receivedAt })
+  if (result.sourceHasError) await clearSourceError(tenantId, sourceId)
+}
+
+/** Un job riuscito azzera `last_error` della sorgente (solo se presente: la scrittura la decide ingestEvent, che ha già letto il webhook). */
+async function clearSourceError(tenantId: string, sourceId: string): Promise<void> {
+  const session = getSession(undefined, 'WRITE')
+  try {
+    await runQueryOne(session, `
+      MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
+      WHERE w.last_error IS NOT NULL
+      SET w.last_error = null
+      RETURN w.id AS id
+    `, { tenantId, sourceId })
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * Ultimo tentativo fallito: il motivo va sulla sorgente, con l'impronta
+ * dell'allarme perso. Un errore in questa scrittura si logga e basta (il job
+ * è già fallito; la riga di log del worker resta la fonte primaria).
+ */
+export async function recordIngestFailure(data: EventIngestJobData, err: Error): Promise<void> {
+  const fingerprint = fingerprintOf(data.sourceId, data.ev)
+  const message = `ingest: ${err.message} (impronta ${fingerprint}, ${data.ev.status} ${data.ev.title} su ${data.ev.resource})`.slice(0, 2000)
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const row = await runQueryOne<{ connectorKind: string | null }>(session, `
+      MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
+      SET w.last_error = $message,
+          w.last_error_at = $now,
+          w.error_count = coalesce(w.error_count, 0) + 1
+      RETURN w.connector_kind AS connectorKind
+    `, { sourceId: data.sourceId, tenantId: data.tenantId, message, now: new Date().toISOString() })
+    eventsIngestFailedTotal.inc({ connector: row?.connectorKind ?? 'generic' })
+  } catch (e) {
+    log.error({ tenantId: data.tenantId, sourceId: data.sourceId, fingerprint, err: e }, 'Could not record event ingest failure on the source')
+  } finally {
+    await session.close()
+  }
 }
 
 export function startEventIngestWorker(): Worker<EventIngestJobData> {
@@ -44,7 +107,10 @@ export function startEventIngestWorker(): Worker<EventIngestJobData> {
     concurrency: 4,
     onFailed: (job, err) => {
       const d = job?.data as EventIngestJobData | undefined
-      log.error({ jobId: job?.id, tenantId: d?.tenantId, sourceId: d?.sourceId, attemptsMade: job?.attemptsMade, err: err.message }, 'Event ingest job failed')
+      const attempts = job?.opts?.attempts ?? 1
+      const exhausted = (job?.attemptsMade ?? 0) >= attempts
+      log.error({ jobId: job?.id, tenantId: d?.tenantId, sourceId: d?.sourceId, attemptsMade: job?.attemptsMade, attempts, exhausted, err: err.message }, 'Event ingest job failed')
+      if (exhausted && d) void recordIngestFailure(d, err)
     },
   })
 }
@@ -67,8 +133,8 @@ export async function enqueueEvents(
     data: { tenantId, sourceId, ev, receivedAt } satisfies EventIngestJobData,
     opts: {
       jobId: eventJobId(tenantId, fingerprintOf(sourceId, ev), receivedAt),
-      attempts: 3,
-      backoff:  { type: 'exponential', delay: 5_000 },
+      attempts: EVENT_INGEST_ATTEMPTS,
+      backoff:  { type: 'exponential', delay: EVENT_INGEST_BACKOFF_MS },
       removeOnComplete: { age: 3600, count: 10_000 },
       removeOnFail:     { age: 7 * 24 * 3600 },
     },

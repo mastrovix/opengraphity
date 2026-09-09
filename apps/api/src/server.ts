@@ -175,11 +175,18 @@ app.use(cors({
   credentials: true,
 }))
 
-// Event Management: un batch Alertmanager da 500 allarmi supera i 100 KB
-// predefiniti; il limite alto vale SOLO per il webhook in ingresso (autenticato
-// con token e rate-limited), il resto dell'API resta al default.
-app.use('/api/webhooks/inbound', express.json({ limit: '2mb' }))
-app.use(express.json())
+// Il webhook in ingresso (/api/webhooks/inbound) monta il PROPRIO parser JSON
+// sulla route (rest/webhooks-inbound.ts, WEBHOOK_BODY_LIMIT 2 MB: un batch
+// Alertmanager da 500 allarmi supera i 100 KB predefiniti) così JSON malformato
+// e corpo troppo grande finiscono nel suo restErrorHandler come risposta JSON.
+// In Express 4 un errore nato in un parser a livello app salterebbe i router
+// (arità 3) e finirebbe nel gestore predefinito in HTML: per questo il parser
+// globale NON si applica a quel percorso.
+const WEBHOOK_INBOUND_PATH = '/api/webhooks/inbound'
+// 512 kB: payloadKeys / previewInboundEvents accettano campioni fino a PAYLOAD_MAX_CHARS
+// (256 kB, resolvers/events.ts) più la query GraphQL che li avvolge.
+const jsonBody = express.json({ limit: '512kb' })
+app.use((req, res, next) => (req.path.startsWith(WEBHOOK_INBOUND_PATH) ? next() : jsonBody(req, res, next)))
 
 // ── HTTP request logging ───────────────────────────────────────────────────
 

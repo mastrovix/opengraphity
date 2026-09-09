@@ -105,6 +105,10 @@ describe('initSchema — clean database', () => {
       'CREATE CONSTRAINT ci_alias_tenant_kind_value_unique IF NOT EXISTS FOR (n:CIAlias) REQUIRE (n.tenant_id, n.kind, n.value) IS UNIQUE',
       'CREATE INDEX incident_tenant_id IF NOT EXISTS FOR (n:Incident) ON (n.tenant_id)',
       'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)',
+      // Event Management (revisione, ondata 1): tempeste per sorgente, rivalutazioni per correlazione, CI per nome
+      'CREATE INDEX event_tenant_source IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.source_id)',
+      'CREATE INDEX event_tenant_correlation IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.correlation)',
+      'CREATE INDEX ci_tenant_name_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.name_key)',
       'CREATE INDEX notification_rule_tenant_event IF NOT EXISTS FOR (n:NotificationRule) ON (n.tenant_id, n.event_type)',
     ]) {
       expect(writes).toContain(expected)

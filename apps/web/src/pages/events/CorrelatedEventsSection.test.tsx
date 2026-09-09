@@ -7,7 +7,7 @@ import type { MonitoringEvent } from '@/types/events'
 function eventFixture(over: Partial<MonitoringEvent> & { id: string }): MonitoringEvent {
   return {
     fingerprint: `fp-${over.id}`, externalId: null, status: 'firing', severity: 'critical',
-    title: `Alert ${over.id}`, description: null, resource: 'web-01', resourceKind: 'host', labels: null,
+    title: `Alert ${over.id}`, description: null, resource: 'web-01', resourceKind: 'hostname', labels: '{}',
     count: 3, firstSeenAt: '2026-09-09T08:00:00Z', lastSeenAt: new Date(Date.now() - 5 * 60_000).toISOString(), resolvedAt: null,
     acknowledgedAt: null, acknowledgedBy: null,
     source: { id: 'wh1', name: 'Prometheus', connectorKind: 'alertmanager' },

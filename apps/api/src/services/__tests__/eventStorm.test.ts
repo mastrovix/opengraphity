@@ -12,7 +12,10 @@
  * aprono UN solo incident; chi trova il lock occupato si aggancia all'incident
  * appena compare, o fallisce (ritentabile) dopo l'attesa; lock rilasciato
  * anche se la creazione fallisce; duplicato residuo agganciato al vincitore e
- * denunciato.
+ * denunciato. Revisione: l'incident di tempesta porta `storm_source_id`;
+ * `storm_last_over_at` marcato da ogni job oltre soglia ma scritto una volta
+ * per minuto; incident di tempesta chiuso → replaceClosedStormIncident (sotto
+ * lock) ne apre uno nuovo; endCooledStorms paginato.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
@@ -30,7 +33,8 @@ vi.mock('../eventService.js', () => ({ getEventPolicy: vi.fn() }))
 vi.mock('../../middleware/metrics.js', () => ({ eventStormsActive: { set: vi.fn() }, incidentsAutoOpenedTotal: { inc: vi.fn() } }))
 
 const storm = await import('../eventStorm.js')
-const { trackSourceStorm, getStormState, endCooledStorms, listStormSources, countNewEvent, currentRate, stormCounterKey, stormLockKey, stormCooledDown, stormStateOf, STORM_COUNTER_TTL_SECONDS, STORM_LOCK_TTL_SECONDS, STORM_LOCK_WAIT_MS, STORM_LOCK_POLL_MS } = storm
+const { trackSourceStorm, getStormState, endCooledStorms, listStormSources, countNewEvent, currentRate, replaceClosedStormIncident, stormCounterKey, stormLockKey, stormCooledDown, stormStateOf, minuteStartOf, STORM_COUNTER_TTL_SECONDS, STORM_LOCK_TTL_SECONDS, STORM_LOCK_WAIT_MS, STORM_LOCK_POLL_MS } = storm
+const { PAGE_SIZE } = await import('../../lib/pagedPass.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { publishEvent } = await import('../../lib/publishEvent.js')
 const { audit } = await import('../../lib/audit.js')
@@ -61,12 +65,14 @@ const Q = {
   source:     /MATCH \(w:InboundWebhook \{id: \$sourceId, tenant_id: \$tenantId\}\)\s+RETURN properties\(w\) AS props/,
   start:      /WHERE w\.storm_since IS NULL\s+SET w\.storm_since = \$now, w\.storm_last_over_at = \$now, w\.storm_incident_id = null/,
   ciNames:    /RETURN DISTINCT ci\.name AS name/,
+  markInc:    /MATCH \(i:Incident \{id: \$incidentId, tenant_id: \$tenantId\}\)\s+SET i\.storm_source_id = \$sourceId/,
   setInc:     /WHERE w\.storm_incident_id IS NULL\s+SET w\.storm_incident_id = \$incidentId/,
-  markOver:   /SET w\.storm_last_over_at = \$now\s*$/,
+  markOver:   /WHERE w\.storm_last_over_at IS NULL OR w\.storm_last_over_at < \$minuteStart\s+SET w\.storm_last_over_at = \$now\s*$/,
+  detachInc:  /WHERE w\.storm_incident_id = \$closedIncidentId\s+SET w\.storm_incident_id = null/,
   countEv:    /MATCH \(e:Event \{tenant_id: \$tenantId, source_id: \$sourceId\}\)\s+WHERE e\.first_seen_at >= \$since\s+RETURN count\(e\) AS n/,
   end:        /SET w\.storm_since = null, w\.storm_incident_id = null, w\.storm_last_over_at = null/,
   gauge:      /WHERE w\.storm_since IS NOT NULL\s+RETURN count\(w\) AS n/,
-  allStorms:  /MATCH \(w:InboundWebhook\)\s+WHERE w\.storm_since IS NOT NULL\s+RETURN properties\(w\) AS props/,
+  allStorms:  /MATCH \(w:InboundWebhook\)\s+WHERE w\.storm_since IS NOT NULL AND w\.id > \$cursor\s+RETURN properties\(w\) AS props\s+ORDER BY w\.id LIMIT toInteger\(\$limit\)/,
   list:       /MATCH \(w:InboundWebhook \{tenant_id: \$tenantId, entity_type: 'event'\}\)/,
 }
 
@@ -76,7 +82,7 @@ const STORMING = { storm_since: minutesAgo(3), storm_incident_id: 'inc-storm', s
 function baseRules(src: Record<string, unknown> | null = source()): Array<[RegExp, unknown]> {
   return [
     [Q.source, src ? { props: src } : null],
-    [Q.start, { id: 'hook-1' }], [Q.ciNames, [{ name: 'db-01' }, { name: 'web-02' }]], [Q.setInc, { id: 'hook-1' }], [Q.markOver, null],
+    [Q.start, { id: 'hook-1' }], [Q.ciNames, [{ name: 'db-01' }, { name: 'web-02' }]], [Q.markInc, (p?: Record<string, unknown>) => ({ id: p!['incidentId'] })], [Q.setInc, { id: 'hook-1' }], [Q.markOver, null], [Q.detachInc, null],
     [Q.countEv, { n: 340 }], [Q.end, null], [Q.gauge, { n: 1 }],
   ]
 }
@@ -110,6 +116,8 @@ describe('helper puri', () => {
     expect(stormStateOf(source())).toEqual({ active: false, since: null, incidentId: null, sourceName: 'Zabbix prod' })
     expect(stormStateOf(source(STORMING))).toEqual({ active: true, since: STORMING.storm_since, incidentId: 'inc-storm', sourceName: 'Zabbix prod' })
     expect(stormStateOf(source({ name: null, storm_since: 'T' })).sourceName).toBe('hook-1')
+    expect(minuteStartOf(NOW)).toBe('2026-09-09T10:00:00.000Z')
+    expect(() => minuteStartOf('ieri')).toThrow(/not an ISO date/)
   })
 })
 
@@ -174,6 +182,8 @@ describe('trackSourceStorm', () => {
     expect(desc).toContain('50 allarmi nuovi al minuto')
     expect(desc).toContain('Primi CI coinvolti: db-01, web-02')
     expect(callMatching(Q.ciNames)!.params).toMatchObject({ tenantId: 't1', sourceId: 'hook-1', since: NOW })
+    // marcatore: l'incident di tempesta non è "l'incident del CI" per il raggruppamento
+    expect(callMatching(Q.markInc)!.params).toEqual({ incidentId: 'inc-storm', tenantId: 't1', sourceId: 'hook-1' })
     expect(callMatching(Q.setInc)!.params).toMatchObject({ sourceId: 'hook-1', tenantId: 't1', incidentId: 'inc-storm' })
     expect(published()).toEqual(['event.storm_started'])
     expect(vi.mocked(publishEvent).mock.calls[0]![3]).toEqual({ id: 'inc-storm', source_id: 'hook-1', source_name: 'Zabbix prod', rate_per_minute: 50, incident_id: 'inc-storm', since: NOW, entity_type: 'incident', entity_id: 'inc-storm' })
@@ -205,18 +215,24 @@ describe('trackSourceStorm', () => {
     expect(publishEvent).not.toHaveBeenCalled()      // event.storm_started una sola volta
   })
 
-  it('tempesta in corso: oltre soglia il minuto viene marcato UNA volta (al superamento), gli eventi successivi restano agganciati; tasso sotto soglia entro il raffreddamento → resta in tempesta', async () => {
+  it('tempesta in corso: ogni job a/oltre soglia marca il minuto (rate >= soglia, non solo il 50°: un job fallito non "raffredda" la tempesta) con una SET condizionale che scrive una volta per minuto; tasso sotto soglia entro il raffreddamento → resta in tempesta', async () => {
     onCypher(baseRules(source(STORMING)))
     redis.incr.mockResolvedValue(50)
     await expect(track()).resolves.toMatchObject({ active: true, incidentId: 'inc-storm' })
-    expect(callMatching(Q.markOver)!.params).toMatchObject({ sourceId: 'hook-1', tenantId: 't1', now: NOW })
+    expect(callMatching(Q.markOver)!.params).toEqual({ sourceId: 'hook-1', tenantId: 't1', now: NOW, minuteStart: '2026-09-09T10:00:00.000Z' })
     expect(incidentService.createIncident).not.toHaveBeenCalled()
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     onCypher(baseRules(source(STORMING)))
     redis.incr.mockResolvedValue(51)
     await track()
-    expect(callMatching(Q.markOver)).toBeUndefined()
+    expect(callMatching(Q.markOver)!.params).toMatchObject({ minuteStart: minuteStartOf(NOW) })
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher(baseRules(source(STORMING)))
+    redis.incr.mockResolvedValue(49)
+    await track()
+    expect(callMatching(Q.markOver)).toBeUndefined()   // sotto soglia: nessuna marcatura
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     onCypher(baseRules(source(STORMING)))
@@ -258,45 +274,50 @@ describe('trackSourceStorm', () => {
   })
 })
 
+/** Redis in memoria: SET NX e rilascio guardato dal token, come il vero. */
+function inMemoryLock(): Map<string, string> {
+  const store = new Map<string, string>()
+  redis.set.mockImplementation((async (key: string, value: string, _ex: string, _ttl: number, nx?: string) => {
+    if (nx === 'NX' && store.has(key)) return null
+    store.set(key, value)
+    return 'OK'
+  }) as never)
+  redis.eval.mockImplementation((async (_lua: string, _n: number, key: string, owner: string) => {
+    if (store.get(key) !== owner) return 0
+    store.delete(key)
+    return 1
+  }) as never)
+  return store
+}
+
+/** Sorgente "viva": le SET condizionali la mutano davvero e chi rilegge la vede aggiornata. */
+function liveSource(over: Record<string, unknown> = {}): Record<string, unknown> {
+  const src = source(over)
+  onCypher([
+    [Q.source, () => ({ props: { ...src } })],
+    [Q.start, () => {
+      if (src['storm_since'] != null) return null
+      Object.assign(src, { storm_since: NOW, storm_last_over_at: NOW, storm_incident_id: null })
+      return { id: 'hook-1' }
+    }],
+    [Q.ciNames, [{ name: 'db-01' }]],
+    [Q.markInc, (p?: Record<string, unknown>) => ({ id: p!['incidentId'] })],
+    [Q.setInc, (p?: Record<string, unknown>) => {
+      if (src['storm_incident_id'] != null) return null
+      src['storm_incident_id'] = p!['incidentId']
+      return { id: 'hook-1' }
+    }],
+    [Q.detachInc, (p?: Record<string, unknown>) => {
+      if (src['storm_incident_id'] === p!['closedIncidentId']) src['storm_incident_id'] = null
+      return null
+    }],
+    [Q.markOver, null], [Q.gauge, { n: 1 }],
+  ])
+  return src
+}
+
 describe('atomicità: lock Redis per (tenant, sorgente) + SET condizionali', () => {
   const lockKey = stormLockKey('t1', 'hook-1')
-
-  /** Redis in memoria: SET NX e rilascio guardato dal token, come il vero. */
-  function inMemoryLock(): Map<string, string> {
-    const store = new Map<string, string>()
-    redis.set.mockImplementation((async (key: string, value: string, _ex: string, _ttl: number, nx?: string) => {
-      if (nx === 'NX' && store.has(key)) return null
-      store.set(key, value)
-      return 'OK'
-    }) as never)
-    redis.eval.mockImplementation((async (_lua: string, _n: number, key: string, owner: string) => {
-      if (store.get(key) !== owner) return 0
-      store.delete(key)
-      return 1
-    }) as never)
-    return store
-  }
-
-  /** Sorgente "viva": le SET condizionali la mutano davvero e chi rilegge la vede aggiornata. */
-  function liveSource(over: Record<string, unknown> = {}): Record<string, unknown> {
-    const src = source(over)
-    onCypher([
-      [Q.source, () => ({ props: { ...src } })],
-      [Q.start, () => {
-        if (src['storm_since'] != null) return null
-        Object.assign(src, { storm_since: NOW, storm_last_over_at: NOW, storm_incident_id: null })
-        return { id: 'hook-1' }
-      }],
-      [Q.ciNames, [{ name: 'db-01' }]],
-      [Q.setInc, (p?: Record<string, unknown>) => {
-        if (src['storm_incident_id'] != null) return null
-        src['storm_incident_id'] = p!['incidentId']
-        return { id: 'hook-1' }
-      }],
-      [Q.markOver, null], [Q.gauge, { n: 1 }],
-    ])
-    return src
-  }
 
   it('due job concorrenti a soglia sulla stessa sorgente → UN solo createIncident, UNA sola tempesta avviata (storm_started una volta), entrambi agganciati allo stesso incident; ogni lock preso viene rilasciato', async () => {
     const store = inMemoryLock()
@@ -332,7 +353,7 @@ describe('atomicità: lock Redis per (tenant, sorgente) + SET condizionali', () 
     redis.set.mockResolvedValue(null)
     onCypher(baseRules())
     redis.incr.mockResolvedValue(50)
-    const pending = expect(track()).rejects.toThrow(/Storm lock for source hook-1 \(tenant t1\) still held by another job after 3000 ms/)
+    const pending = expect(track()).rejects.toThrow(/Lock og:events:storm-open:t1:hook-1 still held by another job after 3000 ms and no storm incident appeared on source hook-1 \(tenant t1\) — will retry/)
     await vi.advanceTimersByTimeAsync(STORM_LOCK_WAIT_MS + STORM_LOCK_POLL_MS)
     await pending
     expect(STORM_LOCK_WAIT_MS).toBe(3_000)
@@ -377,7 +398,50 @@ describe('atomicità: lock Redis per (tenant, sorgente) + SET condizionali', () 
   })
 })
 
-describe('endCooledStorms (job periodico)', () => {
+describe('replaceClosedStormIncident (incident di tempesta chiuso mentre la sorgente è ancora in tempesta)', () => {
+  it('sotto lock: azzera storm_incident_id (SET condizionale sull\'incident chiuso), apre un NUOVO incident di tempesta marcato, commento sull\'incident chiuso, audit; chi arriva dopo trova il nuovo incident senza aprirne un altro', async () => {
+    const store = inMemoryLock()
+    const src = liveSource({ ...STORMING, storm_incident_id: 'inc-closed' })
+    redis.mget.mockResolvedValue(['70', '20'])
+    vi.mocked(incidentService.createIncident).mockResolvedValue({ id: 'inc-storm-2', number: 'INC00000043' } as never)
+    const [a, b] = await Promise.all([
+      replaceClosedStormIncident('t1', 'hook-1', 'inc-closed', 'ci-1', 'monitoring', NOW),
+      replaceClosedStormIncident('t1', 'hook-1', 'inc-closed', 'ci-2', 'monitoring', NOW),
+    ])
+    expect(a).toEqual({ active: true, since: STORMING.storm_since, incidentId: 'inc-storm-2', sourceName: 'Zabbix prod' })
+    expect(b).toEqual(a)
+    expect(src['storm_incident_id']).toBe('inc-storm-2')
+    expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
+    expect(incidentService.createIncident).toHaveBeenCalledWith(expect.objectContaining({ title: 'Tempesta di allarmi da Zabbix prod: 70 allarmi al minuto', severity: 'critical' }), { tenantId: 't1', userId: 'monitoring' })
+    expect(callMatching(Q.detachInc)!.params).toEqual({ sourceId: 'hook-1', tenantId: 't1', closedIncidentId: 'inc-closed', now: NOW })
+    expect(callMatching(Q.markInc)!.params).toMatchObject({ incidentId: 'inc-storm-2', sourceId: 'hook-1' })
+    expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-closed', { tenantId: 't1', userId: 'monitoring' }, expect.stringMatching(/continua dopo la chiusura.*inc-storm-2/))
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1' }), 'event_storm.incident_closed_during_storm', 'InboundWebhook', 'hook-1', expect.objectContaining({ closedIncidentId: 'inc-closed' }))
+    expect(publishEvent).not.toHaveBeenCalled()   // nessun secondo storm_started
+    expect(store.size).toBe(0)
+  })
+
+  it('sorgente già passata a un altro incident → si aggancia a quello senza toccare nulla; tempesta finita → stato "nessuna tempesta"; senza CI → resta senza incident (storm_no_ci)', async () => {
+    inMemoryLock()
+    liveSource({ ...STORMING, storm_incident_id: 'inc-storm-2' })
+    await expect(replaceClosedStormIncident('t1', 'hook-1', 'inc-closed', 'ci-1', 'monitoring', NOW)).resolves.toMatchObject({ active: true, incidentId: 'inc-storm-2' })
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+    expect(callMatching(Q.detachInc)).toBeUndefined()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); redis.set.mockResolvedValue('OK'); redis.eval.mockResolvedValue(1)
+    liveSource()
+    await expect(replaceClosedStormIncident('t1', 'hook-1', 'inc-closed', 'ci-1', 'monitoring', NOW)).resolves.toEqual({ active: false, since: null, incidentId: null, sourceName: 'Zabbix prod' })
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); redis.set.mockResolvedValue('OK'); redis.eval.mockResolvedValue(1)
+    const src = liveSource({ ...STORMING, storm_incident_id: 'inc-closed' })
+    await expect(replaceClosedStormIncident('t1', 'hook-1', 'inc-closed', null, 'monitoring', NOW)).resolves.toMatchObject({ active: true, incidentId: null })
+    expect(src['storm_incident_id']).toBeNull()
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+  })
+})
+
+describe('endCooledStorms (job periodico, paginato)', () => {
   it('chiude solo le tempeste raffreddate (policy del tenant), riallinea il gauge; un errore su una sorgente non ferma le altre ma fa fallire il job', async () => {
     onCypher([
       ...baseRules(),
@@ -387,7 +451,8 @@ describe('endCooledStorms (job periodico)', () => {
       ]],
       [Q.gauge, { n: 1 }],
     ])
-    await expect(endCooledStorms(NOW)).resolves.toEqual({ active: 1, ended: 1, failed: 0 })
+    await expect(endCooledStorms(NOW)).resolves.toEqual({ evaluated: 2, active: 1, ended: 1, failed: 0, truncated: false })
+    expect(callMatching(Q.allStorms)!.params).toEqual({ cursor: '', limit: PAGE_SIZE })
     expect(callMatching(Q.end)!.params).toMatchObject({ sourceId: 'hook-1' })
     expect(published()).toEqual(['event.storm_ended'])
     expect(metrics.eventStormsActive.set).toHaveBeenLastCalledWith({}, 1)
@@ -398,7 +463,19 @@ describe('endCooledStorms (job periodico)', () => {
     await expect(endCooledStorms(NOW)).rejects.toThrow(/1\/1 storming sources failed the cooldown check/)
 
     onCypher([[Q.allStorms, []], [Q.gauge, { n: 0 }]])
-    await expect(endCooledStorms(NOW)).resolves.toEqual({ active: 0, ended: 0, failed: 0 })
+    await expect(endCooledStorms(NOW)).resolves.toEqual({ evaluated: 0, active: 0, ended: 0, failed: 0, truncated: false })
+  })
+
+  it('più di una pagina di sorgenti in tempesta → cursore sull\'id, una policy per tenant', async () => {
+    const all = Array.from({ length: PAGE_SIZE + 5 }, (_, i) => source({ id: `hook-${String(i).padStart(4, '0')}`, ...STORMING }))
+    onCypher([
+      ...baseRules(),
+      [Q.allStorms, (p?: Record<string, unknown>) => all.filter((s) => (s['id'] as string) > (p!['cursor'] as string)).slice(0, p!['limit'] as number).map((s) => ({ props: s }))],
+      [Q.gauge, { n: PAGE_SIZE + 5 }],
+    ])
+    await expect(endCooledStorms(NOW)).resolves.toMatchObject({ evaluated: PAGE_SIZE + 5, ended: 0, truncated: false })
+    expect(calls().filter((c) => Q.allStorms.test(c.cypher)).map((c) => c.params['cursor'])).toEqual(['', 'hook-0199'])
+    expect(getEventPolicy).toHaveBeenCalledTimes(1)
   })
 })
 

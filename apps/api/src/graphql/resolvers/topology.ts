@@ -125,7 +125,7 @@ export const topologyResolvers = {
               coalesce(ci.status, 'active') AS status,
               ci.health      AS health,
               ci.environment AS environment,
-              ci.owner_group AS ownerGroup,
+              head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name]) AS ownerGroup,
               incidentCount,
               changeCount
             ORDER BY ci.name
@@ -192,7 +192,7 @@ export const topologyResolvers = {
             coalesce(ci.status, 'active') AS status,
             ci.health      AS health,
             ci.environment AS environment,
-            ci.owner_group AS ownerGroup,
+            head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name]) AS ownerGroup,
             incidentCount,
             changeCount
           ORDER BY ci.name

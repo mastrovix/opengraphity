@@ -11,6 +11,7 @@ import { applyMappingRules, inferCIType, normalizeProperties } from '@opengraphi
 import { logger } from '../lib/logger.js'
 import { FIELD_NAME_RE } from '../lib/cypherIdentifiers.js'
 import { ValidationError } from '../lib/errors.js'
+import { ciNameKey } from '../lib/ciNameKey.js'
 import { toNum } from './connectors/normalize.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -230,6 +231,7 @@ async function createCI(
     id,
     tenant_id:  tenantId,
     name:       ci.name,
+    name_key:   ciNameKey(ci.name),   // riconoscimento per nome degli allarmi (lib/ciNameKey.ts)
     type:       ciType,
     created_at: now,
     updated_at: now,
@@ -293,6 +295,7 @@ async function updateCI(
   }
 
   updates['name']                 = ci.name
+  updates['name_key']             = ciNameKey(ci.name)
   updates['discovery_last_seen']  = now
   updates['discovery_status']     = 'active'
   updates['updated_at']           = now

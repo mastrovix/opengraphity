@@ -1840,7 +1840,8 @@
         "storm": "Storm · {{number}}",
         "stormUnknown": "Storm",
         "stormHint": "Grouped into the storm incident of source {{source}}",
-        "storm_no_ci": "Storm, no CI"
+        "storm_no_ci": "Storm, no CI",
+        "pending": "Re-evaluating"
       },
       "auto": {
         "opened": "Incident opened automatically by monitoring",
@@ -1866,7 +1867,8 @@
         "flappingNoPolicy": "Flapping alarm: {{count}} transitions in the last 24 hours, since {{since}}; no incident opened or closed, correlation resumes once it stays stable for the minutes set by the policy.",
         "storm": "Storm from source {{source}}: grouped into the storm incident {{number}} on {{when}} instead of opening an incident for this CI.",
         "stormNoIncident": "Storm from source {{source}}: evaluated on {{when}} during the storm, no incident opened for this CI.",
-        "storm_no_ci": "Storm from source {{source}} and no CI recognised: no incident opened; link a CI after the storm if needed."
+        "storm_no_ci": "Storm from source {{source}} and no CI recognised: no incident opened; link a CI after the storm if needed.",
+        "pending": "Waiting for re-evaluation: correlation resumes on the next automatic pass, within five minutes."
       },
       "short": {
         "opened": "incident opened",
@@ -1880,7 +1882,8 @@
         "none": "no correlation",
         "flapping": "flapping alarm",
         "storm": "grouped into the storm",
-        "storm_no_ci": "storm, no CI"
+        "storm_no_ci": "storm, no CI",
+        "pending": "re-evaluating"
       }
     },
     "storm": {
@@ -1982,6 +1985,9 @@
       "nameLabel": "Source name",
       "namePlaceholder": "e.g. Prometheus production",
       "nameHint": "Shown in the event console next to every alarm coming from this source.",
+      "rateLimitLabel": "Requests per minute accepted",
+      "rateLimitHint": "Above this number the source gets 429 with Retry-After and the tool retries. From {{min}} to {{max}}; 100 is enough for most tools, raise it if they group alarms poorly.",
+      "rateLimitInvalid": "Enter a whole number between {{min}} and {{max}}.",
       "knownToolHint": "{{tool}} sends alarms in a fixed format that OpenGrafo already understands: no field mapping is needed.",
       "create": "Create source",
       "creating": "Creating…",

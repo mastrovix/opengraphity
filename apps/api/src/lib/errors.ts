@@ -20,3 +20,17 @@ export class ForbiddenError extends GraphQLError {
     super(message, { extensions: { code: 'FORBIDDEN' } })
   }
 }
+
+/**
+ * Risorsa temporaneamente satura (es. tutti gli isolate del transform script
+ * occupati): il chiamante deve ritentare dopo `retryAfterSeconds`. Su REST
+ * diventa 503 + header `Retry-After`; mai un 500 (non è un guasto) né un 400
+ * (il payload non c'entra).
+ */
+export class ServiceUnavailableError extends GraphQLError {
+  readonly retryAfterSeconds: number
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message, { extensions: { code: 'SERVICE_UNAVAILABLE', retryAfterSeconds } })
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}

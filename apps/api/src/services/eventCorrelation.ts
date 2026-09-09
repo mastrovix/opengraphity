@@ -50,6 +50,29 @@
  *                       apre/aggancia incident per CI; un evento resolved in
  *                       tempesta aggiorna solo la salute.
  *
+ * Atomicità del raggruppamento (revisione, 1.1): "trova l'incident del gruppo
+ * → apri / aggancia / riapri" gira sotto un lock Redis per (tenant, gruppo)
+ * — `og:events:group:<tenant>:ci:<ciId>` o `…:fp:<impronta>` (lib/redisLock.ts)
+ * — perché il worker `events-ingest` ha concurrency 4 e due allarmi diversi
+ * sullo stesso CI arrivano nello stesso batch: senza lock leggevano entrambi
+ * "nessun incident" e ne aprivano due. Chi trova il lock occupato attende
+ * (fino a GROUP_LOCK_WAIT_MS) che l'incident compaia (e vi si aggancia) o che
+ * il lock si liberi e rilegge; oltre l'attesa → errore ritentabile. Anche la
+ * chiusura automatica di un rientro gira sotto il lock del suo gruppo
+ * (`groupIdOf`): due rientri paralleli o un rientro e un nuovo allarme sullo
+ * stesso CI non si intrecciano più sull'incident.
+ *
+ * Stati ritentabili (1.2): fine soppressione e stabilizzazione NON scrivono
+ * uno stato "libero" prima di aver correlato: scrivono `correlation =
+ * 'pending'` con `correlation_due_at = now` e correlano nella stessa unità;
+ * se la correlazione fallisce l'evento resta firing/pending e la passata
+ * periodica `reevaluatePendingEvents` lo riprende (firing con correlation
+ * pending/none e scadenza passata).
+ *
+ * Dieta di rumore (3.3): una ripetizione di un evento GIÀ agganciato allo
+ * stesso incident non produce `event.correlated`, audit né commento; la
+ * chiusura automatica lascia UN commento con il cammino percorso.
+ *
  * Ogni scrittura sull'incident passa da incidentService / workflowEngine (mai
  * Cypher diretto sull'incident) con `userId: 'monitoring'`. Niente fallback
  * silenziosi: policy mancante, workflow senza passo "resolved", transizione di
@@ -65,10 +88,13 @@ import { audit } from '../lib/audit.js'
 import { logger } from '../lib/logger.js'
 import { getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { anyDeployWindowContains } from '../lib/deployWindows.js'
+import { withRedisLock, type RedisLockOptions } from '../lib/redisLock.js'
+import { runPagedPass, type PagedPassResult } from '../lib/pagedPass.js'
 import type { EventPolicy } from '../lib/eventPolicy.js'
+import type { CorrelationOutcome } from '../lib/eventVocabularies.js'
 import { eventsFlappingTotal, eventsSuppressedTotal, incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal } from '../middleware/metrics.js'
 import { EVENT_SEVERITIES, countTransitionsSince, getEventPolicy, mapEventPayload, recomputeCIHealth, transitionsOf, type EventSeverity } from './eventService.js'
-import { getStormState, trackSourceStorm, type StormState } from './eventStorm.js'
+import { getStormState, trackSourceStorm, replaceClosedStormIncident, stormLockKey, STORM_LOCK_TTL_SECONDS, STORM_LOCK_WAIT_MS, STORM_LOCK_POLL_MS, type StormState } from './eventStorm.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -97,11 +123,47 @@ export const CHANGE_IMPLEMENTATION_STEP = 'deployment'
 export const CHANGE_PLANNED_STEPS = ['scheduled'] as const
 export const CHANGE_WINDOW_STEPS: readonly string[] = [CHANGE_IMPLEMENTATION_STEP, ...CHANGE_PLANNED_STEPS]
 
-/** Valori di `Event.correlation`. `flapping`, `storm`, `storm_no_ci` sono dell'ondata 4. */
-export const CORRELATION_OUTCOMES = ['opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'suppressed', 'flapping', 'storm', 'storm_no_ci', 'none'] as const
-export type CorrelationOutcome = (typeof CORRELATION_OUTCOMES)[number]
+/**
+ * Valori di `Event.correlation`. `flapping`, `storm`, `storm_no_ci` sono
+ * dell'ondata 4; `pending` = firing in attesa di correlazione (fine
+ * soppressione / stabilizzazione non ancora correlate: `correlation_due_at`
+ * dice da quando, la passata periodica lo riprende). La lista vive in
+ * lib/eventVocabularies.ts (fonte unica anche dell'enum SDL EventCorrelation).
+ */
+export { CORRELATION_OUTCOMES, type CorrelationOutcome } from '../lib/eventVocabularies.js'
 /** Esiti di `event.correlated` (oltre a quelli scritti sull'evento). */
 export type PipelineOutcome = CorrelationOutcome | 'auto_resolved' | 'auto_resolve_skipped'
+
+/** Esiti che dicono "agganciato a un incident": una ripetizione con lo stesso esito e la stessa relazione è silenziosa. */
+const ATTACHED_OUTCOMES: readonly string[] = ['opened', 'attached', 'reopened']
+/** Correlazioni riprese dalla passata periodica `reevaluatePendingEvents` (con `correlation_due_at` scaduta). */
+export const PENDING_CORRELATIONS: readonly string[] = ['pending', 'none']
+
+/** Lock Redis del raggruppamento per (tenant, gruppo): TTL > durata massima di "apri incident + transizioni". */
+export const GROUP_LOCK_TTL_SECONDS = 30
+/** Attesa massima di chi trova il lock del gruppo occupato (poi errore ritentabile). */
+export const GROUP_LOCK_WAIT_MS = 5_000
+export const GROUP_LOCK_POLL_MS = 100
+/** Esportate perché `createIncidentFromEvent` (resolver) si serializza con lo stesso lock della correlazione automatica. */
+export const GROUP_LOCK_OPTS: RedisLockOptions = { ttlSeconds: GROUP_LOCK_TTL_SECONDS, waitMs: GROUP_LOCK_WAIT_MS, pollMs: GROUP_LOCK_POLL_MS }
+const STORM_LOCK_OPTS: RedisLockOptions = { ttlSeconds: STORM_LOCK_TTL_SECONDS, waitMs: STORM_LOCK_WAIT_MS, pollMs: STORM_LOCK_POLL_MS }
+
+export function groupLockKey(tenantId: string, groupBy: EventPolicy['group_by'], groupId: string): string {
+  return `og:events:group:${tenantId}:${groupBy === 'ci' ? 'ci' : 'fp'}:${groupId}`
+}
+
+/**
+ * Identità del gruppo di un evento secondo la policy: il CI (raggruppamento
+ * per CI) oppure l'impronta. Un evento senza CI con raggruppamento per CI
+ * (orfano collegato a mano a un incident) usa l'impronta: la stessa regola per
+ * l'allarme e per il suo rientro, così apertura, aggancio, riapertura e
+ * chiusura automatica dello stesso gruppo si escludono a vicenda.
+ */
+export function groupIdOf(policy: Pick<EventPolicy, 'group_by'>, ev: Pick<EventRecord, 'ciId' | 'props'>): string {
+  const eventId = toStr(ev.props['id'])
+  if (policy.group_by === 'ci' && ev.ciId) return ev.ciId
+  return toStr(ev.props['fingerprint']) || eventId
+}
 
 /** Severity dell'evento → priorità dell'incident (createIncident accetta anche la sola severity). */
 export const INCIDENT_SEVERITY_FROM_EVENT: Readonly<Record<EventSeverity, string>> = { critical: 'critical', warning: 'medium', info: 'low' }
@@ -313,9 +375,24 @@ export async function findSuppressingChange(tenantId: string, ciId: string, hops
   } finally { await session.close() }
 }
 
-async function applySuppression(tenantId: string, ev: EventRecord, change: SuppressingChange, actorId: string, now: string): Promise<void> {
+async function applySuppression(tenantId: string, ev: EventRecord, change: SuppressingChange, actorId: string, now: string, mode: PipelineMode): Promise<void> {
   const eventId = toStr(ev.props['id'])
   const alreadyByThisChange = ev.props['status'] === 'suppressed' && ev.props['suppressed_by_change_id'] === change.changeId
+  if (alreadyByThisChange) {
+    // Già silenziato da questa change: nessun nuovo avviso. `correlation_at`
+    // resta "quando è stato silenziato"; `SUPPRESSED_BY.last_seen_at` avanza
+    // solo quando lo strumento ha davvero rimandato l'allarme (ingest), non a
+    // ogni passata periodica.
+    if (mode !== 'ingest') return
+    const session = getSession(undefined, 'WRITE')
+    try {
+      await runQuery(session, `
+        MATCH (e:Event {id: $eventId, tenant_id: $tenantId})-[r:SUPPRESSED_BY]->(c:Change {id: $changeId, tenant_id: $tenantId})
+        SET r.last_seen_at = $now, e.updated_at = $now
+      `, { eventId, tenantId, changeId: change.changeId, now })
+    } finally { await session.close() }
+    return
+  }
   const session = getSession(undefined, 'WRITE')
   try {
     const row = await runQueryOne<{ id: string }>(session, `
@@ -331,7 +408,6 @@ async function applySuppression(tenantId: string, ev: EventRecord, change: Suppr
     if (!row) throw new Error(`Event ${eventId} or Change ${change.changeId} vanished while suppressing (tenant ${tenantId})`)
   } finally { await session.close() }
 
-  if (alreadyByThisChange) return   // ripetizione dello stesso allarme nella stessa finestra: nessun nuovo avviso
   eventsSuppressedTotal.inc({})
   const payload: EventSuppressedPayload = { ...mapEventPayload({ ...ev.props, status: 'suppressed' }, ev.ciId), change_id: change.changeId }
   await publishEvent('event.suppressed', tenantId, actorId, payload, now)
@@ -339,13 +415,18 @@ async function applySuppression(tenantId: string, ev: EventRecord, change: Suppr
   log.info({ tenantId, eventId, changeId: change.changeId, step: change.step, ciId: ev.ciId }, 'Event suppressed by change window')
 }
 
-/** Fine soppressione: torna firing, via il puntatore alla change; SUPPRESSED_BY resta per la storia. */
+/**
+ * Fine soppressione: torna firing, via il puntatore alla change; SUPPRESSED_BY
+ * resta per la storia. `correlation = 'pending'` + `correlation_due_at = now`:
+ * se la correlazione che segue fallisce, la passata periodica lo riprende.
+ */
 async function liftSuppression(tenantId: string, eventId: string, now: string): Promise<void> {
   const session = getSession(undefined, 'WRITE')
   try {
     await runQuery(session, `
       MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
-      SET e.status = 'firing', e.suppressed_by_change_id = null, e.updated_at = $now
+      SET e.status = 'firing', e.suppressed_by_change_id = null,
+          e.correlation = 'pending', e.correlation_at = $now, e.correlation_due_at = $now, e.updated_at = $now
     `, { eventId, tenantId, now })
   } finally { await session.close() }
 }
@@ -482,40 +563,36 @@ async function enterFlapping(tenantId: string, ev: EventRecord, policy: EventPol
  * Job periodico: ogni evento `flapping` (di ogni tenant) senza passaggi da
  * `flap_stable_minutes` torna allo stato dell'ultimo payload, pubblica
  * `event.stable` e ripassa dalla pipeline (`reevaluate`: correlazione se
- * firing, chiusura automatica se resolved). Un errore su un evento non ferma
- * gli altri ma fa fallire il job.
+ * firing, chiusura automatica se resolved). Paginato (lib/pagedPass.ts); un
+ * errore su un evento non ferma gli altri ma fa fallire il job.
  */
-export async function reevaluateFlappingEvents(now: string = new Date().toISOString()): Promise<{ evaluated: number; stabilized: number; failed: number }> {
-  const session = getSession()
-  let rows: Array<{ tenantId: string; id: string }>
-  try {
-    // tenant-ok: job di manutenzione su tutti i tenant; ogni evento è poi trattato nel suo tenant.
-    rows = await runQuery<{ tenantId: string; id: string }>(session, `
-      MATCH (e:Event {status: 'flapping'})
-      RETURN e.tenant_id AS tenantId, e.id AS id
-    `, {})
-  } finally { await session.close() }
-
+export async function reevaluateFlappingEvents(now: string = new Date().toISOString()): Promise<PagedPassResult & { stabilized: number }> {
   const policies = new Map<string, EventPolicy>()
   let stabilized = 0
-  let failed = 0
-  for (const r of rows) {
-    try {
+  const result = await runPagedPass<EventRef>({
+    // tenant-ok: passata di manutenzione su tutti i tenant; ogni evento è poi trattato nel suo tenant.
+    fetchPage: (cursor, limit) => fetchEventPage(`MATCH (e:Event {status: 'flapping'})\n      WHERE e.id > $cursor`, {}, cursor, limit),
+    keyOf: (r) => r.id,
+    handle: async (r) => {
       let policy = policies.get(r.tenantId)
       if (!policy) { policy = await getEventPolicy(r.tenantId); policies.set(r.tenantId, policy) }
       const ev = await loadEventRecord(r.tenantId, r.id)
-      if (!isStable(transitionsOf(ev.props), policy.flap_stable_minutes, now)) continue
+      if (!isStable(transitionsOf(ev.props), policy.flap_stable_minutes, now)) return
       await stabilizeEvent(r.tenantId, ev, policy, now)
       stabilized++
-    } catch (err) {
-      failed++
-      log.error({ err, tenantId: r.tenantId, eventId: r.id }, 'Flapping event stabilisation failed')
-    }
-  }
-  if (failed > 0) throw new Error(`reevaluateFlappingEvents: ${failed}/${rows.length} flapping events failed stabilisation (see logs)`)
-  return { evaluated: rows.length, stabilized, failed }
+    },
+    onError: (r, err) => log.error({ err, tenantId: r.tenantId, eventId: r.id }, 'Flapping event stabilisation failed'),
+  })
+  if (result.truncated) log.warn({ evaluated: result.evaluated }, 'reevaluateFlappingEvents: page cap reached, remaining flapping events are checked on the next pass')
+  if (result.failed > 0) throw new Error(`reevaluateFlappingEvents: ${result.failed}/${result.evaluated} flapping events failed stabilisation (see logs)`)
+  return { ...result, stabilized }
 }
 
+/**
+ * Torna allo stato dell'ultimo payload. Se è `firing` l'evento resta
+ * `pending` (con `correlation_due_at = now`) finché la pipeline che segue non
+ * lo correla: se questa fallisce lo riprende `reevaluatePendingEvents`.
+ */
 async function stabilizeEvent(tenantId: string, ev: EventRecord, policy: EventPolicy, now: string): Promise<void> {
   const eventId = toStr(ev.props['id'])
   const last = ev.props['last_payload_status']
@@ -525,9 +602,9 @@ async function stabilizeEvent(tenantId: string, ev: EventRecord, policy: EventPo
   try {
     const row = await runQueryOne<{ id: string }>(session, `
       MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
-      SET e.status = $status, e.flapping_since = null, e.correlation = 'none', e.correlation_at = $now, e.updated_at = $now
+      SET e.status = $status, e.flapping_since = null, e.correlation = $correlation, e.correlation_at = $now, e.correlation_due_at = $dueAt, e.updated_at = $now
       RETURN e.id AS id
-    `, { eventId, tenantId, status: last, now })
+    `, { eventId, tenantId, status: last, now, correlation: last === 'firing' ? 'pending' : 'none', dueAt: last === 'firing' ? now : null })
     if (!row) throw new Error(`Event ${eventId} vanished while stabilising (tenant ${tenantId})`)
   } finally { await session.close() }
 
@@ -546,6 +623,8 @@ interface OpenIncidentRow { incidentId: string; instanceId: string; step: string
  * Incident non terminale già correlato con eventi dello stesso gruppo:
  * `ci` → stesso CI (RAISED_ON); `fingerprint` → questo stesso evento (la
  * deduplica per impronta fa sì che "stessa impronta" = stesso nodo Event).
+ * Gli incident di tempesta (`storm_source_id`) non sono "l'incident del CI":
+ * finita la tempesta un nuovo allarme apre/riapre l'incident del suo gruppo.
  */
 async function findOpenIncidentForGroup(session: Session, tenantId: string, eventId: string, groupBy: EventPolicy['group_by'], info: IncidentStepInfo): Promise<OpenIncidentRow | null> {
   const match = groupBy === 'ci'
@@ -559,6 +638,7 @@ async function findOpenIncidentForGroup(session: Session, tenantId: string, even
   // si escludono i passi terminali tranne "resolved". Solo "closed" è definitivo.
   return runQueryOne<OpenIncidentRow>(session, `
     ${match}
+    WHERE i.storm_source_id IS NULL
     MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
     WHERE NOT wi.current_step IN $terminalSteps OR wi.current_step = $resolvedStep
     RETURN DISTINCT i.id AS incidentId, wi.id AS instanceId, wi.current_step AS step, i.created_at AS createdAt
@@ -566,15 +646,25 @@ async function findOpenIncidentForGroup(session: Session, tenantId: string, even
   `, { eventId, tenantId, terminalSteps: info.terminalSteps, resolvedStep: info.resolvedStep })
 }
 
+/** Passo corrente dell'incident (qualunque sia): null se l'incident non esiste. */
+async function incidentStep(session: Session, tenantId: string, incidentId: string): Promise<OpenIncidentRow | null> {
+  return runQueryOne<OpenIncidentRow>(session, `
+    MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+    RETURN i.id AS incidentId, wi.id AS instanceId, wi.current_step AS step
+  `, { incidentId, tenantId })
+}
+
 /**
  * Esegue UNA transizione del workflow dell'incident per conto del monitoraggio
  * replicando i side effect della mutation manuale: transizione via motore,
- * commento in timeline, evento `incident.<step>`. Transizione rifiutata dal
- * motore → errore (nessun fallback: il job ritenta e resta visibile). Le
- * enter/exit action del passo (es. orologi SLA) girano come per un utente;
- * un loro errore è già persistito dal motore e viene loggato, non nascosto.
+ * commento in timeline (se `comment`: i passi intermedi della chiusura
+ * automatica lasciano un solo commento riassuntivo alla fine), evento
+ * `incident.<step>`. Transizione rifiutata dal motore → errore (nessun
+ * fallback: il job ritenta e resta visibile). Le enter/exit action del passo
+ * (es. orologi SLA) girano come per un utente; un loro errore è già
+ * persistito dal motore e viene loggato, non nascosto.
  */
-async function runMonitoringTransition(session: Session, tenantId: string, incidentId: string, instanceId: string, toStep: string, triggerType: 'manual' | 'automatic', notes: string, what: string): Promise<void> {
+async function runMonitoringTransition(session: Session, tenantId: string, incidentId: string, instanceId: string, toStep: string, triggerType: 'manual' | 'automatic', notes: string, what: string, comment = true): Promise<void> {
   const res = await (await engine()).transition(
     session,
     { instanceId, toStepName: toStep, triggeredBy: MONITORING_ACTOR, triggerType, notes, tenantId },
@@ -584,7 +674,7 @@ async function runMonitoringTransition(session: Session, tenantId: string, incid
   if (res.actionErrors?.length) log.error({ tenantId, incidentId, toStep, actionErrors: res.actionErrors }, `Incident moved to "${toStep}" by monitoring but step actions failed`)
   const ctx = { tenantId, userId: MONITORING_ACTOR }
   const incidentService = await incidents()
-  await incidentService.addIncidentComment(incidentId, ctx, `Workflow: ${toStep} — ${notes}`)
+  if (comment) await incidentService.addIncidentComment(incidentId, ctx, `Workflow: ${toStep} — ${notes}`)
   await incidentService.publishIncidentTransition(incidentId, toStep, ctx)
 }
 
@@ -651,31 +741,51 @@ async function correlateFiringEvent(tenantId: string, ev: EventRecord, policy: E
       }
     }
 
-    // 6. raggruppamento
-    const open = await findOpenIncidentForGroup(session, tenantId, eventId, policy.group_by, info)
-    let outcome: CorrelationOutcome
-    let incidentId: string
-    if (open) {
-      incidentId = open.incidentId
+    // 6. raggruppamento, sotto lock per (tenant, gruppo): mai due incident per lo stesso gruppo.
+    const lockKey = groupLockKey(tenantId, policy.group_by, groupIdOf(policy, ev))
+    const findOpen = () => findOpenIncidentForGroup(session, tenantId, eventId, policy.group_by, info)
+
+    interface Grouped { outcome: CorrelationOutcome; incidentId: string; created: boolean }
+    const joinIncident = async (open: OpenIncidentRow): Promise<Grouped> => {
       if (open.step === info.resolvedStep) {
         await reopenIncident(session, tenantId, open, info, `Allarme tornato: ${toStr(ev.props['title'])} (${toStr(ev.props['resource'])})`)
-        await attachEventToIncident(tenantId, eventId, incidentId, false, now)
+        const created = await attachEventToIncident(tenantId, eventId, open.incidentId, false, now)
         incidentsReopenedTotal.inc({})
-        outcome = 'reopened'
-      } else {
-        const created = await attachEventToIncident(tenantId, eventId, incidentId, false, now)
-        if (created) {
-          await (await incidents()).addIncidentComment(incidentId, { tenantId, userId: MONITORING_ACTOR },
-            `Allarme correlato: ${toStr(ev.props['title'])}, ${severity}, ricorrenze ${toNumber(ev.props['count'])}`)
-        }
-        outcome = 'attached'
+        return { outcome: 'reopened', incidentId: open.incidentId, created }
       }
-      await setCorrelation(tenantId, eventId, outcome, now)
-    } else {
-      const incident = await openIncidentFromEvent({ tenantId, props: ev.props, ciId: ev.ciId, actorId: MONITORING_ACTOR, manual: false, now })
-      incidentId = incident.id
-      outcome = 'opened'
+      const created = await attachEventToIncident(tenantId, eventId, open.incidentId, false, now)
+      if (created) {
+        await (await incidents()).addIncidentComment(open.incidentId, { tenantId, userId: MONITORING_ACTOR },
+          `Allarme correlato: ${toStr(ev.props['title'])}, ${severity}, ricorrenze ${toNumber(ev.props['count'])}`)
+      }
+      return { outcome: 'attached', incidentId: open.incidentId, created }
     }
+
+    const grouped = await withRedisLock<Grouped>(lockKey, GROUP_LOCK_OPTS,
+      async () => {
+        const open = await findOpen()
+        if (open) return joinIncident(open)
+        const incident = await openIncidentFromEvent({ tenantId, props: ev.props, ciId: ev.ciId, actorId: MONITORING_ACTOR, manual: false, now })
+        return { outcome: 'opened', incidentId: incident.id, created: true }
+      },
+      async () => {
+        // Lock occupato: se l'incident del gruppo è comparso (e non va riaperto)
+        // ci si aggancia senza entrare — il MERGE è idempotente.
+        const open = await findOpen()
+        return open && open.step !== info.resolvedStep ? joinIncident(open) : null
+      },
+      `no open incident appeared for event ${eventId}`,
+    )
+    const { outcome, incidentId } = grouped
+
+    // Ripetizione di un allarme già agganciato a questo incident: nessun
+    // nuovo esito, avviso, audit o commento (Alertmanager/Zabbix rimandano
+    // ogni pochi minuti). L'esito scritto resta quello di quando è cambiato.
+    if (outcome === 'attached' && !grouped.created && ATTACHED_OUTCOMES.includes(toStr(ev.props['correlation']))) {
+      log.debug({ tenantId, eventId, incidentId }, 'Repeated event already correlated: nothing to publish')
+      return done(outcome, incidentId)
+    }
+    if (outcome !== 'opened') await setCorrelation(tenantId, eventId, outcome, now)   // opened: già scritto da openIncidentFromEvent
 
     const payload: EventCorrelatedPayload = { ...mapEventPayload({ ...ev.props, status: 'firing' }, ev.ciId), incident_id: incidentId, outcome }
     await publishEvent('event.correlated', tenantId, actorId, payload, now)
@@ -692,17 +802,50 @@ async function correlateFiringEvent(tenantId: string, ev: EventRecord, policy: E
  * (`storm`), senza commento per evento e senza avviso (l'avviso è
  * event.storm_started, uno per sorgente); se l'incident non esiste ancora
  * (solo eventi orfani finora) resta `storm_no_ci`. Mai apertura/aggancio per CI.
+ *
+ * Lo stato dell'incident di tempesta è controllato: `resolved` → riapertura
+ * con la transizione "Riapri" (sotto il lock della sorgente, come per il
+ * raggruppamento); passo terminale (chiuso) → nuovo incident di tempesta
+ * (eventStorm.replaceClosedStormIncident); tempesta finita nel frattempo →
+ * correlazione normale. Mai un allarme "assorbito" da un ticket chiuso.
  */
-async function correlateIntoStorm(tenantId: string, ev: EventRecord, storm: StormState, now: string): Promise<PipelineResult> {
+async function correlateIntoStorm(tenantId: string, ev: EventRecord, policy: EventPolicy, storm: StormState, actorId: string, now: string, mode: PipelineMode): Promise<PipelineResult> {
   const eventId = toStr(ev.props['id'])
-  if (!storm.incidentId) {
-    await setCorrelation(tenantId, eventId, 'storm_no_ci', now)
+  const sourceId = toStr(ev.props['source_id'])
+  const noCi = async (): Promise<PipelineResult> => {
+    if (ev.props['correlation'] !== 'storm_no_ci') await setCorrelation(tenantId, eventId, 'storm_no_ci', now)
     return { outcome: 'storm_no_ci', status: 'firing', suppressedByChangeId: null, incidentId: null }
   }
-  await attachEventToIncident(tenantId, eventId, storm.incidentId, false, now)
-  await setCorrelation(tenantId, eventId, 'storm', now)
-  log.debug({ tenantId, eventId, incidentId: storm.incidentId, sourceName: storm.sourceName }, 'Event attached to storm incident')
-  return { outcome: 'storm', status: 'firing', suppressedByChangeId: null, incidentId: storm.incidentId }
+  if (!storm.incidentId) return noCi()
+
+  let incidentId: string = storm.incidentId
+  let sourceName = storm.sourceName
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const info = await incidentStepInfo(session, tenantId)
+    const inc = await incidentStep(session, tenantId, incidentId)
+    if (!inc) throw new Error(`Storm incident ${storm.incidentId} of source ${sourceId} not found (tenant ${tenantId})`)
+    if (inc.step === info.resolvedStep) {
+      await withRedisLock(stormLockKey(tenantId, sourceId), STORM_LOCK_OPTS, async () => {
+        const fresh = await incidentStep(session, tenantId, inc.incidentId)
+        if (fresh?.step === info.resolvedStep) {
+          await reopenIncident(session, tenantId, fresh, info, `Tempesta ancora in corso dalla sorgente "${storm.sourceName}": allarme tornato (${toStr(ev.props['title'])})`)
+          incidentsReopenedTotal.inc({})
+        }
+      })
+    } else if (info.terminalSteps.includes(inc.step)) {
+      const target = await replaceClosedStormIncident(tenantId, sourceId, inc.incidentId, ev.ciId, actorId, now)
+      if (!target.active) return correlateFiringEvent(tenantId, ev, policy, actorId, now, mode)
+      if (!target.incidentId) return noCi()
+      incidentId = target.incidentId
+      sourceName = target.sourceName
+    }
+  } finally { await session.close() }
+
+  const created = await attachEventToIncident(tenantId, eventId, incidentId, false, now)
+  if (created || ev.props['correlation'] !== 'storm') await setCorrelation(tenantId, eventId, 'storm', now)
+  log.debug({ tenantId, eventId, incidentId, sourceName }, 'Event attached to storm incident')
+  return { outcome: 'storm', status: 'firing', suppressedByChangeId: null, incidentId }
 }
 
 // ── 7. Chiusura automatica ───────────────────────────────────────────────────
@@ -723,6 +866,22 @@ async function handleResolvedEvent(tenantId: string, ev: EventRecord, actorId: s
   // automaticamente quando, finita la tempesta, l'ultimo allarme rientra.
   if (storm.active) return done('storm', storm.incidentId)
 
+  // La chiusura automatica gira sotto lo STESSO lock del raggruppamento
+  // (tenant, gruppo): "leggi incident e allarmi ancora accesi → percorri i passi
+  // → risolvi" non deve intrecciarsi né con un altro rientro dello stesso
+  // gruppo (due payload resolved in parallelo: entrambi leggevano "nessun altro
+  // acceso" e il secondo falliva con "transizione concorrente" sul primo passo)
+  // né con un allarme che nel frattempo apre/riapre/aggancia. Nessuna
+  // scorciatoia: chi trova il lock occupato attende e poi rilegge.
+  const policy = await getEventPolicy(tenantId)
+  const lockKey = groupLockKey(tenantId, policy.group_by, groupIdOf(policy, ev))
+  return withRedisLock<PipelineResult>(lockKey, GROUP_LOCK_OPTS, () => resolveAgainstIncident(tenantId, ev, policy, actorId, now, done),
+    undefined, `auto-resolve of event ${eventId} could not start`)
+}
+
+async function resolveAgainstIncident(tenantId: string, ev: EventRecord, policy: EventPolicy, actorId: string, now: string,
+  done: (outcome: PipelineOutcome, incidentId?: string | null) => PipelineResult): Promise<PipelineResult> {
+  const eventId = toStr(ev.props['id'])
   const session = getSession(undefined, 'WRITE')
   try {
     const info = await incidentStepInfo(session, tenantId)
@@ -738,7 +897,6 @@ async function handleResolvedEvent(tenantId: string, ev: EventRecord, actorId: s
     `, { eventId, tenantId, terminalSteps: info.terminalSteps })
     if (!linked) return done('none')
 
-    const policy = await getEventPolicy(tenantId)
     if (!policy.auto_resolve) return done('none', linked.incidentId)
     if (toNumber(linked.stillFiring) > 0) return done('none', linked.incidentId)
     if (linked.step === info.resolvedStep) return done('none', linked.incidentId)
@@ -757,19 +915,21 @@ async function handleResolvedEvent(tenantId: string, ev: EventRecord, actorId: s
 
     let outcome: PipelineOutcome
     if (path) {
-      // Ogni passo intermedio è una transizione vera (storia, commento, evento
-      // incident.<step>): le sue enter/exit action possono avviare o fermare
-      // gli orologi SLA (seed: assigned avvia il response, in_progress lo ferma
-      // e avvia il resolve) — è accettato, l'incident risulta preso in carico
-      // e risolto dal monitoraggio. Un passo rifiutato → errore: i passi già
+      // Ogni passo intermedio è una transizione vera (storia del workflow,
+      // evento incident.<step>, senza commento: un solo commento riassuntivo
+      // alla fine): le sue enter/exit action possono avviare o fermare gli
+      // orologi SLA (seed: assigned avvia il response, in_progress lo ferma e
+      // avvia il resolve) — è accettato, l'incident risulta preso in carico e
+      // risolto dal monitoraggio. Un passo rifiutato → errore: i passi già
       // fatti restano (ciascuno è atomico e coerente), il job ritenta.
       for (const hop of path) {
         await runMonitoringTransition(session, tenantId, linked.incidentId, linked.instanceId, hop.toStep, hop.trigger,
-          `Chiusura automatica dal monitoraggio: passaggio a ${hop.toLabel ?? hop.toStep}`, 'auto-resolve')
+          `Chiusura automatica dal monitoraggio: passaggio a ${hop.toLabel ?? hop.toStep}`, 'auto-resolve', false)
       }
       // La transizione "Risolvi" richiede la causa (rootCause = notes).
       await incidentService.resolveIncident(linked.incidentId, ctx, `Allarme di monitoraggio rientrato: ${title}`)
-      await incidentService.addIncidentComment(linked.incidentId, ctx, `Risolto automaticamente: tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: ${title})`)
+      const via = path.length ? ` — passando per ${path.map((h) => h.toLabel ?? h.toStep).join(', ')}` : ''
+      await incidentService.addIncidentComment(linked.incidentId, ctx, `Risolto automaticamente: tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: ${title})${via}`)
       incidentsAutoResolvedTotal.inc({})
       outcome = 'auto_resolved'
     } else {
@@ -847,7 +1007,7 @@ export async function runEventPipeline(input: PipelineInput): Promise<PipelineRe
 
   if (mode === 'resume') {
     if (status === 'suppressed') return { outcome: 'suppressed', status, suppressedByChangeId: toStr(ev.props['suppressed_by_change_id']) || null, incidentId: null }
-    if (storm.active) return correlateIntoStorm(tenantId, ev, storm, now)
+    if (storm.active) return correlateIntoStorm(tenantId, ev, policy, storm, actorId, now, mode)
     return correlateFiringEvent(tenantId, ev, policy, actorId, now, mode)
   }
 
@@ -855,7 +1015,7 @@ export async function runEventPipeline(input: PipelineInput): Promise<PipelineRe
   if (ev.ciId) {
     const change = await findSuppressingChange(tenantId, ev.ciId, policy.suppress_upstream_hops, now)
     if (change) {
-      await applySuppression(tenantId, ev, change, actorId, now)
+      await applySuppression(tenantId, ev, change, actorId, now, mode)
       return { outcome: 'suppressed', status: 'suppressed', suppressedByChangeId: change.changeId, incidentId: null }
     }
   }
@@ -863,11 +1023,12 @@ export async function runEventPipeline(input: PipelineInput): Promise<PipelineRe
     await liftSuppression(tenantId, eventId, now)
     ev.props['status'] = 'firing'
     ev.props['suppressed_by_change_id'] = null
+    ev.props['correlation'] = 'pending'
   }
   // 2. salute del CI
   if (ev.ciId) await recomputeCIHealth(tenantId, ev.ciId, actorId)
   // 2b. tempesta: aggancio all'incident di tempesta, niente correlazione per CI
-  if (storm.active) return correlateIntoStorm(tenantId, ev, storm, now)
+  if (storm.active) return correlateIntoStorm(tenantId, ev, policy, storm, actorId, now, mode)
   // 3–6
   return correlateFiringEvent(tenantId, ev, policy, actorId, now, mode)
 }
@@ -875,10 +1036,13 @@ export async function runEventPipeline(input: PipelineInput): Promise<PipelineRe
 // ── Fine finestra ────────────────────────────────────────────────────────────
 
 /**
- * Rivaluta gli eventi ancora silenziati da una change (chiamata quando la
- * change esce dai passi di finestra). Ogni evento rientra nella pipeline: se
- * un'altra change lo copre resta soppresso, altrimenti torna firing e viene
- * correlato. Restituisce il numero di eventi rivalutati.
+ * Rivaluta gli eventi ancora silenziati da una change (job
+ * `reevaluate-change-window`, accodato quando la change esce dai passi di
+ * finestra; vedi graphql/resolvers/change/autoTransitions.ts). Ogni evento
+ * rientra nella pipeline: se un'altra change lo copre resta soppresso,
+ * altrimenti torna firing e viene correlato. Un errore su un evento non ferma
+ * gli altri ma fa fallire il job alla fine (ritenta; la passata periodica è la
+ * rete di sicurezza). Restituisce il numero di eventi rivalutati.
  */
 export async function reevaluateSuppressedEvents(tenantId: string, changeId: string, actorId: string = MONITORING_ACTOR): Promise<number> {
   const session = getSession()
@@ -890,37 +1054,70 @@ export async function reevaluateSuppressedEvents(tenantId: string, changeId: str
     `, { tenantId, changeId })
     ids = rows.map((r) => r.id)
   } finally { await session.close() }
+  let failed = 0
   for (const eventId of ids) {
-    await runEventPipeline({ tenantId, eventId, actorId, mode: 'reevaluate' })
+    try {
+      await runEventPipeline({ tenantId, eventId, actorId, mode: 'reevaluate' })
+    } catch (err) {
+      failed++
+      log.error({ err, tenantId, changeId, eventId }, 'Suppressed event re-evaluation after change window failed')
+    }
   }
-  if (ids.length) log.info({ tenantId, changeId, count: ids.length }, 'Suppressed events re-evaluated after change window')
+  if (ids.length) log.info({ tenantId, changeId, count: ids.length, failed }, 'Suppressed events re-evaluated after change window')
+  if (failed > 0) throw new Error(`reevaluateSuppressedEvents: ${failed}/${ids.length} events suppressed by change ${changeId} failed re-evaluation (see logs)`)
   return ids.length
+}
+
+// ── Passate periodiche (coda events-maintenance) ─────────────────────────────
+
+interface EventRef { tenantId: string; id: string }
+
+/** Una pagina di (tenant, evento) con id > cursor, ordinata per id. `match` è il MATCH … WHERE … (senza RETURN). */
+async function fetchEventPage(match: string, params: Props, cursor: string, limit: number): Promise<EventRef[]> {
+  const session = getSession()
+  try {
+    // tenant-ok: job di manutenzione su tutti i tenant; ogni evento è poi rivalutato nel suo tenant.
+    return await runQuery<EventRef>(session, `
+      ${match}
+      RETURN e.tenant_id AS tenantId, e.id AS id
+      ORDER BY e.id LIMIT toInteger($limit)
+    `, { ...params, cursor, limit })
+  } finally { await session.close() }
+}
+
+/** Passata paginata che ripassa ogni riga dalla pipeline in `reevaluate`. */
+async function reevaluatePass(name: string, match: string, params: Props, now: string, what: string): Promise<PagedPassResult> {
+  const result = await runPagedPass<EventRef>({
+    fetchPage: (cursor, limit) => fetchEventPage(match, params, cursor, limit),
+    keyOf: (r) => r.id,
+    handle: async (r) => { await runEventPipeline({ tenantId: r.tenantId, eventId: r.id, now, mode: 'reevaluate' }) },
+    onError: (r, err) => log.error({ err, tenantId: r.tenantId, eventId: r.id }, `${what} re-evaluation failed`),
+  })
+  if (result.truncated) log.warn({ evaluated: result.evaluated }, `${name}: page cap reached, remaining events are re-evaluated on the next pass`)
+  if (result.failed > 0) throw new Error(`${name}: ${result.failed}/${result.evaluated} ${what} events failed re-evaluation (see logs)`)
+  return result
 }
 
 /**
  * Job periodico: ogni evento soppresso (di ogni tenant) viene rivalutato; quelli
- * la cui finestra è chiusa tornano firing. Un errore su un evento non ferma gli
- * altri, ma alla fine fa fallire il job (visibile in coda).
+ * la cui finestra è chiusa tornano firing. Paginato; un errore su un evento
+ * non ferma gli altri, ma alla fine fa fallire il job (visibile in coda).
  */
-export async function reevaluateClosedWindows(): Promise<{ evaluated: number; failed: number }> {
-  const session = getSession()
-  let rows: Array<{ tenantId: string; id: string }>
-  try {
-    // tenant-ok: job di manutenzione su tutti i tenant; ogni evento è poi rivalutato nel suo tenant.
-    rows = await runQuery<{ tenantId: string; id: string }>(session, `
-      MATCH (e:Event {status: 'suppressed'})
-      RETURN e.tenant_id AS tenantId, e.id AS id
-    `, {})
-  } finally { await session.close() }
-  let failed = 0
-  for (const r of rows) {
-    try {
-      await runEventPipeline({ tenantId: r.tenantId, eventId: r.id, mode: 'reevaluate' })
-    } catch (err) {
-      failed++
-      log.error({ err, tenantId: r.tenantId, eventId: r.id }, 'Suppressed event re-evaluation failed')
-    }
-  }
-  if (failed > 0) throw new Error(`reevaluateClosedWindows: ${failed}/${rows.length} suppressed events failed re-evaluation (see logs)`)
-  return { evaluated: rows.length, failed }
+export async function reevaluateClosedWindows(now: string = new Date().toISOString()): Promise<PagedPassResult> {
+  // tenant-ok: passata di manutenzione su tutti i tenant; ogni evento è poi rivalutato nel suo tenant.
+  return reevaluatePass('reevaluateClosedWindows', `MATCH (e:Event {status: 'suppressed'})\n      WHERE e.id > $cursor`, {}, now, 'suppressed')
+}
+
+/**
+ * Job periodico: gli eventi firing rimasti senza correlazione — `pending`
+ * (fine soppressione / stabilizzazione la cui correlazione è fallita) o
+ * `none` con una scadenza — con `correlation_due_at` passata rientrano nella
+ * pipeline. È la rete di sicurezza degli stati ritentabili: nessun allarme
+ * attivo resta senza incident per ore in silenzio.
+ */
+export async function reevaluatePendingEvents(now: string = new Date().toISOString()): Promise<PagedPassResult> {
+  // tenant-ok: passata di manutenzione su tutti i tenant; ogni evento è poi rivalutato nel suo tenant.
+  return reevaluatePass('reevaluatePendingEvents', `MATCH (e:Event {status: 'firing'})
+      WHERE e.correlation IN $correlations AND e.correlation_due_at IS NOT NULL AND e.correlation_due_at <= $now AND e.id > $cursor`,
+    { correlations: PENDING_CORRELATIONS, now }, now, 'pending')
 }

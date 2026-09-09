@@ -22,12 +22,12 @@ import { Input, FieldLabel } from '@/components/ui/FormControls'
 import { Toggle } from '@/components/ui/Toggle'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_MONITORING_SOURCE_SETTINGS } from '@/graphql/queries'
 import { UPDATE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
 import type { MonitoringSource } from '@/types/events'
 import { GenericMapper } from './GenericMapper'
-import { EMPTY_MAPPING, buildSourceConfig, isMappingComplete, parseSourceConfig, type GenericMapping } from './sourceConfig'
+import { EMPTY_MAPPING, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildSourceConfig, isMappingComplete, parseRateLimit, parseSourceConfig, type GenericMapping, type SourceRateLimit } from './sourceConfig'
 import { sourceEndpointUrl } from './configSnippets'
 import { ToolBadge, SecretBox, hintStyle } from './monitoringShared'
 
@@ -37,11 +37,14 @@ export function EditSourcePage() {
   const navigate = useNavigate()
   const confirm = useConfirm()
 
-  const { data, loading, error, refetch } = useQuery<{ monitoringSources: MonitoringSource[] }>(GET_MONITORING_SOURCES, { fetchPolicy: 'cache-and-network' })
+  const { data, loading, error, refetch } = useQuery<{ monitoringSources: (MonitoringSource & SourceRateLimit)[] }>(GET_MONITORING_SOURCE_SETTINGS, { fetchPolicy: 'cache-and-network' })
   const source = data?.monitoringSources.find((s) => s.id === id) ?? null
 
   const [name, setName] = useState('')
   const [enabled, setEnabled] = useState(true)
+  // Testo, non numero: un campo vuoto mentre si digita non deve diventare un limite.
+  const [rateLimitText, setRateLimitText] = useState('')
+  const rateLimit = parseRateLimit(rateLimitText)
   const [mapping, setMapping] = useState<GenericMapping>(EMPTY_MAPPING)
   const [payload, setPayload] = useState('')
   const [configError, setConfigError] = useState<string | null>(null)
@@ -54,6 +57,7 @@ export function EditSourcePage() {
     if (!source || initialisedFor === source.id) return
     setName(source.name)
     setEnabled(source.enabled)
+    setRateLimitText(String(source.rateLimitPerMinute))
     if (source.connectorKind === 'generic') {
       const parsed = parseSourceConfig(source)
       setMapping(parsed.mapping)
@@ -67,12 +71,12 @@ export function EditSourcePage() {
   const [regenToken] = useMutation<{ regenerateWebhookToken: { id: string; token: string } }>(REGENERATE_SOURCE_TOKEN)
 
   const isGeneric = source?.connectorKind === 'generic'
-  const canSave = name.trim() !== '' && (!isGeneric || isMappingComplete(mapping))
+  const canSave = name.trim() !== '' && rateLimit !== null && (!isGeneric || isMappingComplete(mapping))
   const endpoint = useMemo(() => (source ? sourceEndpointUrl(source.id) : ''), [source])
 
   async function handleSave() {
-    if (!source) return
-    const input: Record<string, unknown> = { name: name.trim(), enabled }
+    if (!source || rateLimit === null) return
+    const input: Record<string, unknown> = { name: name.trim(), enabled, rateLimitPerMinute: rateLimit }
     if (isGeneric) Object.assign(input, buildSourceConfig(mapping))
     try {
       await updateSource({ variables: { id: source.id, input } })
@@ -129,6 +133,13 @@ export function EditSourcePage() {
             <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('monitoring.edit.enabled')}</span>
           </div>
           <DetailField label={t('monitoring.wizard.endpoint')} value={endpoint} mono />
+          <div>
+            <FieldLabel htmlFor="edit-source-rate-limit">{t('monitoring.wizard.rateLimitLabel')}</FieldLabel>
+            <Input id="edit-source-rate-limit" type="number" inputMode="numeric" min={RATE_LIMIT_MIN} max={RATE_LIMIT_MAX} step={1} value={rateLimitText} onChange={(e) => setRateLimitText(e.target.value)} aria-invalid={rateLimit === null} required />
+            <p style={{ ...hintStyle, marginTop: 4, ...(rateLimit === null ? { color: colors.danger } : {}) }}>
+              {rateLimit === null ? t('monitoring.wizard.rateLimitInvalid', { min: RATE_LIMIT_MIN, max: RATE_LIMIT_MAX }) : t('monitoring.wizard.rateLimitHint', { min: RATE_LIMIT_MIN, max: RATE_LIMIT_MAX })}
+            </p>
+          </div>
         </div>
       </SectionCard>
 
