@@ -4,9 +4,9 @@ import { EventsPage } from './EventsPage'
 import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCES, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
-import type { MonitoringEvent, EventStats } from '@/types/events'
+import type { MonitoringEvent, EventStats, StormSource } from '@/types/events'
 
-const STATS: EventStats = { firing: 4, critical: 2, warning: 1, orphan: 1, suppressed: 0, flapping: 1, resolved24h: 7 }
+const STATS: EventStats = { firing: 4, critical: 2, warning: 1, orphan: 1, suppressed: 0, flapping: 1, resolved24h: 7, stormSources: [] }
 
 function eventFixture(over: Partial<MonitoringEvent> & { id: string }): MonitoringEvent {
   return {
@@ -18,6 +18,7 @@ function eventFixture(over: Partial<MonitoringEvent> & { id: string }): Monitori
     ci: { id: 'ci1', name: 'web-01', type: 'server', status: 'active', health: null },
     incident: null,
     suppressedBy: null, correlation: 'none', correlationAt: null,
+    flappingSince: null, transitions24h: 0,
     ...over,
   }
 }
@@ -38,7 +39,8 @@ const policyMock = (): GqlMock => ({
   request: { query: GET_EVENT_POLICY },
   result: { data: { eventPolicy: {
     __typename: 'EventPolicy', openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
-    suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, retentionDays: 30, severityMap: '{}',
+    suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, flapStableMinutes: 15,
+    stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30, severityMap: '{}',
   } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
@@ -59,9 +61,9 @@ function eventsMock(items = EVENTS, seen?: Vars[]): GqlMock {
   }
 }
 
-const statsMock = (): GqlMock => ({
+const statsMock = (stormSources: StormSource[] = []): GqlMock => ({
   request: { query: GET_EVENT_STATS },
-  result: { data: { eventStats: { __typename: 'EventStats', ...STATS } } },
+  result: { data: { eventStats: { __typename: 'EventStats', ...STATS, stormSources: stormSources.map((s) => ({ __typename: 'StormSource', ...s })) } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
@@ -80,8 +82,8 @@ const sourcesMock = (names: string[] = ['Prometheus', 'Zabbix']): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: MonitoringEvent[] } = {}) {
-  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(), eventsMock(opts.events ?? EVENTS, seen), fieldsMock(), sourcesMock(opts.sources), policyMock()] })
+function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: MonitoringEvent[]; storms?: StormSource[] } = {}) {
+  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), eventsMock(opts.events ?? EVENTS, seen), fieldsMock(), sourcesMock(opts.sources), policyMock()] })
 }
 
 const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
@@ -195,6 +197,54 @@ describe('EventsPage — correlazione automatica (ondata 3)', () => {
     expect(await screen.findByRole('link', { name: 'Suppressed · CHG-0007' })).toBeInTheDocument()
     await new Promise((r) => setTimeout(r, 10))
     expect(screen.queryByRole('button', { name: 'Re-evaluate now' })).not.toBeInTheDocument()
+  })
+})
+
+describe('EventsPage — sfarfallio e tempeste (ondata 4)', () => {
+  const STORM_INC = { id: 'inc9', number: 'INC-0099', title: 'Storm from Prometheus', status: 'new' }
+  const WAVE4: MonitoringEvent[] = [
+    eventFixture({ id: 'f1', title: 'Flapping alarm', status: 'flapping', correlation: 'flapping', correlationAt: '2026-09-09T08:00:00Z', flappingSince: '2026-09-09T07:30:00Z', transitions24h: 12 }),
+    eventFixture({ id: 's1', title: 'Storm alarm', correlation: 'storm', correlationAt: '2026-09-09T08:00:00Z', incident: STORM_INC }),
+    eventFixture({ id: 's2', title: 'Storm orphan', ci: null, correlation: 'storm_no_ci', correlationAt: '2026-09-09T08:00:00Z' }),
+  ]
+  const STORMS: StormSource[] = [
+    { sourceId: 'wh1', sourceName: 'Prometheus', ratePerMinute: 73, since: '2026-09-09T08:00:00Z', incidentId: 'inc9', incidentNumber: 'INC-0099' },
+    { sourceId: 'wh2', sourceName: 'Zabbix', ratePerMinute: 41, since: '2026-09-09T08:10:00Z', incidentId: null, incidentNumber: null },
+  ]
+
+  it('chip "Instabile · N passaggi/24h" con tooltip dai minuti di stabilità; "Tempesta · INC" linkato; "Tempesta, nessun CI"', async () => {
+    renderPage('viewer', undefined, { events: WAVE4 })
+    expect(await screen.findByText('Flapping alarm')).toBeInTheDocument()
+    const rows = bodyRows()
+
+    const flap = within(rows[0]!).getByText('Flapping · 12 transitions/24h')
+    await waitFor(() => expect(flap).toHaveAttribute('title', 'Waiting for it to stay stable for 15 minutes'))
+
+    expect(within(rows[1]!).getByRole('link', { name: 'Storm · INC-0099' })).toHaveAttribute('href', '/incidents/inc9')
+    expect(within(rows[2]!).getByText('Storm, no CI')).toBeInTheDocument()
+    // niente banner: nessuna sorgente in tempesta nei contatori
+    expect(screen.queryByTestId('storm-banner')).not.toBeInTheDocument()
+  })
+
+  it('banner di tempesta (admin): una riga per sorgente, link all\'incident di tempesta e alle Sorgenti', async () => {
+    renderPage('admin', undefined, { storms: STORMS })
+    const banner = await screen.findByTestId('storm-banner')
+    expect(banner).toHaveAttribute('role', 'status')
+    expect(banner).toHaveTextContent('Storms in progress (2 sources)')
+    const lines = within(banner).getAllByRole('listitem')
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toHaveTextContent(/^Storm in progress from Prometheus: 73 alarms per minute since \d{2}:\d{2}, grouped into INC-0099$/)
+    expect(within(lines[0]!).getByRole('link', { name: 'INC-0099' })).toHaveAttribute('href', '/incidents/inc9')
+    expect(lines[1]).toHaveTextContent(/^Storm in progress from Zabbix: 41 alarms per minute since \d{2}:\d{2}; no storm incident\.$/)
+    await waitFor(() => expect(within(banner).getByRole('link', { name: /Sources/ })).toHaveAttribute('href', '/monitoring/sources'))
+  })
+
+  it('banner di tempesta (operator): il link alle Sorgenti (pagina admin) non c\'è', async () => {
+    renderPage('operator', undefined, { storms: STORMS })
+    const banner = await screen.findByTestId('storm-banner')
+    await new Promise((r) => setTimeout(r, 10))
+    expect(within(banner).queryByRole('link', { name: /Sources/ })).not.toBeInTheDocument()
+    expect(within(banner).getByRole('link', { name: 'INC-0099' })).toBeInTheDocument()
   })
 })
 

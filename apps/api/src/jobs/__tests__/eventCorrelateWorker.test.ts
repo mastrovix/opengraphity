@@ -3,7 +3,9 @@
  *  - enqueueCorrelation: job id deterministico corr-<tenant>-<evento>-<dueMs>,
  *    ritardo = scadenza − ora (mai negativo), errore su scadenza non ISO;
  *  - `correlate` → runEventPipeline in modalità resume;
- *  - `reevaluate-windows` → reevaluateClosedWindows; job sconosciuto → errore;
+ *  - `reevaluate-windows` → tre passate (finestre chiuse, sfarfallio,
+ *    tempeste raffreddate), ciascuna eseguita anche se un'altra fallisce, con
+ *    errore cumulativo alla fine; job sconosciuto → errore;
  *  - startEventCorrelateWorker registra il job ripetuto ogni 5 minuti.
  * BullMQ è mockato attraverso lib/bullmq.ts; il processore è catturato da createWorker.
  */
@@ -27,19 +29,25 @@ vi.mock('../../lib/logger.js', () => {
 })
 vi.mock('../../services/eventCorrelation.js', () => ({
   runEventPipeline: vi.fn().mockResolvedValue({ outcome: 'opened', status: 'firing', suppressedByChangeId: null, incidentId: 'inc-1' }),
-  reevaluateClosedWindows: vi.fn().mockResolvedValue({ evaluated: 2, failed: 0 }),
+  reevaluateClosedWindows: vi.fn(),
+  reevaluateFlappingEvents: vi.fn(),
 }))
+vi.mock('../../services/eventStorm.js', () => ({ endCooledStorms: vi.fn() }))
 
 const worker = await import('../eventCorrelateWorker.js')
 const { enqueueCorrelation, correlationJobId, startEventCorrelateWorker, EVENT_CORRELATE_QUEUE, REEVALUATE_WINDOWS_JOB, REEVALUATE_WINDOWS_EVERY_MS } = worker
 const { createWorker, getQueue } = await import('../../lib/bullmq.js')
-const { runEventPipeline, reevaluateClosedWindows } = await import('../../services/eventCorrelation.js')
+const { runEventPipeline, reevaluateClosedWindows, reevaluateFlappingEvents } = await import('../../services/eventCorrelation.js')
+const { endCooledStorms } = await import('../../services/eventStorm.js')
 
 const job = (name: string, data: Record<string, unknown> = {}) => ({ name, data, id: 'j1', attemptsMade: 0 } as unknown as Job)
 
 beforeEach(() => {
   vi.clearAllMocks()
   processors.clear()
+  vi.mocked(reevaluateClosedWindows).mockResolvedValue({ evaluated: 2, failed: 0 })
+  vi.mocked(reevaluateFlappingEvents).mockResolvedValue({ evaluated: 1, stabilized: 1, failed: 0 })
+  vi.mocked(endCooledStorms).mockResolvedValue({ active: 0, ended: 1, failed: 0 })
 })
 
 describe('enqueueCorrelation', () => {
@@ -81,11 +89,23 @@ describe('processore', () => {
     await expect(proc(job('correlate', { tenantId: 't1', eventId: 'ev-1', dueAt: '2026-09-09T10:00:30.000Z' }))).rejects.toThrow(/not found/)
   })
 
-  it('`reevaluate-windows` → reevaluateClosedWindows; job sconosciuto → errore', async () => {
+  it('`reevaluate-windows` → finestre chiuse + sfarfallio + tempeste raffreddate; job sconosciuto → errore', async () => {
     await startEventCorrelateWorker()
     const proc = processors.get(EVENT_CORRELATE_QUEUE)!
     await proc(job(REEVALUATE_WINDOWS_JOB))
     expect(reevaluateClosedWindows).toHaveBeenCalledTimes(1)
+    expect(reevaluateFlappingEvents).toHaveBeenCalledTimes(1)
+    expect(endCooledStorms).toHaveBeenCalledTimes(1)
     await expect(proc(job('nope'))).rejects.toThrow(/unknown job "nope"/)
+  })
+
+  it('`reevaluate-windows`: una passata fallita non ferma le altre, ma il job fallisce con tutti i motivi', async () => {
+    await startEventCorrelateWorker()
+    const proc = processors.get(EVENT_CORRELATE_QUEUE)!
+    vi.mocked(reevaluateClosedWindows).mockRejectedValueOnce(new Error('1/3 suppressed events failed'))
+    vi.mocked(endCooledStorms).mockRejectedValueOnce(new Error('redis down'))
+    await expect(proc(job(REEVALUATE_WINDOWS_JOB))).rejects.toThrow(/closed windows: 1\/3 suppressed events failed; storms: redis down/)
+    expect(reevaluateFlappingEvents).toHaveBeenCalledTimes(1)
+    expect(endCooledStorms).toHaveBeenCalledTimes(1)
   })
 })

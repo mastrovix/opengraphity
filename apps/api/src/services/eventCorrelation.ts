@@ -31,6 +31,25 @@
  *                       passi intermedi percorribili dal monitoraggio (vedi
  *                       findAutoResolvePath) e lo si esegue prima di risolvere.
  *
+ * Ondata 4, prima di tutto questo:
+ *
+ *   0. sfarfallio     — un evento `flapping` non viene correlato (la salute del
+ *                       CI vale degraded, vedi recomputeCIHealth). All'ingest, se
+ *                       negli ultimi `flap_window_minutes` ci sono ≥ `flap_threshold`
+ *                       passaggi firing↔resolved (Event.transitions), l'evento
+ *                       ENTRA in `flapping`: `correlation = 'flapping'`,
+ *                       `event.flapping` (una volta per episodio), UN commento
+ *                       sull'incident già correlato. Lo stabilizza il job
+ *                       periodico (`reevaluateFlappingEvents`): dopo
+ *                       `flap_stable_minutes` senza passaggi torna allo stato
+ *                       dell'ultimo payload, `event.stable`, e ripassa da qui.
+ *   0b. tempesta      — services/eventStorm.ts: se la sorgente è in tempesta
+ *                       l'evento (firing, dopo la soppressione e la salute) si
+ *                       aggancia all'incident di tempesta (`correlation =
+ *                       'storm'`, o `'storm_no_ci'` se non esiste ancora) e non
+ *                       apre/aggancia incident per CI; un evento resolved in
+ *                       tempesta aggiorna solo la salute.
+ *
  * Ogni scrittura sull'incident passa da incidentService / workflowEngine (mai
  * Cypher diretto sull'incident) con `userId: 'monitoring'`. Niente fallback
  * silenziosi: policy mancante, workflow senza passo "resolved", transizione di
@@ -47,7 +66,9 @@ import { logger } from '../lib/logger.js'
 import { getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { anyDeployWindowContains } from '../lib/deployWindows.js'
 import type { EventPolicy } from '../lib/eventPolicy.js'
-import { EVENT_SEVERITIES, getEventPolicy, mapEventPayload, recomputeCIHealth, type EventSeverity } from './eventService.js'
+import { eventsFlappingTotal, eventsSuppressedTotal, incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal } from '../middleware/metrics.js'
+import { EVENT_SEVERITIES, countTransitionsSince, getEventPolicy, mapEventPayload, recomputeCIHealth, transitionsOf, type EventSeverity } from './eventService.js'
+import { getStormState, trackSourceStorm, type StormState } from './eventStorm.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -76,8 +97,8 @@ export const CHANGE_IMPLEMENTATION_STEP = 'deployment'
 export const CHANGE_PLANNED_STEPS = ['scheduled'] as const
 export const CHANGE_WINDOW_STEPS: readonly string[] = [CHANGE_IMPLEMENTATION_STEP, ...CHANGE_PLANNED_STEPS]
 
-/** Valori di `Event.correlation`. */
-export const CORRELATION_OUTCOMES = ['opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'suppressed', 'none'] as const
+/** Valori di `Event.correlation`. `flapping`, `storm`, `storm_no_ci` sono dell'ondata 4. */
+export const CORRELATION_OUTCOMES = ['opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'suppressed', 'flapping', 'storm', 'storm_no_ci', 'none'] as const
 export type CorrelationOutcome = (typeof CORRELATION_OUTCOMES)[number]
 /** Esiti di `event.correlated` (oltre a quelli scritti sull'evento). */
 export type PipelineOutcome = CorrelationOutcome | 'auto_resolved' | 'auto_resolve_skipped'
@@ -94,6 +115,29 @@ export function monitoringContext(tenantId: string): GraphQLContext {
 
 export interface EventSuppressedPayload extends MonitoringEventPayload { change_id: string }
 export interface EventCorrelatedPayload extends MonitoringEventPayload { incident_id: string | null; outcome: PipelineOutcome }
+/** `event.flapping`: passaggi contati nella finestra e finestra in minuti. */
+export interface EventFlappingPayload extends MonitoringEventPayload { transitions: number; window_minutes: number; flapping_since: string; incident_id: string | null }
+/** `event.stable`: stato a cui l'evento è tornato e minuti di quiete richiesti. */
+export interface EventStablePayload extends MonitoringEventPayload { stable_minutes: number; flapping_since: string | null }
+
+// ── Sfarfallio (helper puri) ─────────────────────────────────────────────────
+
+/** True se nei `flap_window_minutes` prima di `now` ci sono ≥ `flap_threshold` passaggi (soglia o finestra 0 = rilevamento spento). */
+export function isFlapping(transitions: readonly string[], policy: Pick<EventPolicy, 'flap_threshold' | 'flap_window_minutes'>, now: string): boolean {
+  if (policy.flap_threshold <= 0 || policy.flap_window_minutes <= 0) return false
+  const nowMs = Date.parse(now)
+  if (Number.isNaN(nowMs)) throw new Error(`isFlapping: "${now}" is not an ISO date`)
+  return countTransitionsSince(transitions, nowMs - policy.flap_window_minutes * 60_000) >= policy.flap_threshold
+}
+
+/** True se l'ultimo passaggio è più vecchio di `flap_stable_minutes` (nessun passaggio registrato → stabile). */
+export function isStable(transitions: readonly string[], stableMinutes: number, now: string): boolean {
+  const nowMs = Date.parse(now)
+  if (Number.isNaN(nowMs)) throw new Error(`isStable: "${now}" is not an ISO date`)
+  let last = -Infinity
+  for (const t of transitions) { const ms = Date.parse(t); if (ms > last) last = ms }
+  return last === -Infinity || nowMs - last >= stableMinutes * 60_000
+}
 
 // ── Helper puri ──────────────────────────────────────────────────────────────
 
@@ -288,6 +332,7 @@ async function applySuppression(tenantId: string, ev: EventRecord, change: Suppr
   } finally { await session.close() }
 
   if (alreadyByThisChange) return   // ripetizione dello stesso allarme nella stessa finestra: nessun nuovo avviso
+  eventsSuppressedTotal.inc({})
   const payload: EventSuppressedPayload = { ...mapEventPayload({ ...ev.props, status: 'suppressed' }, ev.ciId), change_id: change.changeId }
   await publishEvent('event.suppressed', tenantId, actorId, payload, now)
   void audit(monitoringContext(tenantId), 'event.suppressed', 'Event', eventId, { changeId: change.changeId, changeCode: change.code, changeStep: change.step, ciId: ev.ciId })
@@ -380,7 +425,117 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
 
   await attachEventToIncident(tenantId, eventId, incident.id, manual, now)
   await setCorrelation(tenantId, eventId, 'opened', now)
+  if (!manual) incidentsAutoOpenedTotal.inc({})
   return incident
+}
+
+// ── 0. Sfarfallio ────────────────────────────────────────────────────────────
+
+/** Incident non terminale a cui l'evento è già correlato (per il commento di sfarfallio). */
+async function findLinkedOpenIncident(session: Session, tenantId: string, eventId: string, info: IncidentStepInfo): Promise<string | null> {
+  const row = await runQueryOne<{ incidentId: string }>(session, `
+    MATCH (e:Event {id: $eventId, tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {tenant_id: $tenantId})
+    MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+    WHERE NOT wi.current_step IN $terminalSteps
+    RETURN i.id AS incidentId, i.created_at AS createdAt
+    ORDER BY createdAt DESC LIMIT 1
+  `, { eventId, tenantId, terminalSteps: info.terminalSteps })
+  return row?.incidentId ?? null
+}
+
+/**
+ * L'evento entra in sfarfallio: status `flapping`, `flapping_since`,
+ * `correlation = 'flapping'`; la salute del CI viene ricalcolata (vale
+ * degraded); un commento sull'incident già correlato, `event.flapping`. Nessun
+ * incident viene aperto né chiuso finché sfarfalla.
+ */
+async function enterFlapping(tenantId: string, ev: EventRecord, policy: EventPolicy, actorId: string, now: string): Promise<PipelineResult> {
+  const eventId = toStr(ev.props['id'])
+  const transitions = countTransitionsSince(transitionsOf(ev.props), Date.parse(now) - policy.flap_window_minutes * 60_000)
+  const session = getSession(undefined, 'WRITE')
+  let incidentId: string | null
+  try {
+    const row = await runQueryOne<{ id: string }>(session, `
+      MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
+      SET e.status = 'flapping', e.flapping_since = $now, e.suppressed_by_change_id = null,
+          e.correlation = 'flapping', e.correlation_at = $now, e.correlation_due_at = null, e.updated_at = $now
+      RETURN e.id AS id
+    `, { eventId, tenantId, now })
+    if (!row) throw new Error(`Event ${eventId} vanished while entering flapping (tenant ${tenantId})`)
+    incidentId = await findLinkedOpenIncident(session, tenantId, eventId, await incidentStepInfo(session, tenantId))
+  } finally { await session.close() }
+
+  if (ev.ciId) await recomputeCIHealth(tenantId, ev.ciId, actorId)
+  if (incidentId) {
+    await (await incidents()).addIncidentComment(incidentId, { tenantId, userId: MONITORING_ACTOR },
+      `Allarme instabile: ${transitions} passaggi in ${policy.flap_window_minutes} minuti, correlazione sospesa`)
+  }
+  eventsFlappingTotal.inc({})
+  const payload: EventFlappingPayload = { ...mapEventPayload({ ...ev.props, status: 'flapping' }, ev.ciId), transitions, window_minutes: policy.flap_window_minutes, flapping_since: now, incident_id: incidentId }
+  await publishEvent('event.flapping', tenantId, actorId, payload, now)
+  void audit(monitoringContext(tenantId), 'event.flapping', 'Event', eventId, { transitions, windowMinutes: policy.flap_window_minutes, ciId: ev.ciId, incidentId })
+  log.info({ tenantId, eventId, transitions, windowMinutes: policy.flap_window_minutes, ciId: ev.ciId, incidentId }, 'Event is flapping: correlation suspended')
+  return { outcome: 'flapping', status: 'flapping', suppressedByChangeId: null, incidentId }
+}
+
+/**
+ * Job periodico: ogni evento `flapping` (di ogni tenant) senza passaggi da
+ * `flap_stable_minutes` torna allo stato dell'ultimo payload, pubblica
+ * `event.stable` e ripassa dalla pipeline (`reevaluate`: correlazione se
+ * firing, chiusura automatica se resolved). Un errore su un evento non ferma
+ * gli altri ma fa fallire il job.
+ */
+export async function reevaluateFlappingEvents(now: string = new Date().toISOString()): Promise<{ evaluated: number; stabilized: number; failed: number }> {
+  const session = getSession()
+  let rows: Array<{ tenantId: string; id: string }>
+  try {
+    // tenant-ok: job di manutenzione su tutti i tenant; ogni evento è poi trattato nel suo tenant.
+    rows = await runQuery<{ tenantId: string; id: string }>(session, `
+      MATCH (e:Event {status: 'flapping'})
+      RETURN e.tenant_id AS tenantId, e.id AS id
+    `, {})
+  } finally { await session.close() }
+
+  const policies = new Map<string, EventPolicy>()
+  let stabilized = 0
+  let failed = 0
+  for (const r of rows) {
+    try {
+      let policy = policies.get(r.tenantId)
+      if (!policy) { policy = await getEventPolicy(r.tenantId); policies.set(r.tenantId, policy) }
+      const ev = await loadEventRecord(r.tenantId, r.id)
+      if (!isStable(transitionsOf(ev.props), policy.flap_stable_minutes, now)) continue
+      await stabilizeEvent(r.tenantId, ev, policy, now)
+      stabilized++
+    } catch (err) {
+      failed++
+      log.error({ err, tenantId: r.tenantId, eventId: r.id }, 'Flapping event stabilisation failed')
+    }
+  }
+  if (failed > 0) throw new Error(`reevaluateFlappingEvents: ${failed}/${rows.length} flapping events failed stabilisation (see logs)`)
+  return { evaluated: rows.length, stabilized, failed }
+}
+
+async function stabilizeEvent(tenantId: string, ev: EventRecord, policy: EventPolicy, now: string): Promise<void> {
+  const eventId = toStr(ev.props['id'])
+  const last = ev.props['last_payload_status']
+  if (last !== 'firing' && last !== 'resolved') throw new Error(`Event ${eventId} is flapping but has no last_payload_status (${JSON.stringify(last)})`)
+  const flappingSince = typeof ev.props['flapping_since'] === 'string' ? ev.props['flapping_since'] : null
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const row = await runQueryOne<{ id: string }>(session, `
+      MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
+      SET e.status = $status, e.flapping_since = null, e.correlation = 'none', e.correlation_at = $now, e.updated_at = $now
+      RETURN e.id AS id
+    `, { eventId, tenantId, status: last, now })
+    if (!row) throw new Error(`Event ${eventId} vanished while stabilising (tenant ${tenantId})`)
+  } finally { await session.close() }
+
+  const payload: EventStablePayload = { ...mapEventPayload({ ...ev.props, status: last }, ev.ciId), stable_minutes: policy.flap_stable_minutes, flapping_since: flappingSince }
+  await publishEvent('event.stable', tenantId, MONITORING_ACTOR, payload, now)
+  void audit(monitoringContext(tenantId), 'event.stable', 'Event', eventId, { status: last, flappingSince, stableMinutes: policy.flap_stable_minutes })
+  const result = await runEventPipeline({ tenantId, eventId, now, mode: 'reevaluate' })
+  log.info({ tenantId, eventId, status: last, flappingSince, outcome: result.outcome }, 'Flapping event stabilised and re-evaluated')
 }
 
 // ── 6. Raggruppamento ────────────────────────────────────────────────────────
@@ -505,6 +660,7 @@ async function correlateFiringEvent(tenantId: string, ev: EventRecord, policy: E
       if (open.step === info.resolvedStep) {
         await reopenIncident(session, tenantId, open, info, `Allarme tornato: ${toStr(ev.props['title'])} (${toStr(ev.props['resource'])})`)
         await attachEventToIncident(tenantId, eventId, incidentId, false, now)
+        incidentsReopenedTotal.inc({})
         outcome = 'reopened'
       } else {
         const created = await attachEventToIncident(tenantId, eventId, incidentId, false, now)
@@ -529,9 +685,29 @@ async function correlateFiringEvent(tenantId: string, ev: EventRecord, policy: E
   } finally { await session.close() }
 }
 
+// ── 6b. Tempesta ─────────────────────────────────────────────────────────────
+
+/**
+ * Sorgente in tempesta: l'evento firing si aggancia all'incident di tempesta
+ * (`storm`), senza commento per evento e senza avviso (l'avviso è
+ * event.storm_started, uno per sorgente); se l'incident non esiste ancora
+ * (solo eventi orfani finora) resta `storm_no_ci`. Mai apertura/aggancio per CI.
+ */
+async function correlateIntoStorm(tenantId: string, ev: EventRecord, storm: StormState, now: string): Promise<PipelineResult> {
+  const eventId = toStr(ev.props['id'])
+  if (!storm.incidentId) {
+    await setCorrelation(tenantId, eventId, 'storm_no_ci', now)
+    return { outcome: 'storm_no_ci', status: 'firing', suppressedByChangeId: null, incidentId: null }
+  }
+  await attachEventToIncident(tenantId, eventId, storm.incidentId, false, now)
+  await setCorrelation(tenantId, eventId, 'storm', now)
+  log.debug({ tenantId, eventId, incidentId: storm.incidentId, sourceName: storm.sourceName }, 'Event attached to storm incident')
+  return { outcome: 'storm', status: 'firing', suppressedByChangeId: null, incidentId: storm.incidentId }
+}
+
 // ── 7. Chiusura automatica ───────────────────────────────────────────────────
 
-async function handleResolvedEvent(tenantId: string, ev: EventRecord, actorId: string, now: string, mode: PipelineMode): Promise<PipelineResult> {
+async function handleResolvedEvent(tenantId: string, ev: EventRecord, actorId: string, now: string, mode: PipelineMode, storm: StormState): Promise<PipelineResult> {
   const eventId = toStr(ev.props['id'])
   const done = (outcome: PipelineOutcome, incidentId: string | null = null): PipelineResult =>
     ({ outcome, status: 'resolved', suppressedByChangeId: null, incidentId })
@@ -543,6 +719,9 @@ async function handleResolvedEvent(tenantId: string, ev: EventRecord, actorId: s
     return done('none')
   }
   if (ev.ciId) await recomputeCIHealth(tenantId, ev.ciId, actorId)
+  // In tempesta solo la salute: l'incident di tempesta si chiude a mano o
+  // automaticamente quando, finita la tempesta, l'ultimo allarme rientra.
+  if (storm.active) return done('storm', storm.incidentId)
 
   const session = getSession(undefined, 'WRITE')
   try {
@@ -591,6 +770,7 @@ async function handleResolvedEvent(tenantId: string, ev: EventRecord, actorId: s
       // La transizione "Risolvi" richiede la causa (rootCause = notes).
       await incidentService.resolveIncident(linked.incidentId, ctx, `Allarme di monitoraggio rientrato: ${title}`)
       await incidentService.addIncidentComment(linked.incidentId, ctx, `Risolto automaticamente: tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: ${title})`)
+      incidentsAutoResolvedTotal.inc({})
       outcome = 'auto_resolved'
     } else {
       // Nessun cammino percorribile (archi solo con condizioni di dominio, o
@@ -625,6 +805,8 @@ export interface PipelineInput {
   actorId?: string
   now?:     string
   mode?:    PipelineMode
+  /** Solo in `ingest`: true se l'Event è stato CREATO da questo ingest (alimenta il contatore di tempesta della sorgente). */
+  created?: boolean
 }
 
 export interface PipelineResult {
@@ -643,15 +825,32 @@ export async function runEventPipeline(input: PipelineInput): Promise<PipelineRe
 
   const ev = await loadEventRecord(tenantId, eventId)
   const status = toStr(ev.props['status'])
-  if (status === 'resolved') return handleResolvedEvent(tenantId, ev, actorId, now, mode)
+  const policy = await getEventPolicy(tenantId)
+
+  // 0. sfarfallio in corso: nessuna correlazione, la salute (degraded) resta aggiornata
+  if (status === 'flapping') {
+    if (ev.ciId) await recomputeCIHealth(tenantId, ev.ciId, actorId)
+    return { outcome: 'flapping', status, suppressedByChangeId: null, incidentId: null }
+  }
+  // 0. rilevamento: solo all'ingest, dove i passaggi vengono registrati
+  if (mode === 'ingest' && isFlapping(transitionsOf(ev.props), policy, now)) {
+    return enterFlapping(tenantId, ev, policy, actorId, now)
+  }
+  // 0b. tempesta della sorgente: all'ingest si aggiorna il contatore (e si
+  // apre/chiude la tempesta), nelle rivalutazioni si legge soltanto.
+  const sourceId = toStr(ev.props['source_id'])
+  const storm = mode === 'ingest'
+    ? await trackSourceStorm({ tenantId, sourceId, created: input.created === true, policy, now, actorId, ciId: ev.ciId })
+    : await getStormState(tenantId, sourceId)
+
+  if (status === 'resolved') return handleResolvedEvent(tenantId, ev, actorId, now, mode, storm)
 
   if (mode === 'resume') {
     if (status === 'suppressed') return { outcome: 'suppressed', status, suppressedByChangeId: toStr(ev.props['suppressed_by_change_id']) || null, incidentId: null }
-    const policy = await getEventPolicy(tenantId)
+    if (storm.active) return correlateIntoStorm(tenantId, ev, storm, now)
     return correlateFiringEvent(tenantId, ev, policy, actorId, now, mode)
   }
 
-  const policy = await getEventPolicy(tenantId)
   // 1. soppressione: blocca salute e correlazione
   if (ev.ciId) {
     const change = await findSuppressingChange(tenantId, ev.ciId, policy.suppress_upstream_hops, now)
@@ -667,6 +866,8 @@ export async function runEventPipeline(input: PipelineInput): Promise<PipelineRe
   }
   // 2. salute del CI
   if (ev.ciId) await recomputeCIHealth(tenantId, ev.ciId, actorId)
+  // 2b. tempesta: aggancio all'incident di tempesta, niente correlazione per CI
+  if (storm.active) return correlateIntoStorm(tenantId, ev, storm, now)
   // 3–6
   return correlateFiringEvent(tenantId, ev, policy, actorId, now, mode)
 }

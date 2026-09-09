@@ -1160,6 +1160,18 @@
       },
       "correlated": {
         "title": "Allarme correlato a un incident"
+      },
+      "flapping": {
+        "title": "Allarme instabile: correlazione sospesa"
+      },
+      "stable": {
+        "title": "Allarme tornato stabile"
+      },
+      "storm_started": {
+        "title": "Tempesta di allarmi in corso"
+      },
+      "storm_ended": {
+        "title": "Tempesta di allarmi terminata"
       }
     },
     "ci": {
@@ -1708,7 +1720,9 @@
       "labelKey": "Chiave",
       "labelValue": "Valore",
       "context": "Contesto",
-      "ciHealth": "Salute"
+      "ciHealth": "Salute",
+      "flappingSince": "Instabile dal",
+      "transitions24h": "Passaggi nelle ultime 24 h"
     },
     "aliases": {
       "title": "Alias del CI {{ci}}",
@@ -1768,7 +1782,11 @@
         "autoResolveTitle": "Chiusura automatica",
         "autoResolve": "quando la sorgente risolve tutti gli allarmi, l'incident aperto dal monitoraggio viene risolto; se l'allarme torna, viene riaperto.",
         "changeWindowTitle": "Silenzio in finestra di change",
-        "changeWindow": "gli allarmi sui CI di una change in finestra di rilascio sono silenziati: niente incident né cambio di salute; a fine finestra vengono rivalutati."
+        "changeWindow": "gli allarmi sui CI di una change in finestra di rilascio sono silenziati: niente incident né cambio di salute; a fine finestra vengono rivalutati.",
+        "flappingTitle": "Sfarfallio",
+        "flapping": "un allarme che va e viene troppe volte nella finestra è messo «in sfarfallio»: nessun incident aperto né chiuso, salute del CI degradata, finché non resta stabile per i minuti indicati.",
+        "stormTitle": "Tempesta",
+        "storm": "se una sorgente manda più allarmi nuovi al minuto della soglia, tutti finiscono in un unico incident di tempesta invece di uno per CI, finché il tasso non resta sotto soglia per i minuti indicati."
       },
       "help": {
         "openIncidentFrom": "Severità minima da cui un allarme apre un incident. «Mai» = gli allarmi restano solo in console.",
@@ -1779,7 +1797,24 @@
         "flapWindowMinutes": "Finestra di osservazione in cui contare le transizioni dello sfarfallio.",
         "retentionDays": "Gli eventi risolti più vecchi di questi giorni vengono eliminati.",
         "autoResolve": "Quando la sorgente risolve tutti gli allarmi di un incident aperto dal monitoraggio, l'incident viene risolto; un nuovo allarme lo riapre.",
-        "severityMap": "Impatto e urgenza assegnati all'incident aperto automaticamente, in base alla severità dell'allarme: la priorità ne deriva."
+        "severityMap": "Impatto e urgenza assegnati all'incident aperto automaticamente, in base alla severità dell'allarme: la priorità ne deriva.",
+        "flapStableMinutes": "Quanto a lungo l'allarme deve restare fermo (né nuovi attivi né risolti) prima di uscire dallo sfarfallio e tornare alla correlazione normale.",
+        "stormThresholdPerMinute": "Se una sorgente supera questo numero di allarmi nuovi al minuto, scatta la tempesta: i suoi allarmi sono raggruppati in un unico incident invece di aprirne uno per CI.",
+        "stormCooldownMinutes": "La tempesta si chiude quando il tasso resta sotto la soglia per questi minuti; gli allarmi successivi tornano alla correlazione normale."
+      },
+      "flapStableMinutes": "Minuti di stabilità prima di riprendere",
+      "stormThresholdPerMinute": "Soglia di tempesta (allarmi nuovi al minuto)",
+      "stormCooldownMinutes": "Minuti sotto soglia per chiudere la tempesta",
+      "groups": {
+        "incidents": "Apertura e chiusura degli incident",
+        "changeWindow": "Silenzio in finestra di change",
+        "flapStorm": "Sfarfallio e tempeste",
+        "retention": "Conservazione"
+      },
+      "validation": {
+        "integer": "Inserisci un numero intero (minimo {{min}}).",
+        "min": "Il valore minimo è {{min}}.",
+        "blocked": "Correggi i campi segnalati per salvare."
       }
     },
     "health": {
@@ -1797,7 +1832,15 @@
         "delayed": "In attesa",
         "delayedIn": "Apertura tra {{seconds}} s",
         "delayedWaiting": "In attesa del ritardo di apertura della policy",
-        "linkCI": "Collega un CI"
+        "linkCI": "Collega un CI",
+        "flapping_one": "Instabile · {{count}} passaggio/24h",
+        "flapping_other": "Instabile · {{count}} passaggi/24h",
+        "flappingHint": "In attesa che resti stabile per {{minutes}} minuti",
+        "flappingHintNoPolicy": "In attesa che resti stabile per i minuti previsti dalla policy",
+        "storm": "Tempesta · {{number}}",
+        "stormUnknown": "Tempesta",
+        "stormHint": "Raggruppato nell'incident di tempesta della sorgente {{source}}",
+        "storm_no_ci": "Tempesta, nessun CI"
       },
       "auto": {
         "opened": "Incident aperto automaticamente dal monitoraggio",
@@ -1818,7 +1861,12 @@
         "delayed": "In attesa: la policy apre gli incident dopo {{seconds}} secondi (apertura tra {{remaining}} s se l'allarme resta attivo).",
         "delayedNoPolicy": "In attesa del ritardo di apertura previsto dalla policy.",
         "none": "Nessuna correlazione automatica per questo evento.",
-        "unknown": "Esito di correlazione sconosciuto: {{value}}."
+        "unknown": "Esito di correlazione sconosciuto: {{value}}.",
+        "flapping": "Allarme instabile: {{count}} passaggi nelle ultime 24 ore, dal {{since}}; nessun incident aperto né chiuso, la correlazione riprende dopo {{minutes}} minuti di stabilità.",
+        "flappingNoPolicy": "Allarme instabile: {{count}} passaggi nelle ultime 24 ore, dal {{since}}; nessun incident aperto né chiuso, la correlazione riprende quando resta stabile per i minuti previsti dalla policy.",
+        "storm": "Tempesta dalla sorgente {{source}}: raggruppato nell'incident di tempesta {{number}} il {{when}} invece di aprire un incident per questo CI.",
+        "stormNoIncident": "Tempesta dalla sorgente {{source}}: valutato il {{when}} durante la tempesta, nessun incident aperto per questo CI.",
+        "storm_no_ci": "Tempesta dalla sorgente {{source}} e nessun CI riconosciuto: nessun incident aperto; collega un CI dopo la tempesta se serve."
       },
       "short": {
         "opened": "incident aperto",
@@ -1829,7 +1877,19 @@
         "delayed": "in attesa del ritardo",
         "suppressed": "silenziato da una change",
         "auto_resolved": "incident risolto",
-        "none": "nessuna correlazione"
+        "none": "nessuna correlazione",
+        "flapping": "allarme instabile",
+        "storm": "raggruppato nella tempesta",
+        "storm_no_ci": "tempesta, nessun CI"
+      }
+    },
+    "storm": {
+      "banner": {
+        "title_one": "Tempesta in corso",
+        "title_other": "Tempeste in corso ({{count}} sorgenti)",
+        "line": "Tempesta in corso da {{source}}: {{rate}} allarmi al minuto dalle {{time}}, raggruppati in",
+        "lineNoIncident": "Tempesta in corso da {{source}}: {{rate}} allarmi al minuto dalle {{time}}; nessun incident di tempesta.",
+        "sources": "Sorgenti"
       }
     }
   },
@@ -1901,7 +1961,10 @@
         "title": "Nessuna sorgente di monitoraggio",
         "description": "Collega Alertmanager, Grafana, Zabbix, Datadog o qualsiasi altro strumento: la procedura guidata ti accompagna passo passo, senza codice."
       },
-      "disabledHint": "Disattiva: gli allarmi inviati a questo endpoint vengono rifiutati."
+      "disabledHint": "Disattiva: gli allarmi inviati a questo endpoint vengono rifiutati.",
+      "stormBadge": "Tempesta",
+      "stormBadgeHint": "In tempesta: {{rate}} allarmi al minuto dalle {{time}}, raggruppati in {{number}}",
+      "stormBadgeHintNoIncident": "In tempesta: {{rate}} allarmi al minuto dalle {{time}}"
     },
     "wizard": {
       "title": "Aggiungi sorgente",

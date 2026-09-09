@@ -9,6 +9,9 @@
  * - `correlationSentence`: la frase leggibile del dettaglio.
  * - `delayedOpensIn`: countdown per gli eventi in attesa del ritardo di policy.
  *
+ * Ondata 4: gli esiti `flapping` (chip viola "Instabile · N passaggi/24h"),
+ * `storm` (chip ambra "Tempesta · INC-…" con link) e `storm_no_ci`.
+ *
  * Un esito fuori vocabolario non viene "abbellito": la cella mostra il link o
  * il trattino e la frase dice che l'esito è sconosciuto (fail-loud).
  */
@@ -23,9 +26,9 @@ import { colors } from '@/lib/tokens'
 import { REEVALUABLE_CORRELATIONS, type MonitoringEvent, type EventPolicy, type EventCorrelation } from '@/types/events'
 
 /** Sottoinsieme della policy che serve alla correlazione (il resto non è necessario ai chiamanti). */
-export type CorrelationPolicy = Pick<EventPolicy, 'openIncidentFrom' | 'openDelaySeconds'>
+export type CorrelationPolicy = Pick<EventPolicy, 'openIncidentFrom' | 'openDelaySeconds' | 'flapStableMinutes'>
 
-type CorrelationEvent = Pick<MonitoringEvent, 'status' | 'severity' | 'incident' | 'suppressedBy' | 'correlation' | 'correlationAt'>
+type CorrelationEvent = Pick<MonitoringEvent, 'status' | 'severity' | 'incident' | 'suppressedBy' | 'correlation' | 'correlationAt' | 'flappingSince' | 'transitions24h' | 'source'>
 
 /** "Rivaluta ora" ha senso solo quando la policy può ancora cambiare idea. */
 export function canReevaluate(ev: Pick<MonitoringEvent, 'correlation'>): boolean {
@@ -58,6 +61,9 @@ const AUTO_ICON: Partial<Record<EventCorrelation, { Icon: typeof Zap; key: strin
 
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 const chipFont  = { fontSize: 'var(--font-size-label)' } as const
+/** Stessa palette dei badge di stato (eventShared): viola = sfarfallio, ambra = tempesta. */
+const FLAP_CHIP  = { bg: '#f5f3ff', color: '#6d28d9' } as const
+const STORM_CHIP = { bg: '#fef3c7', color: '#b45309' } as const
 
 interface CellProps {
   event:   CorrelationEvent
@@ -69,6 +75,39 @@ interface CellProps {
 export function EventIncidentCell({ event, policy, stopRowClick = false }: CellProps) {
   const { t } = useTranslation()
   const stop = stopRowClick ? (e: MouseEvent<HTMLAnchorElement>) => e.stopPropagation() : undefined
+
+  // Sfarfallio e tempesta vengono PRIMA del link all'incident: l'esito della
+  // policy è l'informazione che conta, l'incident (se c'è) resta accanto.
+  switch (event.correlation) {
+    case 'flapping': {
+      const tip = policy
+        ? t('events.correlation.chip.flappingHint', { minutes: policy.flapStableMinutes })
+        : t('events.correlation.chip.flappingHintNoPolicy')
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+          <Pill bg={FLAP_CHIP.bg} color={FLAP_CHIP.color} style={chipFont}>
+            <span title={tip}>{t('events.correlation.chip.flapping', { count: event.transitions24h })}</span>
+          </Pill>
+          {event.incident && <Link to={`/incidents/${event.incident.id}`} onClick={stop} style={linkStyle}>{event.incident.number}</Link>}
+        </span>
+      )
+    }
+    case 'storm': {
+      const inc = event.incident
+      const label = inc ? t('events.correlation.chip.storm', { number: inc.number }) : t('events.correlation.chip.stormUnknown')
+      const tip = t('events.correlation.chip.stormHint', { source: event.source?.name ?? '—' })
+      const pill = <Pill bg={STORM_CHIP.bg} color={STORM_CHIP.color} style={chipFont}><span title={tip}>{label}</span></Pill>
+      return inc
+        ? <Link to={`/incidents/${inc.id}`} onClick={stop} style={{ textDecoration: 'none' }}>{pill}</Link>
+        : pill
+    }
+    case 'storm_no_ci':
+      return (
+        <Pill bg={STORM_CHIP.bg} color={STORM_CHIP.color} style={chipFont}>
+          <span title={t('events.correlation.text.storm_no_ci', { source: event.source?.name ?? '—' })}>{t('events.correlation.chip.storm_no_ci')}</span>
+        </Pill>
+      )
+  }
 
   if (event.incident) {
     const auto = AUTO_ICON[event.correlation]
@@ -133,6 +172,19 @@ export function correlationSentence(t: TFunction, ev: CorrelationEvent, policy: 
         : t('events.correlation.text.delayedNoPolicy')
     }
     case 'none': return t('events.correlation.text.none')
+    case 'flapping': {
+      const vars = { count: ev.transitions24h, since: formatDateTime(ev.flappingSince) }
+      return policy
+        ? t('events.correlation.text.flapping', { ...vars, minutes: policy.flapStableMinutes })
+        : t('events.correlation.text.flappingNoPolicy', vars)
+    }
+    case 'storm': {
+      const source = ev.source?.name ?? '—'
+      return ev.incident
+        ? t('events.correlation.text.storm', { source, number, when })
+        : t('events.correlation.text.stormNoIncident', { source, when })
+    }
+    case 'storm_no_ci': return t('events.correlation.text.storm_no_ci', { source: ev.source?.name ?? '—' })
     default:     return t('events.correlation.text.unknown', { value: String(ev.correlation) })
   }
 }

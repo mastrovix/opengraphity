@@ -3,13 +3,15 @@
  * Elenco con strumento, stato (toggle), ultimo ricevuto, contatori, ultimo
  * errore in chiaro e azioni: modifica, rigenera token (mostrato UNA volta),
  * invia evento di prova, elimina. Stato vuoto che porta alla procedura guidata.
+ * Ondata 4: badge ambra "Tempesta" sulla riga della sorgente che sta mandando
+ * troppi allarmi al minuto (`eventStats.stormSources`, polling 15 s).
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Radar, Plus, Pencil, KeyRound, Send, Trash2, AlertTriangle } from 'lucide-react'
+import { Radar, Plus, Pencil, KeyRound, Send, Trash2, AlertTriangle, CloudLightning } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -20,12 +22,32 @@ import { Modal } from '@/components/Modal'
 import { Toggle } from '@/components/ui/Toggle'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_MONITORING_SOURCES, GET_EVENT_STATS } from '@/graphql/queries'
 import { UPDATE_MONITORING_SOURCE, DELETE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
-import { timeAgo, formatDateTime } from '@/lib/datetime'
+import { timeAgo, formatDateTime, currentLocale } from '@/lib/datetime'
 import { colors } from '@/lib/tokens'
-import type { MonitoringSource } from '@/types/events'
+import { Pill } from '@/components/ui/Pill'
+import type { MonitoringSource, EventStats, StormSource } from '@/types/events'
 import { ToolBadge, EnabledPill, SecretBox } from './monitoringShared'
+
+const STORM_POLL_MS = 15_000
+
+/** Badge "Tempesta" con tooltip: tasso, da che ora, incident di tempesta. */
+function StormBadge({ storm }: { storm: StormSource }) {
+  const { t } = useTranslation()
+  const time = new Date(storm.since).toLocaleTimeString(currentLocale(), { hour: '2-digit', minute: '2-digit' })
+  const tip = storm.incidentNumber
+    ? t('monitoring.sources.stormBadgeHint', { rate: storm.ratePerMinute, time, number: storm.incidentNumber })
+    : t('monitoring.sources.stormBadgeHintNoIncident', { rate: storm.ratePerMinute, time })
+  return (
+    <Pill bg="#fef3c7" color="#b45309" style={{ fontSize: 'var(--font-size-label)', gap: 4 }}>
+      <span title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <CloudLightning size={11} aria-hidden="true" />
+        {t('monitoring.sources.stormBadge')}
+      </span>
+    </Pill>
+  )
+}
 
 export function MonitoringSourcesPage() {
   const { t } = useTranslation()
@@ -35,6 +57,11 @@ export function MonitoringSourcesPage() {
 
   const { data, loading, error, refetch } = useQuery<{ monitoringSources: MonitoringSource[] }>(GET_MONITORING_SOURCES, { fetchPolicy: 'cache-and-network' })
   const sources = data?.monitoringSources ?? []
+
+  // Sorgenti in tempesta: badge sulla riga. Se la query fallisce il badge
+  // manca e basta: l'elenco delle sorgenti non dipende dai contatori.
+  const { data: statsData } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, { fetchPolicy: 'cache-and-network', pollInterval: STORM_POLL_MS })
+  const stormBySource = useMemo(() => new Map((statsData?.eventStats.stormSources ?? []).map((s) => [s.sourceId, s])), [statsData])
 
   const [updateSource] = useMutation(UPDATE_MONITORING_SOURCE)
   const [deleteSource] = useMutation(DELETE_MONITORING_SOURCE)
@@ -82,12 +109,18 @@ export function MonitoringSourcesPage() {
   const columns: ColumnDef<MonitoringSource>[] = [
     {
       key: 'name', label: t('monitoring.sources.columns.name'), sortable: true,
-      render: (_v, row) => (
-        <div>
-          <Link to={`/monitoring/sources/${row.id}`} onClick={(e) => e.stopPropagation()} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600 }}>{row.name}</Link>
-          {!row.enabled && <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{t('monitoring.sources.disabledHint')}</div>}
-        </div>
-      ),
+      render: (_v, row) => {
+        const storm = stormBySource.get(row.id)
+        return (
+          <div>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Link to={`/monitoring/sources/${row.id}`} onClick={(e) => e.stopPropagation()} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600 }}>{row.name}</Link>
+              {storm && <StormBadge storm={storm} />}
+            </span>
+            {!row.enabled && <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{t('monitoring.sources.disabledHint')}</div>}
+          </div>
+        )
+      },
     },
     { key: 'connectorKind', label: t('monitoring.sources.columns.tool'), width: '180px', sortable: true, render: (_v, row) => <ToolBadge kind={row.connectorKind} /> },
     {

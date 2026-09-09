@@ -14,6 +14,10 @@
  * Ondata 3 (services/eventCorrelation.ts): correlazione automatica in incident
  * (`Event.correlation`, `Incident.correlatedEvents`), silenzio nelle finestre
  * di change (`Event.suppressedBy`, `Change.suppressedEvents`), `reevaluateEvent`.
+ * Ondata 4: sfarfallio (`Event.flappingSince`, `transitions24h`, esito
+ * `flapping`), tempeste di allarmi per sorgente (`EventStats.stormSources`,
+ * esiti `storm` / `storm_no_ci`), conservazione (`retentionDays` → job
+ * `purge_events`), nuove chiavi della policy.
  */
 export function eventsSDL(): string {
   return `
@@ -50,9 +54,13 @@ export function eventsSDL(): string {
     incident:       Incident
     """Change la cui finestra ha silenziato l'evento (status = suppressed)."""
     suppressedBy:   Change
-    """Esito dell'ultima valutazione di correlazione: opened | attached | reopened | skipped_orphan | skipped_severity | delayed | suppressed | none."""
+    """Esito dell'ultima valutazione di correlazione: opened | attached | reopened | skipped_orphan | skipped_severity | delayed | suppressed | flapping | storm | storm_no_ci | none."""
     correlation:    String!
     correlationAt:  String
+    """Da quando l'evento sfarfalla (status = flapping); null altrimenti."""
+    flappingSince:  String
+    """Numero di passaggi firing↔resolved nelle ultime 24 ore."""
+    transitions24h: Int!
   }
 
   extend type Incident {
@@ -85,6 +93,18 @@ export function eventsSDL(): string {
     ci:        ConfigurationItemRef!
   }
 
+  """Una sorgente di monitoraggio in tempesta di allarmi (InboundWebhook.storm_since valorizzato)."""
+  type StormSource {
+    sourceId:       ID!
+    sourceName:     String!
+    """Eventi nuovi al minuto (massimo fra il minuto corrente e il precedente, contatore Redis)."""
+    ratePerMinute:  Int!
+    since:          String!
+    """Incident di tempesta a cui si agganciano gli eventi; null se nessun evento della tempesta aveva un CI."""
+    incidentId:     ID
+    incidentNumber: String
+  }
+
   type EventStats {
     firing:     Int!
     critical:   Int!
@@ -93,6 +113,8 @@ export function eventsSDL(): string {
     suppressed: Int!
     flapping:   Int!
     resolved24h: Int!
+    """Tempeste in corso."""
+    stormSources: [StormSource!]!
   }
 
   type EventPolicy {
@@ -103,6 +125,13 @@ export function eventsSDL(): string {
     suppressUpstreamHops: Int!
     flapThreshold:        Int!
     flapWindowMinutes:    Int!
+    """Minuti senza passaggi dopo i quali un evento flapping torna allo stato dell'ultimo payload."""
+    flapStableMinutes:    Int!
+    """Eventi nuovi al minuto dalla stessa sorgente oltre i quali la sorgente entra in tempesta (0 = spento)."""
+    stormThresholdPerMinute: Int!
+    """Minuti consecutivi sotto soglia dopo i quali la tempesta finisce."""
+    stormCooldownMinutes: Int!
+    """Giorni dopo la risoluzione oltre i quali gli eventi risolti vengono eliminati (0 = mai)."""
     retentionDays:        Int!
     """Mappa severità → impatto/urgenza, JSON serializzato."""
     severityMap:          String!
@@ -130,6 +159,9 @@ export function eventsSDL(): string {
     suppressUpstreamHops: Int
     flapThreshold:        Int
     flapWindowMinutes:    Int
+    flapStableMinutes:    Int
+    stormThresholdPerMinute: Int
+    stormCooldownMinutes: Int
     retentionDays:        Int
     severityMap:          String
   }

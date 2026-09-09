@@ -24,9 +24,13 @@ export const GET_EVENT = gql`
   ${EVENT_FIELDS}
 `
 
+/** Contatori + sorgenti in tempesta (ondata 4): banner in console e badge nelle Sorgenti. */
 export const GET_EVENT_STATS = gql`
   query GetEventStats {
-    eventStats { firing critical warning orphan suppressed flapping resolved24h }
+    eventStats {
+      firing critical warning orphan suppressed flapping resolved24h
+      stormSources { sourceId sourceName ratePerMinute since incidentId incidentNumber }
+    }
   }
 `
 
@@ -43,7 +47,8 @@ export const GET_EVENT_POLICY = gql`
   query GetEventPolicy {
     eventPolicy {
       openIncidentFrom groupBy openDelaySeconds autoResolve
-      suppressUpstreamHops flapThreshold flapWindowMinutes retentionDays severityMap
+      suppressUpstreamHops flapThreshold flapWindowMinutes flapStableMinutes
+      stormThresholdPerMinute stormCooldownMinutes retentionDays severityMap
     }
   }
 `

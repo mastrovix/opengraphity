@@ -9,6 +9,12 @@
  * passi intermedi nella definizione — seed new→assigned→in_progress, nessun
  * cammino, cammino troppo lungo, passo intermedio rifiutato), fine finestra,
  * apertura condivisa (orfano → ValidationError), helper puri.
+ * Ondata 4: sfarfallio (soglia raggiunta → flapping, salute ricalcolata,
+ * nessun incident, commento sull'incident già correlato; sotto soglia →
+ * normale; ripetizione durante flapping → invariato; stabilizzazione dal job
+ * periodico → torna allo stato del payload e ripassa dalla pipeline), tempesta
+ * della sorgente (eventStorm mockato: aggancio all'incident di tempesta,
+ * storm_no_ci, resolved in tempesta, soppressione che vince), metriche.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -36,9 +42,16 @@ vi.mock('../eventService.js', async (importOriginal) => ({
   getEventPolicy: vi.fn(), recomputeCIHealth: vi.fn().mockResolvedValue('down'),
 }))
 vi.mock('../../jobs/eventCorrelateWorker.js', () => ({ enqueueCorrelation: vi.fn().mockResolvedValue(undefined) }))
+// Ondata 4: le tempeste vivono in eventStorm.ts (testato a parte); qui si
+// verifica che la pipeline le interroghi e ne rispetti lo stato.
+vi.mock('../eventStorm.js', () => ({ trackSourceStorm: vi.fn(), getStormState: vi.fn() }))
+vi.mock('../../middleware/metrics.js', () => ({
+  eventsFlappingTotal: { inc: vi.fn() }, eventsSuppressedTotal: { inc: vi.fn() },
+  incidentsAutoOpenedTotal: { inc: vi.fn() }, incidentsAutoResolvedTotal: { inc: vi.fn() }, incidentsReopenedTotal: { inc: vi.fn() },
+}))
 
 const corr = await import('../eventCorrelation.js')
-const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, findAutoResolvePath, CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS } = corr
+const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluateFlappingEvents, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, findAutoResolvePath, isFlapping, isStable, CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS, CORRELATION_OUTCOMES } = corr
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { workflowEngine, INCIDENT_WORKFLOW_BASE } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
@@ -47,11 +60,17 @@ const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
 const incidentService = await import('../incidentService.js')
 const { getEventPolicy, recomputeCIHealth } = await import('../eventService.js')
 const { enqueueCorrelation } = await import('../../jobs/eventCorrelateWorker.js')
+const { trackSourceStorm, getStormState } = await import('../eventStorm.js')
+const metrics = await import('../../middleware/metrics.js')
 const { DEFAULT_EVENT_POLICY } = await import('../../lib/eventPolicy.js')
 
 const session = { close: vi.fn().mockResolvedValue(undefined) }
 const NOW = '2026-09-09T10:00:00.000Z'
 const MON = { tenantId: 't1', userId: MONITORING_ACTOR }
+const NO_STORM = { active: false, since: null, incidentId: null, sourceName: 'Zabbix prod' }
+const STORM = { active: true, since: '2026-09-09T09:58:00.000Z', incidentId: 'inc-storm', sourceName: 'Zabbix prod' }
+/** Istante ISO `m` minuti prima di NOW. */
+const minutesAgo = (m: number) => new Date(Date.parse(NOW) - m * 60_000).toISOString()
 
 const INCIDENT_STEPS = [
   { name: 'new',         isInitial: true,  isTerminal: false, isOpen: true,  category: 'new',      stepOrder: 1 },
@@ -88,6 +107,11 @@ const Q = {
   defTr:       /HAS_STEP\]->\(from:WorkflowStep\)\s+MATCH \(from\)-\[tr:TRANSITIONS_TO\]->\(to:WorkflowStep\)/,
   byChange:    /status: 'suppressed', suppressed_by_change_id: \$changeId/,
   allSupp:     /MATCH \(e:Event \{status: 'suppressed'\}\)/,
+  // ondata 4
+  flap:        /SET e\.status = 'flapping', e\.flapping_since = \$now/,
+  linkedOpen:  /NOT wi\.current_step IN \$terminalSteps\s+RETURN i\.id AS incidentId, i\.created_at AS createdAt/,
+  allFlap:     /MATCH \(e:Event \{status: 'flapping'\}\)/,
+  stabilize:   /SET e\.status = \$status, e\.flapping_since = null, e\.correlation = 'none'/,
 }
 
 /** Archi della definizione come li restituisce loadDefinitionTransitions (dal seed reale del workflow incident). */
@@ -100,7 +124,8 @@ const tr = (fromStep: string, toStep: string, over: Partial<DefTr> = {}): DefTr 
 
 const props = (over: Record<string, unknown> = {}) => ({
   id: 'ev-1', fingerprint: 'fp', status: 'firing', severity: 'critical', title: 'DiskFull', resource: 'db-01', resource_kind: 'hostname',
-  count: 3, first_seen_at: 'T0', last_seen_at: 'T1', source_id: 'hook-1', correlation: 'none', correlation_at: null, correlation_due_at: null, suppressed_by_change_id: null, ...over,
+  count: 3, first_seen_at: 'T0', last_seen_at: 'T1', source_id: 'hook-1', correlation: 'none', correlation_at: null, correlation_due_at: null, suppressed_by_change_id: null,
+  transitions: [], last_payload_status: 'firing', flapping_since: null, ...over,
 })
 const policy = (over: Partial<typeof DEFAULT_EVENT_POLICY> = {}) => ({ ...structuredClone(DEFAULT_EVENT_POLICY), ...over })
 
@@ -116,6 +141,9 @@ function baseRules(ev: Record<string, unknown> = {}, ciId: string | null = 'ci-1
     [Q.group, null],
     [Q.attach, { created: true }],
     [Q.linked, null],
+    [Q.flap, { id: 'ev-1' }],
+    [Q.linkedOpen, null],
+    [Q.stabilize, { id: 'ev-1' }],
   ]
 }
 
@@ -123,6 +151,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
   vi.mocked(getEventPolicy).mockResolvedValue(policy())
+  vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+  vi.mocked(getStormState).mockResolvedValue(NO_STORM)
   vi.mocked(getWorkflowSteps).mockResolvedValue(INCIDENT_STEPS)
   vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([] as never)
   vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
@@ -615,6 +645,261 @@ describe('findAutoResolvePath (helper puro)', () => {
     expect(findAutoResolvePath(chain(4), 'new', 'resolved')).toHaveLength(4)
     expect(findAutoResolvePath(chain(5), 'new', 'resolved')).toBeNull()
     expect(findAutoResolvePath(chain(5), 'new', 'resolved', 5)).toHaveLength(5)
+  })
+})
+
+// ── Ondata 4: sfarfallio ─────────────────────────────────────────────────────
+
+describe('sfarfallio', () => {
+  /** 4 passaggi negli ultimi 10 minuti: la soglia predefinita (4 in 10) è raggiunta. */
+  const FLAPPY = [minutesAgo(9), minutesAgo(6), minutesAgo(3), minutesAgo(1)]
+
+  it('isFlapping / isStable (helper puri): soglia nella finestra, soglia o finestra 0 = spento, stabile dopo N minuti senza passaggi', () => {
+    expect(isFlapping(FLAPPY, policy(), NOW)).toBe(true)
+    expect(isFlapping(FLAPPY.slice(1), policy(), NOW)).toBe(false)
+    expect(isFlapping([minutesAgo(30), ...FLAPPY.slice(1)], policy(), NOW)).toBe(false)   // uno è fuori finestra
+    expect(isFlapping(FLAPPY, policy({ flap_threshold: 0 }), NOW)).toBe(false)
+    expect(isFlapping(FLAPPY, policy({ flap_window_minutes: 0 }), NOW)).toBe(false)
+    expect(() => isFlapping(FLAPPY, policy(), 'ieri')).toThrow(/not an ISO date/)
+    expect(isStable([minutesAgo(16)], 15, NOW)).toBe(true)
+    expect(isStable([minutesAgo(20), minutesAgo(14)], 15, NOW)).toBe(false)
+    expect(isStable([], 15, NOW)).toBe(true)
+    expect(CORRELATION_OUTCOMES).toEqual(expect.arrayContaining(['flapping', 'storm', 'storm_no_ci']))
+  })
+
+  it('soglia raggiunta all\'ingest → flapping: SET status/flapping_since/correlation, salute ricalcolata (degraded), NESSUN incident né soppressione, event.flapping una volta, metrica', async () => {
+    onCypher(baseRules({ transitions: FLAPPY }))
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toEqual({ outcome: 'flapping', status: 'flapping', suppressedByChangeId: null, incidentId: null })
+    const set = callMatching(Q.flap)!
+    expect(set.cypher).toContain('MATCH (e:Event {id: $eventId, tenant_id: $tenantId})')
+    expect(set.cypher).toContain("e.correlation = 'flapping', e.correlation_at = $now, e.correlation_due_at = null")
+    expect(set.params).toMatchObject({ eventId: 'ev-1', tenantId: 't1', now: NOW })
+    expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'monitoring')
+    expect(callMatching(Q.suppressing)).toBeUndefined()
+    expect(callMatching(Q.group)).toBeUndefined()
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()   // nessun incident correlato
+    expect(trackSourceStorm).not.toHaveBeenCalled()
+    expect(published()).toEqual(['event.flapping'])
+    expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ id: 'ev-1', status: 'flapping', ci_id: 'ci-1', transitions: 4, window_minutes: 10, flapping_since: NOW, incident_id: null, entity_type: 'event' })
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'monitoring' }), 'event.flapping', 'Event', 'ev-1', expect.objectContaining({ transitions: 4, windowMinutes: 10 }))
+    expect(metrics.eventsFlappingTotal.inc).toHaveBeenCalledTimes(1)
+  })
+
+  it('con un incident già correlato → UN commento "Allarme instabile: N passaggi in M minuti, correlazione sospesa" e incident_id nel payload', async () => {
+    onCypher([...baseRules({ transitions: FLAPPY, correlation: 'attached' }), [Q.linkedOpen, { incidentId: 'inc-1' }]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toMatchObject({ outcome: 'flapping', incidentId: 'inc-1' })
+    expect(callMatching(Q.linkedOpen)!.params).toMatchObject({ eventId: 'ev-1', tenantId: 't1', terminalSteps: ['closed'] })
+    expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
+    expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, 'Allarme instabile: 4 passaggi in 10 minuti, correlazione sospesa')
+    expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ incident_id: 'inc-1' })
+    expect(incidentService.resolveIncident).not.toHaveBeenCalled()
+  })
+
+  it('sotto soglia (3 passaggi, o 4 di cui uno fuori finestra) → pipeline normale (opened), nessun flapping', async () => {
+    onCypher(baseRules({ transitions: FLAPPY.slice(1) }))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('opened')
+    expect(callMatching(Q.flap)).toBeUndefined()
+    expect(metrics.eventsFlappingTotal.inc).not.toHaveBeenCalled()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    onCypher(baseRules({ transitions: [minutesAgo(11), ...FLAPPY.slice(1)] }))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('opened')
+    expect(callMatching(Q.flap)).toBeUndefined()
+  })
+
+  it('il rilevamento avviene SOLO all\'ingest: in reevaluate/resume i passaggi non vengono contati', async () => {
+    onCypher(baseRules({ transitions: FLAPPY }))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'reevaluate' })).outcome).toBe('opened')
+    expect(callMatching(Q.flap)).toBeUndefined()
+    onCypher(baseRules({ transitions: FLAPPY, correlation: 'delayed' }))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'resume' })).outcome).toBe('opened')
+  })
+
+  it('ripetizione (firing o resolved) su evento già flapping → resta flapping: salute ricalcolata, nessuna scrittura, nessun avviso, nessun incident', async () => {
+    for (const lastPayload of ['firing', 'resolved']) {
+      vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+      onCypher(baseRules({ status: 'flapping', flapping_since: minutesAgo(5), correlation: 'flapping', transitions: [...FLAPPY, NOW], last_payload_status: lastPayload }))
+      const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+      expect(out).toEqual({ outcome: 'flapping', status: 'flapping', suppressedByChangeId: null, incidentId: null })
+      expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'monitoring')
+      expect(callMatching(Q.flap)).toBeUndefined()
+      expect(callMatching(Q.setCorr)).toBeUndefined()
+      expect(callMatching(Q.linked)).toBeUndefined()
+      expect(publishEvent).not.toHaveBeenCalled()
+      expect(incidentService.createIncident).not.toHaveBeenCalled()
+      expect(incidentService.resolveIncident).not.toHaveBeenCalled()
+      expect(trackSourceStorm).not.toHaveBeenCalled()
+    }
+  })
+
+  it('stabilizzazione (job periodico): senza passaggi da flap_stable_minutes torna allo stato dell\'ultimo payload, event.stable, e ripassa dalla pipeline (firing → opened; resolved → chiusura automatica valutata)', async () => {
+    let loads = 0
+    onCypher([
+      [Q.allFlap, [{ tenantId: 't1', id: 'ev-1' }]],
+      ...baseRules().slice(1),
+      // primo caricamento: ancora flapping; dopo la stabilizzazione: firing
+      [Q.load, () => (loads++ === 0
+        ? { props: props({ status: 'flapping', flapping_since: minutesAgo(30), correlation: 'flapping', transitions: [minutesAgo(40), minutesAgo(16)], last_payload_status: 'firing' }), ciId: 'ci-1' }
+        : { props: props({ status: 'firing', transitions: [minutesAgo(40), minutesAgo(16)] }), ciId: 'ci-1' })],
+    ])
+    await expect(reevaluateFlappingEvents(NOW)).resolves.toEqual({ evaluated: 1, stabilized: 1, failed: 0 })
+    const st = callMatching(Q.stabilize)!
+    expect(st.cypher).toContain('MATCH (e:Event {id: $eventId, tenant_id: $tenantId})')
+    expect(st.params).toMatchObject({ eventId: 'ev-1', tenantId: 't1', status: 'firing', now: NOW })
+    expect(published()).toEqual(['event.stable', 'event.correlated'])
+    expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ id: 'ev-1', status: 'firing', stable_minutes: 15, flapping_since: minutesAgo(30) })
+    expect(audit).toHaveBeenCalledWith(expect.anything(), 'event.stable', 'Event', 'ev-1', expect.objectContaining({ status: 'firing' }))
+    // ripasso dalla pipeline in reevaluate: soppressione, salute, correlazione (opened), nessun ritardo
+    expect(callMatching(Q.suppressing)).toBeDefined()
+    expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'monitoring')
+    expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
+    expect(enqueueCorrelation).not.toHaveBeenCalled()
+
+    // ultimo payload resolved → torna resolved e valuta la chiusura automatica (nessun incident correlato → none)
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(getStormState).mockResolvedValue(NO_STORM)
+    loads = 0
+    onCypher([
+      [Q.allFlap, [{ tenantId: 't1', id: 'ev-1' }]],
+      ...baseRules().slice(1),
+      [Q.load, () => (loads++ === 0
+        ? { props: props({ status: 'flapping', flapping_since: minutesAgo(30), correlation: 'flapping', transitions: [minutesAgo(16)], last_payload_status: 'resolved', resolved_at: minutesAgo(16) }), ciId: 'ci-1' }
+        : { props: props({ status: 'resolved', transitions: [minutesAgo(16)], last_payload_status: 'resolved', resolved_at: minutesAgo(16) }), ciId: 'ci-1' })],
+    ])
+    await expect(reevaluateFlappingEvents(NOW)).resolves.toEqual({ evaluated: 1, stabilized: 1, failed: 0 })
+    expect(callMatching(Q.stabilize)!.params['status']).toBe('resolved')
+    expect(callMatching(Q.linked)).toBeDefined()
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+    expect(published()).toEqual(['event.stable'])
+  })
+
+  it('stabilizzazione: evento con un passaggio più recente di flap_stable_minutes resta flapping; senza last_payload_status → errore contato, il job fallisce alla fine', async () => {
+    onCypher([
+      [Q.allFlap, [{ tenantId: 't1', id: 'ev-1' }]],
+      [Q.load, { props: props({ status: 'flapping', transitions: [minutesAgo(30), minutesAgo(10)], last_payload_status: 'firing' }), ciId: 'ci-1' }],
+    ])
+    await expect(reevaluateFlappingEvents(NOW)).resolves.toEqual({ evaluated: 1, stabilized: 0, failed: 0 })
+    expect(callMatching(Q.stabilize)).toBeUndefined()
+    expect(publishEvent).not.toHaveBeenCalled()
+
+    onCypher([
+      [Q.allFlap, [{ tenantId: 't1', id: 'ev-1' }, { tenantId: 't1', id: 'ev-2' }]],
+      [Q.load, { props: props({ status: 'flapping', transitions: [minutesAgo(30)], last_payload_status: undefined }), ciId: 'ci-1' }],
+    ])
+    await expect(reevaluateFlappingEvents(NOW)).rejects.toThrow(/2\/2 flapping events failed stabilisation/)
+    expect(callMatching(Q.stabilize)).toBeUndefined()
+
+    onCypher([[Q.allFlap, []]])
+    await expect(reevaluateFlappingEvents(NOW)).resolves.toEqual({ evaluated: 0, stabilized: 0, failed: 0 })
+  })
+})
+
+// ── Ondata 4: tempesta della sorgente ────────────────────────────────────────
+
+describe('tempesta della sorgente', () => {
+  it('all\'ingest la pipeline aggiorna il contatore della sorgente (created, policy, CI dell\'evento) e senza tempesta prosegue normalmente', async () => {
+    onCypher(baseRules())
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })).outcome).toBe('opened')
+    expect(trackSourceStorm).toHaveBeenCalledWith({ tenantId: 't1', sourceId: 'hook-1', created: true, policy: policy(), now: NOW, actorId: 'monitoring', ciId: 'ci-1' })
+    expect(getStormState).not.toHaveBeenCalled()
+  })
+
+  it('sorgente in tempesta → dopo soppressione e salute l\'evento si aggancia all\'incident di tempesta (storm): niente apertura/aggancio per CI, niente commento, niente avviso', async () => {
+    vi.mocked(trackSourceStorm).mockResolvedValue(STORM)
+    onCypher(baseRules({ severity: 'info' }))   // sotto la soglia open_incident_from: in tempesta non conta
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })
+    expect(out).toEqual({ outcome: 'storm', status: 'firing', suppressedByChangeId: null, incidentId: 'inc-storm' })
+    expect(callMatching(Q.suppressing)).toBeDefined()
+    expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'monitoring')
+    expect(callMatching(Q.attach)!.params).toMatchObject({ eventId: 'ev-1', incidentId: 'inc-storm', manual: false, now: NOW })
+    expect(callMatching(Q.setCorr)!.params['correlation']).toBe('storm')
+    expect(callMatching(Q.group)).toBeUndefined()
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+    expect(publishEvent).not.toHaveBeenCalled()
+    expect(enqueueCorrelation).not.toHaveBeenCalled()
+  })
+
+  it('tempesta senza incident (solo orfani finora) → storm_no_ci senza aggancio; anche un evento orfano in tempesta viene marcato', async () => {
+    vi.mocked(trackSourceStorm).mockResolvedValue({ ...STORM, incidentId: null })
+    onCypher(baseRules({}, null))
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })
+    expect(out).toEqual({ outcome: 'storm_no_ci', status: 'firing', suppressedByChangeId: null, incidentId: null })
+    expect(callMatching(Q.attach)).toBeUndefined()
+    expect(callMatching(Q.setCorr)!.params['correlation']).toBe('storm_no_ci')
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(trackSourceStorm).mockResolvedValue(STORM)
+    onCypher(baseRules({}, null))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })).outcome).toBe('storm')
+    expect(recomputeCIHealth).not.toHaveBeenCalled()
+  })
+
+  it('evento resolved in tempesta → solo salute: nessuna chiusura automatica dell\'incident di tempesta finché dura', async () => {
+    vi.mocked(trackSourceStorm).mockResolvedValue(STORM)
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved' }] as never)
+    onCypher([...baseRules({ status: 'resolved', correlation: 'storm' }), [Q.linked, { incidentId: 'inc-storm', instanceId: 'wi-s', step: 'new', stillFiring: 0 }]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toEqual({ outcome: 'storm', status: 'resolved', suppressedByChangeId: null, incidentId: 'inc-storm' })
+    expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'monitoring')
+    expect(callMatching(Q.linked)).toBeUndefined()
+    expect(incidentService.resolveIncident).not.toHaveBeenCalled()
+  })
+
+  it('la soppressione in finestra di change vince sulla tempesta', async () => {
+    vi.mocked(trackSourceStorm).mockResolvedValue(STORM)
+    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] }]]])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })).outcome).toBe('suppressed')
+    expect(callMatching(Q.attach)).toBeUndefined()
+  })
+
+  it('rivalutazioni e job ritardati leggono lo stato della tempesta senza contare (getStormState): in tempesta → storm', async () => {
+    vi.mocked(getStormState).mockResolvedValue(STORM)
+    onCypher(baseRules())
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'reevaluate' })).outcome).toBe('storm')
+    expect(trackSourceStorm).not.toHaveBeenCalled()
+    expect(getStormState).toHaveBeenCalledWith('t1', 'hook-1')
+
+    onCypher(baseRules({ correlation: 'delayed' }))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'resume' })).outcome).toBe('storm')
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+  })
+})
+
+// ── Ondata 4: metriche ───────────────────────────────────────────────────────
+
+describe('metriche della pipeline', () => {
+  it('opened → incidents_auto_opened; reopened → incidents_reopened; auto_resolved → incidents_auto_resolved; suppressed → events_suppressed (non sulle ripetizioni)', async () => {
+    onCypher(baseRules())
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(metrics.incidentsAutoOpenedTotal.inc).toHaveBeenCalledTimes(1)
+
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'in_progress' }] as never)
+    onCypher([...baseRules(), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'resolved' }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(metrics.incidentsReopenedTotal.inc).toHaveBeenCalledTimes(1)
+
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved' }] as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'in_progress', stillFiring: 0 }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(metrics.incidentsAutoResolvedTotal.inc).toHaveBeenCalledTimes(1)
+
+    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] }]]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1' }), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] }]]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(metrics.eventsSuppressedTotal.inc).toHaveBeenCalledTimes(1)
+    // l'apertura manuale (createIncidentFromEvent) non è un incident automatico
+    expect(metrics.incidentsAutoOpenedTotal.inc).toHaveBeenCalledTimes(1)
+  })
+
+  it('openIncidentFromEvent manuale → nessun incremento di incidents_auto_opened', async () => {
+    onCypher([[Q.attach, { created: true }], [Q.setCorr, null]])
+    await openIncidentFromEvent({ tenantId: 't1', props: props(), ciId: 'ci-1', actorId: 'op-1', manual: true, now: NOW })
+    expect(metrics.incidentsAutoOpenedTotal.inc).not.toHaveBeenCalled()
   })
 })
 

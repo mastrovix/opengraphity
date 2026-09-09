@@ -9,13 +9,20 @@
  * `recomputeCIHealth` → correlazione in incident / chiusura automatica).
  * `previewInboundEvents` e `sendSampleEvent` usano la stessa normalizzazione.
  *
+ * Ondata 4: ogni passaggio firing↔resolved del payload viene registrato in
+ * `Event.transitions` (ultimi MAX_TRANSITIONS istanti ISO) insieme a
+ * `last_payload_status`; la pipeline decide lo sfarfallio (`flapping`) e le
+ * tempeste per sorgente (services/eventStorm.ts). Un evento `flapping` pesa
+ * come `degraded` sulla salute del CI (instabilità, non guasto pieno).
+ *
  * Il monitoraggio scrive SOLO `ci.health` (operational/degraded/down),
  * `ci.health_source` e `ci.last_event_at`; non tocca mai `ci.status`, che è
  * il ciclo di vita del CI (active/inactive/maintenance/decommissioned).
  *
  * Le funzioni pure (`normalizePayload`, `fingerprintOf`, `nextEventState`,
- * `deriveCIHealth`) non toccano il grafo e sono testate da sole; quelle di
- * accesso al grafo usano `@opengraphity/neo4j` come gli altri servizi.
+ * `countTransitionsSince`, `deriveCIHealth`) non toccano il grafo e sono
+ * testate da sole; quelle di accesso al grafo usano `@opengraphity/neo4j`
+ * come gli altri servizi.
  *
  * Niente fallback silenziosi: payload malformato → ValidationError (→ 400 dal
  * webhook), policy del tenant mancante/corrotta → errore (lib/eventPolicy.ts).
@@ -28,6 +35,7 @@ import { ValidationError, NotFoundError } from '../lib/errors.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { logger } from '../lib/logger.js'
 import { parseEventPolicy, type EventPolicy } from '../lib/eventPolicy.js'
+import { eventsDeduplicatedTotal, eventsOrphanTotal, eventsReceivedTotal } from '../middleware/metrics.js'
 import { runEventPipeline } from './eventCorrelation.js'
 
 const log = logger.child({ module: 'event-service' })
@@ -613,6 +621,33 @@ export function fingerprintOf(sourceId: string, ev: Pick<NormalizedEvent, 'exter
 
 // ── Stato dell'evento (puro) ─────────────────────────────────────────────────
 
+/** Quanti istanti di passaggio firing↔resolved si conservano su `Event.transitions`. */
+export const MAX_TRANSITIONS = 50
+
+/**
+ * Stato dell'ULTIMO payload ricevuto (firing|resolved): `last_payload_status`
+ * se presente; per gli eventi scritti prima dell'ondata 4 si deduce dallo
+ * status (resolved → resolved; firing/suppressed/flapping → firing).
+ */
+export function payloadStatusOf(existing: Props): EventInputStatus {
+  const lp = existing['last_payload_status']
+  if (lp === 'firing' || lp === 'resolved') return lp
+  return existing['status'] === 'resolved' ? 'resolved' : 'firing'
+}
+
+/** `Event.transitions` come lista di stringhe ISO (assente → vuota: la migrazione 1040 la scrive, ma un evento appena creato la ha già). */
+export function transitionsOf(existing: Props): string[] {
+  const t = existing['transitions']
+  return Array.isArray(t) ? t.filter((x): x is string => typeof x === 'string') : []
+}
+
+/** Passaggi registrati a partire da `sinceMs` (incluso). */
+export function countTransitionsSince(transitions: readonly string[], sinceMs: number): number {
+  let n = 0
+  for (const t of transitions) if (Date.parse(t) >= sinceMs) n++
+  return n
+}
+
 export interface EventPatch {
   status: 'firing' | 'resolved' | string
   severity: EventSeverity
@@ -620,35 +655,54 @@ export interface EventPatch {
   first_seen_at: string
   last_seen_at: string
   resolved_at: string | null
+  /** Istanti ISO dei passaggi firing↔resolved (gli ultimi MAX_TRANSITIONS), aggiornati con questo payload. */
+  transitions: string[]
+  last_payload_status: EventInputStatus
 }
 
 /**
  * Stato successivo di un Event esistente all'arrivo di un nuovo payload.
  * - firing su evento risolto → nuovo ciclo: count 1, first_seen = ora, severità del payload
  * - firing su evento aperto  → count+1, severità = la più alta, status invariato
- *   (suppressed/flapping restano tali: sono decisioni dell'ondata 3)
+ *   (suppressed resta tale: è la pipeline a toglierlo)
  * - resolved                 → status resolved, resolved_at = ora, count invariato
+ * - evento `flapping`        → lo stato NON cambia (lo stabilizza il job periodico);
+ *   si aggiornano lista dei passaggi, last_payload_status, last_seen_at, count
+ *   (firing) e resolved_at (ora su resolved, null su firing)
+ * Un passaggio è un payload con status diverso dall'ultimo ricevuto: viene
+ * appeso a `transitions` (lista troncata agli ultimi MAX_TRANSITIONS).
  */
 export function nextEventState(existing: Props, ev: NormalizedEvent, now: string): EventPatch {
   const prevStatus   = String(existing['status'])
   const prevSeverity = String(existing['severity']) as EventSeverity
   const prevCount    = Number(existing['count'] ?? 0)
   const firstSeen    = String(existing['first_seen_at'] ?? now)
+  const previous     = transitionsOf(existing)
+  const transitions  = ev.status !== payloadStatusOf(existing) ? [...previous, now].slice(-MAX_TRANSITIONS) : previous
+  const base = { first_seen_at: firstSeen, last_seen_at: now, transitions, last_payload_status: ev.status }
+  const higher = (SEVERITY_RANK[ev.severity] ?? -1) > (SEVERITY_RANK[prevSeverity] ?? -1) ? ev.severity : prevSeverity
 
+  if (prevStatus === 'flapping') {
+    if (ev.status === 'resolved') return { ...base, status: 'flapping', severity: prevSeverity, count: prevCount, resolved_at: now }
+    return { ...base, status: 'flapping', severity: higher, count: prevCount + 1, resolved_at: null }
+  }
   if (ev.status === 'resolved') {
-    return { status: 'resolved', severity: prevSeverity, count: prevCount, first_seen_at: firstSeen, last_seen_at: now, resolved_at: now }
+    return { ...base, status: 'resolved', severity: prevSeverity, count: prevCount, resolved_at: now }
   }
   if (prevStatus === 'resolved') {
-    return { status: 'firing', severity: ev.severity, count: 1, first_seen_at: now, last_seen_at: now, resolved_at: null }
+    return { ...base, status: 'firing', severity: ev.severity, count: 1, first_seen_at: now, resolved_at: null }
   }
-  const severity = (SEVERITY_RANK[ev.severity] ?? -1) > (SEVERITY_RANK[prevSeverity] ?? -1) ? ev.severity : prevSeverity
-  return { status: prevStatus, severity, count: prevCount + 1, first_seen_at: firstSeen, last_seen_at: now, resolved_at: (existing['resolved_at'] as string | null) ?? null }
+  return { ...base, status: prevStatus, severity: higher, count: prevCount + 1, resolved_at: (existing['resolved_at'] as string | null) ?? null }
 }
 
-/** Salute del CI dalle severità degli eventi `firing` che lo riguardano. */
-export function deriveCIHealth(firingSeverities: readonly string[]): CIHealth {
+/**
+ * Salute del CI dalle severità degli eventi `firing` che lo riguardano; un
+ * evento `flapping` (qualunque severità) vale `degraded`: è instabilità, non
+ * un guasto pieno.
+ */
+export function deriveCIHealth(firingSeverities: readonly string[], flapping = false): CIHealth {
   if (firingSeverities.includes('critical')) return 'down'
-  if (firingSeverities.includes('warning'))  return 'degraded'
+  if (firingSeverities.includes('warning') || flapping) return 'degraded'
   return 'operational'
 }
 
@@ -730,15 +784,17 @@ export async function recomputeCIHealth(tenantId: string, ciId: string, actorId:
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
   try {
-    const row = await runQueryOne<{ status: string | null; health: string | null; healthSource: string | null; severities: string[] }>(session, `
+    const row = await runQueryOne<{ status: string | null; health: string | null; healthSource: string | null; severities: string[]; flapping: unknown }>(session, `
       MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       OPTIONAL MATCH (e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)
-      RETURN ci.status AS status, ci.health AS health, ci.health_source AS healthSource, collect(DISTINCT e.severity) AS severities
+      WITH ci, collect(DISTINCT e.severity) AS severities
+      OPTIONAL MATCH (f:Event {tenant_id: $tenantId, status: 'flapping'})-[:RAISED_ON]->(ci)
+      RETURN ci.status AS status, ci.health AS health, ci.health_source AS healthSource, severities, count(f) AS flapping
     `, { tenantId, ciId })
     if (!row) return null
     if (row.healthSource === 'manual' || row.status === 'maintenance') return row.health
 
-    const next = deriveCIHealth(row.severities ?? [])
+    const next = deriveCIHealth(row.severities ?? [], Number(row.flapping ?? 0) > 0)
     const changed = row.health !== next
     // health_since: da quando la salute attuale è in vigore. Si sposta SOLO
     // quando la salute cambia; a salute invariata non va toccata.
@@ -774,6 +830,9 @@ export interface IngestInput {
   actorId?: string
 }
 
+/** Esiti della pipeline per cui l'ingest NON pubblica event.received/resolved/orphan (l'avviso lo ha già dato la pipeline). */
+export const QUIET_OUTCOMES: ReadonlySet<string> = new Set(['suppressed', 'flapping', 'storm', 'storm_no_ci'])
+
 export function mapEventPayload(props: Props, ciId: string | null): MonitoringEventPayload {
   const id = String(props['id'])
   return {
@@ -807,17 +866,21 @@ export async function ingestEvent(input: IngestInput): Promise<{ props: Props; c
   let props: Props
   let created: boolean
   let linkedCiId: string | null
+  // connector_kind della sorgente (etichetta della metrica events_received_total;
+  // assente = webhook precedente all'Event Management → generic, come sourceConfigOf).
+  let connectorKind: string
   try {
-    const existing = await runQueryOne<{ props: Props; ciId: string | null }>(session, `
+    const existing = await runQueryOne<{ props: Props; ciId: string | null; connectorKind: string | null }>(session, `
       MATCH (e:Event {tenant_id: $tenantId, fingerprint: $fingerprint})
       OPTIONAL MATCH (e)-[:RAISED_ON]->(ci:ConfigurationItem {tenant_id: $tenantId})
-      RETURN properties(e) AS props, ci.id AS ciId
-    `, { tenantId, fingerprint })
+      OPTIONAL MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
+      RETURN properties(e) AS props, ci.id AS ciId, w.connector_kind AS connectorKind
+    `, { tenantId, fingerprint, sourceId })
 
     if (!existing) {
       created = true
       linkedCiId = null
-      const row = await runQueryOne<{ props: Props }>(session, `
+      const row = await runQueryOne<{ props: Props; connectorKind: string | null }>(session, `
         CREATE (e:Event {
           id: $id, tenant_id: $tenantId, fingerprint: $fingerprint, external_id: $externalId,
           status: $status, severity: $severity, title: $title, description: $description,
@@ -826,12 +889,13 @@ export async function ingestEvent(input: IngestInput): Promise<{ props: Props; c
           resolved_at: CASE WHEN $status = 'resolved' THEN $now ELSE null END,
           starts_at: $startsAt, ends_at: $endsAt,
           correlation: 'none', correlation_at: null, correlation_due_at: null, suppressed_by_change_id: null,
+          transitions: [], last_payload_status: $status, flapping_since: null,
           source_id: $sourceId, created_at: $now, updated_at: $now
         })
         WITH e
         OPTIONAL MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
         FOREACH (_ IN CASE WHEN w IS NULL THEN [] ELSE [1] END | MERGE (e)-[:FROM_SOURCE]->(w))
-        RETURN properties(e) AS props
+        RETURN properties(e) AS props, w.connector_kind AS connectorKind
       `, {
         id: uuidv4(), tenantId, fingerprint, externalId: ev.externalId ?? null,
         status: ev.status, severity: ev.severity, title: ev.title, description: ev.description ?? null,
@@ -840,14 +904,17 @@ export async function ingestEvent(input: IngestInput): Promise<{ props: Props; c
       })
       if (!row) throw new Error(`Event ${fingerprint} not created for tenant ${tenantId}`)
       props = row.props
+      connectorKind = row.connectorKind ?? 'generic'
     } else {
       created = false
       linkedCiId = existing.ciId
+      connectorKind = existing.connectorKind ?? 'generic'
       const patch = nextEventState(existing.props, ev, now)
       const row = await runQueryOne<{ props: Props }>(session, `
         MATCH (e:Event {tenant_id: $tenantId, fingerprint: $fingerprint})
         SET e.status = $status, e.severity = $severity, e.count = toInteger($count),
             e.first_seen_at = $firstSeenAt, e.last_seen_at = $lastSeenAt, e.resolved_at = $resolvedAt,
+            e.transitions = $transitions, e.last_payload_status = $lastPayloadStatus,
             e.title = $title, e.description = $description, e.labels = $labels,
             e.starts_at = coalesce($startsAt, e.starts_at), e.ends_at = $endsAt,
             e.updated_at = $now
@@ -856,6 +923,7 @@ export async function ingestEvent(input: IngestInput): Promise<{ props: Props; c
         tenantId, fingerprint, now,
         status: patch.status, severity: patch.severity, count: patch.count,
         firstSeenAt: patch.first_seen_at, lastSeenAt: patch.last_seen_at, resolvedAt: patch.resolved_at,
+        transitions: patch.transitions, lastPayloadStatus: patch.last_payload_status,
         title: ev.title, description: ev.description ?? null, labels,
         startsAt: ev.startsAt ?? null, endsAt: ev.endsAt ?? null,
       })
@@ -865,6 +933,8 @@ export async function ingestEvent(input: IngestInput): Promise<{ props: Props; c
   } finally {
     await session.close()
   }
+  eventsReceivedTotal.inc({ connector: connectorKind })
+  if (!created) eventsDeduplicatedTotal.inc({})
 
   // CI: quello già agganciato (anche a mano) vince; altrimenti riconoscimento.
   let ciId = linkedCiId
@@ -881,18 +951,23 @@ export async function ingestEvent(input: IngestInput): Promise<{ props: Props; c
       } finally { await s.close() }
     }
   }
+  if (!ciId) eventsOrphanTotal.inc({})
   // Ondata 3 (services/eventCorrelation.ts): soppressione in finestra di change
   // → salute del CI → correlazione in incident / chiusura automatica. La
   // soppressione blocca anche la salute, per questo il ricalcolo vive lì.
-  const pipeline = await runEventPipeline({ tenantId, eventId: String(props['id']), actorId, now, mode: 'ingest' })
+  // Ondata 4: `created` alimenta il contatore di tempesta della sorgente.
+  const pipeline = await runEventPipeline({ tenantId, eventId: String(props['id']), actorId, now, mode: 'ingest', created })
   props['status'] = pipeline.status
 
-  // Un evento silenziato non genera avvisi "ricevuto": l'avviso è event.suppressed (pubblicato dalla pipeline).
+  // Nessun avviso "ricevuto"/"rientrato" quando l'avviso lo dà già la pipeline:
+  // silenziato (event.suppressed), sfarfallio (event.flapping, una volta per
+  // episodio) o tempesta (event.storm_started: un solo avviso per sorgente,
+  // non uno per ciascuno delle centinaia di allarmi al minuto).
   const payload = mapEventPayload(props, ciId)
-  if (pipeline.outcome !== 'suppressed') {
+  if (!QUIET_OUTCOMES.has(pipeline.outcome)) {
     await publishEvent(props['status'] === 'resolved' ? 'event.resolved' : 'event.received', tenantId, actorId, payload, now)
+    if (!ciId) await publishEvent('event.orphan', tenantId, actorId, payload, now)
   }
-  if (!ciId) await publishEvent('event.orphan', tenantId, actorId, payload, now)
 
   log.info({ tenantId, sourceId, eventId: props['id'], fingerprint, created, ciId, status: props['status'], count: props['count'], correlation: pipeline.outcome }, 'Event ingested')
   return { props, ciId, created }

@@ -14,6 +14,7 @@ function eventFixture(over: Partial<MonitoringEvent> & { id: string }): Monitori
     ci: { id: 'ci1', name: 'web-01', type: 'server', status: 'active', health: 'down' },
     incident: { id: 'inc1', number: 'INC-0042', title: 'CPU', status: 'new' },
     suppressedBy: null, correlation: 'attached', correlationAt: '2026-09-09T08:05:00Z',
+    flappingSince: null, transitions24h: 0,
     ...over,
   }
 }

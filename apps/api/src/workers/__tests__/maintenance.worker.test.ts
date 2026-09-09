@@ -4,8 +4,9 @@
  * the archive (verify-backup) — a failed verification renames it to
  * `.invalid`, fails the job and counts a metric — then prunes to the last
  * BACKUP_RETENTION archives (default 14; `.partial`/`.invalid` rotate too).
- * Rotation runs even after a failed backup. The repeatable job is
- * re-registered at startup (stale copies removed first).
+ * Rotation runs even after a failed backup. The repeatable jobs are
+ * re-registered at startup (stale copies removed first). Ondata 4: the daily
+ * `purge_events` job (03:30) delegates to services/eventRetention.ts.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Job } from 'bullmq'
@@ -38,6 +39,8 @@ vi.mock('../../middleware/metrics.js', () => ({
   backupRunsTotal:            { inc: (...a: unknown[]) => metricInc(...a) },
   backupLastSuccessTimestamp: { set: (...a: unknown[]) => gaugeSet(...a) },
 }))
+const purgeResolvedEvents = vi.fn()
+vi.mock('../../services/eventRetention.js', () => ({ purgeResolvedEvents: (...a: unknown[]) => purgeResolvedEvents(...a) }))
 
 const readdirSync = vi.fn()
 const statSync = vi.fn()
@@ -68,7 +71,7 @@ vi.stubEnv('ATTACHMENT_DIR', '/var/lib/opengraphity/attachments')
 vi.stubEnv('BACKUP_SKIP_KEYCLOAK', 'true')
 resetConfigCache()
 
-const { startMaintenanceWorker, MAINTENANCE_QUEUE, readBackupRetention } = await import('../maintenance.worker.js')
+const { startMaintenanceWorker, MAINTENANCE_QUEUE, readBackupRetention, REPEATABLE_JOBS } = await import('../maintenance.worker.js')
 
 const BACKUP_DIR = '/var/backups/opengraphity'
 const ARCHIVE    = `${BACKUP_DIR}/backup_new.tar.gz`
@@ -118,6 +121,15 @@ describe('startMaintenanceWorker', () => {
     expect(queue.add).toHaveBeenCalledWith('backup_database', {}, { repeat: { pattern: '0 0 * * *' } })
     expect(createWorker).toHaveBeenCalledWith(MAINTENANCE_QUEUE, expect.any(Function), { concurrency: 1 })
     expect(logInfo).toHaveBeenCalledWith({ backupDir: BACKUP_DIR, retention: 14 }, 'Maintenance worker started')
+  })
+
+  it('ondata 4: registra anche purge_events alle 03:30 e rimuove le sue copie stantie', async () => {
+    queue.getRepeatableJobs.mockResolvedValue([{ name: 'purge_events', key: 'stale-purge' }, { name: 'backup_database', key: 'stale-backup' }])
+    await startMaintenanceWorker()
+    expect(REPEATABLE_JOBS.map((j) => [j.name, j.pattern])).toEqual([['backup_database', '0 0 * * *'], ['purge_events', '30 3 * * *']])
+    expect(queue.removeRepeatableByKey.mock.calls.map((c) => c[0]).sort()).toEqual(['stale-backup', 'stale-purge'])
+    expect(queue.add).toHaveBeenCalledWith('purge_events', {}, { repeat: { pattern: '30 3 * * *' } })
+    expect(queue.add).toHaveBeenCalledTimes(2)
   })
 
   it('registrazione del repeatable che fallisce → errore di startup, nessun worker creato', async () => {
@@ -200,6 +212,20 @@ describe('job backup_database', () => {
     archives(15)
     unlink.mockRejectedValueOnce(new Error('EPERM'))
     await expect(processor(job('backup_database'))).rejects.toThrow('EPERM')
+  })
+})
+
+describe('job purge_events (ondata 4)', () => {
+  it('delega a purgeResolvedEvents e logga i conteggi per tenant; un errore (tenant senza policy) fa fallire il job', async () => {
+    const result = { tenants: 2, purged: 12, failed: 0, perTenant: [{ tenantId: 'acme', retentionDays: 90, cutoff: 'C', purged: 12 }, { tenantId: 'globex', retentionDays: 0, cutoff: null, purged: 0 }] }
+    purgeResolvedEvents.mockResolvedValue(result)
+    await expect(processor(job('purge_events'))).resolves.toBeUndefined()
+    expect(purgeResolvedEvents).toHaveBeenCalledTimes(1)
+    expect(logInfo).toHaveBeenCalledWith({ tenants: 2, purged: 12, perTenant: result.perTenant }, 'Resolved events purged (retention)')
+    expect(runBackup).not.toHaveBeenCalled()
+
+    purgeResolvedEvents.mockRejectedValueOnce(new Error('purgeResolvedEvents: 1/2 tenants failed'))
+    await expect(processor(job('purge_events'))).rejects.toThrow(/1\/2 tenants failed/)
   })
 })
 

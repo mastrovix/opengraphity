@@ -9,6 +9,7 @@
 | `GET` | `/api/sse` | Server-Sent Events for real-time notifications | Yes |
 | `GET` | `/metrics` | Prometheus text metrics | No (internal) |
 | `GET` | `/api/report-stream` | Report streaming endpoint | Yes |
+| `POST` | `/api/webhooks/inbound/:hookId` | Inbound webhook (incident/problem creation, monitoring events) — see [Inbound webhooks](#inbound-webhooks-monitoring-events) | Yes (`Authorization: Bearer <token>`) |
 | `*` | `/api/v1/*` | REST API v1 (API key auth) — see [REST API v1](#rest-api-v1) | Yes (`X-API-Key`) |
 
 ---
@@ -408,6 +409,41 @@ The same importer is available from the CLI:
 pnpm --filter @opengraphity/api import:incidents -- --file samples/import/incidents-sample.csv --tenant-id c-one --dry-run
 pnpm --filter @opengraphity/api import:kb        -- --file samples/import/kb-articles-sample.csv --tenant-id c-one
 ```
+
+---
+
+## Inbound webhooks (monitoring events)
+
+`POST /api/webhooks/inbound/:hookId` receives payloads from external systems. An inbound webhook is created in *Administration → Integrations* (or via `createInboundWebhook`) with an `entityType`: `incident` and `problem` create one ticket per request (flat `fieldMapping` → `201`); `event` is the Event Management source (`apps/api/src/rest/webhooks-inbound.ts`, operations guide in `OPERATIONS.md` §7).
+
+| | |
+|---|---|
+| Auth | `Authorization: Bearer <token>` **only** — the token is shown once at creation and stored hashed; never in the query string |
+| Rate limit | 100 requests/min per webhook (`429` with `retry_after: 60`), applied after authentication |
+| Body | `application/json`, the payload exactly as the tool sends it; an optional `transformScript` runs first |
+| Event limit | at most **500 alerts per request** (Alertmanager/Grafana `alerts[]`); more → `400` |
+| Response (`event`) | **`202 Accepted`** `{ "id": "<hookId>", "entity_type": "event", "accepted": N }` as soon as the N normalised events are queued on `events-ingest`; dedup, CI matching, health and correlation happen asynchronously |
+| Errors | `400 BAD_REQUEST` with the offending field (`alerts[0].labels.severity must be one of: info, warning, critical`), recorded on the webhook as `last_error`/`error_count`; `401` missing/invalid token; `404` unknown or disabled webhook; `500` queue unavailable (Redis down) — the sender must retry, nothing was accepted |
+
+```bash
+curl -s -X POST "http://c-one.localhost/api/webhooks/inbound/$HOOK_ID" \
+  -H "Authorization: Bearer $HOOK_TOKEN" -H "Content-Type: application/json" \
+  -d @alertmanager-payload.json
+# → 202 {"id":"…","entity_type":"event","accepted":2}
+```
+
+Normalised event (what every connector produces): `status` (`firing`|`resolved`), `severity` (`info`|`warning`|`critical`), `title`, `resource` + `resourceKind` (`hostname`|`ip`|`fqdn`|`external_id`|`name`, matched against CI aliases then CI names), optional `externalId` (dedup key when present), `description`, `labels`, `startsAt`/`endsAt`. The fingerprint is `sha256(source + externalId)` or `sha256(source + title + resource + sorted labels)`; the same alert repeating increments `count` instead of creating a node.
+
+| `connectorKind` | Payload shape | Fields read |
+|---|---|---|
+| `alertmanager` | `{ alerts: [ … ] }` (Alertmanager webhook receiver) | `alerts[].status`, `labels.alertname` (title), `labels.severity`, `labels.instance` (port stripped), `annotations.summary/description`, `fingerprint`, `startsAt/endsAt` |
+| `grafana` | `{ alerts: [ … ] }` (unified alerting webhook contact point) | same as Alertmanager; `labels.host` when `labels.instance` is absent |
+| `zabbix` | one object per request (media type *Webhook*) | `event_id`, `event_name`/`trigger_name`, `event_severity` (Not classified/Information→info, Warning/Average→warning, High/Disaster→critical), `event_value` (`1` problem / `0` recovery), `host_name` or `host_ip`, `trigger_description`, `event_opdata` |
+| `datadog` | one object per request (webhook integration) | `alert_id`, `alert_transition` (Triggered/Re-Triggered/Warn/No Data→firing, Recovered→resolved), `alert_type` (error→critical, warning→warning, else info), `title`, `body`/`text`, `hostname`, `tags` (`key:value` list, CSV or object), `date` |
+| `dynatrace` | one problem per request (Problem notification, custom integration) | `PID`/`ProblemID`, `State` (OPEN/RESOLVED), `ProblemTitle`, `ProblemSeverity` (AVAILABILITY/ERROR→critical, PERFORMANCE/RESOURCE_CONTENTION/CUSTOM_ALERT→warning, MONITORING_UNAVAILABLE→info), `ImpactedEntities[0].name` (or `ImpactedEntity`), `ProblemDetailsText`, `ProblemImpact`, `ProblemURL`, `Tags` |
+| `generic` | any JSON object, one event per request | `fieldMapping` `{ normalizedField: "dotted.path" }` (unmapped field → same-named root key), `defaultValues` for missing fields (`resourceKind` is required here or in the payload), `valueMapping` `{ severity: { src: info|warning|critical }, status: { src: firing|resolved } }` |
+
+`sampleInboundPayload(connectorKind)` returns a realistic payload for each connector, `previewInboundEvents` normalises a pasted payload without ingesting it, `sendSampleEvent(sourceId)` pushes the sample through the real pipeline.
 
 ---
 

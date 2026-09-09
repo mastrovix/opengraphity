@@ -8,6 +8,7 @@ import { logger }                 from '../lib/logger.js'
 import { config }                 from '../lib/config.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { backupRunsTotal, backupLastSuccessTimestamp } from '../middleware/metrics.js'
+import { purgeResolvedEvents } from '../services/eventRetention.js'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
@@ -36,6 +37,13 @@ function readSkipKeycloak(env: Readonly<Record<string, string | undefined>> = pr
 }
 
 export const MAINTENANCE_QUEUE = 'maintenance'
+
+/** Job ripetibili della coda: nome → cron. Ri-registrati a ogni avvio (le copie stantie vengono rimosse prima). */
+export const REPEATABLE_JOBS: ReadonlyArray<{ name: string; pattern: string; description: string }> = [
+  { name: 'backup_database', pattern: '0 0 * * *',  description: 'daily at midnight' },
+  // Event Management (ondata 4): eventi risolti oltre retention_days della policy del tenant.
+  { name: 'purge_events',    pattern: '30 3 * * *', description: 'daily at 03:30' },
+]
 
 // ── Retention: keep last N archives ──────────────────────────────────────────
 // `.partial` (unpublished) and `.invalid` (failed verification) archives are
@@ -127,33 +135,35 @@ async function processMaintenanceJob(job: Job): Promise<void> {
       break
     }
 
+    case 'purge_events': {
+      const r = await purgeResolvedEvents()
+      maintenanceLogger.info({ tenants: r.tenants, purged: r.purged, perTenant: r.perTenant }, 'Resolved events purged (retention)')
+      break
+    }
+
     default:
       throw new Error(`Unknown maintenance job "${job.name}"`)
   }
 }
 
-// ── Schedule recurring backup ─────────────────────────────────────────────────
+// ── Schedule recurring jobs ───────────────────────────────────────────────────
 
-async function scheduleBackupJob(): Promise<void> {
+async function scheduleRepeatableJobs(): Promise<void> {
   const maintenanceQueue = getQueue(MAINTENANCE_QUEUE)
+  const names = new Set(REPEATABLE_JOBS.map((j) => j.name))
 
   // Remove any stale repeatable jobs first, then re-add
   const repeatableJobs = await maintenanceQueue.getRepeatableJobs()
   for (const job of repeatableJobs) {
-    if (job.name === 'backup_database') {
+    if (names.has(job.name)) {
       await maintenanceQueue.removeRepeatableByKey(job.key)
     }
   }
 
-  await maintenanceQueue.add(
-    'backup_database',
-    {},
-    {
-      repeat: { pattern: '0 0 * * *' },   // every day at midnight
-    },
-  )
-
-  maintenanceLogger.info('Backup job scheduled (daily at midnight)')
+  for (const job of REPEATABLE_JOBS) {
+    await maintenanceQueue.add(job.name, {}, { repeat: { pattern: job.pattern } })
+    maintenanceLogger.info({ job: job.name, pattern: job.pattern }, `${job.name} job scheduled (${job.description})`)
+  }
 }
 
 // ── Worker export ─────────────────────────────────────────────────────────────
@@ -163,7 +173,7 @@ export async function startMaintenanceWorker(): Promise<Worker> {
   // Fail at boot on a malformed value, not at midnight.
   const retention = readBackupRetention()
   readSkipKeycloak()
-  await scheduleBackupJob()
+  await scheduleRepeatableJobs()
 
   const worker = createWorker(MAINTENANCE_QUEUE, processMaintenanceJob, { concurrency: 1 })
   maintenanceLogger.info({ backupDir: BACKUP_DIR, retention }, 'Maintenance worker started')

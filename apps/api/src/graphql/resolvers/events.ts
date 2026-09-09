@@ -8,6 +8,8 @@
  * campi `Event.suppressedBy`/`correlation`, `Incident.correlatedEvents`,
  * `Change.suppressedEvents`; resolveEvent e linkEventToCI rientrano nella
  * pipeline di correlazione (services/eventCorrelation.ts).
+ * Ondata 4: `Event.flappingSince`/`transitions24h`, `EventStats.stormSources`
+ * (services/eventStorm.ts), nuove chiavi della policy.
  *
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le mutation
  * amministrative (alias, policy) sono in ADMIN_ONLY_MUTATIONS (lib/authorization.ts)
@@ -28,10 +30,11 @@ import { validateStringLength } from '../../lib/validation.js'
 import { applyEventPolicyInput, toEventPolicyGQL, type EventPolicyInputGQL } from '../../lib/eventPolicy.js'
 import {
   CI_ALIAS_KINDS, getEventPolicy, setEventPolicy, mapEventPayload, recomputeCIHealth,
-  assertConnectorKind, listPayloadKeys, sourceConfigOf, normalizeWithConfig,
+  assertConnectorKind, listPayloadKeys, sourceConfigOf, normalizeWithConfig, countTransitionsSince, transitionsOf,
   type CIAliasKind, type NormalizedEvent,
 } from '../../services/eventService.js'
 import { openIncidentFromEvent, runEventPipeline } from '../../services/eventCorrelation.js'
+import { listStormSources } from '../../services/eventStorm.js'
 import { enqueueEvents } from '../../jobs/eventIngestWorker.js'
 import { sampleInboundPayload as samplePayloadOf } from '../../lib/eventSamples.js'
 import { mapInbound } from './integrations.js'
@@ -94,6 +97,8 @@ export function mapEvent(props: Props, ci: CIRefRow) {
     acknowledgedAt: toStrOrNull(props['acknowledged_at']),
     correlation,
     correlationAt:  toStrOrNull(props['correlation_at']),
+    flappingSince:  toStrOrNull(props['flapping_since']),
+    transitions24h: countTransitionsSince(transitionsOf(props), Date.now() - 24 * 3600 * 1000),
     // risolti dai field resolver: acknowledgedBy, source, incident, suppressedBy
     acknowledgedById:     toStrOrNull(props['acknowledged_by']),
     sourceId:             toStrOrNull(props['source_id']),
@@ -239,7 +244,8 @@ async function eventStats(_: unknown, __: unknown, ctx: GraphQLContext) {
         count(CASE WHEN e.status = 'resolved' AND e.resolved_at >= $since24h THEN 1 END) AS resolved24h
     `, { tenantId: ctx.tenantId, since24h })
     const n = (k: string) => toNumber(row?.[k])
-    return { firing: n('firing'), critical: n('critical'), warning: n('warning'), orphan: n('orphan'), suppressed: n('suppressed'), flapping: n('flapping'), resolved24h: n('resolved24h') }
+    const stormSources = await listStormSources(ctx.tenantId)
+    return { firing: n('firing'), critical: n('critical'), warning: n('warning'), orphan: n('orphan'), suppressed: n('suppressed'), flapping: n('flapping'), resolved24h: n('resolved24h'), stormSources }
   } finally {
     await session.close()
   }

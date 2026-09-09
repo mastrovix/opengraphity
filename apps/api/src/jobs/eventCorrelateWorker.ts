@@ -7,14 +7,21 @@
  *                           raggruppamento (services/eventCorrelation.ts, mode
  *                           `resume`); se nel frattempo è risolto → `none`.
  *                           Job id deterministico per (tenant, evento, scadenza).
- *  - `reevaluate-windows` — job ripetuto ogni 5 minuti: rivaluta gli eventi
+ *  - `reevaluate-windows` — job ripetuto ogni 5 minuti, tre passate
+ *                           indipendenti (ondata 3 + 4): rivaluta gli eventi
  *                           soppressi la cui finestra di change risulta chiusa
- *                           (copre le change che non passano dalle mutation).
+ *                           (copre le change che non passano dalle mutation);
+ *                           stabilizza gli eventi `flapping` senza passaggi da
+ *                           `flap_stable_minutes`; chiude le tempeste delle
+ *                           sorgenti raffreddate che non ricevono più nulla.
+ *                           Ogni passata gira anche se la precedente fallisce;
+ *                           alla fine il job fallisce se una è fallita.
  */
 import type { Worker, Job } from 'bullmq'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
-import { reevaluateClosedWindows, runEventPipeline } from '../services/eventCorrelation.js'
+import { reevaluateClosedWindows, reevaluateFlappingEvents, runEventPipeline } from '../services/eventCorrelation.js'
+import { endCooledStorms } from '../services/eventStorm.js'
 
 const log = logger.child({ module: 'event-correlate' })
 
@@ -44,13 +51,30 @@ async function processJob(job: Job<CorrelateJobData | Record<string, never>>): P
       return
     }
     case REEVALUATE_WINDOWS_JOB: {
-      const r = await reevaluateClosedWindows()
-      if (r.evaluated > 0) log.info(r, 'Suppressed events re-evaluated (periodic)')
+      await runPeriodicPasses()
       return
     }
     default:
       throw new Error(`[events-correlate] unknown job "${job.name}"`)
   }
+}
+
+/** Le tre passate del job periodico, ciascuna eseguita anche se le altre falliscono. */
+export async function runPeriodicPasses(): Promise<void> {
+  const failures: string[] = []
+  try {
+    const r = await reevaluateClosedWindows()
+    if (r.evaluated > 0) log.info(r, 'Suppressed events re-evaluated (periodic)')
+  } catch (err) { failures.push(`closed windows: ${err instanceof Error ? err.message : String(err)}`) }
+  try {
+    const r = await reevaluateFlappingEvents()
+    if (r.evaluated > 0) log.info(r, 'Flapping events evaluated for stabilisation (periodic)')
+  } catch (err) { failures.push(`flapping: ${err instanceof Error ? err.message : String(err)}`) }
+  try {
+    const r = await endCooledStorms()
+    if (r.active > 0 || r.ended > 0) log.info(r, 'Alert storms checked for cooldown (periodic)')
+  } catch (err) { failures.push(`storms: ${err instanceof Error ? err.message : String(err)}`) }
+  if (failures.length) throw new Error(`[events-correlate] ${REEVALUATE_WINDOWS_JOB}: ${failures.join('; ')}`)
 }
 
 /**

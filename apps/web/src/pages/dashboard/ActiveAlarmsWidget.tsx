@@ -11,13 +11,13 @@ import { useTranslation } from 'react-i18next'
 import { Radar } from 'lucide-react'
 import { GET_EVENT_STATS } from '@/graphql/queries'
 import { colors } from '@/lib/tokens'
-import type { EventStats } from '@/types/events'
+import type { EventStats, EventStatCounts } from '@/types/events'
 
 export const ACTIVE_ALARMS_WIDGET_TYPE = 'active_alarms'
 const POLL_MS = 30_000
 
 /** Contatori mostrati, con il preset della console (`/events?stat=…`) e il colore (stesso di EventsPage). */
-const TILES: ReadonlyArray<{ key: keyof EventStats; accent: string }> = [
+const TILES: ReadonlyArray<{ key: keyof EventStatCounts; accent: string }> = [
   { key: 'firing',   accent: colors.danger },
   { key: 'critical', accent: '#b91c1c' },
   { key: 'warning',  accent: '#b45309' },

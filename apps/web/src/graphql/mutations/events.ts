@@ -60,7 +60,8 @@ export const UPDATE_EVENT_POLICY = gql`
   mutation UpdateEventPolicy($input: EventPolicyInput!) {
     updateEventPolicy(input: $input) {
       openIncidentFrom groupBy openDelaySeconds autoResolve
-      suppressUpstreamHops flapThreshold flapWindowMinutes retentionDays severityMap
+      suppressUpstreamHops flapThreshold flapWindowMinutes flapStableMinutes
+      stormThresholdPerMinute stormCooldownMinutes retentionDays severityMap
     }
   }
 `

@@ -151,6 +151,66 @@
       "targets": [
         { "refId": "A", "expr": "sum by (result) (increase(opengrafo_backup_runs_total[24h]))", "legendFormat": "{{result}}" }
       ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Event Management",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 30, "w": 24, "h": 1 },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Eventi/s per esito",
+      "description": "events_received_total (tutti i connettori), events_deduplicated_total (ripetizioni della stessa impronta), events_suppressed_total (finestra di change), events_flapping_total (ingressi in sfarfallio) — services/eventService.ts, eventCorrelation.ts",
+      "gridPos": { "x": 0, "y": 31, "w": 10, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(events_received_total[5m]))", "legendFormat": "ricevuti" },
+        { "refId": "B", "expr": "sum(rate(events_deduplicated_total[5m]))", "legendFormat": "deduplicati" },
+        { "refId": "C", "expr": "sum(rate(events_suppressed_total[5m]))", "legendFormat": "soppressi" },
+        { "refId": "D", "expr": "sum(rate(events_flapping_total[5m]))", "legendFormat": "sfarfallio" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Incident automatici al minuto (aperti / risolti / riaperti)",
+      "description": "incidents_auto_opened_total (correlazione e incident di tempesta), incidents_auto_resolved_total, incidents_reopened_total — services/eventCorrelation.ts, eventStorm.ts",
+      "gridPos": { "x": 10, "y": 31, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(incidents_auto_opened_total[1m]))", "legendFormat": "aperti" },
+        { "refId": "B", "expr": "sum(increase(incidents_auto_resolved_total[1m]))", "legendFormat": "risolti" },
+        { "refId": "C", "expr": "sum(increase(incidents_reopened_total[1m]))", "legendFormat": "riaperti" }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Tempeste di allarmi attive",
+      "description": "event_storms_active — sorgenti (InboundWebhook) con storm_since valorizzato; in tempesta la correlazione aggancia tutto a un solo incident per sorgente (docs/OPERATIONS.md §7)",
+      "gridPos": { "x": 18, "y": 31, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "max(event_storms_active) or vector(0)", "legendFormat": "tempeste" }
+      ]
     }
   ]
 }

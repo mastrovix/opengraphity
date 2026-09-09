@@ -16,7 +16,8 @@ const MAP = { critical: { impact: 'high', urgency: 'high' }, warning: { impact: 
 const POLICY = {
   __typename: 'EventPolicy',
   openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
-  suppressUpstreamHops: 2, flapThreshold: 4, flapWindowMinutes: 15, retentionDays: 30,
+  suppressUpstreamHops: 2, flapThreshold: 4, flapWindowMinutes: 15, flapStableMinutes: 10,
+  stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30,
   severityMap: JSON.stringify(MAP),
 }
 
@@ -77,16 +78,96 @@ describe('EventPolicyPage', () => {
   })
 })
 
+describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', () => {
+  it('i tre campi nuovi partono dalla policy, hanno l\'aiuto e vengono salvati', async () => {
+    const seen: Input[] = []
+    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock(), updateMock(seen)] })
+    const stable   = await screen.findByLabelText('Stable minutes before resuming')
+    const thresh   = screen.getByLabelText('Storm threshold (new alarms per minute)')
+    const cooldown = screen.getByLabelText('Minutes below threshold to end the storm')
+    expect(stable).toHaveValue(10)
+    expect(thresh).toHaveValue(50)
+    expect(cooldown).toHaveValue(5)
+    expect(stable).toHaveAccessibleDescription(/before leaving the flapping state/)
+    expect(thresh).toHaveAccessibleDescription(/grouped into a single incident/)
+    expect(cooldown).toHaveAccessibleDescription(/storm ends once the rate stays below/)
+
+    await user.clear(stable);   await user.type(stable, '20')
+    await user.clear(thresh);   await user.type(thresh, '80')
+    await user.clear(cooldown); await user.type(cooldown, '3')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Event policy saved'))
+    expect(seen[0]).toMatchObject({ flapStableMinutes: 20, stormThresholdPerMinute: 80, stormCooldownMinutes: 3, flapThreshold: 4, flapWindowMinutes: 15, retentionDays: 30 })
+  })
+
+  it('i campi sono raggruppati in quattro riquadri titolati', async () => {
+    renderWithProviders(<EventPolicyPage />, { mocks: [policyMock()] })
+    const incidents = await screen.findByRole('group', { name: 'Incident opening and closing' })
+    expect(within(incidents).getByLabelText('Open incident from')).toBeInTheDocument()
+    expect(within(incidents).getByLabelText('Open delay (seconds)')).toBeInTheDocument()
+    expect(within(incidents).getByLabelText('Critical – Impact')).toBeInTheDocument()
+    const change = screen.getByRole('group', { name: 'Silence in a change window' })
+    expect(within(change).getByLabelText('Upstream suppression (hops)')).toBeInTheDocument()
+    const flapStorm = screen.getByRole('group', { name: 'Flapping and storms' })
+    expect(within(flapStorm).getByLabelText('Flap threshold (transitions)')).toBeInTheDocument()
+    expect(within(flapStorm).getByLabelText('Stable minutes before resuming')).toBeInTheDocument()
+    expect(within(flapStorm).getByLabelText('Storm threshold (new alarms per minute)')).toBeInTheDocument()
+    expect(within(flapStorm).getByLabelText('Minutes below threshold to end the storm')).toBeInTheDocument()
+    const retention = screen.getByRole('group', { name: 'Retention' })
+    expect(within(retention).getByLabelText('Retention (days)')).toBeInTheDocument()
+  })
+
+  it('validazione: stabilità e cooldown ≥ 1, soglia di tempesta ≥ 0, campo vuoto segnalato; il salvataggio è bloccato', async () => {
+    const seen: Input[] = []
+    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock(), updateMock(seen)] })
+    const stable = await screen.findByLabelText('Stable minutes before resuming')
+    const save = screen.getByRole('button', { name: 'Save' })
+    expect(save).toBeEnabled()
+
+    // 0 non basta per la stabilità
+    await user.clear(stable); await user.type(stable, '0')
+    expect(screen.getByRole('alert')).toHaveTextContent('The minimum value is 1.')
+    expect(stable).toHaveAttribute('aria-invalid', 'true')
+    expect(stable).toHaveAccessibleDescription(/The minimum value is 1\./)
+    expect(save).toBeDisabled()
+    expect(screen.getByText('Fix the highlighted fields to save.')).toBeInTheDocument()
+
+    // campo vuoto: non è "0", è un valore mancante
+    await user.clear(stable)
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a whole number (minimum 1).')
+    expect(save).toBeDisabled()
+
+    // valore valido: l'errore sparisce e si salva
+    await user.type(stable, '7')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    // la soglia di tempesta accetta 0, il cooldown no
+    const thresh = screen.getByLabelText('Storm threshold (new alarms per minute)')
+    await user.clear(thresh); await user.type(thresh, '0')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    const cooldown = screen.getByLabelText('Minutes below threshold to end the storm')
+    await user.clear(cooldown); await user.type(cooldown, '0')
+    expect(screen.getByRole('alert')).toHaveTextContent('The minimum value is 1.')
+    await user.clear(cooldown); await user.type(cooldown, '2')
+
+    await user.click(save)
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Event policy saved'))
+    expect(seen[0]).toMatchObject({ flapStableMinutes: 7, stormThresholdPerMinute: 0, stormCooldownMinutes: 2 })
+  })
+})
+
 describe('EventPolicyPage — spiegazioni (ondata 3)', () => {
   it('riquadro "Come funziona" in quattro righe e riga di aiuto sotto ogni campo', async () => {
     renderWithProviders(<EventPolicyPage />, { mocks: [policyMock()] })
     const how = await screen.findByRole('region', { name: 'How it works' })
     const items = within(how).getAllByRole('listitem')
-    expect(items).toHaveLength(4)
+    expect(items).toHaveLength(6)
     expect(items[0]).toHaveTextContent(/Threshold → opening/)
     expect(items[1]).toHaveTextContent(/Grouping/)
     expect(items[2]).toHaveTextContent(/Auto-resolve/)
     expect(items[3]).toHaveTextContent(/Silence in a change window/)
+    expect(items[4]).toHaveTextContent(/Flapping.*no incident opened or closed/)
+    expect(items[5]).toHaveTextContent(/Storm.*single storm incident/)
 
     // ogni controllo è descritto dalla sua riga di aiuto (aria-describedby)
     expect(screen.getByLabelText('Open incident from')).toHaveAccessibleDescription(/Minimum severity from which an alarm opens an incident/)

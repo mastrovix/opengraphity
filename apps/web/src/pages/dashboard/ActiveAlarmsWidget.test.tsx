@@ -8,7 +8,7 @@ import { renderWithProviders, type GqlMock } from '@/test/utils'
 
 const statsMock = (): GqlMock => ({
   request: { query: GET_EVENT_STATS },
-  result: { data: { eventStats: { __typename: 'EventStats', firing: 5, critical: 2, warning: 3, orphan: 1, suppressed: 0, flapping: 0, resolved24h: 9 } } },
+  result: { data: { eventStats: { __typename: 'EventStats', firing: 5, critical: 2, warning: 3, orphan: 1, suppressed: 0, flapping: 0, resolved24h: 9, stormSources: [] } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 

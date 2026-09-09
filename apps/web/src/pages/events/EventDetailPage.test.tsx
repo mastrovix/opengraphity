@@ -20,6 +20,7 @@ const EVENT: Record<string, unknown> = {
   ci: CI,
   incident: INCIDENT,
   suppressedBy: null, correlation: 'opened', correlationAt: '2026-09-09T08:00:05Z',
+  flappingSince: null, transitions24h: 0,
 }
 
 const eventMock = (over: Record<string, unknown> = {}): GqlMock => ({
@@ -41,7 +42,8 @@ const policyMock = (): GqlMock => ({
   request: { query: GET_EVENT_POLICY },
   result: { data: { eventPolicy: {
     __typename: 'EventPolicy', openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
-    suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, retentionDays: 30, severityMap: '{}',
+    suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, flapStableMinutes: 15,
+    stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30, severityMap: '{}',
   } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
@@ -148,5 +150,36 @@ describe('EventDetailPage — sezione Correlazione (ondata 3)', () => {
     renderPage('operator', { correlation: 'skipped_severity', incident: null, severity: 'warning' })
     await screen.findByRole('heading', { level: 1 })
     await waitFor(() => expect(sentence()).toHaveTextContent('Severity Warning is below the policy threshold (opens from: Critical): no incident opened.'))
+  })
+})
+
+describe('EventDetailPage — sfarfallio e tempeste (ondata 4)', () => {
+  it('flapping: passaggi, da quando, minuti di stabilità dalla policy; campi "Instabile dal" e "Passaggi 24 h"', async () => {
+    renderPage('operator', { status: 'flapping', correlation: 'flapping', incident: null, flappingSince: '2026-09-09T07:30:00Z', transitions24h: 12 })
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => expect(sentence()).toHaveTextContent(/^Flapping alarm: 12 transitions in the last 24 hours, since .+; no incident opened or closed, correlation resumes after 15 minutes of stability\.$/))
+    expect(screen.getByText('Flapping since')).toBeInTheDocument()
+    expect(screen.getByText('Transitions in the last 24 h')).toBeInTheDocument()
+    expect(screen.getByText('12')).toBeInTheDocument()
+  })
+
+  it('transitions24h = 0: il campo "Passaggi 24 h" non compare', async () => {
+    renderPage('operator')
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByText('Transitions in the last 24 h')).not.toBeInTheDocument()
+    expect(screen.queryByText('Flapping since')).not.toBeInTheDocument()
+  })
+
+  it('storm: sorgente e incident di tempesta nella frase, incident linkato', async () => {
+    renderPage('operator', { correlation: 'storm', incident: { __typename: 'Incident', id: 'inc9', number: 'INC-0099', title: 'Storm from Prometheus', status: 'new' } })
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent(/^Storm from source Prometheus: grouped into the storm incident INC-0099 on .+ instead of opening an incident for this CI\.$/)
+    expect(screen.getAllByRole('link', { name: 'INC-0099 · Storm from Prometheus' })[0]).toHaveAttribute('href', '/incidents/inc9')
+  })
+
+  it('storm_no_ci: tempesta senza CI riconosciuto', async () => {
+    renderPage('operator', { correlation: 'storm_no_ci', incident: null, ci: null })
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent('Storm from source Prometheus and no CI recognised: no incident opened; link a CI after the storm if needed.')
   })
 })

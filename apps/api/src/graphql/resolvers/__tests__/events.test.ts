@@ -30,9 +30,12 @@ vi.mock('../../../services/eventService.js', async (importOriginal) => ({
 // Ondata 3: apertura condivisa e pipeline (soppressione/salute/correlazione)
 // sono testate in services/__tests__/eventCorrelation.test.ts.
 vi.mock('../../../services/eventCorrelation.js', () => ({ openIncidentFromEvent: vi.fn(), runEventPipeline: vi.fn() }))
+// Ondata 4: le tempeste (contatori Redis) sono in services/__tests__/eventStorm.test.ts.
+vi.mock('../../../services/eventStorm.js', () => ({ listStormSources: vi.fn().mockResolvedValue([]) }))
 vi.mock('../change/queries.js', () => ({ change: vi.fn() }))
 
 const { eventResolvers } = await import('../events.js')
+const { listStormSources } = await import('../../../services/eventStorm.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { getEventPolicy, setEventPolicy, recomputeCIHealth } = await import('../../../services/eventService.js')
 const { openIncidentFromEvent, runEventPipeline } = await import('../../../services/eventCorrelation.js')
@@ -88,6 +91,15 @@ describe('updateEventPolicy', () => {
     expect(out).toMatchObject({ openIncidentFrom: 'warning', flapThreshold: 6, autoResolve: false, groupBy: 'ci', openDelaySeconds: 0, suppressUpstreamHops: 1, flapWindowMinutes: 10, retentionDays: 90 })
     expect(JSON.parse(out.severityMap)).toEqual(DEFAULT_EVENT_POLICY.severity_map)
     expect(audit).toHaveBeenCalledWith(admin, 'event_policy.updated', 'Tenant', 'tenant-1', expect.anything())
+  })
+
+  it('ondata 4 — flapStableMinutes / stormThresholdPerMinute / stormCooldownMinutes: persistiti in snake_case e restituiti; negativi rifiutati', async () => {
+    const out = await eventResolvers.Mutation.updateEventPolicy(null, { input: { flapStableMinutes: 20, stormThresholdPerMinute: 0, stormCooldownMinutes: 10 } }, admin)
+    expect(setEventPolicy).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ flap_stable_minutes: 20, storm_threshold_per_minute: 0, storm_cooldown_minutes: 10 }))
+    expect(out).toMatchObject({ flapStableMinutes: 20, stormThresholdPerMinute: 0, stormCooldownMinutes: 10, flapThreshold: 4 })
+    vi.clearAllMocks()
+    await expectCode(eventResolvers.Mutation.updateEventPolicy(null, { input: { stormCooldownMinutes: -1 } }, admin), 'BAD_USER_INPUT', /storm_cooldown_minutes must be an integer >= 0/)
+    expect(setEventPolicy).not.toHaveBeenCalled()
   })
 
   it('severityMap valida (JSON con le tre chiavi) → persistita decodificata', async () => {
@@ -355,13 +367,28 @@ describe('events', () => {
     expect(callMatching(/ORDER BY/)!.params['limit']).toBe(500)
   })
 
-  it('eventStats → una query scoped per tenant con i sette contatori', async () => {
+  it('eventStats → una query scoped per tenant con i sette contatori + le sorgenti in tempesta (eventStorm.listStormSources)', async () => {
     onCypher([[/count\(CASE WHEN e\.status = 'firing' THEN 1 END\) AS firing/, { firing: 4, critical: 1, warning: 2, orphan: 1, suppressed: 0, flapping: 0, resolved24h: 9 }]])
     const out = await eventResolvers.Query.eventStats(null, null, operator)
-    expect(out).toEqual({ firing: 4, critical: 1, warning: 2, orphan: 1, suppressed: 0, flapping: 0, resolved24h: 9 })
+    expect(out).toEqual({ firing: 4, critical: 1, warning: 2, orphan: 1, suppressed: 0, flapping: 0, resolved24h: 9, stormSources: [] })
     const q = callMatching(/AS firing/)!
     expect(q.cypher).toContain('MATCH (e:Event {tenant_id: $tenantId})')
     expect(q.cypher).toContain("e.status = 'resolved' AND e.resolved_at >= $since24h")
+    expect(listStormSources).toHaveBeenCalledWith('tenant-1')
+
+    const storm = { sourceId: 'hook-1', sourceName: 'Zabbix prod', ratePerMinute: 120, since: 'T-5', incidentId: 'inc-storm', incidentNumber: 'INC00000042' }
+    vi.mocked(listStormSources).mockResolvedValueOnce([storm])
+    expect((await eventResolvers.Query.eventStats(null, null, operator)).stormSources).toEqual([storm])
+  })
+
+  it('ondata 4 — Event.flappingSince e transitions24h (passaggi nelle ultime 24 h) dal nodo', async () => {
+    const recent = new Date(Date.now() - 3600 * 1000).toISOString()
+    const old = new Date(Date.now() - 30 * 3600 * 1000).toISOString()
+    onCypher([[/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow({ status: 'flapping', flapping_since: 'T-3', transitions: [old, recent, recent] })]])
+    const out = await eventResolvers.Query.event(null, { id: 'ev-1' }, operator)
+    expect(out).toMatchObject({ id: 'ev-1', status: 'flapping', flappingSince: 'T-3', transitions24h: 2 })
+    onCypher([[/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, eventRow()]])
+    expect(await eventResolvers.Query.event(null, { id: 'ev-1' }, operator)).toMatchObject({ flappingSince: null, transitions24h: 0 })
   })
 
   it('acknowledgeEvent → SET acknowledged_by dal contesto', async () => {

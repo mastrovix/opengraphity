@@ -43,6 +43,11 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   // Event Management, ondata 3 (correlazione automatica e finestre di change)
   { event_type: 'event.suppressed',             severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.event.suppressed.title'      },
   { event_type: 'event.correlated',             severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.correlated.title'      },
+  // Event Management, ondata 4 (sfarfallio e tempeste di allarmi)
+  { event_type: 'event.flapping',               severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.flapping.title'        },
+  { event_type: 'event.stable',                 severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.event.stable.title'          },
+  { event_type: 'event.storm_started',          severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.event.storm_started.title'   },
+  { event_type: 'event.storm_ended',            severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.storm_ended.title'     },
 ]
 
 export interface SeedNotificationRulesResult { created: number; skipped: number }

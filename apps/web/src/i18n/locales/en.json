@@ -1160,6 +1160,18 @@
       },
       "correlated": {
         "title": "Alarm correlated to an incident"
+      },
+      "flapping": {
+        "title": "Flapping alarm: correlation paused"
+      },
+      "stable": {
+        "title": "Alarm stable again"
+      },
+      "storm_started": {
+        "title": "Alarm storm in progress"
+      },
+      "storm_ended": {
+        "title": "Alarm storm ended"
       }
     },
     "ci": {
@@ -1708,7 +1720,9 @@
       "labelKey": "Key",
       "labelValue": "Value",
       "context": "Context",
-      "ciHealth": "Health"
+      "ciHealth": "Health",
+      "flappingSince": "Flapping since",
+      "transitions24h": "Transitions in the last 24 h"
     },
     "aliases": {
       "title": "Aliases of CI {{ci}}",
@@ -1768,7 +1782,11 @@
         "autoResolveTitle": "Auto-resolve",
         "autoResolve": "when the source resolves every alarm, the incident opened by monitoring is resolved; if the alarm comes back, it is reopened.",
         "changeWindowTitle": "Silence in a change window",
-        "changeWindow": "alarms on the CIs of a change in its release window are suppressed: no incident, no health change; at the end of the window they are re-evaluated."
+        "changeWindow": "alarms on the CIs of a change in its release window are suppressed: no incident, no health change; at the end of the window they are re-evaluated.",
+        "flappingTitle": "Flapping",
+        "flapping": "an alarm that comes and goes too many times within the window is marked “flapping”: no incident opened or closed, CI health degraded, until it stays stable for the given minutes.",
+        "stormTitle": "Storm",
+        "storm": "if a source sends more new alarms per minute than the threshold, they are all grouped into a single storm incident instead of one per CI, until the rate stays below the threshold for the given minutes."
       },
       "help": {
         "openIncidentFrom": "Minimum severity from which an alarm opens an incident. “Never” = alarms stay in the console only.",
@@ -1779,7 +1797,24 @@
         "flapWindowMinutes": "Observation window in which flapping transitions are counted.",
         "retentionDays": "Resolved events older than this many days are deleted.",
         "autoResolve": "When the source resolves every alarm of an incident opened by monitoring, the incident is resolved; a new alarm reopens it.",
-        "severityMap": "Impact and urgency assigned to the automatically opened incident, from the alarm severity: the priority derives from them."
+        "severityMap": "Impact and urgency assigned to the automatically opened incident, from the alarm severity: the priority derives from them.",
+        "flapStableMinutes": "How long the alarm must stay still (no new firing or resolved) before leaving the flapping state and returning to normal correlation.",
+        "stormThresholdPerMinute": "When a source exceeds this number of new alarms per minute, a storm starts: its alarms are grouped into a single incident instead of opening one per CI.",
+        "stormCooldownMinutes": "The storm ends once the rate stays below the threshold for this many minutes; later alarms return to normal correlation."
+      },
+      "flapStableMinutes": "Stable minutes before resuming",
+      "stormThresholdPerMinute": "Storm threshold (new alarms per minute)",
+      "stormCooldownMinutes": "Minutes below threshold to end the storm",
+      "groups": {
+        "incidents": "Incident opening and closing",
+        "changeWindow": "Silence in a change window",
+        "flapStorm": "Flapping and storms",
+        "retention": "Retention"
+      },
+      "validation": {
+        "integer": "Enter a whole number (minimum {{min}}).",
+        "min": "The minimum value is {{min}}.",
+        "blocked": "Fix the highlighted fields to save."
       }
     },
     "health": {
@@ -1797,7 +1832,15 @@
         "delayed": "Waiting",
         "delayedIn": "Opens in {{seconds}} s",
         "delayedWaiting": "Waiting for the policy open delay",
-        "linkCI": "Link a CI"
+        "linkCI": "Link a CI",
+        "flapping_one": "Flapping · {{count}} transition/24h",
+        "flapping_other": "Flapping · {{count}} transitions/24h",
+        "flappingHint": "Waiting for it to stay stable for {{minutes}} minutes",
+        "flappingHintNoPolicy": "Waiting for it to stay stable for the minutes set by the policy",
+        "storm": "Storm · {{number}}",
+        "stormUnknown": "Storm",
+        "stormHint": "Grouped into the storm incident of source {{source}}",
+        "storm_no_ci": "Storm, no CI"
       },
       "auto": {
         "opened": "Incident opened automatically by monitoring",
@@ -1818,7 +1861,12 @@
         "delayed": "Waiting: the policy opens incidents after {{seconds}} seconds (opens in {{remaining}} s if the alarm stays active).",
         "delayedNoPolicy": "Waiting for the open delay set by the policy.",
         "none": "No automatic correlation for this event.",
-        "unknown": "Unknown correlation outcome: {{value}}."
+        "unknown": "Unknown correlation outcome: {{value}}.",
+        "flapping": "Flapping alarm: {{count}} transitions in the last 24 hours, since {{since}}; no incident opened or closed, correlation resumes after {{minutes}} minutes of stability.",
+        "flappingNoPolicy": "Flapping alarm: {{count}} transitions in the last 24 hours, since {{since}}; no incident opened or closed, correlation resumes once it stays stable for the minutes set by the policy.",
+        "storm": "Storm from source {{source}}: grouped into the storm incident {{number}} on {{when}} instead of opening an incident for this CI.",
+        "stormNoIncident": "Storm from source {{source}}: evaluated on {{when}} during the storm, no incident opened for this CI.",
+        "storm_no_ci": "Storm from source {{source}} and no CI recognised: no incident opened; link a CI after the storm if needed."
       },
       "short": {
         "opened": "incident opened",
@@ -1829,7 +1877,19 @@
         "delayed": "waiting for the delay",
         "suppressed": "suppressed by a change",
         "auto_resolved": "incident resolved",
-        "none": "no correlation"
+        "none": "no correlation",
+        "flapping": "flapping alarm",
+        "storm": "grouped into the storm",
+        "storm_no_ci": "storm, no CI"
+      }
+    },
+    "storm": {
+      "banner": {
+        "title_one": "Storm in progress",
+        "title_other": "Storms in progress ({{count}} sources)",
+        "line": "Storm in progress from {{source}}: {{rate}} alarms per minute since {{time}}, grouped into",
+        "lineNoIncident": "Storm in progress from {{source}}: {{rate}} alarms per minute since {{time}}; no storm incident.",
+        "sources": "Sources"
       }
     }
   },
@@ -1901,7 +1961,10 @@
         "title": "No monitoring source yet",
         "description": "Connect Alertmanager, Grafana, Zabbix, Datadog or any other tool: the wizard guides you step by step, no code needed."
       },
-      "disabledHint": "Disabled: alarms sent to this endpoint are rejected."
+      "disabledHint": "Disabled: alarms sent to this endpoint are rejected.",
+      "stormBadge": "Storm",
+      "stormBadgeHint": "In a storm: {{rate}} alarms per minute since {{time}}, grouped into {{number}}",
+      "stormBadgeHintNoIncident": "In a storm: {{rate}} alarms per minute since {{time}}"
     },
     "wizard": {
       "title": "Add source",

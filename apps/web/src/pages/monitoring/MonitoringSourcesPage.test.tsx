@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { MonitoringSourcesPage } from './MonitoringSourcesPage'
-import { GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_MONITORING_SOURCES, GET_EVENT_STATS } from '@/graphql/queries'
 import { UPDATE_MONITORING_SOURCE, DELETE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import type { MonitoringSource } from '@/types/events'
+import type { MonitoringSource, StormSource } from '@/types/events'
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
@@ -33,13 +33,23 @@ const sourcesMock = (items = SOURCES): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
+/** `eventStats`: la pagina la legge solo per il badge "Tempesta". */
+const statsMock = (stormSources: StormSource[] = []): GqlMock => ({
+  request: { query: GET_EVENT_STATS },
+  result: { data: { eventStats: {
+    __typename: 'EventStats', firing: 0, critical: 0, warning: 0, orphan: 0, suppressed: 0, flapping: 0, resolved24h: 0,
+    stormSources: stormSources.map((s) => ({ __typename: 'StormSource', ...s })),
+  } } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
 const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
 
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
 
 describe('MonitoringSourcesPage', () => {
   it('elenca le sorgenti con strumento, stato, contatori e ultimo errore in chiaro', async () => {
-    renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock()] })
+    renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock()] })
     expect(await screen.findByRole('link', { name: 'Prometheus prod' })).toHaveAttribute('href', '/monitoring/sources/s1')
     expect(screen.getByText('2 sources', { exact: false })).toBeInTheDocument()
 
@@ -56,8 +66,19 @@ describe('MonitoringSourcesPage', () => {
     expect(within(rows[1]!).getByText(/Last reason: event_value must be/)).toBeInTheDocument()
   })
 
+  it('badge "Tempesta" sulla sorgente in tempesta (da eventStats.stormSources), con tooltip', async () => {
+    const storms: StormSource[] = [{ sourceId: 's2', sourceName: 'Zabbix DC', ratePerMinute: 64, since: '2026-09-09T08:00:00Z', incidentId: 'inc9', incidentNumber: 'INC-0099' }]
+    renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(storms)] })
+    await screen.findByRole('link', { name: 'Prometheus prod' })
+    const badge = await screen.findByText('Storm')
+    const rows = bodyRows()
+    expect(within(rows[1]!).getByText('Storm')).toBe(badge)
+    expect(badge).toHaveAttribute('title', expect.stringMatching(/^In a storm: 64 alarms per minute since \d{2}:\d{2}, grouped into INC-0099$/))
+    expect(within(rows[0]!).queryByText('Storm')).not.toBeInTheDocument()
+  })
+
   it('stato vuoto: invito e pulsante che porta alla procedura guidata', async () => {
-    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock([])] })
+    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock([]), statsMock()] })
     expect(await screen.findByText('No monitoring source yet')).toBeInTheDocument()
     const buttons = screen.getAllByRole('button', { name: 'Add source' })
     await user.click(buttons[buttons.length - 1]!)
@@ -70,7 +91,7 @@ describe('MonitoringSourcesPage', () => {
       request: { query: UPDATE_MONITORING_SOURCE, variables: (v) => { seen.push(v); return true } },
       result: { data: { updateInboundWebhook: typed({ ...SOURCES[0]!, enabled: false }) } },
     }
-    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), updateMock] })
+    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(), updateMock] })
     await user.click(await screen.findByRole('switch', { name: 'Enable or disable Prometheus prod' }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Source updated'))
     expect(seen).toEqual([{ id: 's1', input: { enabled: false } }])
@@ -81,7 +102,7 @@ describe('MonitoringSourcesPage', () => {
       request: { query: SEND_SAMPLE_EVENT, variables: { sourceId: 's1' } },
       result: { data: { sendSampleEvent: 1 } },
     }
-    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), sampleMock] })
+    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(), sampleMock] })
     await user.click(await screen.findByRole('button', { name: 'Send a test event from Prometheus prod' }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Test event queued: open it in Events', expect.objectContaining({ action: expect.objectContaining({ label: 'Open in Events' }) })))
   })
@@ -91,7 +112,7 @@ describe('MonitoringSourcesPage', () => {
       request: { query: REGENERATE_SOURCE_TOKEN, variables: { id: 's1' } },
       result: { data: { regenerateWebhookToken: { __typename: 'InboundWebhookWithToken', id: 's1', token: 'tok-NEW-123' } } },
     }
-    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), regenMock] })
+    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(), regenMock] })
     await user.click(await screen.findByRole('button', { name: 'Regenerate token of Prometheus prod' }))
     // conferma (ConfirmModal)
     await user.click(await screen.findByRole('button', { name: 'Regenerate token' }))
@@ -106,7 +127,7 @@ describe('MonitoringSourcesPage', () => {
       request: { query: DELETE_MONITORING_SOURCE, variables: (v) => { seen.push(v); return true } },
       result: { data: { deleteInboundWebhook: true } },
     }
-    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), deleteMock] })
+    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(), deleteMock] })
     await user.click(await screen.findByRole('button', { name: 'Delete Zabbix DC' }))
     expect(await screen.findByText('Delete the source "Zabbix DC"?')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Cancel' }))

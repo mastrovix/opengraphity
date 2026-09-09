@@ -20,14 +20,23 @@ export const CI_ALIAS_KINDS:    readonly CIAliasKind[]   = ['hostname', 'ip', 'f
  * - suppressed: silenziato da una change in finestra di rilascio;
  * - auto_resolved: l'incident è stato risolto perché la sorgente ha risolto;
  * - none: nessuna valutazione (es. policy "mai").
+ * Ondata 4:
+ * - flapping: l'allarme va e viene troppo spesso (≥ flapThreshold passaggi
+ *   nella finestra): nessun incident aperto/chiuso finché non resta stabile
+ *   per flapStableMinutes;
+ * - storm: la sorgente manda troppi allarmi nuovi al minuto: l'evento è
+ *   raggruppato nell'unico incident di tempesta della sorgente;
+ * - storm_no_ci: come storm, ma senza CI riconosciuto.
  */
 export type EventCorrelation =
   | 'opened' | 'attached' | 'reopened'
   | 'skipped_orphan' | 'skipped_severity' | 'delayed' | 'suppressed'
   | 'auto_resolved' | 'none'
+  | 'flapping' | 'storm' | 'storm_no_ci'
 
 export const EVENT_CORRELATIONS: readonly EventCorrelation[] = [
   'opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'suppressed', 'auto_resolved', 'none',
+  'flapping', 'storm', 'storm_no_ci',
 ]
 
 /** Stati in cui "Rivaluta ora" ha senso: la policy può decidere diversamente. */
@@ -76,9 +85,14 @@ export interface MonitoringEvent {
   correlation:    EventCorrelation
   /** Istante dell'ultima valutazione della policy. */
   correlationAt:  string | null
+  /** Da quando l'allarme è in sfarfallio (status = flapping); null altrimenti. */
+  flappingSince:  string | null
+  /** Passaggi attivo/risolto nelle ultime 24 ore. */
+  transitions24h: number
 }
 
-export interface EventStats {
+/** Contatori della console (un riquadro cliccabile per chiave). */
+export interface EventStatCounts {
   firing:      number
   critical:    number
   warning:     number
@@ -86,6 +100,25 @@ export interface EventStats {
   suppressed:  number
   flapping:    number
   resolved24h: number
+}
+
+/**
+ * Sorgente in tempesta (ondata 4, `EventStats.stormSources`): manda più
+ * allarmi nuovi al minuto della soglia `stormThresholdPerMinute`; i suoi
+ * allarmi finiscono tutti nell'incident di tempesta (se ne ha uno).
+ */
+export interface StormSource {
+  sourceId:       string
+  sourceName:     string
+  ratePerMinute:  number
+  /** Inizio della tempesta (ISO). */
+  since:          string
+  incidentId:     string | null
+  incidentNumber: string | null
+}
+
+export interface EventStats extends EventStatCounts {
+  stormSources: StormSource[]
 }
 
 export interface CIAlias {
@@ -105,6 +138,12 @@ export interface EventPolicy {
   suppressUpstreamHops: number
   flapThreshold:        number
   flapWindowMinutes:    number
+  /** Minuti senza passaggi prima che un allarme in sfarfallio torni alla correlazione normale. */
+  flapStableMinutes:    number
+  /** Allarmi nuovi al minuto da una sorgente oltre i quali scatta la tempesta. */
+  stormThresholdPerMinute: number
+  /** Minuti sotto soglia prima di chiudere la tempesta. */
+  stormCooldownMinutes: number
   retentionDays:        number
   /** Mappa severità → impatto/urgenza, JSON serializzato. */
   severityMap:          string

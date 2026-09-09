@@ -5,6 +5,11 @@
  * severità → impatto/urgenza (JSON nel contratto, tre righe di select qui).
  * Ondata 3: riquadro "Come funziona" in testa e una riga di aiuto sotto ogni
  * campo, così l'effetto di ogni scelta è detto in parole.
+ * Ondata 4: campi raggruppati in quattro riquadri (apertura/chiusura, silenzio
+ * in finestra di change, sfarfallio e tempeste, conservazione), tre campi
+ * nuovi (stabilità dello sfarfallio, soglia e cooldown della tempesta) e
+ * validazione in pagina: interi ≥ 0, alcuni ≥ 1; con errori il salvataggio
+ * è bloccato e il campo dice perché.
  */
 import { useEffect, useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -71,8 +76,34 @@ interface FormState {
   suppressUpstreamHops: number
   flapThreshold:        number
   flapWindowMinutes:    number
+  flapStableMinutes:    number
+  stormThresholdPerMinute: number
+  stormCooldownMinutes: number
   retentionDays:        number
   severityMap:          SeverityMap
+}
+
+type NumberField = { [K in keyof FormState]: FormState[K] extends number ? K : never }[keyof FormState]
+
+/** Minimo ammesso per ogni campo numerico (tutti interi; 0 dove "zero" ha un senso: nessun ritardo, nessun hop). */
+const MIN: Record<NumberField, number> = {
+  openDelaySeconds: 0, suppressUpstreamHops: 0, stormThresholdPerMinute: 0,
+  flapThreshold: 1, flapWindowMinutes: 1, flapStableMinutes: 1, stormCooldownMinutes: 1, retentionDays: 1,
+}
+
+const NUMBER_FIELDS = Object.keys(MIN) as NumberField[]
+
+type FieldErrors = Partial<Record<NumberField, { key: 'integer' | 'min'; min: number }>>
+
+/** Errori di validazione per campo: intero e ≥ minimo. Vuoto = si può salvare. */
+export function validatePolicyForm(form: Pick<FormState, NumberField>): FieldErrors {
+  const errors: FieldErrors = {}
+  for (const key of NUMBER_FIELDS) {
+    const v = form[key]
+    if (!Number.isInteger(v)) errors[key] = { key: 'integer', min: MIN[key] }
+    else if (v < MIN[key])   errors[key] = { key: 'min', min: MIN[key] }
+  }
+  return errors
 }
 
 function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
@@ -82,11 +113,32 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
       openIncidentFrom: p.openIncidentFrom, groupBy: p.groupBy,
       openDelaySeconds: p.openDelaySeconds, autoResolve: p.autoResolve,
       suppressUpstreamHops: p.suppressUpstreamHops, flapThreshold: p.flapThreshold,
-      flapWindowMinutes: p.flapWindowMinutes, retentionDays: p.retentionDays,
+      flapWindowMinutes: p.flapWindowMinutes, flapStableMinutes: p.flapStableMinutes,
+      stormThresholdPerMinute: p.stormThresholdPerMinute, stormCooldownMinutes: p.stormCooldownMinutes,
+      retentionDays: p.retentionDays,
       severityMap: map,
     },
     mapError: error,
   }
+}
+
+const HOW_IT_WORKS = ['threshold', 'grouping', 'autoResolve', 'changeWindow', 'flapping', 'storm'] as const
+
+type GroupName = 'incidents' | 'changeWindow' | 'flapStorm' | 'retention'
+
+/**
+ * Riquadro titolato: un <fieldset> per gruppo. A livello di modulo (non
+ * dentro la pagina) perché un componente ricreato a ogni render smonterebbe
+ * gli input e farebbe perdere il focus a ogni tasto.
+ */
+function Group({ name, children }: { name: GroupName; children: React.ReactNode }) {
+  const { t } = useTranslation()
+  return (
+    <fieldset style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px 18px', margin: 0, background: '#fff' }}>
+      <legend style={{ padding: '0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>{t(`events.policy.groups.${name}`)}</legend>
+      {children}
+    </fieldset>
+  )
 }
 
 export function EventPolicyPage() {
@@ -112,18 +164,24 @@ export function EventPolicyPage() {
   if (!form) return null
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => (f ? { ...f, [key]: value } : f))
-  const setNum = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => set(key, Number(e.target.value) as never)
+  // Campo vuoto → NaN (non 0): la validazione lo segnala invece di salvare uno zero mai scritto.
+  const setNum = (key: NumberField) => (e: React.ChangeEvent<HTMLInputElement>) => set(key, e.target.value.trim() === '' ? Number.NaN : Number(e.target.value))
   const setMap = (sev: EventSeverity, field: 'impact' | 'urgency', value: Level) =>
     setForm((f) => (f ? { ...f, severityMap: { ...f.severityMap, [sev]: { ...f.severityMap[sev], [field]: value } } } : f))
 
+  const errors = validatePolicyForm(form)
+  const invalid = Object.keys(errors).length > 0
+
   async function handleSave() {
-    if (!form) return
+    if (!form || invalid) return
     try {
       await update({ variables: { input: {
         openIncidentFrom: form.openIncidentFrom, groupBy: form.groupBy,
         openDelaySeconds: form.openDelaySeconds, autoResolve: form.autoResolve,
         suppressUpstreamHops: form.suppressUpstreamHops, flapThreshold: form.flapThreshold,
-        flapWindowMinutes: form.flapWindowMinutes, retentionDays: form.retentionDays,
+        flapWindowMinutes: form.flapWindowMinutes, flapStableMinutes: form.flapStableMinutes,
+        stormThresholdPerMinute: form.stormThresholdPerMinute, stormCooldownMinutes: form.stormCooldownMinutes,
+        retentionDays: form.retentionDays,
         severityMap: JSON.stringify(form.severityMap),
       } } })
       toast.success(t('toast.events.policySaved'))
@@ -133,20 +191,37 @@ export function EventPolicyPage() {
 
   // Riga di aiuto sotto ogni campo: l'effetto della scelta in parole
   // (events.policy.help.<campo>), legata al controllo via aria-describedby.
-  const helpId = (key: keyof FormState) => `${fid(key)}-help`
+  const helpId  = (key: keyof FormState) => `${fid(key)}-help`
+  const errorId = (key: keyof FormState) => `${fid(key)}-error`
   const Help = ({ field }: { field: keyof FormState }) => (
     <p id={helpId(field)} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>
       {t(`events.policy.help.${field}`)}
     </p>
   )
 
-  const numberField = (key: keyof FormState, labelKey: string, min = 0) => (
-    <div>
-      <FieldLabel htmlFor={fid(key)}>{t(labelKey)}</FieldLabel>
-      <Input id={fid(key)} type="number" min={min} value={String(form[key])} onChange={setNum(key)} disabled={saving} aria-describedby={helpId(key)} />
-      <Help field={key} />
-    </div>
-  )
+  const numberField = (key: NumberField) => {
+    const err = errors[key]
+    return (
+      <div>
+        <FieldLabel htmlFor={fid(key)}>{t(`events.policy.${key}`)}</FieldLabel>
+        <Input
+          id={fid(key)} type="number" min={MIN[key]} step={1}
+          value={Number.isNaN(form[key]) ? '' : String(form[key])}
+          onChange={setNum(key)} disabled={saving}
+          aria-invalid={err ? true : undefined}
+          aria-describedby={err ? `${errorId(key)} ${helpId(key)}` : helpId(key)}
+        />
+        {err && (
+          <p id={errorId(key)} role="alert" style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: colors.danger, fontWeight: 500 }}>
+            {t(`events.policy.validation.${err.key}`, { min: err.min })}
+          </p>
+        )}
+        <Help field={key} />
+      </div>
+    )
+  }
+
+  const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } as const
 
   return (
     <PageContainer>
@@ -155,14 +230,14 @@ export function EventPolicyPage() {
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>{t('events.policy.subtitle')}</p>
       </div>
 
-      {/* Come funziona: le quattro regole della correlazione in parole. */}
+      {/* Come funziona: le sei regole della correlazione in parole. */}
       <section aria-labelledby={fid('how')} style={{ maxWidth: 760, marginBottom: 16, padding: '14px 18px', background: 'var(--color-brand-light)', border: '1px solid #bae6fd', borderRadius: 10 }}>
         <h2 id={fid('how')} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>
           <Info size={15} aria-hidden="true" color="var(--color-brand)" />
           {t('events.policy.howItWorks.title')}
         </h2>
         <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.55 }}>
-          {(['threshold', 'grouping', 'autoResolve', 'changeWindow'] as const).map((k) => (
+          {HOW_IT_WORKS.map((k) => (
             <li key={k}>
               <strong>{t(`events.policy.howItWorks.${k}Title`)}</strong> — {t(`events.policy.howItWorks.${k}`)}
             </li>
@@ -176,68 +251,93 @@ export function EventPolicyPage() {
         </div>
       )}
 
-      <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 20, maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <div>
-            <FieldLabel htmlFor={fid('openIncidentFrom')}>{t('events.policy.openIncidentFrom')}</FieldLabel>
-            <Select id={fid('openIncidentFrom')} value={form.openIncidentFrom} onChange={(e) => set('openIncidentFrom', e.target.value)} disabled={saving} aria-describedby={helpId('openIncidentFrom')}>
-              {OPEN_FROM.map((v) => <option key={v} value={v}>{t(`events.policy.openFrom.${v}`)}</option>)}
-            </Select>
-            <Help field="openIncidentFrom" />
-          </div>
-          <div>
-            <FieldLabel htmlFor={fid('groupBy')}>{t('events.policy.groupBy')}</FieldLabel>
-            <Select id={fid('groupBy')} value={form.groupBy} onChange={(e) => set('groupBy', e.target.value)} disabled={saving} aria-describedby={helpId('groupBy')}>
-              {GROUP_BY.map((v) => <option key={v} value={v}>{t(`events.policy.groupByOptions.${v}`)}</option>)}
-            </Select>
-            <Help field="groupBy" />
-          </div>
-          {numberField('openDelaySeconds', 'events.policy.openDelaySeconds')}
-          {numberField('suppressUpstreamHops', 'events.policy.suppressUpstreamHops')}
-          {numberField('flapThreshold', 'events.policy.flapThreshold', 1)}
-          {numberField('flapWindowMinutes', 'events.policy.flapWindowMinutes', 1)}
-          {numberField('retentionDays', 'events.policy.retentionDays', 1)}
-          <div style={{ paddingTop: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Toggle checked={form.autoResolve} onChange={(v) => set('autoResolve', v)} label={t('events.policy.autoResolve')} disabled={saving} />
-              <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('events.policy.autoResolve')}</span>
+      <div style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* 1. Apertura e chiusura degli incident (+ mappa severità → impatto/urgenza) */}
+        <Group name="incidents">
+          <div style={grid}>
+            <div>
+              <FieldLabel htmlFor={fid('openIncidentFrom')}>{t('events.policy.openIncidentFrom')}</FieldLabel>
+              <Select id={fid('openIncidentFrom')} value={form.openIncidentFrom} onChange={(e) => set('openIncidentFrom', e.target.value)} disabled={saving} aria-describedby={helpId('openIncidentFrom')}>
+                {OPEN_FROM.map((v) => <option key={v} value={v}>{t(`events.policy.openFrom.${v}`)}</option>)}
+              </Select>
+              <Help field="openIncidentFrom" />
             </div>
-            <Help field="autoResolve" />
+            <div>
+              <FieldLabel htmlFor={fid('groupBy')}>{t('events.policy.groupBy')}</FieldLabel>
+              <Select id={fid('groupBy')} value={form.groupBy} onChange={(e) => set('groupBy', e.target.value)} disabled={saving} aria-describedby={helpId('groupBy')}>
+                {GROUP_BY.map((v) => <option key={v} value={v}>{t(`events.policy.groupByOptions.${v}`)}</option>)}
+              </Select>
+              <Help field="groupBy" />
+            </div>
+            {numberField('openDelaySeconds')}
+            <div style={{ paddingTop: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Toggle checked={form.autoResolve} onChange={(v) => set('autoResolve', v)} label={t('events.policy.autoResolve')} disabled={saving} />
+                <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('events.policy.autoResolve')}</span>
+              </div>
+              <Help field="autoResolve" />
+            </div>
           </div>
-        </div>
 
-        <div>
-          <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{t('events.policy.severityMap')}</div>
-          <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>{t('events.policy.help.severityMap')}</p>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-            <thead>
-              <tr>
-                {['severity', 'impact', 'urgency'].map((h) => (
-                  <th key={h} scope="col" style={{ textAlign: 'left', padding: '4px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}` }}>
-                    {t(`events.policy.map.${h}`)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {EVENT_SEVERITIES.map((sev) => (
-                <tr key={sev}>
-                  <td style={{ padding: '6px 8px', fontWeight: 500, color: colors.slateDark }}>{t(`events.severity.${sev}`)}</td>
-                  {(['impact', 'urgency'] as const).map((field) => (
-                    <td key={field} style={{ padding: '6px 8px' }}>
-                      <Select aria-label={`${t(`events.severity.${sev}`)} – ${t(`events.policy.map.${field}`)}`} value={form.severityMap[sev][field]} onChange={(e) => setMap(sev, field, e.target.value as Level)} disabled={saving}>
-                        {LEVELS.map((l) => <option key={l} value={l}>{t(`events.policy.level.${l}`)}</option>)}
-                      </Select>
-                    </td>
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{t('events.policy.severityMap')}</div>
+            <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>{t('events.policy.help.severityMap')}</p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
+              <thead>
+                <tr>
+                  {['severity', 'impact', 'urgency'].map((h) => (
+                    <th key={h} scope="col" style={{ textAlign: 'left', padding: '4px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}` }}>
+                      {t(`events.policy.map.${h}`)}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {EVENT_SEVERITIES.map((sev) => (
+                  <tr key={sev}>
+                    <td style={{ padding: '6px 8px', fontWeight: 500, color: colors.slateDark }}>{t(`events.severity.${sev}`)}</td>
+                    {(['impact', 'urgency'] as const).map((field) => (
+                      <td key={field} style={{ padding: '6px 8px' }}>
+                        <Select aria-label={`${t(`events.severity.${sev}`)} – ${t(`events.policy.map.${field}`)}`} value={form.severityMap[sev][field]} onChange={(e) => setMap(sev, field, e.target.value as Level)} disabled={saving}>
+                          {LEVELS.map((l) => <option key={l} value={l}>{t(`events.policy.level.${l}`)}</option>)}
+                        </Select>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Group>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Button disabled={saving} icon={saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : undefined} onClick={() => void handleSave()}>
+        {/* 2. Silenzio in finestra di change */}
+        <Group name="changeWindow">
+          <div style={grid}>
+            {numberField('suppressUpstreamHops')}
+          </div>
+        </Group>
+
+        {/* 3. Sfarfallio e tempeste */}
+        <Group name="flapStorm">
+          <div style={grid}>
+            {numberField('flapThreshold')}
+            {numberField('flapWindowMinutes')}
+            {numberField('flapStableMinutes')}
+            {numberField('stormThresholdPerMinute')}
+            {numberField('stormCooldownMinutes')}
+          </div>
+        </Group>
+
+        {/* 4. Conservazione */}
+        <Group name="retention">
+          <div style={grid}>
+            {numberField('retentionDays')}
+          </div>
+        </Group>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+          {invalid && <span style={{ fontSize: 'var(--font-size-body)', color: colors.danger }}>{t('events.policy.validation.blocked')}</span>}
+          <Button disabled={saving || invalid} icon={saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : undefined} onClick={() => void handleSave()}>
             {t('common.save')}
           </Button>
         </div>

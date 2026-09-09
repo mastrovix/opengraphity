@@ -33,5 +33,6 @@ export const EVENT_FIELDS = gql`
     incident { id number title status }
     suppressedBy { id code title }
     correlation correlationAt
+    flappingSince transitions24h
   }
 `

@@ -248,6 +248,28 @@ export const bullmqQueueDepth = createGauge(
   ['queue'],
 )
 
+// ── Event Management (ondata 4) ──────────────────────────────────────────────
+// Incrementate dalla pipeline (services/eventService.ts, eventCorrelation.ts,
+// eventStorm.ts) e dal job di conservazione (services/eventRetention.ts).
+// `connector` è il connector_kind della sorgente (bounded: CONNECTOR_KINDS).
+
+export const eventsReceivedTotal      = createCounter('events_received_total',      'Monitoring events ingested (new or repeated) by connector kind', ['connector'])
+export const eventsDeduplicatedTotal  = createCounter('events_deduplicated_total',  'Monitoring events merged into an existing Event (same fingerprint)', [])
+export const eventsOrphanTotal        = createCounter('events_orphan_total',        'Monitoring events ingested without a recognised CI', [])
+export const eventsSuppressedTotal    = createCounter('events_suppressed_total',    'Monitoring events silenced by a change window', [])
+export const eventsFlappingTotal      = createCounter('events_flapping_total',      'Monitoring events that entered the flapping state', [])
+export const incidentsAutoOpenedTotal = createCounter('incidents_auto_opened_total', 'Incidents opened automatically by event correlation (storm incidents included)', [])
+export const incidentsAutoResolvedTotal = createCounter('incidents_auto_resolved_total', 'Incidents resolved automatically when every correlated event cleared', [])
+export const incidentsReopenedTotal   = createCounter('incidents_reopened_total',   'Resolved incidents reopened by a returning monitoring event', [])
+export const eventsPurgedTotal        = createCounter('events_purged_total',        'Resolved monitoring events deleted by the purge_events retention job', [])
+export const eventStormsActive        = createGauge('event_storms_active',          'Monitoring sources currently in an alert storm', [])
+
+/** Tutte le metriche dell'Event Management, nell'ordine di esposizione. */
+export const EVENT_MANAGEMENT_METRICS = [
+  eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsSuppressedTotal, eventsFlappingTotal,
+  incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal, eventStormsActive,
+] as const
+
 // ── Route label (A-15) ────────────────────────────────────────────────────────
 
 /**
@@ -327,6 +349,7 @@ export function metricsHandler(req: Request, res: Response): void {
     bullmqQueueDepth.collect(),
     backupRunsTotal.collect(),
     backupLastSuccessTimestamp.collect(),
+    ...EVENT_MANAGEMENT_METRICS.map((m) => m.collect()),
   ].join('\n\n')
 
   res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')

@@ -6,7 +6,8 @@
  * Ondata 3: la sezione "Correlazione" spiega in una frase cosa ha fatto la
  * policy (incident aperto/agganciato, silenziato da una change, in attesa,
  * CI da collegare, sotto soglia) con i link e i pulsanti "Rivaluta ora" /
- * "Apri incident".
+ * "Apri incident". Ondata 4: frasi per sfarfallio e tempesta, campi
+ * "Instabile dal" e "Passaggi nelle ultime 24 h".
  */
 import { useId, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -122,6 +123,8 @@ export function EventDetailPage() {
             <DetailField label={t('events.detail.firstSeen')} value={formatDateTime(ev.firstSeenAt)} />
             <DetailField label={t('events.detail.lastSeen')} value={`${formatDateTime(ev.lastSeenAt)} · ${timeAgo(ev.lastSeenAt)}`} />
             {ev.resolvedAt && <DetailField label={t('events.detail.resolvedAt')} value={formatDateTime(ev.resolvedAt)} />}
+            {ev.flappingSince && <DetailField label={t('events.detail.flappingSince')} value={`${formatDateTime(ev.flappingSince)} · ${timeAgo(ev.flappingSince)}`} />}
+            {ev.transitions24h > 0 && <DetailField label={t('events.detail.transitions24h')} value={String(ev.transitions24h)} />}
             <DetailField
               label={t('events.detail.acknowledged')}
               value={ev.acknowledgedBy

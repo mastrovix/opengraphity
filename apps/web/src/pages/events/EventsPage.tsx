@@ -4,6 +4,8 @@
  * tabella paginata a 50 e azioni per riga per operator/admin.
  * Ondata 3: la colonna "Incident" mostra l'esito della correlazione
  * automatica (chip silenziato/in attesa/collega un CI) e l'azione "Rivaluta ora".
+ * Ondata 4: chip "Instabile"/"Tempesta" nella stessa colonna e banner ambra
+ * in testa quando una sorgente è in tempesta (`eventStats.stormSources`).
  *
  * Aggiornamento: polling ogni 15 s + pulsante Aggiorna (l'SSE arriva con
  * un'ondata successiva). Filtri iniziali dalla query string: `?stat=critical`
@@ -36,9 +38,10 @@ import { colors } from '@/lib/tokens'
 import { EventStatusBadge, EventSeverityBadge } from './eventShared'
 import { EventIncidentCell } from './eventCorrelation'
 import { EventActions } from './EventActions'
+import { StormBanner } from './StormBanner'
 import {
   EVENT_STATUSES, EVENT_SEVERITIES,
-  type MonitoringEvent, type EventStats, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSource, type EventPolicy,
+  type MonitoringEvent, type EventStats, type EventStatCounts, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSource, type EventPolicy,
 } from '@/types/events'
 
 const PAGE_SIZE       = 50
@@ -75,7 +78,8 @@ function toFilterVars(f: ConsoleFilter): EventFilterVars | null {
   return Object.keys(vars).length ? vars : null
 }
 
-type StatKey = keyof EventStats
+/** Solo i contatori: `stormSources` non è un riquadro. */
+type StatKey = keyof EventStatCounts
 
 /** Filtro impostato dal click su un contatore. */
 function presetFor(key: StatKey): ConsoleFilter {
@@ -267,6 +271,9 @@ export function EventsPage() {
           {isAdmin && <Link to="/monitoring/sources/new" style={{ color: '#854d0e', fontWeight: 600 }}>{t('monitoring.console.noSourcesCta')} →</Link>}
         </div>
       )}
+
+      {/* Tempesta in corso: una riga per sorgente, link all'incident di tempesta e alle Sorgenti. */}
+      {stats && <StormBanner sources={stats.stormSources} showSourcesLink={isAdmin} />}
 
       {/* Contatori */}
       {statsError && !stats && <QueryError message={statsError.message} onRetry={() => void refetchStats()} />}

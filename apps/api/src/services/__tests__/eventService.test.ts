@@ -24,12 +24,16 @@ vi.mock('../../lib/logger.js', () => {
 // (testato a parte); qui si verifica solo che ingestEvent la invochi nel punto
 // giusto e ne rispetti l'esito.
 vi.mock('../eventCorrelation.js', () => ({ runEventPipeline: vi.fn() }))
+vi.mock('../../middleware/metrics.js', () => ({
+  eventsReceivedTotal: { inc: vi.fn() }, eventsDeduplicatedTotal: { inc: vi.fn() }, eventsOrphanTotal: { inc: vi.fn() },
+}))
 
 const svc = await import('../eventService.js')
-const { normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, ingestEvent, matchCI, getEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, parseValueMapping, sourceConfigOf, normalizeWithConfig } = svc
+const { normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, ingestEvent, matchCI, getEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, parseValueMapping, sourceConfigOf, normalizeWithConfig, countTransitionsSince, payloadStatusOf, transitionsOf, MAX_TRANSITIONS, QUIET_OUTCOMES } = svc
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { publishEvent } = await import('../../lib/publishEvent.js')
 const { runEventPipeline } = await import('../eventCorrelation.js')
+const metrics = await import('../../middleware/metrics.js')
 
 const session = { close: vi.fn().mockResolvedValue(undefined) }
 const pipelineResult = (over: Record<string, unknown> = {}) => ({ outcome: 'none', status: 'firing', suppressedByChangeId: null, incidentId: null, ...over })
@@ -431,22 +435,59 @@ describe('fingerprintOf', () => {
 
 describe('nextEventState', () => {
   const ev = { status: 'firing', severity: 'warning', title: 'T', resource: 'r', resourceKind: 'name', labels: {} } as const
-  const existing = { status: 'firing', severity: 'info', count: 3, first_seen_at: 'T0', resolved_at: null }
+  const existing = { status: 'firing', severity: 'info', count: 3, first_seen_at: 'T0', resolved_at: null, transitions: ['T-1'], last_payload_status: 'firing' }
 
-  it('firing su evento aperto → count+1, severità = la più alta, first_seen invariato, status invariato', () => {
-    expect(nextEventState(existing, ev, 'NOW')).toEqual({ status: 'firing', severity: 'warning', count: 4, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: null })
+  it('firing su evento aperto → count+1, severità = la più alta, first_seen invariato, status invariato, nessun passaggio registrato', () => {
+    expect(nextEventState(existing, ev, 'NOW')).toEqual({ status: 'firing', severity: 'warning', count: 4, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-1'], last_payload_status: 'firing' })
     expect(nextEventState({ ...existing, severity: 'critical' }, ev, 'NOW').severity).toBe('critical')
     expect(nextEventState({ ...existing, status: 'suppressed' }, ev, 'NOW').status).toBe('suppressed')
   })
 
-  it('firing su evento risolto → nuovo ciclo: count 1, first_seen = ora, severità del payload, resolved_at null', () => {
-    expect(nextEventState({ ...existing, status: 'resolved', severity: 'critical', resolved_at: 'T1' }, ev, 'NOW'))
-      .toEqual({ status: 'firing', severity: 'warning', count: 1, first_seen_at: 'NOW', last_seen_at: 'NOW', resolved_at: null })
+  it('firing su evento risolto → nuovo ciclo: count 1, first_seen = ora, severità del payload, resolved_at null, passaggio appeso', () => {
+    expect(nextEventState({ ...existing, status: 'resolved', severity: 'critical', resolved_at: 'T1', last_payload_status: 'resolved' }, ev, 'NOW'))
+      .toEqual({ status: 'firing', severity: 'warning', count: 1, first_seen_at: 'NOW', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-1', 'NOW'], last_payload_status: 'firing' })
   })
 
-  it('resolved → status resolved, resolved_at = ora, count e severità invariati', () => {
+  it('resolved → status resolved, resolved_at = ora, count e severità invariati, passaggio appeso', () => {
     expect(nextEventState(existing, { ...ev, status: 'resolved' }, 'NOW'))
-      .toEqual({ status: 'resolved', severity: 'info', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'NOW' })
+      .toEqual({ status: 'resolved', severity: 'info', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'NOW', transitions: ['T-1', 'NOW'], last_payload_status: 'resolved' })
+  })
+
+  it('ondata 4 — evento flapping: lo stato NON cambia con firing né con resolved; si aggiornano lista, ultimo payload, last_seen, count/resolved_at', () => {
+    const flapping = { ...existing, status: 'flapping', severity: 'warning', transitions: ['T-2', 'T-1'], last_payload_status: 'firing' }
+    expect(nextEventState(flapping, { ...ev, status: 'resolved' }, 'NOW'))
+      .toEqual({ status: 'flapping', severity: 'warning', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'NOW', transitions: ['T-2', 'T-1', 'NOW'], last_payload_status: 'resolved' })
+    expect(nextEventState({ ...flapping, last_payload_status: 'resolved', resolved_at: 'T1' }, { ...ev, severity: 'critical' }, 'NOW'))
+      .toEqual({ status: 'flapping', severity: 'critical', count: 4, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-2', 'T-1', 'NOW'], last_payload_status: 'firing' })
+    // ripetizione dello stesso stato durante lo sfarfallio: nessun passaggio
+    expect(nextEventState(flapping, ev, 'NOW').transitions).toEqual(['T-2', 'T-1'])
+  })
+
+  it('ondata 4 — eventi pre-migrazione senza last_payload_status/transitions: lo stato del payload si deduce dallo status, la lista parte vuota', () => {
+    const legacy = { status: 'firing', severity: 'info', count: 1, first_seen_at: 'T0', resolved_at: null }
+    expect(payloadStatusOf(legacy)).toBe('firing')
+    expect(payloadStatusOf({ ...legacy, status: 'suppressed' })).toBe('firing')
+    expect(payloadStatusOf({ ...legacy, status: 'resolved' })).toBe('resolved')
+    expect(payloadStatusOf({ ...legacy, status: 'resolved', last_payload_status: 'firing' })).toBe('firing')
+    expect(transitionsOf(legacy)).toEqual([])
+    expect(transitionsOf({ transitions: ['a', 3, null, 'b'] })).toEqual(['a', 'b'])
+    expect(nextEventState(legacy, { ...ev, status: 'resolved' }, 'NOW')).toMatchObject({ status: 'resolved', transitions: ['NOW'], last_payload_status: 'resolved' })
+    expect(nextEventState(legacy, ev, 'NOW')).toMatchObject({ status: 'firing', transitions: [], last_payload_status: 'firing' })
+  })
+
+  it(`ondata 4 — la lista dei passaggi tiene gli ultimi ${MAX_TRANSITIONS}`, () => {
+    const many = Array.from({ length: MAX_TRANSITIONS }, (_, i) => `T${i}`)
+    const out = nextEventState({ ...existing, transitions: many }, { ...ev, status: 'resolved' }, 'NOW')
+    expect(out.transitions).toHaveLength(MAX_TRANSITIONS)
+    expect(out.transitions[0]).toBe('T1')
+    expect(out.transitions[MAX_TRANSITIONS - 1]).toBe('NOW')
+  })
+
+  it('countTransitionsSince conta i passaggi dall\'istante dato (incluso)', () => {
+    const t = ['2026-09-09T09:50:00.000Z', '2026-09-09T09:55:00.000Z', '2026-09-09T10:00:00.000Z']
+    expect(countTransitionsSince(t, Date.parse('2026-09-09T09:55:00.000Z'))).toBe(2)
+    expect(countTransitionsSince(t, Date.parse('2026-09-09T10:00:01.000Z'))).toBe(0)
+    expect(countTransitionsSince([], 0)).toBe(0)
   })
 })
 
@@ -456,6 +497,13 @@ describe('deriveCIHealth', () => {
     expect(deriveCIHealth(['info', 'warning'])).toBe('degraded')
     expect(deriveCIHealth(['info'])).toBe('operational')
     expect(deriveCIHealth([])).toBe('operational')
+  })
+
+  it('ondata 4 — un evento flapping vale degraded (instabilità), ma un firing critical vale comunque down', () => {
+    expect(deriveCIHealth([], true)).toBe('degraded')
+    expect(deriveCIHealth(['info'], true)).toBe('degraded')
+    expect(deriveCIHealth(['critical'], true)).toBe('down')
+    expect(deriveCIHealth([], false)).toBe('operational')
   })
 })
 
@@ -484,6 +532,15 @@ describe('recomputeCIHealth', () => {
     expect(set.params).toMatchObject({ tenantId: 't1', ciId: 'ci-1', health: 'down' })
     expect(set.cypher).not.toMatch(/ci\.status\s*=/)   // il ciclo di vita non si tocca
     expect(publishEvent).toHaveBeenCalledWith('ci.health_changed', 't1', 'op', { id: 'ci-1', ci_id: 'ci-1', previous_health: 'operational', new_health: 'down' }, expect.any(String))
+  })
+
+  it('ondata 4 — un evento flapping sul CI (nessun firing) → degraded: la query conta i flapping a parte, scoped per tenant', async () => {
+    onCypher([[/collect\(DISTINCT e\.severity\)/, { status: 'active', health: 'operational', healthSource: 'monitoring', severities: [], flapping: 1 }], [/SET ci\.health/, null]])
+    await expect(recomputeCIHealth('t1', 'ci-1', 'op')).resolves.toBe('degraded')
+    const q = callMatching(/collect\(DISTINCT e\.severity\)/)!
+    expect(q.cypher).toContain("OPTIONAL MATCH (f:Event {tenant_id: $tenantId, status: 'flapping'})-[:RAISED_ON]->(ci)")
+    expect(q.cypher).toContain('count(f) AS flapping')
+    expect(publishEvent).toHaveBeenCalledWith('ci.health_changed', 't1', 'op', expect.objectContaining({ previous_health: 'operational', new_health: 'degraded' }), expect.any(String))
   })
 
   it('solo warning → degraded; nessun evento → operational; salute invariata → nessun ci.health_changed', async () => {
@@ -561,14 +618,47 @@ describe('ingestEvent', () => {
     const create = callMatching(/CREATE \(e:Event/)!
     expect(create.cypher).toContain('count: 1, first_seen_at: $now, last_seen_at: $now')
     expect(create.cypher).toContain("correlation: 'none', correlation_at: null, correlation_due_at: null, suppressed_by_change_id: null")
+    expect(create.cypher).toContain('transitions: [], last_payload_status: $status, flapping_since: null')
     expect(create.cypher).toContain('MERGE (e)-[:FROM_SOURCE]->(w)')
     expect(create.params).toMatchObject({ tenantId: 't1', sourceId: 'hook-1', fingerprint: fingerprintOf('hook-1', EV), status: 'firing', severity: 'warning', labels: '{"job":"node"}', now: 'NOW', externalId: null })
     expect(callMatching(/RAISED_ON\]->\(ci\)\s*$/)).toBeUndefined()
     // la salute non si ricalcola qui: è dentro la pipeline (dopo la soppressione)
     expect(callMatching(/collect\(DISTINCT e\.severity\)/)).toBeUndefined()
-    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-1', actorId: 'monitoring', now: 'NOW', mode: 'ingest' })
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-1', actorId: 'monitoring', now: 'NOW', mode: 'ingest', created: true })
     expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).toEqual(['event.received', 'event.orphan'])
     expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ id: 'ev-1', fingerprint: 'fp', ci_id: null, entity_type: 'event', entity_id: 'ev-1', count: 1 })
+    // metriche: ricevuto (connettore assente sul webhook → generic), orfano, non deduplicato
+    expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'generic' })
+    expect(metrics.eventsOrphanTotal.inc).toHaveBeenCalledTimes(1)
+    expect(metrics.eventsDeduplicatedTotal.inc).not.toHaveBeenCalled()
+  })
+
+  it('ondata 4 — evento ripetuto: SET scrive transitions e last_payload_status; metriche ricevuto{connector} + deduplicato; pipeline con created=false', async () => {
+    onCypher([
+      [/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)\s+OPTIONAL MATCH/, { props: eventProps({ status: 'resolved', last_payload_status: 'resolved', transitions: ['T-1'], first_seen_at: 'T0' }), ciId: 'ci-1', connectorKind: 'zabbix' }],
+      [/SET e\.status = \$status/, { props: eventProps({ count: 1 }) }],
+    ])
+    await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
+    const set = callMatching(/SET e\.status = \$status/)!
+    expect(set.cypher).toContain('e.transitions = $transitions, e.last_payload_status = $lastPayloadStatus')
+    expect(set.params).toMatchObject({ transitions: ['T-1', 'NOW'], lastPayloadStatus: 'firing', status: 'firing', count: 1 })
+    const lookup = callMatching(/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)/)!
+    expect(lookup.cypher).toContain('OPTIONAL MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})')
+    expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'zabbix' })
+    expect(metrics.eventsDeduplicatedTotal.inc).toHaveBeenCalledTimes(1)
+    expect(metrics.eventsOrphanTotal.inc).not.toHaveBeenCalled()
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', created: false }))
+  })
+
+  it.each([...QUIET_OUTCOMES])('ondata 4 — esito %s della pipeline → nessun event.received/orphan (l\'avviso lo ha dato la pipeline)', async (outcome) => {
+    vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult({ outcome, status: outcome === 'suppressed' ? 'suppressed' : outcome === 'flapping' ? 'flapping' : 'firing' }) as never)
+    onCypher([
+      [/MATCH \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)\s+OPTIONAL MATCH/, null],
+      [/CREATE \(e:Event/, { props: eventProps() }],
+      [/CIAlias/, null], [/toLower\(ci\.name\)/, null],
+    ])
+    await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 
   it('evento ripetuto (firing) → SET count 2 e severità più alta, CI già agganciato riusato senza matchCI, pipeline dopo l\'aggancio, solo event.received', async () => {
@@ -613,7 +703,7 @@ describe('ingestEvent', () => {
     ])
     await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, status: 'resolved' }, receivedAt: 'NOW', actorId: 'am' })
     expect(callMatching(/SET e\.status = \$status/)!.params).toMatchObject({ status: 'resolved', count: 2, resolvedAt: 'NOW' })
-    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-1', actorId: 'am', now: 'NOW', mode: 'ingest' })
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-1', actorId: 'am', now: 'NOW', mode: 'ingest', created: false })
     expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).toEqual(['event.resolved'])
     expect(vi.mocked(publishEvent).mock.calls[0]![2]).toBe('am')
   })
@@ -653,7 +743,14 @@ describe('getEventPolicy', () => {
   it('legge Tenant.event_policy e la valida', async () => {
     const { DEFAULT_EVENT_POLICY_JSON } = await import('../../lib/eventPolicy.js')
     onCypher([[/MATCH \(t:Tenant \{id: \$tenantId\}\)/, { raw: DEFAULT_EVENT_POLICY_JSON }]])
-    await expect(getEventPolicy('t1')).resolves.toMatchObject({ open_incident_from: 'critical', group_by: 'ci', flap_threshold: 4 })
+    await expect(getEventPolicy('t1')).resolves.toMatchObject({ open_incident_from: 'critical', group_by: 'ci', flap_threshold: 4, flap_stable_minutes: 15, storm_threshold_per_minute: 50, storm_cooldown_minutes: 5 })
+  })
+
+  it('ondata 4 — policy di versione precedente (senza le chiavi di sfarfallio stabile/tempesta) → errore che indica la migrazione 1040', async () => {
+    const { DEFAULT_EVENT_POLICY } = await import('../../lib/eventPolicy.js')
+    const { flap_stable_minutes: _a, storm_threshold_per_minute: _b, storm_cooldown_minutes: _c, ...v1 } = DEFAULT_EVENT_POLICY
+    onCypher([[/MATCH \(t:Tenant/, { raw: JSON.stringify(v1) }]])
+    await expect(getEventPolicy('t1')).rejects.toThrow(/flap_stable_minutes must be an integer >= 0.*missing flap_stable_minutes, storm_threshold_per_minute, storm_cooldown_minutes: run the 20260909_1040_event_management_policy_v2 migration/)
   })
 
   it('policy mancante → errore che indica la migrazione; corrotta → errore con il motivo; tenant inesistente → NotFound', async () => {
