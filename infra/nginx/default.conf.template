@@ -214,7 +214,23 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # ── Keycloak (login) sullo stesso origine ──────────────────────────────────
-    location ~ ^/(realms|resources|admin|js|robots.txt)(/|$) {
+    # `/admin` è condiviso: la console di Keycloak vive in /admin/master/…,
+    # /admin/realms/… e /admin/serverinfo, mentre /admin/monitoring,
+    # /admin/audit, … sono pagine dell'app. Solo i percorsi di Keycloak vanno
+    # a Keycloak; il resto di /admin/* resta al web (un caricamento diretto di
+    # /admin/monitoring finiva sulla pagina "We are sorry" di Keycloak).
+    location ~ ^/(realms|resources|js|robots\.txt)(/|$) {
+        add_header X-Content-Type-Options "nosniff" always;
+        set $upstream_kc keycloak:8080;
+        proxy_pass         http://$upstream_kc;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+        proxy_set_header   X-Forwarded-Host  $host;
+        proxy_set_header   X-Forwarded-Port  443;
+    }
+    location ~ ^/admin(/?$|/(master|realms|serverinfo)(/|$)) {
         # Keycloak invia i propri security header: NON ereditare la CSP dell'app
         # (bloccherebbe gli script inline del login e, via form-action, il
         # redirect post-login verso il tenant host). Un add_header locale
