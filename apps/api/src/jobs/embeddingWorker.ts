@@ -42,7 +42,7 @@ export function embeddingJobId(data: EmbeddingJobData, now: number = Date.now())
   if (Number.isNaN(epoch)) {
     throw new Error(`[embeddings] invalid updatedAt "${data.updatedAt}" for ${data.entityType} ${data.entityId}`)
   }
-  return `embed:${data.entityType}:${data.entityId}:${epoch}`
+  return `embed-${data.entityType}-${data.entityId}-${epoch}`
 }
 
 /** Enqueue (or re-enqueue) the embedding of an entity, deduped per entity version. */

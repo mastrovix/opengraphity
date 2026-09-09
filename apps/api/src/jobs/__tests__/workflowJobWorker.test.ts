@@ -349,7 +349,7 @@ describe('notification-jobs', () => {
     expect(queueAdd).toHaveBeenCalledWith(
       'escalation_check',
       { incidentId: 'inc-1', tenantId: 't1', ruleId: 'rule-1' },
-      { delay: 15 * 60_000, jobId: 'escalation:inc-1:rule-1', removeOnComplete: true },
+      { delay: 15 * 60_000, jobId: 'escalation-inc-1-rule-1', removeOnComplete: true },
     )
   })
 

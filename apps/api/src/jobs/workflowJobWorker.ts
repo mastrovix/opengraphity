@@ -303,7 +303,7 @@ export async function scheduleEscalationCheck(incidentId: string, tenantId: stri
   await getQueue(NOTIFICATION_JOBS_QUEUE).add(
     'escalation_check',
     { incidentId, tenantId, ruleId },
-    { delay: delayMinutes * 60 * 1000, jobId: `escalation:${incidentId}:${ruleId}`, removeOnComplete: true },
+    { delay: delayMinutes * 60 * 1000, jobId: `escalation-${incidentId}-${ruleId}`, removeOnComplete: true },
   )
 }
 

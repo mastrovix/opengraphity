@@ -184,7 +184,7 @@ describe('enqueueEmbedding', () => {
       'embed',
       { entityType: 'incident', entityId: 'inc-1', tenantId: 't1', updatedAt: '2026-09-08T10:00:00.000Z' },
       {
-        jobId: `embed:incident:inc-1:${Date.parse('2026-09-08T10:00:00.000Z')}`,
+        jobId: `embed-incident-inc-1-${Date.parse('2026-09-08T10:00:00.000Z')}`,
         removeOnComplete: true, removeOnFail: 50, attempts: 3, backoff: { type: 'exponential', delay: 5_000 },
       },
     )

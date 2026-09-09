@@ -126,7 +126,7 @@ export async function scheduleTimerTriggers(
       entityId,
     }, {
       delay:              trigger.timer_delay_minutes * 60 * 1000,
-      jobId:              `trigger:${trigger.id}:${entityId}`,
+      jobId:              `trigger-${trigger.id}-${entityId}`,
       removeOnComplete:   true,
     })
     log.info({ triggerId: trigger.id, entityId, delayMinutes: trigger.timer_delay_minutes }, 'Timer trigger scheduled')

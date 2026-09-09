@@ -68,9 +68,9 @@ describe('embeddingJobId (C-17)', () => {
   it('include la versione (updatedAt) così una modifica dopo un job fallito non viene deduplicata', () => {
     const a = embeddingJobId({ entityType: 'incident', entityId: 'i1', tenantId: 't', updatedAt: '2026-09-08T10:00:00.000Z' })
     const b = embeddingJobId({ entityType: 'incident', entityId: 'i1', tenantId: 't', updatedAt: '2026-09-08T10:05:00.000Z' })
-    expect(a).toBe('embed:incident:i1:1789207200000'.replace('1789207200000', String(Date.parse('2026-09-08T10:00:00.000Z'))))
+    expect(a).toBe('embed-incident-i1-1789207200000'.replace('1789207200000', String(Date.parse('2026-09-08T10:00:00.000Z'))))
     expect(a).not.toBe(b)
-    expect(embeddingJobId({ entityType: 'kb_article', entityId: 'k', tenantId: 't' }, 123)).toBe('embed:kb_article:k:123')
+    expect(embeddingJobId({ entityType: 'kb_article', entityId: 'k', tenantId: 't' }, 123)).toBe('embed-kb_article-k-123')
     expect(() => embeddingJobId({ entityType: 'incident', entityId: 'i', tenantId: 't', updatedAt: 'garbage' })).toThrow(/invalid updatedAt/)
   })
 })
