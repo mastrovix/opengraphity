@@ -1,20 +1,26 @@
 /**
- * Dettaglio di un evento: campi, etichette (JSON → tabella chiave/valore),
+ * Dettaglio di un allarme: campi, etichette (JSON → tabella chiave/valore),
  * CI riconosciuto con stato (ciclo di vita) e salute (monitoraggio), sorgente,
  * incident correlato, presa in carico,
- * azioni (operator/admin) e la sezione "Alias del CI" (elimina/aggiungi: admin).
+ * azioni (operator/admin) e la sezione "Alias del CI" (elimina/aggiungi: admin,
+ * CIAliasesSection condivisa con il dettaglio CI).
  * Ondata 3: la sezione "Correlazione" spiega in una frase cosa ha fatto la
  * policy (incident aperto/agganciato, silenziato da una change, in attesa,
  * CI da collegare, sotto soglia) con i link e i pulsanti "Rivaluta ora" /
  * "Apri incident". Ondata 4: frasi per sfarfallio e tempesta, campi
  * "Instabile dal" e "Passaggi nelle ultime 24 h".
+ * Ondata 5: tipo/stato del CI, tipo di risorsa e strumento con le etichette
+ * dell'app (non i valori grezzi); motivo del riconoscimento del CI
+ * (`matchReason`, con l'aiuto "collega a mano o aggiungi un alias" se
+ * ambiguo), severità massima del ciclo (`maxSeverity`, se diversa da quella
+ * attuale) e ID esterno della risorsa (`resourceExternalId`); l'incident è
+ * linkato una volta sola (Contesto), la frase di correlazione lo cita.
  */
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { ArrowLeft, Radar, Trash2, Plus, Loader2, GitBranch } from 'lucide-react'
+import { ArrowLeft, Radar, GitBranch } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
@@ -23,19 +29,20 @@ import { Button } from '@/components/Button'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
-import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { useMe } from '@/hooks/useMe'
-import { useConfirm } from '@/hooks/useConfirm'
-import { errorMessage } from '@/hooks/useMutationWithToast'
-import { GET_EVENT, GET_CI_ALIASES, GET_EVENT_POLICY } from '@/graphql/queries'
-import { CREATE_CI_ALIAS, DELETE_CI_ALIAS } from '@/graphql/mutations'
+import { useMetamodel } from '@/contexts/MetamodelContext'
+import { GET_EVENT, GET_EVENT_POLICY } from '@/graphql/queries'
 import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
+import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
 import { colors } from '@/lib/tokens'
-import { EventStatusBadge, EventSeverityBadge, CIHealthBadge, parseLabels } from './eventShared'
+import { TINT_NEUTRAL } from '@/lib/eventPalette'
+import { ToolBadge } from '@/pages/monitoring/monitoringShared'
+import { EventStatusBadge, EventSeverityBadge, EventNoCIBadge, CIHealthBadge, parseLabels, matchReasonLabel, resourceKindLabel } from './eventShared'
 import { correlationSentence } from './eventCorrelation'
 import { EventActions } from './EventActions'
-import { CI_ALIAS_KINDS, type MonitoringEvent, type CIAlias, type CIAliasKind, type ConfigurationItemRef, type EventPolicy } from '@/types/events'
+import { CIAliasesSection } from './CIAliasesSection'
+import type { MonitoringEvent, EventPolicy } from '@/types/events'
 
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
@@ -44,7 +51,9 @@ export function EventDetailPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { role, isAdmin } = useMe()
+  const { ciTypes } = useMetamodel()
   const canAct = role === 'admin' || role === 'operator'
+  const matchHelpId = useId()
 
   const { data, loading, error, refetch } = useQuery<{ event: MonitoringEvent | null }>(GET_EVENT, {
     variables: { id }, fetchPolicy: 'cache-and-network',
@@ -64,7 +73,16 @@ export function EventDetailPage() {
     )
   }
 
-  const labels = parseLabels(ev.labels)
+  const labels = parseLabels(ev.labels, t)
+  const kindLabel = resourceKindLabel(t, ev.resourceKind)
+  // Tipo del CI: etichetta fissa dei tipi storici, altrimenti quella del metamodello, altrimenti il nome leggibile.
+  const ciTypeLabel = (type: string) => {
+    const key = ciTypeLabelKey(type)
+    return key ? t(key) : (ciTypes.find((ct) => ct.name === type)?.label ?? enumLabel(type))
+  }
+  const ambiguous = ev.matchReason === 'ambiguous' && !ev.ci
+  // La severità massima del ciclo conta solo se diversa da quella attuale (altrimenti è già scritta sopra).
+  const peak = ev.maxSeverity && ev.maxSeverity !== ev.severity ? ev.maxSeverity : null
 
   return (
     <PageContainer>
@@ -78,7 +96,7 @@ export function EventDetailPage() {
           <EventStatusBadge status={ev.status} severity={ev.severity} />
           <EventSeverityBadge severity={ev.severity} />
         </div>
-        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{ev.resourceKind} · {ev.resource}</div>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{kindLabel} · {ev.resource}</div>
         {canAct && (
           <div style={{ marginTop: 16 }}>
             <EventActions event={ev} size="sm" exclude={['reevaluate', 'openIncident']} onChanged={() => void refetch()} />
@@ -95,20 +113,10 @@ export function EventDetailPage() {
                 {correlationSentence(t, ev, policy)}
               </p>
             </div>
-            {(ev.incident || ev.suppressedBy) && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 'var(--font-size-body)' }}>
-                {ev.incident && (
-                  <span>
-                    <span style={{ color: colors.slateLight, marginRight: 6 }}>{t('events.columns.incident')}:</span>
-                    <Link to={`/incidents/${ev.incident.id}`} style={linkStyle}>{ev.incident.number} · {ev.incident.title}</Link>
-                  </span>
-                )}
-                {ev.suppressedBy && (
-                  <span>
-                    <span style={{ color: colors.slateLight, marginRight: 6 }}>{t('events.correlation.suppressedByLabel')}:</span>
-                    <Link to={`/changes/${ev.suppressedBy.id}`} style={linkStyle}>{ev.suppressedBy.code} · {ev.suppressedBy.title}</Link>
-                  </span>
-                )}
+            {ev.suppressedBy && (
+              <div style={{ fontSize: 'var(--font-size-body)' }}>
+                <span style={{ color: colors.slateLight, marginRight: 6 }}>{t('events.correlation.suppressedByLabel')}:</span>
+                <Link to={`/changes/${ev.suppressedBy.id}`} style={linkStyle}>{ev.suppressedBy.code} · {ev.suppressedBy.title}</Link>
               </div>
             )}
             {canAct && <EventActions event={ev} size="xs" only={['reevaluate', 'openIncident']} onChanged={() => void refetch()} />}
@@ -116,9 +124,11 @@ export function EventDetailPage() {
 
           <SectionCard title={t('events.detail.information')} defaultOpen>
             <DetailField label={t('events.detail.description')} value={ev.description} />
-            <DetailField label={t('events.detail.resource')} value={`${ev.resource} (${ev.resourceKind})`} />
+            <DetailField label={t('events.detail.resource')} value={`${ev.resource} (${kindLabel})`} />
             <DetailField label={t('events.detail.fingerprint')} value={ev.fingerprint} mono />
             {ev.externalId && <DetailField label={t('events.detail.externalId')} value={ev.externalId} mono />}
+            {ev.resourceExternalId && <DetailField label={t('events.detail.resourceExternalId')} value={ev.resourceExternalId} mono />}
+            {peak && <DetailField label={t('events.detail.maxSeverity')} value={<EventSeverityBadge severity={peak} />} />}
             <DetailField label={t('events.columns.count')} value={String(ev.count)} />
             <DetailField label={t('events.detail.firstSeen')} value={formatDateTime(ev.firstSeenAt)} />
             <DetailField label={t('events.detail.lastSeen')} value={`${formatDateTime(ev.lastSeenAt)} · ${timeAgo(ev.lastSeenAt)}`} />
@@ -147,8 +157,8 @@ export function EventDetailPage() {
                 <tbody>
                   {labels.entries.map(([k, v]) => (
                     <tr key={k}>
-                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: colors.slate, borderBottom: '1px solid #f1f3f9', whiteSpace: 'nowrap' }}>{k}</td>
-                      <td style={{ padding: '6px 8px', color: colors.slateDark, borderBottom: '1px solid #f1f3f9', wordBreak: 'break-all' }}>{v}</td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: colors.slate, borderBottom: '1px solid var(--color-border-light)', whiteSpace: 'nowrap' }}>{k}</td>
+                      <td style={{ padding: '6px 8px', color: colors.slateDark, borderBottom: '1px solid var(--color-border-light)', wordBreak: 'break-all' }}>{v}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -162,17 +172,35 @@ export function EventDetailPage() {
             <DetailField
               label={t('events.columns.ci')}
               value={ev.ci
-                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <Link to={ciPath(ev.ci)} style={linkStyle}>{ev.ci.name}</Link>
-                    <span style={{ color: colors.slateLight }}>{ev.ci.type}</span>
-                    {ev.ci.status && <Pill bg="var(--color-slate-bg)" color="var(--color-slate)" style={{ fontSize: 'var(--font-size-label)' }}>{ev.ci.status}</Pill>}
+                    <span style={{ color: colors.slateLight }}>{ciTypeLabel(ev.ci.type)}</span>
+                    {ev.ci.status && <Pill bg={TINT_NEUTRAL.bg} color={TINT_NEUTRAL.color} style={{ fontSize: 'var(--font-size-label)' }}>{enumLabel(ev.ci.status)}</Pill>}
                     {ev.ci.health && <CIHealthBadge health={ev.ci.health} />}
                   </span>
-                : <Pill bg="var(--color-slate-bg)" color="var(--color-slate)" style={{ fontSize: 'var(--font-size-label)' }}>{t('events.orphan')}</Pill>}
+                : <EventNoCIBadge matchReason={ev.matchReason} />}
+            />
+            <DetailField
+              label={t('events.detail.matchReason')}
+              value={
+                <span aria-describedby={ambiguous ? matchHelpId : undefined}>
+                  {matchReasonLabel(t, ev.matchReason)}
+                  {ambiguous && (
+                    <span id={matchHelpId} style={{ display: 'block', fontSize: 'var(--font-size-table)', color: colors.slate, marginTop: 2 }}>
+                      {t('events.matchReason.ambiguousHelp')}
+                    </span>
+                  )}
+                </span>
+              }
             />
             <DetailField
               label={t('events.columns.source')}
-              value={ev.source ? `${ev.source.name}${ev.source.connectorKind ? ` (${ev.source.connectorKind})` : ''}` : null}
+              value={ev.source
+                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span>{ev.source.name}</span>
+                    <ToolBadge kind={ev.source.connectorKind} />
+                  </span>
+                : null}
             />
             <DetailField
               label={t('events.columns.incident')}
@@ -182,87 +210,9 @@ export function EventDetailPage() {
             />
           </SectionCard>
 
-          {ev.ci && <CIAliasesSection ci={ev.ci} canEdit={isAdmin} />}
+          {ev.ci && <CIAliasesSection ci={ev.ci} canEdit={isAdmin} variant="card" />}
         </div>
       </div>
     </PageContainer>
-  )
-}
-
-// ── Alias del CI ─────────────────────────────────────────────────────────────
-
-function CIAliasesSection({ ci, canEdit }: { ci: ConfigurationItemRef; canEdit: boolean }) {
-  const { t } = useTranslation()
-  const confirm = useConfirm()
-  const kindId = useId()
-  const valueId = useId()
-  const [kind, setKind] = useState<CIAliasKind>('hostname')
-  const [value, setValue] = useState('')
-
-  const { data, loading, error, refetch } = useQuery<{ ciAliases: CIAlias[] }>(GET_CI_ALIASES, { variables: { ciId: ci.id } })
-  const [deleteAlias] = useMutation(DELETE_CI_ALIAS)
-  const [createAlias, { loading: creating }] = useMutation(CREATE_CI_ALIAS)
-  const aliases = data?.ciAliases ?? []
-
-  async function handleDelete(alias: CIAlias) {
-    const ok = await confirm({ title: t('events.aliases.deleteTitle'), body: `${alias.kind}: ${alias.value}`, danger: true })
-    if (!ok) return
-    try {
-      await deleteAlias({ variables: { id: alias.id } })
-      toast.success(t('toast.events.aliasDeleted'))
-      void refetch()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
-  }
-
-  async function handleCreate() {
-    const v = value.trim()
-    if (!v) return
-    try {
-      await createAlias({ variables: { ciId: ci.id, kind, value: v } })
-      toast.success(t('toast.events.aliasCreated'))
-      setValue('')
-      void refetch()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
-  }
-
-  return (
-    <SectionCard title={t('events.aliases.title', { ci: ci.name })} count={aliases.length} defaultOpen>
-      {error && <QueryError message={error.message} onRetry={() => void refetch()} />}
-      {!error && loading && !data && <p style={{ color: colors.slateLight, fontSize: 'var(--font-size-body)', margin: 0 }}>{t('common.loading')}</p>}
-      {!error && data && aliases.length === 0 && <p style={{ color: colors.slateLight, fontSize: 'var(--font-size-body)', margin: 0 }}>{t('events.aliases.empty')}</p>}
-      {aliases.length > 0 && (
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {aliases.map((a) => (
-            <li key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)' }}>
-              <Pill bg="var(--color-info-bg)" color="#2563eb" style={{ fontSize: 'var(--font-size-label)' }}>{t(`events.aliases.kind.${a.kind}`)}</Pill>
-              <span style={{ fontFamily: 'monospace', color: colors.slateDark, wordBreak: 'break-all' }}>{a.value}</span>
-              <span style={{ color: colors.slateLight, marginLeft: 'auto', whiteSpace: 'nowrap' }} title={formatDateTime(a.createdAt)}>{a.source}</span>
-              {canEdit && (
-                <Button variant="danger" size="xs" aria-label={t('events.aliases.delete', { value: a.value })} title={t('common.delete')} onClick={() => void handleDelete(a)} style={{ padding: 4 }}>
-                  <Trash2 size={13} aria-hidden="true" />
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {canEdit && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', paddingTop: 8, borderTop: `1px solid ${colors.border}` }}>
-          <div style={{ flex: '0 0 130px' }}>
-            <FieldLabel htmlFor={kindId}>{t('events.aliases.kindLabel')}</FieldLabel>
-            <Select id={kindId} value={kind} onChange={(e) => setKind(e.target.value as CIAliasKind)} disabled={creating}>
-              {CI_ALIAS_KINDS.map((k) => <option key={k} value={k}>{t(`events.aliases.kind.${k}`)}</option>)}
-            </Select>
-          </div>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <FieldLabel htmlFor={valueId}>{t('events.aliases.valueLabel')}</FieldLabel>
-            <Input id={valueId} value={value} onChange={(e) => setValue(e.target.value)} disabled={creating} placeholder={t('events.aliases.valuePlaceholder')} />
-          </div>
-          <Button size="xs" disabled={creating || !value.trim()} icon={creating ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Plus size={13} aria-hidden="true" />} onClick={() => void handleCreate()}>
-            {t('events.aliases.add')}
-          </Button>
-        </div>
-      )}
-    </SectionCard>
   )
 }

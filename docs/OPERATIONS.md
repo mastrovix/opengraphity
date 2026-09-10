@@ -429,10 +429,11 @@ stantio):
 | `name_short` | solo con la policy `match_short_hostname = true` e solo se il nome esatto non ha trovato nulla: risorsa con un punto → `name_key` = prima etichetta (`db-01.example.local` → `db-01`); risorsa senza punto → `name_key` che inizia con `risorsa.` (`db-01` → `db-01.example.local`). Non si applica a `ip`/`external_id` né a un indirizzo IPv4/IPv6 con `resourceKind = hostname` |
 | `ambiguous` | il confronto per nome (esatto o corto) trova **più di un CI**: l'evento **non** viene agganciato (prima veniva scelto in silenzio il più vecchio) e resta orfano; `event.orphan` porta `match_reason` e `candidates` (id e nome, al massimo 5); log `warn` "more than one CI matches the resource name" con i candidati; metrica `events_ambiguous_total` (oltre a `events_orphan_total`), contata a ogni payload finché l'ambiguità persiste |
 | `none` | nessun CI: orfano |
+| `manual` | **non** è un esito del riconoscimento: lo scrive `linkEventToCI` quando un operatore collega l'evento a un CI dalla console. L'ingest non lo produce mai; resta finché il CI è agganciato (il riconoscimento non gira su un evento con CI) |
 
 `match_reason` è null sugli eventi scritti prima del campo e resta invariato
-quando il CI è già agganciato (anche a mano con `linkEventToCI`): descrive
-l'ultimo riconoscimento automatico, non il collegamento manuale. Un evento
+quando il CI è già agganciato: descrive l'ultimo riconoscimento automatico,
+oppure `manual` se il CI lo ha scelto un operatore. Un evento
 orfano viene riconosciuto di nuovo a ogni ripetizione: creato il CI (o
 l'alias), la ripetizione successiva lo aggancia da sola. La policy arriva
 dalla cache in memoria (30 s): una modifica a `match_short_hostname` fatta

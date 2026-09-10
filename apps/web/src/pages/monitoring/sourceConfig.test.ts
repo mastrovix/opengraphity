@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
   EMPTY_MAPPING, EMPTY_PRESET_RULES, buildSourceConfig, buildPresetConfig, parseSourceConfig, parsePresetConfig, distinctValuesAtPath, valueAtPath,
-  isMappingComplete, isPresetRulesComplete, syncValueTable, suggestSeverity, suggestStatus, type GenericMapping, type PresetRules,
+  isMappingComplete, isPresetRulesComplete, syncValueTable, suggestSeverity, suggestStatus, readablePath, type GenericMapping, type PresetRules,
 } from './sourceConfig'
 
 describe('sourceConfig — regole dei connettori preset (A1)', () => {
   const RULES: PresetRules = {
     severityValues: { page: 'critical', none: 'info' },
     statusValues: { muted: 'resolved' },
+    defaultSeverity: 'warning',
     defaultResource: 'prometheus-prod',
     defaultResourceKind: 'name',
     resourceFromAlertScope: true,
@@ -17,30 +18,33 @@ describe('sourceConfig — regole dei connettori preset (A1)', () => {
     const dd = buildPresetConfig('datadog', RULES)
     expect(dd.fieldMapping).toBe('{}')
     expect(JSON.parse(dd.valueMapping)).toEqual({ severity: { page: 'critical', none: 'info' }, status: { muted: 'resolved' } })
-    expect(JSON.parse(dd.defaultValues)).toEqual({ resource: 'prometheus-prod', resourceKind: 'name', resourceFrom: 'alert_scope' })
+    expect(JSON.parse(dd.defaultValues)).toEqual({ severity: 'warning', resource: 'prometheus-prod', resourceKind: 'name', resourceFrom: 'alert_scope' })
     // Alertmanager non ha resourceFrom: la spunta (residua) non viene scritta
-    expect(JSON.parse(buildPresetConfig('alertmanager', RULES).defaultValues)).toEqual({ resource: 'prometheus-prod', resourceKind: 'name' })
-    // niente regole → JSON vuoti; una risorsa vuota non scrive resourceKind
+    expect(JSON.parse(buildPresetConfig('alertmanager', RULES).defaultValues)).toEqual({ severity: 'warning', resource: 'prometheus-prod', resourceKind: 'name' })
+    // niente regole → JSON vuoti; una risorsa vuota non scrive resourceKind; una severità di soli spazi non viene scritta
     expect(buildPresetConfig('zabbix', EMPTY_PRESET_RULES)).toEqual({ fieldMapping: '{}', defaultValues: '{}', valueMapping: '{}' })
-    expect(JSON.parse(buildPresetConfig('zabbix', { ...RULES, defaultResource: '  ', severityValues: { x: '' } }).defaultValues)).toEqual({})
+    expect(JSON.parse(buildPresetConfig('zabbix', { ...RULES, defaultResource: '  ', defaultSeverity: ' ', severityValues: { x: '' } }).defaultValues)).toEqual({})
     expect(JSON.parse(buildPresetConfig('zabbix', { ...RULES, severityValues: { x: '' }, statusValues: {} }).valueMapping)).toEqual({})
   })
 
-  it('parsePresetConfig ∘ buildPresetConfig è l\'identità; JSON vuoti/null → regole vuote', () => {
+  it('parsePresetConfig ∘ buildPresetConfig è l\'identità (compresa default_values.severity, D·2.3); JSON vuoti/null → regole vuote', () => {
     const cfg = buildPresetConfig('datadog', RULES)
     expect(parsePresetConfig('datadog', cfg)).toEqual({ rules: RULES, error: null })
     expect(parsePresetConfig('grafana', { defaultValues: null, valueMapping: '' })).toEqual({ rules: EMPTY_PRESET_RULES, error: null })
+    // severità di default scritta via API nelle parole dello strumento (Zabbix "Average"): riletta tale quale
+    expect(parsePresetConfig('zabbix', { defaultValues: '{"severity":"Average"}', valueMapping: null })).toEqual({ rules: { ...EMPTY_PRESET_RULES, defaultSeverity: 'Average' }, error: null })
   })
 
-  it('parsePresetConfig: JSON malformato, valori fuori vocabolario, chiavi che l\'editor non rappresenta (default_values.severity, resourceFrom fuori connettore) → error', () => {
-    expect(parsePresetConfig('zabbix', { defaultValues: '{nope', valueMapping: null }).error).toMatch(/defaultValues/)
-    expect(parsePresetConfig('zabbix', { defaultValues: '{"resourceKind":"planet"}', valueMapping: null }).error).toMatch(/resourceKind/)
-    expect(parsePresetConfig('zabbix', { defaultValues: '{"resource":""}', valueMapping: null }).error).toMatch(/defaultValues\.resource/)
-    expect(parsePresetConfig('zabbix', { defaultValues: '{"severity":"warning"}', valueMapping: null }).error).toMatch(/defaultValues\.severity: non modificabile/)
-    expect(parsePresetConfig('alertmanager', { defaultValues: '{"resourceFrom":"alert_scope"}', valueMapping: null }).error).toMatch(/resourceFrom: non previsto per alertmanager/)
-    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"severity":{"x":"fatal"}}' }).error).toMatch(/valueMapping\.severity\.x/)
-    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"status":{"x":"open"}}' }).error).toMatch(/valueMapping\.status\.x/)
-    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"title":{}}' }).error).toMatch(/valueMapping\.title: non supportato/)
+  it('parsePresetConfig: JSON malformato, valori fuori vocabolario, chiavi che l\'editor non rappresenta (default_values.title, resourceFrom fuori connettore) → error in i18n', () => {
+    expect(parsePresetConfig('zabbix', { defaultValues: '{nope', valueMapping: null }).error).toMatch(/^defaultValues: /)
+    expect(parsePresetConfig('zabbix', { defaultValues: '{"resourceKind":"planet"}', valueMapping: null }).error).toBe('defaultValues.resourceKind: expected one of hostname, ip, fqdn, external_id, name')
+    expect(parsePresetConfig('zabbix', { defaultValues: '{"resource":""}', valueMapping: null }).error).toBe('defaultValues.resource: expected a non-empty string')
+    expect(parsePresetConfig('zabbix', { defaultValues: '{"severity":""}', valueMapping: null }).error).toBe('defaultValues.severity: expected a non-empty string')
+    expect(parsePresetConfig('zabbix', { defaultValues: '{"title":"x"}', valueMapping: null }).error).toBe('defaultValues.title: cannot be edited from this page')
+    expect(parsePresetConfig('alertmanager', { defaultValues: '{"resourceFrom":"alert_scope"}', valueMapping: null }).error).toBe('defaultValues.resourceFrom: not available for alertmanager')
+    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"severity":{"x":"fatal"}}' }).error).toBe('valueMapping.severity.x: expected one of critical, warning, info')
+    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"status":{"x":"open"}}' }).error).toBe('valueMapping.status.x: expected one of firing, resolved')
+    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"title":{}}' }).error).toBe('valueMapping.title: not supported')
   })
 
   it('isPresetRulesComplete: un valore senza destinazione blocca; nessuna regola è completo', () => {
@@ -61,6 +65,8 @@ const SAMPLE = {
 const MAPPING: GenericMapping = {
   fields: { title: 'alert.name', severity: 'alert.level', resource: 'host.name', status: 'state', description: 'msg', externalId: 'id' },
   resourceKind: 'hostname',
+  defaultSeverity: '',
+  defaultStatus: '',
   severityValues: { major: 'critical', minor: 'warning' },
   statusValues: { open: 'firing', closed: 'resolved' },
 }
@@ -79,28 +85,48 @@ describe('sourceConfig — buildSourceConfig', () => {
     expect(JSON.parse(cfg.valueMapping)).toEqual({ severity: { major: 'critical' } })
   })
 
-  it('parseSourceConfig ∘ buildSourceConfig è l\'identità', () => {
+  it('D·1.2: severità e stato predefiniti finiscono in default_values solo se scelti', () => {
+    expect(JSON.parse(buildSourceConfig({ ...MAPPING, defaultSeverity: 'warning', defaultStatus: 'resolved' }).defaultValues)).toEqual({ resourceKind: 'hostname', severity: 'warning', status: 'resolved' })
+    expect(JSON.parse(buildSourceConfig({ ...MAPPING, defaultSeverity: 'info' }).defaultValues)).toEqual({ resourceKind: 'hostname', severity: 'info' })
+  })
+
+  it('parseSourceConfig ∘ buildSourceConfig è l\'identità, anche con i predefiniti', () => {
     const cfg = buildSourceConfig(MAPPING)
     const back = parseSourceConfig({ fieldMapping: cfg.fieldMapping, defaultValues: cfg.defaultValues, valueMapping: cfg.valueMapping })
-    expect(back.error).toBeNull()
-    expect(back.dropped).toEqual([])
-    expect(back.mapping).toEqual(MAPPING)
+    expect(back).toEqual({ mapping: MAPPING, error: null, dropped: [] })
+    const withDefaults: GenericMapping = { ...MAPPING, defaultSeverity: 'warning', defaultStatus: 'firing' }
+    expect(parseSourceConfig(buildSourceConfig(withDefaults))).toEqual({ mapping: withDefaults, error: null, dropped: [] })
   })
 })
 
 describe('sourceConfig — parseSourceConfig', () => {
-  it('JSON malformato o valori fuori vocabolario → error, mai un mapping "aggiustato"', () => {
-    expect(parseSourceConfig({ fieldMapping: '{not json', defaultValues: null, valueMapping: null }).error).toMatch(/fieldMapping/)
-    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: '{"resourceKind":"planet"}', valueMapping: null }).error).toMatch(/resourceKind/)
-    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: null, valueMapping: '{"severity":{"x":"fatal"}}' }).error).toMatch(/valueMapping\.severity\.x/)
-    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: null, valueMapping: '{"status":{"x":"open"}}' }).error).toMatch(/valueMapping\.status\.x/)
+  it('JSON malformato o valori fuori vocabolario → error (in i18n), mai un mapping "aggiustato"', () => {
+    expect(parseSourceConfig({ fieldMapping: '{not json', defaultValues: null, valueMapping: null }).error).toMatch(/^fieldMapping: /)
+    expect(parseSourceConfig({ fieldMapping: '[]', defaultValues: null, valueMapping: null }).error).toBe('fieldMapping: expected a JSON object')
+    expect(parseSourceConfig({ fieldMapping: '{"title":3}', defaultValues: null, valueMapping: null }).error).toBe('fieldMapping.title: expected a path (text)')
+    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: '{"resourceKind":"planet"}', valueMapping: null }).error).toBe('defaultValues.resourceKind: expected one of hostname, ip, fqdn, external_id, name')
+    // un default fuori vocabolario non è rappresentabile dall'editor: errore, non silenzio
+    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: '{"severity":"major"}', valueMapping: null }).error).toBe('defaultValues.severity: expected one of critical, warning, info')
+    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: '{"status":"open"}', valueMapping: null }).error).toBe('defaultValues.status: expected one of firing, resolved')
+    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: null, valueMapping: '{"severity":{"x":"fatal"}}' }).error).toBe('valueMapping.severity.x: expected one of critical, warning, info')
+    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: null, valueMapping: '{"status":{"x":"open"}}' }).error).toBe('valueMapping.status.x: expected one of firing, resolved')
+    expect(parseSourceConfig({ fieldMapping: '{}', defaultValues: null, valueMapping: '{"severity":[]}' }).error).toBe('valueMapping.severity: expected a JSON object')
   })
 
-  it('chiavi non gestite dal mappatore (labels, startsAt) vengono segnalate in dropped', () => {
-    const r = parseSourceConfig({ fieldMapping: '{"title":"t","labels":"tags","startsAt":"ts"}', defaultValues: null, valueMapping: null })
+  it('D·1.2: default_values.severity/status vengono riletti; ogni chiave sconosciuta di field_mapping, default_values e value_mapping è in dropped con il prefisso', () => {
+    const r = parseSourceConfig({
+      fieldMapping: '{"title":"t","labels":"tags","startsAt":"ts","resourceKind":"kind"}',
+      defaultValues: '{"resourceKind":"ip","severity":"warning","status":"resolved","title":"fallback","description":"x"}',
+      valueMapping: '{"severity":{"major":"critical"},"foo":{"a":"b"}}',
+    })
     expect(r.error).toBeNull()
-    expect(r.dropped).toEqual(['labels', 'startsAt'])
-    expect(r.mapping.fields.title).toBe('t')
+    expect(r.dropped).toEqual(['fieldMapping.labels', 'fieldMapping.startsAt', 'fieldMapping.resourceKind', 'defaultValues.title', 'defaultValues.description', 'valueMapping.foo'])
+    expect(r.mapping).toEqual({
+      ...EMPTY_MAPPING,
+      fields: { ...EMPTY_MAPPING.fields, title: 't' },
+      resourceKind: 'ip', defaultSeverity: 'warning', defaultStatus: 'resolved',
+      severityValues: { major: 'critical' }, statusValues: {},
+    })
   })
 
   it('JSON vuoti/null → mapping vuoto con hostname predefinito', () => {
@@ -122,6 +148,12 @@ describe('sourceConfig — percorsi puntati', () => {
     expect(distinctValuesAtPath(SAMPLE, 'alerts.0.labels.severity')).toEqual(['critical', 'warning'])
     expect(distinctValuesAtPath(SAMPLE, '')).toEqual([])
     expect(distinctValuesAtPath(SAMPLE, 'alert')).toEqual([])   // un oggetto non è un valore
+  })
+
+  it('readablePath: "campo (in contenitore)" per chi non è tecnico (D·2.2)', () => {
+    expect(readablePath('alert.level', 'in')).toBe('level (in alert)')
+    expect(readablePath('alerts.0.labels.severity', 'in')).toBe('severity (in alerts.0.labels)')
+    expect(readablePath('id', 'in')).toBe('id')
   })
 })
 

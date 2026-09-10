@@ -122,6 +122,9 @@
   --color-success-bg:   #ecfdf5;
   --color-warning-bg:   #fffbeb;
   --color-info-bg:      #eff6ff;
+  /* Allarme instabile (sfarfallio, Event Management): viola, come i chip della console. */
+  --color-flapping:     #6d28d9;
+  --color-flapping-bg:  #f5f3ff;
 }
 
 @theme inline {

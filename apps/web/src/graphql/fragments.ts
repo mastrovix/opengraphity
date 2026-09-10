@@ -36,13 +36,14 @@ export const EVENT_ROW_FIELDS = gql`
     suppressedBy { id code title }
     correlation correlationAt
     flappingSince transitions24h
+    matchReason
   }
 `
 
 export const EVENT_FIELDS = gql`
   fragment EventFields on Event {
     ...EventRowFields
-    fingerprint externalId description labels
+    fingerprint externalId resourceExternalId maxSeverity description labels
     firstSeenAt resolvedAt
     acknowledgedBy { id name }
   }

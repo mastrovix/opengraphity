@@ -65,10 +65,12 @@ export type CorrelationOutcome = (typeof CORRELATION_OUTCOMES)[number]
  * hostname/ip/fqdn), `name` (name_key = risorsa), `name_short` (policy
  * `match_short_hostname`: prima etichetta del FQDN, o FQDN che inizia con il
  * nome corto), `ambiguous` (più CI con lo stesso nome: NON agganciato, orfano
- * con i candidati), `none` (nessun CI: orfano). Null sugli eventi scritti
- * prima del campo o mai riconosciuti automaticamente (agganciati a mano).
+ * con i candidati), `none` (nessun CI: orfano), `manual` (collegato a mano
+ * da un operatore con `linkEventToCI`: non è un esito del riconoscimento e
+ * l'ingest non lo produce mai, ma dice al lettore PERCHÉ l'evento ha quel
+ * CI). Null sugli eventi scritti prima del campo o mai riconosciuti.
  */
-export const MATCH_REASONS = ['alias_external_id', 'alias', 'name', 'name_short', 'ambiguous', 'none'] as const
+export const MATCH_REASONS = ['alias_external_id', 'alias', 'name', 'name_short', 'ambiguous', 'none', 'manual'] as const
 export type CIMatchReason = (typeof MATCH_REASONS)[number]
 
 /** Soglia di severità oltre la quale la policy apre un incident (`never` = mai). */

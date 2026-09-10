@@ -5,6 +5,7 @@ import { CustomWidgetCard } from './CustomWidgetCard'
 import { WIDGET_TYPES, DATA_FREE_WIDGET_TYPES } from './useWidgetConfig'
 import { GET_EVENT_STATS } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { meMock } from '@/test/mocks/gql'
 
 const statsMock = (): GqlMock => ({
   request: { query: GET_EVENT_STATS },
@@ -19,17 +20,17 @@ describe('ActiveAlarmsWidget', () => {
   })
 
   it('mostra i contatori di eventStats con link alla console filtrata', async () => {
-    renderWithProviders(<ActiveAlarmsWidget color="#0EA5E9" />, { mocks: [statsMock()] })
+    renderWithProviders(<ActiveAlarmsWidget color="#0EA5E9" />, { mocks: [meMock('operator'), statsMock()] })
     expect(await screen.findByRole('link', { name: 'Active 5' })).toHaveAttribute('href', '/events?stat=firing')
     expect(screen.getByRole('link', { name: 'Critical 2' })).toHaveAttribute('href', '/events?stat=critical')
     expect(screen.getByRole('link', { name: 'Warnings 3' })).toHaveAttribute('href', '/events?stat=warning')
-    expect(screen.getByRole('link', { name: 'Orphans 1' })).toHaveAttribute('href', '/events?stat=orphan')
+    expect(screen.getByRole('link', { name: 'No CI 1' })).toHaveAttribute('href', '/events?stat=orphan')
     expect(screen.getByRole('link', { name: 'Open the event console' })).toHaveAttribute('href', '/events')
   })
 
   it('errore della query → messaggio in chiaro, mai contatori finti', async () => {
     const errMock: GqlMock = { request: { query: GET_EVENT_STATS }, error: new Error('stats down'), maxUsageCount: Number.POSITIVE_INFINITY }
-    renderWithProviders(<ActiveAlarmsWidget color="#0EA5E9" />, { mocks: [errMock] })
+    renderWithProviders(<ActiveAlarmsWidget color="#0EA5E9" />, { mocks: [meMock('viewer'), errMock] })
     expect(await screen.findByRole('alert')).toHaveTextContent('Cannot load the counters: stats down')
   })
 
@@ -38,8 +39,14 @@ describe('ActiveAlarmsWidget', () => {
       id: 'w1', title: 'Allarmi', widgetType: ACTIVE_ALARMS_WIDGET_TYPE, entityType: 'incident', metric: 'count',
       groupByField: null, filterField: null, filterValue: null, timeRange: null, size: 'medium', color: '#0EA5E9', position: 0, dashboardId: 'd1',
     }
-    renderWithProviders(<CustomWidgetCard widget={widget} />, { mocks: [statsMock()] })
+    renderWithProviders(<CustomWidgetCard widget={widget} />, { mocks: [meMock('operator'), statsMock()] })
     expect(await screen.findByRole('link', { name: 'Critical 2' })).toBeInTheDocument()
     expect(screen.getByText('Allarmi')).toBeInTheDocument()
+  })
+
+  it('end user: nessun contatore né link alla console (rotta riservata allo staff), ma un messaggio in chiaro', async () => {
+    renderWithProviders(<ActiveAlarmsWidget color="#0EA5E9" />, { mocks: [meMock('end_user'), statsMock()] })
+    expect(await screen.findByText(/reserved to staff/)).toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 })

@@ -1,4 +1,14 @@
-import type { KeyboardEvent } from 'react'
+import type { CSSProperties, KeyboardEvent } from 'react'
+
+/**
+ * Testo presente per screen reader ma non visibile (equivalente di `.sr-only`):
+ * per le descrizioni collegate con `aria-describedby` a chip e badge il cui
+ * dettaglio starebbe altrimenti solo in un `title` (invisibile da tastiera e touch).
+ */
+export const srOnlyStyle: CSSProperties = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+}
 
 /**
  * Equivalente da tastiera di `onClick` per gli elementi che non possono essere

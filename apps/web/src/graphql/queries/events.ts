@@ -120,7 +120,7 @@ export const GET_CI_HEALTH = gql`
 export const GET_CI_HEALTH_OVERVIEW = gql`
   query GetCIHealthOverview($filter: CIHealthFilter, $limit: Int, $offset: Int) {
     ciHealthOverview(filter: $filter, limit: $limit, offset: $offset) {
-      down degraded operational unmonitored total
+      down degraded operational unmonitored downDependents degradedDependents total
       items {
         id name type environment health healthSource healthSince lastEventAt
         firingEvents dependents ownerTeam

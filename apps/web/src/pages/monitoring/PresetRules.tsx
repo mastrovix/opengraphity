@@ -7,7 +7,9 @@
  *     vocabolario OpenGrafo, PRIMA della tabella incorporata del connettore;
  *   - "Risorsa predefinita": nome e tipo da usare quando l'allarme non porta
  *     una risorsa (alert su metriche aggregate, Watchdog, monitor su log/APM);
- *     per Datadog anche "usa alert_scope".
+ *     per Datadog anche "usa alert_scope";
+ *   - "Severità da usare quando manca" (default_values.severity, D·2.3):
+ *     nelle parole dello strumento, tradotta dall'API come un valore ricevuto.
  * Nessun JSON è visibile: lo compone buildPresetConfig (sourceConfig.ts).
  * Senza regole l'API scarta l'allarme e lo scrive in lastError: qui si
  * spiega, non si inventa un default.
@@ -57,6 +59,11 @@ export function PresetRulesEditor({ kind, rules, onChange }: Props) {
             onChange={(statusValues) => onChange({ ...rules, statusValues })}
             idPrefix={fid('st')}
           />
+        </div>
+        <div style={{ maxWidth: 560, marginTop: 12 }}>
+          <FieldLabel htmlFor={fid('defaultSeverity')}>{t('monitoring.preset.defaultSeverityLabel')}</FieldLabel>
+          <Input id={fid('defaultSeverity')} value={rules.defaultSeverity} onChange={(e) => onChange({ ...rules, defaultSeverity: e.target.value })} placeholder={t('monitoring.preset.defaultSeverityPlaceholder')} />
+          <p style={{ ...hintStyle, marginTop: 4 }}>{t('monitoring.preset.defaultSeverityHint')}</p>
         </div>
       </div>
 

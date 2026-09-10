@@ -54,20 +54,26 @@ export function EnabledPill({ enabled }: { enabled: boolean }) {
     : <Pill bg="var(--color-slate-bg)" color="var(--color-slate)" style={{ fontSize: 'var(--font-size-label)' }}>{t('monitoring.sources.inactive')}</Pill>
 }
 
-/** Copia negli appunti con toast; l'errore (clipboard negata) è mostrato, non ingoiato. */
-export async function copyToClipboard(text: string, successMessage: string): Promise<void> {
+/** Copia negli appunti con toast; l'errore (clipboard negata) è mostrato, non ingoiato. Torna true solo se la copia è riuscita. */
+export async function copyToClipboard(text: string, successMessage: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text)
     toast.success(successMessage)
+    return true
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e))
+    return false
   }
 }
 
-export function CopyButton({ text, label, size = 'xs' }: { text: string; label: string; size?: 'xs' | 'sm' }) {
+/** `onCopied` scatta solo a copia riuscita: la procedura guidata lo usa per sapere se il token è stato messo al sicuro (D·1.9). */
+export function CopyButton({ text, label, size = 'xs', onCopied }: { text: string; label: string; size?: 'xs' | 'sm'; onCopied?: () => void }) {
   const { t } = useTranslation()
+  const copy = async () => {
+    if (await copyToClipboard(text, t('toast.monitoring.copied'))) onCopied?.()
+  }
   return (
-    <Button variant="secondary" size={size} icon={<Copy size={13} aria-hidden="true" />} onClick={() => void copyToClipboard(text, t('toast.monitoring.copied'))}>
+    <Button variant="secondary" size={size} icon={<Copy size={13} aria-hidden="true" />} onClick={() => void copy()}>
       {label}
     </Button>
   )
@@ -80,13 +86,13 @@ const monoBox: CSSProperties = {
 }
 
 /** Etichetta + valore monospazio + copia (URL dell'endpoint, token). */
-export function SecretBox({ label, value, copyLabel, hint }: { label: string; value: string; copyLabel: string; hint?: string }) {
+export function SecretBox({ label, value, copyLabel, hint, onCopied }: { label: string; value: string; copyLabel: string; hint?: string; onCopied?: () => void }) {
   return (
     <div>
       <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{label}</div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
         <output style={monoBox} aria-label={label}>{value}</output>
-        <CopyButton text={value} label={copyLabel} />
+        <CopyButton text={value} label={copyLabel} onCopied={onCopied} />
       </div>
       {hint && <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-table)', color: '#b45309' }}>{hint}</p>}
     </div>
@@ -94,12 +100,12 @@ export function SecretBox({ label, value, copyLabel, hint }: { label: string; va
 }
 
 /** Blocco di configurazione pronto (YAML/JSON/curl) con pulsante copia. */
-export function SnippetBox({ title, text, copyLabel }: { title: string; text: string; copyLabel: string }) {
+export function SnippetBox({ title, text, copyLabel, onCopied }: { title: string; text: string; copyLabel: string; onCopied?: () => void }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark }}>{title}</span>
-        <CopyButton text={text} label={copyLabel} />
+        <CopyButton text={text} label={copyLabel} onCopied={onCopied} />
       </div>
       <pre style={{ ...monoBox, whiteSpace: 'pre-wrap', overflowX: 'auto', fontSize: 'var(--font-size-table)', lineHeight: 1.5 }}>{text}</pre>
     </div>

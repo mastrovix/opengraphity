@@ -9,8 +9,17 @@
  * `only` / `exclude` scelgono quali azioni mostrare: il dettaglio mette
  * "Rivaluta ora" e "Apri incident" nella sezione Correlazione e le toglie
  * dalla testata, così ogni azione compare una volta sola.
+ *
+ * `compact` (righe della console): pulsanti con la sola icona, nome
+ * accessibile + tooltip. Scelta rispetto a un menu "⋯": le azioni restano a un
+ * click (l'operatore le usa decine di volte al giorno) e la riga sta su una
+ * sola riga a 1280 px con 9 colonne; un menu avrebbe aggiunto un componente
+ * a tendina e un click in più per l'azione più frequente (presa in carico).
+ *
+ * I dialoghi (Modal) sono in portal e fermano la propagazione del click: da
+ * dentro una riga cliccabile non navigano al dettaglio.
  */
-import { useState, useId, type MouseEvent } from 'react'
+import { useState, useId, type MouseEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -24,7 +33,7 @@ import { useDebounced } from '@/hooks/useDebounced'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_ALL_CIS } from '@/graphql/queries'
 import { ACKNOWLEDGE_EVENT, RESOLVE_EVENT, LINK_EVENT_TO_CI, CREATE_INCIDENT_FROM_EVENT, REEVALUATE_EVENT } from '@/graphql/mutations'
-import { isActiveEvent } from './eventShared'
+import { isActiveEvent, resourceKindLabel } from './eventShared'
 import { canReevaluate, isSuppressed } from './eventCorrelation'
 import type { EventRow, MonitoringEvent } from '@/types/events'
 
@@ -46,9 +55,11 @@ interface Props {
   only?:      readonly EventActionKind[]
   /** Nasconde queste azioni. */
   exclude?:   readonly EventActionKind[]
+  /** Solo icone con nome accessibile e tooltip (righe della console). */
+  compact?:   boolean
 }
 
-export function EventActions({ event, onChanged, size = 'xs', only, exclude }: Props) {
+export function EventActions({ event, onChanged, size = 'xs', only, exclude, compact = false }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
@@ -107,33 +118,19 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude }: P
 
   if (!canAck && !canResolve && !canOpen && !canLink && !canReeval) return null
 
+  // In modalità compatta il testo diventa nome accessibile + tooltip.
+  const action = (label: string, icon: ReactNode, onClick: (e: MouseEvent<HTMLButtonElement>) => void, disabled = false) => compact
+    ? <Button variant="icon" size={size} disabled={disabled} aria-label={label} title={label} onClick={onClick}>{icon}</Button>
+    : <Button variant="secondary" size={size} disabled={disabled} icon={icon} onClick={onClick}>{label}</Button>
+  const spinner = <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-      {canReeval && (
-        <Button variant="secondary" size={size} disabled={reevaluating} icon={reevaluating ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={13} aria-hidden="true" />} onClick={(e) => void handleReevaluate(e)}>
-          {t('events.actions.reevaluate')}
-        </Button>
-      )}
-      {canAck && (
-        <Button variant="secondary" size={size} disabled={acking} icon={acking ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Hand size={13} aria-hidden="true" />} onClick={(e) => void handleAck(e)}>
-          {t('events.actions.acknowledge')}
-        </Button>
-      )}
-      {canResolve && (
-        <Button variant="secondary" size={size} icon={<CheckCircle2 size={13} aria-hidden="true" />} onClick={(e) => { stop(e); setDialog('resolve') }}>
-          {t('events.actions.resolve')}
-        </Button>
-      )}
-      {canOpen && (
-        <Button variant="secondary" size={size} disabled={opening} icon={<AlertCircle size={13} aria-hidden="true" />} onClick={(e) => void handleOpenIncident(e)}>
-          {t('events.actions.openIncident')}
-        </Button>
-      )}
-      {canLink && (
-        <Button variant="secondary" size={size} icon={<Link2 size={13} aria-hidden="true" />} onClick={(e) => { stop(e); setDialog('link') }}>
-          {t('events.actions.linkCI')}
-        </Button>
-      )}
+    <div style={{ display: 'flex', gap: 6, flexWrap: compact ? 'nowrap' : 'wrap' }}>
+      {canReeval && action(t('events.actions.reevaluate'), reevaluating ? spinner : <RefreshCw size={13} aria-hidden="true" />, (e) => void handleReevaluate(e), reevaluating)}
+      {canAck     && action(t('events.actions.acknowledge'), acking ? spinner : <Hand size={13} aria-hidden="true" />, (e) => void handleAck(e), acking)}
+      {canResolve && action(t('events.actions.resolve'), <CheckCircle2 size={13} aria-hidden="true" />, (e) => { stop(e); setDialog('resolve') })}
+      {canOpen    && action(t('events.actions.openIncident'), <AlertCircle size={13} aria-hidden="true" />, (e) => void handleOpenIncident(e), opening)}
+      {canLink    && action(t('events.actions.linkCI'), <Link2 size={13} aria-hidden="true" />, (e) => { stop(e); setDialog('link') })}
 
       {dialog === 'resolve' && (
         <ResolveDialog event={event} onClose={() => setDialog(null)} onDone={() => { setDialog(null); onChanged?.() }} />
@@ -232,7 +229,7 @@ function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: ()
       }
     >
       <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-        {t('events.actions.linkCIHint', { resource: event.resource, kind: event.resourceKind })}
+        {t('events.actions.linkCIHint', { resource: event.resource, kind: resourceKindLabel(t, event.resourceKind) })}
       </p>
       <FieldLabel htmlFor={searchId}>{t('events.actions.searchCI')}</FieldLabel>
       <Input

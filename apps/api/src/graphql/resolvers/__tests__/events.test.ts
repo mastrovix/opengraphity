@@ -70,6 +70,7 @@ const { audit } = await import('../../../lib/audit.js')
 const { enqueueEvents } = await import('../../../jobs/eventIngestWorker.js')
 const { SAMPLE_PAYLOADS, GENERIC_SAMPLE_CONFIG } = await import('../../../lib/eventSamples.js')
 const { DEFAULT_EVENT_POLICY } = await import('../../../lib/eventPolicy.js')
+const { MATCH_REASONS } = await import('../../../lib/eventVocabularies.js')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin' }
 const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator' }
@@ -204,6 +205,9 @@ describe('linkEventToCI', () => {
     const link = callMatching(/MERGE \(e\)-\[:RAISED_ON\]->\(target\)/)!
     expect(link.cypher).toContain('MATCH (target:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
     expect(link.cypher).toMatch(/OPTIONAL MATCH \(e\)-\[old:RAISED_ON\]->\(other:ConfigurationItem\) WHERE other\.id <> \$ciId\s+DELETE old/)
+    // il collegamento manuale si dichiara: match_reason = manual (valore dell'enum EventMatchReason, mai prodotto dall'ingest)
+    expect(link.cypher).toContain("SET e.updated_at = $now, e.match_reason = 'manual'")
+    expect(MATCH_REASONS).toContain('manual')
     expect(link.params).toMatchObject({ id: 'ev-1', ciId: 'ci-new', tenantId: 'tenant-1' })
 
     const alias = callMatching(/MERGE \(a:CIAlias/)!
@@ -995,18 +999,18 @@ describe('setCIHealthOverride', () => {
 // ── Pagina Salute CI: ciHealthOverview ───────────────────────────────────────
 
 describe('ciHealthOverview', () => {
-  const COUNTS = { down: 2, degraded: 1, operational: 5, unmonitored: 12 }
+  const COUNTS = { down: 2, degraded: 1, operational: 5, unmonitored: 12, downDependents: 9, degradedDependents: 3 }
   const row = (over: Record<string, unknown> = {}) => ({
     id: 'ci-1', name: 'db-01', label: 'Server', environment: 'production', health: 'down', healthSource: 'monitoring',
     healthSince: '2026-09-09T10:00:00Z', lastEventAt: '2026-09-09T10:05:00Z', firingEvents: 2, dependents: 7, ownerTeam: 'DBA', ...over,
   })
 
-  const OVERVIEW_RE = /RETURN down, degraded, operational, unmonitored, total, items/
+  const OVERVIEW_RE = /RETURN down, degraded, operational, unmonitored, downDependents, degradedDependents, total, items/
 
   it('P-2 — UNA query: contatori su tutto il tenant + total + righe ordinate per gravità, dipendenti DESC, nome; type dalla label; nessun OPTIONAL MATCH moltiplicativo', async () => {
     onCypher([[OVERVIEW_RE, { ...COUNTS, total: 8, items: [row(), row({ id: 'ci-2', name: 'app', label: 'Application', health: 'operational', healthSource: 'manual', dependents: 0, ownerTeam: null, healthSince: null, lastEventAt: null, firingEvents: 0 })] }]])
     const out = await eventResolvers.Query.ciHealthOverview(null, {}, viewer)
-    expect(out).toMatchObject({ down: 2, degraded: 1, operational: 5, unmonitored: 12, total: 8 })
+    expect(out).toMatchObject({ down: 2, degraded: 1, operational: 5, unmonitored: 12, downDependents: 9, degradedDependents: 3, total: 8 })
     expect(out.items).toEqual([
       { id: 'ci-1', name: 'db-01', type: 'server', environment: 'production', health: 'down', healthSource: 'monitoring', healthSince: '2026-09-09T10:00:00Z', lastEventAt: '2026-09-09T10:05:00Z', firingEvents: 2, dependents: 7, ownerTeam: 'DBA' },
       { id: 'ci-2', name: 'app', type: 'application', environment: 'production', health: 'operational', healthSource: 'manual', healthSince: null, lastEventAt: null, firingEvents: 0, dependents: 0, ownerTeam: null },
@@ -1018,6 +1022,10 @@ describe('ciHealthOverview', () => {
     // contatori del tenant, indipendenti dal filtro (nessun WHERE nel primo CALL)
     expect(q.cypher).toMatch(/CALL \{\s+MATCH \(ci:ConfigurationItem \{tenant_id: \$tenantId\}\)\s+RETURN\s+count\(CASE WHEN ci\.health = 'down'/)
     expect(q.cypher).toContain('count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored')
+    // D·2.6: impatto aggregato per stato su tutto il tenant, nello stesso CALL dei contatori (sum di un COUNT { } pigro, non un OPTIONAL MATCH)
+    expect(q.cypher).toContain("sum(CASE WHEN ci.health = 'down'     THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS downDependents")
+    expect(q.cypher).toContain("sum(CASE WHEN ci.health = 'degraded' THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS degradedDependents")
+    expect(q.cypher.indexOf('AS degradedDependents')).toBeLessThan(q.cypher.indexOf('AS total'))
     // total e pagina con lo stesso WHERE, salute prima di ogni conteggio
     expect(q.cypher).toMatch(/MATCH \(ci:ConfigurationItem \{tenant_id: \$tenantId\}\)\s+WHERE ci\.health IS NOT NULL\s+RETURN count\(ci\) AS total/)
     expect(q.cypher).toMatch(/WHERE ci\.health IS NOT NULL\s+WITH ci, COUNT \{ \(:ConfigurationItem \{tenant_id: \$tenantId\}\)-\[:DEPENDS_ON\]->\(ci\) \} AS dependents\s+ORDER BY CASE ci\.health WHEN 'down' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END, dependents DESC, ci\.name\s+SKIP toInteger\(\$offset\) LIMIT toInteger\(\$limit\)/)

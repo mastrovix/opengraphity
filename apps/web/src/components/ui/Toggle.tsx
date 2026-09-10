@@ -10,13 +10,20 @@ interface ToggleProps {
   onChange:  (checked: boolean) => void
   /** Accessible name (what is being switched on/off). */
   label:     string
+  /**
+   * Id of a visible element that names the switch (e.g. the text next to it):
+   * when given it replaces `aria-label`, so a screen reader announces the name
+   * once and clicking the text toggles the switch through `htmlFor`-like `id`.
+   */
+  labelledBy?: string
+  id?:       string
   disabled?: boolean
   /** Track size in px (default 36 × 20). */
   size?:     'sm' | 'md'
   style?:    CSSProperties
 }
 
-export function Toggle({ checked, onChange, label, disabled = false, size = 'md', style }: ToggleProps) {
+export function Toggle({ checked, onChange, label, labelledBy, id, disabled = false, size = 'md', style }: ToggleProps) {
   const w = size === 'sm' ? 28 : 36
   const h = size === 'sm' ? 16 : 20
   const knob = h - 4
@@ -25,7 +32,9 @@ export function Toggle({ checked, onChange, label, disabled = false, size = 'md'
       type="button"
       role="switch"
       aria-checked={checked}
-      aria-label={label}
+      aria-label={labelledBy ? undefined : label}
+      aria-labelledby={labelledBy}
+      id={id}
       title={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}

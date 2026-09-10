@@ -99,9 +99,11 @@
     "expand": "Expand sidebar",
     "mainMenu": "Main menu",
     "anomalyLoadError": "Error loading anomalies",
-    "criticalAnomalies": "{{count}} critical anomalies",
-    "pendingBadge": "{{count}} pending",
-    "events": "Events",
+    "criticalAnomalies_one": "{{count}} critical anomaly",
+    "criticalAnomalies_other": "{{count}} critical anomalies",
+    "pendingBadge_one": "{{count}} pending",
+    "pendingBadge_other": "{{count}} pending",
+    "events": "Alarms",
     "eventPolicy": "Event policy",
     "monitoringSources": "Sources",
     "ciHealth": "CI health",
@@ -123,7 +125,8 @@
         "title": "Monitoring alarms",
         "empty": "No monitoring alarm is correlated to this incident.",
         "openedByMonitoring": "Incident opened automatically by monitoring on {{when}}.",
-        "purged": "{{count}} alarms removed by event retention (still mentioned in the timeline)."
+        "purged_one": "{{count}} alarm removed by event retention (still mentioned in the timeline).",
+        "purged_other": "{{count}} alarms removed by event retention (still mentioned in the timeline)."
       }
     },
     "changes": {
@@ -803,7 +806,8 @@
       "updateWidget": "Update widget",
       "customWidgets": "Custom widgets",
       "customWidgetsDesc": "Counter, chart, table or gauge with live data — no report builder needed.",
-      "createdCount": "Created ({{count}})",
+      "createdCount_one": "Created ({{count}})",
+      "createdCount_other": "Created ({{count}})",
       "addFromReport": "Add from report",
       "noReports": "No reports available.",
       "noSections": "No sections",
@@ -831,7 +835,7 @@
         "chartDonut": "Proportions",
         "table": "List of values",
         "gauge": "% of 100",
-        "activeAlarms": "Firing, critical, warning and orphan alarms from the monitoring"
+        "activeAlarms": "Firing, critical, warning and no-CI alarms from the monitoring"
       },
       "entityLabel": "Entity",
       "entity": {
@@ -907,7 +911,8 @@
       "total": "Total:",
       "categories": "Categories:",
       "previewHint": "The preview updates automatically while you configure the widget (600ms debounce).",
-      "activeAlarmsHint": "This widget shows the live counters of the event console: no entity or metric to configure."
+      "activeAlarmsHint": "This widget shows the live counters of the alarm console: no entity or metric to configure.",
+      "activeAlarmsStaffOnly": "The alarm console is reserved to staff (administrators, operators and viewers)."
     }
   },
   "filter": {
@@ -1267,7 +1272,68 @@
       "connectorKind": "Connector",
       "eventsNote": "Monitoring sources (alarms from Alertmanager, Grafana, Zabbix, Datadog or any other tool) are configured without code in",
       "eventsNoteLink": "Monitoring → Sources",
-      "manageInMonitoring": "Manage in Monitoring"
+      "manageInMonitoring": "Manage in Monitoring",
+      "title": "Integrations",
+      "subtitle": "Webhooks, API keys and external connections",
+      "newInbound": "New inbound webhook",
+      "newOutbound": "New outbound webhook",
+      "newApiKey": "New API key",
+      "secretTitle": "Generated credential",
+      "secretWarning": "This token will not be shown again. Copy it now!",
+      "retryOnFailure": "Retry on failure",
+      "entityIncident": "Incident",
+      "entityChange": "Change",
+      "entityProblem": "Problem",
+      "filters": {
+        "entityType": "Entity type",
+        "enabled": "Enabled",
+        "name": "Name"
+      },
+      "columns": {
+        "name": "Name",
+        "entityType": "Entity type",
+        "endpoint": "Endpoint URL",
+        "enabled": "Active",
+        "received": "Received",
+        "lastReceived": "Last",
+        "url": "URL",
+        "events": "Events",
+        "sent": "Sent",
+        "lastStatus": "Last status",
+        "lastError": "Last error",
+        "keyPrefix": "Prefix",
+        "permissions": "Permissions",
+        "rateLimit": "Rate limit",
+        "lastUsed": "Last used",
+        "requests": "Requests"
+      },
+      "emptyInbound": "No inbound webhook configured",
+      "emptyOutbound": "No outbound webhook configured",
+      "emptyApiKeys": "No API key configured",
+      "tableInbound": "Inbound webhooks",
+      "tableOutbound": "Outbound webhooks",
+      "tableApiKeys": "API keys",
+      "form": {
+        "name": "Name",
+        "entityType": "Entity type",
+        "fieldMapping": "Field mapping (JSON)",
+        "defaultValues": "Default values (JSON)",
+        "transformScript": "Transform script",
+        "url": "URL",
+        "method": "Method",
+        "headers": "Headers (JSON)",
+        "events": "Events",
+        "payloadTemplate": "Payload template",
+        "secret": "Secret",
+        "permissions": "Permissions",
+        "rateLimit": "Rate limit (req/min)",
+        "expiresAt": "Expires at"
+      },
+      "errors": {
+        "tokenMissing": "Webhook created but the token is missing in the response",
+        "keyMissing": "API key created but the key is missing in the response",
+        "emptyResponse": "empty response"
+      }
     },
     "questions": {
       "deleteTitle": "Delete this question?",
@@ -1301,6 +1367,12 @@
     "unexpected": "Unexpected error",
     "generic": "Something went wrong",
     "backToDashboard": "Back to Dashboard"
+  },
+  "errors": {
+    "labelsNotObject": "Labels: a JSON object was expected",
+    "ciNotFound": "CI not found",
+    "ciNotFoundHint": "No CI with id {{id}}: it may have been deleted.",
+    "backToCmdb": "Back to the CMDB"
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -1579,16 +1651,16 @@
       "transitionFailed": "Transition failed"
     },
     "events": {
-      "acknowledged": "Event acknowledged",
-      "resolved": "Event resolved",
+      "acknowledged": "Alarm acknowledged",
+      "resolved": "Alarm resolved",
       "incidentCreated": "Incident {{number}} created",
-      "linked": "Event linked to {{ci}}",
+      "linked": "Alarm linked to {{ci}}",
       "aliasDeleted": "Alias deleted",
       "aliasCreated": "Alias created",
       "actionFailed": "Action failed: {{error}}",
       "policySaved": "Event policy saved",
       "policySaveFailed": "Policy save failed: {{error}}",
-      "reevaluated": "Event re-evaluated: {{outcome}}"
+      "reevaluated": "Alarm re-evaluated: {{outcome}}"
     },
     "monitoring": {
       "sourceCreated": "Source created",
@@ -1641,9 +1713,11 @@
     }
   },
   "events": {
-    "title": "Events",
-    "count": "{{count}} events",
-    "orphan": "orphan",
+    "title": "Alarms",
+    "count_one": "{{count}} alarm",
+    "count_other": "{{count}} alarms",
+    "orphan": "No CI",
+    "openInConsole": "Open in the console",
     "status": {
       "firing": "Firing",
       "resolved": "Resolved",
@@ -1659,29 +1733,48 @@
       "firing": "Active",
       "critical": "Critical",
       "warning": "Warnings",
-      "orphan": "Orphans",
+      "orphan": "No CI",
       "suppressed": "Suppressed",
       "flapping": "Flapping",
       "resolved24h": "Resolved 24h"
     },
+    "matchReason": {
+      "alias_external_id": "External ID alias",
+      "alias": "CI alias",
+      "name": "CI name",
+      "name_short": "Short name (without domain)",
+      "ambiguous": "Ambiguous: several CIs share this name",
+      "none": "No match",
+      "manual": "Linked manually",
+      "unknown": "Not recorded",
+      "unexpected": "Unknown reason: {{value}}",
+      "ambiguousBadge": "Ambiguous",
+      "ambiguousHelp": "Several CIs share this name: link the CI manually or add an alias (IP, FQDN or external ID) to the right CI."
+    },
     "columns": {
       "status": "Status",
       "severity": "Severity",
-      "title": "Event",
+      "title": "Alarm",
       "ci": "CI",
       "source": "Source",
-      "count": "Count",
+      "count": "Occurrences",
       "lastSeen": "Last seen",
       "incident": "Incident",
       "actions": "Actions"
     },
     "filters": {
-      "orphanOnly": "Orphans only",
+      "orphanOnly": "No CI only",
+      "incidentOnly": "This incident only",
+      "changeOnly": "This change only",
       "search": "Search",
-      "searchPlaceholder": "Search title or resource…"
+      "searchPlaceholder": "Search title or resource…",
+      "sourcesError": "Sources not loaded: {{error}}",
+      "advancedActive": "Advanced filter active: it applies to the loaded page, count and pages are the server's",
+      "advancedMatch_one": "{{count}} of {{total}} on this page matches the advanced filter",
+      "advancedMatch_other": "{{count}} of {{total}} on this page match the advanced filter"
     },
     "empty": {
-      "title": "No events",
+      "title": "No alarms",
       "description": "No alarm matches the filters."
     },
     "actions": {
@@ -1689,9 +1782,9 @@
       "resolve": "Resolve",
       "openIncident": "Open incident",
       "linkCI": "Link to CI",
-      "openIncidentTitle": "Open an incident from this event?",
+      "openIncidentTitle": "Open an incident from this alarm?",
       "emptyResponse": "Incident created but empty response",
-      "resolveTitle": "Resolve event",
+      "resolveTitle": "Resolve alarm",
       "resolveNote": "Note (optional)",
       "linkCITitle": "Link to a CI",
       "linkCIHint": "The source identifies the object as {{kind}} \"{{resource}}\".",
@@ -1702,13 +1795,16 @@
       "reevaluate": "Re-evaluate now"
     },
     "detail": {
-      "back": "Back to events",
-      "notFound": "Event not found",
+      "back": "Back to alarms",
+      "notFound": "Alarm not found",
       "information": "Information",
       "description": "Description",
       "resource": "Resource",
       "fingerprint": "Fingerprint",
       "externalId": "External ID",
+      "resourceExternalId": "Resource external ID",
+      "maxSeverity": "Peak severity of the cycle",
+      "matchReason": "CI recognition",
       "firstSeen": "First seen",
       "lastSeen": "Last seen",
       "resolvedAt": "Resolved at",
@@ -1802,7 +1898,7 @@
         "autoResolve": "When the source resolves every alarm of an incident opened by monitoring, the incident is resolved; a new alarm reopens it.",
         "severityMap": "Impact and urgency assigned to the automatically opened incident, from the alarm severity: the priority derives from them.",
         "flapStableMinutes": "How long the alarm must stay still (no new firing or resolved) before leaving the flapping state and returning to normal correlation.",
-        "stormThresholdPerMinute": "When a source exceeds this number of new alarms per minute, a storm starts: its alarms are grouped into a single incident instead of opening one per CI.",
+        "stormThresholdPerMinute": "When a source exceeds this number of new alarms per minute, a storm starts: its alarms are grouped into a single incident instead of opening one per CI. 0 = storm detection off.",
         "stormCooldownMinutes": "The storm ends once the rate stays below the threshold for this many minutes; later alarms return to normal correlation."
       },
       "flapStableMinutes": "Stable minutes before resuming",
@@ -1819,6 +1915,15 @@
         "integer": "Enter a whole number (minimum {{min}}).",
         "min": "The minimum value is {{min}}.",
         "blocked": "Fix the highlighted fields to save."
+      },
+      "neverNote": "Not used with “Never”: monitoring opens no incident, so grouping, delay, auto-resolve and the severity map have no effect.",
+      "unsaved": "Unsaved changes",
+      "noChanges": "No changes to save",
+      "reset": "Reset",
+      "errors": {
+        "expectedObject": "severityMap: expected a JSON object",
+        "missingSeverity": "severityMap: severity \"{{severity}}\" is missing",
+        "invalidLevel": "severityMap.{{severity}}: impact/urgency must be low | medium | high"
       }
     },
     "health": {
@@ -1835,6 +1940,7 @@
         "suppressedUnknown": "Suppressed",
         "delayed": "Waiting",
         "delayedIn": "Opens in {{seconds}} s",
+        "delayedInShort": "in {{seconds}} s",
         "delayedWaiting": "Waiting for the policy open delay",
         "linkCI": "Link a CI",
         "flapping_one": "Flapping · {{count}} transition/24h",
@@ -1894,8 +2000,9 @@
       "banner": {
         "title_one": "Storm in progress",
         "title_other": "Storms in progress ({{count}} sources)",
-        "line": "Storm in progress from {{source}}: {{rate}} alarms per minute since {{time}}, grouped into",
+        "line": "Storm in progress from {{source}}: {{rate}} alarms per minute since {{time}}, grouped into <incident>{{number}}</incident>.",
         "lineNoIncident": "Storm in progress from {{source}}: {{rate}} alarms per minute since {{time}}; no storm incident.",
+        "viewSource": "View the source's alarms",
         "sources": "Sources"
       }
     }
@@ -1944,6 +2051,7 @@
       },
       "active": "Active",
       "inactive": "Inactive",
+      "refresh": "Refresh",
       "toggle": "Enable or disable {{name}}",
       "never": "Never",
       "noErrors": "None",
@@ -1981,6 +2089,7 @@
       "steps": {
         "tool": "Tool",
         "rules": "Name and rules",
+        "rulesGeneric": "Name and mapping",
         "connect": "Connection",
         "test": "Test"
       },
@@ -2013,7 +2122,18 @@
       "nameRequired": "Enter a name to continue.",
       "mappingIncomplete": "Map the required fields (title, severity, resource) and make sure the preview shows an event.",
       "presetRulesIncomplete": "Every value added to the translation needs a target (or remove it).",
-      "createFailed": "The source was not created: {{error}}"
+      "previewNotGreen": "The preview must show an event without errors before creating the source.",
+      "createFailed": "The source was not created: {{error}}",
+      "tokenNotCopiedTitle": "Token not copied",
+      "tokenNotCopiedBody": "You have not copied the token: after this page it will not be shown again and you will have to regenerate it. Leave anyway?",
+      "leaveAnyway": "Leave anyway",
+      "checking": "Checking reception…",
+      "checkNow": "Check again",
+      "checkReceived": "Received ✔ — the source accepted the event (last received: {{when}}).",
+      "checkError": "Last error: {{error}}",
+      "checkPending": "Not processed yet: try again in a few seconds.",
+      "checkFailed": "Cannot check reception: {{error}}",
+      "checkNotFound": "The source is no longer listed."
     },
     "mapper": {
       "intro": "Paste a real alarm sent by the tool (JSON). OpenGrafo lists its fields: choose which one to use for each piece of information.",
@@ -2024,8 +2144,19 @@
       "keysLoading": "Reading the fields…",
       "keysError": "Cannot read the fields: {{error}}",
       "fieldsTitle": "Which field to use for…",
-      "noKeys": "Paste a sample alarm to see its fields.",
+      "fieldsIntro": "Pick a field from the list or type the path by hand. A path like “a.b” means: field b inside a.",
+      "pathPlaceholder": "e.g. alert.level",
+      "inWord": "in",
+      "noKeys": "Paste a sample alarm to see its fields, or type the paths by hand.",
       "unmapped": "— not used —",
+      "sampleFailed": "Cannot load the example: {{error}}",
+      "missingTarget": "translation missing",
+      "defaultsTitle": "When the field is missing",
+      "defaultsIntro": "Values used in place of a field absent from the alarm. Without a default severity, an alarm without a severity is rejected (with the reason in \"Last error\").",
+      "defaultSeverity": "Default severity",
+      "defaultSeverityNone": "— none: the alarm is rejected —",
+      "defaultStatus": "Default status",
+      "defaultStatusNone": "— firing (default) —",
       "fields": {
         "title": "Title",
         "severity": "Severity",
@@ -2071,8 +2202,24 @@
         "eventTitle": "Title",
         "severity": "Severity",
         "resource": "Resource",
-        "status": "Status"
+        "status": "Status",
+        "ofMany": "{{index}} of {{total}}",
+        "multi": "The sample contains {{total}} alarms: each becomes an event.",
+        "prev": "Previous alarm",
+        "next": "Next alarm"
       }
+    },
+    "errors": {
+      "expectedObject": "{{what}}: expected a JSON object",
+      "invalidJson": "{{what}}: {{error}}",
+      "expectedPath": "fieldMapping.{{key}}: expected a path (text)",
+      "expectedOneOf": "{{what}}: expected one of {{values}}",
+      "expectedNonEmpty": "{{what}}: expected a non-empty string",
+      "notEditable": "{{what}}: cannot be edited from this page",
+      "notSupported": "{{what}}: not supported",
+      "resourceFromNotAllowed": "defaultValues.resourceFrom: not available for {{kind}}",
+      "tokenMissing": "{{operation}}: token missing in the response",
+      "emptyResponse": "{{operation}}: empty response"
     },
     "preset": {
       "valuesTitle": "Value translation",
@@ -2081,6 +2228,9 @@
       "severityHint": "E.g. \"page\" → critical, \"none\" → info.",
       "statusValues": "Tool status",
       "statusHint": "E.g. \"Muted\" → resolved. Firing = active alarm, resolved = cleared.",
+      "defaultSeverityLabel": "Severity to use when missing",
+      "defaultSeverityPlaceholder": "e.g. warning",
+      "defaultSeverityHint": "In the tool's own words: it is translated like a received value (first the table above, then the built-in one). Empty = alarms without a severity are rejected (with the reason in \"Last error\").",
       "resourceTitle": "Default resource",
       "resourceIntro": "An alarm without a host (aggregate metrics, Watchdog, log/APM monitors) cannot be linked to a CI: without a default resource it is rejected. Say here which object it belongs to.",
       "resourceLabel": "Resource to use when missing",
@@ -2177,6 +2327,8 @@
       "title": "CI health",
       "subtitle": "What is unhealthy right now, worst first, and who depends on it",
       "viewOnMap": "View on the map",
+      "viewOnMapDisabled": "No CI with health data to show on the map",
+      "viewOnMapRow": "View {{name}} on the map",
       "refresh": "Refresh",
       "updatedAt": "Updated at {{time}}",
       "tiles": {
@@ -2186,12 +2338,13 @@
         "unmonitored": "Not monitored",
         "unmonitoredHint": "CIs no source has sent alarms for yet",
         "unmonitoredContext": "never seen by a source",
+        "unmonitoredLink": "View all CIs in the CMDB",
         "toggleHint": "Filter the table on this state; a second click removes the filter",
         "dependentsContext_one": "with {{count}} dependent CI",
         "dependentsContext_other": "with {{count}} dependent CIs",
-        "dependentsHint": "Sum of the CIs that directly depend on the rows of this state shown on this page, not on the whole tenant",
         "noneContext": "none right now",
-        "operationalContext": "of {{count}} monitored"
+        "operationalContext_one": "of {{count}} monitored",
+        "operationalContext_other": "of {{count}} monitored"
       },
       "allGood": "All monitored CIs are operational",
       "allGoodDetail_one": "{{count}} monitored CI, no active alarm degrading it",
@@ -2203,6 +2356,8 @@
         "allEnvironments": "All environments",
         "team": "Team",
         "allTeams": "All teams",
+        "teamsUnavailable": "Teams unavailable: {{error}}",
+        "enumsUnavailable": "Environments unavailable: {{error}}",
         "search": "Search a CI by name",
         "searchPlaceholder": "Search by name…"
       },
@@ -2213,11 +2368,13 @@
         "impact": "Impact",
         "team": "Team",
         "lastEvent": "Last event",
-        "source": "Source"
+        "source": "Source",
+        "map": "Map"
       },
       "since": "for {{duration}}",
       "sinceHint": "Current health in force since {{date}}",
-      "alarmsLink": "View the {{count}} active alarms of {{name}}",
+      "alarmsLink_one": "View the active alarm of {{name}}",
+      "alarmsLink_other": "View the {{count}} active alarms of {{name}}",
       "dependents_one": "{{count}} dependent",
       "dependents_other": "{{count}} dependents",
       "dependentsHint_one": "{{count}} CI directly depends on this one",

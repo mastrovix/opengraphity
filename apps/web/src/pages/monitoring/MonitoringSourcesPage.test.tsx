@@ -27,8 +27,9 @@ const SOURCES: MonitoringSource[] = [
 
 const typed = (s: MonitoringSource) => ({ __typename: 'InboundWebhook', ...s })
 
-const sourcesMock = (items = SOURCES): GqlMock => ({
-  request: { query: GET_MONITORING_SOURCES },
+/** `onCall` conta le richieste dell'elenco (refetch dopo l'evento di prova, "Aggiorna"). */
+const sourcesMock = (items = SOURCES, onCall?: () => void): GqlMock => ({
+  request: { query: GET_MONITORING_SOURCES, variables: () => { onCall?.(); return true } },
   result: { data: { monitoringSources: items.map(typed) } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
@@ -60,10 +61,21 @@ describe('MonitoringSourcesPage', () => {
     expect(within(rows[0]!).getByRole('switch', { name: 'Enable or disable Prometheus prod' })).toHaveAttribute('aria-checked', 'true')
 
     expect(within(rows[1]!).getByText('Zabbix')).toBeInTheDocument()
+    // stato (non imperativo, D·6.2) e nota sotto il nome
     expect(within(rows[1]!).getByText('Inactive')).toBeInTheDocument()
+    expect(within(rows[1]!).getByText('Disabled: alarms sent to this endpoint are rejected.')).toBeInTheDocument()
     expect(within(rows[1]!).getByText('Never')).toBeInTheDocument()
     expect(within(rows[1]!).getByText('3 errors')).toBeInTheDocument()
     expect(within(rows[1]!).getByText(/Last reason: event_value must be/)).toBeInTheDocument()
+  })
+
+  it('D·1.11 — "Aggiorna" rilegge l\'elenco', async () => {
+    let calls = 0
+    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(SOURCES, () => { calls++ }), statsMock()] })
+    await screen.findByRole('link', { name: 'Prometheus prod' })
+    expect(calls).toBe(1)
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(calls).toBe(2))
   })
 
   it('badge "Tempesta" sulla sorgente in tempesta (da eventStats.stormSources), con tooltip', async () => {
@@ -97,14 +109,16 @@ describe('MonitoringSourcesPage', () => {
     expect(seen).toEqual([{ id: 's1', input: { enabled: false } }])
   })
 
-  it('"Invia evento di prova" accoda il campione e avvisa con il link alla console', async () => {
+  it('"Invia evento di prova" accoda il campione, avvisa con il link alla console e rilegge l\'elenco dopo l\'attesa (D·1.11)', async () => {
     const sampleMock: GqlMock = {
       request: { query: SEND_SAMPLE_EVENT, variables: { sourceId: 's1' } },
       result: { data: { sendSampleEvent: 1 } },
     }
-    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(), sampleMock] })
+    let calls = 0
+    const { user } = renderWithProviders(<MonitoringSourcesPage sampleRefetchDelayMs={0} />, { route: '/monitoring/sources', mocks: [sourcesMock(SOURCES, () => { calls++ }), statsMock(), sampleMock] })
     await user.click(await screen.findByRole('button', { name: 'Send a test event from Prometheus prod' }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Test event queued: open it in Events', expect.objectContaining({ action: expect.objectContaining({ label: 'Open in Events' }) })))
+    await waitFor(() => expect(calls).toBe(2))
   })
 
   it('rigenera il token dopo conferma e lo mostra una sola volta', async () => {
@@ -119,6 +133,18 @@ describe('MonitoringSourcesPage', () => {
     expect(await screen.findByText('tok-NEW-123')).toBeInTheDocument()
     expect(screen.getByText('Copy it now: for security it will not be shown again.')).toBeInTheDocument()
     expect(toast.success).toHaveBeenCalledWith('Token regenerated')
+  })
+
+  it('rigenerazione senza token nella risposta → errore in chiaro (i18n), nessun modale', async () => {
+    const regenMock: GqlMock = {
+      request: { query: REGENERATE_SOURCE_TOKEN, variables: { id: 's1' } },
+      result: { data: { regenerateWebhookToken: { __typename: 'InboundWebhookWithToken', id: 's1', token: '' } } },
+    }
+    const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(), regenMock] })
+    await user.click(await screen.findByRole('button', { name: 'Regenerate token of Prometheus prod' }))
+    await user.click(await screen.findByRole('button', { name: 'Regenerate token' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Action failed: regenerateWebhookToken: token missing in the response'))
+    expect(screen.queryByText('New token', { exact: false })).not.toBeInTheDocument()
   })
 
   it('elimina con conferma; l\'annullamento non chiama la mutation', async () => {

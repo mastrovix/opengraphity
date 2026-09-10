@@ -120,3 +120,29 @@ describe('Sidebar — badge', () => {
     expect(await screen.findByLabelText('2 pending')).toHaveTextContent('2')
   })
 })
+
+describe('Sidebar — Monitoraggio (Event Management)', () => {
+  it('end user: nessun gruppo Monitoraggio (le rotte sono staff)', async () => {
+    renderSidebar('end_user')
+    await new Promise((r) => setTimeout(r, 10))
+    expect(within(nav()).queryByRole('button', { name: 'Monitoring' })).not.toBeInTheDocument()
+  })
+
+  it('viewer: gruppo Monitoraggio con Allarmi e Salute CI, senza Sorgenti né Policy', async () => {
+    const { user } = renderSidebar('viewer')
+    const group = await within(nav()).findByRole('button', { name: 'Monitoring' })
+    await user.click(group)
+    const panel = document.getElementById(group.getAttribute('aria-controls')!)!
+    expect(within(panel).getByRole('link', { name: 'Alarms' })).toHaveAttribute('href', '/events')
+    expect(within(panel).getByRole('link', { name: 'CI health' })).toHaveAttribute('href', '/monitoring/health')
+    expect(within(panel).queryByRole('link', { name: 'Sources' })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('link', { name: 'Event policy' })).not.toBeInTheDocument()
+  })
+
+  it('/settings/event-policy: attivo solo il gruppo Monitoraggio, non Settings', async () => {
+    renderSidebar('admin', { route: '/settings/event-policy' })
+    const monitoring = await within(nav()).findByRole('button', { name: 'Monitoring' })
+    expect(monitoring).toHaveAttribute('aria-expanded', 'true')
+    expect(within(nav()).getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-expanded', 'false')
+  })
+})

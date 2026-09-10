@@ -4,7 +4,9 @@
  * salvate vengono rilette da parseSourceConfig, mai mostrate come JSON), per
  * gli altri strumenti le regole facoltative (traduzione dei valori, risorsa
  * predefinita: PresetRules.tsx, rilette da parsePresetConfig), rigenerazione
- * del token con conferma (nuovo token visibile UNA volta).
+ * del token con conferma (nuovo token visibile UNA volta, azzerato dallo stato
+ * all'uscita — D·1.17). Le chiavi che l'editor non rappresenta sono elencate
+ * prima del salvataggio che le perderebbe (`dropped`, D·1.2).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -96,6 +98,7 @@ export function EditSourcePage() {
       await updateSource({ variables: { id: source.id, input } })
       toast.success(t('toast.monitoring.sourceUpdated'))
       void refetch()
+      setNewToken(null)
       navigate('/monitoring/sources')
     } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
   }
@@ -107,7 +110,7 @@ export function EditSourcePage() {
     try {
       const res = await regenToken({ variables: { id: source.id } })
       const token = res.data?.regenerateWebhookToken.token
-      if (!token) throw new Error('regenerateWebhookToken: token mancante nella risposta')
+      if (!token) throw new Error(t('monitoring.errors.tokenMissing', { operation: 'regenerateWebhookToken' }))
       toast.success(t('toast.monitoring.tokenRegenerated'))
       setNewToken(token)
     } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
@@ -143,8 +146,9 @@ export function EditSourcePage() {
           </div>
           <DetailField label={t('monitoring.edit.tool')} value={<ToolBadge kind={source.connectorKind} />} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Toggle checked={enabled} onChange={setEnabled} label={t('monitoring.edit.enabled')} />
-            <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('monitoring.edit.enabled')}</span>
+            {/* Il testo accanto è il nome dell'interruttore (aria-labelledby): letto una volta sola e cliccabile (D·3.4). */}
+            <Toggle id="source-enabled" checked={enabled} onChange={setEnabled} label={t('monitoring.edit.enabled')} labelledBy="source-enabled-label" />
+            <label id="source-enabled-label" htmlFor="source-enabled" style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark, cursor: 'pointer' }}>{t('monitoring.edit.enabled')}</label>
           </div>
           <DetailField label={t('monitoring.wizard.endpoint')} value={endpoint} mono />
           <div>

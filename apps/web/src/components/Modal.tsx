@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
@@ -145,12 +146,20 @@ export function Modal({
     </>
   )
 
-  const dialogProps = { role: 'dialog', 'aria-modal': true, 'aria-labelledby': titleId } as const
+  // Il pannello ferma la propagazione del click: il Modal viene montato da
+  // celle di righe cliccabili (console allarmi) e da card con onClick; senza
+  // questo un click nel textarea o su un risultato risalirebbe fino al
+  // genitore React (il portal sposta il DOM, non l'albero degli eventi React).
+  const dialogProps = {
+    role: 'dialog', 'aria-modal': true, 'aria-labelledby': titleId,
+    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+  } as const
 
-  return (
+  const overlay = (
     // Il click sull'overlay (fuori dal pannello) chiude il dialogo: è una
     // scorciatoia solo-mouse, l'equivalente da tastiera è Escape (gestito nel
-    // keydown globale sopra) e il bottone "Chiudi" nell'header.
+    // keydown globale sopra) e il bottone "Chiudi" nell'header. Anche
+    // l'overlay ferma la propagazione (stesso motivo del pannello).
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
     <div
       style={{
@@ -162,9 +171,10 @@ export function Modal({
         alignItems:     'center',
         justifyContent: 'center',
       }}
-      onClick={overlayClosesDialog ? (e) => { if (e.target === e.currentTarget) onClose() } : undefined}
+      onClick={(e) => { e.stopPropagation(); if (overlayClosesDialog && e.target === e.currentTarget) onClose() }}
     >
       {as === 'form' ? (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- solo stopPropagation, nessuna azione
         <form
           {...dialogProps}
           ref={(el) => { panelRef.current = el }}
@@ -174,6 +184,7 @@ export function Modal({
           {content}
         </form>
       ) : (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- solo stopPropagation, nessuna azione
         <div
           {...dialogProps}
           ref={(el) => { panelRef.current = el }}
@@ -184,4 +195,9 @@ export function Modal({
       )}
     </div>
   )
+
+  // Portal su document.body: il dialogo esce da contenitori con overflow o
+  // z-index propri (tabelle scrollabili, card) e resta l'ultimo nel DOM, che
+  // è anche l'ordine di focus atteso da uno screen reader.
+  return createPortal(overlay, document.body)
 }

@@ -674,7 +674,7 @@ export function IncidentDetailPage() {
           />
 
           {/* Allarmi di monitoraggio correlati (aperti/agganciati dalla policy eventi) */}
-          <MonitoringAlarmsSection events={incident.correlatedEvents} purged={incident.correlatedEventsPurged} />
+          <MonitoringAlarmsSection events={incident.correlatedEvents} purged={incident.correlatedEventsPurged} incidentId={incident.id} />
 
           {/* Applicazioni impattate (dal grafo delle dipendenze) */}
           <SectionCard title="Applicazioni impattate" count={incident.impactedApplications.length} collapsible>

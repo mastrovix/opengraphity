@@ -4,6 +4,7 @@ import { EventsPage } from './EventsPage'
 import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
+import { formatDateTime } from '@/lib/datetime'
 import type { EventRow, EventStats, StormSource } from '@/types/events'
 
 const STATS: EventStats = { firing: 4, critical: 2, warning: 1, orphan: 1, suppressed: 0, flapping: 1, resolved24h: 7, stormSources: [] }
@@ -20,6 +21,7 @@ function eventFixture(over: Partial<EventRow> & { id: string }): EventRow {
     incident: null,
     suppressedBy: null, correlation: 'none', correlationAt: null,
     flappingSince: null, transitions24h: 0,
+    matchReason: null,
     ...over,
   }
 }
@@ -99,7 +101,7 @@ describe('EventsPage', () => {
   it('operator: contatori, righe con stato/CI/incident e azioni per riga', async () => {
     renderPage('operator')
     expect(await screen.findByText('CPU high on web-01')).toBeInTheDocument()
-    expect(screen.getByText('3 events')).toBeInTheDocument()
+    expect(screen.getByText('3 alarms')).toBeInTheDocument()
 
     // contatori da eventStats
     expect(screen.getByRole('button', { name: /Active\s*4/ })).toBeInTheDocument()
@@ -108,7 +110,7 @@ describe('EventsPage', () => {
     const rows = bodyRows()
     expect(rows).toHaveLength(3)
     expect(within(rows[0]!).getByRole('link', { name: 'web-01' })).toHaveAttribute('href', '/ci/server/ci1')
-    expect(within(rows[1]!).getByText('orphan')).toBeInTheDocument()
+    expect(within(rows[1]!).getByText('No CI')).toBeInTheDocument()
     expect(within(rows[1]!).getByRole('link', { name: 'INC-0042' })).toHaveAttribute('href', '/incidents/inc1')
     expect(within(rows[2]!).getByText('Resolved')).toBeInTheDocument()
 
@@ -140,7 +142,7 @@ describe('EventsPage', () => {
     await waitFor(() => expect(seen.at(-1)).toEqual({ filter: { status: ['firing'], severity: ['critical'] }, limit: 50, offset: 0 }))
 
     // "Orphans only" raffina il filtro corrente: il contatore non è più "il" filtro attivo
-    await user.click(screen.getByRole('button', { name: 'Orphans only' }))
+    await user.click(screen.getByRole('button', { name: 'No CI only' }))
     expect(tile).toHaveAttribute('aria-pressed', 'false')
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], orphan: true }))
   })
@@ -168,12 +170,12 @@ describe('EventsPage — prestazioni (ondata 3)', () => {
     // in attesa della nuova pagina: righe vecchie ancora visibili + indicatore discreto
     expect(await screen.findByRole('status')).toHaveTextContent('Updating…')
     expect(screen.getByText('CPU high on web-01')).toBeInTheDocument()
-    expect(screen.getByText('3 events')).toBeInTheDocument()
+    expect(screen.getByText('3 alarms')).toBeInTheDocument()
 
     expect(await screen.findByText('Only critical one')).toBeInTheDocument()
     expect(screen.queryByText('CPU high on web-01')).not.toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
-    expect(screen.getByText(/^1 events?$/)).toBeInTheDocument()   // plurale: finding 6.1, fuori ondata
+    expect(screen.getByText('1 alarm')).toBeInTheDocument()   // plurale _one (D·6.1)
   })
 
   it('il FilterBuilder offre solo i campi della riga leggera (niente description/labels)', async () => {
@@ -278,9 +280,11 @@ describe('EventsPage — sfarfallio e tempeste (ondata 4)', () => {
     expect(banner).toHaveTextContent('Storms in progress (2 sources)')
     const lines = within(banner).getAllByRole('listitem')
     expect(lines).toHaveLength(2)
-    expect(lines[0]).toHaveTextContent(/^Storm in progress from Prometheus: 73 alarms per minute since \d{2}:\d{2}, grouped into INC-0099$/)
+    expect(lines[0]).toHaveTextContent(/^Storm in progress from Prometheus: 73 alarms per minute since \d{2}:\d{2}, grouped into INC-0099\. View the source's alarms$/)
     expect(within(lines[0]!).getByRole('link', { name: 'INC-0099' })).toHaveAttribute('href', '/incidents/inc9')
-    expect(lines[1]).toHaveTextContent(/^Storm in progress from Zabbix: 41 alarms per minute since \d{2}:\d{2}; no storm incident\.$/)
+    expect(lines[1]).toHaveTextContent(/^Storm in progress from Zabbix: 41 alarms per minute since \d{2}:\d{2}; no storm incident\. View the source's alarms$/)
+    // azione per l'operatore: console filtrata per sorgente
+    expect(within(lines[0]!).getByRole('link', { name: "View the source's alarms" })).toHaveAttribute('href', '/events?sourceId=wh1')
     await waitFor(() => expect(within(banner).getByRole('link', { name: /Sources/ })).toHaveAttribute('href', '/monitoring/sources'))
   })
 
@@ -313,7 +317,7 @@ describe('EventsPage — sorgenti di monitoraggio', () => {
     renderPage('operator', seen, { route: '/events?sourceId=wh1&stat=orphan' })
     await screen.findByText('CPU high on web-01')
     expect(seen[0]?.filter).toEqual({ orphan: true, sourceId: 'wh1' })
-    expect(screen.getByRole('button', { name: /Orphans\s*1/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /No CI\s*1/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('nessuna sorgente (admin): banner con link alla procedura guidata', async () => {
@@ -328,5 +332,105 @@ describe('EventsPage — sorgenti di monitoraggio', () => {
     const banner = await screen.findByRole('status')
     await waitFor(() => expect(banner).toHaveTextContent('Ask an administrator to connect a monitoring tool.'))
     expect(within(banner).queryByRole('link')).not.toBeInTheDocument()
+  })
+})
+
+describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
+  const location = () => screen.getByTestId('location').textContent
+
+  it('?ciId=: chip "Solo questo CI" attivo, la rimozione toglie il filtro dalla query e dall\'URL', async () => {
+    const seen: Vars[] = []
+    const { user } = renderPage('viewer', seen, { route: '/events?ciId=ci1&status=firing' })
+    await screen.findByText('CPU high on web-01')
+    expect(seen[0]?.filter).toEqual({ status: ['firing'], ciId: 'ci1' })
+    const chip = screen.getByRole('button', { name: 'Only this CI' })
+    expect(chip).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(chip)
+    expect(screen.queryByRole('button', { name: 'Only this CI' })).not.toBeInTheDocument()
+    expect(location()).toBe('/events?status=firing')
+    await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'] }))
+  })
+
+  it('un chip di stato e la ricerca finiscono nell\'URL; il contatore usa ?stat= e sostituisce i filtri espliciti', async () => {
+    const seen: Vars[] = []
+    const { user } = renderPage('viewer', seen)
+    await screen.findByText('CPU high on web-01')
+    await user.click(screen.getByRole('button', { name: 'Resolved' }))
+    expect(location()).toBe('/events?status=resolved')
+    await user.type(screen.getByLabelText('Search'), 'cpu')
+    await waitFor(() => expect(location()).toBe('/events?status=resolved&q=cpu'))
+    await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['resolved'], search: 'cpu' }))
+
+    await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
+    expect(location()).toBe('/events?q=cpu&stat=critical')
+    await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], search: 'cpu' }))
+  })
+
+  it('?stat=resolved24h: since = adesso − 24 h', async () => {
+    const seen: Vars[] = []
+    renderPage('viewer', seen, { route: '/events?stat=resolved24h' })
+    await screen.findByText('CPU high on web-01')
+    const f = seen[0]?.filter as { status: string[]; since: string }
+    expect(f.status).toEqual(['resolved'])
+    const ageMs = Date.now() - Date.parse(f.since)
+    expect(ageMs).toBeGreaterThan(24 * 3_600_000 - 5_000)
+    expect(ageMs).toBeLessThan(24 * 3_600_000 + 5_000)
+    expect(screen.getByRole('button', { name: /Resolved 24h\s*7/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('?incidentId= e ?changeId=: chip di contesto e variabili incidentId / suppressedByChangeId', async () => {
+    const seen: Vars[] = []
+    renderPage('viewer', seen, { route: '/events?incidentId=inc1&changeId=chg1' })
+    await screen.findByText('CPU high on web-01')
+    expect(seen[0]?.filter).toEqual({ incidentId: 'inc1', suppressedByChangeId: 'chg1' })
+    expect(screen.getByRole('button', { name: 'This incident only' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'This change only' })).toBeInTheDocument()
+  })
+
+  it('filtro avanzato: "N di M in questa pagina" sotto la tabella, conteggio globale nascosto', async () => {
+    const { user } = renderPage('viewer')
+    await screen.findByText('CPU high on web-01')
+    await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
+    await user.click(screen.getByRole('button', { name: '+ Add filter' }))
+    // l'ultimo combobox è il campo della regola appena aggiunta (il primo è il filtro Sorgente)
+    await user.selectOptions(screen.getAllByRole('combobox').at(-1)!, 'title')
+    await user.type(screen.getByPlaceholderText('Valore…'), 'Disk')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(await screen.findByText('1 of 3 on this page matches the advanced filter')).toBeInTheDocument()
+    expect(screen.queryByText('3 alarms')).not.toBeInTheDocument()
+    expect(screen.getByText(/Advanced filter active/)).toBeInTheDocument()
+  })
+
+  it('errore della query delle sorgenti → messaggio accanto al filtro', async () => {
+    const failing: GqlMock = { request: { query: GET_MONITORING_SOURCE_REFS }, error: new Error('sources down'), maxUsageCount: Number.POSITIVE_INFINITY }
+    renderWithProviders(<EventsPage />, { route: '/events', mocks: [meMock('viewer'), statsMock(), eventsMock(), fieldsMock(), failing, policyMock()] })
+    await screen.findByText('CPU high on web-01')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sources not loaded: sources down')
+  })
+
+  it('il titolo della riga è un link al dettaglio (tastiera), la riga non è focalizzabile', async () => {
+    renderPage('viewer')
+    await screen.findByText('CPU high on web-01')
+    const rows = bodyRows()
+    expect(rows[0]).not.toHaveAttribute('tabindex')
+    expect(within(rows[0]!).getByRole('link', { name: 'CPU high on web-01' })).toHaveAttribute('href', '/events/e1')
+    // colonna "Ricorrenze" e data completa nel title di "Ultimo visto"
+    expect(screen.getByRole('columnheader', { name: 'Occurrences' })).toBeInTheDocument()
+    expect(within(rows[0]!).getByText('just now')).toHaveAttribute('title', formatDateTime(EVENTS[0]!.lastSeenAt))
+  })
+
+  it('chip "In attesa": countdown visibile sotto il chip e descrizione accessibile; riga ambigua → badge "Ambiguous"', async () => {
+    const rows = [
+      eventFixture({ id: 'w1', title: 'Waiting one', correlation: 'delayed', correlationAt: new Date(Date.now() - 30_000).toISOString() }),
+      eventFixture({ id: 'a1', title: 'Ambiguous one', ci: null, correlation: 'skipped_orphan', matchReason: 'ambiguous' }),
+    ]
+    renderPage('viewer', undefined, { events: rows })
+    await screen.findByText('Waiting one')
+    const chip = screen.getByText('Waiting')
+    await waitFor(() => expect(chip).toHaveAttribute('title', expect.stringMatching(/^Opens in (8\d|9\d) s$/)))
+    expect(chip).toHaveAccessibleDescription(expect.stringMatching(/^Opens in (8\d|9\d) s$/))
+    expect(screen.getByText(/^in (8\d|9\d) s$/)).toBeInTheDocument()
+    expect(screen.getByText('Ambiguous')).toBeInTheDocument()
   })
 })

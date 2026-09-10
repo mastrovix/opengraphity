@@ -12,12 +12,18 @@
  * è bloccato e il campo dice perché.
  * Revisione (A-2): riquadro "Riconoscimento del CI" con l'interruttore
  * "nome corto ↔ FQDN" (matchShortHostname).
+ * Revisione D: con «Mai» i campi che dipendono dall'apertura sono disabilitati
+ * con la nota del perché (D·2.5); indicatore "modifiche non salvate" e
+ * "Ripristina", Salva attivo solo con modifiche; dopo il salvataggio la
+ * risposta finisce nella cache di GET_EVENT_POLICY, così console e dettaglio
+ * evento (cache-first) leggono subito la policy nuova (D·1.5).
  */
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Radar, Loader2, Info } from 'lucide-react'
+import { Radar, Loader2, Info, RotateCcw } from 'lucide-react'
+import i18n from '@/i18n/i18n'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { PageLoader } from '@/components/PageLoader'
@@ -54,14 +60,14 @@ const isLevel = (v: unknown): v is Level => typeof v === 'string' && (LEVELS as 
 function parseSeverityMap(raw: string): { map: SeverityMap; error: string | null } {
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (parsed === null || typeof parsed !== 'object') return { map: DEFAULT_MAP, error: 'severityMap: atteso un oggetto JSON' }
+    if (parsed === null || typeof parsed !== 'object') return { map: DEFAULT_MAP, error: i18n.t('events.policy.errors.expectedObject') }
     const obj = parsed as Record<string, unknown>
     const map = { ...DEFAULT_MAP }
     for (const sev of EVENT_SEVERITIES) {
       const entry = obj[sev]
-      if (entry === undefined) return { map: DEFAULT_MAP, error: `severityMap: manca la severità "${sev}"` }
+      if (entry === undefined) return { map: DEFAULT_MAP, error: i18n.t('events.policy.errors.missingSeverity', { severity: sev }) }
       const { impact, urgency } = (entry ?? {}) as Record<string, unknown>
-      if (!isLevel(impact) || !isLevel(urgency)) return { map: DEFAULT_MAP, error: `severityMap.${sev}: impact/urgency devono essere low|medium|high` }
+      if (!isLevel(impact) || !isLevel(urgency)) return { map: DEFAULT_MAP, error: i18n.t('events.policy.errors.invalidLevel', { severity: sev }) }
       map[sev] = { impact, urgency }
     }
     return { map, error: null }
@@ -88,7 +94,7 @@ interface FormState {
 
 type NumberField = { [K in keyof FormState]: FormState[K] extends number ? K : never }[keyof FormState]
 
-/** Minimo ammesso per ogni campo numerico (tutti interi; 0 dove "zero" ha un senso: nessun ritardo, nessun hop). */
+/** Minimo ammesso per ogni campo numerico (tutti interi; 0 dove "zero" ha un senso: nessun ritardo, nessun hop, tempeste spente). */
 const MIN: Record<NumberField, number> = {
   openDelaySeconds: 0, suppressUpstreamHops: 0, stormThresholdPerMinute: 0,
   flapThreshold: 1, flapWindowMinutes: 1, flapStableMinutes: 1, stormCooldownMinutes: 1, retentionDays: 1,
@@ -151,21 +157,31 @@ export function EventPolicyPage() {
   const fid = (name: string) => `${uid}-${name}`
 
   const { data, loading, error, refetch } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: 'cache-and-network' })
-  const [update, { loading: saving }] = useMutation<{ updateEventPolicy: EventPolicy }>(UPDATE_EVENT_POLICY)
+  // EventPolicy non ha un id: senza `update` il risultato della mutation non
+  // toccherebbe ROOT_QUERY.eventPolicy e le pagine cache-first resterebbero
+  // sulla policy vecchia fino al ricaricamento (D·1.5).
+  const [update, { loading: saving }] = useMutation<{ updateEventPolicy: EventPolicy }>(UPDATE_EVENT_POLICY, {
+    update: (cache, { data: result }) => {
+      if (result?.updateEventPolicy) cache.writeQuery({ query: GET_EVENT_POLICY, data: { eventPolicy: result.updateEventPolicy } })
+    },
+  })
 
   const [form, setForm] = useState<FormState | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
 
-  // Il form parte dai dati del server; un refetch dopo il salvataggio riallinea.
+  // Il form parte dai dati del server; il salvataggio (via cache) riallinea.
   useEffect(() => {
     if (!data) return
     const { form: f, mapError: e } = toForm(data.eventPolicy)
     setForm(f); setMapError(e)
   }, [data])
 
+  // Valori di riferimento per "modifiche non salvate" e "Ripristina".
+  const baseline = useMemo(() => (data ? toForm(data.eventPolicy) : null), [data])
+
   if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
   if (loading && !form) return <PageLoader />
-  if (!form) return null
+  if (!form || !baseline) return null
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => (f ? { ...f, [key]: value } : f))
   // Campo vuoto → NaN (non 0): la validazione lo segnala invece di salvare uno zero mai scritto.
@@ -175,6 +191,14 @@ export function EventPolicyPage() {
 
   const errors = validatePolicyForm(form)
   const invalid = Object.keys(errors).length > 0
+  const dirty = JSON.stringify(form) !== JSON.stringify(baseline.form)
+  // Una mappa non valida si salva anche senza altre modifiche: è il modo di correggerla.
+  const canSave = !saving && !invalid && (dirty || mapError !== null)
+  // Con «Mai» il monitoraggio non apre incident: raggruppamento, ritardo,
+  // chiusura automatica e mappa severità non hanno effetto (D·2.5).
+  const never = form.openIncidentFrom === 'never'
+
+  const reset = () => { setForm(baseline.form); setMapError(baseline.mapError) }
 
   async function handleSave() {
     if (!form || invalid || !data) return
@@ -201,23 +225,27 @@ export function EventPolicyPage() {
   // (events.policy.help.<campo>), legata al controllo via aria-describedby.
   const helpId  = (key: keyof FormState) => `${fid(key)}-help`
   const errorId = (key: keyof FormState) => `${fid(key)}-error`
+  const neverNoteId = fid('never-note')
   const Help = ({ field }: { field: keyof FormState }) => (
     <p id={helpId(field)} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>
       {t(`events.policy.help.${field}`)}
     </p>
   )
 
-  const numberField = (key: NumberField) => {
+  /** `unusedWithNever`: il campo non ha effetto con «Mai» → disabilitato e descritto dalla nota. */
+  const numberField = (key: NumberField, unusedWithNever = false) => {
     const err = errors[key]
+    const off = unusedWithNever && never
+    const describedBy = [err ? errorId(key) : null, helpId(key), off ? neverNoteId : null].filter(Boolean).join(' ')
     return (
       <div>
         <FieldLabel htmlFor={fid(key)}>{t(`events.policy.${key}`)}</FieldLabel>
         <Input
           id={fid(key)} type="number" min={MIN[key]} step={1}
           value={Number.isNaN(form[key]) ? '' : String(form[key])}
-          onChange={setNum(key)} disabled={saving}
+          onChange={setNum(key)} disabled={saving || off}
           aria-invalid={err ? true : undefined}
-          aria-describedby={err ? `${errorId(key)} ${helpId(key)}` : helpId(key)}
+          aria-describedby={describedBy}
         />
         {err && (
           <p id={errorId(key)} role="alert" style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: colors.danger, fontWeight: 500 }}>
@@ -228,6 +256,14 @@ export function EventPolicyPage() {
       </div>
     )
   }
+
+  /** Interruttore + testo: il nome accessibile è già sull'interruttore, il testo accanto è solo visivo (D·3.4). */
+  const toggleRow = (key: 'autoResolve' | 'matchShortHostname', disabled: boolean) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <Toggle id={`policy-${key}`} checked={form[key]} onChange={(v) => set(key, v)} label={t(`events.policy.${key}`)} labelledBy={`policy-${key}-label`} disabled={disabled} />
+      <label id={`policy-${key}-label`} htmlFor={`policy-${key}`} style={{ fontSize: 'var(--font-size-body)', color: disabled ? colors.slateLight : colors.slateDark, cursor: disabled ? 'default' : 'pointer' }}>{t(`events.policy.${key}`)}</label>
+    </div>
+  )
 
   const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } as const
 
@@ -264,10 +300,7 @@ export function EventPolicyPage() {
         <Group name="recognition">
           <div style={grid}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Toggle checked={form.matchShortHostname} onChange={(v) => set('matchShortHostname', v)} label={t('events.policy.matchShortHostname')} disabled={saving} />
-                <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('events.policy.matchShortHostname')}</span>
-              </div>
+              {toggleRow('matchShortHostname', saving)}
               <Help field="matchShortHostname" />
             </div>
           </div>
@@ -285,22 +318,24 @@ export function EventPolicyPage() {
             </div>
             <div>
               <FieldLabel htmlFor={fid('groupBy')}>{t('events.policy.groupBy')}</FieldLabel>
-              <Select id={fid('groupBy')} value={form.groupBy} onChange={(e) => set('groupBy', e.target.value)} disabled={saving} aria-describedby={helpId('groupBy')}>
+              <Select id={fid('groupBy')} value={form.groupBy} onChange={(e) => set('groupBy', e.target.value)} disabled={saving || never} aria-describedby={never ? `${helpId('groupBy')} ${neverNoteId}` : helpId('groupBy')}>
                 {GROUP_BY.map((v) => <option key={v} value={v}>{t(`events.policy.groupByOptions.${v}`)}</option>)}
               </Select>
               <Help field="groupBy" />
             </div>
-            {numberField('openDelaySeconds')}
+            {numberField('openDelaySeconds', true)}
             <div style={{ paddingTop: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Toggle checked={form.autoResolve} onChange={(v) => set('autoResolve', v)} label={t('events.policy.autoResolve')} disabled={saving} />
-                <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('events.policy.autoResolve')}</span>
-              </div>
+              {toggleRow('autoResolve', saving || never)}
               <Help field="autoResolve" />
             </div>
           </div>
+          {never && (
+            <p id={neverNoteId} role="note" style={{ margin: '12px 0 0', padding: '8px 12px', background: 'var(--color-slate-bg)', borderRadius: 8, fontSize: 'var(--font-size-body)', color: colors.slateDark }}>
+              {t('events.policy.neverNote')}
+            </p>
+          )}
 
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 16, opacity: never ? 0.6 : 1 }}>
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{t('events.policy.severityMap')}</div>
             <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>{t('events.policy.help.severityMap')}</p>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
@@ -319,7 +354,7 @@ export function EventPolicyPage() {
                     <td style={{ padding: '6px 8px', fontWeight: 500, color: colors.slateDark }}>{t(`events.severity.${sev}`)}</td>
                     {(['impact', 'urgency'] as const).map((field) => (
                       <td key={field} style={{ padding: '6px 8px' }}>
-                        <Select aria-label={`${t(`events.severity.${sev}`)} – ${t(`events.policy.map.${field}`)}`} value={form.severityMap[sev][field]} onChange={(e) => setMap(sev, field, e.target.value as Level)} disabled={saving}>
+                        <Select aria-label={`${t(`events.severity.${sev}`)} – ${t(`events.policy.map.${field}`)}`} value={form.severityMap[sev][field]} onChange={(e) => setMap(sev, field, e.target.value as Level)} disabled={saving || never} aria-describedby={never ? neverNoteId : undefined}>
                           {LEVELS.map((l) => <option key={l} value={l}>{t(`events.policy.level.${l}`)}</option>)}
                         </Select>
                       </td>
@@ -357,8 +392,14 @@ export function EventPolicyPage() {
         </Group>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
-          {invalid && <span style={{ fontSize: 'var(--font-size-body)', color: colors.danger }}>{t('events.policy.validation.blocked')}</span>}
-          <Button disabled={saving || invalid} icon={saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : undefined} onClick={() => void handleSave()}>
+          {/* Stato del form annunciato (role="status"): modifiche non salvate / nulla da salvare / campi da correggere */}
+          <span role="status" style={{ fontSize: 'var(--font-size-body)', color: invalid ? colors.danger : dirty ? '#b45309' : colors.slateLight }}>
+            {invalid ? t('events.policy.validation.blocked') : dirty ? t('events.policy.unsaved') : t('events.policy.noChanges')}
+          </span>
+          <Button variant="secondary" disabled={saving || !dirty} icon={<RotateCcw size={14} aria-hidden="true" />} onClick={reset}>
+            {t('events.policy.reset')}
+          </Button>
+          <Button disabled={!canSave} icon={saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : undefined} onClick={() => void handleSave()}>
             {t('common.save')}
           </Button>
         </div>

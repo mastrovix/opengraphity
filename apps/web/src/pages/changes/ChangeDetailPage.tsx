@@ -329,7 +329,7 @@ export function ChangeDetailPage() {
       />
 
       {/* Allarmi silenziati dalla finestra di rilascio (Event Management, ondata 3) */}
-      <SuppressedAlarmsSection events={change.suppressedEvents ?? []} />
+      <SuppressedAlarmsSection events={change.suppressedEvents ?? []} changeId={change.id} />
 
       {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
         <SectionCard title="Prossimi Step" collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>

@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { NewSourceWizard } from './NewSourceWizard'
-import { GET_SAMPLE_INBOUND_PAYLOAD, GET_PAYLOAD_KEYS } from '@/graphql/queries'
+import { GET_SAMPLE_INBOUND_PAYLOAD, GET_PAYLOAD_KEYS, GET_MONITORING_SOURCES } from '@/graphql/queries'
 import { PREVIEW_INBOUND_EVENTS, CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
+import type { MonitoringSource } from '@/types/events'
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
@@ -56,80 +57,118 @@ function previewMock(seen: PreviewInput[]): GqlMock {
 
 type CreateInput = Record<string, string>
 
-function createMock(seen: CreateInput[]): GqlMock {
+function createMock(seen: CreateInput[], over: Partial<{ id: string; name: string; token: string | null; connectorKind: string }> = {}): GqlMock {
   return {
     request: { query: CREATE_MONITORING_SOURCE, variables: (v) => { seen.push((v as { input: CreateInput }).input); return true } },
     result: { data: { createInboundWebhook: {
       __typename: 'InboundWebhookWithToken', id: 'src-new', name: 'My tool', token: 'tok-SECRET-1', entityType: 'event',
-      connectorKind: 'generic', fieldMapping: '{}', defaultValues: null, valueMapping: null, enabled: true, createdAt: '2026-09-09T10:00:00Z',
+      connectorKind: 'generic', fieldMapping: '{}', defaultValues: null, valueMapping: null, enabled: true, createdAt: '2026-09-09T10:00:00Z', ...over,
     } } },
   }
 }
 
-const sendSampleMock: GqlMock = {
-  request: { query: SEND_SAMPLE_EVENT, variables: { sourceId: 'src-new' } },
+const sendSampleMock = (sourceId = 'src-new'): GqlMock => ({
+  request: { query: SEND_SAMPLE_EVENT, variables: { sourceId } },
   result: { data: { sendSampleEvent: 1 } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
+/** `monitoringSources` interrogata dal passo Prova dopo l'invio (D·2.3). */
+function sourcesMock(over: Partial<MonitoringSource> & { id: string }): GqlMock {
+  const src: MonitoringSource = {
+    name: 'My tool', entityType: 'event', connectorKind: 'generic', fieldMapping: '{}', defaultValues: null, valueMapping: null,
+    enabled: true, lastReceivedAt: null, receiveCount: 0, lastError: null, lastErrorAt: null, errorCount: 0, createdAt: '2026-09-09T10:00:00Z', ...over,
+  }
+  return { request: { query: GET_MONITORING_SOURCES }, result: { data: { monitoringSources: [{ __typename: 'InboundWebhook', ...src }] } }, maxUsageCount: Number.POSITIVE_INFINITY }
+}
+
+/** Percorso via input + datalist (D·2.2): si digita il percorso; le opzioni leggibili sono nella datalist. */
+async function typePath(user: ReturnType<typeof renderWithProviders>['user'], label: string, path: string) {
+  const input = screen.getByLabelText(label)
+  await user.clear(input)
+  await user.type(input, path)
+}
+
+const datalistOptions = (label: string) => {
+  const input = screen.getByLabelText(label)
+  const list = document.getElementById(input.getAttribute('list')!)!
+  return [...list.querySelectorAll('option')].map((o) => [o.getAttribute('value'), o.textContent] as const)
+}
+
+/** Preset fino al passo 2 con il nome compilato. */
+async function presetToRules(user: ReturnType<typeof renderWithProviders>['user'], tool: RegExp, name: string) {
+  await user.click(screen.getByRole('radio', { name: tool }))
+  await user.click(screen.getByRole('button', { name: 'Next →' }))
+  await user.type(screen.getByLabelText('Source name'), name)
 }
 
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
 
 describe('NewSourceWizard — percorso generico', () => {
-  it('strumento → esempio → chiavi → mappatura → anteprima → crea → collegamento → prova', async () => {
+  it('strumento → esempio → chiavi → mappatura → anteprima → crea → collegamento → prova (con verifica della ricezione)', async () => {
     const previews: PreviewInput[] = []
     const creates: CreateInput[] = []
-    const { user } = renderWithProviders(<NewSourceWizard />, {
+    const { user } = renderWithProviders(<NewSourceWizard sampleCheckDelayMs={0} />, {
       route: '/monitoring/sources/new',
-      mocks: [sampleMock, keysMock, previewMock(previews), createMock(creates), sendSampleMock],
+      mocks: [sampleMock, keysMock, previewMock(previews), createMock(creates), sendSampleMock(), sourcesMock({ id: 'src-new', lastReceivedAt: '2026-09-09T10:16:00Z', receiveCount: 1 })],
     })
 
-    // Passo 1: senza strumento non si avanza
+    // Passo 1: scelta esclusiva (radiogroup, D·3.4); senza strumento non si avanza e il motivo è annunciato (role=status)
     expect(screen.getByRole('heading', { level: 2, name: 'Step 1 of 4 · Tool' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Monitoring tool' })).toBeInTheDocument()
     const next = () => screen.getByRole('button', { name: 'Next →' })
     expect(next()).toBeDisabled()
-    expect(screen.getByText('Pick a tool to continue.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Other tool/ }))
-    expect(screen.getByRole('button', { name: /Other tool/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent('Pick a tool to continue.')
+    await user.click(screen.getByRole('radio', { name: /Other tool/ }))
+    expect(screen.getByRole('radio', { name: /Other tool/ })).toHaveAttribute('aria-checked', 'true')
     await user.click(next())
 
-    // Passo 2: nome + mappatore
-    expect(screen.getByRole('heading', { level: 2, name: 'Step 2 of 4 · Name and rules' })).toBeInTheDocument()
+    // Passo 2: per "Altro strumento" l'etichetta dice "mappatura" (D·2.3)
+    expect(screen.getByRole('heading', { level: 2, name: 'Step 2 of 4 · Name and mapping' })).toBeInTheDocument()
     await user.type(screen.getByLabelText('Source name'), 'My tool')
     const create = () => screen.getByRole('button', { name: 'Create source' })
     expect(create()).toBeDisabled()
     expect(screen.getByText('Map the required fields (title, severity, resource) and make sure the preview shows an event.')).toBeInTheDocument()
 
-    // "Usa esempio" carica sampleInboundPayload('generic') e popola le chiavi
+    // "Usa esempio" carica sampleInboundPayload('generic') e popola le opzioni leggibili della datalist
     await user.click(screen.getByRole('button', { name: 'Use example' }))
     await waitFor(() => expect(screen.getByLabelText('Sample alarm (JSON)')).toHaveValue(SAMPLE_TEXT))
-    const titleSelect = screen.getByLabelText('Title *')
-    await waitFor(() => expect(within(titleSelect).getByRole('option', { name: 'alert.name — CheckoutErrorRate' })).toBeInTheDocument())
+    await waitFor(() => expect(datalistOptions('Title *')).toContainEqual(['alert.name', 'name (in alert) — CheckoutErrorRate']))
+    expect(datalistOptions('Severity *')).toContainEqual(['id', 'id — EVT-100234'])
+    expect(screen.getByText(/A path like “a\.b” means: field b inside a/)).toBeInTheDocument()
 
-    // Mappatura: percorso e valore d'esempio nelle option
-    await user.selectOptions(titleSelect, 'alert.name')
-    await user.selectOptions(screen.getByLabelText('Severity *'), 'alert.level')
-    await user.selectOptions(screen.getByLabelText('Resource (host, IP, …) *'), 'host.name')
-    await user.selectOptions(screen.getByLabelText('Status'), 'state')
-    await user.selectOptions(screen.getByLabelText('External ID'), 'id')
+    // Mappatura: percorso digitato (o scelto dalla datalist)
+    await typePath(user, 'Title *', 'alert.name')
+    await typePath(user, 'Severity *', 'alert.level')
+    await typePath(user, 'Resource (host, IP, …) *', 'host.name')
+    await typePath(user, 'Status', 'state')
+    await typePath(user, 'External ID', 'id')
 
-    // Traduzione dei valori: "major" trovato nel campo severità va scelto a mano; "open" è suggerito come firing
+    // Traduzione dei valori: "major" va scelto a mano (aria-invalid + testo, D·3.3); "open" è suggerito come firing
     const major = screen.getByLabelText('"major" becomes')
     expect(major).toHaveValue('')
+    expect(major).toHaveAttribute('aria-invalid', 'true')
+    expect(major).toHaveAccessibleDescription('translation missing')
     expect(create()).toBeDisabled()
     expect(screen.getByLabelText('"open" becomes')).toHaveValue('firing')
     await user.selectOptions(major, 'critical')
+    expect(major).not.toHaveAttribute('aria-invalid')
 
     // un valore aggiunto a mano (prima tabella = severità)
     await user.type(screen.getAllByLabelText('Add another value')[0]!, 'minor{Enter}')
     await user.selectOptions(screen.getByLabelText('"minor" becomes'), 'warning')
 
+    // Severità/stato predefiniti quando il campo manca (D·1.2)
+    await user.selectOptions(screen.getByLabelText('Default severity'), 'warning')
+
     // Anteprima in tempo reale con la configurazione costruita (mai JSON in UI)
     const preview = screen.getByRole('complementary', { name: 'Preview' })
     expect(await within(preview).findByText('CheckoutErrorRate')).toBeInTheDocument()
     expect(within(preview).getByText('api-03.example.local')).toBeInTheDocument()
+    await waitFor(() => expect(JSON.parse(previews.at(-1)!.defaultValues)).toEqual({ resourceKind: 'hostname', severity: 'warning' }))
     const last = previews.at(-1)!
     expect(last.connectorKind).toBe('generic')
     expect(JSON.parse(last.fieldMapping)).toEqual({ title: 'alert.name', severity: 'alert.level', resource: 'host.name', status: 'state', externalId: 'id' })
-    expect(JSON.parse(last.defaultValues)).toEqual({ resourceKind: 'hostname' })
     expect(JSON.parse(last.valueMapping)).toEqual({ severity: { major: 'critical', minor: 'warning' }, status: { open: 'firing' } })
 
     // Crea la sorgente
@@ -139,40 +178,79 @@ describe('NewSourceWizard — percorso generico', () => {
     expect(creates).toHaveLength(1)
     expect(creates[0]).toMatchObject({ name: 'My tool', entityType: 'event', connectorKind: 'generic' })
     expect(JSON.parse(creates[0]!['valueMapping']!)).toEqual({ severity: { major: 'critical', minor: 'warning' }, status: { open: 'firing' } })
+    expect(JSON.parse(creates[0]!['defaultValues']!)).toEqual({ resourceKind: 'hostname', severity: 'warning' })
 
-    // Passo 3: URL, token (una volta) e frammento curl con il payload incollato
+    // Passo 3: URL, token (una volta) e frammento curl con il payload incollato; dal passo 3 non si torna al 2 (la sorgente esiste già)
     expect(screen.getByRole('heading', { level: 2, name: 'Step 3 of 4 · Connection' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '← Prev' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Endpoint URL')).toHaveTextContent('/api/webhooks/inbound/src-new')
     expect(screen.getByLabelText('Token')).toHaveTextContent('tok-SECRET-1')
     expect(screen.getByText(/Copy the token now/)).toBeInTheDocument()
     expect(screen.getByText(/curl -X POST/)).toHaveTextContent('Authorization: Bearer tok-SECRET-1')
     expect(screen.getByText(/curl -X POST/)).toHaveTextContent('"alert":{"name":"CheckoutErrorRate"')
+    await user.click(screen.getByRole('button', { name: 'Copy token' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Copied!'))
     await user.click(next())
 
-    // Passo 4: evento di prova e link alla console
+    // Passo 4: evento di prova, link alla console e verifica della ricezione (D·2.3)
     expect(screen.getByRole('heading', { level: 2, name: 'Step 4 of 4 · Test' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Send test event' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('1 test event queued')
+    expect(await screen.findByText('1 test event queued: open the console to see it.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open in Events' })).toHaveAttribute('href', '/events?sourceId=src-new')
+    expect(await screen.findByText(/Received ✔ — the source accepted the event/)).toBeInTheDocument()
+
+    // token copiato → "Fine" esce senza conferma
     await user.click(screen.getByRole('button', { name: 'Finish' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources')
   })
 
-  it('strumento noto (Alertmanager): nessun mappatore, frammento YAML con url/token e send_resolved', async () => {
-    const creates: CreateInput[] = []
-    const mock: GqlMock = {
-      request: { query: CREATE_MONITORING_SOURCE, variables: (v) => { creates.push((v as { input: CreateInput }).input); return true } },
-      result: { data: { createInboundWebhook: {
-        __typename: 'InboundWebhookWithToken', id: 'src-am', name: 'Prom', token: 'tok-AM', entityType: 'event',
-        connectorKind: 'alertmanager', fieldMapping: '{}', defaultValues: null, valueMapping: null, enabled: true, createdAt: '2026-09-09T10:00:00Z',
-      } } },
-    }
-    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [mock] })
-    await user.click(screen.getByRole('button', { name: /Prometheus Alertmanager/ }))
+  it('D·1.10 — con un esempio incollato e l\'anteprima in errore "Crea sorgente" resta bloccato con il motivo', async () => {
+    const failingPreview: GqlMock = { request: { query: PREVIEW_INBOUND_EVENTS, variables: () => true }, error: new Error('resource is empty'), maxUsageCount: Number.POSITIVE_INFINITY }
+    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [sampleMock, keysMock, failingPreview] })
+    await user.click(screen.getByRole('radio', { name: /Other tool/ }))
     await user.click(screen.getByRole('button', { name: 'Next →' }))
+    await user.type(screen.getByLabelText('Source name'), 'My tool')
+    await user.click(screen.getByRole('button', { name: 'Use example' }))
+    await waitFor(() => expect(screen.getByLabelText('Sample alarm (JSON)')).toHaveValue(SAMPLE_TEXT))
+    await typePath(user, 'Title *', 'alert.name')
+    await typePath(user, 'Severity *', 'alert.level')
+    await typePath(user, 'Resource (host, IP, …) *', 'host.name')
+    // "major" compare quando l'esempio è stato letto (debounce)
+    await user.selectOptions(await screen.findByLabelText('"major" becomes'), 'critical')
+    expect(await screen.findByRole('alert')).toHaveTextContent('The rules do not work yet: resource is empty')
+    expect(screen.getByRole('button', { name: 'Create source' })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('The preview must show an event without errors before creating the source.')
+  })
+
+  it('D·1.6 — "Usa esempio" in errore (Apollo 4: execute rigetta) → toast con il messaggio, niente rejection silenziosa', async () => {
+    const failing: GqlMock = { request: { query: GET_SAMPLE_INBOUND_PAYLOAD, variables: { connectorKind: 'generic' } }, error: new Error('samples unavailable') }
+    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [failing] })
+    await user.click(screen.getByRole('radio', { name: /Other tool/ }))
+    await user.click(screen.getByRole('button', { name: 'Next →' }))
+    await user.click(screen.getByRole('button', { name: 'Use example' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Cannot load the example: samples unavailable'))
+    expect(screen.getByLabelText('Sample alarm (JSON)')).toHaveValue('')
+  })
+
+  it('createInboundWebhook senza token nella risposta → errore in chiaro, si resta al passo 2', async () => {
+    const creates: CreateInput[] = []
+    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [createMock(creates, { token: null, connectorKind: 'datadog' })] })
+    await presetToRules(user, /Datadog/, 'DD')
+    await user.click(screen.getByRole('button', { name: 'Create source' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('The source was not created: createInboundWebhook: token missing in the response'))
+    expect(screen.getByRole('heading', { level: 2, name: 'Step 2 of 4 · Name and rules' })).toBeInTheDocument()
+  })
+})
+
+describe('NewSourceWizard — strumenti noti', () => {
+  it('Alertmanager: nessun mappatore, regole del preset (traduzione, severità e risorsa predefinite), frammento YAML con url/token e send_resolved', async () => {
+    const creates: CreateInput[] = []
+    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [createMock(creates, { id: 'src-am', name: 'Prom', token: 'tok-AM', connectorKind: 'alertmanager' })] })
+    await presetToRules(user, /Prometheus Alertmanager/, 'Prom')
+    expect(screen.getByRole('heading', { level: 2, name: 'Step 2 of 4 · Name and rules' })).toBeInTheDocument()
     expect(screen.getByText(/already understands: no field mapping is needed/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Sample alarm (JSON)')).not.toBeInTheDocument()
-    await user.type(screen.getByLabelText('Source name'), 'Prom')
 
     // A1: regole del preset — traduzione di una severità libera e risorsa predefinita
     expect(screen.getByText(/the severity label is free text/)).toBeInTheDocument()
@@ -183,6 +261,7 @@ describe('NewSourceWizard — percorso generico', () => {
     expect(screen.getByRole('button', { name: 'Create source' })).toBeDisabled()
     expect(screen.getByText('Every value added to the translation needs a target (or remove it).')).toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('"page" becomes'), 'critical')
+    await user.type(screen.getByLabelText('Severity to use when missing'), 'warning')
     await user.type(screen.getByLabelText('Resource to use when missing'), 'prometheus-prod')
     await user.selectOptions(screen.getByLabelText('The resource is a…'), 'name')
     expect(screen.queryByLabelText(/use alert_scope/)).not.toBeInTheDocument()   // solo Datadog
@@ -190,7 +269,7 @@ describe('NewSourceWizard — percorso generico', () => {
     await user.click(screen.getByRole('button', { name: 'Create source' }))
     await waitFor(() => expect(creates).toEqual([{
       name: 'Prom', entityType: 'event', connectorKind: 'alertmanager', rateLimitPerMinute: 100,
-      fieldMapping: '{}', defaultValues: JSON.stringify({ resource: 'prometheus-prod', resourceKind: 'name' }), valueMapping: JSON.stringify({ severity: { page: 'critical' } }),
+      fieldMapping: '{}', defaultValues: JSON.stringify({ severity: 'warning', resource: 'prometheus-prod', resourceKind: 'name' }), valueMapping: JSON.stringify({ severity: { page: 'critical' } }),
     }]))
     const yaml = await screen.findByText(/webhook_configs/)
     expect(yaml).toHaveTextContent('send_resolved: true')
@@ -198,20 +277,82 @@ describe('NewSourceWizard — percorso generico', () => {
     expect(yaml).toHaveTextContent('/api/webhooks/inbound/src-am')
   })
 
-  it('strumento noto (Dynatrace): istruzioni, header Bearer e payload personalizzato con {ImpactedEntities} senza virgolette', async () => {
+  it('Grafana: istruzioni del contact point e frammento con schema Bearer', async () => {
     const creates: CreateInput[] = []
-    const mock: GqlMock = {
-      request: { query: CREATE_MONITORING_SOURCE, variables: (v) => { creates.push((v as { input: CreateInput }).input); return true } },
-      result: { data: { createInboundWebhook: {
-        __typename: 'InboundWebhookWithToken', id: 'src-dt', name: 'DT prod', token: 'tok-DT', entityType: 'event',
-        connectorKind: 'dynatrace', fieldMapping: '{}', defaultValues: null, valueMapping: null, enabled: true, createdAt: '2026-09-09T10:00:00Z',
-      } } },
-    }
-    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [mock] })
-    await user.click(screen.getByRole('button', { name: /Dynatrace/ }))
+    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [createMock(creates, { id: 'src-gf', name: 'Grafana', token: 'tok-GF', connectorKind: 'grafana' })] })
+    await presetToRules(user, /Grafana/, 'Grafana')
+    await user.click(screen.getByRole('button', { name: 'Create source' }))
+    await waitFor(() => expect(creates).toEqual([{ name: 'Grafana', entityType: 'event', connectorKind: 'grafana', rateLimitPerMinute: 100, fieldMapping: '{}', defaultValues: '{}', valueMapping: '{}' }]))
+    const snippet = await screen.findByText(/Authorization scheme: Bearer/)
+    expect(snippet).toHaveTextContent('Authorization creds: tok-GF')
+    expect(snippet).toHaveTextContent('/api/webhooks/inbound/src-gf')
+    expect(snippet).toHaveTextContent('Send resolved: on')
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(4)   // 4 passi + barra di avanzamento
+  })
+
+  it('Zabbix: elenco delle macro del media type e frammento con i parametri; il passo Prova mostra l\'ultimo errore della sorgente', async () => {
+    const creates: CreateInput[] = []
+    const { user } = renderWithProviders(<NewSourceWizard sampleCheckDelayMs={0} />, {
+      route: '/monitoring/sources/new',
+      mocks: [
+        createMock(creates, { id: 'src-zx', name: 'Zabbix DC', token: 'tok-ZX', connectorKind: 'zabbix' }),
+        sendSampleMock('src-zx'),
+        sourcesMock({ id: 'src-zx', name: 'Zabbix DC', connectorKind: 'zabbix', lastError: 'event_value is missing ("1" problem | "0" recovery)', lastErrorAt: '2026-09-09T10:20:00Z', errorCount: 1 }),
+      ],
+    })
+    await presetToRules(user, /Zabbix/, 'Zabbix DC')
+    await user.click(screen.getByRole('button', { name: 'Create source' }))
+    const snippet = await screen.findByText(/# Media type "Webhook" — Parameters/)
+    expect(snippet).toHaveTextContent('Token')
+    expect(snippet).toHaveTextContent('tok-ZX')
+    expect(snippet).toHaveTextContent('event_severity')
+    expect(snippet).toHaveTextContent('{EVENT.SEVERITY}')
+    // macro elencate nelle istruzioni (host_id ← {HOST.ID})
+    expect(screen.getByText('{HOST.ID}')).toBeInTheDocument()
+
     await user.click(screen.getByRole('button', { name: 'Next →' }))
+    await user.click(screen.getByRole('button', { name: 'Send test event' }))
+    expect(await screen.findByText(/Last error: event_value is missing/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeInTheDocument()
+  })
+
+  it('D·1.9 — dal passo Prova si torna al Collegamento (token ancora leggibile); "Fine" senza aver copiato il token chiede conferma', async () => {
+    const creates: CreateInput[] = []
+    const { user } = renderWithProviders(<NewSourceWizard sampleCheckDelayMs={0} />, {
+      route: '/monitoring/sources/new',
+      mocks: [createMock(creates, { id: 'src-dt', name: 'DT', token: 'tok-DT', connectorKind: 'dynatrace' })],
+    })
+    await presetToRules(user, /Dynatrace/, 'DT')
+    await user.click(screen.getByRole('button', { name: 'Create source' }))
+    await screen.findByRole('heading', { level: 2, name: 'Step 3 of 4 · Connection' })
+    await user.click(screen.getByRole('button', { name: 'Next →' }))
+    expect(screen.getByRole('heading', { level: 2, name: 'Step 4 of 4 · Test' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '← Prev' }))
+    expect(screen.getByRole('heading', { level: 2, name: 'Step 3 of 4 · Connection' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Token')).toHaveTextContent('tok-DT')
+    await user.click(screen.getByRole('button', { name: 'Next →' }))
+
+    // Fine senza copia → conferma; "Cancel" resta sulla pagina
+    await user.click(screen.getByRole('button', { name: 'Finish' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('Token not copied')
+    expect(dialog).toHaveTextContent(/You have not copied the token/)
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources/new')
+
+    // "Esci comunque" → elenco delle sorgenti
+    await user.click(screen.getByRole('button', { name: 'Finish' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Leave anyway' }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources')
+    expect(screen.getByTestId('location')).not.toHaveTextContent('/monitoring/sources/new')
+  })
+
+  it('Dynatrace: istruzioni, header Bearer e payload personalizzato con {ImpactedEntities} senza virgolette', async () => {
+    const creates: CreateInput[] = []
+    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [createMock(creates, { id: 'src-dt', name: 'DT prod', token: 'tok-DT', connectorKind: 'dynatrace' })] })
+    await presetToRules(user, /Dynatrace/, 'DT prod')
     expect(screen.queryByLabelText('Sample alarm (JSON)')).not.toBeInTheDocument()
-    await user.type(screen.getByLabelText('Source name'), 'DT prod')
     await user.click(screen.getByRole('button', { name: 'Create source' }))
     // nessuna regola aggiunta → JSON vuoti (l'API non ha default da applicare)
     await waitFor(() => expect(creates).toEqual([{ name: 'DT prod', entityType: 'event', connectorKind: 'dynatrace', rateLimitPerMinute: 100, fieldMapping: '{}', defaultValues: '{}', valueMapping: '{}' }]))
@@ -227,17 +368,8 @@ describe('NewSourceWizard — percorso generico', () => {
 
   it('A1 — Datadog: la spunta "usa alert_scope" scrive default_values.resourceFrom; il frammento include $ALERT_CYCLE_KEY e $ALERT_SCOPE', async () => {
     const creates: CreateInput[] = []
-    const mock: GqlMock = {
-      request: { query: CREATE_MONITORING_SOURCE, variables: (v) => { creates.push((v as { input: CreateInput }).input); return true } },
-      result: { data: { createInboundWebhook: {
-        __typename: 'InboundWebhookWithToken', id: 'src-dd', name: 'DD', token: 'tok-DD', entityType: 'event',
-        connectorKind: 'datadog', fieldMapping: '{}', defaultValues: '{"resourceFrom":"alert_scope"}', valueMapping: '{}', enabled: true, createdAt: '2026-09-09T10:00:00Z',
-      } } },
-    }
-    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [mock] })
-    await user.click(screen.getByRole('button', { name: /Datadog/ }))
-    await user.click(screen.getByRole('button', { name: 'Next →' }))
-    await user.type(screen.getByLabelText('Source name'), 'DD')
+    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [createMock(creates, { id: 'src-dd', name: 'DD', token: 'tok-DD', connectorKind: 'datadog' })] })
+    await presetToRules(user, /Datadog/, 'DD')
     await user.click(screen.getByLabelText(/use alert_scope/))
     await user.click(screen.getByRole('button', { name: 'Create source' }))
     await waitFor(() => expect(creates).toEqual([{ name: 'DD', entityType: 'event', connectorKind: 'datadog', rateLimitPerMinute: 100, fieldMapping: '{}', defaultValues: JSON.stringify({ resourceFrom: 'alert_scope' }), valueMapping: '{}' }]))
@@ -252,9 +384,7 @@ describe('NewSourceWizard — percorso generico', () => {
       error: new Error('name already in use'),
     }
     const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [mock] })
-    await user.click(screen.getByRole('button', { name: /Datadog/ }))
-    await user.click(screen.getByRole('button', { name: 'Next →' }))
-    await user.type(screen.getByLabelText('Source name'), 'DD')
+    await presetToRules(user, /Datadog/, 'DD')
     await user.click(screen.getByRole('button', { name: 'Create source' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('The source was not created: name already in use'))
     expect(screen.getByRole('heading', { level: 2, name: 'Step 2 of 4 · Name and rules' })).toBeInTheDocument()

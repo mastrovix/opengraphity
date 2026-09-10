@@ -54,12 +54,18 @@ interface Filters {
 export function TopologyPage() {
   const { t } = useTranslation()
   const navigate  = useNavigate()
-  // `?health=1` (voce "Salute CI" della sidebar) accende l'evidenziazione della salute.
+  // `?health=1` accende l'evidenziazione della salute; `?ciId=` è il CI di
+  // partenza (la pagina Salute CI manda qui con entrambi, D·1.3: senza un CI
+  // la mappa resta vuota). Entrambi vivono nell'URL (replace: niente una voce
+  // di cronologia per clic) così F5 e i link condivisi ripartono dallo stesso punto.
   const [searchParams, setSearchParams] = useSearchParams()
+  const setParam = useCallback((name: string, value: string | null) => {
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); if (value) next.set(name, value); else next.delete(name); return next }, { replace: true })
+  }, [setSearchParams])
   const highlightHealth = searchParams.get('health') === '1'
-  const setHighlightHealth = (on: boolean) => {
-    setSearchParams((prev) => { const next = new URLSearchParams(prev); if (on) next.set('health', '1'); else next.delete('health'); return next }, { replace: true })
-  }
+  const setHighlightHealth = (on: boolean) => setParam('health', on ? '1' : null)
+  const focusNodeId = searchParams.get('ciId') || null
+  const setFocusNodeId = useCallback((id: string | null) => setParam('ciId', id), [setParam])
   const [filters, setFilters] = useState<Filters>({
     type:         '',
     environment:  '',
@@ -68,7 +74,6 @@ export function TopologyPage() {
   })
   const [selectedNode, setSelectedNode] = useState<TopologyNode | null>(null)
   const [showLabels, setShowLabels]     = useState(true)
-  const [focusNodeId, setFocusNodeId]   = useState<string | null>(null)
   const [maxHops, setMaxHops]           = useState<number | null>(2)  // null = tutti
 
   // ── CI types from metamodel — popola il dropdown tipo ───────────────────────
@@ -82,8 +87,13 @@ export function TopologyPage() {
   // Status/environment dal tipo base del metamodello (unica sorgente, F-23)
   const baseEnums = useCIBaseEnums()
 
-  // Reset focusNodeId quando l'utente cambia tipo
-  useEffect(() => { setFocusNodeId(null) }, [filters.type])
+  // Il cambio di tipo azzera il CI di partenza (nel gestore del select, non in
+  // un effetto: un effetto girerebbe anche al montaggio e cancellerebbe `?ciId=`).
+  const changeType = (type: string) => {
+    setFilters((f) => ({ ...f, type }))
+    setFocusNodeId(null)
+    setSelectedNode(null)
+  }
 
   // ── Topology query — parte SOLO quando è selezionato un CI specifico ────────
   const queryVars = {
@@ -116,6 +126,14 @@ export function TopologyPage() {
     () => data?.topology.edges ?? [],
     [data?.topology.edges],
   )
+
+  // Arrivati con `?ciId=` e nessun tipo scelto (da Salute CI): il tipo del CI
+  // di partenza popola il filtro, così il combobox mostra QUALE CI è al centro
+  // e permette di cambiarlo. Il tipo non entra nella query: solo nel combobox.
+  const rootNode = useMemo(() => (focusNodeId ? data?.topology.nodes.find((n) => n.id === focusNodeId) ?? null : null), [data?.topology.nodes, focusNodeId])
+  useEffect(() => {
+    if (rootNode && !filters.type) setFilters((f) => ({ ...f, type: rootNode.type }))
+  }, [rootNode, filters.type])
 
   // Stats
   const totalIncident = nodes.reduce((s, n) => s + n.incidentCount, 0)
@@ -157,7 +175,7 @@ export function TopologyPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* Type filter */}
-          <select aria-label={t('pages.cmdb.type')} value={filters.type} onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))} style={selectStyle}>
+          <select aria-label={t('pages.cmdb.type')} value={filters.type} onChange={(e) => changeType(e.target.value)} style={selectStyle}>
             <option value="">{t('pages.topology.allTypes')}</option>
             {ciTypeOptions.map(ct => (
               <option key={ct.name} value={ct.name}>{ct.label}</option>
@@ -169,6 +187,7 @@ export function TopologyPage() {
             <CICombobox
               ciType={filters.type}
               value={focusNodeId}
+              valueName={rootNode?.name ?? null}
               onChange={(id) => {
                 setFocusNodeId(id)
                 setSelectedNode(null)   // reset pannello dettaglio al cambio CI
@@ -476,6 +495,8 @@ function DetailField({ label, children }: { label: string; children: React.React
 interface CIComboboxProps {
   ciType:   string
   value:    string | null
+  /** Nome del CI selezionato quando non è tra i risultati della ricerca (arrivo con `?ciId=`: il nome viene dal grafo caricato). */
+  valueName?: string | null
   onChange: (id: string | null) => void
 }
 
@@ -484,12 +505,12 @@ interface CIComboboxProps {
  * e ne mostrava al più 80 filtrati in locale, senza dire che mancavano gli
  * altri. Ora il totale è visibile ("mostrati N di M") e la ricerca copre tutto.
  */
-function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
+function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxProps) {
   const { t } = useTranslation()
   const [search, setSearch]   = useState('')
   const [debounced, setDebounced] = useState('')
   const [open, setOpen]       = useState(false)
-  const [selectedName, setSelectedName] = useState('')
+  const [selectedName, setSelectedName] = useState(valueName ?? '')
   const containerRef          = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -504,12 +525,14 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
   const options = useMemo(() => data?.allCIs.items ?? [], [data])
   const total   = data?.allCIs.total ?? 0
 
-  // Nome del CI selezionato: tenuto in stato perché la lista cambia con la ricerca
+  // Nome del CI selezionato: tenuto in stato perché la lista cambia con la
+  // ricerca; se non è tra i risultati vale il nome passato dal chiamante.
   useEffect(() => {
     if (!value) { setSelectedName(''); return }
     const hit = options.find((o) => o.id === value)
     if (hit) setSelectedName(hit.name)
-  }, [value, options])
+    else if (valueName) setSelectedName(valueName)
+  }, [value, valueName, options])
 
   // Close on outside click
   useEffect(() => {

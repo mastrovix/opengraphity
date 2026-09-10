@@ -46,6 +46,7 @@ import {
   HeartPulse,
 } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
+import { isStaff } from '@/lib/roles'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
 import { C, navItemStyle, NavItem, SubItem } from './SidebarNavItems'
@@ -71,9 +72,11 @@ const ANALYSIS_ITEM_DEFS = [
   { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
 ]
 
-// Monitoraggio (Event Management): console eventi e pagina Salute CI (staff),
-// sorgenti e policy (admin: le voci sono filtrate per ruolo nel render). La
-// mappa con la salute evidenziata resta raggiungibile da "Vedi sulla mappa".
+// Monitoraggio (Event Management): console allarmi e pagina Salute CI (staff:
+// stesso predicato `isStaff` delle rotte `staff(...)` in main.tsx, il gruppo
+// intero è nascosto agli end user), sorgenti e policy (admin: le voci sono
+// filtrate per ruolo nel render). La mappa con la salute evidenziata resta
+// raggiungibile da "Vedi sulla mappa".
 const MONITORING_ITEM_DEFS = [
   { to: '/events',                labelKey: 'sidebar.events',            icon: Radar,      adminOnly: false },
   { to: '/monitoring/health',     labelKey: 'sidebar.ciHealth',          icon: HeartPulse, adminOnly: false },
@@ -159,7 +162,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   // route is wrapped in `admin(...)` in main.tsx (Teams & Users,
   // Configuration, Admin) are hidden from everyone else — no menu entry may
   // lead to a "forbidden" page.
-  const { isAdmin } = useMe()
+  const { isAdmin, role } = useMe()
+  const staff = isStaff(role)
   const { ciTypes } = useMetamodel()
 
   // Active flags derived from the location; open state re-opens on entry (E-12).
@@ -170,7 +174,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const cmdbActive      = CMDB_LEGACY_PREFIXES.some((p) => pathname.startsWith(p))
   const teamsActive     = startsWithAny(pathname, TEAMS_ITEM_DEFS)
   const configActive    = startsWithAny(pathname, CONFIG_ITEM_DEFS)
-  const settingsActive  = pathname.startsWith('/settings') || pathname.startsWith('/admin/queues')
+  // La policy eventi vive sotto /settings ma appartiene al gruppo Monitoraggio: un solo gruppo attivo.
+  const settingsActive  = (pathname.startsWith('/settings') && !pathname.startsWith('/settings/event-policy')) || pathname.startsWith('/admin/queues')
 
   const [itsmOpen, toggleItsm]           = useGroupOpen(itsmActive)
   const [reportingOpen, toggleReporting] = useGroupOpen(reportingActive)
@@ -294,12 +299,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           ))}
         </SidebarGroup>
 
-        {/* Monitoraggio (Event Management) */}
-        <SidebarGroup title={t('sidebar.monitoring')} icon={Radar} active={monitoringActive} open={monitoringOpen} onToggle={toggleMonitoring} collapsed={collapsed} collapsedTo="/events">
-          {MONITORING_ITEM_DEFS.filter((d) => isAdmin || !d.adminOnly).map(({ to, labelKey, icon }) => (
-            <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={pathname === to || pathname.startsWith(`${to}/`)} />
-          ))}
-        </SidebarGroup>
+        {/* Monitoraggio (Event Management) — staff only (routes are staff(...) in main.tsx) */}
+        {staff && (
+          <SidebarGroup title={t('sidebar.monitoring')} icon={Radar} active={monitoringActive} open={monitoringOpen} onToggle={toggleMonitoring} collapsed={collapsed} collapsedTo="/events">
+            {MONITORING_ITEM_DEFS.filter((d) => isAdmin || !d.adminOnly).map(({ to, labelKey, icon }) => (
+              <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={pathname === to || pathname.startsWith(`${to}/`)} />
+            ))}
+          </SidebarGroup>
+        )}
 
         {/* CMDB */}
         <SidebarGroup title={t('sidebar.cmdb')} icon={Server} active={cmdbActive} open={cmdbOpen} onToggle={toggleCmdb} collapsed={collapsed} collapsedTo="/cmdb">

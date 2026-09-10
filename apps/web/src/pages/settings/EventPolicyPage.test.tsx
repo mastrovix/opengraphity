@@ -23,25 +23,29 @@ const POLICY = {
   severityMap: JSON.stringify(MAP),
 }
 
-const policyMock = (severityMap = POLICY.severityMap): GqlMock => ({
+const policyMock = (over: Partial<typeof POLICY> = {}): GqlMock => ({
   request: { query: GET_EVENT_POLICY },
-  result: { data: { eventPolicy: { ...POLICY, severityMap } } },
+  result: { data: { eventPolicy: { ...POLICY, ...over } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
 type Input = Record<string, unknown>
 
+/** Come l'API: risponde con la policy salvata (input applicato, versione incrementata). */
 function updateMock(seen: Input[]): GqlMock {
   return {
     request: { query: UPDATE_EVENT_POLICY, variables: (v) => { seen.push((v as { input: Input }).input); return true } },
-    result: { data: { updateEventPolicy: { ...POLICY } } },
+    result: (vars) => {
+      const { expectedVersion: _v, ...input } = (vars as { input: Input }).input
+      return { data: { updateEventPolicy: { ...POLICY, ...input, version: POLICY.version + 1, updatedAt: '2026-09-10T10:00:00Z' } } }
+    },
   }
 }
 
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
 
 describe('EventPolicyPage', () => {
-  it('carica la policy, modifica e salva con toast di esito', async () => {
+  it('carica la policy, modifica e salva con toast di esito; dopo il salvataggio il form è allineato alla risposta (cache di GET_EVENT_POLICY)', async () => {
     const seen: Input[] = []
     const { user } = renderWithProviders(<EventPolicyPage />, { route: '/settings/event-policy', mocks: [policyMock(), updateMock(seen)] })
 
@@ -62,27 +66,82 @@ describe('EventPolicyPage', () => {
     expect(seen[0]).toMatchObject({ openIncidentFrom: 'warning', retentionDays: 45, groupBy: 'ci', autoResolve: true, expectedVersion: 3 })
     expect(JSON.parse(seen[0]!['severityMap'] as string)).toEqual({ ...MAP, warning: { impact: 'medium', urgency: 'high' } })
     expect(toast.error).not.toHaveBeenCalled()
+
+    // D·1.5: la risposta è scritta nella cache → il form riparte da lì, senza modifiche pendenti
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No changes to save'))
+    expect(screen.getByLabelText('Open incident from')).toHaveValue('warning')
+    expect(screen.getByLabelText('Retention (days)')).toHaveValue(45)
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
   it('errore del server al salvataggio → toast di errore con il messaggio', async () => {
     const failing: GqlMock = { request: { query: UPDATE_EVENT_POLICY, variables: () => true }, error: new Error('policy locked') }
     const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock(), failing] })
-    await screen.findByLabelText('Open incident from')
+    await user.selectOptions(await screen.findByLabelText('Open incident from'), 'warning')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Policy save failed: policy locked'))
+    // le modifiche restano in pagina
+    expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes')
   })
 
-  it('severityMap malformata → avviso visibile, il form parte dai default (nessun fallback silenzioso)', async () => {
-    renderWithProviders(<EventPolicyPage />, { mocks: [policyMock('{not json')] })
+  it('severityMap malformata → avviso visibile (i18n), il form parte dai default e si può salvare anche senza altre modifiche (nessun fallback silenzioso)', async () => {
+    const seen: Input[] = []
+    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock({ severityMap: '{"critical":{"impact":"high","urgency":"high"}}' }), updateMock(seen)] })
     await screen.findByLabelText('Open incident from')
-    expect(screen.getByRole('alert')).toHaveTextContent(/Invalid severity map/)
+    expect(screen.getByRole('alert')).toHaveTextContent('Invalid severity map (severityMap: severity "warning" is missing): defaults restored, save to fix.')
     expect(screen.getByLabelText('Critical – Impact')).toHaveValue('high')
     expect(screen.getByLabelText('Info – Urgency')).toHaveValue('low')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(seen).toHaveLength(1))
+    expect(JSON.parse(seen[0]!['severityMap'] as string)).toEqual(MAP)
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+})
+
+describe('EventPolicyPage — modifiche non salvate e «Mai» (revisione D·2.5)', () => {
+  it('senza modifiche Salva e Ripristina sono disabilitati; una modifica accende "Modifiche non salvate"; Ripristina torna ai valori letti', async () => {
+    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock()] })
+    const retention = await screen.findByLabelText('Retention (days)')
+    expect(screen.getByRole('status')).toHaveTextContent('No changes to save')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled()
+
+    await user.clear(retention); await user.type(retention, '60')
+    expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(retention).toHaveValue(30)
+    expect(screen.getByRole('status')).toHaveTextContent('No changes to save')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('con «Mai» raggruppamento, ritardo, chiusura automatica e mappa severità sono disabilitati con la nota; tornando a una severità si riattivano', async () => {
+    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock()] })
+    const openFrom = await screen.findByLabelText('Open incident from')
+    expect(screen.getByLabelText('Group by')).toBeEnabled()
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+
+    await user.selectOptions(openFrom, 'never')
+    expect(screen.getByRole('note')).toHaveTextContent('Not used with “Never”: monitoring opens no incident')
+    expect(screen.getByLabelText('Group by')).toBeDisabled()
+    expect(screen.getByLabelText('Open delay (seconds)')).toBeDisabled()
+    expect(screen.getByLabelText('Open delay (seconds)')).toHaveAccessibleDescription(/Not used with “Never”/)
+    expect(screen.getByRole('switch', { name: 'Auto-resolve when the source resolves' })).toBeDisabled()
+    expect(screen.getByLabelText('Critical – Impact')).toBeDisabled()
+    // il resto resta modificabile
+    expect(screen.getByLabelText('Upstream suppression (hops)')).toBeEnabled()
+    expect(screen.getByLabelText('Retention (days)')).toBeEnabled()
+
+    await user.selectOptions(openFrom, 'info')
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Group by')).toBeEnabled()
+    expect(screen.getByLabelText('Critical – Impact')).toBeEnabled()
   })
 })
 
 describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', () => {
-  it('i tre campi nuovi partono dalla policy, hanno l\'aiuto e vengono salvati', async () => {
+  it('i tre campi nuovi partono dalla policy, hanno l\'aiuto (0 = tempeste disattivate) e vengono salvati', async () => {
     const seen: Input[] = []
     const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock(), updateMock(seen)] })
     const stable   = await screen.findByLabelText('Stable minutes before resuming')
@@ -92,7 +151,7 @@ describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', (
     expect(thresh).toHaveValue(50)
     expect(cooldown).toHaveValue(5)
     expect(stable).toHaveAccessibleDescription(/before leaving the flapping state/)
-    expect(thresh).toHaveAccessibleDescription(/grouped into a single incident/)
+    expect(thresh).toHaveAccessibleDescription(/grouped into a single incident.*0 = storm detection off/)
     expect(cooldown).toHaveAccessibleDescription(/storm ends once the rate stays below/)
 
     await user.clear(stable);   await user.type(stable, '20')
@@ -125,7 +184,6 @@ describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', (
     const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock(), updateMock(seen)] })
     const stable = await screen.findByLabelText('Stable minutes before resuming')
     const save = screen.getByRole('button', { name: 'Save' })
-    expect(save).toBeEnabled()
 
     // 0 non basta per la stabilità
     await user.clear(stable); await user.type(stable, '0')
@@ -133,7 +191,7 @@ describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', (
     expect(stable).toHaveAttribute('aria-invalid', 'true')
     expect(stable).toHaveAccessibleDescription(/The minimum value is 1\./)
     expect(save).toBeDisabled()
-    expect(screen.getByText('Fix the highlighted fields to save.')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Fix the highlighted fields to save.')
 
     // campo vuoto: non è "0", è un valore mancante
     await user.clear(stable)

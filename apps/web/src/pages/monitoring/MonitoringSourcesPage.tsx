@@ -5,13 +5,16 @@
  * invia evento di prova, elimina. Stato vuoto che porta alla procedura guidata.
  * Ondata 4: badge ambra "Tempesta" sulla riga della sorgente che sta mandando
  * troppi allarmi al minuto (`eventStats.stormSources`, polling 15 s).
+ * Revisione D·1.11: anche l'elenco è in polling (stesso ritmo, in pausa a
+ * scheda nascosta) con il pulsante "Aggiorna"; dopo "Invia evento di prova"
+ * un secondo refetch arriva qualche secondo dopo, quando il job ha elaborato.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Radar, Plus, Pencil, KeyRound, Send, Trash2, AlertTriangle, CloudLightning } from 'lucide-react'
+import { Radar, Plus, Pencil, KeyRound, Send, Trash2, AlertTriangle, CloudLightning, RefreshCw } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -31,8 +34,15 @@ import { Pill } from '@/components/ui/Pill'
 import type { MonitoringSource, EventStats, StormSource } from '@/types/events'
 import { ToolBadge, EnabledPill, SecretBox } from './monitoringShared'
 
-/** Polling dei contatori (badge "Tempesta"), in pausa a scheda nascosta. */
-const STORM_POLL_MS = 15_000
+/** Polling dell'elenco e dei contatori (badge "Tempesta"), in pausa a scheda nascosta. */
+const SOURCES_POLL_MS = 15_000
+/** Attesa prima del refetch dopo l'evento di prova: il job lo elabora in modo asincrono. */
+export const SAMPLE_REFETCH_DELAY_MS = 2500
+
+interface Props {
+  /** Solo per i test: attesa prima del refetch dopo l'evento di prova. */
+  sampleRefetchDelayMs?: number
+}
 
 /** Badge "Tempesta" con tooltip: tasso, da che ora, incident di tempesta. */
 function StormBadge({ storm }: { storm: StormSource }) {
@@ -51,18 +61,22 @@ function StormBadge({ storm }: { storm: StormSource }) {
   )
 }
 
-export function MonitoringSourcesPage() {
+export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DELAY_MS }: Props = {}) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const [newToken, setNewToken] = useState<{ name: string; token: string } | null>(null)
 
-  const { data, loading, error, refetch } = useQuery<{ monitoringSources: MonitoringSource[] }>(GET_MONITORING_SOURCES, { fetchPolicy: 'cache-and-network' })
+  const { data, loading, error, refetch } = useQuery<{ monitoringSources: MonitoringSource[] }>(GET_MONITORING_SOURCES, { fetchPolicy: 'cache-and-network', ...pausedWhenHidden(SOURCES_POLL_MS) })
   const sources = data?.monitoringSources ?? []
 
   // Sorgenti in tempesta: badge sulla riga. Se la query fallisce il badge
   // manca e basta: l'elenco delle sorgenti non dipende dai contatori.
-  const { data: statsData } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, { fetchPolicy: 'cache-and-network', ...pausedWhenHidden(STORM_POLL_MS) })
+  const { data: statsData } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, { fetchPolicy: 'cache-and-network', ...pausedWhenHidden(SOURCES_POLL_MS) })
+
+  // Refetch ritardato dopo l'evento di prova; il timer muore con la pagina.
+  const sampleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (sampleTimer.current) clearTimeout(sampleTimer.current) }, [])
   const stormBySource = useMemo(() => new Map((statsData?.eventStats.stormSources ?? []).map((s) => [s.sourceId, s])), [statsData])
 
   const [updateSource] = useMutation(UPDATE_MONITORING_SOURCE)
@@ -94,7 +108,7 @@ export function MonitoringSourcesPage() {
     try {
       const res = await regenToken({ variables: { id: s.id } })
       const token = res.data?.regenerateWebhookToken.token
-      if (!token) throw new Error('regenerateWebhookToken: token mancante nella risposta')
+      if (!token) throw new Error(t('monitoring.errors.tokenMissing', { operation: 'regenerateWebhookToken' }))
       toast.success(t('toast.monitoring.tokenRegenerated'))
       setNewToken({ name: s.name, token })
     } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
@@ -104,7 +118,9 @@ export function MonitoringSourcesPage() {
     try {
       await sendSample({ variables: { sourceId: s.id } })
       toast.success(t('toast.monitoring.sampleSent'), { action: { label: t('monitoring.wizard.openConsole'), onClick: () => navigate(`/events?sourceId=${s.id}`) } })
-      void refetch()
+      // Subito il refetch non vedrebbe nulla: "Ricevuti"/"Errori" cambiano quando il job ha elaborato l'evento.
+      if (sampleTimer.current) clearTimeout(sampleTimer.current)
+      sampleTimer.current = setTimeout(() => { void refetch() }, sampleRefetchDelayMs)
     } catch (e) { toast.error(t('toast.monitoring.sampleFailed', { error: errorMessage(e) })) }
   }
 
@@ -179,7 +195,12 @@ export function MonitoringSourcesPage() {
             {loading && !data ? '—' : `${t('monitoring.sources.count', { count: sources.length })} · ${t('monitoring.sources.subtitle')}`}
           </p>
         }
-        actions={<Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => navigate('/monitoring/sources/new')}>{t('monitoring.sources.add')}</Button>}
+        actions={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Button variant="secondary" icon={<RefreshCw size={14} aria-hidden="true" />} onClick={() => void refetch()}>{t('monitoring.sources.refresh')}</Button>
+            <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => navigate('/monitoring/sources/new')}>{t('monitoring.sources.add')}</Button>
+          </div>
+        }
       />
 
       {error && !data ? (

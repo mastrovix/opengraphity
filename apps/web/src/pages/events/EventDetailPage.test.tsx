@@ -11,8 +11,8 @@ const CHANGE = { __typename: 'Change', id: 'chg1', code: 'CHG-0007', title: 'Fre
 
 /** Fixture grezzo (come arriva dal mock): gli override dei singoli test possono annullare qualsiasi campo. */
 const EVENT: Record<string, unknown> = {
-  __typename: 'Event', id: 'e1', fingerprint: 'fp-abc', externalId: 'ext-1', status: 'firing', severity: 'critical',
-  title: 'CPU high on web-01', description: 'CPU > 95% for 10m', resource: 'web-01', resourceKind: 'host',
+  __typename: 'Event', id: 'e1', fingerprint: 'fp-abc', externalId: 'ext-1', resourceExternalId: null, status: 'firing', severity: 'critical', maxSeverity: 'critical',
+  title: 'CPU high on web-01', description: 'CPU > 95% for 10m', resource: 'web-01', resourceKind: 'hostname', matchReason: 'name',
   labels: JSON.stringify({ job: 'node', instance: 'web-01:9100', nested: { a: 1 } }),
   count: 5, firstSeenAt: '2026-09-09T08:00:00Z', lastSeenAt: '2026-09-09T08:30:00Z', resolvedAt: null,
   acknowledgedAt: '2026-09-09T08:10:00Z', acknowledgedBy: { __typename: 'User', id: 'u2', name: 'Anna Bianchi' },
@@ -61,19 +61,30 @@ describe('EventDetailPage', () => {
     expect(screen.getByText('CPU > 95% for 10m')).toBeInTheDocument()
     expect(screen.getByText('fp-abc')).toBeInTheDocument()
     expect(screen.getByText(/Anna Bianchi ·/)).toBeInTheDocument()
+    // tipo di risorsa con l'etichetta del mappatore, non il valore grezzo
+    expect(screen.getByText('Hostname · web-01')).toBeInTheDocument()
+    expect(screen.getByText('web-01 (Hostname)')).toBeInTheDocument()
 
     // etichette: JSON → righe chiave/valore (i valori non stringa vengono serializzati)
     const labelRow = screen.getByText('instance').closest('tr')!
     expect(within(labelRow).getByText('web-01:9100')).toBeInTheDocument()
     expect(within(screen.getByText('nested').closest('tr')!).getByText('{"a":1}')).toBeInTheDocument()
 
-    // contesto
+    // contesto: tipo e stato del CI con le etichette dell'app, salute dal monitoraggio, strumento come badge
     expect(screen.getByRole('link', { name: 'web-01' })).toHaveAttribute('href', '/ci/server/ci1')
-    expect(screen.getByText('active')).toBeInTheDocument()            // ciclo di vita
+    expect(screen.getByText('Server')).toBeInTheDocument()            // tipo (sidebar.server)
+    expect(screen.getByText('Active')).toBeInTheDocument()            // ciclo di vita (enumLabel)
     expect(screen.getByText('Health: Degraded')).toBeInTheDocument()  // salute dal monitoraggio
-    expect(screen.getByText('Prometheus (alertmanager)')).toBeInTheDocument()
-    // l'incident è linkato sia nel contesto sia nella sezione Correlazione
-    for (const link of screen.getAllByRole('link', { name: 'INC-0042 · CPU saturation' })) expect(link).toHaveAttribute('href', '/incidents/inc1')
+    expect(screen.getAllByText('Prometheus').length).toBeGreaterThan(0)   // anche come origine di un alias
+    expect(screen.getByText('Prometheus Alertmanager')).toBeInTheDocument()   // ToolBadge, non "(alertmanager)"
+    // riconoscimento del CI
+    expect(screen.getByText('CI name')).toBeInTheDocument()
+    // l'incident è linkato una volta sola (Contesto); la frase di correlazione lo cita
+    expect(screen.getAllByRole('link', { name: 'INC-0042 · CPU saturation' })).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'INC-0042 · CPU saturation' })).toHaveAttribute('href', '/incidents/inc1')
+    // severità massima = attuale: il campo non compare; ID esterno della risorsa assente: idem
+    expect(screen.queryByText('Peak severity of the cycle')).not.toBeInTheDocument()
+    expect(screen.queryByText('Resource external ID')).not.toBeInTheDocument()
 
     // alias del CI
     expect(await screen.findByText('10.0.0.7')).toBeInTheDocument()
@@ -99,8 +110,39 @@ describe('EventDetailPage', () => {
   it('evento inesistente → stato "non trovato" con ritorno alla lista', async () => {
     const missing: GqlMock = { request: { query: GET_EVENT, variables: { id: 'e1' } }, result: { data: { event: null } } }
     renderWithProviders(<EventDetailPage />, { route: '/events/e1', path: '/events/:id', mocks: [meMock('admin'), missing] })
-    expect(await screen.findByText('Event not found')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Back to events' })).toBeInTheDocument()
+    expect(await screen.findByText('Alarm not found')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back to alarms' })).toBeInTheDocument()
+  })
+
+  it('etichette non JSON → errore in chiaro (tradotto), mai una tabella vuota silenziosa', async () => {
+    renderPage('viewer', { labels: '[1,2]' })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByRole('alert')).toHaveTextContent('Labels unreadable: Labels: a JSON object was expected')
+  })
+})
+
+describe('EventDetailPage — campi del riconoscimento (ondata 5)', () => {
+  it('ambiguo senza CI: badge "Ambiguous", motivo e aiuto "collega a mano o aggiungi un alias"', async () => {
+    renderPage('operator', { ci: null, matchReason: 'ambiguous', incident: null, correlation: 'skipped_orphan' })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByText('Ambiguous')).toBeInTheDocument()
+    expect(screen.getByText('Ambiguous: several CIs share this name')).toBeInTheDocument()
+    expect(screen.getByText(/link the CI manually or add an alias/)).toBeInTheDocument()
+  })
+
+  it('collegato a mano, severità massima diversa dall\'attuale e ID esterno della risorsa', async () => {
+    renderPage('operator', { matchReason: 'manual', severity: 'warning', maxSeverity: 'critical', resourceExternalId: 'HOST-9F2A' })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByText('Linked manually')).toBeInTheDocument()
+    expect(screen.getByText('Peak severity of the cycle')).toBeInTheDocument()
+    expect(screen.getByText('Resource external ID')).toBeInTheDocument()
+    expect(screen.getByText('HOST-9F2A')).toBeInTheDocument()
+  })
+
+  it('matchReason null (evento precedente al campo) → "Not recorded"', async () => {
+    renderPage('operator', { matchReason: null })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByText('Not recorded')).toBeInTheDocument()
   })
 })
 

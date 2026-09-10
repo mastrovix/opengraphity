@@ -4,15 +4,21 @@
  * L'amministratore NON vede mai il JSON di field_mapping / default_values /
  * value_mapping: lo compone l'interfaccia da uno stato leggibile
  * (`GenericMapping`) e lo rilegge in modifica. Formato (confermato dall'API,
- * apps/api/src/services/eventService.ts, normalizeGeneric):
+ * apps/api/src/services/events/normalize.ts, normalizeGeneric):
  *
  *   fieldMapping  = { title: "alert.name", severity: "alert.level", resource: "host.name", status: "state", description: "msg", externalId: "id" }
- *   defaultValues = { resourceKind: "hostname" }              (+ severity/status di default, facoltativi)
+ *   defaultValues = { resourceKind: "hostname", severity: "warning", status: "firing" }   (severity/status facoltativi: usati quando il campo manca)
  *   valueMapping  = { severity: { major: "critical" }, status: { open: "firing", closed: "resolved" } }
  *
- * Un JSON esistente malformato o fuori vocabolario NON viene "aggiustato":
- * `parseSourceConfig` torna `error` e il chiamante lo mostra.
+ * Round-trip (D·1.2): tutto ciò che l'editor sa rappresentare viene riletto e
+ * riscritto uguale; una chiave che NON sa rappresentare (default_values.title,
+ * value_mapping.foo, field_mapping.labels…) finisce in `dropped` con il
+ * prefisso del JSON di origine, così la pagina di modifica la mostra prima
+ * che il salvataggio la perda. Un JSON malformato o fuori vocabolario NON
+ * viene "aggiustato": `parseSourceConfig` torna `error` e il chiamante lo
+ * mostra. I messaggi passano da i18n (`monitoring.errors.*`, D·6.4).
  */
+import i18n from '@/i18n/i18n'
 import {
   RESOURCE_KINDS, EVENT_INPUT_STATUSES, EVENT_SEVERITIES,
   type ResourceKind, type EventSeverity, type EventInputStatus, type ConnectorKind,
@@ -27,6 +33,10 @@ export interface GenericMapping {
   /** Campo normalizzato → percorso puntato nel payload ('' = non usato). */
   fields:         Record<MapperField, string>
   resourceKind:   ResourceKind
+  /** Severità usata quando il campo severità manca nel payload ('' = nessuna: l'allarme viene scartato). */
+  defaultSeverity: EventSeverity | ''
+  /** Stato usato quando il campo stato manca nel payload ('' = firing, il predefinito dell'API). */
+  defaultStatus:   EventInputStatus | ''
   /** Valore trovato nel campo severità → severità OpenGrafo ('' = non ancora scelto). */
   severityValues: Record<string, EventSeverity | ''>
   /** Valore trovato nel campo stato → stato OpenGrafo ('' = non ancora scelto). */
@@ -36,6 +46,8 @@ export interface GenericMapping {
 export const EMPTY_MAPPING: GenericMapping = {
   fields: { title: '', severity: '', resource: '', status: '', description: '', externalId: '' },
   resourceKind: 'hostname',
+  defaultSeverity: '',
+  defaultStatus: '',
   severityValues: {},
   statusValues: {},
 }
@@ -70,29 +82,56 @@ export function buildSourceConfig(m: GenericMapping): SourceConfig {
   const valueMapping: Record<string, Record<string, string>> = {}
   if (Object.keys(severity).length) valueMapping['severity'] = severity
   if (Object.keys(status).length)   valueMapping['status']   = status
+  const defaults: Record<string, string> = { resourceKind: m.resourceKind }
+  if (m.defaultSeverity) defaults['severity'] = m.defaultSeverity
+  if (m.defaultStatus)   defaults['status']   = m.defaultStatus
   return {
     fieldMapping:  JSON.stringify(fieldMapping),
-    defaultValues: JSON.stringify({ resourceKind: m.resourceKind }),
+    defaultValues: JSON.stringify(defaults),
     valueMapping:  JSON.stringify(valueMapping),
   }
 }
+
+// ── Messaggi (i18n: monitoring.errors.*) ─────────────────────────────────────
+
+const expectedObject   = (what: string) => i18n.t('monitoring.errors.expectedObject', { what })
+const expectedOneOf    = (what: string, values: readonly string[]) => i18n.t('monitoring.errors.expectedOneOf', { what, values: values.join(', ') })
+const expectedNonEmpty = (what: string) => i18n.t('monitoring.errors.expectedNonEmpty', { what })
+const notEditable      = (what: string) => i18n.t('monitoring.errors.notEditable', { what })
+const notSupported     = (what: string) => i18n.t('monitoring.errors.notSupported', { what })
 
 function parseObject(raw: string | null | undefined, what: string): { value: Record<string, unknown>; error: string | null } {
   if (raw == null || raw.trim() === '') return { value: {}, error: null }
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return { value: {}, error: `${what}: atteso un oggetto JSON` }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return { value: {}, error: expectedObject(what) }
     return { value: parsed as Record<string, unknown>, error: null }
   } catch (e) {
-    return { value: {}, error: `${what}: ${e instanceof Error ? e.message : String(e)}` }
+    return { value: {}, error: i18n.t('monitoring.errors.invalidJson', { what, error: e instanceof Error ? e.message : String(e) }) }
   }
 }
 
 /**
- * JSON salvati → stato del mappatore (pagina di modifica). Chiavi ignote di
- * field_mapping (labels, startsAt, …) restano fuori dal mappatore ma NON sono
- * un errore: l'API le accetta e la modifica le riscrive perse — per questo
- * vengono segnalate in `dropped`.
+ * value_mapping.severity / value_mapping.status → tabella di traduzione.
+ * `undefined` = chiave assente. Valore fuori vocabolario → `error`.
+ */
+function parseValueTable<T extends string>(raw: unknown, what: string, vocabulary: readonly T[]): { table: Record<string, T>; error: string | null } {
+  const table: Record<string, T> = {}
+  if (raw === undefined) return { table, error: null }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { table, error: expectedObject(what) }
+  for (const [src, dst] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof dst !== 'string' || !(vocabulary as readonly string[]).includes(dst)) return { table, error: expectedOneOf(`${what}.${src}`, vocabulary) }
+    table[src] = dst as T
+  }
+  return { table, error: null }
+}
+
+/**
+ * JSON salvati → stato del mappatore (pagina di modifica). Chiavi che il
+ * mappatore non rappresenta (field_mapping.labels, default_values.title,
+ * value_mapping.foo, …) restano fuori ma NON sono un errore: l'API le accetta
+ * e la modifica le riscriverebbe perse — per questo vengono segnalate in
+ * `dropped` con il prefisso del JSON di origine (`defaultValues.title`).
  */
 export function parseSourceConfig(raw: { fieldMapping: string; defaultValues: string | null; valueMapping: string | null }): { mapping: GenericMapping; error: string | null; dropped: string[] } {
   const fm = parseObject(raw.fieldMapping, 'fieldMapping')
@@ -100,49 +139,46 @@ export function parseSourceConfig(raw: { fieldMapping: string; defaultValues: st
   const vm = parseObject(raw.valueMapping, 'valueMapping')
   const error = fm.error ?? dv.error ?? vm.error
   if (error) return { mapping: EMPTY_MAPPING, error, dropped: [] }
+  const fail = (message: string) => ({ mapping: EMPTY_MAPPING, error: message, dropped: [] })
 
   const fields = { ...EMPTY_MAPPING.fields }
   const dropped: string[] = []
   for (const [k, v] of Object.entries(fm.value)) {
     if ((MAPPER_FIELDS as readonly string[]).includes(k)) {
-      if (typeof v !== 'string') return { mapping: EMPTY_MAPPING, error: `fieldMapping.${k}: atteso un percorso (stringa)`, dropped: [] }
+      if (typeof v !== 'string') return fail(i18n.t('monitoring.errors.expectedPath', { key: k }))
       fields[k as MapperField] = v
-    } else if (k === 'resourceKind') {
-      // resourceKind letto dal payload: non supportato dal mappatore (si sceglie a mano)
-      dropped.push(k)
     } else {
-      dropped.push(k)
+      // resourceKind letto dal payload, labels, startsAt, …: l'API li accetta, il mappatore no
+      dropped.push(`fieldMapping.${k}`)
     }
   }
 
-  const rk = dv.value['resourceKind']
   let resourceKind: ResourceKind = 'hostname'
-  if (rk !== undefined) {
-    if (typeof rk !== 'string' || !(RESOURCE_KINDS as readonly string[]).includes(rk)) {
-      return { mapping: EMPTY_MAPPING, error: `defaultValues.resourceKind: atteso uno tra ${RESOURCE_KINDS.join(', ')}`, dropped: [] }
+  let defaultSeverity: EventSeverity | '' = ''
+  let defaultStatus: EventInputStatus | '' = ''
+  for (const [k, v] of Object.entries(dv.value)) {
+    if (k === 'resourceKind') {
+      if (typeof v !== 'string' || !(RESOURCE_KINDS as readonly string[]).includes(v)) return fail(expectedOneOf('defaultValues.resourceKind', RESOURCE_KINDS))
+      resourceKind = v as ResourceKind
+    } else if (k === 'severity') {
+      // L'API accetterebbe anche un valore poi tradotto da value_mapping; l'editor espone solo il vocabolario.
+      if (typeof v !== 'string' || !(EVENT_SEVERITIES as readonly string[]).includes(v)) return fail(expectedOneOf('defaultValues.severity', EVENT_SEVERITIES))
+      defaultSeverity = v as EventSeverity
+    } else if (k === 'status') {
+      if (typeof v !== 'string' || !(EVENT_INPUT_STATUSES as readonly string[]).includes(v)) return fail(expectedOneOf('defaultValues.status', EVENT_INPUT_STATUSES))
+      defaultStatus = v as EventInputStatus
+    } else {
+      dropped.push(`defaultValues.${k}`)
     }
-    resourceKind = rk as ResourceKind
   }
 
-  const severityValues: Record<string, EventSeverity | ''> = {}
-  const statusValues:   Record<string, EventInputStatus | ''> = {}
-  const sevRaw = vm.value['severity']
-  if (sevRaw !== undefined) {
-    if (sevRaw === null || typeof sevRaw !== 'object') return { mapping: EMPTY_MAPPING, error: 'valueMapping.severity: atteso un oggetto', dropped: [] }
-    for (const [src, dst] of Object.entries(sevRaw as Record<string, unknown>)) {
-      if (typeof dst !== 'string' || !(EVENT_SEVERITIES as readonly string[]).includes(dst)) return { mapping: EMPTY_MAPPING, error: `valueMapping.severity.${src}: atteso uno tra ${EVENT_SEVERITIES.join(', ')}`, dropped: [] }
-      severityValues[src] = dst as EventSeverity
-    }
-  }
-  const stRaw = vm.value['status']
-  if (stRaw !== undefined) {
-    if (stRaw === null || typeof stRaw !== 'object') return { mapping: EMPTY_MAPPING, error: 'valueMapping.status: atteso un oggetto', dropped: [] }
-    for (const [src, dst] of Object.entries(stRaw as Record<string, unknown>)) {
-      if (typeof dst !== 'string' || !(EVENT_INPUT_STATUSES as readonly string[]).includes(dst)) return { mapping: EMPTY_MAPPING, error: `valueMapping.status.${src}: atteso uno tra ${EVENT_INPUT_STATUSES.join(', ')}`, dropped: [] }
-      statusValues[src] = dst as EventInputStatus
-    }
-  }
-  return { mapping: { fields, resourceKind, severityValues, statusValues }, error: null, dropped }
+  const sev = parseValueTable<EventSeverity>(vm.value['severity'], 'valueMapping.severity', EVENT_SEVERITIES)
+  if (sev.error) return fail(sev.error)
+  const st = parseValueTable<EventInputStatus>(vm.value['status'], 'valueMapping.status', EVENT_INPUT_STATUSES)
+  if (st.error) return fail(st.error)
+  for (const k of Object.keys(vm.value)) if (k !== 'severity' && k !== 'status') dropped.push(`valueMapping.${k}`)
+
+  return { mapping: { fields, resourceKind, defaultSeverity, defaultStatus, severityValues: sev.table, statusValues: st.table }, error: null, dropped }
 }
 
 /** Valore a un percorso puntato (`alert.level`, `alerts.0.labels.severity`) — stessa regola dell'API (getPath). */
@@ -160,6 +196,17 @@ export function valueAtPath(payload: unknown, path: string): unknown {
     }
   }
   return cur
+}
+
+/**
+ * Percorso puntato in parole per chi non è tecnico (D·2.2): `alert.level` →
+ * "level (in alert)", `alerts.0.labels.severity` → "severity (in alerts.0.labels)",
+ * `id` → "id". `container` è la chiave i18n del testo tra parentesi ("in").
+ */
+export function readablePath(path: string, inWord: string): string {
+  const segs = path.split('.')
+  if (segs.length < 2) return path
+  return `${segs[segs.length - 1]} (${inWord} ${segs.slice(0, -1).join('.')})`
 }
 
 /**
@@ -226,10 +273,11 @@ export function suggestStatus(value: string): EventInputStatus | '' {
 // Speculare a validatePresetDefaults / mapPresetValue dell'API
 // (apps/api/src/services/events/normalize.ts): per Alertmanager, Grafana,
 // Zabbix, Datadog e Dynatrace l'amministratore non mappa i campi (la forma è
-// fissa) ma può tradurre i valori di severità/stato che lo strumento usa e
+// fissa) ma può tradurre i valori di severità/stato che lo strumento usa,
 // scegliere la risorsa da usare quando l'allarme non ne porta una (alert su
-// metriche aggregate, monitor su log/APM). Senza queste regole l'allarme è
-// scartato con il motivo in `lastError`: l'API non inventa nulla.
+// metriche aggregate, monitor su log/APM) e la severità da usare quando
+// l'allarme non ne porta una (default_values.severity, D·2.3). Senza queste
+// regole l'allarme è scartato con il motivo in `lastError`: l'API non inventa nulla.
 
 /** Connettori con la forma del payload già nota (tutti tranne generic). */
 export type PresetConnectorKind = Exclude<ConnectorKind, 'generic'>
@@ -242,6 +290,12 @@ export interface PresetRules {
   severityValues: Record<string, EventSeverity | ''>
   /** Valore di stato dello strumento → stato OpenGrafo ('' = non ancora scelto). */
   statusValues:   Record<string, EventInputStatus | ''>
+  /**
+   * Severità usata quando l'allarme non ne porta una, nelle parole dello
+   * strumento ('' = nessuna: l'allarme viene scartato). L'API la tratta come un
+   * valore ricevuto: prima la traduzione qui sopra, poi la tabella dello strumento.
+   */
+  defaultSeverity:     string
   /** Risorsa usata quando l'allarme non ne porta una ('' = nessuna: l'allarme viene scartato). */
   defaultResource:     string
   defaultResourceKind: ResourceKind
@@ -252,6 +306,7 @@ export interface PresetRules {
 export const EMPTY_PRESET_RULES: PresetRules = {
   severityValues: {},
   statusValues: {},
+  defaultSeverity: '',
   defaultResource: '',
   defaultResourceKind: 'name',
   resourceFromAlertScope: false,
@@ -274,6 +329,7 @@ export function buildPresetConfig(kind: PresetConnectorKind, r: PresetRules): So
   if (Object.keys(severity).length) valueMapping['severity'] = severity
   if (Object.keys(status).length)   valueMapping['status']   = status
   const defaults: Record<string, string> = {}
+  if (r.defaultSeverity.trim()) defaults['severity'] = r.defaultSeverity.trim()
   if (r.defaultResource.trim()) {
     defaults['resource'] = r.defaultResource.trim()
     defaults['resourceKind'] = r.defaultResourceKind
@@ -289,48 +345,43 @@ export function buildPresetConfig(kind: PresetConnectorKind, r: PresetRules): So
 /**
  * JSON salvati di un connettore preset → regole (pagina di modifica). Un JSON
  * malformato, un valore fuori vocabolario o una chiave che l'editor non sa
- * rappresentare (es. default_values.severity scritto via API) → `error`:
- * mai un salvataggio che perde regole in silenzio.
+ * rappresentare (es. una default_values scritta via API fuori da
+ * severity/resource/resourceKind/resourceFrom) → `error`: mai un salvataggio
+ * che perde regole in silenzio.
  */
 export function parsePresetConfig(kind: PresetConnectorKind, raw: { defaultValues: string | null; valueMapping: string | null }): { rules: PresetRules; error: string | null } {
   const dv = parseObject(raw.defaultValues, 'defaultValues')
   const vm = parseObject(raw.valueMapping, 'valueMapping')
   const error = dv.error ?? vm.error
   if (error) return { rules: EMPTY_PRESET_RULES, error }
+  const fail = (message: string) => ({ rules: EMPTY_PRESET_RULES, error: message })
 
   const rules: PresetRules = { ...EMPTY_PRESET_RULES, severityValues: {}, statusValues: {} }
   for (const [k, v] of Object.entries(dv.value)) {
-    if (k === 'resource') {
-      if (typeof v !== 'string' || !v.trim()) return { rules: EMPTY_PRESET_RULES, error: 'defaultValues.resource: attesa una stringa non vuota' }
+    if (k === 'severity') {
+      if (typeof v !== 'string' || !v.trim()) return fail(expectedNonEmpty('defaultValues.severity'))
+      rules.defaultSeverity = v
+    } else if (k === 'resource') {
+      if (typeof v !== 'string' || !v.trim()) return fail(expectedNonEmpty('defaultValues.resource'))
       rules.defaultResource = v
     } else if (k === 'resourceKind') {
-      if (typeof v !== 'string' || !(RESOURCE_KINDS as readonly string[]).includes(v)) return { rules: EMPTY_PRESET_RULES, error: `defaultValues.resourceKind: atteso uno tra ${RESOURCE_KINDS.join(', ')}` }
+      if (typeof v !== 'string' || !(RESOURCE_KINDS as readonly string[]).includes(v)) return fail(expectedOneOf('defaultValues.resourceKind', RESOURCE_KINDS))
       rules.defaultResourceKind = v as ResourceKind
     } else if (k === 'resourceFrom') {
-      if (v !== RESOURCE_FROM_OPTIONS[kind]) return { rules: EMPTY_PRESET_RULES, error: `defaultValues.resourceFrom: non previsto per ${kind}` }
+      if (v !== RESOURCE_FROM_OPTIONS[kind]) return fail(i18n.t('monitoring.errors.resourceFromNotAllowed', { kind }))
       rules.resourceFromAlertScope = true
     } else {
-      return { rules: EMPTY_PRESET_RULES, error: `defaultValues.${k}: non modificabile da questa pagina` }
+      return fail(notEditable(`defaultValues.${k}`))
     }
   }
-  const sevRaw = vm.value['severity']
-  if (sevRaw !== undefined) {
-    if (sevRaw === null || typeof sevRaw !== 'object') return { rules: EMPTY_PRESET_RULES, error: 'valueMapping.severity: atteso un oggetto' }
-    for (const [src, dst] of Object.entries(sevRaw as Record<string, unknown>)) {
-      if (typeof dst !== 'string' || !(EVENT_SEVERITIES as readonly string[]).includes(dst)) return { rules: EMPTY_PRESET_RULES, error: `valueMapping.severity.${src}: atteso uno tra ${EVENT_SEVERITIES.join(', ')}` }
-      rules.severityValues[src] = dst as EventSeverity
-    }
-  }
-  const stRaw = vm.value['status']
-  if (stRaw !== undefined) {
-    if (stRaw === null || typeof stRaw !== 'object') return { rules: EMPTY_PRESET_RULES, error: 'valueMapping.status: atteso un oggetto' }
-    for (const [src, dst] of Object.entries(stRaw as Record<string, unknown>)) {
-      if (typeof dst !== 'string' || !(EVENT_INPUT_STATUSES as readonly string[]).includes(dst)) return { rules: EMPTY_PRESET_RULES, error: `valueMapping.status.${src}: atteso uno tra ${EVENT_INPUT_STATUSES.join(', ')}` }
-      rules.statusValues[src] = dst as EventInputStatus
-    }
-  }
+  const sev = parseValueTable<EventSeverity>(vm.value['severity'], 'valueMapping.severity', EVENT_SEVERITIES)
+  if (sev.error) return fail(sev.error)
+  rules.severityValues = sev.table
+  const st = parseValueTable<EventInputStatus>(vm.value['status'], 'valueMapping.status', EVENT_INPUT_STATUSES)
+  if (st.error) return fail(st.error)
+  rules.statusValues = st.table
   for (const k of Object.keys(vm.value)) {
-    if (k !== 'severity' && k !== 'status') return { rules: EMPTY_PRESET_RULES, error: `valueMapping.${k}: non supportato` }
+    if (k !== 'severity' && k !== 'status') return fail(notSupported(`valueMapping.${k}`))
   }
   return { rules, error: null }
 }

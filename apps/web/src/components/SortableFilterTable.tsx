@@ -33,6 +33,13 @@ interface Props<T> {
   onToggleRow?:    (id: string) => void
   /** Called with the ids of the currently rendered rows (page-level select-all). */
   onToggleAll?:    (ids: string[]) => void
+  /**
+   * Righe cliccabili raggiungibili da tastiera (tabIndex=0, Enter/Spazio).
+   * Passare `false` quando ogni riga contiene già un `<Link>` alla stessa
+   * destinazione di `onRowClick`: una <tr> focalizzabile non annuncia di
+   * essere un link e raddoppia le tappe di tabulazione; il focus va al Link.
+   */
+  focusableRows?:  boolean
 }
 
 const thStyle: React.CSSProperties = {
@@ -62,6 +69,7 @@ export function SortableFilterTable<T extends object>({
   selectedIds,
   onToggleRow,
   onToggleAll,
+  focusableRows = true,
 }: Props<T>) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = emptyMessage ?? t('common.noResults')
@@ -246,9 +254,10 @@ export function SortableFilterTable<T extends object>({
                 <React.Fragment key={rowId}>
                   <tr
                     onClick={() => onRowClick?.(row)}
-                    // Clickable rows are reachable and activatable from the keyboard (E-14).
-                    tabIndex={onRowClick ? 0 : undefined}
-                    onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) } } : undefined}
+                    // Clickable rows are reachable and activatable from the keyboard (E-14),
+                    // unless the caller says the row already carries a Link (`focusableRows`).
+                    tabIndex={onRowClick && focusableRows ? 0 : undefined}
+                    onKeyDown={onRowClick ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onRowClick(row) } } : undefined}
                     style={{
                       borderBottom:    expandedContent ? 'none' : '1px solid #f1f3f9',
                       cursor:          onRowClick ? 'pointer' : 'default',

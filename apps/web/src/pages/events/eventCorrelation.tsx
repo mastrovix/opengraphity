@@ -14,8 +14,13 @@
  *
  * Un esito fuori vocabolario non viene "abbellito": la cella mostra il link o
  * il trattino e la frase dice che l'esito è sconosciuto (fail-loud).
+ *
+ * Accessibilità: il dettaglio di ogni chip (motivo dell'attesa, sorgente della
+ * tempesta, invito a collegare un CI) non sta solo nel `title`: è un testo
+ * nascosto collegato con `aria-describedby`, quindi letto da tastiera e screen
+ * reader; il countdown "tra N s" è visibile sotto il chip.
  */
-import type { MouseEvent } from 'react'
+import { useId, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -23,6 +28,8 @@ import { Zap, RotateCcw, Link2, CheckCircle2 } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
 import { formatDateTime } from '@/lib/datetime'
 import { colors } from '@/lib/tokens'
+import { srOnlyStyle } from '@/lib/a11y'
+import { TINT_INFO, TINT_WARNING, TINT_NEUTRAL, TINT_FLAPPING, type Tint } from '@/lib/eventPalette'
 import { REEVALUABLE_CORRELATIONS, type MonitoringEvent, type EventPolicy, type EventCorrelation } from '@/types/events'
 
 /** Sottoinsieme della policy che serve alla correlazione (il resto non è necessario ai chiamanti). */
@@ -62,8 +69,33 @@ const AUTO_ICON: Partial<Record<EventCorrelation, { Icon: typeof Zap; key: strin
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 const chipFont  = { fontSize: 'var(--font-size-label)' } as const
 /** Stessa palette dei badge di stato (eventShared): viola = sfarfallio, ambra = tempesta. */
-const FLAP_CHIP  = { bg: '#f5f3ff', color: '#6d28d9' } as const
-const STORM_CHIP = { bg: '#fef3c7', color: '#b45309' } as const
+const FLAP_CHIP  = TINT_FLAPPING
+const STORM_CHIP = TINT_WARNING
+
+/**
+ * Chip con descrizione accessibile: `hint` è nel `title` (mouse) E in un testo
+ * nascosto collegato con `aria-describedby` (tastiera, screen reader, touch).
+ * `note` è un testo breve visibile sotto il chip (es. "tra 42 s").
+ */
+function HintedChip({ tint, label, hint, note, to, onLinkClick }: {
+  tint: Tint; label: ReactNode; hint: string; note?: string | null
+  /** Con `to` il solo chip diventa un link (il testo nascosto resta fuori dal nome del link). */
+  to?: string; onLinkClick?: (e: MouseEvent<HTMLAnchorElement>) => void
+}) {
+  const hintId = useId()
+  const pill = (
+    <Pill bg={tint.bg} color={tint.color} style={chipFont}>
+      <span title={hint} aria-describedby={hintId}>{label}</span>
+    </Pill>
+  )
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+      {to ? <Link to={to} onClick={onLinkClick} style={{ textDecoration: 'none' }}>{pill}</Link> : pill}
+      <span id={hintId} style={srOnlyStyle}>{hint}</span>
+      {note && <span style={{ fontSize: 'var(--font-size-caption)', color: colors.slate, lineHeight: 1.2 }}>{note}</span>}
+    </span>
+  )
+}
 
 interface CellProps {
   event:   CorrelationEvent
@@ -85,9 +117,7 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
         : t('events.correlation.chip.flappingHintNoPolicy')
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-          <Pill bg={FLAP_CHIP.bg} color={FLAP_CHIP.color} style={chipFont}>
-            <span title={tip}>{t('events.correlation.chip.flapping', { count: event.transitions24h })}</span>
-          </Pill>
+          <HintedChip tint={FLAP_CHIP} label={t('events.correlation.chip.flapping', { count: event.transitions24h })} hint={tip} />
           {event.incident && <Link to={`/incidents/${event.incident.id}`} onClick={stop} style={linkStyle}>{event.incident.number}</Link>}
         </span>
       )
@@ -96,17 +126,10 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
       const inc = event.incident
       const label = inc ? t('events.correlation.chip.storm', { number: inc.number }) : t('events.correlation.chip.stormUnknown')
       const tip = t('events.correlation.chip.stormHint', { source: event.source?.name ?? '—' })
-      const pill = <Pill bg={STORM_CHIP.bg} color={STORM_CHIP.color} style={chipFont}><span title={tip}>{label}</span></Pill>
-      return inc
-        ? <Link to={`/incidents/${inc.id}`} onClick={stop} style={{ textDecoration: 'none' }}>{pill}</Link>
-        : pill
+      return <HintedChip tint={STORM_CHIP} label={label} hint={tip} to={inc ? `/incidents/${inc.id}` : undefined} onLinkClick={stop} />
     }
     case 'storm_no_ci':
-      return (
-        <Pill bg={STORM_CHIP.bg} color={STORM_CHIP.color} style={chipFont}>
-          <span title={t('events.correlation.text.storm_no_ci', { source: event.source?.name ?? '—' })}>{t('events.correlation.chip.storm_no_ci')}</span>
-        </Pill>
-      )
+      return <HintedChip tint={STORM_CHIP} label={t('events.correlation.chip.storm_no_ci')} hint={t('events.correlation.text.storm_no_ci', { source: event.source?.name ?? '—' })} />
   }
 
   if (event.incident) {
@@ -127,20 +150,23 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
     case 'suppressed': {
       const chg = event.suppressedBy
       const label = chg ? t('events.correlation.chip.suppressed', { code: chg.code }) : t('events.correlation.chip.suppressedUnknown')
-      const pill = <Pill bg="var(--color-slate-bg)" color="var(--color-slate)" style={chipFont}>{label}</Pill>
+      const pill = <Pill bg={TINT_NEUTRAL.bg} color={TINT_NEUTRAL.color} style={chipFont}>{label}</Pill>
       return chg
         ? <Link to={`/changes/${chg.id}`} onClick={stop} title={chg.title} style={{ textDecoration: 'none' }}>{pill}</Link>
         : pill
     }
     case 'delayed': {
       const secs = delayedOpensIn(event, policy)
-      const tip = secs !== null && secs > 0 ? t('events.correlation.chip.delayedIn', { seconds: secs }) : t('events.correlation.chip.delayedWaiting')
-      return <Pill bg="var(--color-info-bg)" color="#1d4ed8" style={chipFont}><span title={tip}>{t('events.correlation.chip.delayed')}</span></Pill>
+      const counting = secs !== null && secs > 0
+      const tip = counting ? t('events.correlation.chip.delayedIn', { seconds: secs }) : t('events.correlation.chip.delayedWaiting')
+      // Il countdown è visibile sotto il chip (aggiornato a ogni polling), non solo nel tooltip.
+      const note = counting ? t('events.correlation.chip.delayedInShort', { seconds: secs }) : null
+      return <HintedChip tint={TINT_INFO} label={t('events.correlation.chip.delayed')} hint={tip} note={note} />
     }
     case 'pending':
-      return <Pill bg="var(--color-info-bg)" color="#1d4ed8" style={chipFont}><span title={t('events.correlation.text.pending')}>{t('events.correlation.chip.pending')}</span></Pill>
+      return <HintedChip tint={TINT_INFO} label={t('events.correlation.chip.pending')} hint={t('events.correlation.text.pending')} />
     case 'skipped_orphan':
-      return <Pill bg="#fef3c7" color="#b45309" style={chipFont}><span title={t('events.correlation.text.skipped_orphan')}>{t('events.correlation.chip.linkCI')}</span></Pill>
+      return <HintedChip tint={TINT_WARNING} label={t('events.correlation.chip.linkCI')} hint={t('events.correlation.text.skipped_orphan')} />
     default:
       return <span style={{ color: colors.slateLight }}>—</span>
   }

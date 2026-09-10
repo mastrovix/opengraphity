@@ -541,6 +541,13 @@ function mapCIHealthRow(r: CIHealthOverviewRow) {
  * DEPENDS_ON entranti da CI dello stesso tenant; `ownerTeam` è il Team
  * raggiunto da OWNED_BY (stessa relazione di CMDB/ciFieldResolvers).
  *
+ * `downDependents`/`degradedDependents` (D·2.6) sono la somma dei dipendenti
+ * dei CI giù/degradati di TUTTO il tenant, come i contatori: prima la pagina
+ * sommava le righe della pagina corrente e il numero cambiava sfogliando.
+ * Sono un sum(CASE … COUNT { }) nello stesso CALL dei contatori: il COUNT
+ * gira solo per i CI non operativi (i rami del CASE sono pigri) e non
+ * moltiplica righe.
+ *
  * Una sola query (P-2), tre CALL { } senza importazioni: contatori, totale
  * filtrato, pagina. Niente OPTIONAL MATCH in sequenza (prima erano tre:
  * firing × dipendenti × team righe intermedie per CI, poi count DISTINCT):
@@ -575,7 +582,9 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
           count(CASE WHEN ci.health = 'down'        THEN 1 END) AS down,
           count(CASE WHEN ci.health = 'degraded'    THEN 1 END) AS degraded,
           count(CASE WHEN ci.health = 'operational' THEN 1 END) AS operational,
-          count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored
+          count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored,
+          sum(CASE WHEN ci.health = 'down'     THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS downDependents,
+          sum(CASE WHEN ci.health = 'degraded' THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS degradedDependents
       }
       CALL {
         MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
@@ -598,12 +607,13 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
           ownerTeam: head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])
         }) AS items
       }
-      RETURN down, degraded, operational, unmonitored, total, items
+      RETURN down, degraded, operational, unmonitored, downDependents, degradedDependents, total, items
     `, params)
     if (!row) throw new Error('ciHealthOverview: the overview query returned no row (count/collect must always yield one)')
     const n = (k: string) => toNumber(row[k])
     return {
       down: n('down'), degraded: n('degraded'), operational: n('operational'), unmonitored: n('unmonitored'),
+      downDependents: n('downDependents'), degradedDependents: n('degradedDependents'),
       items: row.items.map(mapCIHealthRow),
       total: n('total'),
     }
@@ -875,13 +885,16 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
     }
 
     // Un evento è sollevato su UN CI: il collegamento precedente viene sostituito.
+    // `match_reason = 'manual'` (D·API): chi legge l'evento vede che il CI è
+    // stato scelto da un operatore, non dal riconoscimento (che con il CI già
+    // agganciato non gira e non sovrascrive il valore).
     row = await runQueryOne<EventRow>(session, `
       MATCH (e:Event {id: $id, tenant_id: $tenantId})
       MATCH (target:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       OPTIONAL MATCH (e)-[old:RAISED_ON]->(other:ConfigurationItem) WHERE other.id <> $ciId
       DELETE old
       MERGE (e)-[:RAISED_ON]->(target)
-      SET e.updated_at = $now
+      SET e.updated_at = $now, e.match_reason = 'manual'
       WITH e
       ${eventRowColumns()}
       ${EVENT_ROW_RETURN}

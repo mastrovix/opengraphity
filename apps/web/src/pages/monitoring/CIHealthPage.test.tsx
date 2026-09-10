@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { CIHealthPage } from './CIHealthPage'
-import { GET_CI_HEALTH_OVERVIEW, GET_BASE_CI_TYPE } from '@/graphql/queries'
+import { GET_CI_HEALTH_OVERVIEW, GET_BASE_CI_TYPE, GET_TEAMS } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock, teamsMock } from '@/test/mocks/gql'
 import type { CIHealthOverview, CIHealthRow } from '@/types/events'
@@ -20,7 +20,8 @@ const ROWS: CIHealthRow[] = [
   row({ id: 'ci-3', name: 'app-03', type: 'application', health: 'operational', healthSource: 'manual', firingEvents: 0, dependents: 0, healthSince: null, lastEventAt: null }),
 ]
 
-const OVERVIEW: CIHealthOverview = { down: 2, degraded: 1, operational: 5, unmonitored: 12, total: 3, items: ROWS }
+// downDependents (9) ≠ somma dei dipendenti delle righe giù in pagina (7): il riquadro deve mostrare l'aggregato del server.
+const OVERVIEW: CIHealthOverview = { down: 2, degraded: 1, operational: 5, unmonitored: 12, downDependents: 9, degradedDependents: 3, total: 3, items: ROWS }
 
 type Vars = { filter: Record<string, unknown> | null; limit: number; offset: number }
 
@@ -47,33 +48,40 @@ const baseTypeMock = (): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-function renderPage(role: string, opts: { overview?: Partial<CIHealthOverview>; seen?: Vars[] } = {}) {
+const baseTypeErrorMock = (): GqlMock => ({ request: { query: GET_BASE_CI_TYPE }, error: new Error('metamodel down'), maxUsageCount: Number.POSITIVE_INFINITY })
+const teamsErrorMock = (): GqlMock => ({ request: { query: GET_TEAMS, variables: {} }, error: new Error('teams down'), maxUsageCount: Number.POSITIVE_INFINITY })
+
+function renderPage(role: string, opts: { overview?: Partial<CIHealthOverview>; seen?: Vars[]; route?: string; teams?: GqlMock; baseType?: GqlMock } = {}) {
   return renderWithProviders(<CIHealthPage />, {
-    route: '/monitoring/health',
-    mocks: [meMock(role), overviewMock(opts.overview, opts.seen), teamsMock([{ id: 't1', name: 'DBA' }]), baseTypeMock()],
+    route: opts.route ?? '/monitoring/health',
+    mocks: [meMock(role), overviewMock(opts.overview, opts.seen), opts.teams ?? teamsMock([{ id: 't1', name: 'DBA' }]), opts.baseType ?? baseTypeMock()],
   })
 }
 
 /** Riquadro-contatore per etichetta (il nome accessibile è "numero etichetta contesto"). */
 const tile = (label: 'Down' | 'Degraded' | 'Operational') => screen.getByRole('button', { name: new RegExp(`\\b${label}\\b`) })
 const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
+const location = () => screen.getByTestId('location').textContent
 
 describe('CIHealthPage', () => {
-  it('contatori del tenant nei quattro riquadri e righe ordinate con salute, allarmi, impatto, squadra e origine', async () => {
+  it('contatori del tenant nei quattro riquadri (impatto aggregato dal server, non dalla pagina) e righe con salute, allarmi, impatto, squadra, origine e mappa', async () => {
     renderPage('operator')
     expect(await screen.findByRole('heading', { name: 'CI health' })).toBeInTheDocument()
 
     const down = tile('Down')
     expect(down).toHaveTextContent(/^2Down/)
     expect(down).toHaveAttribute('aria-pressed', 'false')
-    expect(down).toHaveTextContent('with 7 dependent CIs')     // somma dei dipendenti delle righe giù in pagina
+    expect(down).toHaveTextContent('with 9 dependent CIs')     // downDependents del server (le righe giù in pagina sommano 7)
     expect(tile('Degraded')).toHaveTextContent(/^1Degraded/)
+    expect(tile('Degraded')).toHaveTextContent('with 3 dependent CIs')
     expect(tile('Operational')).toHaveTextContent(/^5Operational/)
     expect(tile('Operational')).toHaveTextContent('of 8 monitored')
-    // "senza monitoraggio" è informativo: nessun bottone, ma numero, etichetta e tooltip
+    // "senza monitoraggio" è informativo: nessun bottone, ma numero, etichetta, tooltip e link alla CMDB
     expect(screen.queryByRole('button', { name: /^12\b/ })).not.toBeInTheDocument()
-    expect(screen.getByTitle('CIs no source has sent alarms for yet')).toHaveTextContent('12')
-    expect(screen.getByTitle('CIs no source has sent alarms for yet')).toHaveTextContent('Not monitored')
+    const unmonitored = screen.getByTitle('CIs no source has sent alarms for yet')
+    expect(unmonitored).toHaveTextContent('12')
+    expect(unmonitored).toHaveTextContent('Not monitored')
+    expect(within(unmonitored).getByRole('link', { name: 'View all CIs in the CMDB' })).toHaveAttribute('href', '/cmdb')
     // giù + degradati > 0 → nessun pannello "tutto bene"
     expect(screen.queryByText('All monitored CIs are operational')).not.toBeInTheDocument()
 
@@ -88,9 +96,12 @@ describe('CIHealthPage', () => {
     expect(within(rows[0]!).getByText('DBA')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('5 min ago')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Monitoring')).toBeInTheDocument()
+    expect(within(rows[0]!).getByRole('link', { name: 'View db-01 on the map' })).toHaveAttribute('href', '/topology?health=1&ciId=ci-1')
 
     expect(within(rows[1]!).getByText('Degraded')).toBeInTheDocument()
     expect(within(rows[1]!).getByText('3 dependents')).toBeInTheDocument()
+    // plurale: un solo allarme
+    expect(within(rows[1]!).getByRole('link', { name: 'View the active alarm of cache-02' })).toHaveAttribute('href', '/events?ciId=ci-2')
 
     expect(within(rows[2]!).getByText('Operational')).toBeInTheDocument()
     expect(within(rows[2]!).getByText('0')).toBeInTheDocument()               // nessun allarme → non è un link
@@ -100,11 +111,23 @@ describe('CIHealthPage', () => {
 
     // intestazioni con scope, pulsanti della testata
     for (const th of screen.getAllByRole('columnheader')) expect(th).toHaveAttribute('scope', 'col')
-    expect(screen.getByRole('button', { name: 'View on the map' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View on the map' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
   })
 
-  it('il riquadro "Giù" filtra la tabella (aria-pressed) e un secondo clic toglie il filtro', async () => {
+  it('accessibilità: la riga non è nel tab order (il bersaglio è il Link), i tooltip di "da N min", impatto e origine sono anche descrizioni', async () => {
+    renderPage('operator')
+    await screen.findByRole('heading', { name: 'CI health' })
+    const first = bodyRows()[0]!
+    expect(first).not.toHaveAttribute('tabindex')
+    expect(first).not.toHaveAttribute('role')
+    const impact = within(first).getByText('7 dependents')
+    expect(impact).toHaveAccessibleDescription('At least 5 CIs depend on this one: a failure here spreads')
+    expect(within(first).getByText('Monitoring')).toHaveAccessibleDescription(/Health computed from the alarms/)
+    expect(within(first).getByText(/for 42 min/)).toHaveAccessibleDescription(/Current health in force since/)
+  })
+
+  it('il riquadro "Giù" filtra la tabella (aria-pressed), scrive ?health=down nell\'URL e un secondo clic toglie il filtro', async () => {
     const seen: Vars[] = []
     const { user } = renderPage('operator', { seen })
     await screen.findByRole('heading', { name: 'CI health' })
@@ -113,15 +136,17 @@ describe('CIHealthPage', () => {
 
     await user.click(tile('Down'))
     expect(tile('Down')).toHaveAttribute('aria-pressed', 'true')
+    expect(location()).toBe('/monitoring/health?health=down')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ health: ['down'] }))
     expect(seen.at(-1)).toMatchObject({ limit: 50, offset: 0 })
 
     await user.click(tile('Down'))
     expect(tile('Down')).toHaveAttribute('aria-pressed', 'false')
+    expect(location()).toBe('/monitoring/health')
     await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
   })
 
-  it('i filtri della riga (ambiente dall\'enum base, squadra) finiscono nelle variabili della query', async () => {
+  it('i filtri della riga (ambiente dall\'enum base, squadra, ricerca) finiscono nell\'URL e nelle variabili della query', async () => {
     const seen: Vars[] = []
     const { user } = renderPage('operator', { seen })
     await screen.findByRole('heading', { name: 'CI health' })
@@ -129,34 +154,83 @@ describe('CIHealthPage', () => {
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging' }))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Team' }), 't1')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1' }))
+    expect(location()).toBe('/monitoring/health?env=staging&team=t1')
+    await user.type(screen.getByRole('textbox', { name: 'Search a CI by name' }), 'db')
+    await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1', search: 'db' }))
+    expect(location()).toBe('/monitoring/health?env=staging&team=t1&q=db')
   })
 
-  it('"Vedi sulla mappa" porta alla topologia con la salute evidenziata', async () => {
+  it('D·1.7 — l\'URL è la sorgente dei filtri e della pagina: ?health=degraded&type=server&env=staging&team=t1&q=db&page=2 → variabili e controlli allineati', async () => {
+    const seen: Vars[] = []
+    renderPage('operator', { seen, route: '/monitoring/health?health=degraded&type=server&env=staging&team=t1&q=db&page=2', overview: { total: 60 } })
+    await screen.findByRole('heading', { name: 'CI health' })
+    await waitFor(() => expect(seen.at(-1)).toEqual({ filter: { health: ['degraded'], type: 'server', environment: 'staging', team: 't1', search: 'db' }, limit: 50, offset: 50 }))
+    expect(tile('Degraded')).toHaveAttribute('aria-pressed', 'true')
+    expect(tile('Down')).toHaveAttribute('aria-pressed', 'false')
+    expect(await screen.findByRole('combobox', { name: 'Environment' })).toHaveValue('staging')
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('t1')
+    expect(screen.getByRole('textbox', { name: 'Search a CI by name' })).toHaveValue('db')
+    expect(screen.getByText('page 2 of 2')).toBeInTheDocument()
+    // un valore di salute fuori vocabolario nell'URL viene ignorato (nessun riquadro premuto), non inviato al server
+    expect(location()).toContain('health=degraded')
+  })
+
+  it('D·1.15 — il totale scende sotto la pagina corrente → la pagina torna all\'ultima disponibile (URL senza page, offset 0)', async () => {
+    const seen: Vars[] = []
+    renderPage('operator', { seen, route: '/monitoring/health?page=3' })
+    await screen.findByRole('heading', { name: 'CI health' })
+    await waitFor(() => expect(seen.some((v) => v.offset === 100)).toBe(true))
+    await waitFor(() => expect(location()).toBe('/monitoring/health'))
+    await waitFor(() => expect(seen.at(-1)!.offset).toBe(0))
+  })
+
+  it('D·1.3 — "Vedi sulla mappa" porta alla topologia con la salute evidenziata E il primo CI (il più grave) come partenza', async () => {
     const { user } = renderPage('viewer')
-    await user.click(await screen.findByRole('button', { name: 'View on the map' }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/topology?health=1')
+    const btn = await screen.findByRole('button', { name: 'View on the map' })
+    expect(btn).toHaveAttribute('title', 'View db-01 on the map')
+    await user.click(btn)
+    expect(location()).toBe('/topology?health=1&ciId=ci-1')
   })
 
-  it('stato "tutto bene": giù + degradati = 0 → pannello verde sopra la tabella, tabella sempre visibile', async () => {
+  it('senza righe il pulsante "Vedi sulla mappa" è disabilitato con il motivo', async () => {
+    renderPage('viewer', { overview: { down: 0, degraded: 0, operational: 1, total: 0, items: [] }, route: '/monitoring/health?health=down' })
+    await screen.findByText('No CI matches the filters')
+    const btn = screen.getByRole('button', { name: 'View on the map' })
+    expect(btn).toBeDisabled()
+    expect(btn).toHaveAttribute('title', 'No CI with health data to show on the map')
+  })
+
+  it('D·1.6 — errori delle liste di supporto (squadre, enum base) visibili come testo, non solo tooltip', async () => {
+    renderPage('operator', { teams: teamsErrorMock(), baseType: baseTypeErrorMock() })
+    await screen.findByRole('heading', { name: 'CI health' })
+    expect(await screen.findByText('Teams unavailable: teams down')).toBeInTheDocument()
+    expect(await screen.findByText('Environments unavailable: metamodel down')).toBeInTheDocument()
+    // la tabella resta usabile
+    expect(bodyRows()).toHaveLength(3)
+  })
+
+  it('stato "tutto bene": giù + degradati = 0 → pannello verde sopra la tabella, tabella sempre visibile; plurale del contesto "operativi"', async () => {
     const ops = ROWS.filter((r) => r.health === 'operational')
-    renderPage('viewer', { overview: { down: 0, degraded: 0, operational: 3, total: ops.length, items: ops } })
+    renderPage('viewer', { overview: { down: 0, degraded: 0, operational: 1, downDependents: 0, degradedDependents: 0, total: ops.length, items: ops } })
     expect(await screen.findByText('All monitored CIs are operational')).toBeInTheDocument()
-    expect(screen.getByText('3 monitored CIs, no active alarm degrading them')).toBeInTheDocument()
+    expect(screen.getByText('1 monitored CI, no active alarm degrading it')).toBeInTheDocument()
     expect(tile('Down')).toHaveTextContent('none right now')
+    expect(tile('Operational')).toHaveTextContent('of 1 monitored')
     expect(bodyRows()).toHaveLength(1)
   })
 
   it('stato vuoto (nessun CI con salute): invito a collegare una sorgente; il pulsante solo per l\'admin', async () => {
-    const { user } = renderPage('admin', { overview: { down: 0, degraded: 0, operational: 0, unmonitored: 40, total: 0, items: [] } })
+    const { user } = renderPage('admin', { overview: { down: 0, degraded: 0, operational: 0, unmonitored: 40, downDependents: 0, degradedDependents: 0, total: 0, items: [] } })
     expect(await screen.findByText('No health data yet')).toBeInTheDocument()
     expect(screen.queryByText('All monitored CIs are operational')).not.toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View on the map' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Add source' }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources/new')
+    expect(location()).toBe('/monitoring/sources/new')
   })
 
   it('stato vuoto per il viewer: testo che rimanda all\'amministratore, nessun pulsante', async () => {
-    renderPage('viewer', { overview: { down: 0, degraded: 0, operational: 0, unmonitored: 40, total: 0, items: [] } })
+    renderPage('viewer', { overview: { down: 0, degraded: 0, operational: 0, unmonitored: 40, downDependents: 0, degradedDependents: 0, total: 0, items: [] } })
     expect(await screen.findByText('No health data yet')).toBeInTheDocument()
     expect(screen.getByText(/Ask an administrator to connect a monitoring tool/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add source' })).not.toBeInTheDocument()
@@ -175,6 +249,6 @@ describe('CIHealthPage', () => {
     const { user } = renderPage('viewer')
     await screen.findByRole('heading', { name: 'CI health' })
     await user.click(within(bodyRows()[1]!).getByText('3 dependents'))
-    expect(screen.getByTestId('location')).toHaveTextContent('/ci/server/ci-2')
+    expect(location()).toBe('/ci/server/ci-2')
   })
 })

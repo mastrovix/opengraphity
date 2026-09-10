@@ -51,7 +51,7 @@ export function eventsSDL(): string {
   ${sdlEnum('HealthSource')}
   """Esito dell'ultima valutazione di correlazione (Event.correlation)."""
   ${sdlEnum('EventCorrelation')}
-  """Esito dell'ultimo riconoscimento automatico del CI (Event.matchReason), in ordine di precedenza: alias_external_id, alias, name, name_short (policy matchShortHostname), ambiguous (più CI con lo stesso nome: non agganciato), none."""
+  """Perché l'evento ha (o non ha) il suo CI (Event.matchReason). Esiti del riconoscimento automatico, in ordine di precedenza: alias_external_id, alias, name, name_short (policy matchShortHostname), ambiguous (più CI con lo stesso nome: non agganciato), none. manual = CI scelto da un operatore con linkEventToCI (mai scritto dall'ingest)."""
   ${sdlEnum('EventMatchReason')}
   """Soglia di severità oltre la quale la policy apre un incident (never = mai)."""
   ${sdlEnum('OpenIncidentFrom')}
@@ -100,7 +100,7 @@ export function eventsSDL(): string {
     source:         MonitoringSourceRef
     """CI riconosciuto. Null = evento orfano."""
     ci:             ConfigurationItemRef
-    """Come è stato riconosciuto (o perché no) il CI all'ultimo ingest: ambiguous = più CI con lo stesso nome, l'evento resta orfano finché non viene collegato a mano. Null sugli eventi scritti prima del campo o collegati solo a mano."""
+    """Come è stato riconosciuto (o perché no) il CI all'ultimo ingest: ambiguous = più CI con lo stesso nome, l'evento resta orfano finché non viene collegato a mano; manual = collegato da un operatore (linkEventToCI). Null sugli eventi scritti prima del campo."""
     matchReason:    EventMatchReason
     """Incident a cui l'evento è correlato, se esiste."""
     incident:       Incident
@@ -322,6 +322,10 @@ export function eventsSDL(): string {
     operational: Int!
     """CI del tenant senza alcun dato di salute."""
     unmonitored: Int!
+    """Somma dei CI che dipendono direttamente (DEPENDS_ON) dai CI giù di tutto il tenant: l'impatto complessivo, indipendente da filtro e pagina."""
+    downDependents:     Int!
+    """Come downDependents, per i CI degradati."""
+    degradedDependents: Int!
     items:       [CIHealthRow!]!
     total:       Int!
   }
@@ -387,7 +391,8 @@ export function eventsSDL(): string {
     Collega un evento orfano a un CI; con createAlias = true la sorgente verrà
     riconosciuta da sola la prossima volta. Se l'alias esiste già e punta a un
     altro CI → BAD_USER_INPUT con il CI attuale (stessa regola di createCIAlias):
-    un alias non viene mai ri-puntato in silenzio.
+    un alias non viene mai ri-puntato in silenzio. Scrive matchReason = manual:
+    l'evento dichiara che il CI è stato scelto da un operatore.
     """
     linkEventToCI(eventId: ID!, ciId: ID!, createAlias: Boolean): Event!
     """Apre a mano un incident dall'evento (solo status firing, non ancora correlato). Serializzata con la correlazione automatica sullo stesso gruppo: due richieste ravvicinate non aprono due incident."""

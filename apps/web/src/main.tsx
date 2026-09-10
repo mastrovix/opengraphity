@@ -1,8 +1,6 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ApolloProvider, useQuery } from '@apollo/client/react'
-import { GET_CI_BY_ID_REF } from '@/graphql/queries'
-import { ciPath } from '@/lib/ciPath'
+import { ApolloProvider } from '@apollo/client/react'
 import { createBrowserRouter, RouterProvider, useRouteError, Navigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Toaster } from '@/components/ui/sonner'
@@ -32,18 +30,8 @@ function CIDetailRedirect({ typeName }: { typeName: string }) {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
 }
-// Le notifiche in-app costruiscono il link come /<entity>s/<id>: per un CI
-// (`ci.health_changed`) arriva /cis/<id> senza il tipo, che serve alla rotta
-// reale /ci/:typeName/:id. Qui si risolve il tipo e si reindirizza.
-function CIByIdRedirect() {
-  const { id } = useParams<{ id: string }>()
-  const { t } = useTranslation()
-  const { data, loading, error } = useQuery<{ ciById: { id: string; type: string } | null }>(GET_CI_BY_ID_REF, { variables: { id } })
-  if (loading) return <PageLoader />
-  if (error) throw error
-  if (!data?.ciById) return <p role="alert" style={{ padding: 24 }}>{t('routeError.notFound')}</p>
-  return <Navigate to={ciPath(data.ciById)} replace />
-}
+// /cis/:id (link delle notifiche senza il tipo) → /ci/:typeName/:id.
+import { CIByIdRedirect } from '@/pages/ci/CIByIdRedirect'
 const WhatIfPage = lazy(() => import('@/pages/analysis/WhatIfPage').then(m => ({ default: m.WhatIfPage })))
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
 import { EventsPage } from '@/pages/events/EventsPage'
@@ -87,6 +75,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PageLoader } from '@/components/PageLoader'
 import { RequireRole } from '@/components/RequireRole'
 import type { UserRole } from '@/hooks/useMe'
+import { STAFF_ROLES } from '@/lib/roles'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
@@ -135,8 +124,9 @@ function Keyed({ Page }: { Page: React.ComponentType }) {
 // la stessa fonte usata dalla Sidebar e dalle pagine.
 const ADMIN_ONLY:     readonly UserRole[] = ['admin']
 const ADMIN_OPERATOR: readonly UserRole[] = ['admin', 'operator']
-// Console eventi: staff (admin/operator/viewer), non gli end user del portale.
-const STAFF:          readonly UserRole[] = ['admin', 'operator', 'viewer']
+// Console allarmi: staff (admin/operator/viewer), non gli end user del portale.
+// Stessa lista della Sidebar e dei widget (lib/roles).
+const STAFF:          readonly UserRole[] = STAFF_ROLES
 const admin    = (el: React.ReactElement) => <RequireRole roles={ADMIN_ONLY}>{el}</RequireRole>
 const approver = (el: React.ReactElement) => <RequireRole roles={ADMIN_OPERATOR}>{el}</RequireRole>
 const staff    = (el: React.ReactElement) => <RequireRole roles={STAFF}>{el}</RequireRole>

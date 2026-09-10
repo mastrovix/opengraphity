@@ -614,7 +614,7 @@ export function CIDetailPage() {
           </SectionCard>
 
           {/* Salute dal monitoraggio (Event Management): aperta se la salute è nota */}
-          {!isGroup && <CIHealthSection ciId={ci.id} />}
+          {!isGroup && <CIHealthSection ciId={ci.id} ciName={ci.name} />}
 
           {ci.type === 'dynamic_ci_group' && String(ci['membershipType'] ?? '') === 'dynamic' && (
             <GroupCriteriaBuilder

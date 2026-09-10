@@ -214,7 +214,10 @@ describe('CIDetailPage — sezione Salute (monitoraggio)', () => {
     expect(screen.getByText('Monitoring')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /View in the console/ })).toHaveAttribute('href', '/events?ciId=srv-1')
 
+    // la forzatura parte con "Applica", non al cambio del select (D·1.12)
     await user.selectOptions(screen.getByLabelText('Force health'), 'degraded')
+    expect(seen).toEqual([])
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() => expect(seen).toEqual([{ ciId: 'srv-1', health: 'degraded' }]))
   })
 

@@ -43,6 +43,16 @@ export const EVENT_CORRELATIONS: readonly EventCorrelation[] = [
 /** Stati in cui "Rivaluta ora" ha senso: la policy può decidere diversamente. */
 export const REEVALUABLE_CORRELATIONS: readonly EventCorrelation[] = ['suppressed', 'delayed', 'skipped_orphan']
 
+/**
+ * Come è stato riconosciuto il CI all'ultimo ingest (`Event.matchReason`), in
+ * ordine di precedenza: alias external_id, alias, nome esatto, nome corto
+ * (policy matchShortHostname); `ambiguous` = più CI con lo stesso nome, l'evento
+ * resta senza CI finché non viene collegato a mano; `manual` = collegato da un
+ * operatore; `none` = nessuna corrispondenza. Null sugli eventi precedenti al campo.
+ */
+export type EventMatchReason = 'alias_external_id' | 'alias' | 'name' | 'name_short' | 'ambiguous' | 'none' | 'manual'
+export const EVENT_MATCH_REASONS: readonly EventMatchReason[] = ['alias_external_id', 'alias', 'name', 'name_short', 'ambiguous', 'none', 'manual']
+
 /** Riferimento leggero alla change che ha silenziato l'evento (`Event.suppressedBy`). */
 export interface ChangeRef {
   id:    string
@@ -90,6 +100,8 @@ export interface EventRow {
   flappingSince:  string | null
   /** Passaggi attivo/risolto nelle ultime 24 ore. */
   transitions24h: number
+  /** Esito del riconoscimento del CI: in riga serve solo per il badge "Ambiguo" sugli eventi senza CI. */
+  matchReason:    EventMatchReason | null
 }
 
 /**
@@ -99,13 +111,18 @@ export interface EventRow {
  */
 export const EVENT_ROW_SCALAR_FIELDS: ReadonlySet<string> = new Set<keyof EventRow>([
   'id', 'status', 'severity', 'title', 'resource', 'resourceKind', 'count', 'lastSeenAt', 'acknowledgedAt',
-  'correlation', 'correlationAt', 'flappingSince', 'transitions24h',
+  'correlation', 'correlationAt', 'flappingSince', 'transitions24h', 'matchReason',
 ])
 
 /** Evento completo (fragment `EventFields`): dettaglio e risultati delle mutation. */
 export interface MonitoringEvent extends EventRow {
   fingerprint:    string
+  /** Identificativo dell'ALLARME presso la sorgente (fingerprint Alertmanager, event_id Zabbix…). */
   externalId:     string | null
+  /** Identificativo della RISORSA (il CI) presso la sorgente: è quello confrontato con un alias external_id. */
+  resourceExternalId: string | null
+  /** Severità più alta vista nel ciclo corrente (riparte a ogni resolved → firing); null sugli eventi precedenti al campo. */
+  maxSeverity:    EventSeverity | null
   description:    string | null
   /** Etichette della sorgente, JSON serializzato (sempre presente, almeno "{}"); un evento di prova ha sample = "true". */
   labels:         string
@@ -287,6 +304,10 @@ export interface CIHealthOverview {
   operational: number
   /** CI del tenant senza alcun dato di salute. */
   unmonitored: number
+  /** Somma dei CI che dipendono direttamente dai CI giù di tutto il tenant (impatto complessivo, non della pagina). */
+  downDependents:     number
+  /** Come `downDependents`, per i CI degradati. */
+  degradedDependents: number
   items:       CIHealthRow[]
   total:       number
 }

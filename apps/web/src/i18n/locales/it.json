@@ -99,9 +99,11 @@
     "expand": "Espandi sidebar",
     "mainMenu": "Menu principale",
     "anomalyLoadError": "Errore caricamento anomalie",
-    "criticalAnomalies": "{{count}} anomalie critiche",
-    "pendingBadge": "{{count}} in attesa",
-    "events": "Eventi",
+    "criticalAnomalies_one": "{{count}} anomalia critica",
+    "criticalAnomalies_other": "{{count}} anomalie critiche",
+    "pendingBadge_one": "{{count}} in attesa",
+    "pendingBadge_other": "{{count}} in attesa",
+    "events": "Allarmi",
     "eventPolicy": "Policy eventi",
     "monitoringSources": "Sorgenti",
     "ciHealth": "Salute CI",
@@ -123,7 +125,8 @@
         "title": "Allarmi di monitoraggio",
         "empty": "Nessun allarme di monitoraggio correlato a questo incident.",
         "openedByMonitoring": "Incident aperto automaticamente dal monitoraggio il {{when}}.",
-        "purged": "{{count}} allarmi eliminati dalla conservazione degli eventi (restano citati nella cronologia)."
+        "purged_one": "{{count}} allarme eliminato dalla conservazione degli eventi (resta citato nella cronologia).",
+        "purged_other": "{{count}} allarmi eliminati dalla conservazione degli eventi (restano citati nella cronologia)."
       }
     },
     "changes": {
@@ -803,7 +806,8 @@
       "updateWidget": "Aggiorna widget",
       "customWidgets": "Widget personalizzati",
       "customWidgetsDesc": "Counter, grafico, tabella o gauge con dati in tempo reale — senza il report builder.",
-      "createdCount": "Creati ({{count}})",
+      "createdCount_one": "Creato ({{count}})",
+      "createdCount_other": "Creati ({{count}})",
       "addFromReport": "Aggiungi da report",
       "noReports": "Nessun report disponibile.",
       "noSections": "Nessuna sezione",
@@ -831,7 +835,7 @@
         "chartDonut": "Proporzioni",
         "table": "Lista valori",
         "gauge": "% su 100",
-        "activeAlarms": "Allarmi attivi, critici, warning e orfani dal monitoraggio"
+        "activeAlarms": "Allarmi attivi, critici, avvisi e senza CI dal monitoraggio"
       },
       "entityLabel": "Entità",
       "entity": {
@@ -907,7 +911,8 @@
       "total": "Totale:",
       "categories": "Categorie:",
       "previewHint": "La preview si aggiorna automaticamente mentre configuri il widget (con debounce 600ms).",
-      "activeAlarmsHint": "Questo widget mostra i contatori in tempo reale della console eventi: nessuna entità o metrica da configurare."
+      "activeAlarmsHint": "Questo widget mostra i contatori in tempo reale della console allarmi: nessuna entità o metrica da configurare.",
+      "activeAlarmsStaffOnly": "La console allarmi è riservata allo staff (amministratori, operatori e visualizzatori)."
     }
   },
   "filter": {
@@ -1267,7 +1272,68 @@
       "connectorKind": "Connettore",
       "eventsNote": "Le sorgenti di monitoraggio (allarmi da Alertmanager, Grafana, Zabbix, Datadog o altri strumenti) si configurano senza codice in",
       "eventsNoteLink": "Monitoraggio → Sorgenti",
-      "manageInMonitoring": "Gestisci in Monitoraggio"
+      "manageInMonitoring": "Gestisci in Monitoraggio",
+      "title": "Integrazioni",
+      "subtitle": "Webhook, API key e connessioni esterne",
+      "newInbound": "Nuovo webhook in ingresso",
+      "newOutbound": "Nuovo webhook in uscita",
+      "newApiKey": "Nuova API key",
+      "secretTitle": "Credenziale generata",
+      "secretWarning": "Questo token non sarà più visibile. Copialo ora!",
+      "retryOnFailure": "Riprova in caso di errore",
+      "entityIncident": "Incident",
+      "entityChange": "Change",
+      "entityProblem": "Problem",
+      "filters": {
+        "entityType": "Tipo entità",
+        "enabled": "Abilitato",
+        "name": "Nome"
+      },
+      "columns": {
+        "name": "Nome",
+        "entityType": "Tipo entità",
+        "endpoint": "URL dell'endpoint",
+        "enabled": "Attivo",
+        "received": "Ricevuti",
+        "lastReceived": "Ultimo",
+        "url": "URL",
+        "events": "Eventi",
+        "sent": "Invii",
+        "lastStatus": "Ultimo stato",
+        "lastError": "Ultimo errore",
+        "keyPrefix": "Prefisso",
+        "permissions": "Permessi",
+        "rateLimit": "Limite",
+        "lastUsed": "Ultimo uso",
+        "requests": "Richieste"
+      },
+      "emptyInbound": "Nessun webhook in ingresso configurato",
+      "emptyOutbound": "Nessun webhook in uscita configurato",
+      "emptyApiKeys": "Nessuna API key configurata",
+      "tableInbound": "Webhook in ingresso",
+      "tableOutbound": "Webhook in uscita",
+      "tableApiKeys": "API key",
+      "form": {
+        "name": "Nome",
+        "entityType": "Tipo entità",
+        "fieldMapping": "Mappatura dei campi (JSON)",
+        "defaultValues": "Valori predefiniti (JSON)",
+        "transformScript": "Script di trasformazione",
+        "url": "URL",
+        "method": "Metodo",
+        "headers": "Header (JSON)",
+        "events": "Eventi",
+        "payloadTemplate": "Modello del payload",
+        "secret": "Segreto",
+        "permissions": "Permessi",
+        "rateLimit": "Limite (richieste/min)",
+        "expiresAt": "Scadenza"
+      },
+      "errors": {
+        "tokenMissing": "Webhook creato ma token mancante nella risposta",
+        "keyMissing": "API key creata ma chiave mancante nella risposta",
+        "emptyResponse": "risposta vuota"
+      }
     },
     "questions": {
       "deleteTitle": "Eliminare questa domanda?",
@@ -1301,6 +1367,12 @@
     "unexpected": "Errore inatteso",
     "generic": "Qualcosa è andato storto",
     "backToDashboard": "Torna alla Dashboard"
+  },
+  "errors": {
+    "labelsNotObject": "Etichette: atteso un oggetto JSON",
+    "ciNotFound": "CI non trovato",
+    "ciNotFoundHint": "Nessun CI con id {{id}}: potrebbe essere stato eliminato.",
+    "backToCmdb": "Torna alla CMDB"
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -1579,16 +1651,16 @@
       "transitionFailed": "Transizione non riuscita"
     },
     "events": {
-      "acknowledged": "Evento preso in carico",
-      "resolved": "Evento risolto",
+      "acknowledged": "Allarme preso in carico",
+      "resolved": "Allarme risolto",
       "incidentCreated": "Incident {{number}} creato",
-      "linked": "Evento collegato a {{ci}}",
+      "linked": "Allarme collegato a {{ci}}",
       "aliasDeleted": "Alias eliminato",
       "aliasCreated": "Alias creato",
       "actionFailed": "Operazione fallita: {{error}}",
       "policySaved": "Policy eventi salvata",
       "policySaveFailed": "Salvataggio policy fallito: {{error}}",
-      "reevaluated": "Evento rivalutato: {{outcome}}"
+      "reevaluated": "Allarme rivalutato: {{outcome}}"
     },
     "monitoring": {
       "sourceCreated": "Sorgente creata",
@@ -1641,14 +1713,16 @@
     }
   },
   "events": {
-    "title": "Eventi",
-    "count": "{{count}} eventi",
-    "orphan": "orfano",
+    "title": "Allarmi",
+    "count_one": "{{count}} allarme",
+    "count_other": "{{count}} allarmi",
+    "orphan": "Nessun CI",
+    "openInConsole": "Apri nella console",
     "status": {
       "firing": "Attivo",
       "resolved": "Risolto",
-      "suppressed": "Soppresso",
-      "flapping": "Sfarfallio"
+      "suppressed": "Silenziato",
+      "flapping": "Instabile"
     },
     "severity": {
       "critical": "Critico",
@@ -1659,29 +1733,48 @@
       "firing": "Attivi",
       "critical": "Critici",
       "warning": "Avvisi",
-      "orphan": "Orfani",
-      "suppressed": "Soppressi",
-      "flapping": "Sfarfallio",
+      "orphan": "Senza CI",
+      "suppressed": "Silenziati",
+      "flapping": "Instabili",
       "resolved24h": "Risolti 24h"
+    },
+    "matchReason": {
+      "alias_external_id": "Alias ID esterno",
+      "alias": "Alias del CI",
+      "name": "Nome del CI",
+      "name_short": "Nome corto (senza dominio)",
+      "ambiguous": "Ambiguo: più CI con lo stesso nome",
+      "none": "Nessuna corrispondenza",
+      "manual": "Collegato a mano",
+      "unknown": "Non registrato",
+      "unexpected": "Motivo sconosciuto: {{value}}",
+      "ambiguousBadge": "Ambiguo",
+      "ambiguousHelp": "Più CI hanno questo nome: collega il CI a mano oppure aggiungi un alias (IP, FQDN o ID esterno) al CI giusto."
     },
     "columns": {
       "status": "Stato",
       "severity": "Severità",
-      "title": "Evento",
+      "title": "Allarme",
       "ci": "CI",
       "source": "Sorgente",
-      "count": "Conteggio",
+      "count": "Ricorrenze",
       "lastSeen": "Ultimo visto",
       "incident": "Incident",
       "actions": "Azioni"
     },
     "filters": {
-      "orphanOnly": "Solo orfani",
+      "orphanOnly": "Solo senza CI",
+      "incidentOnly": "Solo questo incident",
+      "changeOnly": "Solo questa change",
       "search": "Ricerca",
-      "searchPlaceholder": "Cerca titolo o risorsa…"
+      "searchPlaceholder": "Cerca titolo o risorsa…",
+      "sourcesError": "Sorgenti non caricate: {{error}}",
+      "advancedActive": "Filtro avanzato attivo: si applica alla pagina caricata, conteggio e pagine sono quelli del server",
+      "advancedMatch_one": "{{count}} di {{total}} in questa pagina corrisponde al filtro avanzato",
+      "advancedMatch_other": "{{count}} di {{total}} in questa pagina corrispondono al filtro avanzato"
     },
     "empty": {
-      "title": "Nessun evento",
+      "title": "Nessun allarme",
       "description": "Nessun allarme corrisponde ai filtri."
     },
     "actions": {
@@ -1689,9 +1782,9 @@
       "resolve": "Risolvi",
       "openIncident": "Apri incident",
       "linkCI": "Collega a CI",
-      "openIncidentTitle": "Aprire un incident da questo evento?",
+      "openIncidentTitle": "Aprire un incident da questo allarme?",
       "emptyResponse": "Incident creato ma risposta vuota",
-      "resolveTitle": "Risolvi evento",
+      "resolveTitle": "Risolvi allarme",
       "resolveNote": "Nota (facoltativa)",
       "linkCITitle": "Collega a un CI",
       "linkCIHint": "La sorgente identifica l'oggetto come {{kind}} \"{{resource}}\".",
@@ -1702,13 +1795,16 @@
       "reevaluate": "Rivaluta ora"
     },
     "detail": {
-      "back": "Torna agli eventi",
-      "notFound": "Evento non trovato",
+      "back": "Torna agli allarmi",
+      "notFound": "Allarme non trovato",
       "information": "Informazioni",
       "description": "Descrizione",
       "resource": "Risorsa",
       "fingerprint": "Impronta",
       "externalId": "ID esterno",
+      "resourceExternalId": "ID esterno della risorsa",
+      "maxSeverity": "Severità massima del ciclo",
+      "matchReason": "Riconoscimento del CI",
       "firstSeen": "Primo visto",
       "lastSeen": "Ultimo visto",
       "resolvedAt": "Risolto il",
@@ -1802,7 +1898,7 @@
         "autoResolve": "Quando la sorgente risolve tutti gli allarmi di un incident aperto dal monitoraggio, l'incident viene risolto; un nuovo allarme lo riapre.",
         "severityMap": "Impatto e urgenza assegnati all'incident aperto automaticamente, in base alla severità dell'allarme: la priorità ne deriva.",
         "flapStableMinutes": "Quanto a lungo l'allarme deve restare fermo (né nuovi attivi né risolti) prima di uscire dallo sfarfallio e tornare alla correlazione normale.",
-        "stormThresholdPerMinute": "Se una sorgente supera questo numero di allarmi nuovi al minuto, scatta la tempesta: i suoi allarmi sono raggruppati in un unico incident invece di aprirne uno per CI.",
+        "stormThresholdPerMinute": "Se una sorgente supera questo numero di allarmi nuovi al minuto, scatta la tempesta: i suoi allarmi sono raggruppati in un unico incident invece di aprirne uno per CI. 0 = rilevamento tempeste disattivato.",
         "stormCooldownMinutes": "La tempesta si chiude quando il tasso resta sotto la soglia per questi minuti; gli allarmi successivi tornano alla correlazione normale."
       },
       "flapStableMinutes": "Minuti di stabilità prima di riprendere",
@@ -1819,6 +1915,15 @@
         "integer": "Inserisci un numero intero (minimo {{min}}).",
         "min": "Il valore minimo è {{min}}.",
         "blocked": "Correggi i campi segnalati per salvare."
+      },
+      "neverNote": "Non usati con «Mai»: il monitoraggio non apre incident, quindi raggruppamento, ritardo, chiusura automatica e mappa severità non hanno effetto.",
+      "unsaved": "Modifiche non salvate",
+      "noChanges": "Nessuna modifica da salvare",
+      "reset": "Ripristina",
+      "errors": {
+        "expectedObject": "severityMap: atteso un oggetto JSON",
+        "missingSeverity": "severityMap: manca la severità \"{{severity}}\"",
+        "invalidLevel": "severityMap.{{severity}}: impact/urgency devono essere low | medium | high"
       }
     },
     "health": {
@@ -1835,6 +1940,7 @@
         "suppressedUnknown": "Silenziato",
         "delayed": "In attesa",
         "delayedIn": "Apertura tra {{seconds}} s",
+        "delayedInShort": "tra {{seconds}} s",
         "delayedWaiting": "In attesa del ritardo di apertura della policy",
         "linkCI": "Collega un CI",
         "flapping_one": "Instabile · {{count}} passaggio/24h",
@@ -1894,8 +2000,9 @@
       "banner": {
         "title_one": "Tempesta in corso",
         "title_other": "Tempeste in corso ({{count}} sorgenti)",
-        "line": "Tempesta in corso da {{source}}: {{rate}} allarmi al minuto dalle {{time}}, raggruppati in",
+        "line": "Tempesta in corso da {{source}}: {{rate}} allarmi al minuto dalle {{time}}, raggruppati in <incident>{{number}}</incident>.",
         "lineNoIncident": "Tempesta in corso da {{source}}: {{rate}} allarmi al minuto dalle {{time}}; nessun incident di tempesta.",
+        "viewSource": "Vedi gli allarmi della sorgente",
         "sources": "Sorgenti"
       }
     }
@@ -1943,7 +2050,8 @@
         "actions": "Azioni"
       },
       "active": "Attiva",
-      "inactive": "Disattiva",
+      "inactive": "Disattivata",
+      "refresh": "Aggiorna",
       "toggle": "Attiva o disattiva {{name}}",
       "never": "Mai",
       "noErrors": "Nessuno",
@@ -1968,7 +2076,7 @@
         "title": "Nessuna sorgente di monitoraggio",
         "description": "Collega Alertmanager, Grafana, Zabbix, Datadog o qualsiasi altro strumento: la procedura guidata ti accompagna passo passo, senza codice."
       },
-      "disabledHint": "Disattiva: gli allarmi inviati a questo endpoint vengono rifiutati.",
+      "disabledHint": "Disattivata: gli allarmi inviati a questo endpoint vengono rifiutati.",
       "stormBadge": "Tempesta",
       "stormBadgeHint": "In tempesta: {{rate}} allarmi al minuto dalle {{time}}, raggruppati in {{number}}",
       "stormBadgeHintNoIncident": "In tempesta: {{rate}} allarmi al minuto dalle {{time}}"
@@ -1981,6 +2089,7 @@
       "steps": {
         "tool": "Strumento",
         "rules": "Nome e regole",
+        "rulesGeneric": "Nome e mappatura",
         "connect": "Collegamento",
         "test": "Prova"
       },
@@ -2013,7 +2122,18 @@
       "nameRequired": "Inserisci un nome per continuare.",
       "mappingIncomplete": "Mappa i campi obbligatori (titolo, severità, risorsa) e verifica che l'anteprima mostri un evento.",
       "presetRulesIncomplete": "Ogni valore aggiunto alla traduzione deve avere una destinazione (o va rimosso).",
-      "createFailed": "La sorgente non è stata creata: {{error}}"
+      "previewNotGreen": "L'anteprima deve mostrare un evento senza errori prima di creare la sorgente.",
+      "createFailed": "La sorgente non è stata creata: {{error}}",
+      "tokenNotCopiedTitle": "Token non copiato",
+      "tokenNotCopiedBody": "Non hai copiato il token: dopo questa pagina non sarà più visibile e dovrai rigenerarlo. Uscire comunque?",
+      "leaveAnyway": "Esci comunque",
+      "checking": "Verifica della ricezione…",
+      "checkNow": "Ricontrolla",
+      "checkReceived": "Ricevuto ✔ — la sorgente ha accettato l'evento (ultimo ricevuto: {{when}}).",
+      "checkError": "Ultimo errore: {{error}}",
+      "checkPending": "Non ancora elaborato: riprova tra qualche secondo.",
+      "checkFailed": "Impossibile verificare la ricezione: {{error}}",
+      "checkNotFound": "La sorgente non è più nell'elenco."
     },
     "mapper": {
       "intro": "Incolla un allarme reale inviato dallo strumento (JSON). OpenGrafo ne elenca i campi: scegli quale usare per ogni informazione.",
@@ -2024,15 +2144,26 @@
       "keysLoading": "Lettura dei campi…",
       "keysError": "Impossibile leggere i campi: {{error}}",
       "fieldsTitle": "Quale campo usare per…",
-      "noKeys": "Incolla un allarme di esempio per vederne i campi.",
+      "fieldsIntro": "Scegli un campo dall'elenco o scrivi il percorso a mano. Un percorso come «a.b» significa: campo b dentro a.",
+      "pathPlaceholder": "es. alert.level",
+      "inWord": "in",
+      "noKeys": "Incolla un allarme di esempio per vederne i campi, oppure scrivi i percorsi a mano.",
       "unmapped": "— non usato —",
+      "sampleFailed": "Impossibile caricare l'esempio: {{error}}",
+      "missingTarget": "manca la traduzione",
+      "defaultsTitle": "Quando il campo manca",
+      "defaultsIntro": "Valori usati al posto del campo assente nell'allarme. Senza severità predefinita, un allarme senza severità viene scartato (con il motivo in \"Ultimo errore\").",
+      "defaultSeverity": "Severità predefinita",
+      "defaultSeverityNone": "— nessuna: l'allarme viene scartato —",
+      "defaultStatus": "Stato predefinito",
+      "defaultStatusNone": "— attivo (predefinito) —",
       "fields": {
         "title": "Titolo",
         "severity": "Severità",
         "resource": "Risorsa (host, IP, …)",
         "status": "Stato",
         "description": "Descrizione",
-        "externalId": "Identificativo"
+        "externalId": "ID esterno"
       },
       "fieldHints": {
         "title": "Ciò che leggerai come nome dell'allarme.",
@@ -2071,8 +2202,24 @@
         "eventTitle": "Titolo",
         "severity": "Severità",
         "resource": "Risorsa",
-        "status": "Stato"
+        "status": "Stato",
+        "ofMany": "{{index}} di {{total}}",
+        "multi": "L'esempio contiene {{total}} allarmi: ognuno diventa un evento.",
+        "prev": "Allarme precedente",
+        "next": "Allarme successivo"
       }
+    },
+    "errors": {
+      "expectedObject": "{{what}}: atteso un oggetto JSON",
+      "invalidJson": "{{what}}: {{error}}",
+      "expectedPath": "fieldMapping.{{key}}: atteso un percorso (testo)",
+      "expectedOneOf": "{{what}}: atteso uno tra {{values}}",
+      "expectedNonEmpty": "{{what}}: attesa una stringa non vuota",
+      "notEditable": "{{what}}: non modificabile da questa pagina",
+      "notSupported": "{{what}}: non supportato",
+      "resourceFromNotAllowed": "defaultValues.resourceFrom: non previsto per {{kind}}",
+      "tokenMissing": "{{operation}}: token mancante nella risposta",
+      "emptyResponse": "{{operation}}: risposta vuota"
     },
     "preset": {
       "valuesTitle": "Traduzione dei valori",
@@ -2081,6 +2228,9 @@
       "severityHint": "Es. \"page\" → critical, \"none\" → info.",
       "statusValues": "Stato dello strumento",
       "statusHint": "Es. \"Muted\" → risolto. Firing = allarme attivo, resolved = rientrato.",
+      "defaultSeverityLabel": "Severità da usare quando manca",
+      "defaultSeverityPlaceholder": "es. warning",
+      "defaultSeverityHint": "Nelle parole dello strumento: viene tradotta come un valore ricevuto (prima la tabella qui sopra, poi quella già nota). Vuoto = gli allarmi senza severità vengono scartati (con il motivo in \"Ultimo errore\").",
       "resourceTitle": "Risorsa predefinita",
       "resourceIntro": "Un allarme senza host (metriche aggregate, Watchdog, monitor su log/APM) non può essere collegato a un CI: senza risorsa predefinita viene scartato. Indica qui a quale oggetto attribuirlo.",
       "resourceLabel": "Risorsa da usare quando manca",
@@ -2177,6 +2327,8 @@
       "title": "Salute dei CI",
       "subtitle": "Cosa sta male adesso, dal più grave, con chi ne dipende",
       "viewOnMap": "Vedi sulla mappa",
+      "viewOnMapDisabled": "Nessun CI con dati di salute da mostrare sulla mappa",
+      "viewOnMapRow": "Vedi {{name}} sulla mappa",
       "refresh": "Aggiorna",
       "updatedAt": "Aggiornato alle {{time}}",
       "tiles": {
@@ -2186,12 +2338,13 @@
         "unmonitored": "Senza monitoraggio",
         "unmonitoredHint": "CI a cui nessuna sorgente ha ancora inviato allarmi",
         "unmonitoredContext": "mai visti da una sorgente",
+        "unmonitoredLink": "Vedi tutti i CI nella CMDB",
         "toggleHint": "Filtra la tabella su questo stato; un secondo clic toglie il filtro",
         "dependentsContext_one": "con {{count}} CI dipendente",
         "dependentsContext_other": "con {{count}} CI dipendenti",
-        "dependentsHint": "Somma dei CI che dipendono direttamente dalle righe di questo stato mostrate in questa pagina, non di tutto il tenant",
         "noneContext": "nessuno al momento",
-        "operationalContext": "su {{count}} monitorati"
+        "operationalContext_one": "su {{count}} monitorato",
+        "operationalContext_other": "su {{count}} monitorati"
       },
       "allGood": "Tutti i CI monitorati sono operativi",
       "allGoodDetail_one": "{{count}} CI monitorato, nessun allarme attivo che lo degradi",
@@ -2203,6 +2356,8 @@
         "allEnvironments": "Tutti gli ambienti",
         "team": "Squadra",
         "allTeams": "Tutte le squadre",
+        "teamsUnavailable": "Squadre non disponibili: {{error}}",
+        "enumsUnavailable": "Ambienti non disponibili: {{error}}",
         "search": "Cerca un CI per nome",
         "searchPlaceholder": "Cerca per nome…"
       },
@@ -2213,11 +2368,13 @@
         "impact": "Impatto",
         "team": "Squadra",
         "lastEvent": "Ultimo evento",
-        "source": "Origine"
+        "source": "Origine",
+        "map": "Mappa"
       },
       "since": "da {{duration}}",
       "sinceHint": "Salute attuale in vigore dal {{date}}",
-      "alarmsLink": "Vedi i {{count}} allarmi attivi di {{name}}",
+      "alarmsLink_one": "Vedi l'allarme attivo di {{name}}",
+      "alarmsLink_other": "Vedi i {{count}} allarmi attivi di {{name}}",
       "dependents_one": "{{count}} dipendente",
       "dependents_other": "{{count}} dipendenti",
       "dependentsHint_one": "{{count}} CI dipende direttamente da questo",
