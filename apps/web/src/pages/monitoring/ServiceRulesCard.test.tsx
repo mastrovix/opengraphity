@@ -128,7 +128,7 @@ describe('ServiceRulesCard', () => {
     await user.type(down, '70')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Rules not saved: the map has been changed by someone else (version 5). If someone else changed the map, reload and try again.')
+    expect(alert).toHaveTextContent('Rules not saved: the map has been changed by someone else (version 5). If another admin — or the automatic sync — changed the map, reload and try again.')
     await user.click(within(alert).getByRole('button', { name: 'Reload' }))
     expect(onReload).toHaveBeenCalledTimes(1)
   })

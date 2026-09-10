@@ -8,6 +8,7 @@ import { audit } from '../../lib/audit.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
 import { toSnakeCase } from '../../lib/mappers.js'
 import { ciNameKey } from '../../lib/ciNameKey.js'
+import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
 
 type Props = Record<string, unknown>
 
@@ -247,6 +248,12 @@ export function buildDeleteMutation(
       )
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)
+      // Servizi monitorati (ondata 5): il CI cancellato si è portato via le sue
+      // relazioni, quindi le mappe vive che lo includevano (o che avevano un
+      // componente dietro di lui) vanno risincronizzate subito. Dopo il commit
+      // e senza mai lanciare: la cancellazione è fatta, la passata di sicurezza
+      // recupera se la coda è giù.
+      await notifyCIGraphChanged(ctx.tenantId, [args.id], 'ci.deleted')
       void audit(ctx, 'ci.deleted', 'ConfigurationItem', args.id)
       return true
     }, true)

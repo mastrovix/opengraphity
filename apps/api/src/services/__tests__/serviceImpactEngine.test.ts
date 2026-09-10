@@ -408,10 +408,12 @@ describe('createServiceMap', () => {
     expect(c.cypher).toContain('WHERE NOT EXISTS { (ba)-[:HAS_SERVICE_MAP]->(:ServiceMap {tenant_id: $tenantId}) }')
     expect(c.cypher).toContain("health: 'unknown', health_since: null, impact_score: 0, explanation: '[]', stale: false, evaluated_at: null")
     expect(c.cypher).toContain('node_ids: [n IN $nodes | n.ciId]')
+    // ondata 5: mappa viva per default, mai sincronizzata finora
+    expect(c.cypher).toContain('auto_sync: $autoSync, synced_at: null')
     expect(c.cypher).toContain("CREATE (m)-[:INCLUDES {level: toInteger(n.level), role: n.role, propagate: n.propagate, weight: toInteger(n.weight)")
     expect(c.cypher).toContain('MATCH (ci {id: n.ciId, tenant_id: $tenantId})')
     expect(c.params).toEqual({
-      serviceId: 'ba-1', tenantId: 't1', mapId: r.mapId, status: 'active', maxDepth: 4, relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON'],
+      serviceId: 'ba-1', tenantId: 't1', mapId: r.mapId, status: 'active', autoSync: true, maxDepth: 4, relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON'],
       rules: DEFAULT_SERVICE_IMPACT_RULES_JSON, actorId: 'u-1', now: NOW,
       nodes: [
         { ciId: 'app-3', level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null },

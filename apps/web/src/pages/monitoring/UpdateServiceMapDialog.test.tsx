@@ -17,7 +17,7 @@ import type { ServiceMapDetail } from '@/types/services'
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
 
-const detail = () => mapDetail() as unknown as ServiceMapDetail
+const detail = (over: Record<string, unknown> = {}) => mapDetail(over) as unknown as ServiceMapDetail
 
 const proposalMock = (over: Record<string, unknown> = {}): GqlMock => ({
   request: { query: GET_SERVICE_MAP_PROPOSAL, variables: { id: 'map-1' } },
@@ -25,9 +25,9 @@ const proposalMock = (over: Record<string, unknown> = {}): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-function renderDialog(opts: { mocks?: GqlMock[]; onClose?: () => void } = {}) {
+function renderDialog(opts: { mocks?: GqlMock[]; onClose?: () => void; map?: ServiceMapDetail } = {}) {
   return renderWithProviders(
-    <UpdateServiceMapDialog map={detail()} open onClose={opts.onClose ?? (() => {})} />,
+    <UpdateServiceMapDialog map={opts.map ?? detail({ autoSync: false })} open onClose={opts.onClose ?? (() => {})} />,
     { mocks: opts.mocks ?? [proposalMock()] },
   )
 }
@@ -113,6 +113,12 @@ describe('UpdateServiceMapDialog', () => {
   it('nessuna esclusione: lo dice invece di lasciare la sezione vuota', async () => {
     renderDialog({ mocks: [proposalMock({ excluded: [] })] })
     expect(await screen.findByText('No exclusion.')).toBeInTheDocument()
+  })
+
+  it('ondata 5: con la mappa viva l\'introduzione dice che entrano e escono da soli e che qui si rivede e si esclude', async () => {
+    renderDialog({ map: detail({ autoSync: true }) })
+    expect(await screen.findByText('Live map: new components come in and gone ones go out on their own. Here you review them ahead of time and decide what to exclude for good.')).toBeInTheDocument()
+    expect(screen.queryByText(/Nothing enters or leaves without a tick/)).not.toBeInTheDocument()
   })
 
   it('proposta che fallisce → errore visibile, mai un dialogo muto', async () => {

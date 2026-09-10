@@ -210,6 +210,7 @@ Migrazioni presenti:
 | `20260910_1080_service_maps_bootstrap` | Servizi monitorati: vedi §7 (*Servizi monitorati*) — completa `rules`, `node_ids` e i campi dell'ondata 1 sulle `ServiceMap` esistenti; no-op senza mappe |
 | `20260910_1090_service_notification_rules` | Servizi monitorati: regole di notifica `service.health_changed` e `service.incident_opened` su ogni tenant |
 | `20260910_1100_service_map_plan_limit` | Servizi monitorati: `Tenant.max_service_maps` dal piano (starter 5, pro 50, enterprise 200) dove manca |
+| `20260910_1110_service_map_auto_sync` | Servizi monitorati: `ServiceMap.auto_sync = true` (mappa viva, il default dell'ondata 5) dove manca, `synced_at` lasciato a null |
 
 Wrapper per singola migrazione: `migrate:workflow-metadata -- [--force]`,
 `migrate-ci-labels.ts [--force]` (`--force` riapplica una migrazione già
@@ -483,6 +484,7 @@ subito.
 
 | `20260910_1090_service_notification_rules` | Servizi monitorati (ondata 3): semina su ogni `:Tenant` le regole di notifica `service.health_changed` (warning, in_app) e `service.incident_opened` (error, in_app + slack) con lo stesso seed dell'onboarding — MERGE per (tenant_id, event_type), le regole già presenti non si toccano |
 | `20260910_1100_service_map_plan_limit` | Servizi monitorati (ondata 4): scrive `Tenant.max_service_maps` (starter 5, pro 50, enterprise 200 — `lib/tenantPlans.ts`) **solo** sui tenant che non ce l'hanno, dal loro `plan`; un limite già presente (anche cambiato a mano) non viene toccato. Un `plan` fuori vocabolario ferma la migrazione con il tenant nel messaggio. Senza questa migrazione `createServiceMap` fallisce con «run the 20260910_1100_service_map_plan_limit migration»: il limite non viene inventato a runtime |
+| `20260910_1110_service_map_auto_sync` | Servizi monitorati (ondata 5): scrive `ServiceMap.auto_sync = true` — la mappa viva è il nuovo default — **solo** sulle mappe che non ce l'hanno, lasciando `synced_at` a null (nessuno l'ha ancora sincronizzata: ci pensa la prima scrittura CMDB o la passata di sicurezza). Un interruttore già spento a mano non viene riacceso. Senza questa migrazione la lettura di una mappa fallisce con «has no auto_sync — run the 20260910_1110_service_map_auto_sync migration»: la modalità non viene inventata a runtime |
 
 Senza la 1070 un tenant senza nodo `:Tenant` non può nemmeno creare un webhook
 di Event Management: `createInboundWebhook` con `entityType = event` verifica
@@ -855,13 +857,14 @@ weight, critical, via, added_by, added_at}` verso i CI (livello 1 = le
 applicazioni raggiunte con `REALIZES`, 2.. = i fornitori seguendo IN USCITA
 `DEPENDS_ON`/`HOSTED_ON`/`INSTALLED_ON`/`USES_CERTIFICATE` fino a `max_depth`,
 default 4, massimo 8, tetto 500 nodi: oltre è un `BAD_USER_INPUT` con il
-conteggio, mai un taglio silenzioso); la mappa è **congelata** (la discovery
-non la cambia da sola: il diff con il grafo si applica a mano, vedi
-*Configurazione* più sotto) e conserva `node_ids` per accorgersi
+conteggio, mai un taglio silenzioso); la mappa è **viva** per default
+(`auto_sync = true`, ondata 5: si aggiorna da sola appena cambia la CMDB, vedi
+*Mappa viva o congelata* più sotto) e conserva `node_ids` per accorgersi
 di un CI cancellato. Codice: `apps/api/src/services/serviceImpact/`
 (`rules.ts` funzione pura, `build.ts` costruzione con
 `apoc.path.expandConfig` BFS/`NODE_GLOBAL`, `engine.ts` valutazione,
-`history.ts` cronologia, `config.ts` configurazione da interfaccia), `jobs/serviceImpactWorker.ts`,
+`history.ts` cronologia, `config.ts` configurazione da interfaccia,
+`sync.ts` sincronizzazione con la CMDB), `jobs/serviceImpactWorker.ts`,
 `consumers/serviceImpactConsumer.ts`, resolver `graphql/resolvers/services.ts`,
 vocabolari `lib/serviceVocabularies.ts`.
 
@@ -887,6 +890,8 @@ modo in ondata 1. Pesi proposti: 8 al livello 1 (critico), 3 ai certificati
 | `service-impact-consumer` (BaseConsumer, fan-out di `packages/events`) | `ci.health_changed` | trova le mappe del tenant che includono il CI (`status ≠ paused`) e accoda un job per mappa |
 | `services-impact` (concurrency 2, lock 10 min) | `evaluate` | job id **fisso** `svc-<tenant>-<mapId>` con ritardo 2 s: BullMQ scarta i doppioni finché il job esiste, quindi 40 CI dello stesso servizio in raffica = **una** valutazione; 5 tentativi con backoff 5 s; rimosso a completamento **e** a fallimento definitivo (un id che restasse bloccherebbe le valutazioni successive: il fallimento resta nel log e in `service_evaluations_total{result="error"}`) |
 | | `services-periodic` | ogni 5 minuti: mappe attive con `evaluated_at` più vecchio di 10 minuti (o mai valutate) o `stale`, paginate (`runPagedPass`), rivalutate con trigger `periodic`; riallinea il gauge `services_health{health}` |
+| | `sync` | sincronizzazione di UNA mappa viva con la CMDB (ondata 5): job id **fisso** `svcsync-<tenant>-<mapId>` (diverso da quello della valutazione), stesso ritardo di 2 s e stessi tentativi — un import che tocca 500 relazioni produce **una** sincronizzazione per mappa, non 500. Accodato da `notifyCIGraphChanged` e dalla mutation `syncServiceMap` |
+| | `services-sync-periodic` | ogni **30 minuti**: rete di sicurezza della sincronizzazione — mappe con `auto_sync = true`, `status ≠ paused` e `synced_at` più vecchio di 30 minuti (o mai sincronizzate), paginate. Rada di proposito: l'immediatezza la dà `notifyCIGraphChanged`, questa passata recupera solo ciò che è stato scritto fuori dalle mutation (script, migrazioni, Cypher a mano, coda giù) |
 
 **Una valutazione** = una query (mappa + `INCLUDES` con `ci.health` + change
 in finestra per ogni CI) + le regole + **uno statement** di scrittura: la
@@ -911,7 +916,9 @@ mutation `createServiceMap` (costruzione automatica + valutazione immediata,
 status `active` o `draft`), `reevaluateServiceMap`, `setServiceMapStatus` (con
 `expectedVersion`: riattivare una mappa in pausa la rivaluta subito),
 `updateServiceImpactRules`, `updateServiceMapNodes`,
-`applyServiceMapProposal`, `removeServiceMapExclusion`, `deleteServiceMap`
+`applyServiceMapProposal`, `removeServiceMapExclusion`,
+`setServiceMapAutoSync` (interruttore mappa viva/congelata, con
+`expectedVersion`), `syncServiceMap` (sincronizza ora), `deleteServiceMap`
 (mappa e cronologia; il servizio e i CI restano) solo admin.
 
 **Cosa fa il motore quando…** (una riga per caso; il dettaglio è nelle
@@ -927,6 +934,10 @@ sottosezioni che seguono):
 | la mappa è una **bozza** (`draft`) | valutata dal consumer e dalle scritture di configurazione come le attive, **non** dalla passata periodica (che filtra `status: 'active'`) | voce + evento come le attive | nessuna apertura né riapertura; chiusura sì |
 | `open_incident_from = never` | valutata normalmente | voce + evento come sempre | nessun incident nuovo; quello aperto prima del cambio di regola viene comunque **chiuso** al rientro |
 | un componente **non esiste più** nella CMDB | mappa `stale = true`, valutazione sui nodi rimasti | voce `map_changed` con gli id mancanti, **una** volta, + `warn` | nessun effetto diretto (cambiano le cause: vedi sopra) |
+| la **CMDB cambia** (relazione fra CI creata o cancellata, CI cancellato) | le mappe **vive** che toccano quei CI si sincronizzano entro pochi secondi (`notifyCIGraphChanged` → job `sync`), poi si rivalutano se la composizione è cambiata | voce `map_changed` «Sincronizzazione automatica: +N, −M, ~K spostati» solo se qualcosa è cambiato | riconciliato dalla rivalutazione che segue |
+| la composizione **non cambia** dopo una sincronizzazione | solo `synced_at` | nulla: nessuna versione nuova, nessuna voce | non riconciliato (nessuna rivalutazione) |
+| la mappa è **congelata** (`auto_sync = false`) | la CMDB non la tocca: il diff resta da applicare a mano (`serviceMapProposal` + `applyServiceMapProposal`) | nulla finché non si applica | invariato |
+| la proposta supera i **500 componenti** | **niente** viene applicato, la mappa è marcata `stale` | voce `map_changed` con il motivo, **una** volta, + `warn` + `service_map_syncs_total{result="skipped_limit"}` | invariato |
 
 **Metriche** (`middleware/metrics.ts`, esposte dal registro custom su
 `GET /metrics`):
@@ -940,6 +951,7 @@ sottosezioni che seguono):
 | `service_incidents_resolved_total` | contatore | `serviceImpact/incident.ts`: solo la chiusura automatica riuscita; un `resolve_skipped` (nessun cammino verso «risolto» dal passo corrente) **non** conta |
 | `services_health{health}` | gauge | passata periodica `services-periodic` (`engine.ts#refreshServiceGauges`), mappe per salute su tutti i tenant |
 | `service_maps_stale` | gauge | stessa passata e stessa lettura: mappe con `stale = true` |
+| `service_map_syncs_total{result}` | contatore (`changed \| unchanged \| skipped_limit \| error`) | `serviceImpact/sync.ts#syncServiceMap`: `changed` = composizione cambiata (versione, cronologia, rivalutazione), `unchanged` = solo `synced_at`, `skipped_limit` = proposta oltre i 500 componenti (nulla applicato, mappa `stale`), `error` = il job ritenta |
 
 Cruscotto Grafana: riga «Servizi monitorati» in
 `infra/grafana/dashboards/opengraphity-api.json` (mappe per salute,
@@ -967,7 +979,14 @@ dal dettaglio la rivaluta subito, la passata periodica entro 10 minuti;
 mappa» e togliere gli id spariti (`serviceMapProposal` +
 `applyServiceMapProposal`), oppure ricreare la mappa (`deleteServiceMap` +
 `createServiceMap`); *`has no node_ids`/`has no rules`* = eseguire la migrazione
-`20260910_1080_service_maps_bootstrap`.
+`20260910_1080_service_maps_bootstrap`; *`has no auto_sync`* = eseguire la
+`20260910_1110_service_map_auto_sync`; *un componente nuovo non compare nella
+mappa* = mappa congelata (interruttore «Aggiorna automaticamente i componenti»
+spento) o in pausa, CI escluso (`ServiceMap.excluded`), relazione scritta da un
+percorso non strumentato (arriva con la passata delle 30 minuti — «Sincronizza
+ora» non fa aspettare), oppure sincronizzazione saltata per il tetto dei 500
+(`service_map_syncs_total{result="skipped_limit"}`, log «would exceed the node
+cap»: ridurre `max_depth` o escludere).
 
 #### Configurazione (ondata 2: tutto da interfaccia)
 
@@ -1027,6 +1046,70 @@ excluded_by, at}]->(ci)`. Un CI escluso non viene più riproposto dal diff
 `ServiceMap.excluded` li elenca nel dettaglio e `removeServiceMapExclusion` lo
 riammette (tornerà nella prossima proposta). Le esclusioni non hanno effetto
 sulla salute finché la proposta non viene applicata.
+
+#### Mappa viva o congelata (ondata 5)
+
+Codice: `apps/api/src/services/serviceImpact/sync.ts`. La mappa nasce **viva**
+(`ServiceMap.auto_sync = true`): i componenti seguono la CMDB da soli.
+L'interruttore per mappa (`setServiceMapAutoSync`, «Aggiorna automaticamente i
+componenti» nel dettaglio del servizio) la **congela**, riportandola al
+comportamento delle ondate 1–4.
+
+| | Mappa **viva** (`auto_sync = true`, default) | Mappa **congelata** (`auto_sync = false`) |
+|---|---|---|
+| componente nuovo nel grafo | aggiunto da solo, con le impostazioni proposte e `added_by = 'auto'` | proposto nel diff, aggiunto quando l'amministratore applica |
+| componente non più raggiungibile | tolto **solo** se `added_by = 'auto'` | proposto fra le rimozioni |
+| componente spostato (livello o `via`) | `level` e `via` aggiornati | proposto fra gli spostamenti |
+| componente aggiunto a mano (`added_by = 'manual'`) | **mai** tolto: lo toglie una persona | mai tolto |
+| esclusioni (`EXCLUDES`) | **mai** riproposte | mai riproposte |
+| `propagate`, `weight`, `critical` | **mai** toccati: sono decisioni dell'amministratore | mai toccati |
+| pulsante nel dettaglio | «Sincronizza ora» (`syncServiceMap`) | «Aggiorna mappa» (dialogo del diff) |
+
+**Quando succede.** Subito, non ogni tot minuti: **ogni scrittura che crea o
+cancella una relazione fra CI, o cancella un CI, chiama
+`notifyCIGraphChanged(tenantId, ciIds, motivo)`** dopo il commit. L'helper
+trova le mappe vive (`auto_sync = true`, `status ≠ paused`) che includono uno
+di quei CI **o** il cui servizio è uno di essi (una `REALIZES` nuova sulla
+`BusinessApplication` non tocca nessun componente incluso) e accoda **un** job
+`sync` per mappa. Punti strumentati: `addCIRelationship` e
+`removeCIRelationship` (`resolvers/ciRelationships.ts`), la cancellazione di un
+CI (`resolvers/ciMutations.ts`), la riconciliazione della discovery (una
+chiamata per **lotto** con tutti gli id toccati, `discovery/reconciliationEngine.ts`)
+e `resolveConflict` con esito `linked` (`resolvers/sync.ts`). La notifica **non
+lancia mai**: la scrittura CMDB è già committata e non si annulla perché la
+coda non risponde — l'errore è loggato con `error` («could NOT be enqueued») e
+la passata `services-sync-periodic` recupera entro 30 minuti. Quella passata è
+la **rete di sicurezza**, non il meccanismo: serve alle scritture fatte da
+script, migrazioni o Cypher a mano.
+
+**Cosa scrive una sincronizzazione.** Ricostruisce la proposta con
+`buildServiceMap` (stessi `max_depth` e `relationship_types` della mappa),
+calcola il diff con `computeServiceMapDiff` (che già toglie gli `EXCLUDES`) e
+applica tutto in **una** transazione, con la stessa guardia di versione delle
+altre scritture di configurazione. Se qualcosa è cambiato: `version + 1`,
+`updated_by = 'monitoring'` (o l'utente, per la sincronizzazione manuale),
+`synced_at`, voce di cronologia `map_changed` («Sincronizzazione automatica:
++2, −1, ~3 spostati» / «Sincronizzazione richiesta da …»), audit
+`service_map.synced` e **rivalutazione** immediata (trigger `map_changed`), che
+può aprire o chiudere l'incident del servizio come sempre. Se **non** è
+cambiato nulla: solo `synced_at` — nessuna versione nuova (i client che hanno
+già letto la mappa non si ritrovano in conflitto), nessuna voce, nessun evento,
+nessuna rivalutazione. Gli id di CI spariti dalla CMDB escono da `node_ids`
+(la loro `INCLUDES` se n'era già andata con il `DETACH DELETE`, quindi non c'è
+più nessun `added_by` da rispettare) e la mappa smette di essere `stale`.
+
+**Tetto dei 500 componenti**: se la proposta lo supera, la sincronizzazione
+**non tronca e non applica nulla** — marca la mappa `stale`, scrive **una**
+voce di cronologia con il motivo (solo la prima volta: una mappa troppo grande
+non deve riempire la cronologia di una voce ogni mezz'ora), logga `warn` e
+conta `service_map_syncs_total{result="skipped_limit"}`. L'amministratore deve
+ridurre `max_depth` o escludere dei componenti.
+
+**Mappe in pausa**: mai sincronizzate, nemmeno a mano — `syncServiceMap` su una
+mappa `paused` è un `BAD_USER_INPUT` che invita a riattivarla. È la stessa
+regola della valutazione: una mappa che l'amministratore ha fermato resta
+ferma. Le mappe **congelate**, invece, si sincronizzano a mano senza problemi:
+è un'azione esplicita.
 
 #### Incident del servizio (ondata 3) e incident tecnici (ondata 4)
 

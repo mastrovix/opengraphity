@@ -94,6 +94,25 @@ export function ServiceStatusPill({ status }: { status: ServiceMapStatus }) {
   return <Pill bg={s.bg} color={s.color} style={badgeFont}>{serviceStatusLabel(t, status)}</Pill>
 }
 
+// ── Modalità della mappa: viva o congelata (ondata 5) ────────────────────────
+
+/**
+ * Badge accanto al nome della mappa: «viva» (si aggiorna da sola dal grafo) o
+ * «congelata» (i componenti nuovi restano una proposta da accettare a mano).
+ * Il testo dice la modalità da solo, il colore è un di più; il `title` spiega
+ * cosa comporta.
+ */
+export function ServiceSyncModePill({ autoSync }: { autoSync: boolean }) {
+  const { t } = useTranslation()
+  const s = autoSync ? TINT_INFO : TINT_NEUTRAL
+  const mode = autoSync ? 'live' : 'frozen'
+  return (
+    <Pill bg={s.bg} color={s.color} style={badgeFont} title={t(`monitoring.services.syncMode.${mode}Hint`)}>
+      <span data-testid="sync-mode-badge" data-mode={mode}>{t(`monitoring.services.syncMode.${mode}`)}</span>
+    </Pill>
+  )
+}
+
 // ── Salute dei componenti (CI) ───────────────────────────────────────────────
 
 const CI_HEALTH_TINT: Record<string, Tint> = { operational: TINT_SUCCESS, degraded: TINT_WARNING, down: TINT_CRITICAL }

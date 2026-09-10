@@ -214,21 +214,29 @@ Every mutation below is `admin` only (`lib/authorization.ts`).
 
 | Mutation | Description |
 |----------|-------------|
-| `createServiceMap(serviceId, maxDepth, relationshipTypes, status)` | Build the map automatically from the BusinessApplication (REALIZES, then outgoing technical relationships up to `maxDepth`, default 4, max 8, cap 500 nodes) and evaluate it; `status` defaults to `active` (`draft` for a draft). Refused with `BAD_USER_INPUT` when the tenant is at its plan limit (`max_service_maps`: starter 5, pro 50, enterprise 200) or when the service already has a map |
+| `createServiceMap(serviceId, maxDepth, relationshipTypes, status, autoSync)` | Build the map automatically from the BusinessApplication (REALIZES, then outgoing technical relationships up to `maxDepth`, default 4, max 8, cap 500 nodes) and evaluate it; `status` defaults to `active` (`draft` for a draft), `autoSync` defaults to `true` (live map). Refused with `BAD_USER_INPUT` when the tenant is at its plan limit (`max_service_maps`: starter 5, pro 50, enterprise 200) or when the service already has a map |
 | `reevaluateServiceMap(id)` | Evaluate now (trigger `manual`) |
 | `setServiceMapStatus(id, expectedVersion, status)` | `active` / `paused` / `draft` with optimistic concurrency; resuming a paused map re-evaluates it at once |
 | `updateServiceImpactRules(id, expectedVersion, rules)` | Save the impact rules (`degradedSharePct` ≤ `downSharePct`, `minNodes` ≤ number of components); history entry `rules_changed` with the changed fields, then immediate re-evaluation |
 | `updateServiceMapNodes(id, expectedVersion, nodes)` | Change `propagate`, `weight` (1..10) and `critical` of the listed components only; empty list or unknown `ciId` → `BAD_USER_INPUT` |
 | `applyServiceMapProposal(id, expectedVersion, add, exclude, remove)` | Apply the choices made on the diff in one transaction: `add` includes proposed CIs (`added_by: manual`), `exclude` never proposes them again (and removes them if included), `remove` drops included or vanished CIs; recomputes `node_ids` and `stale` |
 | `removeServiceMapExclusion(id, expectedVersion, ciId)` | Let an excluded CI come back in the next proposal |
+| `setServiceMapAutoSync(id, expectedVersion, autoSync)` | Live map (components follow the CMDB by themselves, the default) or frozen map (the diff is applied by hand). History entry `map_changed`; the map is **not** re-evaluated (nothing about its health changes). Writing the value it already has is a `BAD_USER_INPUT` |
+| `syncServiceMap(id)` | Synchronize the components with the CMDB now: adds the new ones (`added_by: auto`), drops the automatic ones that are gone, updates `level`/`via`. Manually added components and exclusions are never touched, and neither are `propagate`/`weight`/`critical`. Works on frozen maps too (it is an explicit action), never on `paused` ones (`BAD_USER_INPUT`). Over the 500-component cap nothing is applied and the map is flagged `stale` |
 | `deleteServiceMap(id)` | Delete the map and its history (service and CIs untouched) |
+
+`ServiceMap` carries two fields for this: `autoSync: Boolean!` (live or frozen)
+and `syncedAt: String` (last synchronization, `null` when it never happened).
 
 All the configuration mutations take `expectedVersion` (the `version` read by
 the client): a mismatch is a `BAD_USER_INPUT` naming the current version and
-nothing is written. Each successful write bumps `version`, records
+nothing is written — note that an automatic synchronization also bumps
+`version`, so a stale client may hit the conflict without anyone else editing
+the map. Each successful write bumps `version`, records
 `updatedAt`/`updatedBy`, writes one history entry with a readable note and
 re-evaluates the map immediately — except for `paused` maps, which are never
-evaluated automatically.
+evaluated automatically, and for `setServiceMapAutoSync`. A synchronization
+that changes nothing writes only `syncedAt`: no new version, no history entry.
 
 Deleting the `BusinessApplication` itself (through the CI delete mutation of
 its type) also deletes its map and history; the service incident already open

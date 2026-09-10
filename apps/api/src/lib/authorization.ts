@@ -99,6 +99,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // completa pinnata in lib/__tests__/authorization.test.ts.
   'createServiceMap', 'reevaluateServiceMap', 'setServiceMapStatus', 'deleteServiceMap',
   'updateServiceImpactRules', 'updateServiceMapNodes', 'applyServiceMapProposal', 'removeServiceMapExclusion',
+  'setServiceMapAutoSync', 'syncServiceMap',
 ])
 
 /**

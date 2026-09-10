@@ -19,6 +19,19 @@
  *                           (engine.ts#evaluateStaleOrOldMaps, paginata) e
  *                           riallineamento dei gauge `services_health{health}`
  *                           e `service_maps_stale`.
+ *  - `sync`               — sincronizzazione di UNA mappa viva con la CMDB
+ *                           (ondata 5, services/serviceImpact/sync.ts):
+ *                           accodata da `notifyCIGraphChanged` dopo ogni
+ *                           scrittura che tocca le relazioni fra CI e dalla
+ *                           mutation `syncServiceMap`. Job id fisso
+ *                           `svcsync-<tenant>-<mapId>` con lo stesso ritardo di
+ *                           2 s: un import che tocca 500 relazioni produce UNA
+ *                           sincronizzazione per mappa, non 500.
+ *  - `services-sync-periodic` — repeat job ogni 30 minuti: rete di sicurezza
+ *                           della sincronizzazione (mappe vive con `synced_at`
+ *                           vecchio o mai sincronizzate), per le scritture
+ *                           fatte da percorsi non strumentati — script,
+ *                           migrazioni, Cypher a mano.
  *
  * Concurrency 2; `lockDuration` di 10 minuti perché la passata paginata può
  * superare i 30 s predefiniti. Gli id dei job non contengono ':' (BullMQ li
@@ -30,12 +43,15 @@ import { createWorker, getQueue } from '../lib/bullmq.js'
 import { serviceEvaluationLagSeconds } from '../middleware/metrics.js'
 import type { ServiceHealthTrigger } from '../lib/serviceVocabularies.js'
 import { evaluateServiceMap, evaluateStaleOrOldMaps, refreshServiceGauges } from '../services/serviceImpact/engine.js'
+import { SERVICE_MAP_SYNC_EVERY_MS, syncServiceMap, syncStaleOrOldMaps, type ServiceMapSyncTrigger } from '../services/serviceImpact/sync.js'
 
 const log = logger.child({ module: 'service-impact' })
 
 export const SERVICE_IMPACT_QUEUE = 'services-impact'
 export const SERVICE_EVALUATE_JOB = 'evaluate'
+export const SERVICE_SYNC_JOB = 'sync'
 export const SERVICE_PERIODIC_JOB = 'services-periodic'
+export const SERVICE_SYNC_PERIODIC_JOB = 'services-sync-periodic'
 export const SERVICE_PERIODIC_EVERY_MS = 5 * 60 * 1000
 export const SERVICE_IMPACT_LOCK_MS = 10 * 60 * 1000
 /** Ritardo del job di valutazione: raccoglie i cambi di salute ravvicinati dello stesso servizio in una sola valutazione. */
@@ -49,12 +65,28 @@ export interface ServiceEvaluateJobData {
   trigger:  ServiceHealthTrigger
 }
 
-type ServiceQueueData = ServiceEvaluateJobData | Record<string, never>
+export interface ServiceSyncJobData {
+  tenantId: string
+  mapId:    string
+  trigger:  ServiceMapSyncTrigger
+  /** Chi ha chiesto la sincronizzazione manuale (assente = monitoraggio). */
+  actorId?: string
+}
+
+type ServiceQueueData = ServiceEvaluateJobData | ServiceSyncJobData | Record<string, never>
+
+function assertJobId(id: string, what: string, tenantId: string, mapId: string): string {
+  if (id.includes(':')) throw new Error(`${what}: job id must not contain ':' (tenant ${JSON.stringify(tenantId)}, map ${JSON.stringify(mapId)})`)
+  return id
+}
 
 export function serviceMapJobId(tenantId: string, mapId: string): string {
-  const id = `svc-${tenantId}-${mapId}`
-  if (id.includes(':')) throw new Error(`serviceMapJobId: job id must not contain ':' (tenant ${JSON.stringify(tenantId)}, map ${JSON.stringify(mapId)})`)
-  return id
+  return assertJobId(`svc-${tenantId}-${mapId}`, 'serviceMapJobId', tenantId, mapId)
+}
+
+/** Id del job di sincronizzazione: diverso da quello della valutazione (le due code di lavoro non si deduplicano a vicenda). */
+export function serviceMapSyncJobId(tenantId: string, mapId: string): string {
+  return assertJobId(`svcsync-${tenantId}-${mapId}`, 'serviceMapSyncJobId', tenantId, mapId)
 }
 
 /**
@@ -74,6 +106,24 @@ export async function enqueueServiceMapEvaluation(tenantId: string, mapId: strin
   log.info({ tenantId, mapId, trigger }, 'Service map evaluation enqueued')
 }
 
+/**
+ * Accoda la sincronizzazione della mappa con la CMDB (dedup per job id).
+ * Chiamata da `notifyCIGraphChanged` (che la avvolge in un try/catch: una coda
+ * giù non deve far fallire la scrittura CMDB già committata) e dalla mutation
+ * `syncServiceMap`.
+ */
+export async function enqueueServiceMapSync(tenantId: string, mapId: string, trigger: ServiceMapSyncTrigger, actorId?: string): Promise<void> {
+  await getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE).add(SERVICE_SYNC_JOB, { tenantId, mapId, trigger, ...(actorId ? { actorId } : {}) }, {
+    jobId: serviceMapSyncJobId(tenantId, mapId),
+    delay: SERVICE_EVALUATE_DELAY_MS,
+    attempts: SERVICE_EVALUATE_ATTEMPTS,
+    backoff:  { type: 'exponential', delay: SERVICE_EVALUATE_BACKOFF_MS },
+    removeOnComplete: true,
+    removeOnFail:     true,
+  })
+  log.info({ tenantId, mapId, trigger }, 'Service map synchronization enqueued')
+}
+
 async function processServiceJob(job: Job<ServiceQueueData>): Promise<void> {
   switch (job.name) {
     case SERVICE_EVALUATE_JOB: {
@@ -88,6 +138,17 @@ async function processServiceJob(job: Job<ServiceQueueData>): Promise<void> {
       if (Number.isFinite(lagSeconds)) serviceEvaluationLagSeconds.observe({}, lagSeconds)
       const result = await evaluateServiceMap({ tenantId, mapId, trigger, jobId: String(job.id) })
       log.info({ jobId: job.id, tenantId, mapId, trigger, lagSeconds, health: result.health, impactScore: result.impactScore, changed: result.changed, stale: result.stale }, 'Service map evaluated')
+      return
+    }
+    case SERVICE_SYNC_JOB: {
+      const { tenantId, mapId, trigger, actorId } = job.data as ServiceSyncJobData
+      const r = await syncServiceMap(tenantId, mapId, trigger, actorId)
+      log.info({ jobId: job.id, tenantId, mapId, trigger, changed: r.changed, skipped: r.skipped, added: r.added, removed: r.removed, moved: r.moved, version: r.version }, 'Service map synchronized')
+      return
+    }
+    case SERVICE_SYNC_PERIODIC_JOB: {
+      const r = await syncStaleOrOldMaps()
+      if (r.evaluated > 0) log.info({ ...r }, 'Service maps synchronized with the CMDB (periodic safety net)')
       return
     }
     case SERVICE_PERIODIC_JOB: {
@@ -118,6 +179,14 @@ export async function startServiceImpactWorker(): Promise<Worker<ServiceQueueDat
   await queue.add(SERVICE_PERIODIC_JOB, {}, {
     repeat: { every: SERVICE_PERIODIC_EVERY_MS },
     jobId: SERVICE_PERIODIC_JOB,
+    removeOnComplete: { count: 20 },
+    removeOnFail:     { age: 7 * 24 * 3600 },
+  })
+  // Rete di sicurezza della mappa viva (ondata 5): rada di proposito, il
+  // meccanismo principale è `notifyCIGraphChanged` (immediato).
+  await queue.add(SERVICE_SYNC_PERIODIC_JOB, {}, {
+    repeat: { every: SERVICE_MAP_SYNC_EVERY_MS },
+    jobId: SERVICE_SYNC_PERIODIC_JOB,
     removeOnComplete: { count: 20 },
     removeOnFail:     { age: 7 * 24 * 3600 },
   })

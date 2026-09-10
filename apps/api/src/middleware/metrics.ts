@@ -325,6 +325,17 @@ export const serviceEvaluationLagSeconds   = createHistogram('service_evaluation
 /** Mappe con `stale = true` (un componente non esiste più nella CMDB) su tutti i tenant, riallineato dalla passata periodica insieme a `services_health`. */
 export const serviceMapsStale              = createGauge('service_maps_stale', 'Service maps flagged stale (an included CI no longer exists in the CMDB, all tenants)', [])
 
+// ── Servizi monitorati (ondata 5: mappa viva) ───────────────────────────────
+/**
+ * Sincronizzazioni della mappa con la CMDB per esito
+ * (services/serviceImpact/sync.ts): `changed` (composizione cambiata: versione
+ * nuova, voce di cronologia, rivalutazione), `unchanged` (solo `synced_at`),
+ * `skipped_limit` (proposta oltre il tetto dei 500 nodi: NIENTE è stato
+ * scritto se non `stale`, l'amministratore deve ridurre la profondità o
+ * escludere) ed `error` (il job ritenta; la passata di sicurezza recupera).
+ */
+export const serviceMapSyncsTotal          = createCounter('service_map_syncs_total', 'Service map synchronizations with the CMDB by result (changed | unchanged | skipped_limit | error)', ['result'])
+
 /** Tutte le metriche dell'Event Management (e dei servizi monitorati), nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
@@ -334,6 +345,7 @@ export const EVENT_MANAGEMENT_METRICS = [
   eventsOverdueDelayed, eventsFiringUncorrelated, eventCorrelateJobLagSeconds,
   serviceEvaluationsTotal, serviceEvaluationDurationSeconds, servicesHealth,
   serviceIncidentsOpenedTotal, serviceIncidentsResolvedTotal, serviceEvaluationLagSeconds, serviceMapsStale,
+  serviceMapSyncsTotal,
 ] as const
 
 // ── Route label (A-15) ────────────────────────────────────────────────────────

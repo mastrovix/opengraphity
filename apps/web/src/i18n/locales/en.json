@@ -1715,7 +1715,9 @@
       "deleted": "Map deleted",
       "actionFailed": "Action failed: {{error}}",
       "mapUpdated": "Map updated: +{{added}} −{{removed}}, {{excluded}} excluded",
-      "exclusionRemoved": "{{name}} re-admitted: it comes back in the next proposal"
+      "exclusionRemoved": "{{name}} re-admitted: it comes back in the next proposal",
+      "synced": "Map synced: +{{added}} −{{removed}}",
+      "syncAligned": "Map already aligned with the graph: nothing to add or remove"
     }
   },
   "components": {
@@ -2569,6 +2571,19 @@
         "never": "Never",
         "weighted": "Weighted"
       },
+      "syncMode": {
+        "live": "live",
+        "frozen": "frozen",
+        "liveHint": "Live map: new components come in on their own and gone ones go out, no questions asked.",
+        "frozenHint": "Frozen map: changes in the graph stay a proposal to accept by hand.",
+        "toggle": "Update components automatically",
+        "toggleHelp": "On: the map follows the graph on its own. Off: new and gone components stay a proposal to accept in \"Update map\".",
+        "toggleGuarantee": "Either way, exclusions and components added by hand stay exactly as you left them.",
+        "saveFailed": "Mode not changed: {{error}}. If another admin — or the automatic sync — changed the map, reload and try again.",
+        "synced": "Synced {{ago}}",
+        "neverSynced": "Never synced",
+        "syncedHint": "Last sync: {{date}}"
+      },
       "explain": {
         "word": {
           "down": "down",
@@ -2627,7 +2642,9 @@
           "pause": "Pause",
           "resume": "Resume",
           "delete": "Delete",
-          "updateMap": "Update map"
+          "updateMap": "Update map",
+          "syncNow": "Sync now",
+          "reviewComponents": "Review components"
         },
         "fields": {
           "service": "Business application",
@@ -2642,6 +2659,8 @@
           "builtFromManual": "Manually",
           "updatedAt": "Last change",
           "evaluatedAt": "Last evaluation",
+          "syncedAt": "Last sync",
+          "syncedNever": "Never",
           "excluded": "Excluded components",
           "excludedCount_one": "{{count}} component",
           "excludedCount_other": "{{count}} components"
@@ -2756,7 +2775,7 @@
           "degradedOverDown": "The degraded threshold cannot be above the down threshold: degraded would never be reached.",
           "aboveComponents": "At most {{max}}: the map has that many components, and a higher minimum would keep the service from ever being degraded."
         },
-        "saveFailed": "Rules not saved: {{error}}. If someone else changed the map, reload and try again.",
+        "saveFailed": "Rules not saved: {{error}}. If another admin — or the automatic sync — changed the map, reload and try again.",
         "reload": "Reload",
         "openIncidentNote": "An incident opens by itself when health reaches the threshold, and closes when the service falls back below it."
       },
@@ -2769,7 +2788,7 @@
         "weightLabel": "Weight of {{name}}",
         "criticalLabel": "{{name}} is critical",
         "weightDisabled": "A component that never counts has no weight.",
-        "saveFailed": "Components not saved: {{error}}. If someone else changed the map, reload and try again."
+        "saveFailed": "Components not saved: {{error}}. If another admin — or the automatic sync — changed the map, reload and try again."
       },
       "preview": {
         "label": "With these settings right now:",
@@ -2782,8 +2801,9 @@
       "update": {
         "title": "Update the map of \"{{name}}\"",
         "intro": "Comparison between the map and the graph right now. Nothing enters or leaves without a tick.",
+        "introLive": "Live map: new components come in and gone ones go out on their own. Here you review them ahead of time and decide what to exclude for good.",
         "loadFailed": "Proposal unavailable: {{error}}",
-        "actionFailed": "Operation failed: {{error}}. If someone else changed the map, close and reopen this dialog.",
+        "actionFailed": "Operation failed: {{error}}. If another admin — or the automatic sync — changed the map, close and reopen this dialog.",
         "aligned": "The map is aligned with the graph: nothing to add, remove or move.",
         "addedTitle_one": "{{count}} new component",
         "addedTitle_other": "{{count}} new components",

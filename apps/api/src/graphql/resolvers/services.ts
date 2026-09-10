@@ -39,16 +39,19 @@ import { nodeContributes } from '../../services/serviceImpact/rules.js'
 import type { CauseCIRef, StoredCause } from '../../services/serviceImpact/history.js'
 import {
   applyServiceMapProposal as applyServiceMapProposalService,
+  assertAutoSync,
   loadServiceMapExclusions,
   previewServiceImpact,
   removeServiceMapExclusion as removeServiceMapExclusionService,
   serviceMapProposal as serviceMapProposalService,
+  setServiceMapAutoSync as setServiceMapAutoSyncService,
   updateServiceImpactRules as updateServiceImpactRulesService,
   updateServiceMapNodes as updateServiceMapNodesService,
   type ConfigWriteResult, type ServiceImpactRulesInput, type ServiceMapNodeInput,
 } from '../../services/serviceImpact/config.js'
+import { syncServiceMap as syncServiceMapService } from '../../services/serviceImpact/sync.js'
 import { incidentStepInfo } from '../../services/events/incidentWorkflow.js'
-import { SERVICE_IMPACT_QUEUE, serviceMapJobId } from '../../jobs/serviceImpactWorker.js'
+import { SERVICE_IMPACT_QUEUE, serviceMapJobId, serviceMapSyncJobId } from '../../jobs/serviceImpactWorker.js'
 
 type Props = Record<string, unknown>
 
@@ -159,6 +162,8 @@ export function mapServiceMap(row: ServiceMapRow) {
     relationshipTypes: relationshipTypes.map(toStr),
     builtFrom:         toStr(p['built_from']),
     stale:             p['stale'] === true,
+    autoSync:          assertAutoSync(p['auto_sync'], id),
+    syncedAt:          toStrOrNull(p['synced_at']),
     rules:             toRulesGQL(parseServiceImpactRules(p['rules'], id)),
     health:            assertEnum<ServiceHealth>(p['health'], SERVICE_HEALTHS, `ServiceMap ${id} health`),
     healthSince:       toStrOrNull(p['health_since']),
@@ -538,15 +543,17 @@ async function serviceMapHistoryCount(parent: { id: string }, _: unknown, ctx: G
 
 // ── Mutation ─────────────────────────────────────────────────────────────────
 
-async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?: number | null; relationshipTypes?: string[] | null; status?: string | null }, ctx: GraphQLContext) {
+async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?: number | null; relationshipTypes?: string[] | null; status?: string | null; autoSync?: boolean | null }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   const maxDepth = args.maxDepth ?? SERVICE_MAP_DEFAULT_DEPTH
   const relationshipTypes = args.relationshipTypes ?? [...SERVICE_RELATIONSHIP_TYPES]
   const status = args.status == null ? 'active' : assertEnumInput(args.status, SERVICE_MAP_STATUSES, 'status')
-  const { mapId, proposal, evaluation } = await createServiceMapService({ tenantId: ctx.tenantId, serviceId: args.serviceId, maxDepth, relationshipTypes, status, actorId: ctx.userId })
+  // Mappa viva per default (ondata 5): si passa `false` solo per congelarla subito.
+  const autoSync = args.autoSync ?? true
+  const { mapId, proposal, evaluation } = await createServiceMapService({ tenantId: ctx.tenantId, serviceId: args.serviceId, maxDepth, relationshipTypes, status, autoSync, actorId: ctx.userId })
   void audit(ctx, 'service_map.created', 'ServiceMap', mapId, {
     serviceId: args.serviceId, serviceName: proposal.serviceName, maxDepth: proposal.maxDepth, relationshipTypes: proposal.relationshipTypes,
-    status, nodes: proposal.nodes.length, health: evaluation.health, impactScore: evaluation.impactScore,
+    status, autoSync, nodes: proposal.nodes.length, health: evaluation.health, impactScore: evaluation.impactScore,
   })
   return requireServiceMap(mapId, ctx.tenantId)
 }
@@ -649,6 +656,32 @@ async function removeServiceMapExclusion(_: unknown, args: { id: string; expecte
   return requireServiceMap(args.id, ctx.tenantId)
 }
 
+// ── Mappa viva (ondata 5) ────────────────────────────────────────────────────
+
+/** Interruttore «aggiorna automaticamente i componenti»: mappa viva o congelata. */
+async function setServiceMapAutoSync(_: unknown, args: { id: string; expectedVersion: number; autoSync: boolean }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const r = await setServiceMapAutoSyncService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, autoSync: args.autoSync, actorId: ctx.userId })
+  void audit(ctx, 'service_map.auto_sync_changed', 'ServiceMap', args.id, configAudit(r, { autoSync: args.autoSync }))
+  return requireServiceMap(args.id, ctx.tenantId)
+}
+
+/**
+ * «Sincronizza ora»: allinea i componenti alla CMDB senza aspettare né la
+ * scrittura successiva né la passata di sicurezza. Azione esplicita, quindi
+ * funziona anche sulle mappe congelate (`auto_sync = false`); una mappa in
+ * pausa viene rifiutata (services/serviceImpact/sync.ts).
+ */
+async function syncServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const r = await syncServiceMapService(ctx.tenantId, args.id, 'manual', ctx.userId)
+  void audit(ctx, 'service_map.synced', 'ServiceMap', args.id, {
+    trigger: 'manual', version: r.version, added: r.added, removed: r.removed, moved: r.moved,
+    changed: r.changed, skipped: r.skipped, note: r.note,
+  })
+  return requireServiceMap(args.id, ctx.tenantId)
+}
+
 /** Elimina mappa e cronologia (il servizio e i CI restano); un job di valutazione in attesa viene tolto dalla coda (se già in esecuzione fallirà con NOT_FOUND, visibile nel log). */
 async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
@@ -665,11 +698,13 @@ async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCo
     `, { id: args.id, tenantId: ctx.tenantId })
   } finally { await session.close() }
   if (!row) throw new NotFoundError('ServiceMap', args.id)
-  const jobId = serviceMapJobId(ctx.tenantId, args.id)
-  try {
-    await getQueue(SERVICE_IMPACT_QUEUE).remove(jobId)
-  } catch (err) {
-    log.warn({ err, tenantId: ctx.tenantId, mapId: args.id, jobId }, 'Pending evaluation job could not be removed after map deletion (it will fail with NOT_FOUND)')
+  // Valutazione E sincronizzazione in attesa: due job id diversi sulla stessa coda.
+  for (const jobId of [serviceMapJobId(ctx.tenantId, args.id), serviceMapSyncJobId(ctx.tenantId, args.id)]) {
+    try {
+      await getQueue(SERVICE_IMPACT_QUEUE).remove(jobId)
+    } catch (err) {
+      log.warn({ err, tenantId: ctx.tenantId, mapId: args.id, jobId }, 'Pending job could not be removed after map deletion (it will fail with NOT_FOUND)')
+    }
   }
   void audit(ctx, 'service_map.deleted', 'ServiceMap', args.id, { name: row.name, serviceId: row.serviceId, historyEntries: toNumber(row.entries) })
   return true
@@ -680,6 +715,7 @@ export const serviceResolvers = {
   Mutation: {
     createServiceMap, reevaluateServiceMap, setServiceMapStatus, deleteServiceMap,
     updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion,
+    setServiceMapAutoSync, syncServiceMap,
   },
   ServiceMap: {
     nodes: serviceMapNodes, edges: serviceMapEdges, history: serviceMapHistory, historyCount: serviceMapHistoryCount,

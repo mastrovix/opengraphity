@@ -64,6 +64,28 @@ export const APPLY_SERVICE_MAP_PROPOSAL = gql`
   ${SERVICE_MAP_DETAIL_FIELDS}
 `
 
+// ── Ondata 5: mappa viva o congelata ───────────────────────────────────────
+// Viva (default) = una passata periodica accetta da sola i componenti nuovi e
+// toglie quelli spariti; congelata = il comportamento dell'ondata 2 (proposta
+// da accettare nel dialogo del diff). In entrambe le modalità le esclusioni e
+// i componenti aggiunti a mano restano intatti.
+
+/** Cambia modalità (viva ↔ congelata); `expectedVersion` = la versione letta. */
+export const SET_SERVICE_MAP_AUTO_SYNC = gql`
+  mutation SetServiceMapAutoSync($id: ID!, $expectedVersion: Int!, $autoSync: Boolean!) {
+    setServiceMapAutoSync(id: $id, expectedVersion: $expectedVersion, autoSync: $autoSync) { ...ServiceMapDetailFields }
+  }
+  ${SERVICE_MAP_DETAIL_FIELDS}
+`
+
+/** Sincronizzazione immediata col grafo («Sincronizza ora»): nessuna versione attesa, è un'azione esplicita. */
+export const SYNC_SERVICE_MAP = gql`
+  mutation SyncServiceMap($id: ID!) {
+    syncServiceMap(id: $id) { ...ServiceMapDetailFields }
+  }
+  ${SERVICE_MAP_DETAIL_FIELDS}
+`
+
 /** Riammette un CI escluso: tornerà nella prossima proposta. */
 export const REMOVE_SERVICE_MAP_EXCLUSION = gql`
   mutation RemoveServiceMapExclusion($id: ID!, $expectedVersion: Int!, $ciId: ID!) {

@@ -111,7 +111,10 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.6 }}>{t('monitoring.services.update.intro')}</p>
+        {/* Mappa viva: qui si viene a rivedere ed escludere, l'aggiunta e la rimozione le fa già la sincronizzazione (ondata 5). */}
+        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.6 }}>
+          {map.autoSync ? t('monitoring.services.update.introLive') : t('monitoring.services.update.intro')}
+        </p>
 
         {loading && !data && <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('common.loading')}</p>}
         {error && (

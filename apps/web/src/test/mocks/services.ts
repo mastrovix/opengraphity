@@ -62,7 +62,7 @@ export function mapDetail(over: Record<string, unknown> = {}): Record<string, un
     ...mapRow(), version: 3, updatedAt: '2026-09-10T07:00:00Z', maxDepth: 4,
     relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'], builtFrom: 'auto',
     rules: RULES, nodes: NODES, edges: EDGES, excluded: [], history: HISTORY, historyCount: 2,
-    openIncident: null, ...over,
+    openIncident: null, autoSync: true, syncedAt: new Date(Date.now() - 5 * 60_000).toISOString(), ...over,
   }
 }
 

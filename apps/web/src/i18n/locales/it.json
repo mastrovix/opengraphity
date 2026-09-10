@@ -1715,7 +1715,9 @@
       "deleted": "Mappa eliminata",
       "actionFailed": "Operazione non riuscita: {{error}}",
       "mapUpdated": "Mappa aggiornata: +{{added}} −{{removed}}, {{excluded}} esclusi",
-      "exclusionRemoved": "{{name}} riammesso: torna nella prossima proposta"
+      "exclusionRemoved": "{{name}} riammesso: torna nella prossima proposta",
+      "synced": "Mappa sincronizzata: +{{added}} −{{removed}}",
+      "syncAligned": "Mappa già allineata al grafo: niente da aggiungere né da togliere"
     }
   },
   "components": {
@@ -2569,6 +2571,19 @@
         "never": "Mai",
         "weighted": "Ponderato"
       },
+      "syncMode": {
+        "live": "viva",
+        "frozen": "congelata",
+        "liveHint": "Mappa viva: i componenti nuovi entrano da soli e quelli spariti escono, senza chiedere nulla.",
+        "frozenHint": "Mappa congelata: i cambiamenti del grafo restano una proposta da accettare a mano.",
+        "toggle": "Aggiorna automaticamente i componenti",
+        "toggleHelp": "Acceso: la mappa segue il grafo da sola. Spento: i componenti nuovi e quelli spariti restano una proposta da accettare in «Aggiorna mappa».",
+        "toggleGuarantee": "In tutti e due i casi le esclusioni e i componenti aggiunti a mano restano come li hai lasciati.",
+        "saveFailed": "Modalità non cambiata: {{error}}. Se un altro amministratore — o la sincronizzazione automatica — ha modificato la mappa, ricarica e riprova.",
+        "synced": "Sincronizzata {{ago}}",
+        "neverSynced": "Mai sincronizzata",
+        "syncedHint": "Ultima sincronizzazione: {{date}}"
+      },
       "explain": {
         "word": {
           "down": "giù",
@@ -2627,7 +2642,9 @@
           "pause": "Metti in pausa",
           "resume": "Riattiva",
           "delete": "Elimina",
-          "updateMap": "Aggiorna mappa"
+          "updateMap": "Aggiorna mappa",
+          "syncNow": "Sincronizza ora",
+          "reviewComponents": "Rivedi componenti"
         },
         "fields": {
           "service": "Applicazione di business",
@@ -2642,6 +2659,8 @@
           "builtFromManual": "A mano",
           "updatedAt": "Ultima modifica",
           "evaluatedAt": "Ultima valutazione",
+          "syncedAt": "Ultima sincronizzazione",
+          "syncedNever": "Mai",
           "excluded": "Componenti esclusi",
           "excludedCount_one": "{{count}} componente",
           "excludedCount_other": "{{count}} componenti"
@@ -2756,7 +2775,7 @@
           "degradedOverDown": "La soglia «degradato» non può stare sopra quella «giù»: «degradato» non si raggiungerebbe mai.",
           "aboveComponents": "Al massimo {{max}}: tanti sono i componenti della mappa, un minimo più alto impedirebbe al servizio di degradarsi."
         },
-        "saveFailed": "Regole non salvate: {{error}}. Se qualcun altro ha modificato la mappa, ricarica e riprova.",
+        "saveFailed": "Regole non salvate: {{error}}. Se un altro amministratore — o la sincronizzazione automatica — ha modificato la mappa, ricarica e riprova.",
         "reload": "Ricarica",
         "openIncidentNote": "Un incident si apre da solo quando la salute raggiunge la soglia e si chiude quando il servizio torna sotto."
       },
@@ -2769,7 +2788,7 @@
         "weightLabel": "Peso di {{name}}",
         "criticalLabel": "{{name}} è critico",
         "weightDisabled": "Un componente che non pesa mai non ha peso.",
-        "saveFailed": "Componenti non salvati: {{error}}. Se qualcun altro ha modificato la mappa, ricarica e riprova."
+        "saveFailed": "Componenti non salvati: {{error}}. Se un altro amministratore — o la sincronizzazione automatica — ha modificato la mappa, ricarica e riprova."
       },
       "preview": {
         "label": "Con queste impostazioni adesso:",
@@ -2782,8 +2801,9 @@
       "update": {
         "title": "Aggiorna la mappa di «{{name}}»",
         "intro": "Confronto fra la mappa e il grafo di adesso. Niente entra o esce senza una spunta.",
+        "introLive": "Mappa viva: i componenti nuovi entrano e quelli spariti escono da soli. Qui li rivedi in anticipo e decidi cosa escludere per sempre.",
         "loadFailed": "Proposta non disponibile: {{error}}",
-        "actionFailed": "Operazione non riuscita: {{error}}. Se qualcun altro ha modificato la mappa, chiudi e riapri questo dialogo.",
+        "actionFailed": "Operazione non riuscita: {{error}}. Se un altro amministratore — o la sincronizzazione automatica — ha modificato la mappa, chiudi e riapri questo dialogo.",
         "aligned": "La mappa è allineata al grafo: niente da aggiungere, togliere o spostare.",
         "addedTitle_one": "{{count}} componente nuovo",
         "addedTitle_other": "{{count}} componenti nuovi",

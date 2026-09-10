@@ -324,6 +324,8 @@ export interface CreateServiceMapInput {
   actorId:           string
   /** `active` in ondata 1 (draft arriva con la UI di ondata 2). */
   status?:           ServiceMapStatus
+  /** Mappa viva (default true, ondata 5) o congelata: `false` = solo diff applicato a mano. */
+  autoSync?:         boolean
   now?:              string
 }
 
@@ -369,17 +371,19 @@ export async function assertServiceMapPlanLimit(session: Queryable, tenantId: st
 export async function createServiceMap(input: CreateServiceMapInput): Promise<CreateServiceMapResult> {
   const now = input.now ?? new Date().toISOString()
   const status = assertEnum<ServiceMapStatus>(input.status ?? 'active', SERVICE_MAP_STATUSES, 'ServiceMap status')
+  const autoSync = input.autoSync ?? true
+  if (typeof autoSync !== 'boolean') throw new ValidationError(`autoSync must be a boolean. Got: ${JSON.stringify(input.autoSync)}`)
   const mapId = uuidv4()
   const session = getSession(undefined, 'WRITE')
   let proposal: ServiceMapProposal
   try {
     await assertServiceMapPlanLimit(session, input.tenantId)
     proposal = await buildServiceMap(session, input.tenantId, input.serviceId, input.maxDepth, input.relationshipTypes)
-    await session.executeWrite((tx) => createServiceMapNode(tx, { tenantId: input.tenantId, serviceId: input.serviceId, mapId, status, proposal, actorId: input.actorId, now }))
+    await session.executeWrite((tx) => createServiceMapNode(tx, { tenantId: input.tenantId, serviceId: input.serviceId, mapId, status, autoSync, proposal, actorId: input.actorId, now }))
   } finally {
     await session.close()
   }
-  log.info({ tenantId: input.tenantId, serviceId: input.serviceId, mapId, nodes: proposal.nodes.length, maxDepth: proposal.maxDepth, relationshipTypes: proposal.relationshipTypes, actorId: input.actorId }, 'Service map created')
+  log.info({ tenantId: input.tenantId, serviceId: input.serviceId, mapId, nodes: proposal.nodes.length, maxDepth: proposal.maxDepth, relationshipTypes: proposal.relationshipTypes, autoSync, actorId: input.actorId }, 'Service map created')
   const evaluation = await evaluateServiceMap({ tenantId: input.tenantId, mapId, trigger: 'created', actorId: input.actorId, now })
   return { mapId, proposal, evaluation }
 }

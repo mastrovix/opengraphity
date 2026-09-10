@@ -53,6 +53,16 @@ export interface ServiceMapProposal {
   nodes:             ProposedNode[]
 }
 
+/**
+ * Proposta oltre SERVICE_MAP_MAX_NODES: resta un `BAD_USER_INPUT` per chi crea
+ * una mappa a mano (stesso messaggio con il conteggio), ma è una classe a sé
+ * perché la sincronizzazione automatica (ondata 5, sync.ts) deve distinguerlo
+ * da ogni altro errore di validazione: lì non c'è un utente da avvisare, la
+ * mappa viene marcata `stale` e la passata registra `skipped_limit`. Mai un
+ * taglio silenzioso, in nessuno dei due casi.
+ */
+export class ServiceMapTooLargeError extends ValidationError {}
+
 /** Profondità 1..SERVICE_MAP_MAX_DEPTH, intera. */
 export function assertMaxDepth(maxDepth: number): number {
   if (!Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > SERVICE_MAP_MAX_DEPTH) {
@@ -162,7 +172,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     }
   }
   if (nodes.length > SERVICE_MAP_MAX_NODES) {
-    throw new ValidationError(`Service map for "${entry.serviceName}" would exceed ${SERVICE_MAP_MAX_NODES} nodes (at least ${nodes.length} reached with maxDepth ${depth} over ${types.join(', ')}): reduce maxDepth or the relationship types`)
+    throw new ServiceMapTooLargeError(`Service map for "${entry.serviceName}" would exceed ${SERVICE_MAP_MAX_NODES} nodes (at least ${nodes.length} reached with maxDepth ${depth} over ${types.join(', ')}): reduce maxDepth or the relationship types`)
   }
   return { serviceName: entry.serviceName, maxDepth: depth, relationshipTypes: types, nodes }
 }
@@ -172,12 +182,20 @@ export interface CreateServiceMapNodeInput {
   serviceId: string
   mapId:     string
   status:    ServiceMapStatus
+  /** Mappa viva (default) o congelata: ondata 5, services/serviceImpact/sync.ts. */
+  autoSync:  boolean
   proposal:  ServiceMapProposal
   actorId:   string
   now:       string
 }
 
-/** Scrittura della mappa: ServiceMap + INCLUDES in uno statement. `node_ids` conserva gli id inclusi (per rilevare i nodi spariti: la mappa diventa stale). */
+/**
+ * Scrittura della mappa: ServiceMap + INCLUDES in uno statement. `node_ids`
+ * conserva gli id inclusi (per rilevare i nodi spariti: la mappa diventa
+ * stale). `auto_sync` dice se la mappa si aggiorna da sola quando cambia la
+ * CMDB (ondata 5) e `synced_at` nasce null: la mappa appena costruita È
+ * allineata al grafo, ma non l'ha ancora sincronizzata nessuno.
+ */
 export const CREATE_SERVICE_MAP_CYPHER = `
   MATCH (ba:BusinessApplication {id: $serviceId, tenant_id: $tenantId})
   WHERE NOT EXISTS { (ba)-[:HAS_SERVICE_MAP]->(:ServiceMap {tenant_id: $tenantId}) }
@@ -186,6 +204,7 @@ export const CREATE_SERVICE_MAP_CYPHER = `
     updated_at: $now, updated_by: $actorId, built_from: 'auto', max_depth: toInteger($maxDepth),
     relationship_types: $relationshipTypes, rules: $rules,
     health: 'unknown', health_since: null, impact_score: 0, explanation: '[]', stale: false, evaluated_at: null,
+    auto_sync: $autoSync, synced_at: null,
     node_ids: [n IN $nodes | n.ciId], created_at: $now
   })
   WITH m
@@ -208,7 +227,7 @@ export const CREATE_SERVICE_MAP_CYPHER = `
 export async function createServiceMapNode(tx: Queryable, input: CreateServiceMapNodeInput): Promise<void> {
   const nodes = input.proposal.nodes.map((n) => ({ ciId: n.ciId, level: n.level, role: n.role, propagate: n.propagate, weight: n.weight, critical: n.critical, via: n.via }))
   const row = await runQueryOne<{ id: string; linked: number }>(tx, CREATE_SERVICE_MAP_CYPHER, {
-    serviceId: input.serviceId, tenantId: input.tenantId, mapId: input.mapId, status: input.status,
+    serviceId: input.serviceId, tenantId: input.tenantId, mapId: input.mapId, status: input.status, autoSync: input.autoSync,
     maxDepth: input.proposal.maxDepth, relationshipTypes: [...input.proposal.relationshipTypes], rules: DEFAULT_SERVICE_IMPACT_RULES_JSON,
     nodes, actorId: input.actorId, now: input.now,
   })

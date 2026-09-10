@@ -21,6 +21,7 @@ import { eventManagementTenants } from './20260910_1070_event_management_tenants
 import { serviceMapsBootstrap } from './20260910_1080_service_maps_bootstrap.js'
 import { serviceNotificationRules } from './20260910_1090_service_notification_rules.js'
 import { serviceMapPlanLimit } from './20260910_1100_service_map_plan_limit.js'
+import { serviceMapAutoSync } from './20260910_1110_service_map_auto_sync.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -36,4 +37,5 @@ export const MIGRATIONS: readonly Migration[] = [
   serviceMapsBootstrap,
   serviceNotificationRules,
   serviceMapPlanLimit,
+  serviceMapAutoSync,
 ]

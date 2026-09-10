@@ -140,6 +140,8 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
     createServiceMap: ADMIN, reevaluateServiceMap: ADMIN, setServiceMapStatus: ADMIN, deleteServiceMap: ADMIN,
     // configurazione da interfaccia (ondata 2)
     updateServiceImpactRules: ADMIN, updateServiceMapNodes: ADMIN, applyServiceMapProposal: ADMIN, removeServiceMapExclusion: ADMIN,
+    // mappa viva (ondata 5): interruttore e sincronizzazione immediata
+    setServiceMapAutoSync: ADMIN, syncServiceMap: ADMIN,
   }
 
   const rootFieldsOf = (kind: 'Query' | 'Mutation') =>

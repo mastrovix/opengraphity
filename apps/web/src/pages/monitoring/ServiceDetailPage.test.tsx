@@ -11,10 +11,10 @@ import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { ServiceDetailPage } from './ServiceDetailPage'
 import { GET_SERVICE_MAP, GET_SERVICE_IMPACT_PREVIEW, GET_SERVICE_MAP_PROPOSAL } from '@/graphql/queries'
-import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP } from '@/graphql/mutations'
+import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP, SYNC_SERVICE_MAP } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
-import { mapDetail, preview, proposal, openIncident } from '@/test/mocks/services'
+import { mapDetail, preview, proposal, openIncident, node, NODES } from '@/test/mocks/services'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
@@ -224,7 +224,11 @@ describe('ServiceDetailPage', () => {
     renderPage('viewer')
     await screen.findByRole('heading', { level: 1 })
     await new Promise((r) => setTimeout(r, 10))
-    for (const name of ['Re-evaluate now', 'Update map', 'Pause', 'Delete']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    for (const name of ['Re-evaluate now', 'Update map', 'Review components', 'Sync now', 'Pause', 'Delete']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    // l'interruttore della mappa viva è un controllo da amministratore: il viewer vede solo il badge
+    expect(screen.queryByTestId('service-auto-sync')).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sync-mode-badge')).toBeInTheDocument()
     expect(screen.queryByTestId('service-rules-form')).not.toBeInTheDocument()
     expect(screen.queryByTestId('components-dirty')).not.toBeInTheDocument()
     expect(screen.queryByTestId('rules-preview')).not.toBeInTheDocument()
@@ -234,13 +238,75 @@ describe('ServiceDetailPage', () => {
     expect(screen.getByText('Components without health: ignored')).toBeInTheDocument()
   })
 
-  it('admin: «Aggiorna mappa» apre il dialogo del diff col grafo; il riepilogo parte da zero', async () => {
-    const { user } = renderPage('admin', { extra: [proposalMock()] })
+  it('admin: «Aggiorna mappa» (mappa congelata) apre il dialogo del diff col grafo; il riepilogo parte da zero', async () => {
+    const { user } = renderPage('admin', { detail: detailMock({ autoSync: false }), extra: [proposalMock()] })
     await screen.findByRole('heading', { level: 1 })
     await user.click(screen.getByRole('button', { name: 'Update map' }))
     const dialog = await screen.findByRole('dialog', { name: 'Update the map of "Enterprise Billing"' })
     expect(within(dialog).getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 0')
     expect(await within(dialog).findAllByTestId('proposal-added')).toHaveLength(2)
+  })
+
+  it('ondata 5: badge «viva» accanto al nome e «ultima sincronizzazione» accanto a «ultima valutazione»', async () => {
+    renderPage('viewer')
+    await screen.findByRole('heading', { level: 1 })
+    const badge = screen.getByTestId('sync-mode-badge')
+    expect(badge).toHaveAttribute('data-mode', 'live')
+    expect(badge).toHaveTextContent('live')
+    expect(badge.parentElement).toHaveAttribute('title', 'Live map: new components come in on their own and gone ones go out, no questions asked.')
+    expect(screen.getByTestId('synced-at')).toHaveTextContent('Synced 5 min ago')
+  })
+
+  it('ondata 5: mappa congelata → badge «congelata»; mai sincronizzata → «mai», non una riga vuota', async () => {
+    renderPage('viewer', { detail: detailMock({ autoSync: false, syncedAt: null }) })
+    await screen.findByRole('heading', { level: 1 })
+    const badge = screen.getByTestId('sync-mode-badge')
+    expect(badge).toHaveAttribute('data-mode', 'frozen')
+    expect(badge).toHaveTextContent('frozen')
+    expect(screen.getByTestId('synced-at')).toHaveTextContent('Never synced')
+    expect(screen.getByText('Last sync')).toBeInTheDocument()
+    expect(screen.getAllByText('Never').length).toBeGreaterThan(0)   // la scheda del servizio dice «mai», non «—»
+  })
+
+  it('ondata 5, admin con mappa viva: «Sincronizza ora» col resoconto in toast e «Rivedi componenti» per il diff', async () => {
+    const seen: unknown[] = []
+    const sync: GqlMock = {
+      request: { query: SYNC_SERVICE_MAP, variables: (v) => { seen.push(v); return true } },
+      // lb-09 entrato, cache-02 e cert-billing usciti
+      result: { data: { syncServiceMap: mapDetail({ version: 4, nodes: [NODES[0], NODES[1], node({ id: 'lb-09', name: 'lb-09' })] }) } },
+    }
+    const { user } = renderPage('admin', { extra: [sync, proposalMock()] })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByRole('button', { name: 'Update map' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Sync now' }))
+    await waitFor(() => expect(seen).toEqual([{ id: 'map-1' }]))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map synced: +1 −2'))
+    // il dialogo del diff resta raggiungibile: sola revisione ed esclusioni
+    await user.click(screen.getByRole('button', { name: 'Review components' }))
+    expect(await screen.findByRole('dialog', { name: 'Update the map of "Enterprise Billing"' })).toBeInTheDocument()
+  })
+
+  it('ondata 5, admin: sincronizzazione senza cambiamenti → «già allineata», mai un successo muto', async () => {
+    const sync: GqlMock = { request: { query: SYNC_SERVICE_MAP, variables: () => true }, result: { data: { syncServiceMap: mapDetail({ version: 3 }) } } }
+    const { user } = renderPage('admin', { extra: [sync] })
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(screen.getByRole('button', { name: 'Sync now' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map already aligned with the graph: nothing to add or remove'))
+  })
+
+  it('ondata 5, admin con mappa congelata: il pulsante torna «Aggiorna mappa» e non c\'è «Sincronizza ora»', async () => {
+    renderPage('admin', { detail: detailMock({ autoSync: false }), extra: [proposalMock()] })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByRole('button', { name: 'Update map' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sync now' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Review components' })).not.toBeInTheDocument()
+  })
+
+  it('ondata 5, admin: l\'interruttore per congelare la mappa è nel riquadro del servizio', async () => {
+    renderPage('admin')
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByTestId('service-auto-sync')).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Update components automatically' })).toHaveAttribute('aria-checked', 'true')
   })
 
   it('admin: la scheda del servizio dice quanti componenti sono esclusi', async () => {

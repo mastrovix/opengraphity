@@ -5,6 +5,7 @@ import { audit } from '../../lib/audit.js'
 import { cache } from '../../lib/cache.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
 import { logger } from '../../lib/logger.js'
+import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
 
 // Structural relation types always available regardless of the metamodel.
 const CORE_REL_TYPES = ['DEPENDS_ON', 'HOSTED_ON', 'USES_CERTIFICATE', 'INSTALLED_ON']
@@ -119,7 +120,13 @@ async function addCIRelationship(
     cache.invalidate(`topology:${tenantId}`)
     cache.invalidate(`ci:${tenantId}`)
 
-    // 8. Audit log
+    // 8. Servizi monitorati (ondata 5): il grafo dei CI è cambiato, le mappe
+    //    vive che toccano questi due CI si risincronizzano subito. Dopo il
+    //    commit e senza mai lanciare: la relazione è già scritta e non si
+    //    annulla perché la coda non risponde (la passata di sicurezza recupera).
+    await notifyCIGraphChanged(tenantId, [sourceId, targetId], `ci_relationship.added:${relationType}`)
+
+    // 9. Audit log
     void audit(ctx, 'ci_relationship.added', 'CIRelationship', sourceId, {
       targetId,
       relationType,
@@ -167,7 +174,11 @@ async function removeCIRelationship(
     cache.invalidate(`topology:${tenantId}`)
     cache.invalidate(`ci:${tenantId}`)
 
-    // 5. Audit log
+    // 5. Servizi monitorati (ondata 5): stessa notifica dell'aggiunta — una
+    //    relazione tolta può far uscire dei componenti dalle mappe vive.
+    await notifyCIGraphChanged(tenantId, [sourceId, targetId], `ci_relationship.removed:${relationType}`)
+
+    // 6. Audit log
     void audit(ctx, 'ci_relationship.removed', 'CIRelationship', sourceId, {
       targetId,
       relationType,

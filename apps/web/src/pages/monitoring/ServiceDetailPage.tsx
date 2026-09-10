@@ -17,13 +17,18 @@
  * gli altri ruoli i riquadri restano quelli di sola lettura, senza controlli.
  * Ondata 3: il riquadro «Incident aperto» (ServiceOpenIncidentCard) con
  * l'incident non chiuso che il monitoraggio ha aperto per il servizio.
+ * Ondata 5: la mappa è viva per default — badge «viva»/«congelata» accanto al
+ * nome, «ultima sincronizzazione» accanto a «ultima valutazione», interruttore
+ * per congelarla (ServiceAutoSyncToggle) e pulsante che cambia con la modalità
+ * («Sincronizza ora» se viva, «Aggiorna mappa» se congelata; il dialogo del
+ * diff resta raggiungibile come «Rivedi componenti»).
  */
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Star, Loader2, X, ArrowRight, GitCompareArrows } from 'lucide-react'
+import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Star, Loader2, X, ArrowRight, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
@@ -37,7 +42,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { GET_SERVICE_MAP } from '@/graphql/queries'
-import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP } from '@/graphql/mutations'
+import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP, SYNC_SERVICE_MAP } from '@/graphql/mutations'
 import { formatDateTime, formatDuration, timeAgo } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { ciPath } from '@/lib/ciPath'
@@ -50,8 +55,9 @@ import { ServiceComponentsTable } from './ServiceComponentsTable'
 import { ServiceRulesCard } from './ServiceRulesCard'
 import { ServiceOpenIncidentCard } from './ServiceOpenIncidentCard'
 import { UpdateServiceMapDialog } from './UpdateServiceMapDialog'
+import { ServiceAutoSyncToggle } from './ServiceAutoSyncToggle'
 import {
-  ServiceHealthBadge, ServiceStatusPill, NodeHealthBadge, ImpactScore,
+  ServiceHealthBadge, ServiceStatusPill, ServiceSyncModePill, NodeHealthBadge, ImpactScore,
   causeSequenceLabel, explanationSentence, propagationLabel, roleLabel, serviceStatusLabel, serviceHealthLabel,
 } from './servicesShared'
 import type { ServiceMapDetail, ServiceMapNode, ImpactCause } from '@/types/services'
@@ -75,6 +81,7 @@ export function ServiceDetailPage() {
   const [reevaluate, { loading: reevaluating }] = useMutation<{ reevaluateServiceMap: ServiceMapDetail }>(REEVALUATE_SERVICE_MAP)
   const [setStatus, { loading: settingStatus }] = useMutation<{ setServiceMapStatus: ServiceMapDetail }>(SET_SERVICE_MAP_STATUS)
   const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP)
+  const [syncMap, { loading: syncing }] = useMutation<{ syncServiceMap: ServiceMapDetail }>(SYNC_SERVICE_MAP)
 
   if (loading && !data && !previousData) return <PageLoader />
   if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
@@ -94,7 +101,7 @@ export function ServiceDetailPage() {
   const nodeById = new Map(map.nodes.map((n) => [n.ci.id, n]))
   const selected = selectedId ? (nodeById.get(selectedId) ?? null) : null
   const since = map.healthSince ? formatDuration(Date.now() - new Date(map.healthSince).getTime()) : null
-  const busy = reevaluating || settingStatus || deleting
+  const busy = reevaluating || settingStatus || deleting || syncing
 
   async function onReevaluate() {
     try {
@@ -102,6 +109,27 @@ export function ServiceDetailPage() {
       const next = res.data?.reevaluateServiceMap
       if (!next) throw new Error(t('monitoring.services.detail.noResult', { operation: 'reevaluateServiceMap' }))
       toast.success(t('toast.services.reevaluated', { health: serviceHealthLabel(t, next.health) }))
+    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+  }
+
+  /**
+   * «Sincronizza ora» (mappa viva): l'esito lo si legge confrontando i
+   * componenti prima e dopo — l'API restituisce la mappa, non il conteggio.
+   * Nessun cambiamento → «già allineata», detto invece di un successo muto.
+   */
+  async function onSyncNow() {
+    if (!map) return
+    const before = new Set(map.nodes.map((n) => n.ci.id))
+    try {
+      const res = await syncMap({ variables: { id } })
+      const next = res.data?.syncServiceMap
+      if (!next) throw new Error(t('monitoring.services.detail.noResult', { operation: 'syncServiceMap' }))
+      const after = new Set(next.nodes.map((n) => n.ci.id))
+      const added   = [...after].filter((ciId) => !before.has(ciId)).length
+      const removed = [...before].filter((ciId) => !after.has(ciId)).length
+      toast.success(added === 0 && removed === 0
+        ? t('toast.services.syncAligned')
+        : t('toast.services.synced', { added, removed }))
     } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
@@ -138,11 +166,15 @@ export function ServiceDetailPage() {
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: colors.slateDark, letterSpacing: '-0.01em', margin: 0 }}>{map.name}</h1>
           <ServiceHealthBadge health={map.health} />
           <ServiceStatusPill status={map.status} />
+          <ServiceSyncModePill autoSync={map.autoSync} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
           <ImpactScore score={map.impactScore} health={map.health} width={120} />
           {since && <span title={t('monitoring.services.sinceHint', { date: formatDateTime(map.healthSince) })}>{t('monitoring.services.since', { duration: since })}</span>}
           <span>{map.evaluatedAt ? t('monitoring.services.detail.evaluated', { ago: timeAgo(map.evaluatedAt) }) : t('monitoring.services.detail.neverEvaluated')}</span>
+          <span data-testid="synced-at" title={map.syncedAt ? t('monitoring.services.syncMode.syncedHint', { date: formatDateTime(map.syncedAt) }) : undefined}>
+            {map.syncedAt ? t('monitoring.services.syncMode.synced', { ago: timeAgo(map.syncedAt) }) : t('monitoring.services.syncMode.neverSynced')}
+          </span>
         </div>
         {map.stale && (
           <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: '10px 14px', borderRadius: 8, background: AMBER_BANNER.bg, border: `1px solid ${AMBER_BANNER.border}`, color: AMBER_BANNER.text, fontSize: 'var(--font-size-body)' }}>
@@ -158,8 +190,14 @@ export function ServiceDetailPage() {
             <Button variant="secondary" size="sm" disabled={busy} icon={reevaluating ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={14} aria-hidden="true" />} onClick={() => void onReevaluate()}>
               {t('monitoring.services.detail.actions.reevaluate')}
             </Button>
+            {/* Mappa viva: si sincronizza a richiesta e il diff serve solo a rivedere ed escludere; congelata: il diff è l'unico modo di far entrare i componenti nuovi. */}
+            {map.autoSync && (
+              <Button variant="secondary" size="sm" disabled={busy} icon={syncing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />} onClick={() => void onSyncNow()}>
+                {t('monitoring.services.detail.actions.syncNow')}
+              </Button>
+            )}
             <Button variant="secondary" size="sm" disabled={busy} icon={<GitCompareArrows size={14} aria-hidden="true" />} onClick={() => setUpdateOpen(true)}>
-              {t('monitoring.services.detail.actions.updateMap')}
+              {map.autoSync ? t('monitoring.services.detail.actions.reviewComponents') : t('monitoring.services.detail.actions.updateMap')}
             </Button>
             <Button variant="secondary" size="sm" disabled={busy} icon={map.status === 'paused' ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />} onClick={() => void onToggleStatus()}>
               {map.status === 'paused' ? t('monitoring.services.detail.actions.resume') : t('monitoring.services.detail.actions.pause')}
@@ -212,6 +250,11 @@ export function ServiceDetailPage() {
             <DetailField label={t('monitoring.services.detail.fields.excluded')} value={t('monitoring.services.detail.fields.excludedCount', { count: map.excluded.length })} />
             <DetailField label={t('monitoring.services.detail.fields.updatedAt')} value={map.updatedAt ? `${formatDateTime(map.updatedAt)} · ${timeAgo(map.updatedAt)}` : null} />
             <DetailField label={t('monitoring.services.detail.fields.evaluatedAt')} value={map.evaluatedAt ? `${formatDateTime(map.evaluatedAt)} · ${timeAgo(map.evaluatedAt)}` : null} />
+            <DetailField
+              label={t('monitoring.services.detail.fields.syncedAt')}
+              value={map.syncedAt ? `${formatDateTime(map.syncedAt)} · ${timeAgo(map.syncedAt)}` : t('monitoring.services.detail.fields.syncedNever')}
+            />
+            {isAdmin && <ServiceAutoSyncToggle map={map} onReload={() => void refetch()} />}
           </SectionCard>
 
           <ServiceRulesCard map={map} canEdit={isAdmin} onReload={() => void refetch()} />

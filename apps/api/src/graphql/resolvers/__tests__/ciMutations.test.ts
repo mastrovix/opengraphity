@@ -12,9 +12,11 @@ vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
 vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(0) }))
 
 const { buildCreateMutation, buildUpdateMutation, buildDeleteMutation, validateCIInput } = await import('../ciMutations.js')
 const { withSession } = await import('../ci-utils.js')
+const { notifyCIGraphChanged } = await import('../../../services/serviceImpact/sync.js')
 
 const IP_SCRIPT = 'if (!/^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(value)) throw new Error("IP non valido")'
 
@@ -202,5 +204,20 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
     // nessun MATCH sulle INCLUDES: la mappa non viene toccata, perde solo la relazione
     expect(cypher).not.toContain('INCLUDES')
     expect(cypher).toContain('OPTIONAL MATCH (n)-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})')
+  })
+
+  // ── Servizi monitorati, ondata 5 (mappa viva) ─────────────────────────────
+  it('avvisa il motore dei servizi DOPO la cancellazione (le mappe vive si risincronizzano subito); un errore di coda non fa fallire la cancellazione', async () => {
+    const session = fakeSession()
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await buildDeleteMutation('Server')(undefined, { id: 'ci-1' }, ctx)
+    expect(notifyCIGraphChanged).toHaveBeenCalledWith('t1', ['ci-1'], 'ci.deleted')
+    // dopo la scrittura, mai prima
+    expect(session.executeWrite).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(notifyCIGraphChanged).mock.invocationCallOrder[0]!).toBeGreaterThan(session.executeWrite.mock.invocationCallOrder[0]!)
+
+    // la notifica non lancia mai (lo garantisce sync.ts): anche così la cancellazione resta riuscita
+    vi.mocked(notifyCIGraphChanged).mockResolvedValueOnce(0)
+    await expect(buildDeleteMutation('Server')(undefined, { id: 'ci-2' }, ctx)).resolves.toBe(true)
   })
 })

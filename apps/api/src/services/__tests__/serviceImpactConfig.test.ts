@@ -31,8 +31,8 @@ const { evaluateServiceMap } = await import('../serviceImpact/engine.js')
 const {
   applyServiceMapProposal, assertExpectedVersion, assertServiceImpactRulesInput, assertServiceMapNodeInputs,
   previewServiceImpact, removeServiceMapExclusion, serviceMapProposal, serviceNodesChangeNote, serviceRulesChangeNote,
-  updateServiceImpactRules, updateServiceMapNodes,
-  APPLY_PROPOSAL_CYPHER, REMOVE_EXCLUSION_CYPHER, SERVICE_MAP_EXCLUSIONS_CYPHER, UPDATE_NODES_CYPHER, UPDATE_RULES_CYPHER,
+  setServiceMapAutoSync, updateServiceImpactRules, updateServiceMapNodes,
+  APPLY_PROPOSAL_CYPHER, REMOVE_EXCLUSION_CYPHER, SERVICE_MAP_EXCLUSIONS_CYPHER, SET_AUTO_SYNC_CYPHER, UPDATE_NODES_CYPHER, UPDATE_RULES_CYPHER,
 } = await import('../serviceImpact/config.js')
 const { DEFAULT_SERVICE_IMPACT_RULES, DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_EXCLUSION_REASON_MANUAL } = await import('../../lib/serviceVocabularies.js')
 
@@ -64,6 +64,7 @@ const RULES_RE    = /SET m\.rules = \$rules/
 const NODES_RE    = /SET inc\.propagate = n\.propagate/
 const APPLY_RE    = /SET m\.node_ids = includedIds \+ \$keepMissing/
 const UNEXCL_RE   = /MATCH \(m\)-\[e:EXCLUDES\]->\(ci \{id: \$ciId, tenant_id: \$tenantId\}\)/
+const AUTOSYNC_RE = /SET m\.auto_sync = \$autoSync/
 
 /** Mappa dell'esempio: api-03 (L1 critico), db-01, old-99 (non più raggiungibile); `gone-1` sparito dalla CMDB. */
 function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string, unknown>[] } = {}) {
@@ -72,7 +73,7 @@ function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string
     props: {
       id: 'map-1', tenant_id: 't1', service_id: 'ba-1', name: 'Enterprise Billing', status: 'active', version: 2, updated_at: 'T-prec',
       max_depth: 4, relationship_types: ['DEPENDS_ON', 'HOSTED_ON'], rules: DEFAULT_SERVICE_IMPACT_RULES_JSON,
-      health: 'operational', stale: true, node_ids: ['api-03', 'db-01', 'old-99', 'gone-1'], ...over.props,
+      health: 'operational', stale: true, auto_sync: true, synced_at: null, node_ids: ['api-03', 'db-01', 'old-99', 'gone-1'], ...over.props,
     },
     nodes: over.nodes ?? [
       n({ ciId: 'api-03', labels: ['Application'], level: 1, role: 'entry', weight: 8, critical: true, via: null }),
@@ -405,5 +406,44 @@ describe('removeServiceMapExclusion', () => {
     onCypher([[LOAD_RE, stateRow()], [EXCL_RE, EXCLUSION_ROWS], [UNEXCL_RE, { version: 3, status: 'active', removed: 0 }]])
     await expect(removeServiceMapExclusion({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, ciId: 'cert-x', actorId: 'u-1', now: NOW }))
       .rejects.toThrow(/exclusion of cert-x was not removed \(0 relationships deleted\)/)
+  })
+})
+
+// ── Interruttore della mappa viva (ondata 5) ─────────────────────────────────
+
+describe('setServiceMapAutoSync', () => {
+  it('cambia solo auto_sync, versiona, scrive la voce map_changed con la nota leggibile e NON rivaluta la mappa', async () => {
+    onCypher([[LOAD_RE, stateRow()], [AUTOSYNC_RE, { version: 3, status: 'active' }]])
+    const r = await setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, autoSync: false, actorId: 'u-1', now: NOW })
+    expect(r).toMatchObject({ version: 3, status: 'active', note: 'Aggiornamento automatico disattivato', evaluation: null })
+    const w = callMatching(AUTOSYNC_RE)!
+    expect(w.cypher).toBe(SET_AUTO_SYNC_CYPHER)
+    expect(w.cypher).toContain('WHERE version = toInteger($expectedVersion)')
+    expect(w.cypher).toContain('SET m.version = version + 1, m.updated_at = $now, m.updated_by = $actorId')
+    // nessun'altra proprietà della mappa viene toccata
+    expect(w.cypher).not.toMatch(/SET m\.rules|SET m\.node_ids|SET m\.status/)
+    expect(w.params).toMatchObject({ mapId: 'map-1', tenantId: 't1', expectedVersion: 2, autoSync: false, hTrigger: 'map_changed', hNote: r.note })
+    // cambiare modalità non cambia né i componenti né la loro salute
+    expect(evaluateServiceMap).not.toHaveBeenCalled()
+  })
+
+  it('accendere l\'interruttore su una mappa congelata: nota speculare', async () => {
+    onCypher([[LOAD_RE, stateRow({ props: { auto_sync: false } })], [AUTOSYNC_RE, { version: 3, status: 'active' }]])
+    const r = await setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, autoSync: true, actorId: 'u-1', now: NOW })
+    expect(r.note).toBe('Aggiornamento automatico attivato')
+  })
+
+  it('stesso valore → BAD_USER_INPUT senza scrivere (alzerebbe la versione con una voce vuota); versione diversa → conflitto; auto_sync assente → la migrazione', async () => {
+    onCypher([[LOAD_RE, stateRow()]])
+    await expectCode(setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, autoSync: true, actorId: 'u-1', now: NOW }), 'BAD_USER_INPUT', /already has autoSync true: nothing to save/)
+    expect(callMatching(AUTOSYNC_RE)).toBeUndefined()
+
+    await expectCode(setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 5, autoSync: false, actorId: 'u-1', now: NOW }), 'BAD_USER_INPUT', /expected version 5, current is 2/)
+    await expectCode(setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 0, autoSync: false, actorId: 'u-1', now: NOW }), 'BAD_USER_INPUT', /expectedVersion must be an integer >= 1/)
+    await expectCode(setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, autoSync: 'si' as never, actorId: 'u-1', now: NOW }), 'BAD_USER_INPUT', /autoSync must be a boolean/)
+
+    onCypher([[LOAD_RE, stateRow({ props: { auto_sync: undefined } })]])
+    await expect(setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, autoSync: false, actorId: 'u-1', now: NOW }))
+      .rejects.toThrow(/has no auto_sync \(got undefined\) — run the 20260910_1110_service_map_auto_sync migration/)
   })
 })

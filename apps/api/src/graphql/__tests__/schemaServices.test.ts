@@ -55,6 +55,7 @@ describe('tipi del contratto', () => {
     expect(fieldsOf('ServiceMap')).toEqual({
       id: 'ID!', service: 'ServiceRef!', name: 'String!', status: 'ServiceMapStatus!', version: 'Int!', updatedAt: 'String',
       maxDepth: 'Int!', relationshipTypes: '[String!]!', builtFrom: 'String!', stale: 'Boolean!',
+      autoSync: 'Boolean!', syncedAt: 'String',
       rules: 'ServiceImpactRules!',
       health: 'ServiceHealth!', healthSince: 'String', impactScore: 'Int!', evaluatedAt: 'String',
       explanation: '[ImpactCause!]!',
@@ -95,7 +96,7 @@ describe('tipi del contratto', () => {
     expect(sig(q['serviceMapProposal']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMapProposal!' })
     expect(sig(q['serviceImpactPreview']!)).toEqual({ args: [['id', 'ID!', null], ['rules', 'ServiceImpactRulesInput', null], ['nodes', '[ServiceMapNodeInput!]', null]], type: 'ServiceImpactPreview!' })
     expect(sig(q['businessCapabilitiesHealth']!)).toEqual({ args: [], type: '[BusinessCapabilityHealth!]!' })
-    expect(sig(m['createServiceMap']!)).toEqual({ args: [['serviceId', 'ID!', null], ['maxDepth', 'Int', null], ['relationshipTypes', '[String!]', null], ['status', 'ServiceMapStatus', null]], type: 'ServiceMap!' })
+    expect(sig(m['createServiceMap']!)).toEqual({ args: [['serviceId', 'ID!', null], ['maxDepth', 'Int', null], ['relationshipTypes', '[String!]', null], ['status', 'ServiceMapStatus', null], ['autoSync', 'Boolean', null]], type: 'ServiceMap!' })
     expect(sig(m['reevaluateServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMap!' })
     expect(sig(m['setServiceMapStatus']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['status', 'ServiceMapStatus!', null]], type: 'ServiceMap!' })
     expect(sig(m['updateServiceImpactRules']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['rules', 'ServiceImpactRulesInput!', null]], type: 'ServiceMap!' })
@@ -103,6 +104,9 @@ describe('tipi del contratto', () => {
     expect(sig(m['applyServiceMapProposal']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['add', '[ID!]!', null], ['exclude', '[ID!]!', null], ['remove', '[ID!]!', null]], type: 'ServiceMap!' })
     expect(sig(m['removeServiceMapExclusion']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['ciId', 'ID!', null]], type: 'ServiceMap!' })
     expect(sig(m['deleteServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'Boolean!' })
+    // ondata 5 (mappa viva): l'interruttore ha il controllo di concorrenza, «sincronizza ora» no (è un'azione idempotente)
+    expect(sig(m['setServiceMapAutoSync']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['autoSync', 'Boolean!', null]], type: 'ServiceMap!' })
+    expect(sig(m['syncServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMap!' })
   })
 
   it('tipi e input dell\'ondata 2 (configurazione da interfaccia)', () => {

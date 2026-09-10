@@ -12,6 +12,7 @@ import { withSession } from './ci-utils.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { validateStringLength, validateCronExpression } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
+import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
 
 function encryptionKey(): string {
   const k = process.env['DISCOVERY_ENCRYPTION_KEY']
@@ -522,6 +523,12 @@ export const syncResolvers = {
               tagsJson:    JSON.stringify(discoveredTags),
             },
           ))
+          // Servizi monitorati (ondata 5): due RELATED_TO nuove fra CI. Non è
+          // una relazione che la costruzione della mappa segue, ma la regola è
+          // «ogni scrittura che tocca il grafo dei CI avvisa il motore»: la
+          // sincronizzazione che ne segue è a vuoto (solo `synced_at`) e la
+          // regola resta una sola, senza eccezioni da ricordare.
+          await notifyCIGraphChanged(ctx.tenantId, [newCiId, conflict.existingCiId], 'sync_conflict.linked')
         }
 
         // Mark conflict as resolved

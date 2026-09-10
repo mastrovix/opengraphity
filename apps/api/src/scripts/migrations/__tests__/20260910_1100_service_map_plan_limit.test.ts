@@ -30,10 +30,10 @@ function fakeSession(tenants: TenantRow[]) {
 beforeEach(() => { vi.spyOn(console, 'log').mockImplementation(() => {}) })
 
 describe('20260910_1100_service_map_plan_limit', () => {
-  it('è registrata dopo la 1090, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
+  it('è registrata dopo la 1090 e prima della 1110, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
     const ids = MIGRATIONS.map((m) => m.id)
     expect(ids.indexOf('20260910_1100_service_map_plan_limit')).toBeGreaterThan(ids.indexOf('20260910_1090_service_notification_rules'))
-    expect(ids.at(-1)).toBe('20260910_1100_service_map_plan_limit')
+    expect(ids.indexOf('20260910_1100_service_map_plan_limit')).toBeLessThan(ids.indexOf('20260910_1110_service_map_auto_sync'))
     expect(serviceMapPlanLimit.id).toMatch(/^\d{8}_\d{4}_[a-z0-9_]+$/)
     expect(serviceMapPlanLimit.autocommit).toBeUndefined()
   })

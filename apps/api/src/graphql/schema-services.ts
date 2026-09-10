@@ -149,6 +149,10 @@ export function servicesSDL(): string {
     builtFrom:         String!
     """True se un componente incluso non esiste più nella CMDB (voce map_changed in cronologia)."""
     stale:             Boolean!
+    """Mappa viva: i componenti si aggiornano da soli quando cambia la CMDB (default). False = mappa congelata, il diff si applica a mano. Le esclusioni e i componenti aggiunti a mano restano in entrambi i casi."""
+    autoSync:          Boolean!
+    """Ultima sincronizzazione con la CMDB; null se non è mai stata sincronizzata."""
+    syncedAt:          String
     rules:             ServiceImpactRules!
     health:            ServiceHealth!
     healthSince:       String
@@ -279,7 +283,7 @@ export function servicesSDL(): string {
 
   extend type Mutation {
     """Costruzione automatica dalla BusinessApplication (REALIZES → relazioni tecniche in uscita fino a maxDepth, default 4, max 8; relationshipTypes fra DEPENDS_ON, HOSTED_ON, INSTALLED_ON, USES_CERTIFICATE, default tutte), status active (o draft per una bozza), valutazione immediata. Una sola mappa per servizio; oltre 500 componenti → BAD_USER_INPUT."""
-    createServiceMap(serviceId: ID!, maxDepth: Int, relationshipTypes: [String!], status: ServiceMapStatus): ServiceMap!
+    createServiceMap(serviceId: ID!, maxDepth: Int, relationshipTypes: [String!], status: ServiceMapStatus, autoSync: Boolean): ServiceMap!
     """Rivaluta ora (trigger manual)."""
     reevaluateServiceMap(id: ID!): ServiceMap!
     """Cambia lo stato con controllo di concorrenza (expectedVersion = version letta); riattivare una mappa in pausa la rivaluta subito."""
@@ -292,6 +296,10 @@ export function servicesSDL(): string {
     applyServiceMapProposal(id: ID!, expectedVersion: Int!, add: [ID!]!, exclude: [ID!]!, remove: [ID!]!): ServiceMap!
     """Riammette un CI escluso: tornerà nella prossima proposta."""
     removeServiceMapExclusion(id: ID!, expectedVersion: Int!, ciId: ID!): ServiceMap!
+    """Accende o spegne l'aggiornamento automatico dei componenti (mappa viva o congelata), con controllo di concorrenza; voce di cronologia map_changed. Non rivaluta la mappa: cambia solo il modo in cui i componenti seguono la CMDB."""
+    setServiceMapAutoSync(id: ID!, expectedVersion: Int!, autoSync: Boolean!): ServiceMap!
+    """Sincronizza subito i componenti con la CMDB (aggiunge i nuovi, toglie quelli automatici spariti, aggiorna livello e via); i componenti aggiunti a mano e le esclusioni restano. Funziona anche sulle mappe congelate (è un'azione esplicita), non su quelle in pausa. Oltre 500 componenti non applica nulla e marca la mappa da rivedere."""
+    syncServiceMap(id: ID!): ServiceMap!
     """Elimina la mappa e la sua cronologia; il servizio (BusinessApplication) e i CI restano."""
     deleteServiceMap(id: ID!): Boolean!
   }

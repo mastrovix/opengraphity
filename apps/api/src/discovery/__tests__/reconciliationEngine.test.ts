@@ -9,10 +9,12 @@ vi.mock('@opengraphity/discovery', () => ({
   inferCIType: vi.fn(() => 'server'),
   normalizeProperties: vi.fn((props: unknown) => props),
 }))
+vi.mock('../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(0) }))
 
 // Import after mocks
 const { reconcileBatch, markStale } = await import('../reconciliationEngine.js')
 const { getSession } = await import('@opengraphity/neo4j')
+const { notifyCIGraphChanged } = await import('../../services/serviceImpact/sync.js')
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -215,6 +217,37 @@ describe('reconcileBatch', () => {
     // close può essere chiamato più di una volta se il mock di normalizeProperties
     // è ancora attivo dal test precedente (es. syncRelations path)
     expect(mockSession.close).toHaveBeenCalled()
+  })
+
+  // ── Servizi monitorati, ondata 5 (mappa viva) ─────────────────────────────
+  it('relazioni riconciliate: UNA notifica per LOTTO con tutti i CI toccati (non una per relazione), dopo la chiusura della sessione', async () => {
+    const mockSession = makeMockSession(
+      // CI-1: findExisting → nessuno; poi syncRelations legge il CI e il target
+      [[], [{ id: 'app-3' }], [{ id: 'srv-9' }], [], [{ id: 'app-4' }], [{ id: 'srv-9' }]],
+      [[{ created: true }], [{ createdAt: 'T' }], [{ created: true }], [{ createdAt: 'T' }]],
+    )
+    vi.mocked(getSession).mockReturnValue(mockSession as never)
+
+    const stats = makeStats()
+    const rel = (target: string) => [{ target_external_id: target, relation_type: 'depends_on', direction: 'outgoing' as const }]
+    await reconcileBatch([
+      { external_id: 'ext-1', source: 'csv', ci_type: 'server', name: 'app-3', properties: {}, tags: {}, relationships: rel('ext-9') },
+      { external_id: 'ext-2', source: 'csv', ci_type: 'server', name: 'app-4', properties: {}, tags: {}, relationships: rel('ext-9') },
+    ], testSource, 'run-1', 'tenant-1', stats)
+
+    expect(notifyCIGraphChanged).toHaveBeenCalledTimes(1)
+    const [tenantId, ids, reason] = vi.mocked(notifyCIGraphChanged).mock.calls[0]!
+    expect(tenantId).toBe('tenant-1')
+    expect([...ids].sort()).toEqual(['app-3', 'app-4', 'srv-9'])   // entrambi i capi, senza doppioni
+    expect(reason).toBe('discovery.reconciled:src-1')
+    expect(vi.mocked(notifyCIGraphChanged).mock.invocationCallOrder[0]!).toBeGreaterThan(mockSession.close.mock.invocationCallOrder[0]!)
+  })
+
+  it('lotto senza relazioni: nessun id toccato (la notifica non accoda nulla)', async () => {
+    const mockSession = makeMockSession([[]], [[{ created: true }]])
+    vi.mocked(getSession).mockReturnValue(mockSession as never)
+    await reconcileBatch([{ external_id: 'ext-1', source: 'csv', ci_type: 'server', name: 'web-01', properties: {}, tags: {}, relationships: [] }], testSource, 'run-1', 'tenant-1', makeStats())
+    expect(notifyCIGraphChanged).toHaveBeenCalledWith('tenant-1', [], 'discovery.reconciled:src-1')
   })
 })
 

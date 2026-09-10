@@ -213,6 +213,13 @@ export interface ServiceMapDetail extends ServiceMapRow {
   historyCount:      number
   /** Incident non chiuso del servizio; null se non ce n'è uno (o se le regole non ne aprono). */
   openIncident:      ServiceOpenIncident | null
+  /**
+   * Ondata 5: mappa viva (si aggiorna da sola dal grafo) o congelata (i
+   * componenti nuovi restano una proposta da accettare a mano). Default: viva.
+   */
+  autoSync:          boolean
+  /** Ultima sincronizzazione con il grafo; null = mai sincronizzata. */
+  syncedAt:          string | null
 }
 
 // ── Ondata 3: il servizio dentro gli altri oggetti ──────────────────────────

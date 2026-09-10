@@ -12,6 +12,7 @@ import { logger } from '../lib/logger.js'
 import { FIELD_NAME_RE } from '../lib/cypherIdentifiers.js'
 import { ValidationError } from '../lib/errors.js'
 import { ciNameKey } from '../lib/ciNameKey.js'
+import { notifyCIGraphChanged } from '../services/serviceImpact/sync.js'
 import { toNum } from './connectors/normalize.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -52,14 +53,23 @@ export async function reconcileBatch(
   stats:     ReconciliationStats,
 ): Promise<void> {
   const session = getSession()
+  // Servizi monitorati (ondata 5): gli id dei CI le cui relazioni sono state
+  // toccate in questo lotto. UNA notifica alla fine con tutti gli id (non una
+  // per relazione): un lotto che tocca 500 relazioni produce comunque una
+  // sincronizzazione per mappa, non 500.
+  const touched = new Set<string>()
   try {
     for (const raw of batch) {
       const ci = applyMappingRules(raw, source.mapping_rules ?? [])
-      await reconcileOne(ci, source, runId, tenantId, stats, session)
+      await reconcileOne(ci, source, runId, tenantId, stats, session, touched)
     }
   } finally {
     await session.close()
   }
+  // Dopo il commit del lotto e senza mai lanciare: la CMDB è già scritta, un
+  // errore di coda non deve far fallire la discovery (la passata di sicurezza
+  // dei servizi recupera entro 30 minuti).
+  await notifyCIGraphChanged(tenantId, [...touched], `discovery.reconciled:${source.id}`)
 }
 
 async function reconcileOne(
@@ -69,6 +79,7 @@ async function reconcileOne(
   tenantId:   string,
   stats:      ReconciliationStats,
   session:    Session,
+  touched:    Set<string>,
 ): Promise<void> {
   const ciType   = discovered.ci_type ?? inferCIType(discovered)
   const label    = ciTypeToLabel(ciType)
@@ -110,7 +121,7 @@ async function reconcileOne(
 
   // ── 3. Sync relations ────────────────────────────────────────────────────
   if (discovered.relationships && discovered.relationships.length > 0) {
-    const delta = await syncRelations(session, discovered, source, tenantId)
+    const delta = await syncRelations(session, discovered, source, tenantId, touched)
     stats.relationsCreated += delta.created
     stats.relationsRemoved += delta.removed
   }
@@ -378,6 +389,7 @@ async function syncRelations(
   ci:         DiscoveredCI,
   source:     SyncSourceConfig,
   tenantId:   string,
+  touched:    Set<string>,
 ): Promise<{ created: number; removed: number }> {
   let created = 0
   const removed = 0
@@ -423,6 +435,9 @@ async function syncRelations(
       ))
       if (r.records.length) created++
     }
+    // Entrambi i capi: la mappa può includere l'uno o l'altro.
+    touched.add(fromId)
+    touched.add(toId)
   }
 
   return { created, removed }

@@ -35,14 +35,23 @@ vi.mock('../../services/serviceImpact/engine.js', () => ({
   evaluateStaleOrOldMaps: vi.fn().mockResolvedValue({ evaluated: 1, failed: 0, truncated: false }),
   refreshServiceGauges: vi.fn().mockResolvedValue({ operational: 1, degraded: 0, down: 0, maintenance: 0, unknown: 0 }),
 }))
+vi.mock('../../services/serviceImpact/sync.js', () => ({
+  SERVICE_MAP_SYNC_EVERY_MS: 30 * 60 * 1000,
+  syncServiceMap: vi.fn().mockResolvedValue({ mapId: 'm1', version: 3, status: 'active', added: 1, removed: 0, moved: 0, changed: true, skipped: null, reason: null, syncedAt: 'T', note: 'nota', evaluation: null }),
+  syncStaleOrOldMaps: vi.fn().mockResolvedValue({ evaluated: 2, failed: 0, truncated: false }),
+}))
 
 const worker = await import('../serviceImpactWorker.js')
 const {
   enqueueServiceMapEvaluation, serviceMapJobId, startServiceImpactWorker,
   SERVICE_IMPACT_QUEUE, SERVICE_EVALUATE_JOB, SERVICE_PERIODIC_JOB, SERVICE_PERIODIC_EVERY_MS, SERVICE_IMPACT_LOCK_MS, SERVICE_EVALUATE_DELAY_MS,
 } = worker
+const {
+  enqueueServiceMapSync, serviceMapSyncJobId, SERVICE_SYNC_JOB, SERVICE_SYNC_PERIODIC_JOB,
+} = worker
 const { createWorker, getQueue } = await import('../../lib/bullmq.js')
 const { evaluateServiceMap, evaluateStaleOrOldMaps, refreshServiceGauges } = await import('../../services/serviceImpact/engine.js')
+const { syncServiceMap, syncStaleOrOldMaps, SERVICE_MAP_SYNC_EVERY_MS } = await import('../../services/serviceImpact/sync.js')
 const metrics = await import('../../middleware/metrics.js')
 
 const job = (name: string, data: Record<string, unknown> = {}, timestamp = Date.now()) =>
@@ -112,6 +121,44 @@ describe('worker services-impact', () => {
     await expect(proc(job(SERVICE_PERIODIC_JOB))).rejects.toThrow(/\[services-impact\] services-periodic: evaluate: 1\/2 service maps failed; gauges: neo4j down/)
     expect(refreshServiceGauges).toHaveBeenCalledTimes(2)
     await expect(proc(job('nope'))).rejects.toThrow(/\[services-impact\] unknown job "nope"/)
+  })
+})
+
+// ── Ondata 5: mappa viva ─────────────────────────────────────────────────────
+
+describe('sincronizzazione con la CMDB (ondata 5)', () => {
+  it('enqueueServiceMapSync: job id svcsync-<tenant>-<mapId> (diverso da quello della valutazione, senza ":"), stesso ritardo e stessi tentativi', async () => {
+    await enqueueServiceMapSync('c-one', 'map-1', 'periodic')
+    expect(queueAdd).toHaveBeenCalledWith(SERVICE_SYNC_JOB, { tenantId: 'c-one', mapId: 'map-1', trigger: 'periodic' }, {
+      jobId: 'svcsync-c-one-map-1', delay: 2_000, attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true,
+    })
+    expect(SERVICE_SYNC_JOB).toBe('sync')
+    expect(serviceMapSyncJobId('t1', 'm1')).not.toBe(serviceMapJobId('t1', 'm1'))
+    expect(serviceMapSyncJobId('t1', 'm1')).not.toContain(':')
+    expect(() => serviceMapSyncJobId('t:1', 'm1')).toThrow(/must not contain ':'/)
+    // manuale: l'attore viaggia col job (serve alla nota di cronologia)
+    await enqueueServiceMapSync('t1', 'm1', 'manual', 'adm-1')
+    expect(vi.mocked(queueAdd).mock.calls.at(-1)![1]).toEqual({ tenantId: 't1', mapId: 'm1', trigger: 'manual', actorId: 'adm-1' })
+  })
+
+  it('`sync` → syncServiceMap(tenant, mappa, trigger, attore); un errore fa fallire il job (ritenta)', async () => {
+    await startServiceImpactWorker()
+    const proc = processors.get(SERVICE_IMPACT_QUEUE)!
+    await proc(job(SERVICE_SYNC_JOB, { tenantId: 't1', mapId: 'm1', trigger: 'manual', actorId: 'adm-1' }))
+    expect(syncServiceMap).toHaveBeenCalledWith('t1', 'm1', 'manual', 'adm-1')
+    vi.mocked(syncServiceMap).mockRejectedValueOnce(new Error('ServiceMap m1 not found'))
+    await expect(proc(job(SERVICE_SYNC_JOB, { tenantId: 't1', mapId: 'm1', trigger: 'periodic' }))).rejects.toThrow(/not found/)
+  })
+
+  it('rete di sicurezza `services-sync-periodic`: repeat job ogni 30 minuti (rada di proposito: l\'immediatezza la dà notifyCIGraphChanged)', async () => {
+    await startServiceImpactWorker()
+    expect(queueAdd).toHaveBeenCalledWith(SERVICE_SYNC_PERIODIC_JOB, {}, expect.objectContaining({ repeat: { every: SERVICE_MAP_SYNC_EVERY_MS }, jobId: SERVICE_SYNC_PERIODIC_JOB }))
+    expect(SERVICE_MAP_SYNC_EVERY_MS).toBe(30 * 60 * 1000)
+    const proc = processors.get(SERVICE_IMPACT_QUEUE)!
+    await proc(job(SERVICE_SYNC_PERIODIC_JOB))
+    expect(syncStaleOrOldMaps).toHaveBeenCalledTimes(1)
+    vi.mocked(syncStaleOrOldMaps).mockRejectedValueOnce(new Error('1/2 service maps failed synchronization'))
+    await expect(proc(job(SERVICE_SYNC_PERIODIC_JOB))).rejects.toThrow(/1\/2 service maps failed synchronization/)
   })
 })
 

@@ -434,6 +434,12 @@ export const APPLY_PROPOSAL_CYPHER = `${VERSION_GUARD}
   ${CONFIG_WRITE_TAIL}
   RETURN m.version AS version, m.status AS status, added, excluded, removed, size(includedIds) AS included`
 
+/** Interruttore della mappa viva (ondata 5): solo `auto_sync`, con la stessa coda comune (versione, autore, voce di cronologia). */
+export const SET_AUTO_SYNC_CYPHER = `${VERSION_GUARD}
+  SET m.auto_sync = $autoSync
+  ${CONFIG_WRITE_TAIL}
+  RETURN m.version AS version, m.status AS status`
+
 export const REMOVE_EXCLUSION_CYPHER = `${VERSION_GUARD}
   CALL {
     WITH m
@@ -576,6 +582,57 @@ export async function applyServiceMapProposal(input: ApplyProposalInput): Promis
   } finally { await session.close() }
   log.info({ tenantId: input.tenantId, mapId: input.mapId, version: written.version, note: written.note }, 'Service map proposal applied')
   return finish(input, written, 'map_changed')
+}
+
+/**
+ * Mappa viva o congelata (ondata 5): `auto_sync = true` (default) = i
+ * componenti si aggiornano da soli quando cambia la CMDB;
+ * `false` = comportamento delle ondate 1–4 (diff proposto e applicato a mano).
+ * In entrambe le modalità le esclusioni e i componenti aggiunti a mano restano.
+ *
+ * Non rivaluta la mappa: cambiare modalità non cambia né i componenti né la
+ * loro salute (`evaluation` resta null). Scrivere lo stesso valore è un errore
+ * come per le regole: alzerebbe la versione e lascerebbe una voce di
+ * cronologia senza contenuto.
+ */
+export async function setServiceMapAutoSync(input: ConfigWriteInput & { autoSync: boolean }): Promise<ConfigWriteResult> {
+  const now = input.now ?? new Date().toISOString()
+  assertExpectedVersion(input.expectedVersion)
+  if (typeof input.autoSync !== 'boolean') throw new ValidationError(`autoSync must be a boolean. Got: ${JSON.stringify(input.autoSync)}`)
+  const session = getSession(undefined, 'WRITE')
+  let written: { version: number; status: ServiceMapStatus; note: string }
+  try {
+    written = await session.executeWrite(async (tx) => {
+      const state = await loadServiceMapState(tx, input.tenantId, input.mapId, now)
+      assertVersionMatches(state.props, input.mapId, input.expectedVersion)
+      const current = assertAutoSync(state.props['auto_sync'], input.mapId)
+      if (current === input.autoSync) {
+        throw new ValidationError(`ServiceMap ${input.mapId} already has autoSync ${input.autoSync}: nothing to save`)
+      }
+      const note = input.autoSync ? 'Aggiornamento automatico attivato' : 'Aggiornamento automatico disattivato'
+      const row = requireWriteRow(await runQueryOne<WriteRow>(tx, SET_AUTO_SYNC_CYPHER, {
+        mapId: input.mapId, tenantId: input.tenantId, expectedVersion: input.expectedVersion,
+        autoSync: input.autoSync, now, actorId: input.actorId,
+        ...serviceConfigHistoryParams('map_changed', note, now),
+      }), input.mapId, input.expectedVersion)
+      return { version: toNumber(row.version), status: assertStatus(row.status, input.mapId), note }
+    })
+  } finally { await session.close() }
+  log.info({ tenantId: input.tenantId, mapId: input.mapId, version: written.version, autoSync: input.autoSync }, 'Service map auto sync changed')
+  return { mapId: input.mapId, version: written.version, status: written.status, note: written.note, evaluation: null }
+}
+
+/**
+ * `auto_sync` della mappa. Assente = mappa creata prima dell'ondata 5: errore
+ * che nomina la migrazione, mai un default a runtime (una mappa che si crede
+ * congelata mentre si aggiorna da sola, o viceversa, è il peggio che possa
+ * capitare qui).
+ */
+export function assertAutoSync(value: unknown, mapId: string): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`ServiceMap ${mapId} has no auto_sync (got ${JSON.stringify(value)}) — run the 20260910_1110_service_map_auto_sync migration`)
+  }
+  return value
 }
 
 /** Riammette un CI escluso: tornerà nella prossima proposta. */
